@@ -2,72 +2,86 @@
 
 ## Project reality
 
-- Verified stack: **Tauri 2 + React 19 + TypeScript + Vite + Bun**.
-- Tailwind CSS v4 and shadcn/ui are now wired in. Repo markers include root `components.json`, `@tailwindcss/vite` in `vite.config.ts`, `@/*` alias wiring in Vite and TypeScript, `src/components/ui/*`, `src/lib/utils.ts`, and Tailwind/shadcn imports plus theme tokens in `src/App.css`.
-- The runtime app is still the simple Tauri greet demo in `src/App.tsx`. Do not confuse “UI system installed” with “app already migrated to shadcn/ui”.
-- Repo-local skills exist in both `.claude/skills/` and `.agents/skills/`: `expo-tailwind-setup`, `shadcn`, `tailwind-design-system`, and `tauri-v2`.
+- 当前仓库是 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具，当前产品界面已是 Morse 识别工作台。
+- 当前真实产品是 **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。
+- 前端已接入 Tailwind CSS v4 与 shadcn/ui；这些不是“仅安装未使用”的状态，而是当前界面基础设施的一部分。
+- 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`，不是 HTTP 服务。
 
 ## Source of truth
 
-Prefer executable config and live code over prose:
+优先相信可执行配置与当前代码，而不是旧文档：
 
 1. `src-tauri/tauri.conf.json`
 2. `package.json`
-3. `components.json`
-4. `vite.config.ts`
-5. `tsconfig.json`
-6. `src/` and `src-tauri/src/`
+3. `CLAUDE.md`
+4. `docs/CODEMAPS/`
+5. `src/` 和 `src-tauri/src/`
 
-If `README.md` or older notes disagree, follow config/code.
+如果 `README.md`、旧注释或历史描述与代码不一致，以当前实现为准。
 
 ## Commands
 
-- `bun run dev` -> frontend-only Vite dev server
+- `bun run dev` -> 仅前端 Vite 开发服务器
 - `bun run build` -> `tsc && vite build`
 - `bun run preview` -> Vite preview
-- `bun run tauri dev` -> full desktop dev flow; Tauri auto-runs `bun run dev`
-- `bun run tauri build` -> desktop build flow; Tauri auto-runs `bun run build`
+- `bun run tauri dev` -> 完整桌面开发流程
+- `bun run tauri build` -> 桌面构建流程
+- `cargo check --manifest-path src-tauri/Cargo.toml` -> 检查 Rust/Tauri 编译
 
 ## Current architecture
 
-- Frontend entry chain: `index.html` -> `src/main.tsx` -> `src/App.tsx`
-- Native entry chain: `src-tauri/src/main.rs` -> `src-tauri/src/lib.rs`
-- Current Tauri command surface is still minimal: `greet`
-- Current native plugin/capability surface is still minimal: `tauri-plugin-opener` plus `src-tauri/capabilities/default.json`
-- Frontend source now includes:
-  - `src/components/ui/*` for installed shadcn-style primitives
-  - `src/lib/utils.ts` for `cn(...)`
-  - `src/hooks/use-mobile.ts`
-  - `src/App.tsx` and `src/App.css` for the still-template demo surface
-- There is still no repo-local evidence of routing, a provider tree, feature modules, CI workflows, or a `docs/` directory.
+- 前端入口链路：`index.html` -> `src/main.tsx` -> `src/App.tsx`
+- 原生入口链路：`src-tauri/src/main.rs` -> `src-tauri/src/lib.rs`
+- 前端核心：`src/components/app/morse-page.tsx`
+- 原生核心：`src-tauri/src/morse/mod.rs`
+- Overlay 状态机：`src-tauri/src/morse/overlay.rs`
+- 识别链路：`src-tauri/src/morse/recognition.rs`
+- 设置持久化：`src-tauri/src/morse/settings.rs`
 
-## Tailwind and shadcn/ui conventions
+当前命令面不是 `greet`，而是：
+- `morse_get_bootstrap`
+- `morse_save_settings`
+- `morse_begin_region_selection`
+- `morse_overlay_submit_selection`
+- `morse_overlay_cancel_selection`
+- `morse_run_recognition`
 
-- Tailwind is configured through `@tailwindcss/vite` plus CSS-first v4 setup in `src/App.css`; no `tailwind.config.*` is required here.
-- shadcn project config lives in `components.json`.
-- Use the configured aliases: `@/components`, `@/components/ui`, `@/lib`, `@/hooks`.
-- Reuse existing UI primitives before adding custom markup.
-- Keep `cn(...)` in `src/lib/utils.ts` as the class merge helper.
-- If you migrate screens from the greet demo to shadcn/ui, do it intentionally instead of layering more template CSS on top of the new token system.
+## UI and workflow constraints
 
-## Change rules
+- 保持白色桌面工具风格，不要改回模板首页或营销页。
+- `?mode=overlay` 必须继续可用，不要引入路由来替代它。
+- 区域选择应保持“一次进入 overlay，连续完成多个框选”。
+- overlay 必须保持透明背景，避免重灰幕遮挡底层屏幕内容。
+- 热键输入应保持录制式交互；真正的解绑/重绑由 Rust 保存逻辑负责。
+- `TooltipProvider` 已在 `src/main.tsx` 根部提供，依赖 tooltip 的组件应沿用该入口结构。
 
-- Use **Bun**, not npm/pnpm/yarn.
-- Keep Vite/Tauri dev-port assumptions intact: frontend on `http://localhost:1420`, HMR on `1421` when `TAURI_DEV_HOST` is set.
-- Do not reintroduce old assumptions that Tailwind or shadcn/ui are absent; that guidance is outdated for this repo.
-- Do not assume routing or app-wide providers exist just because the UI system is installed.
-- When adding native features, update Tauri config and capabilities intentionally, not just frontend code.
-- `src/App.css` now carries both the old demo styling and the new design-token layer. Be deliberate when removing or migrating legacy styles.
+## Frontend conventions
+
+- 使用现有别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`
+- Tailwind v4 使用 CSS-first 方案，主题 token 在 `src/App.css`
+- 优先复用 `src/components/ui/*` 中已有基础组件
+- `src/App.css` 同时承载主题 token、桌面壳层样式与 overlay 相关样式；修改时要区分普通模式与 overlay 模式
+
+## Native-side conventions
+
+- `src-tauri/src/morse/mod.rs` 负责状态、命令注册、热键协调与识别流程调度
+- `src-tauri/src/morse/overlay.rs` 负责多步骤框选会话；中途取消不应污染已保存配置
+- `src-tauri/src/morse/settings.rs` 的持久化文件是 `morse_settings.json`
+- 修改原生命令时，必要时同步更新 `src-tauri/capabilities/default.json`
 
 ## Repo-specific cautions
 
-- `README.md` and `AGENTS.md` should stay aligned with the current setup; both were previously stale.
-- `README.md` and `src/App.tsx` still reflect a template-era app experience even though the UI/tooling surface has grown.
-- Do not invent lint, test, formatter, or CI commands. No repo-local config for those workflows has been found yet.
-- Ignore generated or dependency artifacts such as `node_modules`, `dist`, `dist-ssr`, `src-tauri/target`, and `src-tauri/gen`.
-- Recommended editor extensions in `.vscode/extensions.json`: `tauri-apps.tauri-vscode`, `rust-lang.rust-analyzer`.
+- 使用 **Bun**，不要切换到 npm / pnpm / yarn
+- 不要虚构仓库中不存在的 lint/test/CI 命令
+- `README.md`、`AGENTS.md`、`CLAUDE.md` 和 `docs/CODEMAPS/` 需要随重大功能变更一起更新
+- 忽略本地或生成产物：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`test-results/`
 
-## If the project grows
+## If the project changes again
 
-- If you add routing, a real app shell, tests, linting, CI, or broader native command surfaces, update this file in the same change.
-- If `src/App.tsx` is replaced with a real shadcn-based application shell, update both `AGENTS.md` and `README.md` so they stop describing the greet demo as the current runtime surface.
+如果后续新增：
+- 新的 Tauri commands
+- 新的持久化结构
+- 新的开发脚本
+- 路由系统或新的应用壳层
+
+请在同一轮改动里同步更新 `README.md`、`AGENTS.md`、`CLAUDE.md` 与相关 codemap。
