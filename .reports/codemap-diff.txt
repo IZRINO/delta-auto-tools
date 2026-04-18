@@ -1,0 +1,42 @@
+初次生成 codemaps（2026-04-19）
+
+扫描结果
+- 项目类型：单体桌面应用（Tauri 2 + React 19 + TypeScript + Rust）
+- 扫描文件数：79
+- 源码目录：src/，src-tauri/src/
+- 入口文件：src/main.tsx，src/App.tsx，src-tauri/src/main.rs，src-tauri/src/lib.rs
+
+codemap 状态
+- 之前不存在 docs/CODEMAPS/
+- 本次为首次生成，不适用 >30% diff 审批规则
+- 新建文件：
+  - docs/CODEMAPS/architecture.md
+  - docs/CODEMAPS/backend.md
+  - docs/CODEMAPS/frontend.md
+  - docs/CODEMAPS/data.md
+  - docs/CODEMAPS/dependencies.md
+
+架构摘要
+- 前端无路由，使用 `?mode=overlay` 切换正常桌面模式与区域框选模式
+- 原生层通过 Tauri commands 暴露业务能力，而不是 HTTP API
+- 核心业务集中在 `src/components/app/morse-page.tsx` 和 `src-tauri/src/morse/*`
+- 区域选择已是单次 overlay、多步骤 staged 提交模型
+- 热键录制在前端，实际解绑/注册与回滚在 Rust
+
+数据面摘要
+- 无数据库、无 migration
+- 唯一持久化文件：`morse_settings.json`
+- history / latest_run 目前为内存态
+
+新依赖/关键依赖
+- 前端：React、@tauri-apps/api、Tailwind v4、shadcn/ui
+- 原生：tauri-plugin-global-shortcut、xcap、image、enigo、tokio
+- 开发编排：PM2 + `scripts/wait-for-port.cjs`
+
+文档陈旧提醒
+- README.md 仍含模板时代描述，和当前 Morse 工作台实现不完全一致
+- AGENTS.md 也存在部分过时描述
+- 建议后续同步 README.md / AGENTS.md，避免与 CLAUDE.md、codemaps 脱节
+
+90+ 天陈旧检查
+- 无旧 codemap 文档，无法计算陈旧天数

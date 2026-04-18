@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "delta-auto-tools",
         "width": 800,
         "height": 600

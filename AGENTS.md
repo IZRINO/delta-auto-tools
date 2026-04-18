@@ -2,73 +2,72 @@
 
 ## Project reality
 
-- Verified stack: **Tauri 2 + React + TypeScript + Vite + Bun**.
-- Repo-local evidence does **not** currently support shadcn/ui, Tailwind, React Router, test tooling, lint/format tooling, or CI workflows.
-- `README.md` is still template-level prose. Treat executable config and live code as the source of truth.
+- Verified stack: **Tauri 2 + React 19 + TypeScript + Vite + Bun**.
+- Tailwind CSS v4 and shadcn/ui are now wired in. Repo markers include root `components.json`, `@tailwindcss/vite` in `vite.config.ts`, `@/*` alias wiring in Vite and TypeScript, `src/components/ui/*`, `src/lib/utils.ts`, and Tailwind/shadcn imports plus theme tokens in `src/App.css`.
+- The runtime app is still the simple Tauri greet demo in `src/App.tsx`. Do not confuse “UI system installed” with “app already migrated to shadcn/ui”.
+- Repo-local skills exist in both `.claude/skills/` and `.agents/skills/`: `expo-tailwind-setup`, `shadcn`, `tailwind-design-system`, and `tauri-v2`.
 
-## Source of truth order
+## Source of truth
+
+Prefer executable config and live code over prose:
 
 1. `src-tauri/tauri.conf.json`
 2. `package.json`
-3. `vite.config.ts`
-4. `tsconfig.json`
-5. `src-tauri/Cargo.toml`
+3. `components.json`
+4. `vite.config.ts`
+5. `tsconfig.json`
 6. `src/` and `src-tauri/src/`
 
-If prose disagrees with config or code, follow config/code.
+If `README.md` or older notes disagree, follow config/code.
 
 ## Commands
 
 - `bun run dev` -> frontend-only Vite dev server
 - `bun run build` -> `tsc && vite build`
 - `bun run preview` -> Vite preview
-- `bun run tauri dev` -> preferred full desktop dev flow; Tauri auto-runs `bun run dev`
-- `bun run tauri build` -> preferred desktop build flow; Tauri auto-runs `bun run build`
-
-## Runtime and build constraints
-
-- Bun is the actual package manager here (`bun.lock` + Tauri build hooks), even though `package.json` has no `packageManager` field.
-- Vite dev server is pinned to **`http://localhost:1420`** with `strictPort: true`.
-- When `TAURI_DEV_HOST` is set, HMR uses port **1421**.
-- Tauri production frontend output is **`../dist`**.
-- `security.csp` is currently **`null`** in `src-tauri/tauri.conf.json`; do not assume CSP protection is configured.
+- `bun run tauri dev` -> full desktop dev flow; Tauri auto-runs `bun run dev`
+- `bun run tauri build` -> desktop build flow; Tauri auto-runs `bun run build`
 
 ## Current architecture
 
 - Frontend entry chain: `index.html` -> `src/main.tsx` -> `src/App.tsx`
 - Native entry chain: `src-tauri/src/main.rs` -> `src-tauri/src/lib.rs`
-- Current Tauri command surface is minimal: `greet` in `src-tauri/src/lib.rs`
-- Current native plugin surface is minimal: `tauri-plugin-opener`
-- Current capability surface is `src-tauri/capabilities/default.json` with `core:default` and `opener:default`
+- Current Tauri command surface is still minimal: `greet`
+- Current native plugin/capability surface is still minimal: `tauri-plugin-opener` plus `src-tauri/capabilities/default.json`
+- Frontend source now includes:
+  - `src/components/ui/*` for installed shadcn-style primitives
+  - `src/lib/utils.ts` for `cn(...)`
+  - `src/hooks/use-mobile.ts`
+  - `src/App.tsx` and `src/App.css` for the still-template demo surface
+- There is still no repo-local evidence of routing, a provider tree, feature modules, CI workflows, or a `docs/` directory.
 
-The frontend is still template-small. Under `src/`, the real app surface is only:
+## Tailwind and shadcn/ui conventions
 
-- `src/main.tsx`
-- `src/App.tsx`
-- `src/App.css`
-- `src/assets/react.svg`
-- `src/vite-env.d.ts`
-
-There is no repo-local evidence of routes, providers, feature folders, shared UI primitives, or a broader app shell.
+- Tailwind is configured through `@tailwindcss/vite` plus CSS-first v4 setup in `src/App.css`; no `tailwind.config.*` is required here.
+- shadcn project config lives in `components.json`.
+- Use the configured aliases: `@/components`, `@/components/ui`, `@/lib`, `@/hooks`.
+- Reuse existing UI primitives before adding custom markup.
+- Keep `cn(...)` in `src/lib/utils.ts` as the class merge helper.
+- If you migrate screens from the greet demo to shadcn/ui, do it intentionally instead of layering more template CSS on top of the new token system.
 
 ## Change rules
 
 - Use **Bun**, not npm/pnpm/yarn.
-- Keep changes aligned with the current small-template structure unless the task explicitly expands architecture.
-- Do not assume router setup, provider layers, `@/` aliases, or `src/components/ui` exist.
-- Styling is currently plain CSS in `src/App.css`; do not write Tailwind/shadcn-specific code unless that tooling is added first.
-- TypeScript is strict: `strict`, `noUnusedLocals`, `noUnusedParameters`, and `noFallthroughCasesInSwitch` are enabled.
-- There is an existing `@ts-expect-error` comment in `vite.config.ts`; treat it as legacy config debt, not a pattern to copy.
-- When adding native features, update Tauri config/capabilities intentionally rather than only changing frontend code.
+- Keep Vite/Tauri dev-port assumptions intact: frontend on `http://localhost:1420`, HMR on `1421` when `TAURI_DEV_HOST` is set.
+- Do not reintroduce old assumptions that Tailwind or shadcn/ui are absent; that guidance is outdated for this repo.
+- Do not assume routing or app-wide providers exist just because the UI system is installed.
+- When adding native features, update Tauri config and capabilities intentionally, not just frontend code.
+- `src/App.css` now carries both the old demo styling and the new design-token layer. Be deliberate when removing or migrating legacy styles.
 
 ## Repo-specific cautions
 
-- `README.md`, `index.html` title, and some metadata still look like template defaults. Verify against config/code before reusing them in docs or product copy.
-- Do not invent commands for linting, testing, formatting, or CI. No repo-local config for those workflows exists yet.
-- Ignore generated or dependency artifacts: `node_modules`, `dist`, `dist-ssr`, `src-tauri/target`, and `src-tauri/gen/schemas`.
+- `README.md` and `AGENTS.md` should stay aligned with the current setup; both were previously stale.
+- `README.md` and `src/App.tsx` still reflect a template-era app experience even though the UI/tooling surface has grown.
+- Do not invent lint, test, formatter, or CI commands. No repo-local config for those workflows has been found yet.
+- Ignore generated or dependency artifacts such as `node_modules`, `dist`, `dist-ssr`, `src-tauri/target`, and `src-tauri/gen`.
 - Recommended editor extensions in `.vscode/extensions.json`: `tauri-apps.tauri-vscode`, `rust-lang.rust-analyzer`.
 
 ## If the project grows
 
-- If you add routing, shared UI layers, tests, linting, Tailwind, shadcn/ui, or more Rust commands, update this file in the same change.
-- If shadcn/ui is introduced later, add real repo markers first (for example `components.json`, alias wiring, and styling setup) before documenting shadcn-specific conventions.
+- If you add routing, a real app shell, tests, linting, CI, or broader native command surfaces, update this file in the same change.
+- If `src/App.tsx` is replaced with a real shadcn-based application shell, update both `AGENTS.md` and `README.md` so they stop describing the greet demo as the current runtime surface.

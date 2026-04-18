@@ -1,50 +1,78 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useMemo, type CSSProperties } from "react";
+import { RiRadarLine } from "@remixicon/react";
+
+import { MorsePage } from "@/components/app/morse-page";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarSeparator } from "@/components/ui/sidebar";
+
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+const appShellStyle = {
+  "--sidebar-width": "14rem",
+  "--sidebar-width-icon": "3rem",
+} as CSSProperties;
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+function App() {
+  const overlayMode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "overlay";
+  }, []);
+
+  if (overlayMode) {
+    return <MorsePage overlayMode />;
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <SidebarProvider defaultOpen style={appShellStyle}>
+      <Sidebar collapsible="none" variant="inset">
+        <SidebarHeader className="p-2 pb-1">
+          <div className="flex items-center gap-2 rounded-lg border border-sidebar-border/70 bg-background px-2.5 py-2">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <RiRadarLine />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">三角洲行动工具</p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">桌面识别工作台</p>
+            </div>
+          </div>
+        </SidebarHeader>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+        <SidebarSeparator className="mt-1" />
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        <SidebarContent className="px-1 pb-2">
+          <SidebarGroup className="px-1 py-2">
+            <SidebarGroupLabel>当前工具</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                <SidebarMenuItem>
+                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive tooltip="摩斯密码解析" type="button">
+                    <RiRadarLine />
+                    <span className="truncate">摩斯密码解析</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+
+      <SidebarInset className="desktop-shell min-h-svh overflow-hidden">
+        <header className="sticky top-0 z-10 border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
+              <RiRadarLine />
+            </div>
+            <div className="min-w-0">
+              <h2 className="font-heading text-sm font-semibold">摩斯密码解析</h2>
+              <p className="truncate text-xs text-muted-foreground">区域框选、识别结果、设置与历史记录</p>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex flex-1 flex-col p-3">
+          <MorsePage />
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 

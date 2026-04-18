@@ -1,0 +1,95 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RegionRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MorseSettings {
+    pub hotkey: String,
+    pub regions: [Option<RegionRect>; 3],
+    pub binary_threshold: u8,
+    pub auto_input_delay: u64,
+}
+
+impl Default for MorseSettings {
+    fn default() -> Self {
+        Self {
+            hotkey: "F1".to_string(),
+            regions: [None, None, None],
+            binary_threshold: 127,
+            auto_input_delay: 50,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MorseRegionDetail {
+    pub slot: usize,
+    pub threshold_mode: String,
+    pub contour_count: usize,
+    pub morse: Option<String>,
+    pub digit: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MorseRunResult {
+    pub value: Option<String>,
+    pub details: Vec<MorseRegionDetail>,
+    pub triggered_by: String,
+    pub auto_typed: bool,
+    pub occurred_at_ms: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntry {
+    pub id: u64,
+    pub result: Option<String>,
+    pub success: bool,
+    pub triggered_by: String,
+    pub auto_typed: bool,
+    pub occurred_at_ms: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MorseBootstrap {
+    pub settings: MorseSettings,
+    pub history: Vec<HistoryEntry>,
+    pub latest_run: Option<MorseRunResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegionSelectionProgress {
+    pub current_slot: Option<usize>,
+    pub regions: [Option<RegionRect>; 3],
+    pub completed_slots: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegionSelectionOutcome {
+    pub kind: RegionSelectionKind,
+    pub regions: [Option<RegionRect>; 3],
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RegionSelectionKind {
+    Selected,
+    Cancelled,
+    Closed,
+}
