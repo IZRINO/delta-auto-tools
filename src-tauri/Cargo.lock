@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "delta-auto-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "enigo",
  "image",
@@ -922,6 +922,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tempfile",
  "tokio",
  "willhook",
  "xcap",

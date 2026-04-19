@@ -137,6 +137,7 @@
   body,
   #root {
     min-height: 100svh;
+    height: 100svh;
   }
 
   html {
@@ -145,7 +146,10 @@
 
   body {
     @apply bg-background text-foreground;
-    background-image: none;
+    background-image:
+      radial-gradient(circle at top left, oklch(0.988 0.012 235 / 0.95), transparent 30%),
+      linear-gradient(180deg, oklch(0.998 0.002 255), oklch(0.972 0.004 250));
+    background-attachment: fixed;
   }
 
   body[data-overlay-mode="true"] {
@@ -155,26 +159,282 @@
   body[data-overlay-mode="true"] #root {
     background: transparent;
   }
+
+  body:not([data-overlay-mode="true"]) {
+    overflow: hidden;
+  }
 }
 
 @layer components {
+  .desktop-sidebar {
+    height: 100svh;
+  }
+
   .desktop-shell {
-    @apply bg-muted/45;
+    background:
+      linear-gradient(180deg, oklch(0.975 0.004 252 / 0.94), oklch(0.958 0.004 250 / 0.98)),
+      linear-gradient(135deg, oklch(0.995 0.004 255 / 0.8), transparent 55%);
+  }
+
+  .desktop-workspace {
+    background-image:
+      linear-gradient(90deg, oklch(0.92 0.004 250 / 0.18) 1px, transparent 1px),
+      linear-gradient(oklch(0.92 0.004 250 / 0.18) 1px, transparent 1px);
+    background-position: 0 0;
+    background-size: 20px 20px;
+  }
+
+  .desktop-sidebar-scroll,
+  .desktop-main-scroll {
+    overscroll-behavior: contain;
+  }
+
+  .desktop-main-scroll {
+    min-height: 0;
+  }
+
+  .desktop-sidebar-brand {
+    background: linear-gradient(180deg, oklch(0.998 0.002 255 / 0.98), oklch(0.985 0.003 252 / 0.98));
+    border: 1px solid color-mix(in oklch, var(--sidebar-border) 88%, white 12%);
+    box-shadow: 0 12px 32px -26px oklch(0.24 0.012 258 / 0.28);
+  }
+
+  .desktop-topbar {
+    background: linear-gradient(180deg, oklch(0.972 0.004 252 / 0.92), oklch(0.972 0.004 252 / 0));
+    backdrop-filter: blur(8px);
+  }
+
+  .desktop-topbar-card {
+    background: linear-gradient(180deg, oklch(0.998 0.002 255 / 0.92), oklch(0.992 0.003 252 / 0.94));
+    border: 1px solid color-mix(in oklch, var(--border) 88%, white 12%);
+    box-shadow:
+      0 22px 50px -40px oklch(0.26 0.012 258 / 0.42),
+      inset 0 1px 0 oklch(1 0 0 / 0.7);
+  }
+
+  .desktop-topbar-meta {
+    @apply shrink-0;
   }
 
   .desktop-toolbar {
-    @apply flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card px-4 py-3;
+    @apply flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-border/70 bg-card/92 px-5 py-4;
+    box-shadow:
+      0 16px 40px -34px oklch(0.22 0.012 258 / 0.3),
+      inset 0 1px 0 oklch(1 0 0 / 0.72);
   }
 
   .desktop-caption {
     @apply text-[0.625rem] font-medium tracking-[0.18em] text-muted-foreground uppercase;
   }
 
+  .desktop-chip {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-[0.6875rem] font-medium tracking-[0.12em] uppercase text-muted-foreground;
+    background: linear-gradient(180deg, oklch(0.986 0.003 252), oklch(0.968 0.004 252));
+    border: 1px solid color-mix(in oklch, var(--border) 85%, white 15%);
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.7);
+  }
+
+  .desktop-content-shell {
+    background:
+      linear-gradient(180deg, oklch(0.992 0.003 255 / 0.94), oklch(0.982 0.003 252 / 0.96)),
+      linear-gradient(135deg, oklch(1 0 0 / 0.58), transparent 40%);
+    border: 1px solid color-mix(in oklch, var(--border) 86%, white 14%);
+    box-shadow:
+      0 26px 65px -44px oklch(0.26 0.012 258 / 0.36),
+      inset 0 1px 0 oklch(1 0 0 / 0.72);
+  }
+
+  .desktop-toolbar-hero {
+    background:
+      linear-gradient(180deg, oklch(0.997 0.003 255 / 0.94), oklch(0.986 0.004 252 / 0.96)),
+      linear-gradient(120deg, oklch(0.975 0.017 245 / 0.55), transparent 46%);
+    border-color: color-mix(in oklch, var(--border) 84%, white 16%);
+  }
+
+  .desktop-status-line {
+    max-width: 48rem;
+  }
+
+  .desktop-metric-card {
+    background: linear-gradient(180deg, oklch(0.998 0.002 255 / 0.92), oklch(0.99 0.003 252 / 0.92));
+  }
+
+  .desktop-workbench-stack > * {
+    min-height: 0;
+  }
+
+  .desktop-console-card,
+  .desktop-result-card {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .desktop-console-header {
+    min-height: 7rem;
+  }
+
+  .desktop-console-grid > * {
+    min-height: 0;
+  }
+
+  .desktop-console-pane {
+    box-shadow:
+      0 18px 46px -38px oklch(0.22 0.012 258 / 0.24),
+      inset 0 1px 0 oklch(1 0 0 / 0.78);
+  }
+
+  .desktop-console-settings {
+    background:
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.97), oklch(0.992 0.003 252 / 0.98)),
+      linear-gradient(135deg, oklch(0.95 0.012 225 / 0.15), transparent 52%);
+  }
+
+  .desktop-console-verification {
+    background:
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.97), oklch(0.991 0.004 252 / 0.98)),
+      linear-gradient(135deg, oklch(0.95 0.024 245 / 0.2), transparent 52%);
+  }
+
+  .desktop-verification-box {
+    background:
+      radial-gradient(circle at top right, oklch(0.96 0.03 245 / 0.34), transparent 36%),
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.96), oklch(0.989 0.004 252 / 0.98));
+  }
+
+  .desktop-verification-input {
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.75),
+      0 12px 34px -26px oklch(0.22 0.015 252 / 0.22);
+  }
+
+  .desktop-result-header {
+    min-height: 5.75rem;
+  }
+
+  .desktop-result-content {
+    min-height: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .desktop-console-content {
+      min-height: 22rem;
+    }
+
+    .desktop-console-settings {
+      min-height: 100%;
+    }
+
+    .desktop-console-verification {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .desktop-settings-fields {
+      min-height: 100%;
+    }
+
+    .desktop-settings-field {
+      min-height: 0;
+    }
+
+    .desktop-settings-field-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      min-height: 0;
+    }
+
+    .desktop-result-card {
+      min-height: 33rem;
+    }
+  }
+
   .desktop-subpanel {
     @apply rounded-lg border border-border/70 bg-muted/40;
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.65);
   }
 
   .desktop-mono {
     @apply rounded-md border border-border/70 bg-background px-2.5 py-2 font-mono text-[0.6875rem] text-foreground/80;
   }
+
+  .desktop-scrollbar-hidden {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .desktop-scrollbar-hidden::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .desktop-scroll-area [data-slot="scroll-area-viewport"] {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .desktop-scroll-area [data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .desktop-scroll-area [data-slot="scroll-area-scrollbar"] {
+    display: none;
+  }
+
+  .desktop-panel-card {
+    border-radius: 1.35rem;
+    background:
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.96), oklch(0.992 0.003 252 / 0.97)),
+      linear-gradient(135deg, oklch(1 0 0 / 0.48), transparent 45%);
+    box-shadow:
+      0 20px 52px -42px oklch(0.22 0.012 258 / 0.28),
+      inset 0 1px 0 oklch(1 0 0 / 0.78);
+  }
+
+  .desktop-panel-header {
+    background: linear-gradient(180deg, oklch(0.995 0.002 255 / 0.88), oklch(0.992 0.003 252 / 0.6));
+  }
+
+  .desktop-priority-strip {
+    background:
+      linear-gradient(180deg, oklch(0.992 0.005 252 / 0.9), oklch(0.982 0.004 252 / 0.96)),
+      linear-gradient(135deg, oklch(0.96 0.02 245 / 0.34), transparent 52%);
+    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.8);
+  }
+
+  .desktop-region-card,
+  .desktop-detail-card,
+  .desktop-history-entry {
+    background: linear-gradient(180deg, oklch(0.998 0.002 255 / 0.94), oklch(0.992 0.003 252 / 0.94));
+  }
+
+  .desktop-result-card {
+    background:
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.97), oklch(0.992 0.004 252 / 0.98)),
+      linear-gradient(135deg, oklch(0.95 0.025 245 / 0.22), transparent 46%);
+  }
+
+  .desktop-result-hero {
+    background:
+      radial-gradient(circle at top right, oklch(0.95 0.03 245 / 0.45), transparent 32%),
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.98), oklch(0.986 0.004 252 / 0.98));
+    box-shadow:
+      0 30px 70px -46px oklch(0.22 0.018 252 / 0.38),
+      inset 0 1px 0 oklch(1 0 0 / 0.84);
+  }
+
+  .desktop-console-card {
+    background:
+      linear-gradient(180deg, oklch(0.998 0.002 255 / 0.96), oklch(0.992 0.003 252 / 0.97)),
+      linear-gradient(135deg, oklch(0.95 0.018 245 / 0.16), transparent 52%);
+  }
+
+  .desktop-footer-note {
+    background: linear-gradient(180deg, oklch(0.996 0.002 255 / 0.88), oklch(0.988 0.003 252 / 0.9));
+  }
 }
+
+

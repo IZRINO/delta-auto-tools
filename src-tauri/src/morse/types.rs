@@ -94,3 +94,17 @@ pub enum RegionSelectionKind {
     Cancelled,
     Closed,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MorseSettings;
+
+    #[test]
+    fn morse_settings_default_values_are_stable() {
+        let settings = MorseSettings::default();
+        assert_eq!(settings.hotkey, "F1");
+        assert_eq!(settings.binary_threshold, 127);
+        assert_eq!(settings.auto_input_delay, 50);
+        assert_eq!(settings.regions, [None, None, None]);
+    }
+}

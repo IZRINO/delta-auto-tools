@@ -26,13 +26,17 @@
 - `bun run preview` -> Vite preview
 - `bun run tauri dev` -> 完整桌面开发流程
 - `bun run tauri build` -> 桌面构建流程
+- `bun run test` -> Vitest 单元测试
+- `bun run test:coverage` -> 前端覆盖率输出
 - `cargo check --manifest-path src-tauri/Cargo.toml` -> 检查 Rust/Tauri 编译
+- `cargo test --manifest-path src-tauri/Cargo.toml` -> Rust 单元测试
 
 ## Current architecture
 
 - 前端入口链路：`index.html` -> `src/main.tsx` -> `src/App.tsx`
 - 原生入口链路：`src-tauri/src/main.rs` -> `src-tauri/src/lib.rs`
-- 前端核心：`src/components/app/morse-page.tsx`
+- 前端核心容器：`src/components/app/morse-page.tsx`
+- 前端纯逻辑：`src/components/app/morse-utils.ts`
 - 原生核心：`src-tauri/src/morse/mod.rs`
 - Overlay 状态机：`src-tauri/src/morse/overlay.rs`
 - 识别链路：`src-tauri/src/morse/recognition.rs`
@@ -60,6 +64,7 @@
 - 使用现有别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`
 - Tailwind v4 使用 CSS-first 方案，主题 token 在 `src/App.css`
 - 优先复用 `src/components/ui/*` 中已有基础组件
+- `src/components/app/morse-page.tsx` 负责容器与状态编排；展示块拆在 app 子组件中，纯逻辑放 `morse-utils.ts`
 - `src/App.css` 同时承载主题 token、桌面壳层样式与 overlay 相关样式；修改时要区分普通模式与 overlay 模式
 
 ## Native-side conventions

@@ -33,6 +33,27 @@ bun run tauri build
 ```
 执行桌面应用构建；Tauri 会先跑前端构建。
 
+```bash
+bun run build
+```
+执行前端 TypeScript 检查与 Vite 构建。
+
+### 测试
+
+```bash
+bun run test
+```
+执行前端 Vitest 单元测试，当前重点覆盖 `src/components/app/morse-utils.ts` 中的纯逻辑。
+
+```bash
+bun run test:coverage
+```
+输出前端覆盖率摘要。
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+执行 Rust 单元测试，当前重点覆盖 overlay、settings、types 与历史裁剪逻辑。
 
 ### Rust 侧检查
 
@@ -45,19 +66,6 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo fmt --manifest-path src-tauri/Cargo.toml
 ```
 格式化 Rust 代码。
-
-### 单个测试 / 局部验证
-
-仓库当前**没有成型的前端测试脚本**，也没有 `package.json` 里的 test 命令。若后续补 Rust 单测，可用：
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml <test_name>
-```
-
-当前更常见的局部验证方式是：
-- 前端改动：`bun run build`
-- Rust 改动：`cargo check --manifest-path src-tauri/Cargo.toml`
-- 桌面工作流改动：`bun run tauri dev`
 
 ## 运行与端口约定
 
@@ -98,13 +106,22 @@ index.html
   - 侧边栏与主标题
   - 判断 `mode=overlay`
 - `src/components/app/morse-page.tsx`
-  - 核心工作台
+  - 主工作台容器
   - 设置加载/保存
   - 区域框选入口
-  - overlay 前端交互
-  - 热键录制 UI
+  - 热键录制状态
   - 识别结果与历史记录
   - Tauri `invoke` / `listen` 对接
+- `src/components/app/morse-overlay.tsx`
+  - overlay 前端交互
+  - 拖拽框选 UI
+  - 多步骤状态提示
+- `src/components/app/morse-panels.tsx`
+  - 控制台、结果、区域、历史等展示块
+- `src/components/app/morse-utils.ts`
+  - 纯函数工具与格式化逻辑
+- `src/components/app/morse-types.ts`
+  - 页面内部共享类型与常量
 - `src/App.css`
   - Tailwind v4 导入
   - shadcn 主题 token
@@ -138,6 +155,7 @@ src-tauri/src/main.rs
 - `src-tauri/src/morse/settings.rs`
   - 设置持久化到 `morse_settings.json`
   - 使用 `app.path().app_config_dir()` 下的配置目录
+  - 包含可测试的文件读写与序列化辅助逻辑
 - `src-tauri/src/morse/overlay.rs`
   - 多步骤区域选择状态机
   - 创建全屏透明 overlay 窗口
@@ -271,24 +289,6 @@ Rust 侧会：
 - `.claude/commands/pm2-*.md`
 - `.claude/scripts/pm2-*.ps1`
 
-常用命令：
-
-```bash
-pm2 start ecosystem.config.cjs   # 首次按配置启动
-pm2 start all                    # 首次启动并 save 后可直接使用
-pm2 stop all
-pm2 restart all
-pm2 start delta-auto-tools-1420
-pm2 stop delta-auto-tools-1420
-pm2 start delta-auto-tools-tauri
-pm2 stop delta-auto-tools-tauri
-pm2 logs
-pm2 status
-pm2 monit
-pm2 save
-pm2 resurrect
-```
-
 ## 变更时优先相信什么
 
 如果文档与代码不一致，优先以这些文件为准：
@@ -299,36 +299,9 @@ pm2 resurrect
 
 `README.md` 和 `AGENTS.md` 可能滞后于当前实现，修改较大功能后记得一并同步。
 
-## 修改这类功能时的验证建议
-
-### 只改前端静态界面
-
-```bash
-bun run build
-```
-
-### 改了 Rust / Tauri command / 状态机
-
-```bash
-cargo check --manifest-path src-tauri/Cargo.toml
-bun run build
-```
-
-### 改了 overlay / 热键 / 桌面交互 / Tauri 事件
-
-```bash
-bun run tauri dev
-```
-
-这类改动不能只靠 `bun run dev` 判断，因为：
-- overlay 是 Tauri 窗口
-- 热键注册在 Rust
-- 自动输入在 Rust
-- invoke/event 都依赖桌面侧
-
 ## 当前已知注意点
 
-- 当前仓库里没有完善的前端测试体系与脚本；不要凭空写入不存在的 lint/test 命令到文档里。
-- `src/components/app/morse-page.tsx` 目前较大，是业务核心文件；做大改时优先按职责拆分，而不是继续堆逻辑。
+- 当前仓库里没有完善的前端测试体系与脚本；本轮新增的是 Vitest 单测与覆盖率脚本。
+- `src/components/app/morse-page.tsx` 已按容器职责整理；新增展示块与工具模块时应保持职责清晰。
 - 热键录制当前基于浏览器键盘事件格式化字符串；如果后续修复特殊组合键兼容性，优先保持与 `tauri_plugin_global_shortcut` 的格式一致。
 - `src/App.css` 同时承载主题 token 和桌面壳层样式，改 overlay 背景时不要破坏正常主界面背景。

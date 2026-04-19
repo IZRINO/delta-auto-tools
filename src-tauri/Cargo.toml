@@ -1,16 +1,11 @@
 [package]
 name = "delta-auto-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "delta_auto_tools_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -27,3 +22,6 @@ xcap = "0.9.4"
 enigo = "0.6.1"
 image = "0.25"
 willhook = "0.6.3"
+
+[dev-dependencies]
+tempfile = "3"

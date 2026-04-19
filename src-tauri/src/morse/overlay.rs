@@ -77,6 +77,52 @@ fn parse_slots(slots: &[usize]) -> Result<Vec<usize>, String> {
     Ok(parsed)
 }
 
+fn prepare_selection_from_pending(
+    pending: &PendingSelection,
+    slot: usize,
+    rect: RegionRect,
+) -> Result<PreparedSelection, String> {
+    if slot >= 3 {
+        return Err(format!("无效区域槽位: {slot}"));
+    }
+
+    if rect.width <= 10 || rect.height <= 5 {
+        return Err("所选区域过小，无法保存".to_string());
+    }
+
+    let expected_slot = pending
+        .current_slot()
+        .ok_or_else(|| "当前区域选择流程没有可用槽位".to_string())?;
+
+    if expected_slot != slot {
+        return Err(format!(
+            "区域选择槽位不匹配: 期望 {}, 实际 {}",
+            expected_slot, slot
+        ));
+    }
+
+    let mut regions = pending.staged_regions.clone();
+    regions[slot] = Some(rect);
+
+    let next_index = pending.current_index + 1;
+    let is_complete = next_index >= pending.slots.len();
+    let current_slot = if is_complete {
+        None
+    } else {
+        pending.slots.get(next_index).copied()
+    };
+
+    Ok(PreparedSelection {
+        expected_slot,
+        is_complete,
+        progress: RegionSelectionProgress {
+            current_slot,
+            regions,
+            completed_slots: pending.completed_slots(next_index),
+        },
+    })
+}
+
 pub async fn begin_region_selection(
     app: &AppHandle,
     slots: Vec<usize>,
@@ -180,14 +226,6 @@ pub fn prepare_selection(
     rect: RegionRect,
     state: &State<'_, MorseState>,
 ) -> Result<PreparedSelection, String> {
-    if slot >= 3 {
-        return Err(format!("无效区域槽位: {slot}"));
-    }
-
-    if rect.width <= 10 || rect.height <= 5 {
-        return Err("所选区域过小，无法保存".to_string());
-    }
-
     let inner = state
         .inner
         .lock()
@@ -198,37 +236,7 @@ pub fn prepare_selection(
         .as_ref()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
-    let expected_slot = pending
-        .current_slot()
-        .ok_or_else(|| "当前区域选择流程没有可用槽位".to_string())?;
-
-    if expected_slot != slot {
-        return Err(format!(
-            "区域选择槽位不匹配: 期望 {}, 实际 {}",
-            expected_slot, slot
-        ));
-    }
-
-    let mut regions = pending.staged_regions.clone();
-    regions[slot] = Some(rect);
-
-    let next_index = pending.current_index + 1;
-    let is_complete = next_index >= pending.slots.len();
-    let current_slot = if is_complete {
-        None
-    } else {
-        pending.slots.get(next_index).copied()
-    };
-
-    Ok(PreparedSelection {
-        expected_slot,
-        is_complete,
-        progress: RegionSelectionProgress {
-            current_slot,
-            regions,
-            completed_slots: pending.completed_slots(next_index),
-        },
-    })
+    prepare_selection_from_pending(pending, slot, rect)
 }
 
 pub fn commit_selection(
@@ -321,4 +329,94 @@ pub fn cancel_selection(
         .sender
         .send(RegionSelectionKind::Cancelled)
         .map_err(|_| "无法完成区域取消回传".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::oneshot;
+
+    fn sample_pending(slots: Vec<usize>, current_index: usize) -> PendingSelection {
+        let (sender, _receiver) = oneshot::channel();
+        PendingSelection {
+            slots,
+            current_index,
+            staged_regions: [None, None, None],
+            sender,
+        }
+    }
+
+    fn sample_rect() -> RegionRect {
+        RegionRect {
+            x: 10,
+            y: 12,
+            width: 40,
+            height: 22,
+        }
+    }
+
+    #[test]
+    fn parse_slots_validates_inputs() {
+        assert_eq!(parse_slots(&[0, 2]).unwrap(), vec![0, 2]);
+        assert!(parse_slots(&[]).is_err());
+        assert!(parse_slots(&[3]).is_err());
+        assert!(parse_slots(&[1, 1]).is_err());
+    }
+
+    #[test]
+    fn completed_slots_reports_prefix() {
+        let pending = sample_pending(vec![0, 1, 2], 0);
+        assert_eq!(pending.completed_slots(0), Vec::<usize>::new());
+        assert_eq!(pending.completed_slots(2), vec![0, 1]);
+    }
+
+    #[test]
+    fn prepare_selection_rejects_invalid_rectangles() {
+        let pending = sample_pending(vec![0], 0);
+        let rect = RegionRect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 5,
+        };
+
+        let error = prepare_selection_from_pending(&pending, 0, rect).unwrap_err();
+        assert!(error.contains("所选区域过小"));
+    }
+
+    #[test]
+    fn prepare_selection_rejects_slot_mismatch() {
+        let pending = sample_pending(vec![1], 0);
+        let error = prepare_selection_from_pending(&pending, 0, sample_rect()).unwrap_err();
+        assert!(error.contains("区域选择槽位不匹配"));
+    }
+
+    #[test]
+    fn prepare_selection_advances_to_next_slot() {
+        let mut pending = sample_pending(vec![0, 2], 0);
+        pending.staged_regions[1] = Some(RegionRect {
+            x: 1,
+            y: 1,
+            width: 2,
+            height: 2,
+        });
+
+        let prepared = prepare_selection_from_pending(&pending, 0, sample_rect()).unwrap();
+        assert!(!prepared.is_complete);
+        assert_eq!(prepared.expected_slot, 0);
+        assert_eq!(prepared.progress.current_slot, Some(2));
+        assert_eq!(prepared.progress.completed_slots, vec![0]);
+        assert_eq!(prepared.progress.regions[0], Some(sample_rect()));
+        assert!(prepared.progress.regions[1].is_some());
+    }
+
+    #[test]
+    fn prepare_selection_marks_completion() {
+        let pending = sample_pending(vec![2], 0);
+        let prepared = prepare_selection_from_pending(&pending, 2, sample_rect()).unwrap();
+        assert!(prepared.is_complete);
+        assert_eq!(prepared.progress.current_slot, None);
+        assert_eq!(prepared.progress.completed_slots, vec![2]);
+        assert_eq!(prepared.progress.regions[2], Some(sample_rect()));
+    }
 }

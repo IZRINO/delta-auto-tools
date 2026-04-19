@@ -2,7 +2,20 @@ import { useMemo, type CSSProperties } from "react";
 import { RiRadarLine } from "@remixicon/react";
 
 import { MorsePage } from "@/components/app/morse-page";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarSeparator } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+} from "@/components/ui/sidebar";
 
 import "./App.css";
 
@@ -22,23 +35,23 @@ function App() {
   }
 
   return (
-    <SidebarProvider defaultOpen style={appShellStyle}>
-      <Sidebar collapsible="none" variant="inset">
+    <SidebarProvider className="h-svh min-h-0 overflow-hidden" defaultOpen style={appShellStyle}>
+      <Sidebar className="desktop-sidebar min-h-0 overflow-hidden" collapsible="none" variant="inset">
         <SidebarHeader className="p-2 pb-1">
-          <div className="flex items-center gap-2 rounded-lg border border-sidebar-border/70 bg-background px-2.5 py-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+          <div className="desktop-sidebar-brand flex items-center gap-3 rounded-[1.15rem] px-3 py-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/8">
               <RiRadarLine />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">三角洲行动工具</p>
-              <p className="mt-1 truncate text-xs text-muted-foreground">桌面识别工作台</p>
+              <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
+              <p className="mt-1 truncate text-[0.6875rem] tracking-[0.16em] text-muted-foreground uppercase">Morse Desktop Console</p>
             </div>
           </div>
         </SidebarHeader>
 
         <SidebarSeparator className="mt-1" />
 
-        <SidebarContent className="px-1 pb-2">
+        <SidebarContent className="desktop-sidebar-scroll desktop-scrollbar-hidden px-1 pb-2">
           <SidebarGroup className="px-1 py-2">
             <SidebarGroupLabel>当前工具</SidebarGroupLabel>
             <SidebarGroupContent>
@@ -55,21 +68,35 @@ function App() {
         </SidebarContent>
       </Sidebar>
 
-      <SidebarInset className="desktop-shell min-h-svh overflow-hidden">
-        <header className="sticky top-0 z-10 border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
-              <RiRadarLine />
+      <SidebarInset className="desktop-shell h-full min-h-0 overflow-hidden">
+        <div className="desktop-workspace flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <header className="desktop-topbar shrink-0 px-5 py-3 xl:px-6 xl:py-4">
+            <div className="desktop-topbar-card flex min-w-0 items-center justify-between gap-4 rounded-[1.35rem] px-4 py-3 xl:px-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-background/84 text-primary shadow-sm">
+                  <RiRadarLine />
+                </div>
+                <div className="min-w-0">
+                  <p className="desktop-caption">Workspace / Morse</p>
+                  <h2 className="mt-1 truncate font-heading text-[0.92rem] font-semibold tracking-[0.01em]">摩斯密码解析工作台</h2>
+                </div>
+              </div>
+
+              <div className="desktop-topbar-meta hidden items-center gap-2 xl:flex">
+                <span className="desktop-chip">区域框选</span>
+                <span className="desktop-chip">识别结果</span>
+                <span className="desktop-chip">历史记录</span>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="font-heading text-sm font-semibold">摩斯密码解析</h2>
-              <p className="truncate text-xs text-muted-foreground">区域框选、识别结果、设置与历史记录</p>
+          </header>
+
+          <div className="desktop-main-scroll desktop-scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 pb-5 xl:px-6 xl:pb-6">
+            <div className="flex min-h-full flex-col">
+              <div className="desktop-content-shell flex min-h-full flex-col rounded-[1.75rem] px-4 py-4 xl:px-6 xl:py-6">
+                <MorsePage />
+              </div>
             </div>
           </div>
-        </header>
-
-        <div className="flex flex-1 flex-col p-3">
-          <MorsePage />
         </div>
       </SidebarInset>
     </SidebarProvider>
@@ -77,3 +104,4 @@ function App() {
 }
 
 export default App;
+

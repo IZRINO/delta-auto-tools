@@ -1,5 +1,3 @@
-<!-- Generated: 2026-04-19 → 2026-04-19 (v0.1.0) | Files scanned: 79 | Token estimate: ~880 -->
-
 # 后端 / 原生层 Codemap
 
 ## 运行时模型
@@ -9,80 +7,42 @@
 
 ## Tauri Commands
 - `morse_get_bootstrap`
-  - `morse-page.tsx` 初始化加载
-  - 返回：设置、历史、最近结果
 - `morse_save_settings(settingsValue)`
-  - 保存阈值、输入延迟、热键
-  - 热键变更：先解绑旧热键，再注册新热键，失败则回滚
+- `morse_set_hotkey_recording(recording)`
 - `morse_begin_region_selection(slots)`
-  - 创建透明 overlay 窗口
-  - 建立多步骤框选会话
 - `morse_overlay_submit_selection(slot, rect)`
-  - 校验当前步骤
-  - 更新 staged_regions
-  - 最后一步才写入设置文件
 - `morse_overlay_cancel_selection(slot)`
-  - 取消当前会话并清理 pending 状态
 - `morse_run_recognition(autoType?)`
-  - 对 3 个区域截图、识别、聚合、可选自动输入
 
 ## 原生模块映射
 - `src-tauri/src/lib.rs`
   - 注册 plugin、state、invoke_handler
 - `src-tauri/src/morse/mod.rs`
-  - 模块入口
   - 全局状态管理
-  - 热键注册
-  - 历史记录写入
+  - 热键监听协调
+  - 历史记录写入与裁剪
   - 识别主流程调度
 - `src-tauri/src/morse/overlay.rs`
   - `PendingSelection`
   - `PreparedSelection`
   - overlay 窗口创建/销毁
   - 多 slot 会话状态推进
-- `src-tauri/src/morse/recognition.rs`
-  - `run_recognition`
-  - `capture_region`
-  - `detect_morse`
-  - Otsu / 手动阈值 / 连通域检测
-- `src-tauri/src/morse/decoder.rs`
-  - 摩斯序列转数字
+  - 单元测试覆盖 slot 校验与推进逻辑
 - `src-tauri/src/morse/settings.rs`
-  - `load_settings`
-  - `save_settings`
-  - 配置文件路径解析
-- `src-tauri/src/morse/input.rs`
-  - `type_result`
-  - enigo 键盘注入
+  - 配置路径解析
+  - 文件读写与序列化辅助逻辑
+  - 单元测试覆盖缺省配置、round-trip、无效 JSON
 - `src-tauri/src/morse/types.rs`
   - 前后端共享 DTO
+  - 默认设置单元测试
 
-## 状态机
-```text
-idle
-  -> begin_region_selection
-  -> pending_selection(active)
-  -> submit slot 1/2/3
-  -> staged_regions 累积
-  -> final submit
-  -> save_settings + commit_selection
-  -> idle
-```
+## 测试关注点
+- overlay 纯逻辑推进
+- settings 读写/反序列化
+- default settings
+- 历史记录长度上限裁剪
 
-## 中间件 / 插件链
-- `tauri_plugin_opener`
-- `tauri_plugin_global_shortcut`
-- 无 HTTP middleware、无 repository 层、无数据库访问层
-
-## 事件流
-- Emit: `morse://run-finished` → 前端更新结果与历史
-- Emit: `morse://hotkey-error` → 前端在热键设置区域展示错误
-- Consumer: `src/components/app/morse-page.tsx`
-
-## 关键文件
-- `src-tauri/src/lib.rs`
-- `src-tauri/src/morse/mod.rs`
-- `src-tauri/src/morse/overlay.rs`
-- `src-tauri/src/morse/recognition.rs`
-- `src-tauri/src/morse/settings.rs`
-- `src-tauri/src/morse/input.rs`
+## 约束
+- 无 HTTP middleware、无数据库访问层
+- 不改变 command 面和 DTO 对外语义
+- 识别、截图、系统输入仍依赖真实桌面环境，当前单测不覆盖这部分

@@ -49,10 +49,14 @@ impl MorseStateInner {
     }
 
     fn push_history(&mut self, entry: HistoryEntry) {
-        self.history.push_front(entry);
-        while self.history.len() > 1000 {
-            self.history.pop_back();
-        }
+        push_history_with_limit(&mut self.history, entry, 1000);
+    }
+}
+
+fn push_history_with_limit(history: &mut VecDeque<HistoryEntry>, entry: HistoryEntry, limit: usize) {
+    history.push_front(entry);
+    while history.len() > limit {
+        history.pop_back();
     }
 }
 
@@ -334,4 +338,33 @@ fn persist_run_result(app: &AppHandle, result: MorseRunResult) {
     } else {
         eprintln!("摩斯状态已损坏，无法写入运行结果");
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_entry(id: u64) -> HistoryEntry {
+        HistoryEntry {
+            id,
+            result: Some(id.to_string()),
+            success: true,
+            triggered_by: "manual".to_string(),
+            auto_typed: false,
+            occurred_at_ms: id,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn push_history_with_limit_trims_old_entries() {
+        let mut history = VecDeque::new();
+        for id in 0..1005 {
+            push_history_with_limit(&mut history, sample_entry(id), 1000);
+        }
+
+        assert_eq!(history.len(), 1000);
+        assert_eq!(history.front().unwrap().id, 1004);
+        assert_eq!(history.back().unwrap().id, 5);
+    }
 }
