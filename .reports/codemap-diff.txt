@@ -1,5 +1,24 @@
 初次生成 codemaps（2026-04-19）
 
+---
+
+更新 codemaps（2026-04-19，v0.1.0）
+
+变更来源
+- commit 5e8a1fa: feat: 热键监听健壮性与错误上报
+
+修改文件
+- src-tauri/src/morse/mod.rs         新增 hotkey_error 字段到 MorseStateInner
+- src-tauri/src/morse/input_listener.rs  钩子安装失败提前返回错误；emit morse://hotkey-error
+- src-tauri/src/morse/decoder.rs     移除未使用的 decode_sequence
+- src/components/app/morse-page.tsx  监听 hotkey-error；hotkeyError 加入 bootstrap 类型
+
+codemap 更新内容
+- backend.md: 事件流新增 morse://hotkey-error 条目
+- frontend.md: bootstrap 类型新增 hotkeyError；事件来源新增 morse://hotkey-error
+
+diff 评估：变更 < 30%，直接更新，无需审批
+
 扫描结果
 - 项目类型：单体桌面应用（Tauri 2 + React 19 + TypeScript + Rust）
 - 扫描文件数：79

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-19 | Files scanned: 79 | Token estimate: ~860 -->
+<!-- Generated: 2026-04-19 → 2026-04-19 (v0.1.0) | Files scanned: 79 | Token estimate: ~880 -->
 
 # 后端 / 原生层 Codemap
 
@@ -75,7 +75,8 @@ idle
 - 无 HTTP middleware、无 repository 层、无数据库访问层
 
 ## 事件流
-- Emit: `morse://run-finished`
+- Emit: `morse://run-finished` → 前端更新结果与历史
+- Emit: `morse://hotkey-error` → 前端在热键设置区域展示错误
 - Consumer: `src/components/app/morse-page.tsx`
 
 ## 关键文件

@@ -1,4 +1,4 @@
-<!-- Generated: 2026-04-19 | Files scanned: 79 | Token estimate: ~900 -->
+<!-- Generated: 2026-04-19 → 2026-04-19 (v0.1.0) | Files scanned: 79 | Token estimate: ~920 -->
 
 # 前端 Codemap
 
@@ -51,8 +51,8 @@ Overlay 模式
 
 ## 状态来源
 - React 本地状态：加载、保存、运行中、录制热键、框选中、错误信息
-- Tauri bootstrap：`settings`, `history`, `latestRun`
-- Tauri event：`morse://run-finished`
+- Tauri bootstrap：`settings`, `history`, `latestRun`, `hotkeyError`
+- Tauri event：`morse://run-finished`, `morse://hotkey-error`
 - 查询参数：`mode`, `slots`, `slot`
 
 ## 前端到原生调用
