@@ -107,6 +107,7 @@ const MIN_SELECTION_WIDTH = 10;
 const MIN_SELECTION_HEIGHT = 5;
 const EMPTY_REGIONS: RegionTuple = [null, null, null];
 const HOTKEY_MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta"]);
+const AUTOSAVE_DELAY_MS = 400;
 
 function getErrorMessage(error: unknown): string {
   if (typeof error === "string") {
@@ -480,6 +481,8 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [statusMessage, setStatusMessage] = useState("正在加载摩斯工具...");
   const [pageError, setPageError] = useState<string | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
+  const autosaveVersionRef = useRef(0);
 
   useEffect(() => {
     formRef.current = form;
@@ -490,6 +493,34 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       hotkeyButtonRef.current?.focus();
     }
   }, [isRecordingHotkey]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (overlayMode) {
+      return;
+    }
+
+    let disposed = false;
+
+    void invoke("morse_set_hotkey_recording", { recording: isRecordingHotkey }).catch((error) => {
+      if (!disposed) {
+        const message = getErrorMessage(error);
+        setPageError(message);
+        setStatusMessage(message);
+      }
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [isRecordingHotkey, overlayMode]);
 
   useEffect(() => {
     if (!overlayMode) {
@@ -565,7 +596,8 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     }
 
     let isDisposed = false;
-    let unlisten: (() => void) | undefined;
+    let unlistenRunFinished: (() => void) | undefined;
+    let unlistenSelectionProgress: (() => void) | undefined;
 
     void listen<MorseRunResult>("morse://run-finished", async (event) => {
       if (isDisposed) {
@@ -584,12 +616,42 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         }
       }
     }).then((dispose) => {
-      unlisten = dispose;
+      unlistenRunFinished = dispose;
+    });
+
+    void listen<RegionSelectionProgress>("morse://selection-progress", (event) => {
+      if (isDisposed) {
+        return;
+      }
+
+      const progress = event.payload;
+      setBootstrap((current) =>
+        current
+          ? {
+              ...current,
+              settings: {
+                ...current.settings,
+                regions: progress.regions,
+              },
+            }
+          : current,
+      );
+      setForm((current) =>
+        current
+          ? {
+              ...current,
+              regions: progress.regions,
+            }
+          : current,
+      );
+    }).then((dispose) => {
+      unlistenSelectionProgress = dispose;
     });
 
     return () => {
       isDisposed = true;
-      unlisten?.();
+      unlistenRunFinished?.();
+      unlistenSelectionProgress?.();
     };
   }, [overlayMode, syncBootstrap]);
 
@@ -617,28 +679,67 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     setForm((current) => (current ? { ...current, [key]: value } : current));
   };
 
-  const handleSaveSettings = async () => {
-    if (!form) {
+  const saveSettings = useCallback(
+    async (settingsValue: MorseSettings, pendingVersion?: number) => {
+      try {
+        setSaving(true);
+        setStatusMessage("正在保存设置...");
+        const next = await invoke<MorseBootstrap>("morse_save_settings", { settingsValue });
+
+        if (typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current) {
+          return;
+        }
+
+        setBootstrap(next);
+        setForm(settingsToForm(next.settings));
+        setPageError(null);
+        setStatusMessage("设置已保存。新的热键与识别参数已生效。");
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setPageError(message);
+        setStatusMessage(message);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (overlayMode || loading || !bootstrap || !form || isRecordingHotkey || selectingSlot !== null) {
       return;
     }
 
-    try {
-      setSaving(true);
-      setStatusMessage("正在保存设置...");
-      const settingsValue = parseSettingsForm(form);
-      const next = await invoke<MorseBootstrap>("morse_save_settings", { settingsValue });
-      setBootstrap(next);
-      setForm(settingsToForm(next.settings));
-      setPageError(null);
-      setStatusMessage("设置已保存。新的热键与识别参数已生效。");
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setPageError(message);
-      setStatusMessage(message);
-    } finally {
-      setSaving(false);
+    if (!isDirty) {
+      return;
     }
-  };
+
+    const nextVersion = autosaveVersionRef.current + 1;
+    autosaveVersionRef.current = nextVersion;
+    const formSnapshot = form;
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      try {
+        const settingsValue = parseSettingsForm(formSnapshot);
+        void saveSettings(settingsValue, nextVersion);
+      } catch (error) {
+        if (nextVersion !== autosaveVersionRef.current) {
+          return;
+        }
+
+        const message = getErrorMessage(error);
+        setPageError(message);
+        setStatusMessage(`保存失败：${message}`);
+      }
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => {
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+    };
+  }, [bootstrap, form, isDirty, isRecordingHotkey, loading, overlayMode, saveSettings, selectingSlot]);
 
   const performSelectionSession = async (slots: number[]) => {
     if (slots.length === 0) {
@@ -722,6 +823,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     event.stopPropagation();
 
     if (event.key === "Escape") {
+      updateForm("hotkey", hotkeyDraftRef.current);
       setIsRecordingHotkey(false);
       setStatusMessage("已取消热键录制。");
       return;
@@ -744,6 +846,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       return;
     }
 
+    updateForm("hotkey", hotkeyDraftRef.current);
     setIsRecordingHotkey(false);
     setStatusMessage("热键录制已结束。");
   };
@@ -755,7 +858,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base font-semibold tracking-tight">摩斯密码解析</h1>
             <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
-            {isDirty ? <Badge variant="outline">未保存</Badge> : null}
+            {saving ? <Badge variant="outline">保存中</Badge> : isDirty ? <Badge variant="outline">待保存</Badge> : <Badge variant="outline">已保存</Badge>}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">{statusMessage}</p>
         </div>
@@ -826,9 +929,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           <Button disabled={isBusy || !canRun} onClick={() => void handleRunRecognition(false)} type="button" variant="outline">
             <RiCommandLine data-icon="inline-start" />
             仅识别不输入
-          </Button>
-          <Button disabled={isBusy || !isDirty} onClick={() => void handleSaveSettings()} type="button" variant="secondary">
-            保存设置
           </Button>
         </CardContent>
       </Card>

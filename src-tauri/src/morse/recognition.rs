@@ -13,6 +13,9 @@ use super::{
 
 const DASH_RATIO_THRESHOLD: f32 = 2.0;
 const MIN_CONTOUR_AREA: usize = 10;
+const TARGET_SYMBOL_COUNT: usize = 5;
+const MAX_COMPONENTS_TO_KEEP: usize = 8;
+const SCALE_FACTOR_TOLERANCE: f32 = 0.01;
 
 struct DetectionSuccess {
     threshold_mode: &'static str,
@@ -27,7 +30,7 @@ struct DetectionFailure {
     message: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ComponentBounds {
     min_x: u32,
     max_x: u32,
@@ -176,11 +179,6 @@ fn capture_region(region: &RegionRect) -> Result<RgbaImage, DetectionFailure> {
         message: format!("读取显示器信息失败: {error}"),
     })?;
 
-    let left = region.x;
-    let top = region.y;
-    let right = region.x + region.width;
-    let bottom = region.y + region.height;
-
     for monitor in monitors {
         let monitor_left = monitor.x().map_err(|error| DetectionFailure {
             threshold_mode: "not-run",
@@ -206,20 +204,16 @@ fn capture_region(region: &RegionRect) -> Result<RgbaImage, DetectionFailure> {
             morse: None,
             message: format!("读取显示器高度失败: {error}"),
         })?;
+        let scale_factor = monitor.scale_factor().unwrap_or(1.0);
 
-        let monitor_right = monitor_left + monitor_width as i32;
-        let monitor_bottom = monitor_top + monitor_height as i32;
-
-        if left >= monitor_left
-            && top >= monitor_top
-            && right <= monitor_right
-            && bottom <= monitor_bottom
-        {
-            let local_x = (left - monitor_left) as u32;
-            let local_y = (top - monitor_top) as u32;
-            let width = region.width as u32;
-            let height = region.height as u32;
-
+        if let Some((local_x, local_y, width, height)) = region_to_capture_bounds(
+            region,
+            monitor_left,
+            monitor_top,
+            monitor_width,
+            monitor_height,
+            scale_factor,
+        ) {
             return monitor
                 .capture_region(local_x, local_y, width, height)
                 .map_err(|error| DetectionFailure {
@@ -238,6 +232,68 @@ fn capture_region(region: &RegionRect) -> Result<RgbaImage, DetectionFailure> {
         message: "所选区域未完全落在单个显示器内，请重新框选".to_string(),
     })
 }
+
+fn region_to_capture_bounds(
+    region: &RegionRect,
+    monitor_left: i32,
+    monitor_top: i32,
+    monitor_width: u32,
+    monitor_height: u32,
+    scale_factor: f32,
+) -> Option<(u32, u32, u32, u32)> {
+    let monitor_right = monitor_left + monitor_width as i32;
+    let monitor_bottom = monitor_top + monitor_height as i32;
+    let physical = rect_bounds(region.x, region.y, region.width, region.height);
+
+    if rect_fits_within(physical, monitor_left, monitor_top, monitor_right, monitor_bottom) {
+        return Some(to_local_capture_bounds(physical, monitor_left, monitor_top));
+    }
+
+    if (scale_factor - 1.0).abs() <= SCALE_FACTOR_TOLERANCE {
+        return None;
+    }
+
+    let logical_left = (monitor_left as f32 / scale_factor).round() as i32;
+    let logical_top = (monitor_top as f32 / scale_factor).round() as i32;
+    let logical_right = logical_left + (monitor_width as f32 / scale_factor).round() as i32;
+    let logical_bottom = logical_top + (monitor_height as f32 / scale_factor).round() as i32;
+    let logical = rect_bounds(region.x, region.y, region.width, region.height);
+
+    if !rect_fits_within(logical, logical_left, logical_top, logical_right, logical_bottom) {
+        return None;
+    }
+
+    let scaled_left = ((logical.0 - logical_left) as f32 * scale_factor).round() as u32;
+    let scaled_top = ((logical.1 - logical_top) as f32 * scale_factor).round() as u32;
+    let scaled_width = (region.width as f32 * scale_factor).round() as u32;
+    let scaled_height = (region.height as f32 * scale_factor).round() as u32;
+
+    Some((scaled_left, scaled_top, scaled_width.max(1), scaled_height.max(1)))
+}
+
+fn rect_bounds(x: i32, y: i32, width: i32, height: i32) -> (i32, i32, i32, i32) {
+    (x, y, x + width, y + height)
+}
+
+fn rect_fits_within(
+    rect: (i32, i32, i32, i32),
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+) -> bool {
+    rect.0 >= left && rect.1 >= top && rect.2 <= right && rect.3 <= bottom
+}
+
+fn to_local_capture_bounds(rect: (i32, i32, i32, i32), monitor_left: i32, monitor_top: i32) -> (u32, u32, u32, u32) {
+    (
+        (rect.0 - monitor_left) as u32,
+        (rect.1 - monitor_top) as u32,
+        (rect.2 - rect.0) as u32,
+        (rect.3 - rect.1) as u32,
+    )
+}
+
 
 fn detect_morse(
     image: &RgbaImage,
@@ -277,41 +333,71 @@ fn detect_morse_with_threshold(
     binary_threshold: u8,
 ) -> Result<DetectionSuccess, DetectionFailure> {
     let binary = apply_threshold(gray, threshold_value, invert);
-
-    let mut marks = detect_components(&binary)
+    let components = detect_components(&binary)
         .into_iter()
         .filter(|component| component.area >= MIN_CONTOUR_AREA)
-        .map(|component| {
-            let height = component.height().max(1) as f32;
-            let width = component.width() as f32;
-            let symbol = if width / height >= DASH_RATIO_THRESHOLD {
-                '-'
-            } else {
-                '.'
-            };
-
-            (component.min_x as i32, symbol)
-        })
         .collect::<Vec<_>>();
+    let contour_count = components.len();
 
-    marks.sort_by_key(|(x, _)| *x);
-    let contour_count = marks.len();
-
-    if contour_count != 5 {
+    if contour_count < TARGET_SYMBOL_COUNT {
         return Err(DetectionFailure {
             threshold_mode: mode,
             contour_count,
-            morse: (contour_count > 0).then(|| marks.iter().map(|(_, symbol)| *symbol).collect()),
-            message: format!("期望 5 个轮廓，实际 {contour_count}，当前阈值 {binary_threshold}"),
+            morse: (contour_count > 0)
+                .then(|| components_to_morse(select_components(components.as_slice()))),
+            message: format!(
+                "期望至少 {TARGET_SYMBOL_COUNT} 个轮廓，实际 {contour_count}，当前阈值 {binary_threshold}"
+            ),
         });
     }
 
-    let morse: String = marks.iter().map(|(_, symbol)| *symbol).collect();
+    if contour_count > MAX_COMPONENTS_TO_KEEP {
+        return Err(DetectionFailure {
+            threshold_mode: mode,
+            contour_count,
+            morse: Some(components_to_morse(select_components(components.as_slice()))),
+            message: format!(
+                "轮廓过多（{contour_count}），当前阈值 {binary_threshold}，请重新框选或调整阈值"
+            ),
+        });
+    }
+
+    let selected = select_components(components.as_slice());
+    let morse = components_to_morse(selected.as_slice());
+
     Ok(DetectionSuccess {
         threshold_mode: mode,
         contour_count,
         morse,
     })
+}
+
+fn select_components(components: &[ComponentBounds]) -> Vec<ComponentBounds> {
+    let mut selected = components.to_vec();
+    selected.sort_by(|left, right| {
+        right
+            .area
+            .cmp(&left.area)
+            .then_with(|| left.min_x.cmp(&right.min_x))
+    });
+    selected.truncate(TARGET_SYMBOL_COUNT);
+    selected.sort_by_key(|component| component.min_x);
+    selected
+}
+
+fn components_to_morse(components: &[ComponentBounds]) -> String {
+    components
+        .iter()
+        .map(|component| {
+            let height = component.height().max(1) as f32;
+            let width = component.width() as f32;
+            if width / height >= DASH_RATIO_THRESHOLD {
+                '-'
+            } else {
+                '.'
+            }
+        })
+        .collect()
 }
 
 fn rgba_to_gray(image: &RgbaImage) -> GrayImage {

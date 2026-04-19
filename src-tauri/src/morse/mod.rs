@@ -1,5 +1,6 @@
 mod decoder;
 mod input;
+mod input_listener;
 mod overlay;
 mod recognition;
 mod settings;
@@ -12,9 +13,9 @@ use std::{
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use self::{
+    input_listener::PassiveHotkeyListener,
     overlay::PendingSelection,
     types::{
         HistoryEntry, MorseBootstrap, MorseRunResult, MorseSettings, RegionRect,
@@ -24,6 +25,7 @@ use self::{
 
 pub struct MorseState {
     pub(crate) inner: Mutex<MorseStateInner>,
+    hotkey_listener: Mutex<Option<PassiveHotkeyListener>>,
 }
 
 pub(crate) struct MorseStateInner {
@@ -59,36 +61,35 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-fn unregister_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {
-    let shortcut = hotkey.trim();
-    if shortcut.is_empty() {
-        return Ok(());
+fn restart_hotkey_listener(
+    state: &MorseState,
+    app: &AppHandle,
+    hotkey: &str,
+) -> Result<(), String> {
+    let mut listener = state
+        .hotkey_listener
+        .lock()
+        .map_err(|_| "热键监听状态已损坏".to_string())?;
+
+    if let Some(existing) = listener.as_mut() {
+        existing.stop();
     }
 
-    app.global_shortcut()
-        .unregister(shortcut)
-        .map_err(|error| format!("取消旧热键注册失败: {error}"))
+    *listener = Some(PassiveHotkeyListener::start(app.clone(), hotkey)?);
+    Ok(())
 }
 
-fn register_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {
-    let shortcut = hotkey.trim();
-    if shortcut.is_empty() {
-        return Err("热键不能为空".to_string());
+fn set_hotkey_listener_paused(state: &MorseState, paused: bool) -> Result<(), String> {
+    let listener = state
+        .hotkey_listener
+        .lock()
+        .map_err(|_| "热键监听状态已损坏".to_string())?;
+
+    if let Some(listener) = listener.as_ref() {
+        listener.set_paused(paused);
     }
 
-    let shortcut_value = shortcut.to_string();
-    app.global_shortcut()
-        .on_shortcut(shortcut_value.as_str(), move |app, _, event| {
-            if event.state != ShortcutState::Pressed {
-                return;
-            }
-
-            let app_handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = run_recognition_flow(&app_handle, "hotkey", true).await;
-            });
-        })
-        .map_err(|error| format!("注册热键失败: {error}"))
+    Ok(())
 }
 
 fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
@@ -171,7 +172,7 @@ async fn run_recognition_flow(
 
 pub fn initialize(app: &AppHandle) -> Result<MorseState, String> {
     let settings = settings::load_settings(app)?;
-    register_hotkey(app, &settings.hotkey)?;
+    let listener = PassiveHotkeyListener::start(app.clone(), &settings.hotkey)?;
 
     Ok(MorseState {
         inner: Mutex::new(MorseStateInner {
@@ -182,6 +183,7 @@ pub fn initialize(app: &AppHandle) -> Result<MorseState, String> {
             pending_selection: None,
             run_in_progress: false,
         }),
+        hotkey_listener: Mutex::new(Some(listener)),
     })
 }
 
@@ -210,31 +212,16 @@ pub fn morse_save_settings(
     };
 
     let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
-    if hotkey_changed {
-        unregister_hotkey(&app, &previous_settings.hotkey)?;
-        if let Err(error) = register_hotkey(&app, &settings_value.hotkey) {
-            if let Err(rollback_error) = register_hotkey(&app, &previous_settings.hotkey) {
-                return Err(format!(
-                    "注册新热键失败: {error}。回滚旧热键也失败: {rollback_error}"
-                ));
-            }
-            return Err(error);
-        }
-    }
 
     if let Err(error) = settings::save_settings(&app, &settings_value) {
-        if hotkey_changed {
-            if let Err(unregister_error) = unregister_hotkey(&app, &settings_value.hotkey) {
-                eprintln!("保存设置回滚时取消新热键失败: {unregister_error}");
-            }
-
-            if let Err(rollback_error) = register_hotkey(&app, &previous_settings.hotkey) {
-                return Err(format!(
-                    "保存设置失败: {error}。回滚旧热键也失败: {rollback_error}"
-                ));
-            }
-        }
         return Err(error);
+    }
+
+    if hotkey_changed {
+        if let Err(error) = restart_hotkey_listener(&state, &app, &settings_value.hotkey) {
+            let _ = settings::save_settings(&app, &previous_settings);
+            return Err(error);
+        }
     }
 
     let mut inner = state
@@ -244,6 +231,14 @@ pub fn morse_save_settings(
     inner.settings = settings_value;
 
     Ok(inner.bootstrap())
+}
+
+#[tauri::command]
+pub fn morse_set_hotkey_recording(
+    recording: bool,
+    state: State<'_, MorseState>,
+) -> Result<(), String> {
+    set_hotkey_listener_paused(&state, recording)
 }
 
 #[tauri::command]
@@ -277,6 +272,7 @@ pub fn morse_overlay_submit_selection(
         settings::save_settings(&app, &settings_snapshot)?;
     }
 
+    let _ = app.emit_to("main", "morse://selection-progress", progress.clone());
     overlay::commit_selection(&app, prepared, &state)?;
 
     Ok(progress)
