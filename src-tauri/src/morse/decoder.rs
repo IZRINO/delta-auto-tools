@@ -18,27 +18,16 @@ pub fn decode(morse: &str) -> Result<char, String> {
         .ok_or_else(|| format!("无法识别的摩斯密码: {morse}"))
 }
 
-pub fn decode_sequence<'a>(
-    morse_list: impl IntoIterator<Item = &'a str>,
-) -> Result<String, String> {
-    morse_list.into_iter().map(decode).collect()
-}
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, decode_sequence};
+    use super::decode;
 
     #[test]
     fn decodes_single_digit_patterns() {
         assert_eq!(decode(".----").unwrap(), '1');
         assert_eq!(decode("-----").unwrap(), '0');
         assert_eq!(decode("---..").unwrap(), '8');
-    }
-
-    #[test]
-    fn decodes_digit_sequence() {
-        let decoded = decode_sequence([".----", "..---", "-----"]).unwrap();
-        assert_eq!(decoded, "120");
     }
 
     #[test]

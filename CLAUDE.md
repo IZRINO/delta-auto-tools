@@ -29,21 +29,10 @@ bun run tauri dev
 ### 构建
 
 ```bash
-bun run build
-```
-执行前端构建，等价于 `tsc && vite build`。
-
-```bash
 bun run tauri build
 ```
 执行桌面应用构建；Tauri 会先跑前端构建。
 
-### 预览
-
-```bash
-bun run preview
-```
-启动前端产物预览。
 
 ### Rust 侧检查
 

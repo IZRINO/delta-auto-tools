@@ -35,6 +35,7 @@ pub(crate) struct MorseStateInner {
     next_history_id: u64,
     pending_selection: Option<PendingSelection>,
     run_in_progress: bool,
+    hotkey_error: Option<String>,
 }
 
 impl MorseStateInner {
@@ -43,6 +44,7 @@ impl MorseStateInner {
             settings: self.settings.clone(),
             history: self.history.iter().cloned().collect(),
             latest_run: self.latest_run.clone(),
+            hotkey_error: self.hotkey_error.clone(),
         }
     }
 
@@ -75,8 +77,22 @@ fn restart_hotkey_listener(
         existing.stop();
     }
 
-    *listener = Some(PassiveHotkeyListener::start(app.clone(), hotkey)?);
-    Ok(())
+    match PassiveHotkeyListener::start(app.clone(), hotkey) {
+        Ok(new_listener) => {
+            *listener = Some(new_listener);
+            if let Ok(mut inner) = state.inner.lock() {
+                inner.hotkey_error = None;
+            }
+            Ok(())
+        }
+        Err(error) => {
+            *listener = None;
+            if let Ok(mut inner) = state.inner.lock() {
+                inner.hotkey_error = Some(error.clone());
+            }
+            Err(error)
+        }
+    }
 }
 
 fn set_hotkey_listener_paused(state: &MorseState, paused: bool) -> Result<(), String> {
@@ -172,7 +188,10 @@ async fn run_recognition_flow(
 
 pub fn initialize(app: &AppHandle) -> Result<MorseState, String> {
     let settings = settings::load_settings(app)?;
-    let listener = PassiveHotkeyListener::start(app.clone(), &settings.hotkey)?;
+    let (listener, hotkey_error) = match PassiveHotkeyListener::start(app.clone(), &settings.hotkey) {
+        Ok(listener) => (Some(listener), None),
+        Err(error) => (None, Some(error)),
+    };
 
     Ok(MorseState {
         inner: Mutex::new(MorseStateInner {
@@ -182,8 +201,9 @@ pub fn initialize(app: &AppHandle) -> Result<MorseState, String> {
             next_history_id: 1,
             pending_selection: None,
             run_in_progress: false,
+            hotkey_error,
         }),
-        hotkey_listener: Mutex::new(Some(listener)),
+        hotkey_listener: Mutex::new(listener),
     })
 }
 

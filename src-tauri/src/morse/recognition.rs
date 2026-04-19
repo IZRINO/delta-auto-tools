@@ -101,9 +101,7 @@ pub async fn run_recognition(
     }
 
     let value = if errors.is_empty() {
-        Some(decoder::decode_sequence(
-            decoded_digits.iter().map(String::as_str),
-        )?)
+        Some(decoded_digits.join(""))
     } else {
         None
     };
@@ -344,7 +342,7 @@ fn detect_morse_with_threshold(
             threshold_mode: mode,
             contour_count,
             morse: (contour_count > 0)
-                .then(|| components_to_morse(select_components(components.as_slice()))),
+                .then(|| components_to_morse(&select_components(components.as_slice()))),
             message: format!(
                 "期望至少 {TARGET_SYMBOL_COUNT} 个轮廓，实际 {contour_count}，当前阈值 {binary_threshold}"
             ),
@@ -355,7 +353,7 @@ fn detect_morse_with_threshold(
         return Err(DetectionFailure {
             threshold_mode: mode,
             contour_count,
-            morse: Some(components_to_morse(select_components(components.as_slice()))),
+            morse: Some(components_to_morse(&select_components(components.as_slice()))),
             message: format!(
                 "轮廓过多（{contour_count}），当前阈值 {binary_threshold}，请重新框选或调整阈值"
             ),

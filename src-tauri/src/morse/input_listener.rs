@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use super::run_recognition_flow;
 
@@ -35,11 +35,14 @@ impl PassiveHotkeyListener {
 
         #[cfg(target_os = "windows")]
         {
+            let hook = willhook::keyboard_hook()
+                .ok_or_else(|| "键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string())?;
+
             let paused_flag = Arc::clone(&paused);
             let stopped_flag = Arc::clone(&stopped);
             let worker = thread::Builder::new()
                 .name("morse-hotkey-listener".to_string())
-                .spawn(move || run_listener(app, binding, paused_flag, stopped_flag))
+                .spawn(move || run_listener(app, binding, hook, paused_flag, stopped_flag))
                 .map_err(|error| format!("启动热键监听线程失败: {error}"))?;
 
             return Ok(Self {
@@ -245,14 +248,10 @@ fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
 fn run_listener(
     app: AppHandle,
     binding: HotkeyBinding,
+    hook: Hook,
     paused: Arc<AtomicBool>,
     stopped: Arc<AtomicBool>,
 ) {
-    let Some(hook) = willhook::keyboard_hook() else {
-        eprintln!("启动键盘 Hook 失败");
-        return;
-    };
-
     let mut matcher = HotkeyMatcher::new(binding);
 
     while !stopped.load(Ordering::SeqCst) {
@@ -267,7 +266,9 @@ fn run_listener(
                 if matcher.handle_event(event) {
                     let app_handle = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = run_recognition_flow(&app_handle, "hotkey", true).await;
+                        if let Err(error) = run_recognition_flow(&app_handle, "hotkey", true).await {
+                            let _ = app_handle.emit_to("main", "morse://hotkey-error", error);
+                        }
                     });
                 }
             }
@@ -433,7 +434,7 @@ fn to_primary_key(key: KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::ArrowLeft => Some(PrimaryKey::Named(NamedKey::Left)),
         KeyboardKey::ArrowRight => Some(PrimaryKey::Named(NamedKey::Right)),
         KeyboardKey::Home => Some(PrimaryKey::Named(NamedKey::Home)),
-        KeyboardKey::End => Some(PrimaryKey::Named(NamedKey::End)),
+        KeyboardKey::Other(0x23) => Some(PrimaryKey::Named(NamedKey::End)),
         KeyboardKey::PageUp => Some(PrimaryKey::Named(NamedKey::PageUp)),
         KeyboardKey::PageDown => Some(PrimaryKey::Named(NamedKey::PageDown)),
         KeyboardKey::Insert => Some(PrimaryKey::Named(NamedKey::Insert)),

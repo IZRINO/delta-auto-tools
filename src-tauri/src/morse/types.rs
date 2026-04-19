@@ -69,6 +69,7 @@ pub struct MorseBootstrap {
     pub settings: MorseSettings,
     pub history: Vec<HistoryEntry>,
     pub latest_run: Option<MorseRunResult>,
+    pub hotkey_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

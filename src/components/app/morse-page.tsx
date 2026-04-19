@@ -84,6 +84,7 @@ type MorseBootstrap = {
   settings: MorseSettings;
   history: HistoryEntry[];
   latestRun: MorseRunResult | null;
+  hotkeyError: string | null;
 };
 
 type RegionSelectionProgress = {
@@ -598,6 +599,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     let isDisposed = false;
     let unlistenRunFinished: (() => void) | undefined;
     let unlistenSelectionProgress: (() => void) | undefined;
+    let unlistenHotkeyError: (() => void) | undefined;
 
     void listen<MorseRunResult>("morse://run-finished", async (event) => {
       if (isDisposed) {
@@ -648,10 +650,22 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       unlistenSelectionProgress = dispose;
     });
 
+    void listen<string>("morse://hotkey-error", (event) => {
+      if (isDisposed) {
+        return;
+      }
+      setBootstrap((current) =>
+        current ? { ...current, hotkeyError: event.payload } : current,
+      );
+    }).then((dispose) => {
+      unlistenHotkeyError = dispose;
+    });
+
     return () => {
       isDisposed = true;
       unlistenRunFinished?.();
       unlistenSelectionProgress?.();
+      unlistenHotkeyError?.();
     };
   }, [overlayMode, syncBootstrap]);
 
@@ -1012,6 +1026,9 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
                       <span>{isRecordingHotkey ? "正在录制，按下快捷键..." : form.hotkey || "点击录制热键"}</span>
                       <span className="text-xs text-muted-foreground">{isRecordingHotkey ? "Esc 取消" : "点击编辑"}</span>
                     </Button>
+                    {bootstrap?.hotkeyError && (
+                      <p className="text-xs text-destructive mt-1">{bootstrap.hotkeyError}</p>
+                    )}
                   </FieldContent>
                 </Field>
 
