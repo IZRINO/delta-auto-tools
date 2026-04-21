@@ -33,6 +33,14 @@ impl<'a> IdeCall<'a> {
     }
 
     pub async fn execute(self, client: &Client) -> Result<Value, DeltaError> {
+        self.execute_with_url(client, IDE_GATEWAY).await
+    }
+
+    pub async fn execute_with_url(
+        self,
+        client: &Client,
+        gateway: &str,
+    ) -> Result<Value, DeltaError> {
         let chart = self.chart_id.to_string();
         let param_str = serde_json::to_string(&self.param)?;
         let mut form: Vec<(&str, String)> = Vec::new();
@@ -47,7 +55,7 @@ impl<'a> IdeCall<'a> {
         form.push(("param", param_str));
 
         let resp = client
-            .post(IDE_GATEWAY)
+            .post(gateway)
             .header("Referer", DF_REFERER)
             .form(&form)
             .send()

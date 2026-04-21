@@ -616,6 +616,13 @@ pub struct GameNoAuthOptions {
     pub options: Option<CommandOptions>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameGunsRequest {
+    pub gun_id: String,
+    pub options: Option<CommandOptions>,
+}
+
 #[tauri::command]
 pub async fn delta_game_get_items(
     request: GameItemsRequest,
@@ -688,8 +695,7 @@ pub async fn delta_game_get_assets(
     request: GameAuthRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
     let service = GameService::new(http_options(request.options))?;
-    let data = service.get_assets(&request.auth).await?;
-    Ok(ApiResponse::ok("ok", data))
+    service.get_assets(&request.auth).await
 }
 
 #[tauri::command]
@@ -741,10 +747,10 @@ pub async fn delta_game_get_manufacture(
 
 #[tauri::command]
 pub async fn delta_game_get_guns(
-    request: GameAuthRequest,
+    request: GameGunsRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
     let service = GameService::new(http_options(request.options))?;
-    let data = service.get_guns(&request.auth).await?;
+    let data = service.get_guns(&request.gun_id).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
@@ -755,4 +761,20 @@ pub async fn delta_game_get_bind(
     let service = GameService::new(http_options(request.options))?;
     let data = service.get_bind(&request.auth).await?;
     Ok(ApiResponse::ok("ok", data))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::GameGunsRequest;
+
+    #[test]
+    fn deserializes_game_guns_request_from_gun_id() {
+        let request: GameGunsRequest =
+            serde_json::from_value(json!({ "gunId": "gun-akm" })).unwrap();
+
+        assert_eq!(request.gun_id, "gun-akm");
+        assert!(request.options.is_none());
+    }
 }

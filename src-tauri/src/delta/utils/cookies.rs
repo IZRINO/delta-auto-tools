@@ -51,8 +51,8 @@ pub fn must_cookie(jar: &Arc<Jar>, url: &str, name: &str) -> Result<String, Delt
 
     text.split(';')
         .map(str::trim)
-        .find_map(|part| part.split_once('='))
-        .and_then(|(cookie_name, cookie_value)| {
+        .find_map(|part| {
+            let (cookie_name, cookie_value) = part.split_once('=')?;
             (cookie_name == name).then(|| cookie_value.to_string())
         })
         .ok_or_else(|| DeltaError::Parse(format!("cookie {name} not found")))
@@ -92,6 +92,18 @@ mod tests {
         assert_eq!(
             must_cookie(&jar, "https://gamesafe.qq.com/", "gs_code").unwrap(),
             "jwt"
+        );
+    }
+
+    #[test]
+    fn finds_named_cookie_even_when_not_first_in_header() {
+        let jar = Arc::new(Jar::default());
+        insert_cookie(&jar, "https://graph.qq.com/", "uin", "123").unwrap();
+        insert_cookie(&jar, "https://graph.qq.com/", "p_skey", "abc").unwrap();
+
+        assert_eq!(
+            must_cookie(&jar, "https://graph.qq.com/", "p_skey").unwrap(),
+            "abc"
         );
     }
 }
