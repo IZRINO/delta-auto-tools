@@ -14,6 +14,26 @@
 
 ## 常用命令
 
+### Graphify 安装
+
+```bash
+uv tool install graphifyy
+```
+
+使用 `uv` 管理工具时，可通过上面的命令安装 `graphifyy`。
+
+```bash
+pip install graphifyy
+```
+
+如果当前环境使用的是 `pip`，也可以直接通过该命令安装。
+
+```bash
+graphify install --platform opencode
+```
+
+安装完成后，使用该命令安装 OpenCode 相关插件。
+
 ```bash
 bun run dev
 ```
