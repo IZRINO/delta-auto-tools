@@ -34,8 +34,8 @@ type SelectionPanelProps = {
 
 export function SelectionPanel({ configuredCount, form, isBusy, selectingSlot, onSelectAll, onSelectOne }: SelectionPanelProps) {
   return (
-    <Card size="sm" className="desktop-panel-card border border-border/70 shadow-sm">
-      <CardHeader className="desktop-panel-header border-b border-border/60">
+    <Card size="sm" className="border-border shadow-sm">
+      <CardHeader className="border-b border-border/70">
         <div className="flex items-center gap-2">
           <RiLayoutGridLine className="text-muted-foreground" />
           <div>
@@ -45,7 +45,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, selectingSlot, o
         </div>
       </CardHeader>
       <CardContent className="space-y-4 xl:space-y-5">
-        <div className="desktop-priority-strip flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[calc(var(--radius-xl)+2px)] border border-border bg-muted/40 px-4 py-4">
           <div>
             <p className="text-sm font-medium text-foreground">推荐路径</p>
             <p className="mt-1 text-xs text-muted-foreground">先完成 3 个区域配置，再执行识别。当前已配置 {configuredCount}/3。</p>
@@ -63,7 +63,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, selectingSlot, o
             const isSelecting = selectingSlot === index;
 
             return (
-              <div key={label} className="desktop-subpanel desktop-region-card rounded-2xl border border-border/70 bg-card/85 p-3.5 shadow-sm">
+              <div key={label} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-card p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{label}</p>
@@ -77,7 +77,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, selectingSlot, o
                 </div>
 
                 <div className="mt-3 rounded-xl border border-dashed border-border/80 bg-muted/30 px-3 py-3">
-                  <p className="desktop-caption">区域摘要</p>
+                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
                   <p className="desktop-mono mt-2 overflow-hidden text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                 </div>
 
@@ -139,14 +139,14 @@ export function WorkbenchControlPanel({
   verificationValue,
 }: WorkbenchControlPanelProps) {
   return (
-    <Card size="sm" className="desktop-panel-card desktop-console-card border border-border/70 shadow-sm">
-      <CardHeader className="desktop-panel-header desktop-console-header border-b border-border/60">
+    <Card size="sm" className="border-border shadow-sm">
+      <CardHeader className="border-b border-border/70">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-background/90 text-primary shadow-sm">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary shadow-sm">
             <RiSparklingLine />
           </div>
           <div className="min-w-0">
-            <p className="desktop-caption">Workbench Console</p>
+            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Workbench Console</p>
             <CardTitle className="mt-2 text-base font-semibold">设置与测试验证</CardTitle>
             <CardDescription className="mt-1 max-w-3xl">
               左侧维护热键与阈值配置，右侧直接做测试验证。点击验证输入框会执行一次仅识别流程，并把结果回填到输入框中。
@@ -157,7 +157,7 @@ export function WorkbenchControlPanel({
 
       <CardContent className="desktop-console-content px-4 py-4 xl:px-5 xl:py-5">
         <div className="desktop-console-grid grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
-          <section className="desktop-console-pane desktop-console-settings rounded-[1.5rem] border border-border/70 bg-card/88 px-4 py-4 shadow-sm">
+          <section className="rounded-[calc(var(--radius-2xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <RiSettings3Line className="text-muted-foreground" />
               <div>
@@ -225,7 +225,7 @@ export function WorkbenchControlPanel({
             )}
           </section>
 
-          <section className="desktop-console-pane desktop-console-verification rounded-[1.5rem] border border-border/70 bg-card/88 px-4 py-4 shadow-sm">
+          <section className="rounded-[calc(var(--radius-2xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -250,12 +250,12 @@ export function WorkbenchControlPanel({
               </Badge>
             </div>
 
-            <div className="desktop-verification-box mt-4 rounded-[1.35rem] border border-border/70 bg-background/92 p-4 shadow-sm">
-              <label className="desktop-caption" htmlFor="verification-input">
+            <div className="mt-4 rounded-[calc(var(--radius-xl)+2px)] border border-border bg-background p-4 shadow-sm">
+              <label className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase" htmlFor="verification-input">
                 Verification Input
               </label>
               <Input
-                className="desktop-verification-input mt-3 h-12 rounded-xl px-4 font-mono text-base tracking-[0.22em] md:text-sm"
+                className="mt-3 h-12 rounded-xl px-4 font-mono text-base tracking-[0.22em] md:text-sm"
                 id="verification-input"
                 onChange={(event) => onVerificationChange(event.currentTarget.value)}
                 onFocus={onVerificationFocus}
@@ -266,8 +266,8 @@ export function WorkbenchControlPanel({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="desktop-subpanel rounded-xl border border-border/70 bg-background/85 px-3 py-3">
-                <p className="desktop-caption">验证模式</p>
+              <div className="rounded-xl border border-border bg-background px-3 py-3">
+                <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">验证模式</p>
                 <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框即可重新验证"}</p>
               </div>
               <Button disabled={isVerifying} onClick={onVerificationRetry} type="button" variant="outline">
@@ -292,8 +292,8 @@ type ResultPanelProps = {
 
 export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, latestTriggeredBy, runDetails }: ResultPanelProps) {
   return (
-    <Card size="sm" className="desktop-panel-card desktop-result-card border border-border/70 shadow-sm">
-      <CardHeader className="desktop-panel-header desktop-result-header border-b border-border/60">
+    <Card size="sm" className="border-border shadow-sm">
+      <CardHeader className="border-b border-border/70">
         <div className="flex items-center gap-2">
           <RiCheckboxCircleLine className="text-muted-foreground" />
           <div className="desktop-panel-heading">
@@ -303,7 +303,7 @@ export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, l
         </div>
       </CardHeader>
       <CardContent className="desktop-result-content flex flex-col gap-4 px-4 pt-4 pb-4 xl:px-5 xl:pt-5 xl:pb-5">
-        <div className="desktop-result-hero rounded-[1.75rem] border border-border/70 bg-background px-5 py-5 shadow-sm xl:px-6 xl:py-6">
+        <div className="rounded-[calc(var(--radius-3xl)+2px)] border border-border bg-background px-5 py-5 shadow-sm xl:px-6 xl:py-6">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
               {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
@@ -319,7 +319,7 @@ export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, l
 
         <div className="desktop-result-details grid gap-3 xl:grid-cols-3">
           {runDetails.map((detail) => (
-            <div key={detail.slot} className="desktop-subpanel desktop-detail-card rounded-2xl border border-border/70 bg-card/85 p-3.5 shadow-sm">
+            <div key={detail.slot} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-muted/30 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
                 <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
@@ -327,16 +327,16 @@ export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, l
                 </Badge>
               </div>
               <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
-                <div className="desktop-subpanel bg-background/90 px-3 py-2">
-                  <p className="desktop-caption">Morse</p>
+                <div className="rounded-lg border border-border bg-background px-3 py-2">
+                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Morse</p>
                   <p className="mt-1 font-mono text-foreground/80">{detail.morse ?? "--"}</p>
                 </div>
-                <div className="desktop-subpanel bg-background/90 px-3 py-2">
-                  <p className="desktop-caption">Threshold</p>
+                <div className="rounded-lg border border-border bg-background px-3 py-2">
+                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Threshold</p>
                   <p className="mt-1 text-foreground/80">{detail.thresholdMode}</p>
                 </div>
-                <div className="desktop-subpanel bg-background/90 px-3 py-2">
-                  <p className="desktop-caption">Contours</p>
+                <div className="rounded-lg border border-border bg-background px-3 py-2">
+                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Contours</p>
                   <p className="mt-1 text-foreground/80">{detail.contourCount}</p>
                 </div>
               </div>
@@ -355,8 +355,8 @@ type HistoryPanelProps = {
 
 export function HistoryPanel({ history }: HistoryPanelProps) {
   return (
-    <Card size="sm" className="desktop-panel-card border border-border/70 shadow-sm">
-      <CardHeader className="desktop-panel-header border-b border-border/60">
+    <Card size="sm" className="border-border shadow-sm">
+      <CardHeader className="border-b border-border/70">
         <div className="flex items-center gap-2">
           <RiHistoryLine className="text-muted-foreground" />
           <div>
@@ -380,7 +380,7 @@ export function HistoryPanel({ history }: HistoryPanelProps) {
               </Empty>
             ) : (
               history.map((entry) => (
-                <div key={entry.id} className="desktop-subpanel desktop-history-entry rounded-2xl border border-border/70 bg-card/85 p-3.5 shadow-sm">
+                <div key={entry.id} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-card p-4 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>
