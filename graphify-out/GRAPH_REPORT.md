@@ -1,50 +1,125 @@
-# Graph Report - .  (2026-04-22)
+# Graph Report - D:\code\ai\sjz\delta-auto-tools  (2026-04-22)
 
 ## Corpus Check
-- Corpus is ~46,187 words - fits in a single context window. You may not need a graph.
+- 106 files · ~152,364 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 657 nodes · 1149 edges · 36 communities detected
-- Extraction: 69% EXTRACTED · 31% INFERRED · 0% AMBIGUOUS · INFERRED: 360 edges (avg confidence: 0.8)
+- 657 nodes · 1146 edges · 110 communities detected
+- Extraction: 69% EXTRACTED · 31% INFERRED · 0% AMBIGUOUS · INFERRED: 358 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Get Game|Get Game]]
-- [[_COMMUNITY_Cookie Status|Cookie Status]]
-- [[_COMMUNITY_Get Uses|Get Uses]]
-- [[_COMMUNITY_Frontend Tauri|Frontend Tauri]]
-- [[_COMMUNITY_Parse Parses|Parse Parses]]
-- [[_COMMUNITY_Threshold Capture|Threshold Capture]]
-- [[_COMMUNITY_Wechat Status|Wechat Status]]
-- [[_COMMUNITY_Run Set|Run Set]]
-- [[_COMMUNITY_Selection Prepare|Selection Prepare]]
-- [[_COMMUNITY_Accounts Account|Accounts Account]]
-- [[_COMMUNITY_Handlekeydown Handlemousedown|Handlekeydown Handlemousedown]]
-- [[_COMMUNITY_Settings Path|Settings Path]]
-- [[_COMMUNITY_Handlekeydown Sidebarmenu|Handlekeydown Sidebarmenu]]
-- [[_COMMUNITY_Circle Abstract|Circle Abstract]]
-- [[_COMMUNITY_React Atom|React Atom]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Accent Orb|Accent Orb]]
-- [[_COMMUNITY_Application Interlocking|Application Interlocking]]
-- [[_COMMUNITY_Circle Abstract|Circle Abstract]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Circle Abstract|Circle Abstract]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Circle Blue|Circle Blue]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Auto Tools|Auto Tools]]
-- [[_COMMUNITY_Ring Abstract|Ring Abstract]]
-- [[_COMMUNITY_Handlers Layer|Handlers Layer]]
-- [[_COMMUNITY_Apiresponse Response.rs|Apiresponse Response.rs]]
-- [[_COMMUNITY_Idecall Ide.rs|Idecall Ide.rs]]
-- [[_COMMUNITY_Vite Branding|Vite Branding]]
-- [[_COMMUNITY_Settings.json Persistence|Settings.json Persistence]]
-- [[_COMMUNITY_Rust Hotkey|Rust Hotkey]]
-- [[_COMMUNITY_Http Api|Http Api]]
-- [[_COMMUNITY_X30 Application|X30 Application]]
-- [[_COMMUNITY_Overlay|Overlay]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 24|Community 24]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 29|Community 29]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 31|Community 31]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 37|Community 37]]
+- [[_COMMUNITY_Community 38|Community 38]]
+- [[_COMMUNITY_Community 39|Community 39]]
+- [[_COMMUNITY_Community 40|Community 40]]
+- [[_COMMUNITY_Community 41|Community 41]]
+- [[_COMMUNITY_Community 42|Community 42]]
+- [[_COMMUNITY_Community 43|Community 43]]
+- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 45|Community 45]]
+- [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
+- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
+- [[_COMMUNITY_Community 51|Community 51]]
+- [[_COMMUNITY_Community 52|Community 52]]
+- [[_COMMUNITY_Community 53|Community 53]]
+- [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
+- [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 70|Community 70]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 73|Community 73]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
+- [[_COMMUNITY_Community 78|Community 78]]
+- [[_COMMUNITY_Community 79|Community 79]]
+- [[_COMMUNITY_Community 80|Community 80]]
+- [[_COMMUNITY_Community 81|Community 81]]
+- [[_COMMUNITY_Community 82|Community 82]]
+- [[_COMMUNITY_Community 83|Community 83]]
+- [[_COMMUNITY_Community 84|Community 84]]
+- [[_COMMUNITY_Community 85|Community 85]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Community 105|Community 105]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
+- [[_COMMUNITY_Community 109|Community 109]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `http_options()` - 36 edges
@@ -63,12 +138,12 @@
   AGENTS.md → Rust迁移实现文档.md
 - `run()` --calls--> `initialize()`  [INFERRED]
   src-tauri\src\lib.rs → src-tauri\src\morse\mod.rs
-- `main()` --calls--> `run()`  [INFERRED]
-  src-tauri\src\main.rs → src-tauri\src\lib.rs
-- `initialize()` --calls--> `load_settings()`  [INFERRED]
-  src-tauri\src\morse\mod.rs → src-tauri\src\morse\settings.rs
+- `run()` --calls--> `main()`  [INFERRED]
+  src-tauri\src\lib.rs → src-tauri\src\main.rs
 - `decodes_qqsafe_token_payload()` --calls--> `decode_jwt_middle()`  [INFERRED]
   src-tauri\src\delta\services\qq_safe.rs → src-tauri\src\delta\utils\html.rs
+- `decode()` --calls--> `recognize_slot()`  [INFERRED]
+  src-tauri\src\morse\decoder.rs → src-tauri\src\morse\recognition.rs
 
 ## Hyperedges (group relationships)
 - **Frontend Entry Chain** — index_src_main_tsx, claude_src_main_tsx, claude_src_app_tsx, claude_morse_page [EXTRACTED 1.00]
@@ -77,186 +152,574 @@
 
 ## Communities
 
-### Community 0 - "Get Game"
+### Community 0 - "Community 0"
 Cohesion: 0.06
-Nodes (68): AccountBoundAccess, AccountCookieRequest, CommandOptions, delta_delete_account(), delta_game_get_achievement(), delta_game_get_assets(), delta_game_get_bind(), delta_game_get_config() (+60 more)
+Nodes (69): AccountBoundAccess, AccountCookieRequest, CommandOptions, delta_delete_account(), delta_game_get_achievement(), delta_game_get_assets(), delta_game_get_bind(), delta_game_get_config() (+61 more)
 
-### Community 1 - "Cookie Status"
-Cohesion: 0.06
-Nodes (35): dump_cookie_json(), finds_named_cookie_even_when_not_first_in_header(), insert_cookie(), inserts_cookie_into_jar(), must_cookie(), restore_cookie_json(), restores_and_dumps_cookie_json(), extract_jsonp_args() (+27 more)
+### Community 1 - "Community 1"
+Cohesion: 0.07
+Nodes (23): dump_cookie_json(), finds_named_cookie_even_when_not_first_in_header(), insert_cookie(), inserts_cookie_into_jar(), must_cookie(), restore_cookie_json(), restores_and_dumps_cookie_json(), get_gtk() (+15 more)
 
-### Community 2 - "Get Uses"
+### Community 2 - "Community 2"
 Cohesion: 0.14
 Nodes (18): GameAuth, GameService, get_achievement_uses_documented_payload(), get_assets_maps_special_restriction_error(), get_guns_is_no_auth_and_enriches_details(), get_logs_type_three_returns_total_money_only(), get_manufacture_uses_documented_chart_and_source(), get_password_folds_secret_list_into_map() (+10 more)
 
-### Community 3 - "Frontend Tauri"
+### Community 3 - "Community 3"
 Cohesion: 0.06
 Nodes (33): Bun Toolchain Constraint, Delta Tool Interface Layer, Desktop Tool Repository, Morse Recognition Workbench, Overlay Query Mode, Tauri Commands Boundary, Core Recognition Data Flow, Query Parameter Mode Switch (+25 more)
 
-### Community 4 - "Parse Parses"
-Cohesion: 0.11
-Nodes (24): AmmoItem, enrich_gun_detail(), leaves_missing_config_entries_empty(), normalize_caliber_code(), parse_accessory_config(), parse_ammo_config(), parse_bind_role_js(), parses_bind_role_fragment() (+16 more)
+### Community 4 - "Community 4"
+Cohesion: 0.15
+Nodes (20): DeltaError, apply_threshold(), capture_region(), ComponentBounds, components_to_morse(), detect_components(), detect_morse(), detect_morse_with_threshold() (+12 more)
 
-### Community 5 - "Threshold Capture"
-Cohesion: 0.12
-Nodes (22): DeltaError, get_gtk(), get_qr_token(), apply_threshold(), capture_region(), ComponentBounds, components_to_morse(), detect_components() (+14 more)
-
-### Community 6 - "Wechat Status"
-Cohesion: 0.09
-Nodes (16): decode(), rejects_unknown_pattern(), decode_gbk(), decode_jwt_middle(), decodes_jwt_middle_payload(), extract_query_param(), extract_wx_errcode(), extracts_query_param() (+8 more)
-
-### Community 7 - "Run Set"
-Cohesion: 0.14
-Nodes (18): PassiveHotkeyListener, begin_run(), finish_run(), morse_get_bootstrap(), morse_run_recognition(), morse_save_settings(), morse_set_hotkey_recording(), MorseState (+10 more)
-
-### Community 8 - "Selection Prepare"
+### Community 5 - "Community 5"
 Cohesion: 0.17
 Nodes (20): morse_begin_region_selection(), morse_overlay_cancel_selection(), morse_overlay_submit_selection(), begin_region_selection(), cancel_selection(), commit_selection(), completed_slots_reports_prefix(), destroy_overlay_window() (+12 more)
 
-### Community 9 - "Accounts Account"
-Cohesion: 0.13
-Nodes (11): run(), main(), AccountKind, deletes_accounts(), DeltaAccountRecord, DeltaAccountUpsert, DeltaRepo, map_row() (+3 more)
+### Community 6 - "Community 6"
+Cohesion: 0.14
+Nodes (18): type_result(), begin_run(), finish_run(), morse_get_bootstrap(), morse_run_recognition(), morse_save_settings(), morse_set_hotkey_recording(), MorseState (+10 more)
 
-### Community 10 - "Handlekeydown Handlemousedown"
+### Community 7 - "Community 7"
+Cohesion: 0.16
+Nodes (15): drain_pending_events(), HotkeyBinding, HotkeyMatcher, ModifierKey, NamedKey, parse_modifier(), parse_primary(), parses_bare_letter_hotkey() (+7 more)
+
+### Community 8 - "Community 8"
+Cohesion: 0.14
+Nodes (10): run(), main(), deletes_accounts(), DeltaAccountRecord, DeltaAccountUpsert, DeltaRepo, map_row(), upserts_and_lists_accounts() (+2 more)
+
+### Community 9 - "Community 9"
 Cohesion: 0.12
 Nodes (7): handleMouseUp(), MorsePage(), formatRecordedHotkey(), getErrorMessage(), getSelectionRect(), normalizeHotkeyPrimaryKey(), normalizeRunDetails()
 
-### Community 11 - "Settings Path"
-Cohesion: 0.31
-Nodes (12): deserialize_settings(), deserialize_settings_reports_invalid_json(), ensure_config_dir(), ensure_config_dir_creates_path(), load_settings(), read_settings_from_path(), read_settings_returns_default_when_missing(), sample_settings() (+4 more)
+### Community 10 - "Community 10"
+Cohesion: 0.14
+Nodes (10): decode(), rejects_unknown_pattern(), decode_gbk(), decode_jwt_middle(), decodes_jwt_middle_payload(), extract_query_param(), extracts_query_param(), extracts_wechat_uuid() (+2 more)
 
-### Community 14 - "Handlekeydown Sidebarmenu"
+### Community 11 - "Community 11"
+Cohesion: 0.25
+Nodes (13): initialize(), deserialize_settings(), deserialize_settings_reports_invalid_json(), ensure_config_dir(), ensure_config_dir_creates_path(), load_settings(), read_settings_from_path(), read_settings_returns_default_when_missing() (+5 more)
+
+### Community 12 - "Community 12"
+Cohesion: 0.21
+Nodes (10): extract_jsonp_args(), parses_ptui_callback(), parses_quoted_and_json_arguments(), trim_arg(), maps_success_status(), maps_waiting_status(), QqAccessToken, QqLoginQr (+2 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.24
+Nodes (10): AmmoItem, built_in_configs_enrich_gun_detail(), built_in_configs_expose_expected_entries(), built_in_accessory_config(), built_in_ammo_config(), enrich_gun_detail(), leaves_missing_config_entries_empty(), normalize_caliber_code() (+2 more)
+
+### Community 14 - "Community 14"
+Cohesion: 0.2
+Nodes (9): HistoryEntry, morse_settings_default_values_are_stable(), MorseBootstrap, MorseRegionDetail, MorseRunResult, RegionRect, RegionSelectionKind, RegionSelectionOutcome (+1 more)
+
+### Community 15 - "Community 15"
+Cohesion: 0.25
+Nodes (0): 
+
+### Community 16 - "Community 16"
+Cohesion: 0.25
+Nodes (0): 
+
+### Community 17 - "Community 17"
 Cohesion: 0.33
 Nodes (2): SidebarMenuButton(), useSidebar()
 
-### Community 37 - "Circle Abstract"
+### Community 18 - "Community 18"
+Cohesion: 0.4
+Nodes (0): 
+
+### Community 19 - "Community 19"
+Cohesion: 0.4
+Nodes (0): 
+
+### Community 20 - "Community 20"
+Cohesion: 0.4
+Nodes (0): 
+
+### Community 21 - "Community 21"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 22 - "Community 22"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 23 - "Community 23"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 24 - "Community 24"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 25 - "Community 25"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 26 - "Community 26"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 27 - "Community 27"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 28 - "Community 28"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 29 - "Community 29"
+Cohesion: 0.5
+Nodes (0): 
+
+### Community 30 - "Community 30"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 31 - "Community 31"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 32 - "Community 32"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 33 - "Community 33"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 34 - "Community 34"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 35 - "Community 35"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 36 - "Community 36"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 37 - "Community 37"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 38 - "Community 38"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 39 - "Community 39"
+Cohesion: 0.67
+Nodes (0): 
+
+### Community 40 - "Community 40"
 Cohesion: 1.0
 Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
 
-### Community 38 - "React Atom"
+### Community 41 - "Community 41"
 Cohesion: 1.0
 Nodes (3): React Atom Logo, React Central Dot, Orbital Ellipse Set
 
-### Community 39 - "Auto Tools"
+### Community 42 - "Community 42"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 40 - "Accent Orb"
+### Community 43 - "Community 43"
 Cohesion: 1.0
 Nodes (3): Abstract App Logo Mark, Cool Accent Orb, Warm Accent Orb
 
-### Community 41 - "Application Interlocking"
+### Community 44 - "Community 44"
 Cohesion: 1.0
 Nodes (3): Application Icon, Interlocking Dual Ring Mark, Teal and Gold Color Scheme
 
-### Community 42 - "Circle Abstract"
+### Community 45 - "Community 45"
 Cohesion: 1.0
 Nodes (3): Abstract Logo Mark, Lower Cyan Circle, Upper Gold Circle
 
-### Community 43 - "Auto Tools"
+### Community 46 - "Community 46"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 44 - "Circle Abstract"
+### Community 47 - "Community 47"
 Cohesion: 1.0
 Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
 
-### Community 45 - "Auto Tools"
+### Community 48 - "Community 48"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 46 - "Circle Blue"
+### Community 49 - "Community 49"
 Cohesion: 1.0
 Nodes (3): Blue Circle, Square 310x310 Logo Mark, Yellow Circle
 
-### Community 47 - "Auto Tools"
+### Community 50 - "Community 50"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 48 - "Auto Tools"
+### Community 51 - "Community 51"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 49 - "Auto Tools"
+### Community 52 - "Community 52"
 Cohesion: 1.0
 Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
-### Community 50 - "Ring Abstract"
+### Community 53 - "Community 53"
 Cohesion: 1.0
 Nodes (3): Abstract Logo Mark, Cyan Ring, Orange Ring
 
-### Community 51 - "Handlers Layer"
+### Community 54 - "Community 54"
 Cohesion: 0.67
 Nodes (3): Axum Handlers Layer, Keep Handlers Thin And Business Logic In Services, Services Business Logic Layer
 
-### Community 81 - "Apiresponse Response.rs"
+### Community 55 - "Community 55"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 56 - "Community 56"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 57 - "Community 57"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 58 - "Community 58"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 59 - "Community 59"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 60 - "Community 60"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 61 - "Community 61"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 62 - "Community 62"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 63 - "Community 63"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 64 - "Community 64"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 65 - "Community 65"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 66 - "Community 66"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 67 - "Community 67"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 68 - "Community 68"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 69 - "Community 69"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 70 - "Community 70"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 71 - "Community 71"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 72 - "Community 72"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 73 - "Community 73"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 74 - "Community 74"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 75 - "Community 75"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 76 - "Community 76"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 77 - "Community 77"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 78 - "Community 78"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 79 - "Community 79"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 80 - "Community 80"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 81 - "Community 81"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 82 - "Community 82"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 83 - "Community 83"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 84 - "Community 84"
 Cohesion: 1.0
 Nodes (1): ApiResponse
 
-### Community 82 - "Idecall Ide.rs"
+### Community 85 - "Community 85"
 Cohesion: 1.0
 Nodes (1): IdeCall
 
-### Community 83 - "Vite Branding"
+### Community 86 - "Community 86"
 Cohesion: 1.0
 Nodes (2): Vite Branding Gradient Icon, Vite Logo SVG
 
-### Community 84 - "Settings.json Persistence"
+### Community 87 - "Community 87"
 Cohesion: 1.0
 Nodes (2): morse_settings.json Persistence File, morse_settings.json Stored Configuration
 
-### Community 85 - "Rust Hotkey"
+### Community 88 - "Community 88"
 Cohesion: 1.0
 Nodes (2): Rust Hotkey Registration Responsibility, Frontend Records While Rust Saves Hotkeys
 
-### Community 86 - "Http Api"
+### Community 89 - "Community 89"
 Cohesion: 1.0
 Nodes (2): No HTTP API Or Router, Native Command Layer Instead Of HTTP Backend
 
-### Community 107 - "X30 Application"
+### Community 90 - "Community 90"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 91 - "Community 91"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 92 - "Community 92"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 93 - "Community 93"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 94 - "Community 94"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 95 - "Community 95"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 96 - "Community 96"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 97 - "Community 97"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 98 - "Community 98"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 99 - "Community 99"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 100 - "Community 100"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 101 - "Community 101"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 102 - "Community 102"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 103 - "Community 103"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 104 - "Community 104"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 105 - "Community 105"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 106 - "Community 106"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 107 - "Community 107"
+Cohesion: 1.0
+Nodes (0): 
+
+### Community 108 - "Community 108"
 Cohesion: 1.0
 Nodes (1): 30x30 Application Icon
 
-### Community 108 - "Overlay"
+### Community 109 - "Community 109"
 Cohesion: 1.0
 Nodes (1): Morse Overlay UI
 
 ## Knowledge Gaps
 - **74 isolated node(s):** `CommandOptions`, `AccountCookieRequest`, `QqUpdateRequest`, `WechatAccessRequest`, `WechatUpdateRequest` (+69 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Handlekeydown Sidebarmenu`** (7 nodes): `cn()`, `handleKeyDown()`, `SidebarMenu()`, `SidebarMenuButton()`, `SidebarMenuItem()`, `useSidebar()`, `sidebar.tsx`
+- **Thin community `Community 55`** (2 nodes): `SelectionPanel()`, `morse-panels.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Apiresponse Response.rs`** (2 nodes): `ApiResponse`, `response.rs`
+- **Thin community `Community 56`** (2 nodes): `tool-placeholder-page.tsx`, `ToolPlaceholderPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Idecall Ide.rs`** (2 nodes): `IdeCall`, `ide.rs`
+- **Thin community `Community 57`** (2 nodes): `cn()`, `avatar.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Vite Branding`** (2 nodes): `Vite Branding Gradient Icon`, `Vite Logo SVG`
+- **Thin community `Community 58`** (2 nodes): `Badge()`, `badge.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Settings.json Persistence`** (2 nodes): `morse_settings.json Persistence File`, `morse_settings.json Stored Configuration`
+- **Thin community `Community 59`** (2 nodes): `cn()`, `button-group.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Rust Hotkey`** (2 nodes): `Rust Hotkey Registration Responsibility`, `Frontend Records While Rust Saves Hotkeys`
+- **Thin community `Community 60`** (2 nodes): `cn()`, `button.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Http Api`** (2 nodes): `No HTTP API Or Router`, `Native Command Layer Instead Of HTTP Backend`
+- **Thin community `Community 61`** (2 nodes): `Checkbox()`, `checkbox.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `X30 Application`** (1 nodes): `30x30 Application Icon`
+- **Thin community `Community 62`** (2 nodes): `cn()`, `command.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Overlay`** (1 nodes): `Morse Overlay UI`
+- **Thin community `Community 63`** (2 nodes): `cn()`, `dialog.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 64`** (2 nodes): `DirectionProvider()`, `direction.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 65`** (2 nodes): `cn()`, `empty.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 66`** (2 nodes): `cn()`, `field.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 67`** (2 nodes): `HoverCardTrigger()`, `hover-card.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 68`** (2 nodes): `cn()`, `input-otp.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 69`** (2 nodes): `cn()`, `item.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 70`** (2 nodes): `cn()`, `kbd.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 71`** (2 nodes): `Label()`, `label.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 72`** (2 nodes): `PopoverDescription()`, `popover.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 73`** (2 nodes): `ResizablePanelGroup()`, `resizable.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 74`** (2 nodes): `Separator()`, `separator.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 75`** (2 nodes): `Skeleton()`, `skeleton.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 76`** (2 nodes): `Slider()`, `slider.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 77`** (2 nodes): `Spinner()`, `spinner.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 78`** (2 nodes): `switch.tsx`, `Switch()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 79`** (2 nodes): `tabs.tsx`, `Tabs()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 80`** (2 nodes): `textarea.tsx`, `cn()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 81`** (2 nodes): `use-mobile.ts`, `useIsMobile()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 82`** (2 nodes): `utils.ts`, `cn()`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 83`** (2 nodes): `main()`, `build.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 84`** (2 nodes): `ApiResponse`, `response.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 85`** (2 nodes): `IdeCall`, `ide.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 86`** (2 nodes): `Vite Branding Gradient Icon`, `Vite Logo SVG`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 87`** (2 nodes): `morse_settings.json Persistence File`, `morse_settings.json Stored Configuration`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 88`** (2 nodes): `Rust Hotkey Registration Responsibility`, `Frontend Records While Rust Saves Hotkeys`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 89`** (2 nodes): `No HTTP API Or Router`, `Native Command Layer Instead Of HTTP Backend`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 90`** (1 nodes): `vite.config.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 91`** (1 nodes): `App.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 92`** (1 nodes): `main.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 93`** (1 nodes): `vite-env.d.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 94`** (1 nodes): `morse-types.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 95`** (1 nodes): `morse-utils.test.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 96`** (1 nodes): `aspect-ratio.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 97`** (1 nodes): `input.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 98`** (1 nodes): `progress.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 99`** (1 nodes): `sheet.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 100`** (1 nodes): `sonner.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 101`** (1 nodes): `toggle.tsx`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 102`** (1 nodes): `constants.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 103`** (1 nodes): `mod.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 104`** (1 nodes): `mod.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 105`** (1 nodes): `mod.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 106`** (1 nodes): `mod.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 107`** (1 nodes): `128x128.png`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 108`** (1 nodes): `30x30 Application Icon`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 109`** (1 nodes): `Morse Overlay UI`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `prepare_selection_from_pending()` connect `Selection Prepare` to `Get Game`?**
+- **Why does `prepare_selection_from_pending()` connect `Community 5` to `Community 0`?**
   _High betweenness centrality (0.013) - this node is a cross-community bridge._
-- **Why does `run_recognition_flow()` connect `Run Set` to `Get Game`, `Parse Parses`, `Threshold Capture`?**
+- **Why does `run_recognition_flow()` connect `Community 6` to `Community 0`, `Community 4`, `Community 7`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
-- **Why does `read_settings_from_path()` connect `Settings Path` to `Get Game`, `Cookie Status`?**
-  _High betweenness centrality (0.010) - this node is a cross-community bridge._
+- **Why does `read_settings_from_path()` connect `Community 11` to `Community 0`, `Community 1`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **What connects `CommandOptions`, `AccountCookieRequest`, `QqUpdateRequest` to the rest of the system?**
   _74 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Get Game` be split into smaller, more focused modules?**
+- **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Cookie Status` be split into smaller, more focused modules?**
-  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Get Uses` be split into smaller, more focused modules?**
+- **Should `Community 1` be split into smaller, more focused modules?**
+  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
   _Cohesion score 0.14 - nodes in this community are weakly interconnected._
