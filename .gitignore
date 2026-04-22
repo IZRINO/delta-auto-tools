@@ -26,3 +26,8 @@ dist-ssr
 .claude/worktrees/
 .claude/settings.local.json
 temp/
+
+# graphify temp files
+.graphify_*.json
+.graphify_*.py
+.graphify_*.txt
