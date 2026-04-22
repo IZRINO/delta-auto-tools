@@ -1,12 +1,12 @@
 # Graph Report - D:\code\ai\sjz\delta-auto-tools  (2026-04-22)
 
 ## Corpus Check
-- 106 files · ~152,364 words
+- 106 files · ~155,905 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 657 nodes · 1146 edges · 110 communities detected
-- Extraction: 69% EXTRACTED · 31% INFERRED · 0% AMBIGUOUS · INFERRED: 358 edges (avg confidence: 0.8)
+- 655 nodes · 1141 edges · 109 communities detected
+- Extraction: 69% EXTRACTED · 31% INFERRED · 0% AMBIGUOUS · INFERRED: 356 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -119,7 +119,6 @@
 - [[_COMMUNITY_Community 106|Community 106]]
 - [[_COMMUNITY_Community 107|Community 107]]
 - [[_COMMUNITY_Community 108|Community 108]]
-- [[_COMMUNITY_Community 109|Community 109]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `http_options()` - 36 edges
@@ -140,10 +139,10 @@
   src-tauri\src\lib.rs → src-tauri\src\morse\mod.rs
 - `run()` --calls--> `main()`  [INFERRED]
   src-tauri\src\lib.rs → src-tauri\src\main.rs
-- `decodes_qqsafe_token_payload()` --calls--> `decode_jwt_middle()`  [INFERRED]
-  src-tauri\src\delta\services\qq_safe.rs → src-tauri\src\delta\utils\html.rs
-- `decode()` --calls--> `recognize_slot()`  [INFERRED]
-  src-tauri\src\morse\decoder.rs → src-tauri\src\morse\recognition.rs
+- `persist_account()` --calls--> `current_millis()`  [INFERRED]
+  D:\code\ai\sjz\delta-auto-tools\src-tauri\src\delta\commands.rs → src-tauri\src\delta\utils\time.rs
+- `initialize()` --calls--> `load_settings()`  [INFERRED]
+  src-tauri\src\morse\mod.rs → src-tauri\src\morse\settings.rs
 
 ## Hyperedges (group relationships)
 - **Frontend Entry Chain** — index_src_main_tsx, claude_src_main_tsx, claude_src_app_tsx, claude_morse_page [EXTRACTED 1.00]
@@ -153,76 +152,76 @@
 ## Communities
 
 ### Community 0 - "Community 0"
-Cohesion: 0.06
-Nodes (69): AccountBoundAccess, AccountCookieRequest, CommandOptions, delta_delete_account(), delta_game_get_achievement(), delta_game_get_assets(), delta_game_get_bind(), delta_game_get_config() (+61 more)
+Cohesion: 0.07
+Nodes (63): AccountBoundAccess, AccountCookieRequest, CommandOptions, delta_delete_account(), delta_game_get_achievement(), delta_game_get_assets(), delta_game_get_bind(), delta_game_get_config() (+55 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.07
-Nodes (23): dump_cookie_json(), finds_named_cookie_even_when_not_first_in_header(), insert_cookie(), inserts_cookie_into_jar(), must_cookie(), restore_cookie_json(), restores_and_dumps_cookie_json(), get_gtk() (+15 more)
+Cohesion: 0.06
+Nodes (29): dump_cookie_json(), finds_named_cookie_even_when_not_first_in_header(), insert_cookie(), inserts_cookie_into_jar(), must_cookie(), restore_cookie_json(), restores_and_dumps_cookie_json(), DeltaError (+21 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.14
-Nodes (18): GameAuth, GameService, get_achievement_uses_documented_payload(), get_assets_maps_special_restriction_error(), get_guns_is_no_auth_and_enriches_details(), get_logs_type_three_returns_total_money_only(), get_manufacture_uses_documented_chart_and_source(), get_password_folds_secret_list_into_map() (+10 more)
+Cohesion: 0.07
+Nodes (33): drain_pending_events(), HotkeyBinding, HotkeyMatcher, ModifierKey, NamedKey, parse_modifier(), parse_primary(), parses_bare_letter_hotkey() (+25 more)
 
 ### Community 3 - "Community 3"
+Cohesion: 0.15
+Nodes (18): GameAuth, GameService, get_achievement_uses_documented_payload(), get_assets_maps_special_restriction_error(), get_guns_is_no_auth_and_enriches_details(), get_logs_type_three_returns_total_money_only(), get_manufacture_uses_documented_chart_and_source(), get_password_folds_secret_list_into_map() (+10 more)
+
+### Community 4 - "Community 4"
 Cohesion: 0.06
 Nodes (33): Bun Toolchain Constraint, Delta Tool Interface Layer, Desktop Tool Repository, Morse Recognition Workbench, Overlay Query Mode, Tauri Commands Boundary, Core Recognition Data Flow, Query Parameter Mode Switch (+25 more)
 
-### Community 4 - "Community 4"
-Cohesion: 0.15
-Nodes (20): DeltaError, apply_threshold(), capture_region(), ComponentBounds, components_to_morse(), detect_components(), detect_morse(), detect_morse_with_threshold() (+12 more)
-
 ### Community 5 - "Community 5"
+Cohesion: 0.13
+Nodes (22): decode(), rejects_unknown_pattern(), decode_gbk(), apply_threshold(), capture_region(), ComponentBounds, components_to_morse(), detect_components() (+14 more)
+
+### Community 6 - "Community 6"
 Cohesion: 0.17
 Nodes (20): morse_begin_region_selection(), morse_overlay_cancel_selection(), morse_overlay_submit_selection(), begin_region_selection(), cancel_selection(), commit_selection(), completed_slots_reports_prefix(), destroy_overlay_window() (+12 more)
 
-### Community 6 - "Community 6"
-Cohesion: 0.14
-Nodes (18): type_result(), begin_run(), finish_run(), morse_get_bootstrap(), morse_run_recognition(), morse_save_settings(), morse_set_hotkey_recording(), MorseState (+10 more)
-
 ### Community 7 - "Community 7"
-Cohesion: 0.16
-Nodes (15): drain_pending_events(), HotkeyBinding, HotkeyMatcher, ModifierKey, NamedKey, parse_modifier(), parse_primary(), parses_bare_letter_hotkey() (+7 more)
-
-### Community 8 - "Community 8"
 Cohesion: 0.14
 Nodes (10): run(), main(), deletes_accounts(), DeltaAccountRecord, DeltaAccountUpsert, DeltaRepo, map_row(), upserts_and_lists_accounts() (+2 more)
 
-### Community 9 - "Community 9"
+### Community 8 - "Community 8"
 Cohesion: 0.12
 Nodes (7): handleMouseUp(), MorsePage(), formatRecordedHotkey(), getErrorMessage(), getSelectionRect(), normalizeHotkeyPrimaryKey(), normalizeRunDetails()
 
+### Community 9 - "Community 9"
+Cohesion: 0.16
+Nodes (8): browser_headers(), build_client(), HttpOptions, maps_wechat_success_status(), maps_wechat_waiting_status(), WechatAccessToken, WechatAuthService, WechatQr
+
 ### Community 10 - "Community 10"
-Cohesion: 0.14
-Nodes (10): decode(), rejects_unknown_pattern(), decode_gbk(), decode_jwt_middle(), decodes_jwt_middle_payload(), extract_query_param(), extracts_query_param(), extracts_wechat_uuid() (+2 more)
-
-### Community 11 - "Community 11"
-Cohesion: 0.25
-Nodes (13): initialize(), deserialize_settings(), deserialize_settings_reports_invalid_json(), ensure_config_dir(), ensure_config_dir_creates_path(), load_settings(), read_settings_from_path(), read_settings_returns_default_when_missing() (+5 more)
-
-### Community 12 - "Community 12"
 Cohesion: 0.21
 Nodes (10): extract_jsonp_args(), parses_ptui_callback(), parses_quoted_and_json_arguments(), trim_arg(), maps_success_status(), maps_waiting_status(), QqAccessToken, QqLoginQr (+2 more)
 
-### Community 13 - "Community 13"
+### Community 11 - "Community 11"
 Cohesion: 0.24
 Nodes (10): AmmoItem, built_in_configs_enrich_gun_detail(), built_in_configs_expose_expected_entries(), built_in_accessory_config(), built_in_ammo_config(), enrich_gun_detail(), leaves_missing_config_entries_empty(), normalize_caliber_code() (+2 more)
 
+### Community 12 - "Community 12"
+Cohesion: 0.31
+Nodes (12): deserialize_settings(), deserialize_settings_reports_invalid_json(), ensure_config_dir(), ensure_config_dir_creates_path(), load_settings(), read_settings_from_path(), read_settings_returns_default_when_missing(), sample_settings() (+4 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.18
+Nodes (10): HistoryEntry, morse_settings_default_values_are_stable(), MorseBootstrap, MorseRegionDetail, MorseRunResult, MorseSettings, RegionRect, RegionSelectionKind (+2 more)
+
 ### Community 14 - "Community 14"
-Cohesion: 0.2
-Nodes (9): HistoryEntry, morse_settings_default_values_are_stable(), MorseBootstrap, MorseRegionDetail, MorseRunResult, RegionRect, RegionSelectionKind, RegionSelectionOutcome (+1 more)
+Cohesion: 0.25
+Nodes (0): 
 
 ### Community 15 - "Community 15"
 Cohesion: 0.25
 Nodes (0): 
 
 ### Community 16 - "Community 16"
-Cohesion: 0.25
-Nodes (0): 
-
-### Community 17 - "Community 17"
 Cohesion: 0.33
 Nodes (2): SidebarMenuButton(), useSidebar()
+
+### Community 17 - "Community 17"
+Cohesion: 0.4
+Nodes (0): 
 
 ### Community 18 - "Community 18"
 Cohesion: 0.4
@@ -233,7 +232,7 @@ Cohesion: 0.4
 Nodes (0): 
 
 ### Community 20 - "Community 20"
-Cohesion: 0.4
+Cohesion: 0.5
 Nodes (0): 
 
 ### Community 21 - "Community 21"
@@ -265,11 +264,11 @@ Cohesion: 0.5
 Nodes (0): 
 
 ### Community 28 - "Community 28"
-Cohesion: 0.5
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 29 - "Community 29"
-Cohesion: 0.5
+Cohesion: 0.67
 Nodes (0): 
 
 ### Community 30 - "Community 30"
@@ -309,48 +308,48 @@ Cohesion: 0.67
 Nodes (0): 
 
 ### Community 39 - "Community 39"
-Cohesion: 0.67
-Nodes (0): 
+Cohesion: 1.0
+Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
 
 ### Community 40 - "Community 40"
 Cohesion: 1.0
-Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
+Nodes (3): React Atom Logo, React Central Dot, Orbital Ellipse Set
 
 ### Community 41 - "Community 41"
 Cohesion: 1.0
-Nodes (3): React Atom Logo, React Central Dot, Orbital Ellipse Set
+Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
 ### Community 42 - "Community 42"
 Cohesion: 1.0
-Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
+Nodes (3): Abstract App Logo Mark, Cool Accent Orb, Warm Accent Orb
 
 ### Community 43 - "Community 43"
 Cohesion: 1.0
-Nodes (3): Abstract App Logo Mark, Cool Accent Orb, Warm Accent Orb
+Nodes (3): Application Icon, Interlocking Dual Ring Mark, Teal and Gold Color Scheme
 
 ### Community 44 - "Community 44"
 Cohesion: 1.0
-Nodes (3): Application Icon, Interlocking Dual Ring Mark, Teal and Gold Color Scheme
+Nodes (3): Abstract Logo Mark, Lower Cyan Circle, Upper Gold Circle
 
 ### Community 45 - "Community 45"
 Cohesion: 1.0
-Nodes (3): Abstract Logo Mark, Lower Cyan Circle, Upper Gold Circle
+Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
 ### Community 46 - "Community 46"
 Cohesion: 1.0
-Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
+Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
 
 ### Community 47 - "Community 47"
 Cohesion: 1.0
-Nodes (3): Abstract Logo Mark, Blue Circle, Yellow Circle
+Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
 ### Community 48 - "Community 48"
 Cohesion: 1.0
-Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
+Nodes (3): Blue Circle, Square 310x310 Logo Mark, Yellow Circle
 
 ### Community 49 - "Community 49"
 Cohesion: 1.0
-Nodes (3): Blue Circle, Square 310x310 Logo Mark, Yellow Circle
+Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
 
 ### Community 50 - "Community 50"
 Cohesion: 1.0
@@ -362,15 +361,15 @@ Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold 
 
 ### Community 52 - "Community 52"
 Cohesion: 1.0
-Nodes (3): Delta Auto Tools App Icon, Interlocking Circular Mark, Teal And Gold Palette
-
-### Community 53 - "Community 53"
-Cohesion: 1.0
 Nodes (3): Abstract Logo Mark, Cyan Ring, Orange Ring
 
-### Community 54 - "Community 54"
+### Community 53 - "Community 53"
 Cohesion: 0.67
 Nodes (3): Axum Handlers Layer, Keep Handlers Thin And Business Logic In Services, Services Business Logic Layer
+
+### Community 54 - "Community 54"
+Cohesion: 1.0
+Nodes (0): 
 
 ### Community 55 - "Community 55"
 Cohesion: 1.0
@@ -486,31 +485,31 @@ Nodes (0):
 
 ### Community 83 - "Community 83"
 Cohesion: 1.0
-Nodes (0): 
+Nodes (1): ApiResponse
 
 ### Community 84 - "Community 84"
 Cohesion: 1.0
-Nodes (1): ApiResponse
+Nodes (1): IdeCall
 
 ### Community 85 - "Community 85"
 Cohesion: 1.0
-Nodes (1): IdeCall
+Nodes (2): Vite Branding Gradient Icon, Vite Logo SVG
 
 ### Community 86 - "Community 86"
 Cohesion: 1.0
-Nodes (2): Vite Branding Gradient Icon, Vite Logo SVG
+Nodes (2): morse_settings.json Persistence File, morse_settings.json Stored Configuration
 
 ### Community 87 - "Community 87"
 Cohesion: 1.0
-Nodes (2): morse_settings.json Persistence File, morse_settings.json Stored Configuration
+Nodes (2): Rust Hotkey Registration Responsibility, Frontend Records While Rust Saves Hotkeys
 
 ### Community 88 - "Community 88"
 Cohesion: 1.0
-Nodes (2): Rust Hotkey Registration Responsibility, Frontend Records While Rust Saves Hotkeys
+Nodes (2): No HTTP API Or Router, Native Command Layer Instead Of HTTP Backend
 
 ### Community 89 - "Community 89"
 Cohesion: 1.0
-Nodes (2): No HTTP API Or Router, Native Command Layer Instead Of HTTP Backend
+Nodes (0): 
 
 ### Community 90 - "Community 90"
 Cohesion: 1.0
@@ -582,114 +581,112 @@ Nodes (0):
 
 ### Community 107 - "Community 107"
 Cohesion: 1.0
-Nodes (0): 
-
-### Community 108 - "Community 108"
-Cohesion: 1.0
 Nodes (1): 30x30 Application Icon
 
-### Community 109 - "Community 109"
+### Community 108 - "Community 108"
 Cohesion: 1.0
 Nodes (1): Morse Overlay UI
 
 ## Knowledge Gaps
 - **74 isolated node(s):** `CommandOptions`, `AccountCookieRequest`, `QqUpdateRequest`, `WechatAccessRequest`, `WechatUpdateRequest` (+69 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 55`** (2 nodes): `SelectionPanel()`, `morse-panels.tsx`
+- **Thin community `Community 54`** (2 nodes): `morse-panels.tsx`, `SelectionPanel()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (2 nodes): `tool-placeholder-page.tsx`, `ToolPlaceholderPage()`
+- **Thin community `Community 55`** (2 nodes): `tool-placeholder-page.tsx`, `ToolPlaceholderPage()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (2 nodes): `cn()`, `avatar.tsx`
+- **Thin community `Community 56`** (2 nodes): `cn()`, `avatar.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (2 nodes): `Badge()`, `badge.tsx`
+- **Thin community `Community 57`** (2 nodes): `Badge()`, `badge.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (2 nodes): `cn()`, `button-group.tsx`
+- **Thin community `Community 58`** (2 nodes): `cn()`, `button-group.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (2 nodes): `cn()`, `button.tsx`
+- **Thin community `Community 59`** (2 nodes): `cn()`, `button.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (2 nodes): `Checkbox()`, `checkbox.tsx`
+- **Thin community `Community 60`** (2 nodes): `Checkbox()`, `checkbox.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 62`** (2 nodes): `cn()`, `command.tsx`
+- **Thin community `Community 61`** (2 nodes): `cn()`, `command.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 63`** (2 nodes): `cn()`, `dialog.tsx`
+- **Thin community `Community 62`** (2 nodes): `cn()`, `dialog.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 64`** (2 nodes): `DirectionProvider()`, `direction.tsx`
+- **Thin community `Community 63`** (2 nodes): `DirectionProvider()`, `direction.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 65`** (2 nodes): `cn()`, `empty.tsx`
+- **Thin community `Community 64`** (2 nodes): `cn()`, `empty.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 66`** (2 nodes): `cn()`, `field.tsx`
+- **Thin community `Community 65`** (2 nodes): `cn()`, `field.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 67`** (2 nodes): `HoverCardTrigger()`, `hover-card.tsx`
+- **Thin community `Community 66`** (2 nodes): `HoverCardTrigger()`, `hover-card.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 68`** (2 nodes): `cn()`, `input-otp.tsx`
+- **Thin community `Community 67`** (2 nodes): `cn()`, `input-otp.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 69`** (2 nodes): `cn()`, `item.tsx`
+- **Thin community `Community 68`** (2 nodes): `cn()`, `item.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 70`** (2 nodes): `cn()`, `kbd.tsx`
+- **Thin community `Community 69`** (2 nodes): `cn()`, `kbd.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 71`** (2 nodes): `Label()`, `label.tsx`
+- **Thin community `Community 70`** (2 nodes): `Label()`, `label.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 72`** (2 nodes): `PopoverDescription()`, `popover.tsx`
+- **Thin community `Community 71`** (2 nodes): `PopoverDescription()`, `popover.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 73`** (2 nodes): `ResizablePanelGroup()`, `resizable.tsx`
+- **Thin community `Community 72`** (2 nodes): `ResizablePanelGroup()`, `resizable.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 74`** (2 nodes): `Separator()`, `separator.tsx`
+- **Thin community `Community 73`** (2 nodes): `Separator()`, `separator.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 75`** (2 nodes): `Skeleton()`, `skeleton.tsx`
+- **Thin community `Community 74`** (2 nodes): `Skeleton()`, `skeleton.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 76`** (2 nodes): `Slider()`, `slider.tsx`
+- **Thin community `Community 75`** (2 nodes): `Slider()`, `slider.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 77`** (2 nodes): `Spinner()`, `spinner.tsx`
+- **Thin community `Community 76`** (2 nodes): `Spinner()`, `spinner.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 78`** (2 nodes): `switch.tsx`, `Switch()`
+- **Thin community `Community 77`** (2 nodes): `switch.tsx`, `Switch()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 79`** (2 nodes): `tabs.tsx`, `Tabs()`
+- **Thin community `Community 78`** (2 nodes): `tabs.tsx`, `Tabs()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 80`** (2 nodes): `textarea.tsx`, `cn()`
+- **Thin community `Community 79`** (2 nodes): `textarea.tsx`, `cn()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 81`** (2 nodes): `use-mobile.ts`, `useIsMobile()`
+- **Thin community `Community 80`** (2 nodes): `use-mobile.ts`, `useIsMobile()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 82`** (2 nodes): `utils.ts`, `cn()`
+- **Thin community `Community 81`** (2 nodes): `utils.ts`, `cn()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 83`** (2 nodes): `main()`, `build.rs`
+- **Thin community `Community 82`** (2 nodes): `main()`, `build.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 84`** (2 nodes): `ApiResponse`, `response.rs`
+- **Thin community `Community 83`** (2 nodes): `ApiResponse`, `response.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 85`** (2 nodes): `IdeCall`, `ide.rs`
+- **Thin community `Community 84`** (2 nodes): `ide.rs`, `IdeCall`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 86`** (2 nodes): `Vite Branding Gradient Icon`, `Vite Logo SVG`
+- **Thin community `Community 85`** (2 nodes): `Vite Branding Gradient Icon`, `Vite Logo SVG`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 87`** (2 nodes): `morse_settings.json Persistence File`, `morse_settings.json Stored Configuration`
+- **Thin community `Community 86`** (2 nodes): `morse_settings.json Persistence File`, `morse_settings.json Stored Configuration`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 88`** (2 nodes): `Rust Hotkey Registration Responsibility`, `Frontend Records While Rust Saves Hotkeys`
+- **Thin community `Community 87`** (2 nodes): `Rust Hotkey Registration Responsibility`, `Frontend Records While Rust Saves Hotkeys`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 89`** (2 nodes): `No HTTP API Or Router`, `Native Command Layer Instead Of HTTP Backend`
+- **Thin community `Community 88`** (2 nodes): `No HTTP API Or Router`, `Native Command Layer Instead Of HTTP Backend`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 90`** (1 nodes): `vite.config.ts`
+- **Thin community `Community 89`** (1 nodes): `vite.config.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 91`** (1 nodes): `App.tsx`
+- **Thin community `Community 90`** (1 nodes): `App.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 92`** (1 nodes): `main.tsx`
+- **Thin community `Community 91`** (1 nodes): `main.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 93`** (1 nodes): `vite-env.d.ts`
+- **Thin community `Community 92`** (1 nodes): `vite-env.d.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 94`** (1 nodes): `morse-types.ts`
+- **Thin community `Community 93`** (1 nodes): `morse-types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 95`** (1 nodes): `morse-utils.test.ts`
+- **Thin community `Community 94`** (1 nodes): `morse-utils.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 96`** (1 nodes): `aspect-ratio.tsx`
+- **Thin community `Community 95`** (1 nodes): `aspect-ratio.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 97`** (1 nodes): `input.tsx`
+- **Thin community `Community 96`** (1 nodes): `input.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 98`** (1 nodes): `progress.tsx`
+- **Thin community `Community 97`** (1 nodes): `progress.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 99`** (1 nodes): `sheet.tsx`
+- **Thin community `Community 98`** (1 nodes): `sheet.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 100`** (1 nodes): `sonner.tsx`
+- **Thin community `Community 99`** (1 nodes): `sonner.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 101`** (1 nodes): `toggle.tsx`
+- **Thin community `Community 100`** (1 nodes): `toggle.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 102`** (1 nodes): `constants.rs`
+- **Thin community `Community 101`** (1 nodes): `constants.rs`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 102`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 103`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -697,29 +694,27 @@ Nodes (1): Morse Overlay UI
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 105`** (1 nodes): `mod.rs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 106`** (1 nodes): `mod.rs`
+- **Thin community `Community 106`** (1 nodes): `128x128.png`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 107`** (1 nodes): `128x128.png`
+- **Thin community `Community 107`** (1 nodes): `30x30 Application Icon`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 108`** (1 nodes): `30x30 Application Icon`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 109`** (1 nodes): `Morse Overlay UI`
+- **Thin community `Community 108`** (1 nodes): `Morse Overlay UI`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `prepare_selection_from_pending()` connect `Community 5` to `Community 0`?**
+- **Why does `prepare_selection_from_pending()` connect `Community 6` to `Community 0`?**
   _High betweenness centrality (0.013) - this node is a cross-community bridge._
-- **Why does `run_recognition_flow()` connect `Community 6` to `Community 0`, `Community 4`, `Community 7`?**
+- **Why does `run_recognition_flow()` connect `Community 2` to `Community 0`, `Community 5`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
-- **Why does `read_settings_from_path()` connect `Community 11` to `Community 0`, `Community 1`?**
+- **Why does `read_settings_from_path()` connect `Community 12` to `Community 0`, `Community 1`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **What connects `CommandOptions`, `AccountCookieRequest`, `QqUpdateRequest` to the rest of the system?**
   _74 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.07 - nodes in this community are weakly interconnected._
+- **Should `Community 1` be split into smaller, more focused modules?**
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.14 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07 - nodes in this community are weakly interconnected._

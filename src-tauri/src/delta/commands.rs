@@ -9,11 +9,10 @@ use crate::delta::{
     response::ApiResponse,
     services::{
         game::{GameAuth, GameService},
-        qq_auth::{QqAccessToken, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
+        qq_auth::{QqAccessToken, QqAuthService, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
         qq_safe::{QqSafeAccess, QqSafeService},
         wechat_auth::{WechatAccessToken, WechatAuthService, WechatQr},
         wegame_auth::{WegameAuthService, WegameQqLoginQr, WegameQqStatusRequest, WegameTicket},
-        QqAuthService,
     },
     state::{DeltaState, PendingSession},
     storage::{AccountKind, DeltaAccountRecord, DeltaAccountUpsert},

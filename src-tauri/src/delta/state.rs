@@ -4,7 +4,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::delta::{
-    client::http::HttpOptions,
     error::DeltaError,
     storage::{DeltaAccountRecord, DeltaRepo},
 };
@@ -22,7 +21,6 @@ pub struct DeltaState {
     pub repo: DeltaRepo,
     pub buckets: Mutex<HashMap<i64, DeltaAccountRecord>>,
     pub pending: Mutex<HashMap<String, PendingSession>>,
-    pub http_options: Mutex<HttpOptions>,
 }
 
 impl DeltaState {
@@ -43,7 +41,6 @@ impl DeltaState {
             repo,
             buckets: Mutex::new(buckets),
             pending: Mutex::new(HashMap::new()),
-            http_options: Mutex::new(HttpOptions::default()),
         })
     }
 }

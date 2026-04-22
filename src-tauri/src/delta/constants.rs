@@ -20,10 +20,8 @@ pub const WEGAME_WECHAT_APPID: &str = "wx911818d5d92affa8";
 pub const WEGAME_WECHAT_CALLBACK: &str =
     "https://www.wegame.com.cn/login/callback.html?t=wx&c=0&a=0";
 pub const WEGAME_BASE: &str = "https://www.wegame.com.cn/";
-pub const WEGAME_ORIGIN: &str = "https://www.wegame.com.cn";
 pub const XLOGIN_REFERER: &str = "https://xui.ptlogin2.qq.com/";
 
 // Game IDE gateway
 pub const IDE_GATEWAY: &str = "https://comm.ams.game.qq.com/ide/";
 pub const ACI_MAIN: &str = "https://comm.aci.game.qq.com/main";
-pub const QQ_OAUTH_APP_ID_DF: &str = "101491592";
