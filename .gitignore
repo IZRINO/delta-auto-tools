@@ -31,3 +31,4 @@ temp/
 .graphify_*.json
 .graphify_*.py
 .graphify_*.txt
+graphify-out/cache/*.json
