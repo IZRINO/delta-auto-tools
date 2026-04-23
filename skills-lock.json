@@ -16,6 +16,36 @@
       "sourceType": "github",
       "computedHash": "d98a56c484e23fcf4ee88b4cc0df824f48a374e1848fc79eb352f2fa214767e9"
     },
+    "ckm:banner-design": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "2237d5aafec7ab0223a91a9c4a13a8d25a4bd8a29b4ae9f9ea74d2cbfb9c6f91"
+    },
+    "ckm:brand": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "a5f623ca3998b832a4a254426bc184479bf1cfbf4275b786a6319d014d06803c"
+    },
+    "ckm:design": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "356a9ffc8ae2174dee4ac0b35458b383756e349dfa00de17b79394154cc99905"
+    },
+    "ckm:design-system": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "0206bc1d866ba6a93c6683d28b801314979fd164939d53830a7592ce0fb7a8a2"
+    },
+    "ckm:slides": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "f3e6594f5dd3f341afbd2b6c71d8b7cc44a97cdb85f76d5868b715f650c97ac2"
+    },
+    "ckm:ui-styling": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "computedHash": "b5f892864e479f969820c353f44faeedc61981bf2d7a854367069a80e0a264e1"
+    },
     "colorize": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",

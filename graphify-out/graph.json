@@ -53,7 +53,7 @@
       "source_file": "vite.config.ts",
       "source_location": "L1",
       "id": "vite_config_ts",
-      "community": 89,
+      "community": 87,
       "norm_label": "vite.config.ts"
     },
     {
@@ -62,7 +62,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\App.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_app_tsx",
-      "community": 90,
+      "community": 88,
       "norm_label": "app.tsx"
     },
     {
@@ -71,7 +71,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\main.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_main_tsx",
-      "community": 91,
+      "community": 89,
       "norm_label": "main.tsx"
     },
     {
@@ -80,7 +80,7 @@
       "source_file": "src\\vite-env.d.ts",
       "source_location": "L1",
       "id": "src_vite_env_d_ts",
-      "community": 92,
+      "community": 90,
       "norm_label": "vite-env.d.ts"
     },
     {
@@ -131,16 +131,16 @@
     {
       "label": "morse-page.tsx",
       "file_type": "code",
-      "source_file": "src\\components\\app\\morse-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-page.tsx",
       "source_location": "L1",
-      "id": "src_components_app_morse_page_tsx",
+      "id": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_page_tsx",
       "community": 8,
       "norm_label": "morse-page.tsx"
     },
     {
       "label": "MorsePage()",
       "file_type": "code",
-      "source_file": "src\\components\\app\\morse-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-page.tsx",
       "source_location": "L30",
       "id": "morse_page_morsepage",
       "community": 8,
@@ -152,17 +152,8 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-panels.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_panels_tsx",
-      "community": 54,
+      "community": 91,
       "norm_label": "morse-panels.tsx"
-    },
-    {
-      "label": "SelectionPanel()",
-      "file_type": "code",
-      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-panels.tsx",
-      "source_location": "L35",
-      "id": "morse_panels_selectionpanel",
-      "community": 54,
-      "norm_label": "selectionpanel()"
     },
     {
       "label": "morse-types.ts",
@@ -170,7 +161,7 @@
       "source_file": "src\\components\\app\\morse-types.ts",
       "source_location": "L1",
       "id": "src_components_app_morse_types_ts",
-      "community": 93,
+      "community": 92,
       "norm_label": "morse-types.ts"
     },
     {
@@ -179,7 +170,7 @@
       "source_file": "src\\components\\app\\morse-utils.test.ts",
       "source_location": "L1",
       "id": "src_components_app_morse_utils_test_ts",
-      "community": 94,
+      "community": 93,
       "norm_label": "morse-utils.test.ts"
     },
     {
@@ -284,19 +275,19 @@
     {
       "label": "tool-placeholder-page.tsx",
       "file_type": "code",
-      "source_file": "src\\components\\app\\tool-placeholder-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\tool-placeholder-page.tsx",
       "source_location": "L1",
-      "id": "src_components_app_tool_placeholder_page_tsx",
-      "community": 55,
+      "id": "d_code_ai_sjz_delta_auto_tools_src_components_app_tool_placeholder_page_tsx",
+      "community": 53,
       "norm_label": "tool-placeholder-page.tsx"
     },
     {
       "label": "ToolPlaceholderPage()",
       "file_type": "code",
-      "source_file": "src\\components\\app\\tool-placeholder-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\tool-placeholder-page.tsx",
       "source_location": "L25",
       "id": "tool_placeholder_page_toolplaceholderpage",
-      "community": 55,
+      "community": 53,
       "norm_label": "toolplaceholderpage()"
     },
     {
@@ -305,7 +296,7 @@
       "source_file": "src\\components\\ui\\accordion.tsx",
       "source_location": "L1",
       "id": "src_components_ui_accordion_tsx",
-      "community": 17,
+      "community": 16,
       "norm_label": "accordion.tsx"
     },
     {
@@ -314,7 +305,7 @@
       "source_file": "src\\components\\ui\\accordion.tsx",
       "source_location": "L7",
       "id": "accordion_accordion",
-      "community": 17,
+      "community": 16,
       "norm_label": "accordion()"
     },
     {
@@ -323,7 +314,7 @@
       "source_file": "src\\components\\ui\\accordion.tsx",
       "source_location": "L23",
       "id": "accordion_accordionitem",
-      "community": 17,
+      "community": 16,
       "norm_label": "accordionitem()"
     },
     {
@@ -332,7 +323,7 @@
       "source_file": "src\\components\\ui\\accordion.tsx",
       "source_location": "L36",
       "id": "accordion_accordiontrigger",
-      "community": 17,
+      "community": 16,
       "norm_label": "accordiontrigger()"
     },
     {
@@ -341,7 +332,7 @@
       "source_file": "src\\components\\ui\\accordion.tsx",
       "source_location": "L59",
       "id": "accordion_accordioncontent",
-      "community": 17,
+      "community": 16,
       "norm_label": "accordioncontent()"
     },
     {
@@ -350,7 +341,7 @@
       "source_file": "src\\components\\ui\\alert-dialog.tsx",
       "source_location": "L1",
       "id": "src_components_ui_alert_dialog_tsx",
-      "community": 20,
+      "community": 19,
       "norm_label": "alert-dialog.tsx"
     },
     {
@@ -359,7 +350,7 @@
       "source_file": "src\\components\\ui\\alert-dialog.tsx",
       "source_location": "L13",
       "id": "alert_dialog_alertdialogtrigger",
-      "community": 20,
+      "community": 19,
       "norm_label": "alertdialogtrigger()"
     },
     {
@@ -368,7 +359,7 @@
       "source_file": "src\\components\\ui\\alert-dialog.tsx",
       "source_location": "L21",
       "id": "alert_dialog_alertdialogportal",
-      "community": 20,
+      "community": 19,
       "norm_label": "alertdialogportal()"
     },
     {
@@ -377,7 +368,7 @@
       "source_file": "src\\components\\ui\\alert-dialog.tsx",
       "source_location": "L75",
       "id": "alert_dialog_cn",
-      "community": 20,
+      "community": 19,
       "norm_label": "cn()"
     },
     {
@@ -386,7 +377,7 @@
       "source_file": "src\\components\\ui\\alert.tsx",
       "source_location": "L1",
       "id": "src_components_ui_alert_tsx",
-      "community": 28,
+      "community": 27,
       "norm_label": "alert.tsx"
     },
     {
@@ -395,7 +386,7 @@
       "source_file": "src\\components\\ui\\alert.tsx",
       "source_location": "L22",
       "id": "alert_alert",
-      "community": 28,
+      "community": 27,
       "norm_label": "alert()"
     },
     {
@@ -404,7 +395,7 @@
       "source_file": "src\\components\\ui\\alert.tsx",
       "source_location": "L41",
       "id": "alert_cn",
-      "community": 28,
+      "community": 27,
       "norm_label": "cn()"
     },
     {
@@ -413,7 +404,7 @@
       "source_file": "src\\components\\ui\\aspect-ratio.tsx",
       "source_location": "L1",
       "id": "src_components_ui_aspect_ratio_tsx",
-      "community": 95,
+      "community": 94,
       "norm_label": "aspect-ratio.tsx"
     },
     {
@@ -422,7 +413,7 @@
       "source_file": "src\\components\\ui\\avatar.tsx",
       "source_location": "L1",
       "id": "src_components_ui_avatar_tsx",
-      "community": 56,
+      "community": 54,
       "norm_label": "avatar.tsx"
     },
     {
@@ -431,7 +422,7 @@
       "source_file": "src\\components\\ui\\avatar.tsx",
       "source_location": "L62",
       "id": "avatar_cn",
-      "community": 56,
+      "community": 54,
       "norm_label": "cn()"
     },
     {
@@ -440,7 +431,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\badge.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_ui_badge_tsx",
-      "community": 57,
+      "community": 55,
       "norm_label": "badge.tsx"
     },
     {
@@ -449,7 +440,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\badge.tsx",
       "source_location": "L30",
       "id": "badge_badge",
-      "community": 57,
+      "community": 55,
       "norm_label": "badge()"
     },
     {
@@ -458,7 +449,7 @@
       "source_file": "src\\components\\ui\\breadcrumb.tsx",
       "source_location": "L1",
       "id": "src_components_ui_breadcrumb_tsx",
-      "community": 18,
+      "community": 17,
       "norm_label": "breadcrumb.tsx"
     },
     {
@@ -467,7 +458,7 @@
       "source_file": "src\\components\\ui\\breadcrumb.tsx",
       "source_location": "L7",
       "id": "breadcrumb_breadcrumb",
-      "community": 18,
+      "community": 17,
       "norm_label": "breadcrumb()"
     },
     {
@@ -476,7 +467,7 @@
       "source_file": "src\\components\\ui\\breadcrumb.tsx",
       "source_location": "L22",
       "id": "breadcrumb_cn",
-      "community": 18,
+      "community": 17,
       "norm_label": "cn()"
     },
     {
@@ -485,7 +476,7 @@
       "source_file": "src\\components\\ui\\breadcrumb.tsx",
       "source_location": "L41",
       "id": "breadcrumb_breadcrumblink",
-      "community": 18,
+      "community": 17,
       "norm_label": "breadcrumblink()"
     },
     {
@@ -494,7 +485,7 @@
       "source_file": "src\\components\\ui\\breadcrumb.tsx",
       "source_location": "L59",
       "id": "breadcrumb_breadcrumbpage",
-      "community": 18,
+      "community": 17,
       "norm_label": "breadcrumbpage()"
     },
     {
@@ -503,7 +494,7 @@
       "source_file": "src\\components\\ui\\button-group.tsx",
       "source_location": "L1",
       "id": "src_components_ui_button_group_tsx",
-      "community": 58,
+      "community": 56,
       "norm_label": "button-group.tsx"
     },
     {
@@ -512,7 +503,7 @@
       "source_file": "src\\components\\ui\\button-group.tsx",
       "source_location": "L69",
       "id": "button_group_cn",
-      "community": 58,
+      "community": 56,
       "norm_label": "cn()"
     },
     {
@@ -521,7 +512,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\button.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_ui_button_tsx",
-      "community": 59,
+      "community": 57,
       "norm_label": "button.tsx"
     },
     {
@@ -530,7 +521,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\button.tsx",
       "source_location": "L59",
       "id": "button_cn",
-      "community": 59,
+      "community": 57,
       "norm_label": "cn()"
     },
     {
@@ -539,7 +530,7 @@
       "source_file": "src\\components\\ui\\calendar.tsx",
       "source_location": "L1",
       "id": "src_components_ui_calendar_tsx",
-      "community": 29,
+      "community": 28,
       "norm_label": "calendar.tsx"
     },
     {
@@ -548,7 +539,7 @@
       "source_file": "src\\components\\ui\\calendar.tsx",
       "source_location": "L15",
       "id": "calendar_calendar",
-      "community": 29,
+      "community": 28,
       "norm_label": "calendar()"
     },
     {
@@ -557,7 +548,7 @@
       "source_file": "src\\components\\ui\\calendar.tsx",
       "source_location": "L212",
       "id": "calendar_cn",
-      "community": 29,
+      "community": 28,
       "norm_label": "cn()"
     },
     {
@@ -566,7 +557,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\card.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_ui_card_tsx",
-      "community": 30,
+      "community": 29,
       "norm_label": "card.tsx"
     },
     {
@@ -575,7 +566,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\card.tsx",
       "source_location": "L14",
       "id": "card_cn",
-      "community": 30,
+      "community": 29,
       "norm_label": "cn()"
     },
     {
@@ -584,7 +575,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\card.tsx",
       "source_location": "L79",
       "id": "card_cardfooter",
-      "community": 30,
+      "community": 29,
       "norm_label": "cardfooter()"
     },
     {
@@ -593,7 +584,7 @@
       "source_file": "src\\components\\ui\\carousel.tsx",
       "source_location": "L1",
       "id": "src_components_ui_carousel_tsx",
-      "community": 21,
+      "community": 20,
       "norm_label": "carousel.tsx"
     },
     {
@@ -602,7 +593,7 @@
       "source_file": "src\\components\\ui\\carousel.tsx",
       "source_location": "L33",
       "id": "carousel_usecarousel",
-      "community": 21,
+      "community": 20,
       "norm_label": "usecarousel()"
     },
     {
@@ -611,7 +602,7 @@
       "source_file": "src\\components\\ui\\carousel.tsx",
       "source_location": "L43",
       "id": "carousel_carousel",
-      "community": 21,
+      "community": 20,
       "norm_label": "carousel()"
     },
     {
@@ -620,7 +611,7 @@
       "source_file": "src\\components\\ui\\carousel.tsx",
       "source_location": "L143",
       "id": "carousel_cn",
-      "community": 21,
+      "community": 20,
       "norm_label": "cn()"
     },
     {
@@ -629,7 +620,7 @@
       "source_file": "src\\components\\ui\\chart.tsx",
       "source_location": "L1",
       "id": "src_components_ui_chart_tsx",
-      "community": 31,
+      "community": 30,
       "norm_label": "chart.tsx"
     },
     {
@@ -638,7 +629,7 @@
       "source_file": "src\\components\\ui\\chart.tsx",
       "source_location": "L32",
       "id": "chart_usechart",
-      "community": 31,
+      "community": 30,
       "norm_label": "usechart()"
     },
     {
@@ -647,7 +638,7 @@
       "source_file": "src\\components\\ui\\chart.tsx",
       "source_location": "L67",
       "id": "chart_cn",
-      "community": 31,
+      "community": 30,
       "norm_label": "cn()"
     },
     {
@@ -656,7 +647,7 @@
       "source_file": "src\\components\\ui\\checkbox.tsx",
       "source_location": "L1",
       "id": "src_components_ui_checkbox_tsx",
-      "community": 60,
+      "community": 58,
       "norm_label": "checkbox.tsx"
     },
     {
@@ -665,7 +656,7 @@
       "source_file": "src\\components\\ui\\checkbox.tsx",
       "source_location": "L7",
       "id": "checkbox_checkbox",
-      "community": 60,
+      "community": 58,
       "norm_label": "checkbox()"
     },
     {
@@ -674,7 +665,7 @@
       "source_file": "src\\components\\ui\\collapsible.tsx",
       "source_location": "L1",
       "id": "src_components_ui_collapsible_tsx",
-      "community": 32,
+      "community": 31,
       "norm_label": "collapsible.tsx"
     },
     {
@@ -683,7 +674,7 @@
       "source_file": "src\\components\\ui\\collapsible.tsx",
       "source_location": "L11",
       "id": "collapsible_collapsibletrigger",
-      "community": 32,
+      "community": 31,
       "norm_label": "collapsibletrigger()"
     },
     {
@@ -692,7 +683,7 @@
       "source_file": "src\\components\\ui\\collapsible.tsx",
       "source_location": "L22",
       "id": "collapsible_collapsiblecontent",
-      "community": 32,
+      "community": 31,
       "norm_label": "collapsiblecontent()"
     },
     {
@@ -701,7 +692,7 @@
       "source_file": "src\\components\\ui\\combobox.tsx",
       "source_location": "L1",
       "id": "src_components_ui_combobox_tsx",
-      "community": 33,
+      "community": 32,
       "norm_label": "combobox.tsx"
     },
     {
@@ -710,7 +701,7 @@
       "source_file": "src\\components\\ui\\combobox.tsx",
       "source_location": "L22",
       "id": "combobox_comboboxtrigger",
-      "community": 33,
+      "community": 32,
       "norm_label": "comboboxtrigger()"
     },
     {
@@ -719,7 +710,7 @@
       "source_file": "src\\components\\ui\\combobox.tsx",
       "source_location": "L115",
       "id": "combobox_cn",
-      "community": 33,
+      "community": 32,
       "norm_label": "cn()"
     },
     {
@@ -728,7 +719,7 @@
       "source_file": "src\\components\\ui\\command.tsx",
       "source_location": "L1",
       "id": "src_components_ui_command_tsx",
-      "community": 61,
+      "community": 59,
       "norm_label": "command.tsx"
     },
     {
@@ -737,7 +728,7 @@
       "source_file": "src\\components\\ui\\command.tsx",
       "source_location": "L25",
       "id": "command_cn",
-      "community": 61,
+      "community": 59,
       "norm_label": "cn()"
     },
     {
@@ -746,7 +737,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L1",
       "id": "src_components_ui_context_menu_tsx",
-      "community": 14,
+      "community": 13,
       "norm_label": "context-menu.tsx"
     },
     {
@@ -755,7 +746,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L13",
       "id": "context_menu_contextmenutrigger",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenutrigger()"
     },
     {
@@ -764,7 +755,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L26",
       "id": "context_menu_contextmenugroup",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenugroup()"
     },
     {
@@ -773,7 +764,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L34",
       "id": "context_menu_contextmenuportal",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenuportal()"
     },
     {
@@ -782,7 +773,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L48",
       "id": "context_menu_contextmenuradiogroup",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenuradiogroup()"
     },
     {
@@ -791,7 +782,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L90",
       "id": "context_menu_cn",
-      "community": 14,
+      "community": 13,
       "norm_label": "cn()"
     },
     {
@@ -800,7 +791,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L123",
       "id": "context_menu_contextmenusubcontent",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenusubcontent()"
     },
     {
@@ -809,7 +800,7 @@
       "source_file": "src\\components\\ui\\context-menu.tsx",
       "source_location": "L167",
       "id": "context_menu_contextmenuradioitem",
-      "community": 14,
+      "community": 13,
       "norm_label": "contextmenuradioitem()"
     },
     {
@@ -818,7 +809,7 @@
       "source_file": "src\\components\\ui\\dialog.tsx",
       "source_location": "L1",
       "id": "src_components_ui_dialog_tsx",
-      "community": 62,
+      "community": 60,
       "norm_label": "dialog.tsx"
     },
     {
@@ -827,7 +818,7 @@
       "source_file": "src\\components\\ui\\dialog.tsx",
       "source_location": "L109",
       "id": "dialog_cn",
-      "community": 62,
+      "community": 60,
       "norm_label": "cn()"
     },
     {
@@ -836,7 +827,7 @@
       "source_file": "src\\components\\ui\\direction.tsx",
       "source_location": "L1",
       "id": "src_components_ui_direction_tsx",
-      "community": 63,
+      "community": 61,
       "norm_label": "direction.tsx"
     },
     {
@@ -845,7 +836,7 @@
       "source_file": "src\\components\\ui\\direction.tsx",
       "source_location": "L6",
       "id": "direction_directionprovider",
-      "community": 63,
+      "community": 61,
       "norm_label": "directionprovider()"
     },
     {
@@ -854,7 +845,7 @@
       "source_file": "src\\components\\ui\\drawer.tsx",
       "source_location": "L1",
       "id": "src_components_ui_drawer_tsx",
-      "community": 22,
+      "community": 21,
       "norm_label": "drawer.tsx"
     },
     {
@@ -863,7 +854,7 @@
       "source_file": "src\\components\\ui\\drawer.tsx",
       "source_location": "L73",
       "id": "drawer_cn",
-      "community": 22,
+      "community": 21,
       "norm_label": "cn()"
     },
     {
@@ -872,7 +863,7 @@
       "source_file": "src\\components\\ui\\drawer.tsx",
       "source_location": "L92",
       "id": "drawer_drawertitle",
-      "community": 22,
+      "community": 21,
       "norm_label": "drawertitle()"
     },
     {
@@ -881,7 +872,7 @@
       "source_file": "src\\components\\ui\\drawer.tsx",
       "source_location": "L108",
       "id": "drawer_drawerdescription",
-      "community": 22,
+      "community": 21,
       "norm_label": "drawerdescription()"
     },
     {
@@ -890,7 +881,7 @@
       "source_file": "src\\components\\ui\\dropdown-menu.tsx",
       "source_location": "L1",
       "id": "src_components_ui_dropdown_menu_tsx",
-      "community": 23,
+      "community": 22,
       "norm_label": "dropdown-menu.tsx"
     },
     {
@@ -899,7 +890,7 @@
       "source_file": "src\\components\\ui\\dropdown-menu.tsx",
       "source_location": "L15",
       "id": "dropdown_menu_dropdownmenuportal",
-      "community": 23,
+      "community": 22,
       "norm_label": "dropdownmenuportal()"
     },
     {
@@ -908,7 +899,7 @@
       "source_file": "src\\components\\ui\\dropdown-menu.tsx",
       "source_location": "L23",
       "id": "dropdown_menu_dropdownmenutrigger",
-      "community": 23,
+      "community": 22,
       "norm_label": "dropdownmenutrigger()"
     },
     {
@@ -917,7 +908,7 @@
       "source_file": "src\\components\\ui\\dropdown-menu.tsx",
       "source_location": "L201",
       "id": "dropdown_menu_cn",
-      "community": 23,
+      "community": 22,
       "norm_label": "cn()"
     },
     {
@@ -926,7 +917,7 @@
       "source_file": "src\\components\\ui\\empty.tsx",
       "source_location": "L1",
       "id": "src_components_ui_empty_tsx",
-      "community": 64,
+      "community": 62,
       "norm_label": "empty.tsx"
     },
     {
@@ -935,7 +926,7 @@
       "source_file": "src\\components\\ui\\empty.tsx",
       "source_location": "L9",
       "id": "empty_cn",
-      "community": 64,
+      "community": 62,
       "norm_label": "cn()"
     },
     {
@@ -944,7 +935,7 @@
       "source_file": "src\\components\\ui\\field.tsx",
       "source_location": "L1",
       "id": "src_components_ui_field_tsx",
-      "community": 65,
+      "community": 63,
       "norm_label": "field.tsx"
     },
     {
@@ -953,7 +944,7 @@
       "source_file": "src\\components\\ui\\field.tsx",
       "source_location": "L14",
       "id": "field_cn",
-      "community": 65,
+      "community": 63,
       "norm_label": "cn()"
     },
     {
@@ -962,7 +953,7 @@
       "source_file": "src\\components\\ui\\hover-card.tsx",
       "source_location": "L1",
       "id": "src_components_ui_hover_card_tsx",
-      "community": 66,
+      "community": 64,
       "norm_label": "hover-card.tsx"
     },
     {
@@ -971,7 +962,7 @@
       "source_file": "src\\components\\ui\\hover-card.tsx",
       "source_location": "L12",
       "id": "hover_card_hovercardtrigger",
-      "community": 66,
+      "community": 64,
       "norm_label": "hovercardtrigger()"
     },
     {
@@ -980,7 +971,7 @@
       "source_file": "src\\components\\ui\\input-group.tsx",
       "source_location": "L1",
       "id": "src_components_ui_input_group_tsx",
-      "community": 24,
+      "community": 23,
       "norm_label": "input-group.tsx"
     },
     {
@@ -989,7 +980,7 @@
       "source_file": "src\\components\\ui\\input-group.tsx",
       "source_location": "L14",
       "id": "input_group_cn",
-      "community": 24,
+      "community": 23,
       "norm_label": "cn()"
     },
     {
@@ -998,7 +989,7 @@
       "source_file": "src\\components\\ui\\input-group.tsx",
       "source_location": "L102",
       "id": "input_group_inputgrouptext",
-      "community": 24,
+      "community": 23,
       "norm_label": "inputgrouptext()"
     },
     {
@@ -1007,7 +998,7 @@
       "source_file": "src\\components\\ui\\input-group.tsx",
       "source_location": "L114",
       "id": "input_group_inputgroupinput",
-      "community": 24,
+      "community": 23,
       "norm_label": "inputgroupinput()"
     },
     {
@@ -1016,7 +1007,7 @@
       "source_file": "src\\components\\ui\\input-otp.tsx",
       "source_location": "L1",
       "id": "src_components_ui_input_otp_tsx",
-      "community": 67,
+      "community": 65,
       "norm_label": "input-otp.tsx"
     },
     {
@@ -1025,7 +1016,7 @@
       "source_file": "src\\components\\ui\\input-otp.tsx",
       "source_location": "L19",
       "id": "input_otp_cn",
-      "community": 67,
+      "community": 65,
       "norm_label": "cn()"
     },
     {
@@ -1034,7 +1025,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\input.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_ui_input_tsx",
-      "community": 96,
+      "community": 95,
       "norm_label": "input.tsx"
     },
     {
@@ -1043,7 +1034,7 @@
       "source_file": "src\\components\\ui\\item.tsx",
       "source_location": "L1",
       "id": "src_components_ui_item_tsx",
-      "community": 68,
+      "community": 66,
       "norm_label": "item.tsx"
     },
     {
@@ -1052,7 +1043,7 @@
       "source_file": "src\\components\\ui\\item.tsx",
       "source_location": "L114",
       "id": "item_cn",
-      "community": 68,
+      "community": 66,
       "norm_label": "cn()"
     },
     {
@@ -1061,7 +1052,7 @@
       "source_file": "src\\components\\ui\\kbd.tsx",
       "source_location": "L1",
       "id": "src_components_ui_kbd_tsx",
-      "community": 69,
+      "community": 67,
       "norm_label": "kbd.tsx"
     },
     {
@@ -1070,7 +1061,7 @@
       "source_file": "src\\components\\ui\\kbd.tsx",
       "source_location": "L7",
       "id": "kbd_cn",
-      "community": 69,
+      "community": 67,
       "norm_label": "cn()"
     },
     {
@@ -1079,7 +1070,7 @@
       "source_file": "src\\components\\ui\\label.tsx",
       "source_location": "L1",
       "id": "src_components_ui_label_tsx",
-      "community": 70,
+      "community": 68,
       "norm_label": "label.tsx"
     },
     {
@@ -1088,7 +1079,7 @@
       "source_file": "src\\components\\ui\\label.tsx",
       "source_location": "L6",
       "id": "label_label",
-      "community": 70,
+      "community": 68,
       "norm_label": "label()"
     },
     {
@@ -1097,7 +1088,7 @@
       "source_file": "src\\components\\ui\\menubar.tsx",
       "source_location": "L1",
       "id": "src_components_ui_menubar_tsx",
-      "community": 25,
+      "community": 24,
       "norm_label": "menubar.tsx"
     },
     {
@@ -1106,7 +1097,7 @@
       "source_file": "src\\components\\ui\\menubar.tsx",
       "source_location": "L9",
       "id": "menubar_menubar",
-      "community": 25,
+      "community": 24,
       "norm_label": "menubar()"
     },
     {
@@ -1115,7 +1106,7 @@
       "source_file": "src\\components\\ui\\menubar.tsx",
       "source_location": "L40",
       "id": "menubar_menubarradiogroup",
-      "community": 25,
+      "community": 24,
       "norm_label": "menubarradiogroup()"
     },
     {
@@ -1124,7 +1115,7 @@
       "source_file": "src\\components\\ui\\menubar.tsx",
       "source_location": "L99",
       "id": "menubar_cn",
-      "community": 25,
+      "community": 24,
       "norm_label": "cn()"
     },
     {
@@ -1133,7 +1124,7 @@
       "source_file": "src\\components\\ui\\native-select.tsx",
       "source_location": "L1",
       "id": "src_components_ui_native_select_tsx",
-      "community": 26,
+      "community": 25,
       "norm_label": "native-select.tsx"
     },
     {
@@ -1142,7 +1133,7 @@
       "source_file": "src\\components\\ui\\native-select.tsx",
       "source_location": "L10",
       "id": "native_select_nativeselect",
-      "community": 26,
+      "community": 25,
       "norm_label": "nativeselect()"
     },
     {
@@ -1151,7 +1142,7 @@
       "source_file": "src\\components\\ui\\native-select.tsx",
       "source_location": "L35",
       "id": "native_select_nativeselectoption",
-      "community": 26,
+      "community": 25,
       "norm_label": "nativeselectoption()"
     },
     {
@@ -1160,7 +1151,7 @@
       "source_file": "src\\components\\ui\\native-select.tsx",
       "source_location": "L48",
       "id": "native_select_nativeselectoptgroup",
-      "community": 26,
+      "community": 25,
       "norm_label": "nativeselectoptgroup()"
     },
     {
@@ -1169,7 +1160,7 @@
       "source_file": "src\\components\\ui\\navigation-menu.tsx",
       "source_location": "L1",
       "id": "src_components_ui_navigation_menu_tsx",
-      "community": 34,
+      "community": 33,
       "norm_label": "navigation-menu.tsx"
     },
     {
@@ -1178,7 +1169,7 @@
       "source_file": "src\\components\\ui\\navigation-menu.tsx",
       "source_location": "L39",
       "id": "navigation_menu_cn",
-      "community": 34,
+      "community": 33,
       "norm_label": "cn()"
     },
     {
@@ -1187,7 +1178,7 @@
       "source_file": "src\\components\\ui\\navigation-menu.tsx",
       "source_location": "L65",
       "id": "navigation_menu_navigationmenutrigger",
-      "community": 34,
+      "community": 33,
       "norm_label": "navigationmenutrigger()"
     },
     {
@@ -1196,7 +1187,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L1",
       "id": "src_components_ui_pagination_tsx",
-      "community": 15,
+      "community": 14,
       "norm_label": "pagination.tsx"
     },
     {
@@ -1205,7 +1196,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L7",
       "id": "pagination_pagination",
-      "community": 15,
+      "community": 14,
       "norm_label": "pagination()"
     },
     {
@@ -1214,7 +1205,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L19",
       "id": "pagination_paginationcontent",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationcontent()"
     },
     {
@@ -1223,7 +1214,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L32",
       "id": "pagination_paginationitem",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationitem()"
     },
     {
@@ -1232,7 +1223,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L41",
       "id": "pagination_paginationlink",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationlink()"
     },
     {
@@ -1241,7 +1232,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L64",
       "id": "pagination_paginationprevious",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationprevious()"
     },
     {
@@ -1250,7 +1241,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L82",
       "id": "pagination_paginationnext",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationnext()"
     },
     {
@@ -1259,7 +1250,7 @@
       "source_file": "src\\components\\ui\\pagination.tsx",
       "source_location": "L100",
       "id": "pagination_paginationellipsis",
-      "community": 15,
+      "community": 14,
       "norm_label": "paginationellipsis()"
     },
     {
@@ -1268,7 +1259,7 @@
       "source_file": "src\\components\\ui\\popover.tsx",
       "source_location": "L1",
       "id": "src_components_ui_popover_tsx",
-      "community": 71,
+      "community": 69,
       "norm_label": "popover.tsx"
     },
     {
@@ -1277,7 +1268,7 @@
       "source_file": "src\\components\\ui\\popover.tsx",
       "source_location": "L66",
       "id": "popover_popoverdescription",
-      "community": 71,
+      "community": 69,
       "norm_label": "popoverdescription()"
     },
     {
@@ -1286,7 +1277,7 @@
       "source_file": "src\\components\\ui\\progress.tsx",
       "source_location": "L1",
       "id": "src_components_ui_progress_tsx",
-      "community": 97,
+      "community": 96,
       "norm_label": "progress.tsx"
     },
     {
@@ -1295,7 +1286,7 @@
       "source_file": "src\\components\\ui\\radio-group.tsx",
       "source_location": "L1",
       "id": "src_components_ui_radio_group_tsx",
-      "community": 35,
+      "community": 34,
       "norm_label": "radio-group.tsx"
     },
     {
@@ -1304,7 +1295,7 @@
       "source_file": "src\\components\\ui\\radio-group.tsx",
       "source_location": "L6",
       "id": "radio_group_radiogroup",
-      "community": 35,
+      "community": 34,
       "norm_label": "radiogroup()"
     },
     {
@@ -1313,7 +1304,7 @@
       "source_file": "src\\components\\ui\\radio-group.tsx",
       "source_location": "L19",
       "id": "radio_group_radiogroupitem",
-      "community": 35,
+      "community": 34,
       "norm_label": "radiogroupitem()"
     },
     {
@@ -1322,7 +1313,7 @@
       "source_file": "src\\components\\ui\\resizable.tsx",
       "source_location": "L1",
       "id": "src_components_ui_resizable_tsx",
-      "community": 72,
+      "community": 70,
       "norm_label": "resizable.tsx"
     },
     {
@@ -1331,7 +1322,7 @@
       "source_file": "src\\components\\ui\\resizable.tsx",
       "source_location": "L7",
       "id": "resizable_resizablepanelgroup",
-      "community": 72,
+      "community": 70,
       "norm_label": "resizablepanelgroup()"
     },
     {
@@ -1340,7 +1331,7 @@
       "source_file": "src\\components\\ui\\scroll-area.tsx",
       "source_location": "L1",
       "id": "src_components_ui_scroll_area_tsx",
-      "community": 36,
+      "community": 35,
       "norm_label": "scroll-area.tsx"
     },
     {
@@ -1349,7 +1340,7 @@
       "source_file": "src\\components\\ui\\scroll-area.tsx",
       "source_location": "L6",
       "id": "scroll_area_scrollarea",
-      "community": 36,
+      "community": 35,
       "norm_label": "scrollarea()"
     },
     {
@@ -1358,7 +1349,7 @@
       "source_file": "src\\components\\ui\\scroll-area.tsx",
       "source_location": "L29",
       "id": "scroll_area_scrollbar",
-      "community": 36,
+      "community": 35,
       "norm_label": "scrollbar()"
     },
     {
@@ -1367,7 +1358,7 @@
       "source_file": "src\\components\\ui\\select.tsx",
       "source_location": "L1",
       "id": "src_components_ui_select_tsx",
-      "community": 37,
+      "community": 36,
       "norm_label": "select.tsx"
     },
     {
@@ -1376,7 +1367,7 @@
       "source_file": "src\\components\\ui\\select.tsx",
       "source_location": "L15",
       "id": "select_selectgroup",
-      "community": 37,
+      "community": 36,
       "norm_label": "selectgroup()"
     },
     {
@@ -1385,7 +1376,7 @@
       "source_file": "src\\components\\ui\\select.tsx",
       "source_location": "L34",
       "id": "select_selecttrigger",
-      "community": 37,
+      "community": 36,
       "norm_label": "selecttrigger()"
     },
     {
@@ -1394,7 +1385,7 @@
       "source_file": "src\\components\\ui\\separator.tsx",
       "source_location": "L1",
       "id": "src_components_ui_separator_tsx",
-      "community": 73,
+      "community": 71,
       "norm_label": "separator.tsx"
     },
     {
@@ -1403,7 +1394,7 @@
       "source_file": "src\\components\\ui\\separator.tsx",
       "source_location": "L6",
       "id": "separator_separator",
-      "community": 73,
+      "community": 71,
       "norm_label": "separator()"
     },
     {
@@ -1412,7 +1403,7 @@
       "source_file": "src\\components\\ui\\sheet.tsx",
       "source_location": "L1",
       "id": "src_components_ui_sheet_tsx",
-      "community": 98,
+      "community": 97,
       "norm_label": "sheet.tsx"
     },
     {
@@ -1421,7 +1412,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_components_ui_sidebar_tsx",
-      "community": 16,
+      "community": 15,
       "norm_label": "sidebar.tsx"
     },
     {
@@ -1430,7 +1421,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L44",
       "id": "sidebar_usesidebar",
-      "community": 16,
+      "community": 15,
       "norm_label": "usesidebar()"
     },
     {
@@ -1439,7 +1430,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L95",
       "id": "sidebar_handlekeydown",
-      "community": 16,
+      "community": 15,
       "norm_label": "handlekeydown()"
     },
     {
@@ -1448,7 +1439,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L137",
       "id": "sidebar_cn",
-      "community": 16,
+      "community": 15,
       "norm_label": "cn()"
     },
     {
@@ -1457,7 +1448,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L450",
       "id": "sidebar_sidebarmenu",
-      "community": 16,
+      "community": 15,
       "norm_label": "sidebarmenu()"
     },
     {
@@ -1466,7 +1457,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L461",
       "id": "sidebar_sidebarmenuitem",
-      "community": 16,
+      "community": 15,
       "norm_label": "sidebarmenuitem()"
     },
     {
@@ -1475,7 +1466,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\ui\\sidebar.tsx",
       "source_location": "L494",
       "id": "sidebar_sidebarmenubutton",
-      "community": 16,
+      "community": 15,
       "norm_label": "sidebarmenubutton()"
     },
     {
@@ -1484,7 +1475,7 @@
       "source_file": "src\\components\\ui\\skeleton.tsx",
       "source_location": "L1",
       "id": "src_components_ui_skeleton_tsx",
-      "community": 74,
+      "community": 72,
       "norm_label": "skeleton.tsx"
     },
     {
@@ -1493,7 +1484,7 @@
       "source_file": "src\\components\\ui\\skeleton.tsx",
       "source_location": "L3",
       "id": "skeleton_skeleton",
-      "community": 74,
+      "community": 72,
       "norm_label": "skeleton()"
     },
     {
@@ -1502,7 +1493,7 @@
       "source_file": "src\\components\\ui\\slider.tsx",
       "source_location": "L1",
       "id": "src_components_ui_slider_tsx",
-      "community": 75,
+      "community": 73,
       "norm_label": "slider.tsx"
     },
     {
@@ -1511,7 +1502,7 @@
       "source_file": "src\\components\\ui\\slider.tsx",
       "source_location": "L8",
       "id": "slider_slider",
-      "community": 75,
+      "community": 73,
       "norm_label": "slider()"
     },
     {
@@ -1520,7 +1511,7 @@
       "source_file": "src\\components\\ui\\sonner.tsx",
       "source_location": "L1",
       "id": "src_components_ui_sonner_tsx",
-      "community": 99,
+      "community": 98,
       "norm_label": "sonner.tsx"
     },
     {
@@ -1529,7 +1520,7 @@
       "source_file": "src\\components\\ui\\spinner.tsx",
       "source_location": "L1",
       "id": "src_components_ui_spinner_tsx",
-      "community": 76,
+      "community": 74,
       "norm_label": "spinner.tsx"
     },
     {
@@ -1538,7 +1529,7 @@
       "source_file": "src\\components\\ui\\spinner.tsx",
       "source_location": "L6",
       "id": "spinner_spinner",
-      "community": 76,
+      "community": 74,
       "norm_label": "spinner()"
     },
     {
@@ -1547,7 +1538,7 @@
       "source_file": "src\\components\\ui\\switch.tsx",
       "source_location": "L1",
       "id": "src_components_ui_switch_tsx",
-      "community": 77,
+      "community": 75,
       "norm_label": "switch.tsx"
     },
     {
@@ -1556,7 +1547,7 @@
       "source_file": "src\\components\\ui\\switch.tsx",
       "source_location": "L8",
       "id": "switch_switch",
-      "community": 77,
+      "community": 75,
       "norm_label": "switch()"
     },
     {
@@ -1565,7 +1556,7 @@
       "source_file": "src\\components\\ui\\table.tsx",
       "source_location": "L1",
       "id": "src_components_ui_table_tsx",
-      "community": 19,
+      "community": 18,
       "norm_label": "table.tsx"
     },
     {
@@ -1574,7 +1565,7 @@
       "source_file": "src\\components\\ui\\table.tsx",
       "source_location": "L5",
       "id": "table_table",
-      "community": 19,
+      "community": 18,
       "norm_label": "table()"
     },
     {
@@ -1583,7 +1574,7 @@
       "source_file": "src\\components\\ui\\table.tsx",
       "source_location": "L20",
       "id": "table_tableheader",
-      "community": 19,
+      "community": 18,
       "norm_label": "tableheader()"
     },
     {
@@ -1592,7 +1583,7 @@
       "source_file": "src\\components\\ui\\table.tsx",
       "source_location": "L30",
       "id": "table_tablebody",
-      "community": 19,
+      "community": 18,
       "norm_label": "tablebody()"
     },
     {
@@ -1601,7 +1592,7 @@
       "source_file": "src\\components\\ui\\table.tsx",
       "source_location": "L44",
       "id": "table_cn",
-      "community": 19,
+      "community": 18,
       "norm_label": "cn()"
     },
     {
@@ -1610,7 +1601,7 @@
       "source_file": "src\\components\\ui\\tabs.tsx",
       "source_location": "L1",
       "id": "src_components_ui_tabs_tsx",
-      "community": 78,
+      "community": 76,
       "norm_label": "tabs.tsx"
     },
     {
@@ -1619,7 +1610,7 @@
       "source_file": "src\\components\\ui\\tabs.tsx",
       "source_location": "L9",
       "id": "tabs_tabs",
-      "community": 78,
+      "community": 76,
       "norm_label": "tabs()"
     },
     {
@@ -1628,7 +1619,7 @@
       "source_file": "src\\components\\ui\\textarea.tsx",
       "source_location": "L1",
       "id": "src_components_ui_textarea_tsx",
-      "community": 79,
+      "community": 77,
       "norm_label": "textarea.tsx"
     },
     {
@@ -1637,7 +1628,7 @@
       "source_file": "src\\components\\ui\\textarea.tsx",
       "source_location": "L9",
       "id": "textarea_cn",
-      "community": 79,
+      "community": 77,
       "norm_label": "cn()"
     },
     {
@@ -1646,7 +1637,7 @@
       "source_file": "src\\components\\ui\\toggle-group.tsx",
       "source_location": "L1",
       "id": "src_components_ui_toggle_group_tsx",
-      "community": 27,
+      "community": 26,
       "norm_label": "toggle-group.tsx"
     },
     {
@@ -1655,7 +1646,7 @@
       "source_file": "src\\components\\ui\\toggle-group.tsx",
       "source_location": "L22",
       "id": "toggle_group_togglegroup",
-      "community": 27,
+      "community": 26,
       "norm_label": "togglegroup()"
     },
     {
@@ -1664,7 +1655,7 @@
       "source_file": "src\\components\\ui\\toggle-group.tsx",
       "source_location": "L58",
       "id": "toggle_group_togglegroupitem",
-      "community": 27,
+      "community": 26,
       "norm_label": "togglegroupitem()"
     },
     {
@@ -1673,7 +1664,7 @@
       "source_file": "src\\components\\ui\\toggle-group.tsx",
       "source_location": "L74",
       "id": "toggle_group_cn",
-      "community": 27,
+      "community": 26,
       "norm_label": "cn()"
     },
     {
@@ -1682,7 +1673,7 @@
       "source_file": "src\\components\\ui\\toggle.tsx",
       "source_location": "L1",
       "id": "src_components_ui_toggle_tsx",
-      "community": 100,
+      "community": 99,
       "norm_label": "toggle.tsx"
     },
     {
@@ -1691,7 +1682,7 @@
       "source_file": "src\\components\\ui\\tooltip.tsx",
       "source_location": "L1",
       "id": "src_components_ui_tooltip_tsx",
-      "community": 38,
+      "community": 37,
       "norm_label": "tooltip.tsx"
     },
     {
@@ -1700,7 +1691,7 @@
       "source_file": "src\\components\\ui\\tooltip.tsx",
       "source_location": "L8",
       "id": "tooltip_tooltipprovider",
-      "community": 38,
+      "community": 37,
       "norm_label": "tooltipprovider()"
     },
     {
@@ -1709,7 +1700,7 @@
       "source_file": "src\\components\\ui\\tooltip.tsx",
       "source_location": "L33",
       "id": "tooltip_tooltipcontent",
-      "community": 38,
+      "community": 37,
       "norm_label": "tooltipcontent()"
     },
     {
@@ -1718,7 +1709,7 @@
       "source_file": "src\\hooks\\use-mobile.ts",
       "source_location": "L1",
       "id": "src_hooks_use_mobile_ts",
-      "community": 80,
+      "community": 78,
       "norm_label": "use-mobile.ts"
     },
     {
@@ -1727,7 +1718,7 @@
       "source_file": "src\\hooks\\use-mobile.ts",
       "source_location": "L5",
       "id": "use_mobile_useismobile",
-      "community": 80,
+      "community": 78,
       "norm_label": "useismobile()"
     },
     {
@@ -1736,7 +1727,7 @@
       "source_file": "src\\lib\\utils.ts",
       "source_location": "L1",
       "id": "src_lib_utils_ts",
-      "community": 81,
+      "community": 79,
       "norm_label": "utils.ts"
     },
     {
@@ -1745,7 +1736,7 @@
       "source_file": "src\\lib\\utils.ts",
       "source_location": "L4",
       "id": "utils_cn",
-      "community": 81,
+      "community": 79,
       "norm_label": "cn()"
     },
     {
@@ -1754,7 +1745,7 @@
       "source_file": "src-tauri\\build.rs",
       "source_location": "L1",
       "id": "src_tauri_build_rs",
-      "community": 82,
+      "community": 80,
       "norm_label": "build.rs"
     },
     {
@@ -1763,7 +1754,7 @@
       "source_file": "src-tauri\\build.rs",
       "source_location": "L1",
       "id": "build_main",
-      "community": 82,
+      "community": 80,
       "norm_label": "main()"
     },
     {
@@ -1772,7 +1763,7 @@
       "source_file": "src-tauri\\src\\lib.rs",
       "source_location": "L1",
       "id": "src_tauri_src_lib_rs",
-      "community": 7,
+      "community": 9,
       "norm_label": "lib.rs"
     },
     {
@@ -1781,7 +1772,7 @@
       "source_file": "src-tauri\\src\\lib.rs",
       "source_location": "L7",
       "id": "lib_run",
-      "community": 7,
+      "community": 9,
       "norm_label": "run()"
     },
     {
@@ -1790,7 +1781,7 @@
       "source_file": "src-tauri\\src\\main.rs",
       "source_location": "L1",
       "id": "src_tauri_src_main_rs",
-      "community": 7,
+      "community": 9,
       "norm_label": "main.rs"
     },
     {
@@ -1799,7 +1790,7 @@
       "source_file": "src-tauri\\src\\main.rs",
       "source_location": "L4",
       "id": "main_main",
-      "community": 7,
+      "community": 9,
       "norm_label": "main()"
     },
     {
@@ -1808,7 +1799,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_commands_rs",
-      "community": 0,
+      "community": 1,
       "norm_label": "commands.rs"
     },
     {
@@ -1817,7 +1808,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L24",
       "id": "commands_commandoptions",
-      "community": 0,
+      "community": 1,
       "norm_label": "commandoptions"
     },
     {
@@ -1826,7 +1817,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L30",
       "id": "commands_accountcookierequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "accountcookierequest"
     },
     {
@@ -1835,7 +1826,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L38",
       "id": "commands_qqupdaterequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "qqupdaterequest"
     },
     {
@@ -1844,7 +1835,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L48",
       "id": "commands_wechataccessrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wechataccessrequest"
     },
     {
@@ -1853,7 +1844,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L55",
       "id": "commands_wechatupdaterequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wechatupdaterequest"
     },
     {
@@ -1862,7 +1853,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L63",
       "id": "commands_qqsafebannedlistrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "qqsafebannedlistrequest"
     },
     {
@@ -1871,7 +1862,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L72",
       "id": "commands_accountboundaccess",
-      "community": 0,
+      "community": 1,
       "norm_label": "accountboundaccess"
     },
     {
@@ -1880,7 +1871,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L82",
       "id": "commands_delta_qq_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qq_get_login_qr()"
     },
     {
@@ -1889,7 +1880,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L93",
       "id": "commands_delta_qq_poll_login_status",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qq_poll_login_status()"
     },
     {
@@ -1898,7 +1889,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L102",
       "id": "commands_delta_qq_get_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qq_get_access_token()"
     },
     {
@@ -1907,7 +1898,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L130",
       "id": "commands_delta_qq_update_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qq_update_access_token()"
     },
     {
@@ -1916,7 +1907,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L159",
       "id": "commands_delta_wechat_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wechat_get_login_qr()"
     },
     {
@@ -1925,7 +1916,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L167",
       "id": "commands_delta_wechat_poll_status",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wechat_poll_status()"
     },
     {
@@ -1934,7 +1925,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L176",
       "id": "commands_delta_wechat_get_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wechat_get_access_token()"
     },
     {
@@ -1943,7 +1934,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L206",
       "id": "commands_delta_wechat_update_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wechat_update_access_token()"
     },
     {
@@ -1952,7 +1943,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L228",
       "id": "commands_delta_qqsafe_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qqsafe_get_login_qr()"
     },
     {
@@ -1961,7 +1952,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L236",
       "id": "commands_delta_qqsafe_poll_status",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qqsafe_poll_status()"
     },
     {
@@ -1970,7 +1961,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L245",
       "id": "commands_delta_qqsafe_get_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qqsafe_get_access_token()"
     },
     {
@@ -1979,7 +1970,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L273",
       "id": "commands_delta_qqsafe_get_banned_list",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_qqsafe_get_banned_list()"
     },
     {
@@ -1988,7 +1979,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L288",
       "id": "commands_delta_list_accounts",
-      "community": 0,
+      "community": 9,
       "norm_label": "delta_list_accounts()"
     },
     {
@@ -1997,7 +1988,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L295",
       "id": "commands_delta_delete_account",
-      "community": 0,
+      "community": 9,
       "norm_label": "delta_delete_account()"
     },
     {
@@ -2006,7 +1997,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L314",
       "id": "commands_http_options",
-      "community": 0,
+      "community": 1,
       "norm_label": "http_options()"
     },
     {
@@ -2015,7 +2006,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L322",
       "id": "commands_resolve_cookie",
-      "community": 0,
+      "community": 1,
       "norm_label": "resolve_cookie()"
     },
     {
@@ -2024,7 +2015,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L338",
       "id": "commands_persist_account",
-      "community": 0,
+      "community": 1,
       "norm_label": "persist_account()"
     },
     {
@@ -2033,7 +2024,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L365",
       "id": "commands_remember_pending",
-      "community": 0,
+      "community": 1,
       "norm_label": "remember_pending()"
     },
     {
@@ -2042,7 +2033,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L392",
       "id": "commands_wegamecoderequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wegamecoderequest"
     },
     {
@@ -2051,7 +2042,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L399",
       "id": "commands_wegameticketrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wegameticketrequest"
     },
     {
@@ -2060,7 +2051,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L406",
       "id": "commands_wegameqqpollrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wegameqqpollrequest"
     },
     {
@@ -2069,7 +2060,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L412",
       "id": "commands_delta_wegame_qq_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_qq_get_login_qr()"
     },
     {
@@ -2078,7 +2069,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L423",
       "id": "commands_delta_wegame_qq_poll_status",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_qq_poll_status()"
     },
     {
@@ -2087,7 +2078,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L460",
       "id": "commands_delta_wegame_qq_get_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_qq_get_access_token()"
     },
     {
@@ -2096,7 +2087,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L488",
       "id": "commands_delta_wegame_wechat_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_wechat_get_login_qr()"
     },
     {
@@ -2105,7 +2096,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L498",
       "id": "commands_wegamewechatpollrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "wegamewechatpollrequest"
     },
     {
@@ -2114,7 +2105,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L504",
       "id": "commands_delta_wegame_wechat_poll_status",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_wechat_poll_status()"
     },
     {
@@ -2123,7 +2114,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L514",
       "id": "commands_delta_wegame_wechat_get_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_wechat_get_access_token()"
     },
     {
@@ -2132,7 +2123,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L541",
       "id": "commands_delta_wegame_open_treasure_gift",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_open_treasure_gift()"
     },
     {
@@ -2141,7 +2132,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L550",
       "id": "commands_delta_wegame_draw_daily_card",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_wegame_draw_daily_card()"
     },
     {
@@ -2150,7 +2141,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L564",
       "id": "commands_gameauthrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gameauthrequest"
     },
     {
@@ -2159,7 +2150,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L571",
       "id": "commands_gameitemsrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gameitemsrequest"
     },
     {
@@ -2168,7 +2159,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L581",
       "id": "commands_gamepricerequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamepricerequest"
     },
     {
@@ -2177,7 +2168,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L590",
       "id": "commands_gamelogsrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamelogsrequest"
     },
     {
@@ -2186,7 +2177,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L599",
       "id": "commands_gamefirearmmodlistrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamefirearmmodlistrequest"
     },
     {
@@ -2195,7 +2186,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L607",
       "id": "commands_gamerecommendationrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamerecommendationrequest"
     },
     {
@@ -2204,7 +2195,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L614",
       "id": "commands_gamenoauthoptions",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamenoauthoptions"
     },
     {
@@ -2213,7 +2204,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L620",
       "id": "commands_gamegunsrequest",
-      "community": 0,
+      "community": 1,
       "norm_label": "gamegunsrequest"
     },
     {
@@ -2222,7 +2213,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L626",
       "id": "commands_delta_game_get_items",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_items()"
     },
     {
@@ -2231,7 +2222,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L637",
       "id": "commands_delta_game_get_config",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_config()"
     },
     {
@@ -2240,7 +2231,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L646",
       "id": "commands_delta_game_get_price",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_price()"
     },
     {
@@ -2249,7 +2240,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L655",
       "id": "commands_delta_game_get_firearm_mod_list",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_firearm_mod_list()"
     },
     {
@@ -2258,7 +2249,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L666",
       "id": "commands_delta_game_get_recommendation",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_recommendation()"
     },
     {
@@ -2267,7 +2258,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L675",
       "id": "commands_delta_game_get_record",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_record()"
     },
     {
@@ -2276,7 +2267,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L684",
       "id": "commands_delta_game_get_player",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_player()"
     },
     {
@@ -2285,7 +2276,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L693",
       "id": "commands_delta_game_get_assets",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_assets()"
     },
     {
@@ -2294,7 +2285,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L701",
       "id": "commands_delta_game_get_logs",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_logs()"
     },
     {
@@ -2303,7 +2294,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L712",
       "id": "commands_delta_game_get_recent",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_recent()"
     },
     {
@@ -2312,7 +2303,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L721",
       "id": "commands_delta_game_get_achievement",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_achievement()"
     },
     {
@@ -2321,7 +2312,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L730",
       "id": "commands_delta_game_get_password",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_password()"
     },
     {
@@ -2330,7 +2321,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L739",
       "id": "commands_delta_game_get_manufacture",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_manufacture()"
     },
     {
@@ -2339,7 +2330,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L748",
       "id": "commands_delta_game_get_guns",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_guns()"
     },
     {
@@ -2348,7 +2339,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L757",
       "id": "commands_delta_game_get_bind",
-      "community": 0,
+      "community": 1,
       "norm_label": "delta_game_get_bind()"
     },
     {
@@ -2357,7 +2348,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\commands.rs",
       "source_location": "L772",
       "id": "commands_deserializes_game_guns_request_from_gun_id",
-      "community": 0,
+      "community": 1,
       "norm_label": "deserializes_game_guns_request_from_gun_id()"
     },
     {
@@ -2366,7 +2357,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\constants.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_constants_rs",
-      "community": 101,
+      "community": 100,
       "norm_label": "constants.rs"
     },
     {
@@ -2375,7 +2366,7 @@
       "source_file": "src-tauri\\src\\delta\\error.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_error_rs",
-      "community": 1,
+      "community": 5,
       "norm_label": "error.rs"
     },
     {
@@ -2384,7 +2375,7 @@
       "source_file": "src-tauri\\src\\delta\\error.rs",
       "source_location": "L7",
       "id": "error_deltaerror",
-      "community": 1,
+      "community": 5,
       "norm_label": "deltaerror"
     },
     {
@@ -2393,7 +2384,7 @@
       "source_file": "src-tauri\\src\\delta\\error.rs",
       "source_location": "L21",
       "id": "error_deltaerror_serialize",
-      "community": 1,
+      "community": 5,
       "norm_label": ".serialize()"
     },
     {
@@ -2402,7 +2393,7 @@
       "source_file": "src-tauri\\src\\delta\\error.rs",
       "source_location": "L30",
       "id": "error_deltaerror_from",
-      "community": 1,
+      "community": 5,
       "norm_label": ".from()"
     },
     {
@@ -2411,7 +2402,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\mod.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_mod_rs",
-      "community": 2,
+      "community": 10,
       "norm_label": "mod.rs"
     },
     {
@@ -2420,7 +2411,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L193",
       "id": "mod_initialize",
-      "community": 2,
+      "community": 10,
       "norm_label": "initialize()"
     },
     {
@@ -2429,7 +2420,7 @@
       "source_file": "src-tauri\\src\\delta\\response.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_response_rs",
-      "community": 83,
+      "community": 81,
       "norm_label": "response.rs"
     },
     {
@@ -2438,7 +2429,7 @@
       "source_file": "src-tauri\\src\\delta\\response.rs",
       "source_location": "L5",
       "id": "response_apiresponse",
-      "community": 83,
+      "community": 81,
       "norm_label": "apiresponse"
     },
     {
@@ -2447,7 +2438,7 @@
       "source_file": "src-tauri\\src\\delta\\response.rs",
       "source_location": "L14",
       "id": "response_apiresponse_t",
-      "community": 3,
+      "community": 2,
       "norm_label": "apiresponse<t>"
     },
     {
@@ -2465,7 +2456,7 @@
       "source_file": "src-tauri\\src\\delta\\response.rs",
       "source_location": "L26",
       "id": "response_apiresponse_t_of",
-      "community": 3,
+      "community": 2,
       "norm_label": ".of()"
     },
     {
@@ -2474,7 +2465,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\state.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_state_rs",
-      "community": 7,
+      "community": 0,
       "norm_label": "state.rs"
     },
     {
@@ -2483,7 +2474,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\state.rs",
       "source_location": "L13",
       "id": "state_pendingsession",
-      "community": 7,
+      "community": 0,
       "norm_label": "pendingsession"
     },
     {
@@ -2492,7 +2483,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\state.rs",
       "source_location": "L20",
       "id": "state_deltastate",
-      "community": 7,
+      "community": 0,
       "norm_label": "deltastate"
     },
     {
@@ -2501,7 +2492,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\state.rs",
       "source_location": "L27",
       "id": "state_deltastate_initialize",
-      "community": 7,
+      "community": 0,
       "norm_label": ".initialize()"
     },
     {
@@ -2510,7 +2501,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\headers.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_client_headers_rs",
-      "community": 9,
+      "community": 1,
       "norm_label": "headers.rs"
     },
     {
@@ -2519,7 +2510,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\headers.rs",
       "source_location": "L5",
       "id": "headers_browser_headers",
-      "community": 9,
+      "community": 1,
       "norm_label": "browser_headers()"
     },
     {
@@ -2528,7 +2519,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\http.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_client_http_rs",
-      "community": 9,
+      "community": 0,
       "norm_label": "http.rs"
     },
     {
@@ -2537,7 +2528,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\http.rs",
       "source_location": "L8",
       "id": "http_httpoptions",
-      "community": 9,
+      "community": 0,
       "norm_label": "httpoptions"
     },
     {
@@ -2546,7 +2537,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\http.rs",
       "source_location": "L12",
       "id": "http_build_client",
-      "community": 9,
+      "community": 0,
       "norm_label": "build_client()"
     },
     {
@@ -2555,7 +2546,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_client_ide_rs",
-      "community": 84,
+      "community": 82,
       "norm_label": "ide.rs"
     },
     {
@@ -2564,7 +2555,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L12",
       "id": "ide_idecall",
-      "community": 84,
+      "community": 82,
       "norm_label": "idecall"
     },
     {
@@ -2573,7 +2564,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L20",
       "id": "ide_idecall_a",
-      "community": 3,
+      "community": 2,
       "norm_label": "idecall<'a>"
     },
     {
@@ -2582,7 +2573,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L21",
       "id": "ide_idecall_a_new",
-      "community": 3,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -2591,7 +2582,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L25",
       "id": "ide_idecall_a_with_method",
-      "community": 3,
+      "community": 2,
       "norm_label": ".with_method()"
     },
     {
@@ -2600,7 +2591,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L30",
       "id": "ide_idecall_a_with_source",
-      "community": 3,
+      "community": 2,
       "norm_label": ".with_source()"
     },
     {
@@ -2609,7 +2600,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\client\\ide.rs",
       "source_location": "L35",
       "id": "ide_idecall_a_execute_with_url",
-      "community": 3,
+      "community": 2,
       "norm_label": ".execute_with_url()"
     },
     {
@@ -2618,7 +2609,7 @@
       "source_file": "src-tauri\\src\\delta\\client\\mod.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_client_mod_rs",
-      "community": 102,
+      "community": 101,
       "norm_label": "mod.rs"
     },
     {
@@ -2627,7 +2618,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_services_game_rs",
-      "community": 3,
+      "community": 2,
       "norm_label": "game.rs"
     },
     {
@@ -2636,7 +2627,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L25",
       "id": "game_gameauth",
-      "community": 3,
+      "community": 2,
       "norm_label": "gameauth"
     },
     {
@@ -2645,7 +2636,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L32",
       "id": "game_default_acctype",
-      "community": 3,
+      "community": 2,
       "norm_label": "default_acctype()"
     },
     {
@@ -2654,7 +2645,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L37",
       "id": "game_gameauth_acctype_api",
-      "community": 3,
+      "community": 2,
       "norm_label": ".acctype_api()"
     },
     {
@@ -2663,7 +2654,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L43",
       "id": "game_gameservice",
-      "community": 3,
+      "community": 2,
       "norm_label": "gameservice"
     },
     {
@@ -2672,7 +2663,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L52",
       "id": "game_percent_decode",
-      "community": 3,
+      "community": 2,
       "norm_label": "percent_decode()"
     },
     {
@@ -2681,7 +2672,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L73",
       "id": "game_gameservice_new",
-      "community": 3,
+      "community": 2,
       "norm_label": ".new()"
     },
     {
@@ -2690,7 +2681,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L86",
       "id": "game_gameservice_ide",
-      "community": 3,
+      "community": 2,
       "norm_label": ".ide()"
     },
     {
@@ -2699,7 +2690,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L92",
       "id": "game_gameservice_get_items",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_items()"
     },
     {
@@ -2708,7 +2699,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L106",
       "id": "game_gameservice_get_config",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_config()"
     },
     {
@@ -2717,7 +2708,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L116",
       "id": "game_gameservice_get_firearm_mod_list",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_firearm_mod_list()"
     },
     {
@@ -2726,7 +2717,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L129",
       "id": "game_gameservice_get_recommendation",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_recommendation()"
     },
     {
@@ -2735,7 +2726,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L141",
       "id": "game_gameservice_get_price",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_price()"
     },
     {
@@ -2744,7 +2735,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L170",
       "id": "game_gameservice_get_record",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_record()"
     },
     {
@@ -2753,7 +2744,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L193",
       "id": "game_gameservice_get_player",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_player()"
     },
     {
@@ -2762,7 +2753,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L226",
       "id": "game_gameservice_get_assets",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_assets()"
     },
     {
@@ -2771,7 +2762,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L246",
       "id": "game_gameservice_get_logs",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_logs()"
     },
     {
@@ -2780,7 +2771,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L266",
       "id": "game_gameservice_get_recent",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_recent()"
     },
     {
@@ -2789,7 +2780,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L277",
       "id": "game_gameservice_get_achievement",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_achievement()"
     },
     {
@@ -2798,7 +2789,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L290",
       "id": "game_gameservice_get_password",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_password()"
     },
     {
@@ -2807,7 +2798,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L312",
       "id": "game_gameservice_get_manufacture",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_manufacture()"
     },
     {
@@ -2816,7 +2807,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L322",
       "id": "game_gameservice_get_guns",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_guns()"
     },
     {
@@ -2825,7 +2816,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L341",
       "id": "game_gameservice_get_bind",
-      "community": 3,
+      "community": 2,
       "norm_label": ".get_bind()"
     },
     {
@@ -2834,7 +2825,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L414",
       "id": "game_make_service",
-      "community": 3,
+      "community": 2,
       "norm_label": "make_service()"
     },
     {
@@ -2843,7 +2834,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L428",
       "id": "game_sample_auth",
-      "community": 3,
+      "community": 2,
       "norm_label": "sample_auth()"
     },
     {
@@ -2852,7 +2843,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L436",
       "id": "game_ide_form",
-      "community": 3,
+      "community": 2,
       "norm_label": "ide_form()"
     },
     {
@@ -2861,7 +2852,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L457",
       "id": "game_get_price_fetches_latest_and_recent_prices",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_price_fetches_latest_and_recent_prices()"
     },
     {
@@ -2870,7 +2861,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L530",
       "id": "game_get_assets_maps_special_restriction_error",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_assets_maps_special_restriction_error()"
     },
     {
@@ -2879,7 +2870,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L559",
       "id": "game_get_player_uses_wallet_endpoint_and_decodes_name",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_player_uses_wallet_endpoint_and_decodes_name()"
     },
     {
@@ -2888,7 +2879,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L618",
       "id": "game_get_logs_type_three_returns_total_money_only",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_logs_type_three_returns_total_money_only()"
     },
     {
@@ -2897,7 +2888,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L651",
       "id": "game_get_recent_uses_documented_chart_and_method",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_recent_uses_documented_chart_and_method()"
     },
     {
@@ -2906,7 +2897,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L683",
       "id": "game_get_achievement_uses_documented_payload",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_achievement_uses_documented_payload()"
     },
     {
@@ -2915,7 +2906,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L717",
       "id": "game_get_password_folds_secret_list_into_map",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_password_folds_secret_list_into_map()"
     },
     {
@@ -2924,7 +2915,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L754",
       "id": "game_get_manufacture_uses_documented_chart_and_source",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_manufacture_uses_documented_chart_and_source()"
     },
     {
@@ -2933,7 +2924,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L785",
       "id": "game_get_guns_is_no_auth_and_enriches_details",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_guns_is_no_auth_and_enriches_details()"
     },
     {
@@ -2942,7 +2933,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\game.rs",
       "source_location": "L839",
       "id": "game_get_recommendation_uses_documented_place_payload",
-      "community": 3,
+      "community": 2,
       "norm_label": "get_recommendation_uses_documented_place_payload()"
     },
     {
@@ -2951,7 +2942,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\services\\mod.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_services_mod_rs",
-      "community": 103,
+      "community": 102,
       "norm_label": "mod.rs"
     },
     {
@@ -2960,7 +2951,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_services_qq_auth_rs",
-      "community": 10,
+      "community": 0,
       "norm_label": "qq_auth.rs"
     },
     {
@@ -2969,7 +2960,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L23",
       "id": "qq_auth_qqloginqr",
-      "community": 10,
+      "community": 0,
       "norm_label": "qqloginqr"
     },
     {
@@ -2978,7 +2969,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L33",
       "id": "qq_auth_qqstatusrequest",
-      "community": 10,
+      "community": 0,
       "norm_label": "qqstatusrequest"
     },
     {
@@ -2987,7 +2978,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L42",
       "id": "qq_auth_qqaccesstoken",
-      "community": 10,
+      "community": 0,
       "norm_label": "qqaccesstoken"
     },
     {
@@ -2996,7 +2987,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L50",
       "id": "qq_auth_updatetokenonlyrequest",
-      "community": 10,
+      "community": 0,
       "norm_label": "updatetokenonlyrequest"
     },
     {
@@ -3005,7 +2996,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L56",
       "id": "qq_auth_qqauthservice",
-      "community": 1,
+      "community": 0,
       "norm_label": "qqauthservice"
     },
     {
@@ -3014,7 +3005,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L66",
       "id": "qq_auth_qqauthservice_new",
-      "community": 1,
+      "community": 0,
       "norm_label": ".new()"
     },
     {
@@ -3023,7 +3014,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L76",
       "id": "qq_auth_qqauthservice_with_config",
-      "community": 1,
+      "community": 0,
       "norm_label": ".with_config()"
     },
     {
@@ -3032,7 +3023,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L94",
       "id": "qq_auth_qqauthservice_get_login_qr",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_login_qr()"
     },
     {
@@ -3041,7 +3032,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L128",
       "id": "qq_auth_qqauthservice_poll_login_status",
-      "community": 1,
+      "community": 0,
       "norm_label": ".poll_login_status()"
     },
     {
@@ -3050,7 +3041,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L153",
       "id": "qq_auth_qqauthservice_get_access_token",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_access_token()"
     },
     {
@@ -3059,7 +3050,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L198",
       "id": "qq_auth_qqauthservice_update_access_token",
-      "community": 1,
+      "community": 0,
       "norm_label": ".update_access_token()"
     },
     {
@@ -3068,7 +3059,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L226",
       "id": "qq_auth_qqauthservice_map_poll_body",
-      "community": 10,
+      "community": 0,
       "norm_label": ".map_poll_body()"
     },
     {
@@ -3077,7 +3068,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L253",
       "id": "qq_auth_maps_waiting_status",
-      "community": 10,
+      "community": 0,
       "norm_label": "maps_waiting_status()"
     },
     {
@@ -3086,7 +3077,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_auth.rs",
       "source_location": "L263",
       "id": "qq_auth_maps_success_status",
-      "community": 10,
+      "community": 0,
       "norm_label": "maps_success_status()"
     },
     {
@@ -3095,7 +3086,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_services_qq_safe_rs",
-      "community": 1,
+      "community": 6,
       "norm_label": "qq_safe.rs"
     },
     {
@@ -3104,7 +3095,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L14",
       "id": "qq_safe_qqsafeaccess",
-      "community": 1,
+      "community": 6,
       "norm_label": "qqsafeaccess"
     },
     {
@@ -3113,7 +3104,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L21",
       "id": "qq_safe_qqsafeservice",
-      "community": 1,
+      "community": 0,
       "norm_label": "qqsafeservice"
     },
     {
@@ -3122,7 +3113,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L26",
       "id": "qq_safe_qqsafeservice_new",
-      "community": 1,
+      "community": 0,
       "norm_label": ".new()"
     },
     {
@@ -3131,7 +3122,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L38",
       "id": "qq_safe_qqsafeservice_get_login_qr",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_login_qr()"
     },
     {
@@ -3140,7 +3131,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L42",
       "id": "qq_safe_qqsafeservice_poll_status",
-      "community": 1,
+      "community": 0,
       "norm_label": ".poll_status()"
     },
     {
@@ -3149,7 +3140,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L49",
       "id": "qq_safe_qqsafeservice_get_access_token",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_access_token()"
     },
     {
@@ -3167,7 +3158,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\qq_safe.rs",
       "source_location": "L120",
       "id": "qq_safe_decodes_qqsafe_token_payload",
-      "community": 1,
+      "community": 6,
       "norm_label": "decodes_qqsafe_token_payload()"
     },
     {
@@ -3176,7 +3167,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_services_wechat_auth_rs",
-      "community": 9,
+      "community": 6,
       "norm_label": "wechat_auth.rs"
     },
     {
@@ -3185,7 +3176,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L15",
       "id": "wechat_auth_wechatqr",
-      "community": 9,
+      "community": 6,
       "norm_label": "wechatqr"
     },
     {
@@ -3194,7 +3185,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L22",
       "id": "wechat_auth_wechataccesstoken",
-      "community": 9,
+      "community": 6,
       "norm_label": "wechataccesstoken"
     },
     {
@@ -3203,7 +3194,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L31",
       "id": "wechat_auth_wechatauthservice",
-      "community": 9,
+      "community": 6,
       "norm_label": "wechatauthservice"
     },
     {
@@ -3212,7 +3203,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L36",
       "id": "wechat_auth_wechatauthservice_new",
-      "community": 9,
+      "community": 0,
       "norm_label": ".new()"
     },
     {
@@ -3221,7 +3212,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L41",
       "id": "wechat_auth_wechatauthservice_get_login_qr",
-      "community": 0,
+      "community": 1,
       "norm_label": ".get_login_qr()"
     },
     {
@@ -3230,7 +3221,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L64",
       "id": "wechat_auth_wechatauthservice_poll_status",
-      "community": 9,
+      "community": 6,
       "norm_label": ".poll_status()"
     },
     {
@@ -3239,7 +3230,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L76",
       "id": "wechat_auth_wechatauthservice_map_status_body",
-      "community": 9,
+      "community": 6,
       "norm_label": ".map_status_body()"
     },
     {
@@ -3257,7 +3248,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L114",
       "id": "wechat_auth_wechatauthservice_update_access_token",
-      "community": 0,
+      "community": 1,
       "norm_label": ".update_access_token()"
     },
     {
@@ -3266,7 +3257,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L138",
       "id": "wechat_auth_maps_wechat_success_status",
-      "community": 9,
+      "community": 6,
       "norm_label": "maps_wechat_success_status()"
     },
     {
@@ -3275,7 +3266,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wechat_auth.rs",
       "source_location": "L145",
       "id": "wechat_auth_maps_wechat_waiting_status",
-      "community": 9,
+      "community": 6,
       "norm_label": "maps_wechat_waiting_status()"
     },
     {
@@ -3284,7 +3275,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_services_wegame_auth_rs",
-      "community": 1,
+      "community": 0,
       "norm_label": "wegame_auth.rs"
     },
     {
@@ -3293,7 +3284,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L28",
       "id": "wegame_auth_wegameticket",
-      "community": 1,
+      "community": 0,
       "norm_label": "wegameticket"
     },
     {
@@ -3302,7 +3293,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L35",
       "id": "wegame_auth_wegameqqloginqr",
-      "community": 1,
+      "community": 0,
       "norm_label": "wegameqqloginqr"
     },
     {
@@ -3311,7 +3302,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L45",
       "id": "wegame_auth_wegameqqstatusrequest",
-      "community": 1,
+      "community": 0,
       "norm_label": "wegameqqstatusrequest"
     },
     {
@@ -3320,7 +3311,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L53",
       "id": "wegame_auth_wegameauthservice",
-      "community": 1,
+      "community": 0,
       "norm_label": "wegameauthservice"
     },
     {
@@ -3329,7 +3320,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L59",
       "id": "wegame_auth_wegameauthservice_new",
-      "community": 9,
+      "community": 0,
       "norm_label": ".new()"
     },
     {
@@ -3338,7 +3329,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L66",
       "id": "wegame_auth_wegameauthservice_get_qq_login_qr",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_qq_login_qr()"
     },
     {
@@ -3347,7 +3338,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L100",
       "id": "wegame_auth_wegameauthservice_poll_qq_login_status",
-      "community": 1,
+      "community": 0,
       "norm_label": ".poll_qq_login_status()"
     },
     {
@@ -3356,7 +3347,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L145",
       "id": "wegame_auth_wegameauthservice_get_qq_access_token",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_qq_access_token()"
     },
     {
@@ -3374,7 +3365,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L199",
       "id": "wegame_auth_wegameauthservice_poll_wechat_status",
-      "community": 9,
+      "community": 0,
       "norm_label": ".poll_wechat_status()"
     },
     {
@@ -3383,7 +3374,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L208",
       "id": "wegame_auth_wegameauthservice_get_wechat_access_token",
-      "community": 1,
+      "community": 0,
       "norm_label": ".get_wechat_access_token()"
     },
     {
@@ -3419,7 +3410,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L316",
       "id": "wegame_auth_wegameauthservice_map_qq_poll_body",
-      "community": 1,
+      "community": 0,
       "norm_label": ".map_qq_poll_body()"
     },
     {
@@ -3428,7 +3419,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L358",
       "id": "wegame_auth_wegameauthservice_parse_ticket",
-      "community": 1,
+      "community": 0,
       "norm_label": ".parse_ticket()"
     },
     {
@@ -3437,7 +3428,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L373",
       "id": "wegame_auth_maps_wegame_qq_waiting_status",
-      "community": 1,
+      "community": 0,
       "norm_label": "maps_wegame_qq_waiting_status()"
     },
     {
@@ -3446,7 +3437,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L386",
       "id": "wegame_auth_maps_wegame_qq_success_status",
-      "community": 1,
+      "community": 0,
       "norm_label": "maps_wegame_qq_success_status()"
     },
     {
@@ -3455,7 +3446,7 @@
       "source_file": "src-tauri\\src\\delta\\services\\wegame_auth.rs",
       "source_location": "L406",
       "id": "wegame_auth_parses_wegame_ticket_payload",
-      "community": 1,
+      "community": 0,
       "norm_label": "parses_wegame_ticket_payload()"
     },
     {
@@ -3464,7 +3455,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\mod.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_storage_mod_rs",
-      "community": 104,
+      "community": 103,
       "norm_label": "mod.rs"
     },
     {
@@ -3473,7 +3464,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_storage_repo_rs",
-      "community": 7,
+      "community": 9,
       "norm_label": "repo.rs"
     },
     {
@@ -3482,7 +3473,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L10",
       "id": "repo_accountkind",
-      "community": 1,
+      "community": 0,
       "norm_label": "accountkind"
     },
     {
@@ -3491,7 +3482,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L19",
       "id": "repo_accountkind_as_str",
-      "community": 1,
+      "community": 0,
       "norm_label": ".as_str()"
     },
     {
@@ -3500,7 +3491,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L29",
       "id": "repo_accountkind_from_str",
-      "community": 1,
+      "community": 0,
       "norm_label": ".from_str()"
     },
     {
@@ -3509,7 +3500,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L43",
       "id": "repo_deltaaccountrecord",
-      "community": 7,
+      "community": 9,
       "norm_label": "deltaaccountrecord"
     },
     {
@@ -3518,7 +3509,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L57",
       "id": "repo_deltaaccountupsert",
-      "community": 7,
+      "community": 9,
       "norm_label": "deltaaccountupsert"
     },
     {
@@ -3527,7 +3518,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L69",
       "id": "repo_deltarepo",
-      "community": 7,
+      "community": 9,
       "norm_label": "deltarepo"
     },
     {
@@ -3536,7 +3527,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L74",
       "id": "repo_deltarepo_new",
-      "community": 7,
+      "community": 9,
       "norm_label": ".new()"
     },
     {
@@ -3545,7 +3536,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L83",
       "id": "repo_deltarepo_init",
-      "community": 7,
+      "community": 9,
       "norm_label": ".init()"
     },
     {
@@ -3554,7 +3545,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L108",
       "id": "repo_deltarepo_upsert_account",
-      "community": 7,
+      "community": 9,
       "norm_label": ".upsert_account()"
     },
     {
@@ -3563,7 +3554,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L151",
       "id": "repo_deltarepo_get_account",
-      "community": 7,
+      "community": 9,
       "norm_label": ".get_account()"
     },
     {
@@ -3572,7 +3563,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L168",
       "id": "repo_deltarepo_list_accounts",
-      "community": 7,
+      "community": 9,
       "norm_label": ".list_accounts()"
     },
     {
@@ -3581,7 +3572,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L184",
       "id": "repo_deltarepo_delete_account",
-      "community": 0,
+      "community": 9,
       "norm_label": ".delete_account()"
     },
     {
@@ -3590,7 +3581,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L193",
       "id": "repo_map_row",
-      "community": 7,
+      "community": 0,
       "norm_label": "map_row()"
     },
     {
@@ -3599,7 +3590,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L217",
       "id": "repo_upserts_and_lists_accounts",
-      "community": 7,
+      "community": 9,
       "norm_label": "upserts_and_lists_accounts()"
     },
     {
@@ -3608,7 +3599,7 @@
       "source_file": "src-tauri\\src\\delta\\storage\\repo.rs",
       "source_location": "L253",
       "id": "repo_deletes_accounts",
-      "community": 7,
+      "community": 9,
       "norm_label": "deletes_accounts()"
     },
     {
@@ -3617,7 +3608,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_utils_cookies_rs",
-      "community": 1,
+      "community": 0,
       "norm_label": "cookies.rs"
     },
     {
@@ -3626,7 +3617,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L8",
       "id": "cookies_restore_cookie_json",
-      "community": 1,
+      "community": 0,
       "norm_label": "restore_cookie_json()"
     },
     {
@@ -3635,7 +3626,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L17",
       "id": "cookies_dump_cookie_json",
-      "community": 1,
+      "community": 0,
       "norm_label": "dump_cookie_json()"
     },
     {
@@ -3644,7 +3635,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L37",
       "id": "cookies_insert_cookie",
-      "community": 1,
+      "community": 0,
       "norm_label": "insert_cookie()"
     },
     {
@@ -3653,7 +3644,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L43",
       "id": "cookies_must_cookie",
-      "community": 1,
+      "community": 0,
       "norm_label": "must_cookie()"
     },
     {
@@ -3662,7 +3653,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L70",
       "id": "cookies_restores_and_dumps_cookie_json",
-      "community": 1,
+      "community": 0,
       "norm_label": "restores_and_dumps_cookie_json()"
     },
     {
@@ -3671,7 +3662,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L89",
       "id": "cookies_inserts_cookie_into_jar",
-      "community": 1,
+      "community": 0,
       "norm_label": "inserts_cookie_into_jar()"
     },
     {
@@ -3680,7 +3671,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\cookies.rs",
       "source_location": "L99",
       "id": "cookies_finds_named_cookie_even_when_not_first_in_header",
-      "community": 1,
+      "community": 0,
       "norm_label": "finds_named_cookie_even_when_not_first_in_header()"
     },
     {
@@ -3689,7 +3680,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\encoding.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_utils_encoding_rs",
-      "community": 5,
+      "community": 6,
       "norm_label": "encoding.rs"
     },
     {
@@ -3698,7 +3689,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\encoding.rs",
       "source_location": "L3",
       "id": "encoding_decode_gbk",
-      "community": 5,
+      "community": 6,
       "norm_label": "decode_gbk()"
     },
     {
@@ -3707,7 +3698,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\encoding.rs",
       "source_location": "L13",
       "id": "encoding_decodes_gbk_payload",
-      "community": 5,
+      "community": 6,
       "norm_label": "decodes_gbk_payload()"
     },
     {
@@ -3833,7 +3824,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\hashes.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_utils_hashes_rs",
-      "community": 1,
+      "community": 5,
       "norm_label": "hashes.rs"
     },
     {
@@ -3842,7 +3833,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\hashes.rs",
       "source_location": "L1",
       "id": "hashes_get_qr_token",
-      "community": 1,
+      "community": 5,
       "norm_label": "get_qr_token()"
     },
     {
@@ -3851,7 +3842,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\hashes.rs",
       "source_location": "L10",
       "id": "hashes_get_gtk",
-      "community": 1,
+      "community": 5,
       "norm_label": "get_gtk()"
     },
     {
@@ -3860,7 +3851,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\hashes.rs",
       "source_location": "L24",
       "id": "hashes_calculates_qr_token",
-      "community": 1,
+      "community": 5,
       "norm_label": "calculates_qr_token()"
     },
     {
@@ -3869,7 +3860,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\hashes.rs",
       "source_location": "L29",
       "id": "hashes_calculates_gtk",
-      "community": 1,
+      "community": 5,
       "norm_label": "calculates_gtk()"
     },
     {
@@ -3878,7 +3869,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_utils_html_rs",
-      "community": 1,
+      "community": 6,
       "norm_label": "html.rs"
     },
     {
@@ -3887,7 +3878,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L7",
       "id": "html_extract_query_param",
-      "community": 1,
+      "community": 0,
       "norm_label": "extract_query_param()"
     },
     {
@@ -3896,7 +3887,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L15",
       "id": "html_extract_wx_qrcode_uuid",
-      "community": 0,
+      "community": 6,
       "norm_label": "extract_wx_qrcode_uuid()"
     },
     {
@@ -3905,7 +3896,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L24",
       "id": "html_extract_wx_errcode",
-      "community": 1,
+      "community": 6,
       "norm_label": "extract_wx_errcode()"
     },
     {
@@ -3914,7 +3905,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L35",
       "id": "html_extract_wx_code",
-      "community": 0,
+      "community": 6,
       "norm_label": "extract_wx_code()"
     },
     {
@@ -3923,7 +3914,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L41",
       "id": "html_decode_jwt_middle",
-      "community": 1,
+      "community": 6,
       "norm_label": "decode_jwt_middle()"
     },
     {
@@ -3932,7 +3923,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L60",
       "id": "html_extracts_query_param",
-      "community": 1,
+      "community": 6,
       "norm_label": "extracts_query_param()"
     },
     {
@@ -3941,7 +3932,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L67",
       "id": "html_extracts_wechat_uuid",
-      "community": 1,
+      "community": 6,
       "norm_label": "extracts_wechat_uuid()"
     },
     {
@@ -3950,7 +3941,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L73",
       "id": "html_extracts_wechat_status_fields",
-      "community": 1,
+      "community": 6,
       "norm_label": "extracts_wechat_status_fields()"
     },
     {
@@ -3959,7 +3950,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\html.rs",
       "source_location": "L80",
       "id": "html_decodes_jwt_middle_payload",
-      "community": 1,
+      "community": 6,
       "norm_label": "decodes_jwt_middle_payload()"
     },
     {
@@ -3968,7 +3959,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\jsonp.rs",
       "source_location": "L1",
       "id": "src_tauri_src_delta_utils_jsonp_rs",
-      "community": 10,
+      "community": 0,
       "norm_label": "jsonp.rs"
     },
     {
@@ -3977,7 +3968,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\jsonp.rs",
       "source_location": "L3",
       "id": "jsonp_extract_jsonp_args",
-      "community": 10,
+      "community": 0,
       "norm_label": "extract_jsonp_args()"
     },
     {
@@ -3986,7 +3977,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\jsonp.rs",
       "source_location": "L67",
       "id": "jsonp_trim_arg",
-      "community": 10,
+      "community": 0,
       "norm_label": "trim_arg()"
     },
     {
@@ -3995,7 +3986,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\jsonp.rs",
       "source_location": "L85",
       "id": "jsonp_parses_quoted_and_json_arguments",
-      "community": 10,
+      "community": 0,
       "norm_label": "parses_quoted_and_json_arguments()"
     },
     {
@@ -4004,7 +3995,7 @@
       "source_file": "src-tauri\\src\\delta\\utils\\jsonp.rs",
       "source_location": "L97",
       "id": "jsonp_parses_ptui_callback",
-      "community": 10,
+      "community": 0,
       "norm_label": "parses_ptui_callback()"
     },
     {
@@ -4013,7 +4004,7 @@
       "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src-tauri\\src\\delta\\utils\\mod.rs",
       "source_location": "L1",
       "id": "d_code_ai_sjz_delta_auto_tools_src_tauri_src_delta_utils_mod_rs",
-      "community": 105,
+      "community": 104,
       "norm_label": "mod.rs"
     },
     {
@@ -4049,7 +4040,7 @@
       "source_file": "src-tauri\\src\\morse\\decoder.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_decoder_rs",
-      "community": 5,
+      "community": 6,
       "norm_label": "decoder.rs"
     },
     {
@@ -4058,7 +4049,7 @@
       "source_file": "src-tauri\\src\\morse\\decoder.rs",
       "source_location": "L14",
       "id": "decoder_decode",
-      "community": 5,
+      "community": 6,
       "norm_label": "decode()"
     },
     {
@@ -4067,7 +4058,7 @@
       "source_file": "src-tauri\\src\\morse\\decoder.rs",
       "source_location": "L27",
       "id": "decoder_decodes_single_digit_patterns",
-      "community": 5,
+      "community": 6,
       "norm_label": "decodes_single_digit_patterns()"
     },
     {
@@ -4076,7 +4067,7 @@
       "source_file": "src-tauri\\src\\morse\\decoder.rs",
       "source_location": "L34",
       "id": "decoder_rejects_unknown_pattern",
-      "community": 5,
+      "community": 6,
       "norm_label": "rejects_unknown_pattern()"
     },
     {
@@ -4103,7 +4094,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_input_listener_rs",
-      "community": 2,
+      "community": 3,
       "norm_label": "input_listener.rs"
     },
     {
@@ -4112,7 +4103,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L21",
       "id": "input_listener_passivehotkeylistener",
-      "community": 2,
+      "community": 3,
       "norm_label": "passivehotkeylistener"
     },
     {
@@ -4121,7 +4112,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L31",
       "id": "input_listener_passivehotkeylistener_start",
-      "community": 2,
+      "community": 3,
       "norm_label": ".start()"
     },
     {
@@ -4130,7 +4121,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L63",
       "id": "input_listener_passivehotkeylistener_set_paused",
-      "community": 2,
+      "community": 3,
       "norm_label": ".set_paused()"
     },
     {
@@ -4139,7 +4130,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L67",
       "id": "input_listener_passivehotkeylistener_stop",
-      "community": 2,
+      "community": 3,
       "norm_label": ".stop()"
     },
     {
@@ -4148,7 +4139,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L78",
       "id": "input_listener_passivehotkeylistener_drop",
-      "community": 2,
+      "community": 3,
       "norm_label": ".drop()"
     },
     {
@@ -4157,7 +4148,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L84",
       "id": "input_listener_modifierkey",
-      "community": 2,
+      "community": 3,
       "norm_label": "modifierkey"
     },
     {
@@ -4166,7 +4157,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L92",
       "id": "input_listener_primarykey",
-      "community": 2,
+      "community": 3,
       "norm_label": "primarykey"
     },
     {
@@ -4175,7 +4166,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L100",
       "id": "input_listener_namedkey",
-      "community": 2,
+      "community": 3,
       "norm_label": "namedkey"
     },
     {
@@ -4184,7 +4175,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L119",
       "id": "input_listener_hotkeybinding",
-      "community": 2,
+      "community": 3,
       "norm_label": "hotkeybinding"
     },
     {
@@ -4193,7 +4184,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L125",
       "id": "input_listener_hotkeybinding_parse",
-      "community": 1,
+      "community": 0,
       "norm_label": ".parse()"
     },
     {
@@ -4202,7 +4193,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L165",
       "id": "input_listener_parse_modifier",
-      "community": 2,
+      "community": 3,
       "norm_label": "parse_modifier()"
     },
     {
@@ -4211,7 +4202,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L189",
       "id": "input_listener_parse_primary",
-      "community": 2,
+      "community": 0,
       "norm_label": "parse_primary()"
     },
     {
@@ -4220,7 +4211,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L248",
       "id": "input_listener_run_listener",
-      "community": 2,
+      "community": 3,
       "norm_label": "run_listener()"
     },
     {
@@ -4229,7 +4220,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L285",
       "id": "input_listener_drain_pending_events",
-      "community": 2,
+      "community": 3,
       "norm_label": "drain_pending_events()"
     },
     {
@@ -4238,7 +4229,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L292",
       "id": "input_listener_hotkeymatcher",
-      "community": 2,
+      "community": 3,
       "norm_label": "hotkeymatcher"
     },
     {
@@ -4247,7 +4238,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L300",
       "id": "input_listener_hotkeymatcher_new",
-      "community": 2,
+      "community": 3,
       "norm_label": ".new()"
     },
     {
@@ -4256,7 +4247,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L308",
       "id": "input_listener_hotkeymatcher_handle_event",
-      "community": 2,
+      "community": 3,
       "norm_label": ".handle_event()"
     },
     {
@@ -4265,7 +4256,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L355",
       "id": "input_listener_to_modifier_key",
-      "community": 2,
+      "community": 3,
       "norm_label": "to_modifier_key()"
     },
     {
@@ -4274,7 +4265,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L366",
       "id": "input_listener_to_primary_key",
-      "community": 2,
+      "community": 3,
       "norm_label": "to_primary_key()"
     },
     {
@@ -4283,7 +4274,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L452",
       "id": "input_listener_parses_bare_letter_hotkey",
-      "community": 2,
+      "community": 3,
       "norm_label": "parses_bare_letter_hotkey()"
     },
     {
@@ -4292,7 +4283,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L459",
       "id": "input_listener_parses_modifier_hotkey",
-      "community": 2,
+      "community": 3,
       "norm_label": "parses_modifier_hotkey()"
     },
     {
@@ -4301,7 +4292,7 @@
       "source_file": "src-tauri\\src\\morse\\input_listener.rs",
       "source_location": "L467",
       "id": "input_listener_rejects_multiple_primary_keys",
-      "community": 2,
+      "community": 3,
       "norm_label": "rejects_multiple_primary_keys()"
     },
     {
@@ -4310,7 +4301,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_mod_rs",
-      "community": 2,
+      "community": 3,
       "norm_label": "mod.rs"
     },
     {
@@ -4319,7 +4310,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L26",
       "id": "mod_morsestate",
-      "community": 2,
+      "community": 3,
       "norm_label": "morsestate"
     },
     {
@@ -4328,7 +4319,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L31",
       "id": "mod_morsestateinner",
-      "community": 2,
+      "community": 3,
       "norm_label": "morsestateinner"
     },
     {
@@ -4337,7 +4328,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L42",
       "id": "mod_morsestateinner_bootstrap",
-      "community": 2,
+      "community": 3,
       "norm_label": ".bootstrap()"
     },
     {
@@ -4346,7 +4337,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L51",
       "id": "mod_morsestateinner_push_history",
-      "community": 2,
+      "community": 3,
       "norm_label": ".push_history()"
     },
     {
@@ -4355,7 +4346,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L56",
       "id": "mod_push_history_with_limit",
-      "community": 2,
+      "community": 3,
       "norm_label": "push_history_with_limit()"
     },
     {
@@ -4364,7 +4355,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L63",
       "id": "mod_now_ms",
-      "community": 2,
+      "community": 3,
       "norm_label": "now_ms()"
     },
     {
@@ -4373,7 +4364,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L70",
       "id": "mod_restart_hotkey_listener",
-      "community": 2,
+      "community": 3,
       "norm_label": "restart_hotkey_listener()"
     },
     {
@@ -4382,7 +4373,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L102",
       "id": "mod_set_hotkey_listener_paused",
-      "community": 2,
+      "community": 3,
       "norm_label": "set_hotkey_listener_paused()"
     },
     {
@@ -4391,7 +4382,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L115",
       "id": "mod_begin_run",
-      "community": 2,
+      "community": 3,
       "norm_label": "begin_run()"
     },
     {
@@ -4400,7 +4391,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L134",
       "id": "mod_finish_run",
-      "community": 2,
+      "community": 3,
       "norm_label": "finish_run()"
     },
     {
@@ -4409,7 +4400,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L143",
       "id": "mod_run_recognition_flow",
-      "community": 2,
+      "community": 3,
       "norm_label": "run_recognition_flow()"
     },
     {
@@ -4418,7 +4409,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L215",
       "id": "mod_morse_get_bootstrap",
-      "community": 2,
+      "community": 3,
       "norm_label": "morse_get_bootstrap()"
     },
     {
@@ -4427,7 +4418,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L225",
       "id": "mod_morse_save_settings",
-      "community": 2,
+      "community": 3,
       "norm_label": "morse_save_settings()"
     },
     {
@@ -4436,7 +4427,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L261",
       "id": "mod_morse_set_hotkey_recording",
-      "community": 2,
+      "community": 3,
       "norm_label": "morse_set_hotkey_recording()"
     },
     {
@@ -4445,7 +4436,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L269",
       "id": "mod_morse_begin_region_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "morse_begin_region_selection()"
     },
     {
@@ -4454,7 +4445,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L278",
       "id": "mod_morse_overlay_submit_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "morse_overlay_submit_selection()"
     },
     {
@@ -4463,7 +4454,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L306",
       "id": "mod_morse_overlay_cancel_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "morse_overlay_cancel_selection()"
     },
     {
@@ -4472,7 +4463,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L315",
       "id": "mod_morse_run_recognition",
-      "community": 2,
+      "community": 3,
       "norm_label": "morse_run_recognition()"
     },
     {
@@ -4481,7 +4472,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L322",
       "id": "mod_persist_run_result",
-      "community": 2,
+      "community": 3,
       "norm_label": "persist_run_result()"
     },
     {
@@ -4490,7 +4481,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L347",
       "id": "mod_sample_entry",
-      "community": 2,
+      "community": 3,
       "norm_label": "sample_entry()"
     },
     {
@@ -4499,7 +4490,7 @@
       "source_file": "src-tauri\\src\\morse\\mod.rs",
       "source_location": "L360",
       "id": "mod_push_history_with_limit_trims_old_entries",
-      "community": 2,
+      "community": 3,
       "norm_label": "push_history_with_limit_trims_old_entries()"
     },
     {
@@ -4508,7 +4499,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_overlay_rs",
-      "community": 6,
+      "community": 7,
       "norm_label": "overlay.rs"
     },
     {
@@ -4517,7 +4508,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L11",
       "id": "overlay_pendingselection",
-      "community": 6,
+      "community": 7,
       "norm_label": "pendingselection"
     },
     {
@@ -4526,7 +4517,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L19",
       "id": "overlay_preparedselection",
-      "community": 6,
+      "community": 7,
       "norm_label": "preparedselection"
     },
     {
@@ -4535,7 +4526,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L26",
       "id": "overlay_pendingselection_current_slot",
-      "community": 6,
+      "community": 7,
       "norm_label": ".current_slot()"
     },
     {
@@ -4544,7 +4535,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L30",
       "id": "overlay_pendingselection_completed_slots",
-      "community": 6,
+      "community": 7,
       "norm_label": ".completed_slots()"
     },
     {
@@ -4553,7 +4544,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L37",
       "id": "overlay_resolve_pending",
-      "community": 6,
+      "community": 7,
       "norm_label": "resolve_pending()"
     },
     {
@@ -4562,7 +4553,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L50",
       "id": "overlay_destroy_overlay_window",
-      "community": 6,
+      "community": 7,
       "norm_label": "destroy_overlay_window()"
     },
     {
@@ -4571,7 +4562,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L56",
       "id": "overlay_parse_slots",
-      "community": 6,
+      "community": 7,
       "norm_label": "parse_slots()"
     },
     {
@@ -4580,7 +4571,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L80",
       "id": "overlay_prepare_selection_from_pending",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection_from_pending()"
     },
     {
@@ -4589,7 +4580,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L126",
       "id": "overlay_begin_region_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "begin_region_selection()"
     },
     {
@@ -4598,7 +4589,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L224",
       "id": "overlay_prepare_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection()"
     },
     {
@@ -4607,7 +4598,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L242",
       "id": "overlay_commit_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "commit_selection()"
     },
     {
@@ -4616,7 +4607,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L294",
       "id": "overlay_cancel_selection",
-      "community": 6,
+      "community": 7,
       "norm_label": "cancel_selection()"
     },
     {
@@ -4625,7 +4616,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L339",
       "id": "overlay_sample_pending",
-      "community": 6,
+      "community": 7,
       "norm_label": "sample_pending()"
     },
     {
@@ -4634,7 +4625,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L349",
       "id": "overlay_sample_rect",
-      "community": 6,
+      "community": 7,
       "norm_label": "sample_rect()"
     },
     {
@@ -4643,7 +4634,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L359",
       "id": "overlay_parse_slots_validates_inputs",
-      "community": 6,
+      "community": 7,
       "norm_label": "parse_slots_validates_inputs()"
     },
     {
@@ -4652,7 +4643,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L367",
       "id": "overlay_completed_slots_reports_prefix",
-      "community": 6,
+      "community": 7,
       "norm_label": "completed_slots_reports_prefix()"
     },
     {
@@ -4661,7 +4652,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L374",
       "id": "overlay_prepare_selection_rejects_invalid_rectangles",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection_rejects_invalid_rectangles()"
     },
     {
@@ -4670,7 +4661,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L388",
       "id": "overlay_prepare_selection_rejects_slot_mismatch",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection_rejects_slot_mismatch()"
     },
     {
@@ -4679,7 +4670,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L395",
       "id": "overlay_prepare_selection_advances_to_next_slot",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection_advances_to_next_slot()"
     },
     {
@@ -4688,7 +4679,7 @@
       "source_file": "src-tauri\\src\\morse\\overlay.rs",
       "source_location": "L414",
       "id": "overlay_prepare_selection_marks_completion",
-      "community": 6,
+      "community": 7,
       "norm_label": "prepare_selection_marks_completion()"
     },
     {
@@ -4733,7 +4724,7 @@
       "source_file": "src-tauri\\src\\morse\\recognition.rs",
       "source_location": "L43",
       "id": "recognition_componentbounds_new",
-      "community": 0,
+      "community": 1,
       "norm_label": ".new()"
     },
     {
@@ -4778,7 +4769,7 @@
       "source_file": "src-tauri\\src\\morse\\recognition.rs",
       "source_location": "L119",
       "id": "recognition_missing_regions_details",
-      "community": 2,
+      "community": 3,
       "norm_label": "missing_regions_details()"
     },
     {
@@ -4922,7 +4913,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_settings_rs",
-      "community": 12,
+      "community": 10,
       "norm_label": "settings.rs"
     },
     {
@@ -4931,7 +4922,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L9",
       "id": "settings_settings_path",
-      "community": 12,
+      "community": 10,
       "norm_label": "settings_path()"
     },
     {
@@ -4940,7 +4931,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L20",
       "id": "settings_ensure_config_dir",
-      "community": 12,
+      "community": 10,
       "norm_label": "ensure_config_dir()"
     },
     {
@@ -4949,7 +4940,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L24",
       "id": "settings_deserialize_settings",
-      "community": 12,
+      "community": 10,
       "norm_label": "deserialize_settings()"
     },
     {
@@ -4958,7 +4949,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L29",
       "id": "settings_read_settings_from_path",
-      "community": 12,
+      "community": 10,
       "norm_label": "read_settings_from_path()"
     },
     {
@@ -4967,7 +4958,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L40",
       "id": "settings_write_settings_to_path",
-      "community": 12,
+      "community": 10,
       "norm_label": "write_settings_to_path()"
     },
     {
@@ -4976,7 +4967,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L48",
       "id": "settings_load_settings",
-      "community": 12,
+      "community": 10,
       "norm_label": "load_settings()"
     },
     {
@@ -4985,7 +4976,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L53",
       "id": "settings_save_settings",
-      "community": 12,
+      "community": 10,
       "norm_label": "save_settings()"
     },
     {
@@ -4994,7 +4985,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L62",
       "id": "settings_sample_settings",
-      "community": 12,
+      "community": 10,
       "norm_label": "sample_settings()"
     },
     {
@@ -5003,7 +4994,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L72",
       "id": "settings_read_settings_returns_default_when_missing",
-      "community": 12,
+      "community": 10,
       "norm_label": "read_settings_returns_default_when_missing()"
     },
     {
@@ -5012,7 +5003,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L82",
       "id": "settings_write_and_read_settings_round_trip",
-      "community": 12,
+      "community": 10,
       "norm_label": "write_and_read_settings_round_trip()"
     },
     {
@@ -5021,7 +5012,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L96",
       "id": "settings_deserialize_settings_reports_invalid_json",
-      "community": 12,
+      "community": 10,
       "norm_label": "deserialize_settings_reports_invalid_json()"
     },
     {
@@ -5030,7 +5021,7 @@
       "source_file": "src-tauri\\src\\morse\\settings.rs",
       "source_location": "L103",
       "id": "settings_ensure_config_dir_creates_path",
-      "community": 12,
+      "community": 10,
       "norm_label": "ensure_config_dir_creates_path()"
     },
     {
@@ -5039,7 +5030,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L1",
       "id": "src_tauri_src_morse_types_rs",
-      "community": 13,
+      "community": 12,
       "norm_label": "types.rs"
     },
     {
@@ -5048,7 +5039,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L5",
       "id": "types_regionrect",
-      "community": 13,
+      "community": 12,
       "norm_label": "regionrect"
     },
     {
@@ -5057,7 +5048,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L14",
       "id": "types_morsesettings",
-      "community": 13,
+      "community": 12,
       "norm_label": "morsesettings"
     },
     {
@@ -5066,7 +5057,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L22",
       "id": "types_morsesettings_default",
-      "community": 1,
+      "community": 0,
       "norm_label": ".default()"
     },
     {
@@ -5075,7 +5066,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L34",
       "id": "types_morseregiondetail",
-      "community": 13,
+      "community": 12,
       "norm_label": "morseregiondetail"
     },
     {
@@ -5084,7 +5075,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L45",
       "id": "types_morserunresult",
-      "community": 13,
+      "community": 12,
       "norm_label": "morserunresult"
     },
     {
@@ -5093,7 +5084,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L56",
       "id": "types_historyentry",
-      "community": 13,
+      "community": 12,
       "norm_label": "historyentry"
     },
     {
@@ -5102,7 +5093,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L68",
       "id": "types_morsebootstrap",
-      "community": 13,
+      "community": 12,
       "norm_label": "morsebootstrap"
     },
     {
@@ -5111,7 +5102,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L77",
       "id": "types_regionselectionprogress",
-      "community": 13,
+      "community": 12,
       "norm_label": "regionselectionprogress"
     },
     {
@@ -5120,7 +5111,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L85",
       "id": "types_regionselectionoutcome",
-      "community": 13,
+      "community": 12,
       "norm_label": "regionselectionoutcome"
     },
     {
@@ -5129,7 +5120,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L92",
       "id": "types_regionselectionkind",
-      "community": 13,
+      "community": 12,
       "norm_label": "regionselectionkind"
     },
     {
@@ -5138,7 +5129,7 @@
       "source_file": "src-tauri\\src\\morse\\types.rs",
       "source_location": "L103",
       "id": "types_morse_settings_default_values_are_stable",
-      "community": 13,
+      "community": 12,
       "norm_label": "morse_settings_default_values_are_stable()"
     },
     {
@@ -5150,7 +5141,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 39,
+      "community": 38,
       "norm_label": "abstract logo mark",
       "id": "tauri_abstract_logo_mark"
     },
@@ -5163,7 +5154,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 39,
+      "community": 38,
       "norm_label": "yellow circle",
       "id": "tauri_yellow_circle"
     },
@@ -5176,7 +5167,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 39,
+      "community": 38,
       "norm_label": "blue circle",
       "id": "tauri_blue_circle"
     },
@@ -5189,7 +5180,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 85,
+      "community": 83,
       "norm_label": "vite logo svg",
       "id": "vite_vite_logo_svg"
     },
@@ -5202,7 +5193,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 85,
+      "community": 83,
       "norm_label": "vite branding gradient icon",
       "id": "vite_vite_branding_gradient_icon"
     },
@@ -5215,7 +5206,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 40,
+      "community": 39,
       "norm_label": "react atom logo",
       "id": "react_atom_logo"
     },
@@ -5228,7 +5219,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 40,
+      "community": 39,
       "norm_label": "react central dot",
       "id": "react_central_dot"
     },
@@ -5241,7 +5232,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 40,
+      "community": 39,
       "norm_label": "orbital ellipse set",
       "id": "react_orbital_ellipse_set"
     },
@@ -5250,7 +5241,7 @@
       "file_type": "image",
       "source_file": "src-tauri\\icons\\128x128.png",
       "source_location": "image",
-      "community": 106,
+      "community": 105,
       "norm_label": "128x128.png",
       "id": "src_tauri_icons_128x128_png"
     },
@@ -5263,7 +5254,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 41,
+      "community": 40,
       "norm_label": "delta auto tools app icon",
       "id": "128x128_2x_app_icon"
     },
@@ -5276,7 +5267,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 41,
+      "community": 40,
       "norm_label": "interlocking circular mark",
       "id": "128x128_2x_interlocking_circular_mark"
     },
@@ -5289,7 +5280,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 41,
+      "community": 40,
       "norm_label": "teal and gold palette",
       "id": "128x128_2x_teal_gold_palette"
     },
@@ -5302,7 +5293,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 42,
+      "community": 41,
       "norm_label": "abstract app logo mark",
       "id": "32x32_abstract_app_logo_mark"
     },
@@ -5315,7 +5306,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 42,
+      "community": 41,
       "norm_label": "warm accent orb",
       "id": "32x32_warm_accent_orb"
     },
@@ -5328,7 +5319,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 42,
+      "community": 41,
       "norm_label": "cool accent orb",
       "id": "32x32_cool_accent_orb"
     },
@@ -5341,7 +5332,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 43,
+      "community": 42,
       "norm_label": "application icon",
       "id": "icon_app_icon"
     },
@@ -5354,7 +5345,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 43,
+      "community": 42,
       "norm_label": "interlocking dual ring mark",
       "id": "icon_interlocking_dual_ring_mark"
     },
@@ -5367,7 +5358,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 43,
+      "community": 42,
       "norm_label": "teal and gold color scheme",
       "id": "icon_teal_gold_color_scheme"
     },
@@ -5380,7 +5371,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 44,
+      "community": 43,
       "norm_label": "abstract logo mark",
       "id": "square107x107logo_abstract_logo_mark"
     },
@@ -5393,7 +5384,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 44,
+      "community": 43,
       "norm_label": "upper gold circle",
       "id": "square107x107logo_upper_gold_circle"
     },
@@ -5406,7 +5397,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 44,
+      "community": 43,
       "norm_label": "lower cyan circle",
       "id": "square107x107logo_lower_cyan_circle"
     },
@@ -5419,7 +5410,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 45,
+      "community": 44,
       "norm_label": "delta auto tools app icon",
       "id": "square142x142_app_icon"
     },
@@ -5432,7 +5423,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 45,
+      "community": 44,
       "norm_label": "interlocking circular mark",
       "id": "square142x142_interlocking_circular_mark"
     },
@@ -5445,7 +5436,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 45,
+      "community": 44,
       "norm_label": "teal and gold palette",
       "id": "square142x142_teal_gold_palette"
     },
@@ -5458,7 +5449,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 46,
+      "community": 45,
       "norm_label": "abstract logo mark",
       "id": "square150x150logo_abstract_logo_mark"
     },
@@ -5471,7 +5462,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 46,
+      "community": 45,
       "norm_label": "yellow circle",
       "id": "square150x150logo_yellow_circle"
     },
@@ -5484,7 +5475,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 46,
+      "community": 45,
       "norm_label": "blue circle",
       "id": "square150x150logo_blue_circle"
     },
@@ -5497,7 +5488,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 47,
+      "community": 46,
       "norm_label": "delta auto tools app icon",
       "id": "square284x284_app_icon"
     },
@@ -5510,7 +5501,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 47,
+      "community": 46,
       "norm_label": "interlocking circular mark",
       "id": "square284x284_interlocking_circular_mark"
     },
@@ -5523,7 +5514,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 47,
+      "community": 46,
       "norm_label": "teal and gold palette",
       "id": "square284x284_teal_gold_palette"
     },
@@ -5536,7 +5527,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 107,
+      "community": 106,
       "norm_label": "30x30 application icon",
       "id": "square30x30logo_app_icon"
     },
@@ -5549,7 +5540,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 48,
+      "community": 47,
       "norm_label": "square 310x310 logo mark",
       "id": "square310x310_logo_mark"
     },
@@ -5562,7 +5553,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 48,
+      "community": 47,
       "norm_label": "yellow circle",
       "id": "square310x310_logo_yellow_circle"
     },
@@ -5575,7 +5566,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 48,
+      "community": 47,
       "norm_label": "blue circle",
       "id": "square310x310_logo_blue_circle"
     },
@@ -5588,7 +5579,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 49,
+      "community": 48,
       "norm_label": "delta auto tools app icon",
       "id": "square44x44_app_icon"
     },
@@ -5601,7 +5592,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 49,
+      "community": 48,
       "norm_label": "interlocking circular mark",
       "id": "square44x44_interlocking_circular_mark"
     },
@@ -5614,7 +5605,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 49,
+      "community": 48,
       "norm_label": "teal and gold palette",
       "id": "square44x44_teal_gold_palette"
     },
@@ -5627,7 +5618,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 50,
+      "community": 49,
       "norm_label": "delta auto tools app icon",
       "id": "square71x71_logo_app_icon"
     },
@@ -5640,7 +5631,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 50,
+      "community": 49,
       "norm_label": "interlocking circular mark",
       "id": "square71x71_logo_interlocking_circular_mark"
     },
@@ -5653,7 +5644,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 50,
+      "community": 49,
       "norm_label": "teal and gold palette",
       "id": "square71x71_logo_teal_gold_palette"
     },
@@ -5666,7 +5657,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 51,
+      "community": 50,
       "norm_label": "delta auto tools app icon",
       "id": "square89x89_app_icon"
     },
@@ -5679,7 +5670,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 51,
+      "community": 50,
       "norm_label": "interlocking circular mark",
       "id": "square89x89_interlocking_circular_mark"
     },
@@ -5692,7 +5683,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 51,
+      "community": 50,
       "norm_label": "teal and gold palette",
       "id": "square89x89_teal_gold_palette"
     },
@@ -5705,7 +5696,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 52,
+      "community": 51,
       "norm_label": "abstract logo mark",
       "id": "storelogo_abstract_logo_mark"
     },
@@ -5718,7 +5709,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 52,
+      "community": 51,
       "norm_label": "orange ring",
       "id": "storelogo_orange_ring"
     },
@@ -5731,7 +5722,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 52,
+      "community": 51,
       "norm_label": "cyan ring",
       "id": "storelogo_cyan_ring"
     },
@@ -5874,7 +5865,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 108,
+      "community": 107,
       "norm_label": "morse overlay ui",
       "id": "claude_morse_overlay"
     },
@@ -5887,7 +5878,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 86,
+      "community": 84,
       "norm_label": "morse_settings.json persistence file",
       "id": "claude_morse_settings_json"
     },
@@ -5913,7 +5904,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 87,
+      "community": 85,
       "norm_label": "rust hotkey registration responsibility",
       "id": "claude_hotkey_registration_in_rust"
     },
@@ -5978,7 +5969,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 87,
+      "community": 85,
       "norm_label": "frontend records while rust saves hotkeys",
       "id": "readme_hotkey_responsibility"
     },
@@ -6017,7 +6008,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 53,
+      "community": 52,
       "norm_label": "axum handlers layer",
       "id": "rust\u8fc1\u79fb_axum_handlers"
     },
@@ -6030,7 +6021,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 53,
+      "community": 52,
       "norm_label": "services business logic layer",
       "id": "rust\u8fc1\u79fb_services_layer"
     },
@@ -6082,7 +6073,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 53,
+      "community": 52,
       "norm_label": "keep handlers thin and business logic in services",
       "id": "rust\u8fc1\u79fb_handler_thin_rationale"
     },
@@ -6134,7 +6125,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 88,
+      "community": 86,
       "norm_label": "no http api or router",
       "id": "architecture_no_http_api"
     },
@@ -6173,7 +6164,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 88,
+      "community": 86,
       "norm_label": "native command layer instead of http backend",
       "id": "backend_no_http_backend"
     },
@@ -6186,7 +6177,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 86,
+      "community": 84,
       "norm_label": "morse_settings.json stored configuration",
       "id": "data_morse_settings_file"
     },
@@ -6371,12 +6362,12 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src\\components\\app\\morse-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-page.tsx",
       "source_location": "L30",
       "weight": 1.0,
-      "_src": "src_components_app_morse_page_tsx",
+      "_src": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_page_tsx",
       "_tgt": "morse_page_morsepage",
-      "source": "src_components_app_morse_page_tsx",
+      "source": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_page_tsx",
       "target": "morse_page_morsepage",
       "confidence_score": 1.0
     },
@@ -6391,18 +6382,6 @@
       "_tgt": "morse_utils_normalizerundetails",
       "source": "morse_page_morsepage",
       "target": "morse_utils_normalizerundetails"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\morse-panels.tsx",
-      "source_location": "L35",
-      "weight": 1.0,
-      "_src": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_panels_tsx",
-      "_tgt": "morse_panels_selectionpanel",
-      "source": "d_code_ai_sjz_delta_auto_tools_src_components_app_morse_panels_tsx",
-      "target": "morse_panels_selectionpanel",
-      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -6539,12 +6518,12 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "src\\components\\app\\tool-placeholder-page.tsx",
+      "source_file": "D:\\code\\ai\\sjz\\delta-auto-tools\\src\\components\\app\\tool-placeholder-page.tsx",
       "source_location": "L25",
       "weight": 1.0,
-      "_src": "src_components_app_tool_placeholder_page_tsx",
+      "_src": "d_code_ai_sjz_delta_auto_tools_src_components_app_tool_placeholder_page_tsx",
       "_tgt": "tool_placeholder_page_toolplaceholderpage",
-      "source": "src_components_app_tool_placeholder_page_tsx",
+      "source": "d_code_ai_sjz_delta_auto_tools_src_components_app_tool_placeholder_page_tsx",
       "target": "tool_placeholder_page_toolplaceholderpage",
       "confidence_score": 1.0
     },
