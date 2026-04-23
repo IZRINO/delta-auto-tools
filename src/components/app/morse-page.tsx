@@ -254,8 +254,14 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const savedSettings = bootstrap?.settings ?? null;
   const configuredCount = savedSettings?.regions.filter(Boolean).length ?? 0;
   const runDetails = normalizeRunDetails(latestRun);
+  const latestResultValue = latestRun?.value ?? null;
+  const latestResultTime = latestRun?.occurredAtMs ?? null;
+  const hasLatestResult = Boolean(latestRun);
   const canRun = configuredCount === REGION_LABELS.length;
   const isBusy = loading || saving || running || selectingSlot !== null;
+  const stepOneComplete = configuredCount === REGION_LABELS.length;
+  const stepTwoActive = stepOneComplete && !hasLatestResult;
+  const stepThreeActive = hasLatestResult;
 
   const isDirty = useMemo(() => {
     if (!bootstrap || !form) {
@@ -486,84 +492,87 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const controlsDisabled = isBusy || !isNativeShell;
 
   return (
-    <div className="flex flex-1 flex-col gap-4 xl:gap-5">
-      <section className="desktop-toolbar desktop-toolbar-hero border border-border/70 bg-card/95 px-4 py-4 shadow-sm backdrop-blur-sm xl:px-5 xl:py-5">
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="desktop-caption">Recognition Workflow</span>
-            <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
-            {saving ? <Badge variant="outline">保存中</Badge> : isDirty ? <Badge variant="outline">待保存</Badge> : <Badge variant="outline">已保存</Badge>}
-            {isBusy ? <Badge variant="outline">处理中</Badge> : <Badge variant="outline">空闲</Badge>}
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <section className="border-b border-border/70 bg-card/95 px-4 py-4 shadow-sm backdrop-blur-sm xl:px-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
+              {saving ? <Badge variant="outline">保存中</Badge> : isDirty ? <Badge variant="outline">待保存</Badge> : <Badge variant="outline">已保存</Badge>}
+              {isBusy ? <Badge variant="outline">处理中</Badge> : <Badge variant="outline">空闲</Badge>}
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">摩斯密码解析</h1>
+              <p className="mt-1 text-sm text-muted-foreground">先配置区域，再调整参数并验证，最后查看识别结果。</p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h1 className="text-xl font-semibold tracking-tight text-foreground xl:text-2xl">摩斯密码解析</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">先完成 3 个区域框选，再执行一次识别。主结果区会优先显示最新三位结果，设置和历史仅保留为辅助参考。</p>
-          </div>
-          <p className="desktop-status-line text-xs text-muted-foreground">{statusMessage}</p>
-        </div>
 
-        <div className="grid min-w-[280px] gap-2 sm:grid-cols-3">
-          <div className="desktop-subpanel desktop-metric-card rounded-xl border border-border/70 bg-background/90 px-3 py-3">
-            <p className="desktop-caption">区域配置</p>
-            <p className="mt-1 text-sm font-medium text-foreground">{configuredCount}/3</p>
-          </div>
-          <div className="desktop-subpanel desktop-metric-card rounded-xl border border-border/70 bg-background/90 px-3 py-3">
-            <p className="desktop-caption">最近结果</p>
-            <p className="mt-1 text-sm font-medium text-foreground">{latestRun?.value ?? "---"}</p>
-          </div>
-          <div className="desktop-subpanel desktop-metric-card rounded-xl border border-border/70 bg-background/90 px-3 py-3">
-            <p className="desktop-caption">最近时间</p>
-            <p className="mt-1 text-sm font-medium text-foreground">{formatTimestamp(latestRun?.occurredAtMs)}</p>
+          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[25rem] lg:max-w-[34rem] lg:flex-1">
+            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">区域配置</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{configuredCount}/3</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">最近结果</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{latestResultValue ?? "---"}</p>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">最近时间</p>
+              <p className="mt-1 text-sm font-medium text-foreground">{formatTimestamp(latestResultTime)}</p>
+            </div>
           </div>
         </div>
       </section>
 
-      <div className="desktop-workbench-stack flex flex-col gap-4">
-        <WorkbenchControlPanel
-          form={form}
-          hotkeyButtonRef={hotkeyButtonRef}
-          hotkeyError={bootstrap?.hotkeyError}
-          isRecordingHotkey={isRecordingHotkey}
-          isVerifying={verificationStatus === "running"}
-          onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
-          onBeginHotkeyRecording={beginHotkeyRecording}
-          onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
-          onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
-          onHotkeyRecorderKeyDown={handleHotkeyRecorderKeyDown}
-          onVerificationChange={setVerificationValue}
-          onVerificationFocus={() => void handleVerificationRun()}
-          onVerificationRetry={() => void handleVerificationRun()}
-          verificationMessage={verificationMessage}
-          verificationStatus={verificationStatus}
-          verificationValue={verificationValue}
-        />
+      <div className="flex-1 overflow-y-auto px-4 py-4 xl:px-5">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+          <SelectionPanel
+            configuredCount={configuredCount}
+            form={form}
+            isBusy={controlsDisabled}
+            isPreviewMode={!isNativeShell}
+            isPrimary={!stepOneComplete}
+            selectingSlot={selectingSlot}
+            onSelectAll={() => void performSelectionSession([0, 1, 2])}
+            onSelectOne={(slot) => void performSelectionSession([slot])}
+          />
 
-        <ResultPanel
-          latestAutoTyped={Boolean(latestRun?.autoTyped)}
-          latestRunError={latestRun?.error}
-          latestRunValue={latestRun?.value}
-          latestTriggeredBy={latestRun?.triggeredBy}
-          runDetails={runDetails}
-        />
-      </div>
+          <WorkbenchControlPanel
+            form={form}
+            hotkeyButtonRef={hotkeyButtonRef}
+            hotkeyError={bootstrap?.hotkeyError}
+            isPrimary={stepTwoActive}
+            isRecordingHotkey={isRecordingHotkey}
+            isVerifying={verificationStatus === "running"}
+            onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
+            onBeginHotkeyRecording={beginHotkeyRecording}
+            onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
+            onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+            onHotkeyRecorderKeyDown={handleHotkeyRecorderKeyDown}
+            onVerificationChange={setVerificationValue}
+            onVerificationFocus={() => void handleVerificationRun()}
+            onVerificationRetry={() => void handleVerificationRun()}
+            verificationMessage={verificationMessage}
+            verificationStatus={verificationStatus}
+            verificationValue={verificationValue}
+          />
 
-      <SelectionPanel
-        configuredCount={configuredCount}
-        form={form}
-        isBusy={controlsDisabled}
-        selectingSlot={selectingSlot}
-        onSelectAll={() => void performSelectionSession([0, 1, 2])}
-        onSelectOne={(slot) => void performSelectionSession([slot])}
-      />
+          <ResultPanel
+            hasResult={hasLatestResult}
+            isPrimary={stepThreeActive}
+            latestAutoTyped={Boolean(latestRun?.autoTyped)}
+            latestRunError={latestRun?.error}
+            latestRunValue={latestRun?.value}
+            latestTriggeredBy={latestRun?.triggeredBy}
+            runDetails={runDetails}
+          />
 
-      <HistoryPanel history={history} />
-
-      <div className="desktop-footer-note rounded-xl border border-border/70 bg-card px-4 py-3 text-xs text-muted-foreground shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span>{pageError ?? statusMessage}</span>
-          <span>{loading ? "加载中" : !isNativeShell ? "预览模式" : isBusy ? "处理中" : "空闲"}</span>
+          <div className="pt-2">
+            <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
+          </div>
         </div>
       </div>
+
     </div>
   );
 }

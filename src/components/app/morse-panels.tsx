@@ -1,5 +1,6 @@
 import {
   RiCheckboxCircleLine,
+  RiEyeLine,
   RiHistoryLine,
   RiLayoutGridLine,
   RiRefreshLine,
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type {
@@ -26,76 +27,98 @@ import { formatRegion, formatTimestamp } from "@/components/app/morse-utils";
 type SelectionPanelProps = {
   configuredCount: number;
   isBusy: boolean;
+  isPrimary?: boolean;
   selectingSlot: number | null;
   form: MorseSettingsForm | null;
+  isPreviewMode?: boolean;
   onSelectAll: () => void;
   onSelectOne: (slot: number) => void;
 };
 
-export function SelectionPanel({ configuredCount, form, isBusy, selectingSlot, onSelectAll, onSelectOne }: SelectionPanelProps) {
+export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = false, selectingSlot, isPreviewMode, onSelectAll, onSelectOne }: SelectionPanelProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
+    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
       <CardHeader className="border-b border-border/70">
         <div className="flex items-center gap-2">
+          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
+            1
+          </div>
           <RiLayoutGridLine className="text-muted-foreground" />
           <div>
-            <CardTitle>采样区域</CardTitle>
-            <CardDescription>优先使用一次完成 3 个区域的连续框选；单区域仅用于纠偏或重选。</CardDescription>
+            <CardTitle>步骤 1：配置采样区域</CardTitle>
+            <CardDescription>先完成 3 个区域配置，再执行识别</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 xl:space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[calc(var(--radius-xl)+2px)] border border-border bg-muted/40 px-4 py-4">
-          <div>
-            <p className="text-sm font-medium text-foreground">推荐路径</p>
-            <p className="mt-1 text-xs text-muted-foreground">先完成 3 个区域配置，再执行识别。当前已配置 {configuredCount}/3。</p>
+        {isPreviewMode ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+            <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm font-medium text-muted-foreground">预览模式</p>
+            <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以配置采样区域</p>
           </div>
-          <Button disabled={isBusy} onClick={onSelectAll} type="button" size="lg">
-            <RiRefreshLine data-icon="inline-start" />
-            一次选择 3 个区域
-          </Button>
-        </div>
-
-        <div className="grid gap-3 xl:grid-cols-3">
-          {REGION_LABELS.map((label, index) => {
-            const region = form?.regions[index] ?? null;
-            const isConfigured = Boolean(region);
-            const isSelecting = selectingSlot === index;
-
-            return (
-              <div key={label} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-card p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{label}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {isSelecting ? "正在当前轮次中等待框选。" : isConfigured ? "坐标已保存，可直接执行识别。" : "尚未配置，需要先完成框选。"}
-                    </p>
-                  </div>
-                  <Badge variant={isSelecting ? "secondary" : isConfigured ? "default" : "outline"}>
-                    {isSelecting ? "正在框选" : isConfigured ? "已配置" : "未配置"}
-                  </Badge>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 1 ? 1 : 0.25 }}></div>
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 2 ? 1 : 0.25 }}></div>
+                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 3 ? 1 : 0.25 }}></div>
                 </div>
-
-                <div className="mt-3 rounded-xl border border-dashed border-border/80 bg-muted/30 px-3 py-3">
-                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
-                  <p className="desktop-mono mt-2 overflow-hidden text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
-                </div>
-
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    className="flex-1"
-                    disabled={isBusy}
-                    onClick={() => onSelectOne(index)}
-                    type="button"
-                    variant={isConfigured ? "outline" : "default"}
-                  >
-                    {isSelecting ? "等待中..." : isConfigured ? "重选本区域" : "选择区域"}
-                  </Button>
+                <div>
+                  <p className="text-sm font-medium text-foreground">已配置 {configuredCount}/3</p>
+                  <p className="mt-1 text-xs text-muted-foreground">推荐先一次完成 3 个区域，再进入设置与验证。</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <Button disabled={isBusy} onClick={onSelectAll} type="button" size="lg">
+                <RiRefreshLine data-icon="inline-start" />
+                一次选择 3 个区域
+              </Button>
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-3">
+              {REGION_LABELS.map((label, index) => {
+                const region = form?.regions[index] ?? null;
+                const isConfigured = Boolean(region);
+                const isSelecting = selectingSlot === index;
+
+                return (
+                  <div key={label} className="rounded-lg border border-border bg-background p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {isSelecting ? "正在当前轮次中等待框选。" : isConfigured ? "坐标已保存，可直接执行识别。" : "尚未配置，需要先完成框选。"}
+                        </p>
+                      </div>
+                      <Badge variant={isSelecting ? "secondary" : isConfigured ? "default" : "outline"}>
+                        {isSelecting ? "正在框选" : isConfigured ? "已配置" : "未配置"}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-3">
+                      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
+                      <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
+                    </div>
+
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        className="flex-1"
+                        disabled={isBusy}
+                        onClick={() => onSelectOne(index)}
+                        type="button"
+                        variant={isConfigured ? "outline" : "default"}
+                      >
+                        {isSelecting ? "等待中..." : isConfigured ? "重选本区域" : "选择区域"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -106,6 +129,7 @@ type WorkbenchControlPanelProps = {
   hotkeyError: string | null | undefined;
   hotkeyButtonRef: React.RefObject<HTMLButtonElement | null>;
   isRecordingHotkey: boolean;
+  isPrimary?: boolean;
   isVerifying: boolean;
   verificationMessage: string;
   verificationStatus: VerificationStatus;
@@ -125,6 +149,7 @@ export function WorkbenchControlPanel({
   hotkeyButtonRef,
   hotkeyError,
   isRecordingHotkey,
+  isPrimary = false,
   isVerifying,
   onAutoInputDelayChange,
   onBeginHotkeyRecording,
@@ -139,38 +164,37 @@ export function WorkbenchControlPanel({
   verificationValue,
 }: WorkbenchControlPanelProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
+    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
       <CardHeader className="border-b border-border/70">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary shadow-sm">
-            <RiSparklingLine />
+          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
+            2
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Workbench Console</p>
-            <CardTitle className="mt-2 text-base font-semibold">设置与测试验证</CardTitle>
-            <CardDescription className="mt-1 max-w-3xl">
-              左侧维护热键与阈值配置，右侧直接做测试验证。点击验证输入框会执行一次仅识别流程，并把结果回填到输入框中。
-            </CardDescription>
+            <CardTitle>步骤 2：调整设置并验证</CardTitle>
+            <CardDescription>区域准备完成后，在这里微调参数并验证识别效果</CardDescription>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="desktop-console-content px-4 py-4 xl:px-5 xl:py-5">
-        <div className="desktop-console-grid grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
-          <section className="rounded-[calc(var(--radius-2xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm">
+      <CardContent className="px-4 py-4 xl:min-h-88 xl:px-5 xl:py-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
+          <section className="min-h-0 rounded-lg border border-border/50 bg-muted/20 px-4 py-4">
+
             <div className="mb-4 flex items-center gap-2">
+
               <RiSettings3Line className="text-muted-foreground" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">参数设置</h3>
-                <p className="mt-1 text-xs text-muted-foreground">变更自动保存；热键继续保持录制式交互。</p>
+                <p className="mt-1 text-xs text-muted-foreground">调整识别参数，变更会自动保存。</p>
               </div>
             </div>
 
             {form ? (
-              <FieldGroup className="desktop-settings-fields flex flex-1 flex-col gap-4">
-                <Field className="desktop-settings-field">
+              <FieldGroup className="flex flex-1 flex-col gap-4 xl:min-h-full">
+                <Field className="xl:min-h-0">
                   <FieldLabel htmlFor="hotkey-recorder">热键</FieldLabel>
-                  <FieldContent className="desktop-settings-field-content">
+                  <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                     <Button
                       ref={hotkeyButtonRef}
                       className="h-auto w-full justify-between gap-4 py-2 font-mono"
@@ -183,17 +207,14 @@ export function WorkbenchControlPanel({
                     >
                       <span>{isRecordingHotkey ? "正在录制，按下快捷键..." : form.hotkey || "点击录制热键"}</span>
                       <span className="text-[0.6875rem] text-muted-foreground">{isRecordingHotkey ? "Esc 取消" : "点击录制"}</span>
-                    </Button>
-                    <FieldDescription>
-                      {isRecordingHotkey ? "录制中：支持字母、数字、功能键和常见导航键。" : "点击按钮进入录制状态，录制完成后会自动保存。"}
-                    </FieldDescription>
-                    <FieldError>{hotkeyError}</FieldError>
+                     </Button>
+                     <FieldError>{hotkeyError}</FieldError>
                   </FieldContent>
                 </Field>
 
-                <Field className="desktop-settings-field">
+                <Field className="xl:min-h-0">
                   <FieldLabel htmlFor="binary-threshold">二值化阈值</FieldLabel>
-                  <FieldContent className="desktop-settings-field-content">
+                  <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                     <Input
                       id="binary-threshold"
                       inputMode="numeric"
@@ -201,40 +222,37 @@ export function WorkbenchControlPanel({
                       min="0"
                       onChange={(event) => onBinaryThresholdChange(event.currentTarget.value)}
                       value={form.binaryThreshold}
-                    />
-                    <FieldDescription>控制图像转二值图时的阈值，推荐保持在 0 到 255 的可调范围内微调。</FieldDescription>
-                  </FieldContent>
+                     />
+                   </FieldContent>
                 </Field>
 
-                <Field className="desktop-settings-field">
+                <Field className="xl:min-h-0">
                   <FieldLabel htmlFor="auto-input-delay">自动输入延迟（毫秒）</FieldLabel>
-                  <FieldContent className="desktop-settings-field-content">
+                  <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                     <Input
                       id="auto-input-delay"
                       inputMode="numeric"
                       min="0"
                       onChange={(event) => onAutoInputDelayChange(event.currentTarget.value)}
                       value={form.autoInputDelay}
-                    />
-                    <FieldDescription>热键流程下识别成功后自动输入前的等待时间，适合为切回目标窗口预留缓冲。</FieldDescription>
-                  </FieldContent>
+                     />
+                   </FieldContent>
                 </Field>
               </FieldGroup>
             ) : (
               <div className="text-xs text-muted-foreground">正在加载设置...</div>
             )}
           </section>
+          <section className="min-h-0 rounded-lg border border-border/50 bg-muted/20 px-4 py-4">
 
-          <section className="rounded-[calc(var(--radius-2xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <RiSparklingLine className="text-primary" />
                   <h3 className="text-sm font-semibold text-foreground">测试验证</h3>
                 </div>
-                <p className="mt-2 text-xs/relaxed text-muted-foreground">
-                  点击下面的验证输入框会执行一次仅识别流程，结果只写回当前工作台，不会自动输入到外部窗口。
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">聚焦输入框或点击按钮，执行一次仅识别验证。</p>
+
               </div>
 
               <Badge variant={verificationStatus === "error" ? "outline" : verificationStatus === "success" ? "default" : "secondary"}>
@@ -250,12 +268,9 @@ export function WorkbenchControlPanel({
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-[calc(var(--radius-xl)+2px)] border border-border bg-background p-4 shadow-sm">
-              <label className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase" htmlFor="verification-input">
-                Verification Input
-              </label>
+            <div className="mt-4 rounded-lg border border-border bg-background p-4 shadow-sm">
               <Input
-                className="mt-3 h-12 rounded-xl px-4 font-mono text-base tracking-[0.22em] md:text-sm"
+                className="h-12 rounded-lg px-4 font-mono text-base tracking-[0.22em]"
                 id="verification-input"
                 onChange={(event) => onVerificationChange(event.currentTarget.value)}
                 onFocus={onVerificationFocus}
@@ -266,7 +281,7 @@ export function WorkbenchControlPanel({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="rounded-xl border border-border bg-background px-3 py-3">
+              <div className="rounded-lg border border-border bg-background px-3 py-3">
                 <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">验证模式</p>
                 <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框即可重新验证"}</p>
               </div>
@@ -283,6 +298,8 @@ export function WorkbenchControlPanel({
 }
 
 type ResultPanelProps = {
+  hasResult?: boolean;
+  isPrimary?: boolean;
   latestRunValue: string | null | undefined;
   latestRunError: string | null | undefined;
   latestTriggeredBy: string | null | undefined;
@@ -290,60 +307,70 @@ type ResultPanelProps = {
   runDetails: MorseRegionDetail[];
 };
 
-export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, latestTriggeredBy, runDetails }: ResultPanelProps) {
+export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTyped, latestRunError, latestRunValue, latestTriggeredBy, runDetails }: ResultPanelProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
+    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
       <CardHeader className="border-b border-border/70">
         <div className="flex items-center gap-2">
+          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
+            3
+          </div>
           <RiCheckboxCircleLine className="text-muted-foreground" />
-          <div className="desktop-panel-heading">
-            <CardTitle>解析结果</CardTitle>
-            <CardDescription>解析结果独占一整行展示，主结果优先显示，区域级细节用于判断识别质量与排查失败原因。</CardDescription>
+          <div>
+            <CardTitle>步骤 3：查看结果</CardTitle>
+            <CardDescription>完成前两步后，这里会显示最新识别结果</CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="desktop-result-content flex flex-col gap-4 px-4 pt-4 pb-4 xl:px-5 xl:pt-5 xl:pb-5">
-        <div className="rounded-[calc(var(--radius-3xl)+2px)] border border-border bg-background px-5 py-5 shadow-sm xl:px-6 xl:py-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
-              {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
-            </Badge>
-            {latestTriggeredBy ? <Badge variant="outline">来源 {latestTriggeredBy}</Badge> : null}
-            {latestAutoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
+      <CardContent className="flex flex-col gap-4 min-h-0 px-4 pt-4 pb-4">
+        {!hasResult ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+            <RiCheckboxCircleLine className="mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm font-medium text-muted-foreground">等待执行</p>
+            <p className="mt-1 text-xs text-muted-foreground">完成前两步后，结果会显示在这里。</p>
           </div>
-          <p className="mt-5 font-mono text-5xl font-semibold tracking-[0.36em] text-foreground/92 xl:text-6xl">
-            {latestRunValue ?? "---"}
-          </p>
-          <p className="mt-3 text-xs text-muted-foreground">{latestRunError ?? "执行识别后会在这里显示最新三位结果。"}</p>
-        </div>
-
-        <div className="desktop-result-details grid gap-3 xl:grid-cols-3">
-          {runDetails.map((detail) => (
-            <div key={detail.slot} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-muted/30 p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
-                <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
-                  {detail.error ? "失败" : detail.digit ? detail.digit : "待机"}
+        ) : (
+          <>
+            <div className="rounded-lg border border-border bg-background px-5 py-5 shadow-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
+                  {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
                 </Badge>
+                {latestTriggeredBy ? <Badge variant="outline">来源 {latestTriggeredBy}</Badge> : null}
+                {latestAutoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
               </div>
-              <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
-                <div className="rounded-lg border border-border bg-background px-3 py-2">
-                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Morse</p>
-                  <p className="mt-1 font-mono text-foreground/80">{detail.morse ?? "--"}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-background px-3 py-2">
-                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Threshold</p>
-                  <p className="mt-1 text-foreground/80">{detail.thresholdMode}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-background px-3 py-2">
-                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Contours</p>
-                  <p className="mt-1 text-foreground/80">{detail.contourCount}</p>
-                </div>
-              </div>
-              {detail.error ? <p className="mt-3 text-xs/relaxed text-destructive">{detail.error}</p> : null}
+              <p className="mt-5 break-all font-mono text-4xl font-semibold tracking-[0.24em] text-foreground/92 sm:text-5xl sm:tracking-[0.36em]">
+                {latestRunValue ?? "---"}
+              </p>
+              <p className="mt-3 text-xs text-muted-foreground">{latestRunError ?? "执行识别后会在这里显示最新三位结果。"}</p>
             </div>
-          ))}
-        </div>
+
+            <div className="grid gap-3 xl:grid-cols-3">
+              {runDetails.map((detail) => (
+                <div key={detail.slot} className="rounded-lg border border-border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
+                    <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
+                      {detail.error ? "失败" : detail.digit ? detail.digit : "待机"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                      <p className="font-mono text-foreground/80">{detail.morse ?? "--"}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                      <p className="text-foreground/80">{detail.thresholdMode}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                      <p className="text-foreground/80">{detail.contourCount}</p>
+                    </div>
+                  </div>
+                  {detail.error ? <p className="mt-3 text-xs text-destructive">识别失败</p> : null}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -351,9 +378,10 @@ export function ResultPanel({ latestAutoTyped, latestRunError, latestRunValue, l
 
 type HistoryPanelProps = {
   history: HistoryEntry[];
+  isPreviewMode?: boolean;
 };
 
-export function HistoryPanel({ history }: HistoryPanelProps) {
+export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
   return (
     <Card size="sm" className="border-border shadow-sm">
       <CardHeader className="border-b border-border/70">
@@ -361,41 +389,51 @@ export function HistoryPanel({ history }: HistoryPanelProps) {
           <RiHistoryLine className="text-muted-foreground" />
           <div>
             <CardTitle>历史记录</CardTitle>
-            <CardDescription>保留最近的识别结果与失败记录，用于复查识别输出与触发来源。</CardDescription>
+            <CardDescription>最近的识别记录</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="desktop-scroll-area h-72">
-          <div className="flex flex-col gap-3 pe-4">
-            {history.length === 0 ? (
-              <Empty className="border-border bg-muted/20">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <RiHistoryLine />
-                  </EmptyMedia>
-                  <EmptyTitle>暂无记录</EmptyTitle>
-                  <EmptyDescription>执行一次识别后会显示在这里。</EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            ) : (
-              history.map((entry) => (
-                <div key={entry.id} className="rounded-[calc(var(--radius-xl)+2px)] border border-border bg-card p-4 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>
-                      <Badge variant={entry.success ? "default" : "outline"}>{entry.success ? "成功" : "失败"}</Badge>
-                      <Badge variant="outline">{entry.triggeredBy}</Badge>
-                      {entry.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
-                    </div>
-                    <span className="text-xs text-muted-foreground">{formatTimestamp(entry.occurredAtMs)}</span>
-                  </div>
-                  <p className="mt-2 text-xs/relaxed text-muted-foreground">{entry.error ?? "识别流程已完成。"}</p>
-                </div>
-              ))
-            )}
+        {isPreviewMode ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+            <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm font-medium text-muted-foreground">预览模式</p>
+            <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以查看历史记录</p>
           </div>
-        </ScrollArea>
+        ) : (
+          <>
+            <ScrollArea className="h-72">
+              <div className="flex flex-col gap-3 pe-4">
+                {history.length === 0 ? (
+                  <Empty className="border-border bg-muted/20">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <RiHistoryLine />
+                      </EmptyMedia>
+                      <EmptyTitle>暂无记录</EmptyTitle>
+                      <EmptyDescription>执行一次识别后会显示在这里。</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : (
+                  history.map((entry) => (
+                    <div key={entry.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>
+                          <Badge variant={entry.success ? "default" : "outline"}>{entry.success ? "成功" : "失败"}</Badge>
+                          <Badge variant="outline">{entry.triggeredBy}</Badge>
+                          {entry.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
+                        </div>
+                        <span className="text-xs text-muted-foreground">{formatTimestamp(entry.occurredAtMs)}</span>
+                      </div>
+                      <p className="mt-2 text-xs/relaxed text-muted-foreground">{entry.error ? "识别失败" : "识别流程已完成。"}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </>
+        )}
       </CardContent>
     </Card>
   );
