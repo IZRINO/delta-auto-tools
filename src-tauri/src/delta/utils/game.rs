@@ -37,58 +37,6 @@ pub fn parse_bind_role_js(raw: &str) -> Result<HashMap<String, String>, DeltaErr
     Ok(out)
 }
 
-pub fn parse_accessory_config(raw: &str) -> Result<HashMap<String, String>, DeltaError> {
-    let pair_re = Regex::new(r#"['\"](?P<key>\d+)['\"]\s*=>\s*['\"](?P<value>[^'\"]*)['\"]"#)
-        .map_err(|error| DeltaError::Parse(error.to_string()))?;
-    let mut out = HashMap::new();
-    for captures in pair_re.captures_iter(raw) {
-        out.insert(captures["key"].to_string(), captures["value"].to_string());
-    }
-    Ok(out)
-}
-
-pub fn parse_ammo_config(raw: &str) -> Result<HashMap<String, Vec<AmmoItem>>, DeltaError> {
-    let key_re = Regex::new(r#"['\"](?P<key>ammo[^'\"]+)['\"]\s*=>\s*\["#)
-        .map_err(|error| DeltaError::Parse(error.to_string()))?;
-    let item_re = Regex::new(
-        r#"['\"]name['\"]\s*=>\s*['\"](?P<name>[^'\"]*)['\"].*?['\"]grade['\"]\s*=>\s*(?P<grade>\d+)"#,
-    )
-    .map_err(|error| DeltaError::Parse(error.to_string()))?;
-
-    let mut result = HashMap::new();
-    let mut current_key: Option<String> = None;
-    let mut current_items: Vec<AmmoItem> = Vec::new();
-
-    for line in raw.lines() {
-        if let Some(captures) = key_re.captures(line) {
-            if let Some(key) = current_key.replace(captures["key"].to_string()) {
-                result.insert(key, std::mem::take(&mut current_items));
-            }
-            continue;
-        }
-
-        if let Some(captures) = item_re.captures(line) {
-            current_items.push(AmmoItem {
-                name: captures["name"].to_string(),
-                grade: captures["grade"].parse().unwrap_or_default(),
-            });
-            continue;
-        }
-
-        if line.trim_start().starts_with("],") {
-            if let Some(key) = current_key.take() {
-                result.insert(key, std::mem::take(&mut current_items));
-            }
-        }
-    }
-
-    if let Some(key) = current_key {
-        result.insert(key, current_items);
-    }
-
-    Ok(result)
-}
-
 pub fn enrich_gun_detail(
     gun: &mut Value,
     ammo_config: &HashMap<String, Vec<AmmoItem>>,
@@ -136,10 +84,8 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{
-        enrich_gun_detail, normalize_caliber_code, parse_accessory_config, parse_ammo_config,
-        parse_bind_role_js, AmmoItem,
-    };
+    use super::{enrich_gun_detail, normalize_caliber_code, parse_bind_role_js, AmmoItem};
+    use crate::delta::utils::game_config::{built_in_accessory_config, built_in_ammo_config};
 
     #[test]
     fn normalizes_plain_caliber_codes() {
@@ -159,25 +105,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_php_configs_and_enriches_gun_detail() {
-        let ammo = parse_ammo_config(
-            r#"<?php
-            return [
-                'ammo7.62x51' => [
-                    ['name' => '7.62x51mm M61', 'grade' => 6],
-                    ['name' => '7.62x51mm M62', 'grade' => 5],
-                ],
-            ];"#,
-        )
-        .unwrap();
-        let accessory = parse_accessory_config(
-            r#"<?php
-            return [
-                '8' => '前握把',
-                '11' => '瞄准镜',
-            ];"#,
-        )
-        .unwrap();
+    fn built_in_configs_enrich_gun_detail() {
+        let ammo = built_in_ammo_config();
+        let accessory = built_in_accessory_config();
 
         let mut gun = json!({
             "gunDetail": {
@@ -202,6 +132,18 @@ mod tests {
         assert_eq!(gun["gunDetail"]["ammo"][1]["grade"], 5);
         assert_eq!(gun["gunDetail"]["accessory"][0]["name"], "前握把");
         assert_eq!(gun["gunDetail"]["allAccessory"][0]["name"], "瞄准镜");
+    }
+
+    #[test]
+    fn built_in_configs_expose_expected_entries() {
+        let ammo = built_in_ammo_config();
+        let accessory = built_in_accessory_config();
+
+        assert_eq!(ammo["ammo5.56x45"][0].name, "5.56x45mm M995");
+        assert_eq!(ammo["ammo5.56x45"][0].grade, 5);
+        assert_eq!(ammo["ammo.338"][0].grade, 7);
+        assert_eq!(accessory["8"], "前握把");
+        assert_eq!(accessory["45"], "遮光罩");
     }
 
     #[test]

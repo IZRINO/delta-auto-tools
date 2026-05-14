@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::delta::{
-    constants::{DF_REFERER, IDE_GATEWAY},
+    constants::DF_REFERER,
     error::DeltaError,
 };
 
@@ -30,10 +30,6 @@ impl<'a> IdeCall<'a> {
     pub fn with_source(mut self, source: &'a str) -> Self {
         self.source = Some(source);
         self
-    }
-
-    pub async fn execute(self, client: &Client) -> Result<Value, DeltaError> {
-        self.execute_with_url(client, IDE_GATEWAY).await
     }
 
     pub async fn execute_with_url(

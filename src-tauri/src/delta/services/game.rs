@@ -15,7 +15,8 @@ use crate::delta::{
     response::ApiResponse,
     utils::{
         encoding::decode_gbk,
-        game::{enrich_gun_detail, parse_accessory_config, parse_ammo_config, AmmoItem},
+        game::{enrich_gun_detail, AmmoItem},
+        game_config::{built_in_accessory_config, built_in_ammo_config},
     },
 };
 
@@ -48,9 +49,6 @@ pub struct GameService {
     ide_gateway: String,
 }
 
-const AMMO_PHP: &str = include_str!("../../../../ammo.php");
-const ACCESSORY_PHP: &str = include_str!("../../../../accessory.php");
-
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -74,8 +72,8 @@ fn percent_decode(s: &str) -> String {
 impl GameService {
     pub fn new(options: HttpOptions) -> Result<Self, DeltaError> {
         let (client, jar) = build_client(options)?;
-        let ammo_config = parse_ammo_config(AMMO_PHP).unwrap_or_default();
-        let accessory_config = parse_accessory_config(ACCESSORY_PHP).unwrap_or_default();
+        let ammo_config = built_in_ammo_config();
+        let accessory_config = built_in_accessory_config();
         Ok(Self {
             client,
             jar,

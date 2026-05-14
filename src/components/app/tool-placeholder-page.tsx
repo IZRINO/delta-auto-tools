@@ -25,9 +25,9 @@ const pendingItems = [
 export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlaceholderPageProps) {
   return (
     <div className="flex flex-1 flex-col gap-3">
-      <div className="desktop-toolbar">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-border/70 bg-card/92 px-5 py-4 shadow-sm">
         <div className="min-w-0">
-          <p className="desktop-caption">Utility Module</p>
+          <p className="text-[0.625rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">Utility Module</p>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base font-semibold tracking-tight">{title}</h1>
             <Badge variant="secondary">未开放</Badge>
@@ -63,7 +63,7 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
           <CardContent>
             <ul className="grid gap-2 text-xs/relaxed text-muted-foreground">
               {pendingItems.map((item) => (
-                <li key={item} className="desktop-subpanel px-3 py-2.5">
+                <li key={item} className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2.5">
                   {item}
                 </li>
               ))}

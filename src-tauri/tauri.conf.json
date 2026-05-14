@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "delta-auto-tools",
-        "width": 1280,
-        "height": 860,
-        "minWidth": 1120,
-        "minHeight": 760
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1280,
+        "minHeight": 800
       }
     ],
     "security": {

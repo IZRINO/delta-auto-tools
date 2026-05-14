@@ -9,6 +9,13 @@
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui；这些不是“仅安装未使用”的状态，而是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
 
+## AI 输出规范
+
+- **所有 AI 输出必须使用中文**，包括代码注释、解释说明、错误提示和用户交互内容
+- 技术术语（如 React、TypeScript、Tauri 等）保持英文原名，其余描述使用中文
+- 代码中的字符串、错误信息、UI 文案使用中文
+- 生成的文档、注释、commit message 使用中文
+
 ## Source of truth
 
 优先相信可执行配置与当前代码，而不是旧文档：
@@ -72,18 +79,24 @@ Delta 命令面当前包括：
 - 热键输入应保持录制式交互；真正的解绑/重绑由 Rust 保存逻辑负责。
 - `TooltipProvider` 已在 `src/main.tsx` 根部提供，依赖 tooltip 的组件应沿用该入口结构。
 
+## UI and Styling Rules
+
+- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**
+- **禁止自定义 CSS 类** - 不得创建 `.desktop-*` 或其他自定义 CSS 类
+- 所有样式必须通过以下方式实现：
+  - shadcn/ui 组件（Button、Card、Badge 等）
+  - Tailwind 工具类（`bg-primary`、`text-foreground`、`rounded-lg` 等）
+  - 仅在绝对必要时使用内联样式（例如动态定位）
+- `src/App.css` 中的 @theme 块定义的主题令牌是颜色的唯一来源
+- 当现有 shadcn/ui 组件无法满足需求时，应组合使用它们而不是编写自定义 CSS
+
 ## Frontend conventions
 
 - 使用现有别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`
 - Tailwind v4 使用 CSS-first 方案（`@import "tailwindcss"`），主题 token 在 `src/App.css`；**不存在** `tailwind.config.js`
 - 优先复用 `src/components/ui/*` 中已有基础组件（基于 shadcn/ui，`radix-mira` 风格，remixicon 图标库）
 - `src/components/app/morse-page.tsx` 负责容器与状态编排；展示块拆在 app 子组件中，纯逻辑放 `morse-utils.ts`
-- `src/App.css` 同时承载主题 token、桌面壳层样式与 overlay 相关样式；修改时要区分普通模式与 overlay 模式
-- 类型定义集中在 `src/components/app/morse-types.ts`，前端类型使用 camelCase（与 Rust `#[serde(rename_all = "camelCase")]` 对齐）
-- `src/lib/utils.ts` 导出 `cn()` 函数（`clsx` + `tailwind-merge`），所有 shadcn/ui 组件通过它合并 className
-- TypeScript strict mode 开启，含 `noUnusedLocals` / `noUnusedParameters` — 未使用的变量/参数会导致编译失败
-- 通过 `window.__TAURI_INTERNALS__` 检测是否在 Tauri 原生壳中运行（`isNativeShell`），非原生环境跳过 Tauri invoke
-- 表单使用 `MorseSettingsForm`（字符串字段）与 `MorseSettings`（数字字段）互转，parseSettingsForm 做校验
+- `src/App.css` 仅承载主题 token 与 overlay 相关样式；所有桌面壳层样式改用 shadcn/ui + Tailwind
 
 ## Native-side conventions
 
