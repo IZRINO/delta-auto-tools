@@ -22,23 +22,24 @@
 
 1. `src-tauri/tauri.conf.json`
 2. `package.json`
-3. `CLAUDE.md`
-4. `docs/CODEMAPS/`
-5. `src/` 和 `src-tauri/src/`
+3. `src/` 和 `src-tauri/src/`
+4. `components.json`（shadcn/ui 配置）
 
 如果 `README.md`、旧注释或历史描述与代码不一致，以当前实现为准。
 
 ## Commands
 
-- `bun run dev` -> 仅前端 Vite 开发服务器
+- `bun run dev` -> 仅前端 Vite 开发服务器（端口 1420，strictPort）
 - `bun run build` -> `tsc && vite build`
 - `bun run preview` -> Vite preview
-- `bun run tauri dev` -> 完整桌面开发流程
+- `bun run tauri dev` -> 完整桌面开发流程（先启动 Vite dev server，再启动 Tauri）
 - `bun run tauri build` -> 桌面构建流程
 - `bun run test` -> Vitest 单元测试
-- `bun run test:coverage` -> 前端覆盖率输出
+- `bun run test:coverage` -> 前端覆盖率输出（仅覆盖 `src/components/app/morse-utils.ts`）
 - `cargo check --manifest-path src-tauri/Cargo.toml` -> 检查 Rust/Tauri 编译
 - `cargo test --manifest-path src-tauri/Cargo.toml` -> Rust 单元测试
+
+PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个独立 PM2 进程，`delta-auto-tools-tauri` 启动前等待端口 1420。
 
 ## Current architecture
 
@@ -92,8 +93,8 @@ Delta 命令面当前包括：
 ## Frontend conventions
 
 - 使用现有别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`
-- Tailwind v4 使用 CSS-first 方案，主题 token 在 `src/App.css`
-- 优先复用 `src/components/ui/*` 中已有基础组件
+- Tailwind v4 使用 CSS-first 方案（`@import "tailwindcss"`），主题 token 在 `src/App.css`；**不存在** `tailwind.config.js`
+- 优先复用 `src/components/ui/*` 中已有基础组件（基于 shadcn/ui，`radix-mira` 风格，remixicon 图标库）
 - `src/components/app/morse-page.tsx` 负责容器与状态编排；展示块拆在 app 子组件中，纯逻辑放 `morse-utils.ts`
 - `src/App.css` 仅承载主题 token 与 overlay 相关样式；所有桌面壳层样式改用 shadcn/ui + Tailwind
 
@@ -108,13 +109,86 @@ Delta 命令面当前包括：
 - `src-tauri/src/delta/storage/repo.rs` 使用单表 `delta_accounts` 承载不同账号类型；新增账号类型应优先扩展 `AccountKind`
 - `src-tauri/src/delta/client/ide.rs` 负责 IDE 网关表单请求，`src-tauri/src/delta/utils/game.rs` 负责枪械/弹药/配件映射与 bind-role 解析
 
+### Rust serde conventions（全仓通用）
+
+所有对外序列化的 Rust 结构体 **必须** 使用 `#[serde(rename_all = "camelCase")]`：
+- Delta 端：`ApiResponse<T>`、`DeltaAccountRecord`、`AccountKind`、服务 DTO（`QqLoginQr`、`WechatQr` 等）、请求 struct（`CommandOptions`、`AccountCookieRequest` 等）
+- Morse 端：`MorseSettings`、`MorseBootstrap`、`RegionRect`、`MorseRunResult`、`HistoryEntry`、`RegionSelectionProgress`、`RegionSelectionOutcome`
+
+### Delta 命令返回模式（与 Morse 不同）
+
+- Delta 命令返回 `Result<ApiResponse<T>, DeltaError>`，其中 `ApiResponse` 携带 `code`/`msg`/`data`，成功时 `code=0`，msg 为中文描述
+- Morse 命令返回 `Result<T, String>`，直接返回数据或中文错误字符串
+- `DeltaError` 显式实现了 `Serialize`（序列化为错误信息字符串），用于 Tauri IPC 传输
+
+### Delta 命令 DTO 模式
+
+每个 Delta command 都有对应的请求 struct，前端通过 camelCase JSON 反序列化：
+- `AccountCookieRequest`：支持显式 `cookie` 或 `accountId` 两种指定方式
+- 所有请求 DTO 都带有可选 `options: Option<CommandOptions>` 字段（目前仅 `insecureSkipTlsVerify`）
+
+### reqwest HTTP 客户端模式
+
+`delta::client::http::build_client()` 创建 reqwest Client 时固定使用：
+- `cookie_provider`（Arc\<Jar\>，由调用方持有复用）
+- `default_headers(browser_headers())`（模拟浏览器）
+- `redirect(Policy::none())`（不自动跟随重定向）
+- `danger_accept_invalid_certs` 可选（通过 `HttpOptions` 控制）
+
+### Delta 状态管理
+
+`DeltaState` 使用多个独立 `Mutex` 分别保护不同数据：
+- `buckets: Mutex<HashMap<i64, DeltaAccountRecord>>` — 内存账号缓存，与 DB 同步
+- `pending: Mutex<HashMap<String, PendingSession>>` — 扫码登录中会话（QQ/Wegame QQ）
+- `http_options: Mutex<HttpOptions>` — 全局 HTTP 选项（预留）
+
+账号持久化使用 `persist_account()` 辅助函数（`commands.rs:339-364`）：DB upsert + 内存 buckets 同步更新。
+
+### Morse 状态管理（与 Delta 不同）
+
+`MorseState` 使用 **单个** `Mutex<MorseStateInner>` 包裹所有可变字段，外加独立的 `Mutex<Option<PassiveHotkeyListener>>`。锁被污染时返回中文错误 "已损坏"。
+
+### 被动热键监听（Windows only）
+
+`src-tauri/src/morse/input_listener.rs` 使用 `willhook` crate 注册底层键盘钩子：
+- 独立线程轮询键盘事件，匹配热键组合（modifier + primary key）
+- 录制热键时通过 `morse_set_hotkey_recording` 暂停监听（`set_paused(true)`），并 drain 积压事件
+- 非 Windows 平台直接返回错误，不做降级处理
+- 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K` 等格式
+
+### GameService 编译期配置
+
+`GameService` 构造时通过 `include_str!()` 嵌入本地 PHP 配置文件（ammo.php、accessory.php），在编译期解析为 `HashMap`。运行时不再读取文件。这些文件位于仓库根目录。
+
 ## Repo-specific cautions
 
 - 使用 **Bun**，不要切换到 npm / pnpm / yarn
 - 不要虚构仓库中不存在的 lint/test/CI 命令
-- `README.md`、`AGENTS.md`、`CLAUDE.md` 和 `docs/CODEMAPS/` 需要随重大功能变更一起更新
+- `README.md`、`AGENTS.md`、`CLAUDE.md` 和 `docs/CODEMAPS/` 需要随重大功能变更一起更新（注：`docs/CODEMAPS/` 当前不存在）
 - 仓库当前允许提交项目级 skills 目录：`.agents/skills/` 与 `.claude/skills/`；不要把它们误当成本地垃圾直接删除
 - 忽略本地或生成产物：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`.claude/settings.local.json`、`temp/`、`test-results/`
+- 不存在 `tailwind.config.js` — Tailwind v4 通过 CSS `@import "tailwindcss"` 配置
+- `GameService` 需要仓库根目录下的 `ammo.php` 和 `accessory.php` 才能在编译期嵌入；若缺少这些文件会导致 Rust 编译失败（LSP 报错 `os error 2`）
+- 前端仅对 `src/components/app/morse-utils.ts` 有测试覆盖（`morse-utils.test.ts`）；Vitest coverage 配置也只包含该文件
+
+## Tauri 事件模式
+
+Morse 通过 Tauri events 通知前端（emit_to "main"）：
+- `"morse://run-finished"` — 识别完成后推送 `MorseRunResult`
+- `"morse://selection-progress"` — 区域选择完成后推送 `RegionSelectionProgress`
+- `"morse://hotkey-error"` — 热键执行出错时推送错误字符串
+
+前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。
+
+## Overlay 状态机
+
+overlay 框选流程使用 `oneshot::Sender<RegionSelectionKind>` 实现完成通知：
+1. 前端调用 `morse_begin_region_selection`，Rust 创建 overlay 窗口（label: `"morse-overlay"`），存储 `PendingSelection`（含 oneshot sender）
+2. 前端在 overlay 窗口中完成框选，调用 `morse_overlay_submit_selection`
+3. Rust 更新 staged_regions，全部完成后保存 settings 并发送 sender
+4. 主窗口通过 await 在 oneshot receiver 上等待完成，拿到最终的 `RegionSelectionOutcome`
+
+overlay 窗口通过 `?mode=overlay&slots=0,1,2` 查询参数进入 overlay 模式。
 
 ## If the project changes again
 
@@ -125,7 +199,7 @@ Delta 命令面当前包括：
 - 路由系统或新的应用壳层
 - 新的项目级 skills / agents 目录约定
 
-请在同一轮改动里同步更新 `README.md`、`AGENTS.md`、`CLAUDE.md` 与相关 codemap。
+请在同一轮改动里同步更新 `README.md`、`AGENTS.md` 与相关 codemap。
 
 ## graphify
 
