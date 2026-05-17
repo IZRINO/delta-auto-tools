@@ -3,7 +3,7 @@ mod hotkeys;
 mod morse;
 mod timer;
 
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +19,17 @@ pub fn run() {
             app.manage(delta_state);
             app.manage(timer_state);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { .. } = event {
+                if timer::is_main_window_close(window.label()) {
+                    let app = window.app_handle();
+                    let timer_state = app.state::<timer::TimerState>();
+                    let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
+                    timer::shutdown(app, &timer_state, &hotkey_manager);
+                    app.exit(0);
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             delta::commands::delta_list_accounts,

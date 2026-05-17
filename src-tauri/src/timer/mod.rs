@@ -209,7 +209,7 @@ fn emit_state(app: &AppHandle, bootstrap: TimerBootstrap) {
 
 fn ensure_display_window(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
     if !settings_value.enabled {
-        destroy_display_window(app);
+        hide_display_window(app);
         return Ok(());
     }
 
@@ -246,6 +246,12 @@ fn ensure_display_window(app: &AppHandle, settings_value: &TimerSettings) -> Res
     Ok(())
 }
 
+fn hide_display_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(TIMER_DISPLAY_LABEL) {
+        let _ = window.hide();
+    }
+}
+
 fn destroy_display_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(TIMER_DISPLAY_LABEL) {
         let _ = window.destroy();
@@ -256,6 +262,17 @@ fn destroy_position_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(TIMER_POSITION_LABEL) {
         let _ = window.destroy();
     }
+}
+
+pub fn is_main_window_close(label: &str) -> bool {
+    label == "main"
+}
+
+pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyManager) {
+    let _ = hotkey_manager.clear_scope("timer");
+    let _ = stop_tick_task(state);
+    destroy_position_window(app);
+    destroy_display_window(app);
 }
 
 fn tick(app: &AppHandle) -> Result<(), String> {
@@ -582,6 +599,13 @@ mod tests {
         assert_eq!(display_height(0), TIMER_DISPLAY_MIN_HEIGHT);
         assert_eq!(display_height(1), TIMER_DISPLAY_MIN_HEIGHT);
         assert_eq!(display_height(4), 192);
+    }
+
+    #[test]
+    fn main_window_close_is_app_shutdown_request() {
+        assert!(is_main_window_close("main"));
+        assert!(!is_main_window_close(TIMER_DISPLAY_LABEL));
+        assert!(!is_main_window_close(TIMER_POSITION_LABEL));
     }
 
     #[test]
