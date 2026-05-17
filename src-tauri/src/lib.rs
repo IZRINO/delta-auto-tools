@@ -1,5 +1,7 @@
 mod delta;
+mod hotkeys;
 mod morse;
+mod timer;
 
 use tauri::Manager;
 
@@ -8,10 +10,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let state = morse::initialize(app.handle())?;
+            let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
+            let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let delta_state = delta::initialize(app.handle())?;
+            let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
+            app.manage(hotkey_manager);
             app.manage(state);
             app.manage(delta_state);
+            app.manage(timer_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -59,6 +65,13 @@ pub fn run() {
             morse::morse_overlay_submit_selection,
             morse::morse_overlay_cancel_selection,
             morse::morse_run_recognition,
+            timer::timer_get_bootstrap,
+            timer::timer_save_settings,
+            timer::timer_trigger,
+            timer::timer_begin_position_selection,
+            timer::timer_position_commit,
+            timer::timer_position_cancel,
+            timer::timer_position_moved,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

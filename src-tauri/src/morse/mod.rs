@@ -1,6 +1,5 @@
 mod decoder;
 mod input;
-mod input_listener;
 mod overlay;
 mod recognition;
 mod settings;
@@ -8,14 +7,15 @@ mod types;
 
 use std::{
     collections::VecDeque,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::hotkeys::{HotkeyAction, HotkeyManager};
+
 use self::{
-    input_listener::PassiveHotkeyListener,
     overlay::PendingSelection,
     types::{
         HistoryEntry, MorseBootstrap, MorseRunResult, MorseSettings, RegionRect,
@@ -25,7 +25,6 @@ use self::{
 
 pub struct MorseState {
     pub(crate) inner: Mutex<MorseStateInner>,
-    hotkey_listener: Mutex<Option<PassiveHotkeyListener>>,
 }
 
 pub(crate) struct MorseStateInner {
@@ -70,27 +69,26 @@ fn now_ms() -> u64 {
 fn restart_hotkey_listener(
     state: &MorseState,
     app: &AppHandle,
+    hotkey_manager: &HotkeyManager,
     hotkey: &str,
 ) -> Result<(), String> {
-    let mut listener = state
-        .hotkey_listener
-        .lock()
-        .map_err(|_| "热键监听状态已损坏".to_string())?;
+    let action: HotkeyAction = Arc::new(|app_handle| {
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = run_recognition_flow(&app_handle, "hotkey", true).await {
+                let _ = app_handle.emit_to("main", "morse://hotkey-error", error);
+            }
+        });
+    });
 
-    if let Some(existing) = listener.as_mut() {
-        existing.stop();
-    }
-
-    match PassiveHotkeyListener::start(app.clone(), hotkey) {
-        Ok(new_listener) => {
-            *listener = Some(new_listener);
+    match hotkey_manager.replace_scope("morse", vec![(hotkey.to_string(), action)]) {
+        Ok(()) => {
             if let Ok(mut inner) = state.inner.lock() {
                 inner.hotkey_error = None;
             }
+            let _ = app;
             Ok(())
         }
         Err(error) => {
-            *listener = None;
             if let Ok(mut inner) = state.inner.lock() {
                 inner.hotkey_error = Some(error.clone());
             }
@@ -99,17 +97,8 @@ fn restart_hotkey_listener(
     }
 }
 
-fn set_hotkey_listener_paused(state: &MorseState, paused: bool) -> Result<(), String> {
-    let listener = state
-        .hotkey_listener
-        .lock()
-        .map_err(|_| "热键监听状态已损坏".to_string())?;
-
-    if let Some(listener) = listener.as_ref() {
-        listener.set_paused(paused);
-    }
-
-    Ok(())
+fn set_hotkey_listener_paused(hotkey_manager: &HotkeyManager, paused: bool) -> Result<(), String> {
+    hotkey_manager.set_scope_enabled("morse", !paused)
 }
 
 fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
@@ -190,25 +179,27 @@ async fn run_recognition_flow(
     Ok(result)
 }
 
-pub fn initialize(app: &AppHandle) -> Result<MorseState, String> {
+pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<MorseState, String> {
     let settings = settings::load_settings(app)?;
-    let (listener, hotkey_error) = match PassiveHotkeyListener::start(app.clone(), &settings.hotkey) {
-        Ok(listener) => (Some(listener), None),
-        Err(error) => (None, Some(error)),
-    };
-
-    Ok(MorseState {
+    let state = MorseState {
         inner: Mutex::new(MorseStateInner {
-            settings,
+            settings: settings.clone(),
             history: VecDeque::new(),
             latest_run: None,
             next_history_id: 1,
             pending_selection: None,
             run_in_progress: false,
-            hotkey_error,
+            hotkey_error: None,
         }),
-        hotkey_listener: Mutex::new(listener),
-    })
+    };
+
+    if let Err(error) = restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey) {
+        if let Ok(mut inner) = state.inner.lock() {
+            inner.hotkey_error = Some(error);
+        }
+    }
+
+    Ok(state)
 }
 
 #[tauri::command]
@@ -226,6 +217,7 @@ pub fn morse_save_settings(
     settings_value: MorseSettings,
     app: AppHandle,
     state: State<'_, MorseState>,
+    hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<MorseBootstrap, String> {
     let previous_settings = {
         let inner = state
@@ -242,7 +234,7 @@ pub fn morse_save_settings(
     }
 
     if hotkey_changed {
-        if let Err(error) = restart_hotkey_listener(&state, &app, &settings_value.hotkey) {
+        if let Err(error) = restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey) {
             let _ = settings::save_settings(&app, &previous_settings);
             return Err(error);
         }
@@ -260,9 +252,9 @@ pub fn morse_save_settings(
 #[tauri::command]
 pub fn morse_set_hotkey_recording(
     recording: bool,
-    state: State<'_, MorseState>,
+    hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<(), String> {
-    set_hotkey_listener_paused(&state, recording)
+    set_hotkey_listener_paused(&hotkey_manager, recording)
 }
 
 #[tauri::command]

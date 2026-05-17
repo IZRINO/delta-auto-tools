@@ -1,7 +1,8 @@
-import { useMemo, type CSSProperties } from "react";
-import { RiRadarLine } from "@remixicon/react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { RiRadarLine, RiTimerLine } from "@remixicon/react";
 
 import { MorsePage } from "@/components/app/morse-page";
+import { TimerPage } from "@/components/app/timer-page";
 import {
   Sidebar,
   SidebarContent,
@@ -27,12 +28,33 @@ const appShellStyle = {
 function App() {
   const overlayMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("mode") === "overlay";
+    return params.get("mode");
   }, []);
+  const [activeTool, setActiveTool] = useState<"morse" | "timer">("morse");
 
-  if (overlayMode) {
+  if (overlayMode === "overlay") {
     return <MorsePage overlayMode />;
   }
+
+  if (overlayMode === "timer-display") {
+    return <TimerPage overlayMode="display" />;
+  }
+
+  if (overlayMode === "timer-position") {
+    return <TimerPage overlayMode="position" />;
+  }
+
+  const activeToolMeta = activeTool === "morse"
+    ? {
+        icon: <RiRadarLine />,
+        eyebrow: "Workspace / Morse",
+        title: "摩斯密码解析工作台",
+      }
+    : {
+        icon: <RiTimerLine />,
+        eyebrow: "Workspace / Timer",
+        title: "计时器工作台",
+      };
 
   return (
     <SidebarProvider className="h-svh min-h-0 overflow-hidden" defaultOpen style={appShellStyle}>
@@ -57,9 +79,15 @@ function App() {
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
                 <SidebarMenuItem>
-                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive tooltip="摩斯密码解析" type="button">
+                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive={activeTool === "morse"} onClick={() => setActiveTool("morse")} tooltip="摩斯密码解析" type="button">
                     <RiRadarLine />
                     <span className="truncate">摩斯密码解析</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive={activeTool === "timer"} onClick={() => setActiveTool("timer")} tooltip="计时器" type="button">
+                    <RiTimerLine />
+                    <span className="truncate">计时器</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -74,11 +102,11 @@ function App() {
             <div className="flex min-w-0 items-center gap-4 rounded-[calc(var(--radius-2xl)+2px)] border border-border bg-card px-5 py-4 shadow-sm">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-primary shadow-sm">
-                  <RiRadarLine />
+                  {activeToolMeta.icon}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">Workspace / Morse</p>
-                  <h2 className="mt-1 truncate font-heading text-[0.92rem] font-semibold tracking-[0.01em]">摩斯密码解析工作台</h2>
+                  <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">{activeToolMeta.eyebrow}</p>
+                  <h2 className="mt-1 truncate font-heading text-[0.92rem] font-semibold tracking-[0.01em]">{activeToolMeta.title}</h2>
                 </div>
               </div>
             </div>
@@ -87,7 +115,7 @@ function App() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 xl:px-6 xl:pb-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="flex min-h-full flex-col">
               <div className="flex min-h-full flex-col rounded-[calc(var(--radius-3xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm xl:px-6 xl:py-6">
-                <MorsePage />
+                {activeTool === "morse" ? <MorsePage /> : <TimerPage />}
               </div>
             </div>
           </div>
