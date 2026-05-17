@@ -14,9 +14,8 @@ use crate::delta::{
         wechat_auth::{WechatAccessToken, WechatAuthService, WechatQr},
         wegame_auth::{WegameAuthService, WegameQqLoginQr, WegameQqStatusRequest, WegameTicket},
     },
-    state::{DeltaState, PendingSession},
-    storage::{AccountKind, DeltaAccountRecord, DeltaAccountUpsert},
-    utils::time::current_millis,
+    state::DeltaState,
+    storage::{AccountKind, DeltaAccountRecord},
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,7 +84,7 @@ pub async fn delta_qq_get_login_qr(
 ) -> Result<ApiResponse<QqLoginQr>, DeltaError> {
     let service = QqAuthService::new(http_options(options))?;
     let qr = service.get_login_qr().await?;
-    remember_pending(&state, "qq", qr.qr_sig.clone(), qr.cookie.clone())?;
+    state.remember_pending("qq", qr.qr_sig.clone(), qr.cookie.clone())?;
     Ok(ApiResponse::ok("获取成功", qr))
 }
 
@@ -103,11 +102,10 @@ pub async fn delta_qq_get_access_token(
     state: State<'_, DeltaState>,
     req: AccountCookieRequest,
 ) -> Result<ApiResponse<AccountBoundAccess<QqAccessToken>>, DeltaError> {
-    let cookie = resolve_cookie(&state, req.account_id, req.cookie.clone())?;
+    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
     let service = QqAuthService::new(http_options(req.options))?;
     let auth = service.get_access_token(&cookie).await?;
-    let account = persist_account(
-        &state,
+    let account = state.persist_account(
         AccountKind::Qq,
         auth.openid.clone(),
         cookie,
@@ -131,7 +129,7 @@ pub async fn delta_qq_update_access_token(
     state: State<'_, DeltaState>,
     req: QqUpdateRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let cookie = resolve_cookie(&state, req.account_id, req.cookie.clone())?;
+    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
     let service = QqAuthService::new(http_options(req.options))?;
     let valid = service
         .update_access_token(
@@ -179,8 +177,7 @@ pub async fn delta_wechat_get_access_token(
 ) -> Result<ApiResponse<AccountBoundAccess<WechatAccessToken>>, DeltaError> {
     let service = WechatAuthService::new(http_options(req.options))?;
     let auth = service.get_access_token(&req.code).await?;
-    let account = persist_account(
-        &state,
+    let account = state.persist_account(
         AccountKind::Wechat,
         auth.openid.clone(),
         "{}".to_string(),
@@ -246,11 +243,10 @@ pub async fn delta_qqsafe_get_access_token(
     state: State<'_, DeltaState>,
     req: AccountCookieRequest,
 ) -> Result<ApiResponse<AccountBoundAccess<QqSafeAccess>>, DeltaError> {
-    let cookie = resolve_cookie(&state, req.account_id, req.cookie.clone())?;
+    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
     let service = QqSafeService::new(http_options(req.options))?;
     let auth = service.get_access_token(&cookie).await?;
-    let account = persist_account(
-        &state,
+    let account = state.persist_account(
         AccountKind::QqSafe,
         auth.openid.clone(),
         cookie,
@@ -288,7 +284,7 @@ pub async fn delta_qqsafe_get_banned_list(
 pub fn delta_list_accounts(
     state: State<'_, DeltaState>,
 ) -> Result<ApiResponse<Vec<DeltaAccountRecord>>, DeltaError> {
-    Ok(ApiResponse::ok("获取成功", state.repo.list_accounts()?))
+    Ok(ApiResponse::ok("获取成功", state.list_accounts()?))
 }
 
 #[tauri::command]
@@ -296,11 +292,8 @@ pub fn delta_delete_account(
     account_id: i64,
     state: State<'_, DeltaState>,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let deleted = state.repo.delete_account(account_id)?;
+    let deleted = state.delete_account(account_id)?;
     if deleted {
-        if let Ok(mut buckets) = state.buckets.lock() {
-            buckets.remove(&account_id);
-        }
         Ok(ApiResponse::ok("删除成功", json!([])))
     } else {
         Ok(ApiResponse {
@@ -317,70 +310,6 @@ fn http_options(options: Option<CommandOptions>) -> HttpOptions {
             .and_then(|options| options.insecure_skip_tls_verify)
             .unwrap_or(false),
     }
-}
-
-fn resolve_cookie(
-    state: &State<'_, DeltaState>,
-    account_id: Option<i64>,
-    cookie: Option<String>,
-) -> Result<String, DeltaError> {
-    if let Some(cookie) = cookie {
-        return Ok(cookie);
-    }
-    let account_id = account_id.ok_or_else(|| DeltaError::InvalidInput("cookie 或 accountId 必填".to_string()))?;
-    state
-        .repo
-        .get_account(account_id)?
-        .map(|record| record.cookie_json)
-        .ok_or(DeltaError::AccountNotFound)
-}
-
-fn persist_account(
-    state: &State<'_, DeltaState>,
-    kind: AccountKind,
-    uin_or_openid: String,
-    cookie_json: String,
-    openid: Option<String>,
-    access_token: Option<String>,
-    expires_in: Option<i64>,
-    extra_json: Option<String>,
-) -> Result<DeltaAccountRecord, DeltaError> {
-    let now = current_millis();
-    let record = state.repo.upsert_account(DeltaAccountUpsert {
-        kind,
-        uin_or_openid,
-        cookie_json,
-        openid,
-        access_token,
-        extra_json,
-        expires_at: expires_in.map(|expires_in| now + expires_in * 1000),
-        now,
-    })?;
-    if let Ok(mut buckets) = state.buckets.lock() {
-        buckets.insert(record.id, record.clone());
-    }
-    Ok(record)
-}
-
-fn remember_pending(
-    state: &State<'_, DeltaState>,
-    kind: &str,
-    session_key: String,
-    cookie_json: String,
-) -> Result<(), DeltaError> {
-    let mut pending = state
-        .pending
-        .lock()
-        .map_err(|_| DeltaError::Storage("pending lock poisoned".to_string()))?;
-    pending.insert(
-        session_key.clone(),
-        PendingSession {
-            kind: kind.to_string(),
-            session_key,
-            cookie_json,
-        },
-    );
-    Ok(())
 }
 
 // ============================================================================
@@ -415,7 +344,7 @@ pub async fn delta_wegame_qq_get_login_qr(
 ) -> Result<ApiResponse<WegameQqLoginQr>, DeltaError> {
     let service = WegameAuthService::new(http_options(options))?;
     let qr = service.get_qq_login_qr().await?;
-    remember_pending(&state, "wegame_qq", qr.qr_sig.clone(), qr.cookie.clone())?;
+    state.remember_pending("wegame_qq", qr.qr_sig.clone(), qr.cookie.clone())?;
     Ok(ApiResponse::ok("获取二维码成功", qr))
 }
 
@@ -441,8 +370,7 @@ pub async fn delta_wegame_qq_poll_status(
             .unwrap_or("")
             .to_string();
         if !uin.is_empty() {
-            let _ = persist_account(
-                &state,
+            let _ = state.persist_account(
                 AccountKind::WegameQq,
                 uin,
                 cookie_json,
@@ -461,11 +389,10 @@ pub async fn delta_wegame_qq_get_access_token(
     state: State<'_, DeltaState>,
     request: AccountCookieRequest,
 ) -> Result<ApiResponse<AccountBoundAccess<WegameTicket>>, DeltaError> {
-    let cookie = resolve_cookie(&state, request.account_id, request.cookie)?;
+    let cookie = state.get_account_cookie(request.account_id, request.cookie)?;
     let service = WegameAuthService::new(http_options(request.options))?;
     let ticket = service.get_qq_access_token(&cookie).await?;
-    let record = persist_account(
-        &state,
+    let record = state.persist_account(
         AccountKind::WegameQq,
         ticket.id.clone(),
         cookie,
@@ -517,8 +444,7 @@ pub async fn delta_wegame_wechat_get_access_token(
 ) -> Result<ApiResponse<AccountBoundAccess<WegameTicket>>, DeltaError> {
     let service = WegameAuthService::new(http_options(request.options))?;
     let ticket = service.get_wechat_access_token(&request.code).await?;
-    let record = persist_account(
-        &state,
+    let record = state.persist_account(
         AccountKind::WegameWechat,
         ticket.id.clone(),
         "{}".to_string(),

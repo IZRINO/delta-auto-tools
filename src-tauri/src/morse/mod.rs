@@ -8,12 +8,12 @@ mod types;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
+use crate::utils::now_ms;
 
 use self::{
     overlay::PendingSelection,
@@ -59,12 +59,7 @@ fn push_history_with_limit(history: &mut VecDeque<HistoryEntry>, entry: HistoryE
     }
 }
 
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or_default()
-}
+
 
 fn restart_hotkey_listener(
     state: &MorseState,

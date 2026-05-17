@@ -10,17 +10,7 @@ import type {
 } from "@/components/app/morse-types";
 import { HOTKEY_MODIFIER_KEYS, REGION_LABELS } from "@/components/app/morse-types";
 
-export function getErrorMessage(error: unknown): string {
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "发生未知错误。";
-}
+export { getErrorMessage } from "@/lib/error-utils";
 
 export function settingsToForm(settings: MorseSettings): MorseSettingsForm {
   return {

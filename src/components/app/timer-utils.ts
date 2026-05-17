@@ -1,7 +1,7 @@
 import type React from "react";
 
 import type { TimerBootstrap, TimerItem, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
-import { TIMER_DISPLAY_MIN_HEIGHT } from "@/components/app/timer-types";
+import { TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
 import { formatRecordedHotkey } from "@/components/app/morse-utils";
 
 export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm {
@@ -54,13 +54,15 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     };
   });
 
+  const displayWidth = Math.max(TIMER_DISPLAY_WIDTH, Math.round(form.display.rect.width));
+
   return {
     enabled: form.enabled,
     display: {
       rect: {
         ...form.display.rect,
-        width: 320,
-        height: Math.max(TIMER_DISPLAY_MIN_HEIGHT, 56 + Math.max(1, timers.length) * 34),
+        width: displayWidth,
+        height: Math.max(TIMER_DISPLAY_MIN_HEIGHT, 48 + Math.max(1, timers.length) * 30),
       },
       fontOpacity,
     },
@@ -78,6 +80,23 @@ export function createTimerItem(existingCount: number): TimerItem {
     durationSeconds: 30,
     hotkey: "F2",
   };
+}
+
+export function moveTimerItem<T extends { id: string }>(items: T[], activeId: string, overId: string): T[] {
+  if (activeId === overId) {
+    return items;
+  }
+
+  const activeIndex = items.findIndex((item) => item.id === activeId);
+  const overIndex = items.findIndex((item) => item.id === overId);
+  if (activeIndex === -1 || overIndex === -1) {
+    return items;
+  }
+
+  const next = [...items];
+  const [moved] = next.splice(activeIndex, 1);
+  next.splice(overIndex, 0, moved);
+  return next;
 }
 
 export function formatTimerRemaining(seconds: number): string {

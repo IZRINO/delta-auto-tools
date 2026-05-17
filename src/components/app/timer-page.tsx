@@ -19,22 +19,22 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import type { TimerBootstrap, TimerDisplayMode, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
-import { getErrorMessage } from "@/components/app/morse-utils";
+import { getErrorMessage } from "@/lib/error-utils";
+import { useNativeShell } from "@/hooks/use-native-shell";
+import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
 import {
   createTimerItem,
   formatTimerHotkey,
   formatTimerRemaining,
   isTimerDirty,
+  moveTimerItem,
   parseTimerSettingsForm,
   timerRunsById,
   timerSettingsToForm,
 } from "@/components/app/timer-utils";
 
 export function TimerPage({ overlayMode }: { overlayMode?: TimerDisplayMode }) {
-  const isNativeShell = useMemo(() => {
-    const tauriWindow = window as Window & { __TAURI_INTERNALS__?: unknown };
-    return Boolean(tauriWindow.__TAURI_INTERNALS__);
-  }, []);
+  const isNativeShell = useNativeShell();
 
   if (overlayMode === "display") {
     return <TimerDisplayOverlay isNativeShell={isNativeShell} />;
@@ -50,26 +50,25 @@ export function TimerPage({ overlayMode }: { overlayMode?: TimerDisplayMode }) {
 function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
   const [form, setForm] = useState<TimerSettingsForm | null>(null);
-  const formRef = useRef<TimerSettingsForm | null>(null);
   const [loading, setLoading] = useState(isNativeShell);
   const [saving, setSaving] = useState(false);
   const [recordingTimerId, setRecordingTimerId] = useState<string | null>(null);
+  const draggingTimerIdRef = useRef<string | null>(null);
+  const [draggingTimerId, setDraggingTimerId] = useState<string | null>(null);
   const hotkeyDraftRef = useRef("");
   const [statusMessage, setStatusMessage] = useState(isNativeShell ? "正在加载计时器..." : "浏览器预览模式：当前仅验证布局，原生命令请在桌面端运行。");
   const [pageError, setPageError] = useState<string | null>(null);
-  const saveTimeoutRef = useRef<number | null>(null);
+  const saveTimeoutRef = useTimeoutCleanup();
   const autosaveVersionRef = useRef(0);
 
   useEffect(() => {
-    formRef.current = form;
-  }, [form]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-      }
+    const handlePointerUp = () => {
+      draggingTimerIdRef.current = null;
+      setDraggingTimerId(null);
     };
+
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
   }, []);
 
   const syncBootstrap = useCallback(async (syncForm = false) => {
@@ -159,6 +158,16 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
 
   const updateDisplay = useCallback((value: Partial<TimerSettingsForm["display"]>) => {
     setForm((current) => current ? { ...current, display: { ...current.display, ...value } } : current);
+  }, []);
+
+  const updateDisplayRect = useCallback((value: Partial<TimerSettingsForm["display"]["rect"]>) => {
+    setForm((current) => current ? {
+      ...current,
+      display: {
+        ...current.display,
+        rect: { ...current.display.rect, ...value },
+      },
+    } : current);
   }, []);
 
   const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
@@ -272,13 +281,33 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
     } : current);
   }, []);
 
+  const moveTimer = useCallback((activeId: string, overId: string) => {
+    setForm((current) => current ? {
+      ...current,
+      timers: moveTimerItem(current.timers, activeId, overId),
+    } : current);
+  }, []);
+
+  const beginTimerDrag = useCallback((id: string) => {
+    draggingTimerIdRef.current = id;
+    setDraggingTimerId(id);
+  }, []);
+
+  const moveDraggingTimerOver = useCallback((overId: string) => {
+    const activeId = draggingTimerIdRef.current;
+    if (!activeId || activeId === overId) {
+      return;
+    }
+    moveTimer(activeId, overId);
+  }, [moveTimer]);
+
   const beginPositionSelection = useCallback(async () => {
     if (!isNativeShell) {
       setStatusMessage("浏览器预览模式下不可设置透明窗口位置，请在桌面端使用。");
       return;
     }
 
-    setStatusMessage("请在透明位置框中拖动窗口，按 Enter 保存，按 Esc 退出修改。透明窗口为固定宽度 320px。");
+    setStatusMessage("请在透明位置框中拖动窗口，按 Enter 保存，按 Esc 退出修改。透明窗口宽度可在上方调整。");
 
     try {
       const outcome = await invoke<TimerSelectionOutcome>("timer_begin_position_selection");
@@ -335,7 +364,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                 <RiEyeLine className="text-muted-foreground" />
                 <div>
               <CardTitle>透明窗口</CardTitle>
-                  <CardDescription>固定宽度 320px，每个计时器一行；按 Enter 保存位置，按 Esc 退出修改；倒计时仅显示秒数。</CardDescription>
+                  <CardDescription>宽度可调，每个计时器一行；按 Enter 保存位置，按 Esc 退出修改；倒计时仅显示秒数。</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -350,6 +379,12 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                     </div>
                   </FieldContent>
                 </Field>
+                <Field>
+                  <FieldLabel>透明窗口显示宽度</FieldLabel>
+                  <FieldContent>
+                    <Input disabled={controlsDisabled || !form} inputMode="numeric" min="320" value={form?.display.rect.width ?? 320} onChange={(event) => updateDisplayRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
+                  </FieldContent>
+                </Field>
                 <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">{statusMessage}</div>
               </FieldGroup>
               <Button disabled={controlsDisabled} onClick={() => void beginPositionSelection()} type="button" variant="outline">
@@ -359,16 +394,19 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-3">
             {form?.timers.map((timer, index) => (
               <TimerCard
                 key={timer.id}
                 controlsDisabled={controlsDisabled}
                 index={index}
                 isRecording={recordingTimerId === timer.id}
+                isDragging={draggingTimerId === timer.id}
                 run={runsById.get(timer.id)}
                 timer={timer}
                 canRemove={form.timers.length > 1}
+                onDragOver={() => moveDraggingTimerOver(timer.id)}
+                onDragStart={() => beginTimerDrag(timer.id)}
                 onBeginHotkeyRecording={() => beginHotkeyRecording(timer)}
                 onHotkeyKeyDown={(event) => handleHotkeyRecorderKeyDown(timer, event)}
                 onRemove={() => removeTimer(timer.id)}
@@ -397,21 +435,27 @@ type TimerCardProps = {
   canRemove: boolean;
   controlsDisabled: boolean;
   index: number;
+  isDragging: boolean;
   isRecording: boolean;
   run: TimerRunState | undefined;
   timer: TimerItemForm;
   onBeginHotkeyRecording: () => void;
+  onDragOver: () => void;
+  onDragStart: () => void;
   onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onRemove: () => void;
   onUpdate: (value: Partial<TimerItemForm>) => void;
 };
 
-function TimerCard({ canRemove, controlsDisabled, index, isRecording, onBeginHotkeyRecording, onHotkeyKeyDown, onRemove, onUpdate, run, timer }: TimerCardProps) {
+function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onUpdate, run, timer }: TimerCardProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
+    <Card size="sm" className={isDragging ? "border-primary shadow-sm" : "border-border shadow-sm"} onPointerEnter={onDragOver}>
       <CardHeader className="border-b border-border/70">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
+            <Button aria-label="拖动排序" className="cursor-grab active:cursor-grabbing" disabled={controlsDisabled} onPointerDown={(event) => { event.preventDefault(); onDragStart(); }} size="icon-sm" type="button" variant="ghost">
+              <span className="text-xs font-bold">↕</span>
+            </Button>
             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</div>
             <RiTimerLine className="text-muted-foreground" />
             <div className="min-w-0">
@@ -501,15 +545,15 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   const opacity = bootstrap?.settings.display.fontOpacity ?? 0.92;
 
   return (
-    <div className="flex min-h-screen w-screen items-start justify-start bg-transparent p-3 font-mono text-white" style={{ opacity }}>
-      <div className="w-full rounded-xl border border-white/20 bg-black/20 px-4 py-3 shadow-[0_0_24px_rgba(0,0,0,0.35)] backdrop-blur-[1px]">
+    <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
+      <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 shadow-[0_0_24px_rgba(0,0,0,0.35)] backdrop-blur-[1px]">
         {bootstrap?.settings.timers.map((timer) => {
           const run = runsById.get(timer.id);
           const finished = run?.status === "finished";
           return (
-            <div key={timer.id} className="flex items-center justify-between gap-3 py-1.5 text-lg font-semibold tracking-wide">
-              <span className={finished ? "text-primary italic" : "text-white"}>{timer.name}</span>
-              <span className={finished ? "text-primary italic" : "text-white"}>{formatTimerRemaining(run?.remainingSeconds ?? timer.durationSeconds)}</span>
+            <div key={timer.id} className="flex min-w-0 items-center justify-between gap-3 py-0.5 text-base font-semibold tracking-wide">
+              <span className={finished ? "min-w-0 truncate text-primary italic" : "min-w-0 truncate text-white"}>{timer.name}</span>
+              <span className={finished ? "shrink-0 text-primary italic" : "shrink-0 text-white"}>{formatTimerRemaining(run?.remainingSeconds ?? timer.durationSeconds)}</span>
             </div>
           );
         })}
@@ -521,7 +565,7 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
 function TimerPositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   const [statusMessage, setStatusMessage] = useState("拖动此固定大小框到目标位置，按 Enter 保存，按 Esc 退出修改。关闭总开关后透明窗口会隐藏并解绑快捷键。");
   const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; x: number; y: number } | null>(null);
-  const [position, setPosition] = useState({ x: window.screenX, y: window.screenY });
+  const [position, setPosition] = useState({ x: window.screenX, y: window.screenY, width: window.innerWidth });
 
   useEffect(() => {
     document.body.dataset.overlayMode = "true";
@@ -571,7 +615,7 @@ function TimerPositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   }, [cancel, commit]);
 
   const moveTo = useCallback(async (x: number, y: number) => {
-    setPosition({ x, y });
+    setPosition((current) => ({ ...current, x, y }));
     if (!isNativeShell) {
       return;
     }
@@ -602,7 +646,7 @@ function TimerPositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {
       <div className="text-center">
         <Badge variant="secondary">计时器透明窗口位置</Badge>
         <p className="mt-3 text-sm font-medium">{statusMessage}</p>
-        <p className="mt-2 font-mono text-xs text-muted-foreground">X {position.x} · Y {position.y} · W 320</p>
+        <p className="mt-2 font-mono text-xs text-muted-foreground">X {position.x} · Y {position.y} · W {position.width}</p>
       </div>
     </div>
   );

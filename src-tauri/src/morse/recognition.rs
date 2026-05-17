@@ -1,10 +1,9 @@
-use std::{
-    collections::VecDeque,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::collections::VecDeque;
 
 use image::{DynamicImage, GrayImage, Luma, RgbaImage};
 use xcap::Monitor;
+
+use crate::utils::now_ms;
 
 use super::{
     decoder,
@@ -511,9 +510,4 @@ fn detect_components(binary: &GrayImage) -> Vec<ComponentBounds> {
     components
 }
 
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or_default()
-}
+

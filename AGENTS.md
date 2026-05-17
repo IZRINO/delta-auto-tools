@@ -255,7 +255,8 @@ src-tauri/src/
 - `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 相同快捷键的计时器会分组到同一个 action 并同时触发。
 - 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`。
-- 计时器透明窗口固定宽度 320px，高度按计时器数量计算且最小 96px；每个计时器一行。
+- 计时器透明窗口宽度可由用户调整，最小宽度 320px；高度按计时器数量计算，避免多于 3 个计时器时出现滚动条。
+- 计时器卡片顺序由 `settings.timers` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
 - 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端显示为高亮斜体 `0`。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 

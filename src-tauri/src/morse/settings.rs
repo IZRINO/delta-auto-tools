@@ -1,62 +1,24 @@
-use std::{fs, path::{Path, PathBuf}};
-
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use super::types::MorseSettings;
+use crate::settings;
 
 const SETTINGS_FILE_NAME: &str = "morse_settings.json";
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| format!("无法解析配置目录: {error}"))?;
-
-    ensure_config_dir(&config_dir)?;
-
-    Ok(config_dir.join(SETTINGS_FILE_NAME))
-}
-
-fn ensure_config_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path).map_err(|error| format!("无法创建配置目录: {error}"))
-}
-
-fn deserialize_settings(content: &str, path: &Path) -> Result<MorseSettings, String> {
-    serde_json::from_str::<MorseSettings>(content)
-        .map_err(|error| format!("无法解析配置文件 {}: {error}", path.display()))
-}
-
-fn read_settings_from_path(path: &Path) -> Result<MorseSettings, String> {
-    if !path.exists() {
-        return Ok(MorseSettings::default());
-    }
-
-    let content = fs::read_to_string(path)
-        .map_err(|error| format!("无法读取配置文件 {}: {error}", path.display()))?;
-
-    deserialize_settings(&content, path)
-}
-
-fn write_settings_to_path(path: &Path, settings: &MorseSettings) -> Result<(), String> {
-    let content = serde_json::to_string_pretty(settings)
-        .map_err(|error| format!("无法序列化设置: {error}"))?;
-
-    fs::write(path, content)
-        .map_err(|error| format!("无法写入配置文件 {}: {error}", path.display()))
-}
-
 pub fn load_settings(app: &AppHandle) -> Result<MorseSettings, String> {
-    let path = settings_path(app)?;
-    read_settings_from_path(&path)
+    let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
+    settings::load_settings(&path)
 }
 
-pub fn save_settings(app: &AppHandle, settings: &MorseSettings) -> Result<(), String> {
-    let path = settings_path(app)?;
-    write_settings_to_path(&path, settings)
+pub fn save_settings(app: &AppHandle, settings_value: &MorseSettings) -> Result<(), String> {
+    let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
+    settings::save_settings(&path, settings_value)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     fn sample_settings() -> MorseSettings {
@@ -73,29 +35,32 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
 
-        let settings = read_settings_from_path(&path).unwrap();
-        assert_eq!(settings.hotkey, MorseSettings::default().hotkey);
-        assert_eq!(settings.binary_threshold, MorseSettings::default().binary_threshold);
+        let loaded = settings::load_settings::<MorseSettings>(&path).unwrap();
+        assert_eq!(loaded.hotkey, MorseSettings::default().hotkey);
+        assert_eq!(loaded.binary_threshold, MorseSettings::default().binary_threshold);
     }
 
     #[test]
     fn write_and_read_settings_round_trip() {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
-        let settings = sample_settings();
+        let s = sample_settings();
 
-        write_settings_to_path(&path, &settings).unwrap();
-        let loaded = read_settings_from_path(&path).unwrap();
+        settings::save_settings(&path, &s).unwrap();
+        let loaded = settings::load_settings::<MorseSettings>(&path).unwrap();
 
-        assert_eq!(loaded.hotkey, settings.hotkey);
-        assert_eq!(loaded.binary_threshold, settings.binary_threshold);
-        assert_eq!(loaded.auto_input_delay, settings.auto_input_delay);
+        assert_eq!(loaded.hotkey, s.hotkey);
+        assert_eq!(loaded.binary_threshold, s.binary_threshold);
+        assert_eq!(loaded.auto_input_delay, s.auto_input_delay);
     }
 
     #[test]
     fn deserialize_settings_reports_invalid_json() {
-        let path = PathBuf::from(SETTINGS_FILE_NAME);
-        let error = deserialize_settings("{not-json}", &path).unwrap_err();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join(SETTINGS_FILE_NAME);
+        fs::write(&path, "{not-json}").unwrap();
+
+        let error = settings::load_settings::<MorseSettings>(&path).unwrap_err();
         assert!(error.contains("无法解析配置文件"));
     }
 
@@ -103,7 +68,7 @@ mod tests {
     fn ensure_config_dir_creates_path() {
         let temp_dir = tempfile::tempdir().unwrap();
         let target = temp_dir.path().join("nested").join("config");
-        ensure_config_dir(&target).unwrap();
+        settings::ensure_config_dir(&target).unwrap();
         assert!(target.exists());
     }
 }

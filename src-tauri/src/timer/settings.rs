@@ -1,61 +1,18 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use super::types::TimerSettings;
+use crate::settings;
 
 const SETTINGS_FILE_NAME: &str = "timer_settings.json";
 
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| format!("无法解析配置目录: {error}"))?;
-
-    ensure_config_dir(&config_dir)?;
-
-    Ok(config_dir.join(SETTINGS_FILE_NAME))
-}
-
-fn ensure_config_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path).map_err(|error| format!("无法创建配置目录: {error}"))
-}
-
-fn deserialize_settings(content: &str, path: &Path) -> Result<TimerSettings, String> {
-    serde_json::from_str::<TimerSettings>(content)
-        .map_err(|error| format!("无法解析计时器配置文件 {}: {error}", path.display()))
-}
-
-fn read_settings_from_path(path: &Path) -> Result<TimerSettings, String> {
-    if !path.exists() {
-        return Ok(TimerSettings::default());
-    }
-
-    let content = fs::read_to_string(path)
-        .map_err(|error| format!("无法读取计时器配置文件 {}: {error}", path.display()))?;
-
-    deserialize_settings(&content, path)
-}
-
-fn write_settings_to_path(path: &Path, settings: &TimerSettings) -> Result<(), String> {
-    let content = serde_json::to_string_pretty(settings)
-        .map_err(|error| format!("无法序列化计时器设置: {error}"))?;
-
-    fs::write(path, content)
-        .map_err(|error| format!("无法写入计时器配置文件 {}: {error}", path.display()))
-}
-
 pub fn load_settings(app: &AppHandle) -> Result<TimerSettings, String> {
-    let path = settings_path(app)?;
-    read_settings_from_path(&path)
+    let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
+    settings::load_settings(&path)
 }
 
-pub fn save_settings(app: &AppHandle, settings: &TimerSettings) -> Result<(), String> {
-    let path = settings_path(app)?;
-    write_settings_to_path(&path, settings)
+pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
+    let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
+    settings::save_settings(&path, settings_value)
 }
 
 #[cfg(test)]
@@ -89,28 +46,33 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
 
-        let settings = read_settings_from_path(&path).unwrap();
-        assert_eq!(settings.timers[0].duration_seconds, TimerSettings::default().timers[0].duration_seconds);
+        let loaded = settings::load_settings::<TimerSettings>(&path).unwrap();
+        assert_eq!(loaded.timers[0].duration_seconds, TimerSettings::default().timers[0].duration_seconds);
     }
 
     #[test]
     fn write_and_read_settings_round_trip() {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
-        let settings = sample_settings();
+        let s = sample_settings();
 
-        write_settings_to_path(&path, &settings).unwrap();
-        let loaded = read_settings_from_path(&path).unwrap();
+        settings::save_settings(&path, &s).unwrap();
+        let loaded = settings::load_settings::<TimerSettings>(&path).unwrap();
 
-        assert_eq!(loaded.enabled, settings.enabled);
-        assert_eq!(loaded.display.rect, settings.display.rect);
-        assert_eq!(loaded.timers, settings.timers);
+        assert_eq!(loaded.enabled, s.enabled);
+        assert_eq!(loaded.display.rect, s.display.rect);
+        assert_eq!(loaded.timers, s.timers);
     }
 
     #[test]
     fn deserialize_settings_reports_invalid_json() {
-        let path = PathBuf::from(SETTINGS_FILE_NAME);
-        let error = deserialize_settings("{not-json}", &path).unwrap_err();
-        assert!(error.contains("无法解析计时器配置文件"));
+        use std::fs;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join(SETTINGS_FILE_NAME);
+        fs::write(&path, "{not-json}").unwrap();
+
+        let error = settings::load_settings::<TimerSettings>(&path).unwrap_err();
+        assert!(error.contains("无法解析配置文件"));
     }
 }

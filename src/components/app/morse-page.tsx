@@ -2,6 +2,10 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import { useNativeShell } from "@/hooks/use-native-shell";
+import { useSyncedRef } from "@/hooks/use-synced-ref";
+import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
+
 import { Badge } from "@/components/ui/badge";
 import { RegionSelectionOverlay } from "@/components/app/morse-overlay";
 import { HistoryPanel, ResultPanel, SelectionPanel, WorkbenchControlPanel } from "@/components/app/morse-panels";
@@ -29,13 +33,10 @@ import {
 
 export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const overlaySlots = useMemo(() => (overlayMode ? parseOverlaySlots() : []), [overlayMode]);
-  const isNativeShell = useMemo(() => {
-    const tauriWindow = window as Window & { __TAURI_INTERNALS__?: unknown };
-    return Boolean(tauriWindow.__TAURI_INTERNALS__);
-  }, []);
+  const isNativeShell = useNativeShell();
   const [bootstrap, setBootstrap] = useState<MorseBootstrap | null>(null);
   const [form, setForm] = useState<MorseSettingsForm | null>(null);
-  const formRef = useRef<MorseSettingsForm | null>(null);
+  const formRef = useSyncedRef(form);
   const hotkeyButtonRef = useRef<HTMLButtonElement | null>(null);
   const hotkeyDraftRef = useRef<string>("");
   const [loading, setLoading] = useState(!overlayMode);
@@ -48,26 +49,14 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const [verificationValue, setVerificationValue] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("idle");
   const [verificationMessage, setVerificationMessage] = useState("点击验证输入框即可执行一次仅识别流程，结果会直接回填到这里。");
-  const saveTimeoutRef = useRef<number | null>(null);
+  const saveTimeoutRef = useTimeoutCleanup();
   const autosaveVersionRef = useRef(0);
-
-  useEffect(() => {
-    formRef.current = form;
-  }, [form]);
 
   useEffect(() => {
     if (isRecordingHotkey) {
       hotkeyButtonRef.current?.focus();
     }
   }, [isRecordingHotkey]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (overlayMode || !isNativeShell) {

@@ -1,7 +1,10 @@
 mod delta;
+mod hotkey_types;
 mod hotkeys;
 mod morse;
+mod settings;
 mod timer;
+mod utils;
 
 use tauri::{Manager, WindowEvent};
 

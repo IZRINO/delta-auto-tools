@@ -10,6 +10,7 @@ mod settings;
 mod types;
 
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
+use crate::utils::now_ms;
 
 use self::{
     types::{
@@ -71,15 +72,10 @@ impl TimerStateInner {
     }
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or_default()
-}
+
 
 fn display_height(timer_count: usize) -> i32 {
-    TIMER_DISPLAY_MIN_HEIGHT.max(56 + timer_count.max(1) as i32 * 34)
+    TIMER_DISPLAY_MIN_HEIGHT.max(48 + timer_count.max(1) as i32 * 30)
 }
 
 fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
@@ -106,7 +102,7 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
 }
 
 fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings, String> {
-    settings_value.display.rect.width = TIMER_DISPLAY_WIDTH;
+    settings_value.display.rect.width = settings_value.display.rect.width.max(TIMER_DISPLAY_WIDTH);
     settings_value.display.rect.height = display_height(settings_value.timers.len());
 
     if !(0.1..=1.0).contains(&settings_value.display.font_opacity) {
@@ -275,6 +271,31 @@ pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyMana
     destroy_display_window(app);
 }
 
+fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
+    if runtime.status != TimerRunStatus::Running {
+        return false;
+    }
+
+    let Some(ends_at_ms) = runtime.ends_at_ms else {
+        return false;
+    };
+
+    let next_remaining = ends_at_ms.saturating_sub(now).div_ceil(1000);
+    if next_remaining == 0 {
+        runtime.remaining_seconds = 0;
+        runtime.status = TimerRunStatus::Finished;
+        runtime.ends_at_ms = None;
+        return true;
+    }
+
+    if runtime.remaining_seconds != next_remaining {
+        runtime.remaining_seconds = next_remaining;
+        return true;
+    }
+
+    false
+}
+
 fn tick(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TimerState>();
     let bootstrap = {
@@ -284,26 +305,8 @@ fn tick(app: &AppHandle) -> Result<(), String> {
             .map_err(|_| "计时器状态已损坏".to_string())?;
         let now = now_ms();
         let mut changed = false;
-
         for runtime in inner.runs.values_mut() {
-            if runtime.status != TimerRunStatus::Running {
-                continue;
-            }
-
-            let Some(ends_at_ms) = runtime.ends_at_ms else {
-                continue;
-            };
-
-            let next_remaining = ends_at_ms.saturating_sub(now).div_ceil(1000);
-            if next_remaining == 0 {
-                runtime.remaining_seconds = 0;
-                runtime.status = TimerRunStatus::Finished;
-                runtime.ends_at_ms = None;
-                changed = true;
-            } else if runtime.remaining_seconds != next_remaining {
-                runtime.remaining_seconds = next_remaining;
-                changed = true;
-            }
+            changed |= update_timer_runtime(runtime, now);
         }
 
         if !changed {
@@ -598,7 +601,7 @@ mod tests {
     fn display_height_has_minimum() {
         assert_eq!(display_height(0), TIMER_DISPLAY_MIN_HEIGHT);
         assert_eq!(display_height(1), TIMER_DISPLAY_MIN_HEIGHT);
-        assert_eq!(display_height(4), 192);
+        assert_eq!(display_height(4), 168);
     }
 
     #[test]
@@ -609,15 +612,15 @@ mod tests {
     }
 
     #[test]
-    fn normalize_settings_forces_fixed_width() {
+    fn normalize_settings_preserves_custom_width() {
         let mut settings = TimerSettings::default();
-        settings.display.rect.width = 100;
+        settings.display.rect.width = 480;
         settings.timers = vec![sample_timer("a", "F2"), sample_timer("b", "F3")];
 
         let normalized = normalize_settings(settings).unwrap();
 
-        assert_eq!(normalized.display.rect.width, TIMER_DISPLAY_WIDTH);
-        assert_eq!(normalized.display.rect.height, 124);
+        assert_eq!(normalized.display.rect.width, 480);
+        assert_eq!(normalized.display.rect.height, 108);
     }
 
     #[test]
@@ -627,5 +630,37 @@ mod tests {
 
         let error = normalize_settings(settings).unwrap_err();
         assert!(error.contains("倒计时秒数"));
+    }
+
+    #[test]
+    fn update_timer_runtime_finishes_elapsed_timer() {
+        let mut runtime = TimerRuntime {
+            ends_at_ms: Some(1_000),
+            remaining_seconds: 1,
+            status: TimerRunStatus::Running,
+        };
+
+        let changed = update_timer_runtime(&mut runtime, 1_000);
+
+        assert!(changed);
+        assert_eq!(runtime.remaining_seconds, 0);
+        assert_eq!(runtime.status, TimerRunStatus::Finished);
+        assert_eq!(runtime.ends_at_ms, None);
+    }
+
+    #[test]
+    fn update_timer_runtime_updates_remaining_seconds() {
+        let mut runtime = TimerRuntime {
+            ends_at_ms: Some(5_000),
+            remaining_seconds: 5,
+            status: TimerRunStatus::Running,
+        };
+
+        let changed = update_timer_runtime(&mut runtime, 2_001);
+
+        assert!(changed);
+        assert_eq!(runtime.remaining_seconds, 3);
+        assert_eq!(runtime.status, TimerRunStatus::Running);
+        assert_eq!(runtime.ends_at_ms, Some(5_000));
     }
 }

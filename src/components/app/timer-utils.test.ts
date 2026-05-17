@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TimerSettings } from "@/components/app/timer-types";
-import { formatTimerRemaining, parseTimerSettingsForm, timerSettingsToForm } from "@/components/app/timer-utils";
+import { formatTimerRemaining, moveTimerItem, parseTimerSettingsForm, timerSettingsToForm } from "@/components/app/timer-utils";
 
 function sampleSettings(): TimerSettings {
   return {
@@ -32,6 +32,43 @@ describe("timer-utils", () => {
     const parsed = parseTimerSettingsForm(timerSettingsToForm(settings));
 
     expect(parsed).toEqual(settings);
+  });
+
+  it("preserves custom display width through form parsing", () => {
+    const form = timerSettingsToForm(sampleSettings());
+    form.display.rect.width = 480;
+
+    const parsed = parseTimerSettingsForm(form);
+
+    expect(parsed.display.rect.width).toBe(480);
+  });
+
+  it("moves timer items by id while preserving all items", () => {
+    const settings = sampleSettings();
+    settings.timers = [
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1" },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2" },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3" },
+    ];
+    const form = timerSettingsToForm(settings);
+
+    const moved = moveTimerItem(form.timers, "c", "a");
+
+    expect(moved.map((timer) => timer.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("sizes display height for four timers without overflow", () => {
+    const settings = sampleSettings();
+    settings.timers = [
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1" },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2" },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3" },
+      { id: "d", name: "D", durationSeconds: 1, hotkey: "F4" },
+    ];
+
+    const parsed = parseTimerSettingsForm(timerSettingsToForm(settings));
+
+    expect(parsed.display.rect.height).toBe(168);
   });
 
   it("formats remaining seconds as seconds only", () => {
