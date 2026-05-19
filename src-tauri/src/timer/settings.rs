@@ -49,12 +49,16 @@ mod tests {
                 duration_seconds: 300,
                 hotkey: "Ctrl+F2".to_string(),
                 direction: TimerDirection::Countdown,
+                enabled: true,
+                ignore_running: true,
+                segment_count: None,
             }],
             counters: vec![CounterItem {
                 id: "counter-alpha".to_string(),
                 name: "测试计数器".to_string(),
                 start_value: 5,
                 hotkey: "Ctrl+F3".to_string(),
+                enabled: true,
             }],
         }
     }

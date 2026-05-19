@@ -33,6 +33,9 @@ function sampleSettings(): TimerSettings {
         durationSeconds: 300,
         hotkey: "Ctrl+F2",
         direction: "countdown",
+        enabled: true,
+        ignoreRunning: true,
+        segmentCount: null,
       },
     ],
     counters: [
@@ -41,6 +44,7 @@ function sampleSettings(): TimerSettings {
         name: "测试计数器",
         startValue: 5,
         hotkey: "Ctrl+F3",
+        enabled: true,
       },
     ],
   };
@@ -68,9 +72,9 @@ describe("timer-utils", () => {
   it("moves timer items by id while preserving all items", () => {
     const settings = sampleSettings();
     settings.timers = [
-      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown" },
-      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countup" },
-      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown" },
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countup", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
     ];
     const form = timerSettingsToForm(settings);
 
@@ -82,10 +86,10 @@ describe("timer-utils", () => {
   it("sizes display height for four timers without overflow", () => {
     const settings = sampleSettings();
     settings.timers = [
-      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown" },
-      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countdown" },
-      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown" },
-      { id: "d", name: "D", durationSeconds: 1, hotkey: "F4", direction: "countdown" },
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "d", name: "D", durationSeconds: 1, hotkey: "F4", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
     ];
 
     const parsed = parseTimerSettingsForm(timerSettingsToForm(settings));
@@ -100,8 +104,8 @@ describe("timer-utils", () => {
   });
 
   it("computes progress from remaining seconds", () => {
-    expect(timerProgressPercent({ id: "a", currentSeconds: 5, remainingSeconds: 5, durationSeconds: 10, direction: "countdown", status: "running" }, 10)).toBe(50);
-    expect(timerProgressPercent({ id: "a", currentSeconds: 10, remainingSeconds: 0, durationSeconds: 10, direction: "countup", status: "finished" }, 10)).toBe(0);
+    expect(timerProgressPercent({ id: "a", currentSeconds: 5, remainingSeconds: 5, durationSeconds: 10, direction: "countdown", status: "running", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0 }, 10)).toBe(50);
+    expect(timerProgressPercent({ id: "a", currentSeconds: 10, remainingSeconds: 0, durationSeconds: 10, direction: "countup", status: "finished", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0 }, 10)).toBe(0);
   });
 
   it("rejects zero second timers", () => {

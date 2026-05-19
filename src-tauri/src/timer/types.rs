@@ -36,6 +36,10 @@ impl Default for TimerDisplaySettings {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_counter_display() -> TimerDisplaySettings {
     TimerDisplaySettings {
         rect: TimerRect {
@@ -68,6 +72,12 @@ pub struct TimerItem {
     pub hotkey: String,
     #[serde(default = "default_timer_direction")]
     pub direction: TimerDirection,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub ignore_running: bool,
+    #[serde(default)]
+    pub segment_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -77,6 +87,8 @@ pub struct CounterItem {
     pub name: String,
     pub start_value: i64,
     pub hotkey: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -110,12 +122,16 @@ impl Default for TimerSettings {
                 duration_seconds: 30,
                 hotkey: "F2".to_string(),
                 direction: TimerDirection::Countdown,
+                enabled: true,
+                ignore_running: true,
+                segment_count: None,
             }],
             counters: vec![CounterItem {
                 id: "counter-1".to_string(),
                 name: "计数器 1".to_string(),
                 start_value: 0,
                 hotkey: "F3".to_string(),
+                enabled: true,
             }],
         }
     }
@@ -137,6 +153,20 @@ pub struct TimerRunState {
     pub duration_seconds: u64,
     pub direction: TimerDirection,
     pub status: TimerRunStatus,
+    #[serde(default)]
+    pub segment_count: Option<u32>,
+    #[serde(default)]
+    pub segment_duration: u64,
+    #[serde(default)]
+    pub recovering: bool,
+    #[serde(default)]
+    pub recovering_count: u32,
+    #[serde(default)]
+    pub active_segment_index: u32,
+    #[serde(default)]
+    pub started_at_ms: u64,
+    #[serde(default)]
+    pub recovery_start_pool: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -196,7 +226,11 @@ mod tests {
         assert_eq!(settings.timers[0].duration_seconds, 30);
         assert_eq!(settings.timers[0].hotkey, "F2");
         assert_eq!(settings.timers[0].direction, TimerDirection::Countdown);
+        assert!(settings.timers[0].enabled);
+        assert!(settings.timers[0].ignore_running);
+        assert_eq!(settings.timers[0].segment_count, None);
         assert_eq!(settings.counters[0].start_value, 0);
         assert_eq!(settings.counters[0].hotkey, "F3");
+        assert!(settings.counters[0].enabled);
     }
 }

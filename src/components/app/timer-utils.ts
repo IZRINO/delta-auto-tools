@@ -33,12 +33,16 @@ export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm 
       durationSeconds: String(timer.durationSeconds),
       hotkey: timer.hotkey,
       direction: timer.direction,
+      enabled: timer.enabled ?? true,
+      ignoreRunning: timer.ignoreRunning ?? true,
+      segmentCount: timer.segmentCount != null ? String(timer.segmentCount) : "",
     })),
     counters: settings.counters.map((counter) => ({
       id: counter.id,
       name: counter.name,
       startValue: String(counter.startValue),
       hotkey: counter.hotkey,
+      enabled: counter.enabled ?? true,
     })),
   };
 }
@@ -87,6 +91,9 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
       durationSeconds,
       hotkey,
       direction: timer.direction,
+      enabled: timer.enabled,
+      ignoreRunning: timer.ignoreRunning,
+      segmentCount: timer.segmentCount ? Number.parseInt(timer.segmentCount, 10) : null,
     };
   });
 
@@ -111,6 +118,7 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
       name,
       startValue,
       hotkey,
+      enabled: counter.enabled,
     };
   });
 
@@ -118,8 +126,8 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     enabled: form.timerEnabled || form.counterEnabled,
     timerEnabled: form.timerEnabled,
     counterEnabled: form.counterEnabled,
-    display: parseDisplaySettings(form.display, timers.length),
-    counterDisplay: parseDisplaySettings(form.counterDisplay, counters.length),
+    display: parseDisplaySettings(form.display, timers.filter((t) => t.enabled).length),
+    counterDisplay: parseDisplaySettings(form.counterDisplay, counters.filter((c) => c.enabled).length),
     timers,
     counters,
   };
@@ -135,6 +143,9 @@ export function createTimerItem(existingCount: number): TimerItem {
     durationSeconds: 30,
     hotkey: "F2",
     direction: "countdown",
+    enabled: true,
+    ignoreRunning: true,
+    segmentCount: null,
   };
 }
 
@@ -147,6 +158,7 @@ export function createCounterItem(existingCount: number): CounterItem {
     name: `计数器 ${nextIndex}`,
     startValue: 0,
     hotkey: "F3",
+    enabled: true,
   };
 }
 

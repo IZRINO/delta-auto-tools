@@ -33,7 +33,6 @@ import {
   createCounterItem,
   createTimerItem,
   formatTimerHotkey,
-  formatTimerRemaining,
   isTimerDirty,
   moveTimerItem,
   parseTimerSettingsForm,
@@ -216,10 +215,17 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   }, []);
 
   const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
-    setForm((current) => current ? {
-      ...current,
-      timers: current.timers.map((timer) => timer.id === id ? { ...timer, ...value } : timer),
-    } : current);
+    setForm((current) => {
+      if (!current) { return current; }
+      // Clear segmentCount when direction changes to countdown
+      if (value.direction === "countdown" && "direction" in value) {
+        value = { ...value, segmentCount: "" };
+      }
+      return {
+        ...current,
+        timers: current.timers.map((timer) => timer.id === id ? { ...timer, ...value } : timer),
+      };
+    });
   }, []);
 
   const updateCounter = useCallback((id: string, value: Partial<CounterItemForm>) => {
@@ -340,7 +346,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const addTimer = useCallback(() => {
     setForm((current) => current ? {
       ...current,
-      timers: [...current.timers, { ...createTimerItem(current.timers.length), durationSeconds: "30" }],
+      timers: [...current.timers, { ...createTimerItem(current.timers.length), durationSeconds: "30", segmentCount: "" }],
     } : current);
   }, []);
 
@@ -643,6 +649,8 @@ type TimerCardProps = {
 };
 
 function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onUpdate, run, timer }: TimerCardProps) {
+  const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
+
   return (
     <Card size="sm" className={isDragging ? "border-primary shadow-sm" : "border-border shadow-sm"} onPointerEnter={onDragOver}>
       <CardHeader className="border-b border-border/70">
@@ -653,12 +661,15 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
             <RiTimerLine className="text-muted-foreground" />
             <div className="min-w-0">
               <CardTitle>{timer.name || `计时器 ${index + 1}`}</CardTitle>
-              <CardDescription>{run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${formatTimerRemaining(run.currentSeconds)}` : "等待快捷键触发"}</CardDescription>
+              <CardDescription>{run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}</CardDescription>
             </div>
           </div>
-          <Button disabled={controlsDisabled || !canRemove} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
-            <RiDeleteBinLine />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Switch checked={timer.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
+            <Button disabled={controlsDisabled || !canRemove} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
+              <RiDeleteBinLine />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -670,7 +681,7 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel htmlFor={`${timer.id}-duration`}>计时秒数</FieldLabel>
+            <FieldLabel htmlFor={`${timer.id}-duration`}>每段秒数</FieldLabel>
             <FieldContent>
               <Input id={`${timer.id}-duration`} disabled={controlsDisabled} inputMode="numeric" min="1" value={timer.durationSeconds} onChange={(event) => onUpdate({ durationSeconds: event.currentTarget.value })} />
             </FieldContent>
@@ -684,6 +695,26 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
               </ToggleGroup>
             </FieldContent>
           </Field>
+          <Field>
+            <FieldLabel htmlFor={`${timer.id}-segment-count`}>多段数（留空=单段）</FieldLabel>
+            <FieldContent>
+              <Input id={`${timer.id}-segment-count`} disabled={controlsDisabled} inputMode="numeric" min="2" max="99" placeholder="留空为普通单段计时器" value={timer.segmentCount} onChange={(event) => onUpdate({ segmentCount: event.currentTarget.value })} />
+            </FieldContent>
+            {isMultiSegment ? (
+              <p className="text-xs text-muted-foreground">总时长 {Number.parseInt(timer.durationSeconds, 10) * Number.parseInt(timer.segmentCount, 10)} 秒，每次触发减少 {timer.durationSeconds} 秒</p>
+            ) : null}
+          </Field>
+          <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
+            <Switch
+              checked={timer.ignoreRunning}
+              disabled={controlsDisabled}
+              onCheckedChange={(checked) => onUpdate({ ignoreRunning: checked })}
+            />
+            <div>
+              <p className="text-sm font-medium text-foreground">运行中忽略触发</p>
+              <p className="text-xs text-muted-foreground">开启后运行时快捷键无效；关闭后运行时触发会重置计时器。</p>
+            </div>
+          </div>
           <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} />
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
             <div className="flex items-center gap-2 text-sm text-foreground">
@@ -729,9 +760,12 @@ function CounterCard({ canRemove, controlsDisabled, counter, index, isDragging, 
               <CardDescription>当前计数 · {run?.value ?? counter.startValue}</CardDescription>
             </div>
           </div>
-          <Button disabled={controlsDisabled || !canRemove} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
-            <RiDeleteBinLine />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Switch checked={counter.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
+            <Button disabled={controlsDisabled || !canRemove} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
+              <RiDeleteBinLine />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -804,25 +838,93 @@ function AddCard({ controlsDisabled, description, onClick, title }: { controlsDi
 
 function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
+  const [now, setNow] = useState(Date.now);
 
   useOverlayBootstrap(isNativeShell, setBootstrap);
+
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      setNow(Date.now());
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
   const opacity = bootstrap?.settings.display.fontOpacity ?? 0.92;
 
+  function smoothProgress(run: TimerRunState | undefined): number {
+    if (!run || !run.startedAtMs || run.status === "finished") {
+      return timerProgressPercent(run, 0);
+    }
+    if (run.segmentCount != null && run.segmentCount >= 2) {
+      const durationMs = run.durationSeconds * 1000;
+      const poolMs = run.recoveryStartPool * 1000 + (now - run.startedAtMs);
+      return Math.max(0, Math.min(100, (poolMs / durationMs) * 100));
+    }
+    const durationMs = run.durationSeconds * 1000;
+    if (run.direction === "countup") {
+      return Math.max(0, Math.min(100, ((now - run.startedAtMs) / durationMs) * 100));
+    }
+    return Math.max(0, Math.min(100, ((run.startedAtMs + durationMs - now) / durationMs) * 100));
+  }
+
+  function smoothDisplayValue(run: TimerRunState | undefined): string {
+    if (!run) {
+      return "";
+    }
+    if (!run.startedAtMs || run.status === "finished") {
+      return Math.floor(run.currentSeconds).toString();
+    }
+    if (run.segmentCount != null && run.segmentCount >= 2) {
+      return smoothSegmentDisplayValue(run);
+    }
+    const durationMs = run.durationSeconds * 1000;
+    if (run.direction === "countdown") {
+      const remainingMs = Math.max(0, run.startedAtMs + durationMs - now);
+      return Math.ceil(remainingMs / 1000).toString();
+    }
+    const elapsedMs = Math.min(durationMs, now - run.startedAtMs);
+    return Math.floor(elapsedMs / 1000).toString();
+  }
+
+  function smoothSegmentDisplayValue(run: TimerRunState): string {
+    const durationMs = run.durationSeconds * 1000;
+    const poolMs = Math.min(durationMs, run.recoveryStartPool * 1000 + (now - run.startedAtMs));
+    return Math.floor(poolMs / 1000).toString();
+  }
+
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
       <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 shadow-[0_0_24px_rgba(0,0,0,0.35)] backdrop-blur-[1px]">
-        {bootstrap?.settings.timers.map((timer) => {
+        {bootstrap?.settings.timers.filter((t) => t.enabled).map((timer) => {
           const run = runsById.get(timer.id);
           const finished = run?.status === "finished";
-          const progress = timerProgressPercent(run, timer.durationSeconds);
+          const isMultiSegment = timer.segmentCount != null && timer.segmentCount >= 2;
+          const progress = smoothProgress(run);
+
+          let displayValue: string;
+          if (!run) {
+            if (isMultiSegment) {
+              const total = timer.segmentCount! * timer.durationSeconds;
+              displayValue = String(total);
+            } else {
+              displayValue = String(timer.durationSeconds);
+            }
+          } else {
+            displayValue = smoothDisplayValue(run);
+          }
+
           return (
             <div key={timer.id} className="relative my-0.5 min-w-0 overflow-hidden rounded-md px-2 py-0.5 text-base font-semibold tracking-wide">
-              <Progress aria-label={`${timer.name} 进度`} className="absolute inset-0 h-full rounded-md bg-white/5 [&_[data-slot=progress-indicator]]:bg-primary/45" value={progress} />
+              {(run && !isMultiSegment) || isMultiSegment ? (
+                <Progress aria-label={`${timer.name} 进度`} className="absolute inset-0 h-full rounded-md bg-white/20 [&_[data-slot=progress-indicator]]:bg-primary/60" value={progress} />
+              ) : null}
               <div className="relative flex min-w-0 items-center justify-between gap-3">
-                <span className={cn("min-w-0 truncate", finished ? "text-primary italic" : "text-white")}>{timer.name}</span>
-                <span className={finished ? "shrink-0 text-primary italic" : "shrink-0 text-white"}>{formatTimerRemaining(run?.currentSeconds ?? (timer.direction === "countup" ? 0 : timer.durationSeconds))}</span>
+                <span className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+                <span className={finished && !isMultiSegment ? "shrink-0 text-primary-foreground italic" : "shrink-0 text-white"}>{displayValue}</span>
               </div>
             </div>
           );
@@ -843,7 +945,7 @@ function CounterDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
       <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 shadow-[0_0_24px_rgba(0,0,0,0.35)] backdrop-blur-[1px]">
-        {bootstrap?.settings.counters.map((counter) => {
+        {bootstrap?.settings.counters.filter((c) => c.enabled).map((counter) => {
           const run = counterRunsByIdMap.get(counter.id);
           return (
             <div key={counter.id} className="flex min-w-0 items-center justify-between gap-3 py-0.5 text-base font-semibold tracking-wide">

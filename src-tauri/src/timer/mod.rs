@@ -48,6 +48,9 @@ struct TimerRuntime {
     duration_seconds: u64,
     direction: TimerDirection,
     status: TimerRunStatus,
+    segment_count: u32,
+    segment_duration: u64,
+    recovery_start_pool: u64,
 }
 
 struct PendingTimerPosition {
@@ -78,13 +81,23 @@ impl TimerStateInner {
             .timers
             .iter()
             .filter_map(|timer| {
-                self.runs.get(&timer.id).map(|runtime| TimerRunState {
-                    id: timer.id.clone(),
-                    current_seconds: runtime.current_seconds,
-                    remaining_seconds: runtime.remaining_seconds,
-                    duration_seconds: runtime.duration_seconds,
-                    direction: runtime.direction.clone(),
-                    status: runtime.status.clone(),
+                self.runs.get(&timer.id).map(|runtime| {
+                    let is_multi = runtime.segment_count > 1;
+                    TimerRunState {
+                        id: timer.id.clone(),
+                        current_seconds: runtime.current_seconds,
+                        remaining_seconds: if is_multi { runtime.current_seconds } else { runtime.remaining_seconds },
+                        duration_seconds: runtime.duration_seconds,
+                        direction: runtime.direction.clone(),
+                        status: runtime.status.clone(),
+                        segment_count: if is_multi { Some(runtime.segment_count) } else { None },
+                        segment_duration: runtime.segment_duration,
+                        recovering: runtime.status == TimerRunStatus::Running,
+                        recovering_count: 0,
+                        active_segment_index: 0,
+                        started_at_ms: runtime.started_at_ms,
+                        recovery_start_pool: runtime.recovery_start_pool,
+                    }
                 })
             })
             .collect()
@@ -132,12 +145,28 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
         return Err(format!("{} 的计时秒数必须大于 0", name));
     }
 
+    if let Some(count) = timer.segment_count {
+        if count < 2 {
+            return Err(format!("{} 的多段数必须大于 1", name));
+        }
+    }
+
+    // Multi-segment only works with countup; silently clear for countdown
+    let segment_count = if timer.direction == TimerDirection::Countdown {
+        None
+    } else {
+        timer.segment_count
+    };
+
     Ok(TimerItem {
         id: timer.id.trim().to_string(),
         name: name.to_string(),
         duration_seconds: timer.duration_seconds,
         hotkey: hotkey.to_string(),
         direction: timer.direction.clone(),
+        enabled: timer.enabled,
+        ignore_running: timer.ignore_running,
+        segment_count,
     })
 }
 
@@ -157,6 +186,7 @@ fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
         name: name.to_string(),
         start_value: counter.start_value,
         hotkey: hotkey.to_string(),
+        enabled: counter.enabled,
     })
 }
 
@@ -178,6 +208,9 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
             duration_seconds: 30,
             hotkey: "F2".to_string(),
             direction: TimerDirection::Countdown,
+            enabled: true,
+            ignore_running: true,
+            segment_count: None,
         });
     }
 
@@ -187,6 +220,7 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
             name: "计数器 1".to_string(),
             start_value: 0,
             hotkey: "F3".to_string(),
+            enabled: true,
         });
     }
 
@@ -222,6 +256,9 @@ fn restart_hotkey_listeners(state: &TimerState, hotkey_manager: &HotkeyManager, 
     let mut by_hotkey: HashMap<String, HotkeyTriggerTargets> = HashMap::new();
     if settings_value.timer_enabled {
         for timer in &settings_value.timers {
+            if !timer.enabled {
+                continue;
+            }
             by_hotkey
                 .entry(timer.hotkey.trim().to_string())
                 .or_insert_with(|| HotkeyTriggerTargets { timer_ids: Vec::new(), counter_ids: Vec::new() })
@@ -231,6 +268,9 @@ fn restart_hotkey_listeners(state: &TimerState, hotkey_manager: &HotkeyManager, 
     }
     if settings_value.counter_enabled {
         for counter in &settings_value.counters {
+            if !counter.enabled {
+                continue;
+            }
             by_hotkey
                 .entry(counter.hotkey.trim().to_string())
                 .or_insert_with(|| HotkeyTriggerTargets { timer_ids: Vec::new(), counter_ids: Vec::new() })
@@ -342,8 +382,16 @@ fn ensure_overlay_window(app: &AppHandle, label: &str, query_mode: &str, title: 
 }
 
 fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
-    ensure_overlay_window(app, TIMER_DISPLAY_LABEL, "timer-display", "计时器透明窗口", &settings_value.display, settings_value.timer_enabled)?;
-    ensure_overlay_window(app, COUNTER_DISPLAY_LABEL, "counter-display", "计数器透明窗口", &settings_value.counter_display, settings_value.counter_enabled)?;
+    let enabled_timer_count = settings_value.timers.iter().filter(|t| t.enabled).count();
+    let enabled_counter_count = settings_value.counters.iter().filter(|c| c.enabled).count();
+
+    let mut timer_display = settings_value.display.clone();
+    timer_display.rect.height = display_height(enabled_timer_count);
+    let mut counter_display = settings_value.counter_display.clone();
+    counter_display.rect.height = display_height(enabled_counter_count);
+
+    ensure_overlay_window(app, TIMER_DISPLAY_LABEL, "timer-display", "计时器透明窗口", &timer_display, settings_value.timer_enabled)?;
+    ensure_overlay_window(app, COUNTER_DISPLAY_LABEL, "counter-display", "计数器透明窗口", &counter_display, settings_value.counter_enabled)?;
     Ok(())
 }
 
@@ -381,6 +429,24 @@ pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyMana
 }
 
 fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
+    // Multi-segment timer: pool model, recovers 1 second per real second
+    if runtime.segment_count > 1 {
+        if runtime.status != TimerRunStatus::Running {
+            return false;
+        }
+        let elapsed_seconds = now.saturating_sub(runtime.started_at_ms) / 1000;
+        let recovered = runtime.recovery_start_pool.saturating_add(elapsed_seconds).min(runtime.duration_seconds);
+        if recovered != runtime.current_seconds {
+            runtime.current_seconds = recovered;
+            runtime.remaining_seconds = recovered;
+            if recovered >= runtime.duration_seconds {
+                runtime.status = TimerRunStatus::Finished;
+            }
+            return true;
+        }
+        return false;
+    }
+
     if runtime.status != TimerRunStatus::Running {
         return false;
     }
@@ -389,6 +455,7 @@ fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
         return false;
     };
 
+    // Original single-segment timer logic
     let elapsed_seconds = now.saturating_sub(runtime.started_at_ms).div_ceil(1000).min(runtime.duration_seconds);
     let remaining_seconds = ends_at_ms.saturating_sub(now).div_ceil(1000);
     let current_seconds = match runtime.direction {
@@ -453,53 +520,92 @@ fn trigger_hotkey_targets(app: &AppHandle, targets: HotkeyTriggerTargets) -> Res
 
         let now = now_ms();
         if inner.settings.timer_enabled {
-            for timer_id in targets.timer_ids {
-            if matches!(inner.runs.get(&timer_id).map(|runtime| &runtime.status), Some(TimerRunStatus::Running)) {
-                continue;
+            for timer_id in &targets.timer_ids {
+                let Some(item) = inner
+                    .settings
+                    .timers
+                    .iter()
+                    .find(|item| item.id == *timer_id && item.enabled)
+                    .map(|item| (item.id.clone(), item.duration_seconds, item.direction.clone(), item.ignore_running, item.segment_count))
+                else {
+                    continue;
+                };
+
+                let (timer_id, duration_seconds, direction, ignore_running, segment_count) = item;
+
+                // Multi-segment timer: pool model, deduct segment_duration, auto-recover
+                if let Some(seg_count) = segment_count {
+                    if seg_count < 2 {
+                        continue;
+                    }
+                    let total_duration = seg_count as u64 * duration_seconds;
+
+                    // Read current pool or use full
+                    let pool = inner.runs.get(&timer_id).map(|r| r.remaining_seconds).unwrap_or(total_duration);
+                    if pool < duration_seconds {
+                        continue; // not enough pool to deduct
+                    }
+
+                    let new_pool = pool - duration_seconds;
+                    inner.runs.insert(timer_id, TimerRuntime {
+                        started_at_ms: now,
+                        ends_at_ms: None,
+                        current_seconds: new_pool,
+                        remaining_seconds: new_pool,
+                        duration_seconds: total_duration,
+                        direction: TimerDirection::Countup,
+                        status: TimerRunStatus::Running,
+                        segment_count: seg_count,
+                        segment_duration: duration_seconds,
+                        recovery_start_pool: new_pool,
+                    });
+                    continue;
+                }
+
+                // Normal timer: check running state
+                let is_running = matches!(inner.runs.get(&timer_id).map(|runtime| &runtime.status), Some(TimerRunStatus::Running));
+
+                if is_running {
+                    if ignore_running {
+                        continue;
+                    }
+                    inner.runs.remove(&timer_id);
+                }
+
+                let cur = match direction {
+                    TimerDirection::Countdown => duration_seconds,
+                    TimerDirection::Countup => 0,
+                };
+
+                inner.runs.insert(timer_id, TimerRuntime {
+                    started_at_ms: now,
+                    ends_at_ms: Some(now + duration_seconds * 1000),
+                    current_seconds: cur,
+                    remaining_seconds: duration_seconds,
+                    duration_seconds,
+                    direction,
+                    status: TimerRunStatus::Running,
+                    segment_count: 1,
+                    segment_duration: duration_seconds,
+                    recovery_start_pool: 0,
+                });
             }
-
-            let Some((id, duration_seconds, direction)) = inner
-                .settings
-                .timers
-                .iter()
-                .find(|item| item.id == timer_id)
-                .map(|timer| (timer.id.clone(), timer.duration_seconds, timer.direction.clone()))
-            else {
-                continue;
-            };
-
-            let current_seconds = match direction {
-                TimerDirection::Countdown => duration_seconds,
-                TimerDirection::Countup => 0,
-            };
-
-            inner.runs.insert(id, TimerRuntime {
-                started_at_ms: now,
-                ends_at_ms: Some(now + duration_seconds * 1000),
-                current_seconds,
-                remaining_seconds: duration_seconds,
-                duration_seconds,
-                direction,
-                status: TimerRunStatus::Running,
-            });
-        }
         }
 
         if inner.settings.counter_enabled {
-            for counter_id in targets.counter_ids {
-            let Some((id, start_value)) = inner
-                .settings
-                .counters
-                .iter()
-                .find(|item| item.id == counter_id)
-                .map(|counter| (counter.id.clone(), counter.start_value))
-            else {
-                continue;
-            };
-
-            let value = inner.counter_runs.entry(id).or_insert(start_value);
-            *value += 1;
-        }
+            for counter_id in &targets.counter_ids {
+                let Some((id, start_value)) = inner
+                    .settings
+                    .counters
+                    .iter()
+                    .find(|item| item.id == *counter_id && item.enabled)
+                    .map(|counter| (counter.id.clone(), counter.start_value))
+                else {
+                    continue;
+                };
+                let value = inner.counter_runs.entry(id).or_insert(start_value);
+                *value += 1;
+            }
         }
 
         inner.bootstrap()
@@ -624,6 +730,9 @@ pub fn timer_save_settings(
         if !settings_value.counter_enabled {
             inner.counter_runs = settings_value.counters.iter().map(|counter| (counter.id.clone(), counter.start_value)).collect();
         }
+        // Clear runs for disabled timers
+        let enabled_timer_ids: Vec<String> = settings_value.timers.iter().filter(|t| t.enabled).map(|t| t.id.clone()).collect();
+        inner.runs.retain(|id, _| enabled_timer_ids.contains(id));
         inner.bootstrap()
     };
 
@@ -830,6 +939,9 @@ mod tests {
             duration_seconds: 30,
             hotkey: hotkey.to_string(),
             direction: TimerDirection::Countdown,
+            enabled: true,
+            ignore_running: true,
+            segment_count: None,
         }
     }
 
@@ -839,6 +951,7 @@ mod tests {
             name: id.to_string(),
             start_value: 0,
             hotkey: hotkey.to_string(),
+            enabled: true,
         }
     }
 
@@ -891,10 +1004,12 @@ mod tests {
             duration_seconds: 1,
             direction: TimerDirection::Countdown,
             status: TimerRunStatus::Running,
+            segment_count: 1,
+            segment_duration: 1,
+            recovery_start_pool: 0,
         };
 
         let changed = update_timer_runtime(&mut runtime, 1_000);
-
         assert!(changed);
         assert_eq!(runtime.current_seconds, 0);
         assert_eq!(runtime.remaining_seconds, 0);
@@ -912,10 +1027,12 @@ mod tests {
             duration_seconds: 5,
             direction: TimerDirection::Countup,
             status: TimerRunStatus::Running,
+            segment_count: 1,
+            segment_duration: 5,
+            recovery_start_pool: 0,
         };
 
         let changed = update_timer_runtime(&mut runtime, 2_001);
-
         assert!(changed);
         assert_eq!(runtime.current_seconds, 3);
         assert_eq!(runtime.remaining_seconds, 3);

@@ -18,6 +18,9 @@ export type TimerItem = {
   durationSeconds: number;
   hotkey: string;
   direction: TimerDirection;
+  enabled: boolean;
+  ignoreRunning: boolean;
+  segmentCount: number | null;
 };
 
 export type CounterItem = {
@@ -25,6 +28,7 @@ export type CounterItem = {
   name: string;
   startValue: number;
   hotkey: string;
+  enabled: boolean;
 };
 
 export type TimerSettings = {
@@ -46,6 +50,13 @@ export type TimerRunState = {
   durationSeconds: number;
   direction: TimerDirection;
   status: TimerRunStatus;
+  segmentCount: number | null;
+  segmentDuration: number;
+  recovering: boolean;
+  recoveringCount: number;
+  activeSegmentIndex: number;
+  startedAtMs: number;
+  recoveryStartPool: number;
 };
 
 export type CounterRunState = {
@@ -66,6 +77,9 @@ export type TimerItemForm = {
   durationSeconds: string;
   hotkey: string;
   direction: TimerDirection;
+  enabled: boolean;
+  ignoreRunning: boolean;
+  segmentCount: string;
 };
 
 export type CounterItemForm = {
@@ -73,6 +87,7 @@ export type CounterItemForm = {
   name: string;
   startValue: string;
   hotkey: string;
+  enabled: boolean;
 };
 
 export type TimerSettingsForm = {
