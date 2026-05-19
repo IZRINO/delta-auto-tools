@@ -172,11 +172,22 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
     normalize_display(&mut settings_value.counter_display, settings_value.counters.len())?;
 
     if settings_value.timers.is_empty() {
-        return Err("至少需要保留一个计时器".to_string());
+        settings_value.timers.push(TimerItem {
+            id: format!("timer-{}", crate::utils::now_ms()),
+            name: "计时器 1".to_string(),
+            duration_seconds: 30,
+            hotkey: "F2".to_string(),
+            direction: TimerDirection::Countdown,
+        });
     }
 
     if settings_value.counters.is_empty() {
-        return Err("至少需要保留一个计数器".to_string());
+        settings_value.counters.push(CounterItem {
+            id: format!("counter-{}", crate::utils::now_ms()),
+            name: "计数器 1".to_string(),
+            start_value: 0,
+            hotkey: "F3".to_string(),
+        });
     }
 
     let mut seen_ids = HashMap::new();
