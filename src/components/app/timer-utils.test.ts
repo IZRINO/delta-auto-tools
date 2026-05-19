@@ -104,8 +104,8 @@ describe("timer-utils", () => {
   });
 
   it("computes progress from remaining seconds", () => {
-    expect(timerProgressPercent({ id: "a", currentSeconds: 5, remainingSeconds: 5, durationSeconds: 10, direction: "countdown", status: "running", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0 }, 10)).toBe(50);
-    expect(timerProgressPercent({ id: "a", currentSeconds: 10, remainingSeconds: 0, durationSeconds: 10, direction: "countup", status: "finished", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0 }, 10)).toBe(0);
+    expect(timerProgressPercent({ id: "a", currentSeconds: 5, remainingSeconds: 5, durationSeconds: 10, direction: "countdown", status: "running", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0, startedAtMs: 0, recoveryStartPool: 0 }, 10)).toBe(50);
+    expect(timerProgressPercent({ id: "a", currentSeconds: 10, remainingSeconds: 0, durationSeconds: 10, direction: "countup", status: "finished", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0, startedAtMs: 0, recoveryStartPool: 0 }, 10)).toBe(0);
   });
 
   it("rejects zero second timers", () => {
