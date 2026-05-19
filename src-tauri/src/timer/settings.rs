@@ -18,11 +18,13 @@ pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timer::types::{TimerDisplaySettings, TimerItem, TimerRect};
+    use crate::timer::types::{CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect};
 
     fn sample_settings() -> TimerSettings {
         TimerSettings {
             enabled: true,
+            timer_enabled: true,
+            counter_enabled: true,
             display: TimerDisplaySettings {
                 rect: TimerRect {
                     x: 10,
@@ -32,11 +34,27 @@ mod tests {
                 },
                 font_opacity: 0.75,
             },
+            counter_display: TimerDisplaySettings {
+                rect: TimerRect {
+                    x: 330,
+                    y: 20,
+                    width: 320,
+                    height: 120,
+                },
+                font_opacity: 0.8,
+            },
             timers: vec![TimerItem {
                 id: "alpha".to_string(),
                 name: "测试计时器".to_string(),
                 duration_seconds: 300,
                 hotkey: "Ctrl+F2".to_string(),
+                direction: TimerDirection::Countdown,
+            }],
+            counters: vec![CounterItem {
+                id: "counter-alpha".to_string(),
+                name: "测试计数器".to_string(),
+                start_value: 5,
+                hotkey: "Ctrl+F3".to_string(),
             }],
         }
     }
@@ -61,7 +79,9 @@ mod tests {
 
         assert_eq!(loaded.enabled, s.enabled);
         assert_eq!(loaded.display.rect, s.display.rect);
+        assert_eq!(loaded.counter_display.rect, s.counter_display.rect);
         assert_eq!(loaded.timers, s.timers);
+        assert_eq!(loaded.counters, s.counters);
     }
 
     #[test]

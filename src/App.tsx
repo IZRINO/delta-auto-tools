@@ -40,8 +40,16 @@ function App() {
     return <TimerPage overlayMode="display" />;
   }
 
+  if (overlayMode === "counter-display") {
+    return <TimerPage overlayMode="counter-display" />;
+  }
+
   if (overlayMode === "timer-position") {
     return <TimerPage overlayMode="position" />;
+  }
+
+  if (overlayMode === "counter-position") {
+    return <TimerPage overlayMode="counter-position" />;
   }
 
   const activeToolMeta = activeTool === "morse"
@@ -52,8 +60,8 @@ function App() {
       }
     : {
         icon: <RiTimerLine />,
-        eyebrow: "Workspace / Timer",
-        title: "计时器工作台",
+        eyebrow: "Workspace / Timer & Counter",
+        title: "计时\\计数器工作台",
       };
 
   return (
@@ -85,9 +93,9 @@ function App() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive={activeTool === "timer"} onClick={() => setActiveTool("timer")} tooltip="计时器" type="button">
+                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive={activeTool === "timer"} onClick={() => setActiveTool("timer")} tooltip="计时\\计数器" type="button">
                     <RiTimerLine />
-                    <span className="truncate">计时器</span>
+                    <span className="truncate">计时\\计数器</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>

@@ -1,33 +1,68 @@
 import type React from "react";
 
-import type { TimerBootstrap, TimerItem, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
+import type { CounterItem, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerItem, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
 import { formatRecordedHotkey } from "@/components/app/morse-utils";
 
-export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm {
+function displaySettingsToForm(display: TimerDisplaySettings) {
   return {
-    enabled: settings.enabled,
-    display: {
-      rect: settings.display.rect,
-      fontOpacity: String(settings.display.fontOpacity),
-    },
+    rect: display.rect,
+    fontOpacity: String(display.fontOpacity),
+  };
+}
+
+function parseFontOpacity(value: string): number {
+  const fontOpacity = Number.parseFloat(value);
+  if (!Number.isFinite(fontOpacity) || fontOpacity < 0.1 || fontOpacity > 1) {
+    throw new Error("字体透明度必须是 0.1 到 1 之间的数字。");
+  }
+  return fontOpacity;
+}
+
+export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm {
+  const legacyEnabled = Boolean(settings.enabled);
+
+  return {
+    timerEnabled: settings.timerEnabled ?? legacyEnabled,
+    counterEnabled: settings.counterEnabled ?? legacyEnabled,
+    display: displaySettingsToForm(settings.display),
+    counterDisplay: displaySettingsToForm(settings.counterDisplay),
     timers: settings.timers.map((timer) => ({
       id: timer.id,
       name: timer.name,
       durationSeconds: String(timer.durationSeconds),
       hotkey: timer.hotkey,
+      direction: timer.direction,
+    })),
+    counters: settings.counters.map((counter) => ({
+      id: counter.id,
+      name: counter.name,
+      startValue: String(counter.startValue),
+      hotkey: counter.hotkey,
     })),
   };
 }
 
-export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
-  const fontOpacity = Number.parseFloat(form.display.fontOpacity);
-  if (!Number.isFinite(fontOpacity) || fontOpacity < 0.1 || fontOpacity > 1) {
-    throw new Error("字体透明度必须是 0.1 到 1 之间的数字。");
-  }
+function parseDisplaySettings(display: TimerSettingsForm["display"], itemCount: number): TimerDisplaySettings {
+  const displayWidth = Math.max(TIMER_DISPLAY_WIDTH, Math.round(display.rect.width));
 
+  return {
+    rect: {
+      ...display.rect,
+      width: displayWidth,
+      height: displayHeight(itemCount),
+    },
+    fontOpacity: parseFontOpacity(display.fontOpacity),
+  };
+}
+
+export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
   if (form.timers.length === 0) {
     throw new Error("至少需要保留一个计时器。");
+  }
+
+  if (form.counters.length === 0) {
+    throw new Error("至少需要保留一个计数器。");
   }
 
   const timers = form.timers.map((timer): TimerItem => {
@@ -43,7 +78,7 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
 
     const durationSeconds = Number.parseInt(timer.durationSeconds, 10);
     if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) {
-      throw new Error(`${name} 的倒计时秒数必须是大于 0 的整数。`);
+      throw new Error(`${name} 的计时秒数必须是大于 0 的整数。`);
     }
 
     return {
@@ -51,22 +86,42 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
       name,
       durationSeconds,
       hotkey,
+      direction: timer.direction,
     };
   });
 
-  const displayWidth = Math.max(TIMER_DISPLAY_WIDTH, Math.round(form.display.rect.width));
+  const counters = form.counters.map((counter): CounterItem => {
+    const name = counter.name.trim();
+    if (!name) {
+      throw new Error("计数器名称不能为空。");
+    }
+
+    const hotkey = counter.hotkey.trim();
+    if (!hotkey) {
+      throw new Error(`${name} 的快捷键不能为空。`);
+    }
+
+    const startValue = Number.parseInt(counter.startValue, 10);
+    if (!Number.isInteger(startValue)) {
+      throw new Error(`${name} 的起始数必须是整数。`);
+    }
+
+    return {
+      id: counter.id,
+      name,
+      startValue,
+      hotkey,
+    };
+  });
 
   return {
-    enabled: form.enabled,
-    display: {
-      rect: {
-        ...form.display.rect,
-        width: displayWidth,
-        height: Math.max(TIMER_DISPLAY_MIN_HEIGHT, 48 + Math.max(1, timers.length) * 30),
-      },
-      fontOpacity,
-    },
+    enabled: form.timerEnabled || form.counterEnabled,
+    timerEnabled: form.timerEnabled,
+    counterEnabled: form.counterEnabled,
+    display: parseDisplaySettings(form.display, timers.length),
+    counterDisplay: parseDisplaySettings(form.counterDisplay, counters.length),
     timers,
+    counters,
   };
 }
 
@@ -79,6 +134,19 @@ export function createTimerItem(existingCount: number): TimerItem {
     name: `计时器 ${nextIndex}`,
     durationSeconds: 30,
     hotkey: "F2",
+    direction: "countdown",
+  };
+}
+
+export function createCounterItem(existingCount: number): CounterItem {
+  const nextIndex = existingCount + 1;
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return {
+    id: `counter-${suffix}`,
+    name: `计数器 ${nextIndex}`,
+    startValue: 0,
+    hotkey: "F3",
   };
 }
 
@@ -99,11 +167,32 @@ export function moveTimerItem<T extends { id: string }>(items: T[], activeId: st
   return next;
 }
 
+export function displayHeight(itemCount: number): number {
+  return Math.max(TIMER_DISPLAY_MIN_HEIGHT, 48 + Math.max(1, itemCount) * 30);
+}
+
 export function formatTimerRemaining(seconds: number): string {
   return String(Math.max(0, Math.floor(seconds)));
 }
 
+export function timerProgressPercent(run: TimerRunState | undefined, durationSeconds: number): number {
+  if (!run) {
+    return 100;
+  }
+
+  if (run.durationSeconds <= 0 && durationSeconds <= 0) {
+    return 0;
+  }
+
+  const total = run.durationSeconds || durationSeconds;
+  return Math.max(0, Math.min(100, (run.remainingSeconds / total) * 100));
+}
+
 export function timerRunsById(runs: TimerRunState[]): Map<string, TimerRunState> {
+  return new Map(runs.map((run) => [run.id, run]));
+}
+
+export function counterRunsById(runs: CounterRunState[]): Map<string, CounterRunState> {
   return new Map(runs.map((run) => [run.id, run]));
 }
 

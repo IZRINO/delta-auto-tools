@@ -82,6 +82,8 @@ pub fn run() {
             timer::timer_get_bootstrap,
             timer::timer_save_settings,
             timer::timer_trigger,
+            timer::timer_counter_trigger,
+            timer::timer_counter_reset,
             timer::timer_begin_position_selection,
             timer::timer_position_commit,
             timer::timer_position_cancel,

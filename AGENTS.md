@@ -6,7 +6,7 @@
 - 当前仓库是 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具，产品名为"三角洲行动工具"（Delta Auto Tools），为游戏《三角洲行动》提供辅助功能。
 - 当前产品由三部分原生能力组成：
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
-  2. **计时器工作台**：主界面负责多个计时器卡片、总开关、透明窗口位置与字体透明度设置；透明窗口负责置顶点击穿透显示倒计时。核心流程：自定义快捷键 → 触发一个或多个计时器 → 透明窗口按卡片顺序逐行显示倒计时。
+  2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
   3. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQSafe 鉴权和游戏数据查询能力，当前阶段以原生命令与存储为主，尚未接入前端页面（前端仅有 `ToolPlaceholderPage` 占位组件）。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-mira` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
@@ -65,21 +65,21 @@ src/
 │       ├── morse-types.ts      # 前端 TypeScript 类型定义与常量
 │       ├── morse-utils.ts      # 纯逻辑工具函数（序列化、格式化、热键解析）
 │       ├── morse-utils.test.ts # Morse 前端测试文件
-│       ├── timer-page.tsx      # 计时器页面、透明窗口与位置设置 UI
-│       ├── timer-types.ts      # 计时器前端 TypeScript 类型定义与常量
-│       ├── timer-utils.ts      # 计时器纯逻辑工具函数（序列化、格式化、热键复用）
-│       ├── timer-utils.test.ts # 计时器前端测试文件
+│       ├── timer-page.tsx      # 计时\计数器页面、透明窗口与位置设置 UI
+│       ├── timer-types.ts      # 计时\计数器前端 TypeScript 类型定义与常量
+│       ├── timer-utils.ts      # 计时\计数器纯逻辑工具函数（序列化、格式化、热键复用）
+│       ├── timer-utils.test.ts # 计时\计数器前端测试文件
 │       └── tool-placeholder-page.tsx  # Delta 工具模块占位组件（未开放状态）
 ```
 
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层
 - 当前有两个真实工具页面（Morse、计时器），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
-- **计时器状态编排**：`timer-page.tsx` 负责计时器表单、透明窗口状态订阅、位置设置与自动保存
+- **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
 - **热键录制**：录制时调用 `morse_set_hotkey_recording(true)` 暂停被动热键监听，录制后恢复。按 Escape 取消恢复旧值
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
@@ -163,10 +163,12 @@ src-tauri/src/
 
 | 命令 | 说明 |
 |------|------|
-| `timer_get_bootstrap` | 获取计时器初始状态（settings + runs + hotkeyError） |
-| `timer_save_settings` | 保存计时器设置，总开关关闭时停止监听并隐藏透明窗口 |
+| `timer_get_bootstrap` | 获取计时\计数器初始状态（settings + runs + counterRuns + hotkeyError） |
+| `timer_save_settings` | 保存计时\计数器设置，计时器/计数器各自总开关关闭时隐藏对应透明窗口并解绑对应快捷键 |
 | `timer_trigger` | 手动触发一个或多个计时器 |
-| `timer_begin_position_selection` | 打开固定大小的位置设置窗口 |
+| `timer_counter_trigger` | 手动触发一个或多个计数器 |
+| `timer_counter_reset` | 将指定计数器重置为设置的起始数 |
+| `timer_begin_position_selection` | 打开固定大小的位置设置窗口（支持计时器/计数器目标） |
 | `timer_position_commit` | Enter 保存透明窗口位置 |
 | `timer_position_cancel` | Esc 取消位置设置 |
 | `timer_position_moved` | 位置设置窗口拖动时暂存坐标 |
@@ -205,11 +207,11 @@ src-tauri/src/
 
 - 保持白色桌面工具风格，不要改回模板首页或营销页。
 - `?mode=overlay` 必须继续可用，不要引入路由来替代它。
-- `?mode=timer-display` 和 `?mode=timer-position` 必须继续由 `App.tsx` 查询参数分支进入，不要引入路由替代。
+- `?mode=timer-display`、`?mode=timer-position`、`?mode=counter-display` 和 `?mode=counter-position` 必须继续由 `App.tsx` 查询参数分支进入，不要引入路由替代。
 - 区域选择应保持"一次进入 overlay，连续完成多个框选"。
 - overlay 必须保持透明背景，避免重灰幕遮挡底层屏幕内容。
-- 计时器透明窗口必须保持无边框、透明、置顶、点击穿透，避免挡游戏。
-- 计时器总开关关闭后必须隐藏透明窗口、停止热键监听并保留本地配置。
+- 计时器和计数器透明窗口必须保持无边框、透明、置顶、点击穿透，避免挡游戏。
+- 计时器总开关关闭后必须隐藏计时器透明窗口、停止计时器快捷键监听并保留本地配置；计数器总开关关闭后必须隐藏计数器透明窗口、停止计数器快捷键监听并保留本地配置。
 - 热键输入应保持录制式交互；真正的解绑/重绑由 Rust 保存逻辑负责。
 - `TooltipProvider` 已在 `src/main.tsx` 根部提供，依赖 tooltip 的组件应沿用该入口结构。
 
@@ -249,15 +251,18 @@ src-tauri/src/
 
 ### 计时器端
 
-- `src-tauri/src/timer/mod.rs` 负责状态、命令注册、透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
-- `src-tauri/src/timer/types.rs` 定义所有计时器数据结构（`TimerSettings`、`TimerItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState` 等）。
+- `src-tauri/src/timer/mod.rs` 负责状态、命令注册、计时器/计数器透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
+- `src-tauri/src/timer/types.rs` 定义所有计时\计数器数据结构（`TimerSettings`、`TimerItem`、`CounterItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState`、`CounterRunState` 等）。
 - `src-tauri/src/timer/settings.rs` 的持久化文件是 `timer_settings.json`。
 - `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 相同快捷键的计时器会分组到同一个 action 并同时触发。
-- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`。
-- 计时器透明窗口宽度可由用户调整，最小宽度 320px；高度按计时器数量计算，避免多于 3 个计时器时出现滚动条。
-- 计时器卡片顺序由 `settings.timers` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
-- 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端显示为高亮斜体 `0`。
+- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`；计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
+- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态；`TimerSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。旧 `enabled` 字段仅用于兼容旧配置，归一化后等于两个独立开关的并集。
+- 计时器和计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计时器卡片顺序由 `settings.timers` 数组顺序决定，计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计时器支持 `Countdown`（10→0）和 `Countup`（0→10）两种方向；运行中重复快捷键触发会被忽略，结束后才能再次触发。
+- 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
+- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### Delta 端
@@ -371,7 +376,7 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 
 ### 前端测试（Vitest）
 - `src/components/app/morse-utils.test.ts` — Morse 前端测试，测试工具函数
-- `src/components/app/timer-utils.test.ts` — 计时器前端测试，测试设置转层与倒计时格式化
+- `src/components/app/timer-utils.test.ts` — 计时\计数器前端测试，测试设置转层、进度计算与倒计时格式化
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
