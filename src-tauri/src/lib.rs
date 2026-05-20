@@ -2,6 +2,7 @@ mod delta;
 mod hotkey_types;
 mod hotkeys;
 mod morse;
+mod rapidfire;
 mod settings;
 mod timer;
 mod utils;
@@ -17,10 +18,12 @@ pub fn run() {
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let delta_state = delta::initialize(app.handle())?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
+            let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(delta_state);
             app.manage(timer_state);
+            app.manage(rapidfire_state);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -30,6 +33,8 @@ pub fn run() {
                     let timer_state = app.state::<timer::TimerState>();
                     let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
                     timer::shutdown(app, &timer_state, &hotkey_manager);
+                    let rapidfire_state = app.state::<rapidfire::RapidfireState>();
+                    rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
                     app.exit(0);
                 }
             }
@@ -88,6 +93,13 @@ pub fn run() {
             timer::timer_position_commit,
             timer::timer_position_cancel,
             timer::timer_position_moved,
+            rapidfire::rapidfire_get_bootstrap,
+            rapidfire::rapidfire_save_settings,
+            rapidfire::rapidfire_stop,
+            rapidfire::rapidfire_begin_position_selection,
+            rapidfire::rapidfire_position_commit,
+            rapidfire::rapidfire_position_cancel,
+            rapidfire::rapidfire_position_moved,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

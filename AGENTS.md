@@ -4,10 +4,11 @@
 
 - **开发环境**：Windows（当前仓库路径 `D:/code/ai/sjz/delta-auto-tools`），所有命令在 Windows + Bun 下测试通过
 - 当前仓库是 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具，产品名为"三角洲行动工具"（Delta Auto Tools），为游戏《三角洲行动》提供辅助功能。
-- 当前产品由三部分原生能力组成：
+- 当前产品由四部分原生能力组成：
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
   2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
-  3. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQSafe 鉴权和游戏数据查询能力，当前阶段以原生命令与存储为主，尚未接入前端页面（前端仅有 `ToolPlaceholderPage` 占位组件）。
+  3. **连发器工作台**：主界面负责多张连发器卡片配置、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时自动补齐触发次数为偶数 → 独立透明窗口置顶点击穿透显示结果。
+  4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQSafe 鉴权和游戏数据查询能力，当前阶段以原生命令与存储为主，尚未接入前端页面（前端仅有 `ToolPlaceholderPage` 占位组件）。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-mira` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
 
@@ -69,14 +70,16 @@ src/
 │       ├── timer-types.ts      # 计时\计数器前端 TypeScript 类型定义与常量
 │       ├── timer-utils.ts      # 计时\计数器纯逻辑工具函数（序列化、格式化、热键复用）
 │       ├── timer-utils.test.ts # 计时\计数器前端测试文件
+│       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
+│       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       └── tool-placeholder-page.tsx  # Delta 工具模块占位组件（未开放状态）
 ```
 
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层
-- 当前有两个真实工具页面（Morse、计时器），侧边栏在“当前工具”下切换
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层
+- 当前有三个真实工具页面（Morse、计时器、连发器），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
@@ -104,6 +107,10 @@ src-tauri/src/
 │   ├── types.rs                # TimerSettings/TimerItem/TimerBootstrap 等 DTO
 │   ├── hotkey.rs               # willhook 底层键盘钩子（Windows only）
 │   └── settings.rs             # timer_settings.json 持久化
+├── rapidfire/
+│   ├── mod.rs                  # RapidfireState、状态机、命令注册、透明窗口、位置设置
+│   ├── types.rs                # RapidfireSettings/RapidfireCard/RapidfireBootstrap 等 DTO
+│   └── settings.rs             # rapidfire_settings.json 持久化
 └── delta/
     ├── mod.rs                  # 模块声明 + initialize()
     ├── commands.rs             # 所有 Delta Tauri commands + DTO 定义
@@ -142,7 +149,7 @@ src-tauri/src/
 ```
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
-- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()` 和 `timer::initialize()`，然后通过 `app.manage()` 注册状态
+- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()` 和 `rapidfire::initialize()`，然后通过 `app.manage()` 注册状态
 - `tauri::generate_handler![]` 中列出所有命令，新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
 
 ## Tauri commands
@@ -172,6 +179,18 @@ src-tauri/src/
 | `timer_position_commit` | Enter 保存透明窗口位置 |
 | `timer_position_cancel` | Esc 取消位置设置 |
 | `timer_position_moved` | 位置设置窗口拖动时暂存坐标 |
+
+### 连发器命令面
+
+| 命令 | 说明 |
+|------|------|
+| `rapidfire_get_bootstrap` | 获取连发器初始状态（settings + runs + hotkeyError） |
+| `rapidfire_save_settings` | 保存连发器设置，总开关关闭时解绑快捷键并隐藏透明窗口 |
+| `rapidfire_stop` | 停止所有运行中的连发 |
+| `rapidfire_begin_position_selection` | 打开固定大小的位置设置窗口 |
+| `rapidfire_position_commit` | Enter 保存透明窗口位置 |
+| `rapidfire_position_cancel` | Esc 取消位置设置 |
+| `rapidfire_position_moved` | 位置设置窗口拖动时暂存坐标 |
 
 ### Delta 命令面
 
@@ -207,11 +226,12 @@ src-tauri/src/
 
 - 保持白色桌面工具风格，不要改回模板首页或营销页。
 - `?mode=overlay` 必须继续可用，不要引入路由来替代它。
-- `?mode=timer-display`、`?mode=timer-position`、`?mode=counter-display` 和 `?mode=counter-position` 必须继续由 `App.tsx` 查询参数分支进入，不要引入路由替代。
+- `?mode=timer-display`、`?mode=timer-position`、`?mode=counter-display`、`?mode=counter-position`、`?mode=rapidfire-display` 和 `?mode=rapidfire-position` 必须继续由 `App.tsx` 查询参数分支进入，不要引入路由替代。
 - 区域选择应保持"一次进入 overlay，连续完成多个框选"。
 - overlay 必须保持透明背景，避免重灰幕遮挡底层屏幕内容。
 - 计时器和计数器透明窗口必须保持无边框、透明、置顶、点击穿透，避免挡游戏。
 - 计时器总开关关闭后必须隐藏计时器透明窗口、停止计时器快捷键监听并保留本地配置；计数器总开关关闭后必须隐藏计数器透明窗口、停止计数器快捷键监听并保留本地配置。
+- 连发器总开关关闭后必须隐藏连发器透明窗口、停止连发器快捷键监听并保留本地配置。
 - 热键输入应保持录制式交互；真正的解绑/重绑由 Rust 保存逻辑负责。
 - `TooltipProvider` 已在 `src/main.tsx` 根部提供，依赖 tooltip 的组件应沿用该入口结构。
 
@@ -264,6 +284,25 @@ src-tauri/src/
 - 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
 - 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+
+### 连发器端
+
+- `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 tick 编排。
+- `src-tauri/src/rapidfire/types.rs` 定义所有连发器数据结构（`RapidfireSettings`、`RapidfireCard`、`RapidfireBootstrap`、`RapidfireRunState`、`RapidfireRunStatus`、`RapidfireRect` 等）。
+- `src-tauri/src/rapidfire/settings.rs` 的持久化文件是 `rapidfire_settings.json`。
+- `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段。
+- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>）、`pending_position`、`hotkey_error`。
+- 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
+- 触发键为单键（不支持组合键），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发。
+- 状态机：`Idle → Firing → (偶数→Idle, 奇数→PendingCompensation→Idle)`。
+- 触发键 Up 时 count 为偶数直接结束，奇数进入补齐等待（等待一个 interval 后额外触发 1 次）。
+- 补齐等待期间再次按下触发键会取消补齐并重新开始。
+- 连发器透明窗口 label 是 `"rapidfire-display"`，位置设置窗口 label 是 `"rapidfire-position"`。
+- `RapidfireSettings.rapidfire_enabled` 控制 hold 热键注册、透明窗口显示和运行态。
+- 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
+- 连发间隔最小 10ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
+- 目标键通过 `enigo::Key` 模拟触发（`fire_target_key()`），在 `spawn_blocking` 中执行。
+- 修改连发器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### Delta 端
 
@@ -352,6 +391,7 @@ src-tauri/src/
 - 录制热键时通过 `morse_set_hotkey_recording` 暂停监听（`set_paused(true)`），并 drain 积压事件
 - 非 Windows 平台直接返回错误，不做降级处理
 - 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K` 等格式
+- `HotkeyManager` 同时支持按住动作（hold）注册：`replace_hold_scope` / `clear_hold_scope`，用于连发器的触发键 Down/Up 检测。hold 热键只匹配主键（无修饰键），通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
 
 ## Tauri 事件模式
 
@@ -359,6 +399,16 @@ Morse 通过 Tauri events 通知前端（emit_to "main"）：
 - `"morse://run-finished"` — 识别完成后推送 `MorseRunResult`
 - `"morse://selection-progress"` — 区域选择完成后推送 `RegionSelectionProgress`
 - `"morse://hotkey-error"` — 热键执行出错时推送错误字符串
+
+计时器通过 Tauri events 通知前端：
+- `"timer://state-changed"` — 状态变更时推送 `TimerBootstrap`（同时推送到 timer-display / counter-display 窗口）
+- `"timer://hotkey-triggered"` — 计时器快捷键触发后推送计时器 ID 列表
+- `"timer://counter-triggered"` — 计数器快捷键触发后推送计数器 ID 列表
+- `"timer://hotkey-error"` — 热键执行出错时推送错误字符串
+
+连发器通过 Tauri events 通知前端：
+- `"rapidfire://state-changed"` — 状态变更时推送 `RapidfireBootstrap`（同时推送到 rapidfire-display 窗口）
+- `"rapidfire://hotkey-error"` — 热键执行出错时推送错误字符串
 
 前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。
 

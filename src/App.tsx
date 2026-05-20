@@ -1,8 +1,9 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { RiRadarLine, RiTimerLine } from "@remixicon/react";
+import { RiRadarLine, RiTimerLine, RiGamepadLine } from "@remixicon/react";
 
 import { MorsePage } from "@/components/app/morse-page";
 import { TimerPage } from "@/components/app/timer-page";
+import { RapidfirePage } from "@/components/app/rapidfire-page";
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +31,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get("mode");
   }, []);
-  const [activeTool, setActiveTool] = useState<"morse" | "timer">("morse");
+  const [activeTool, setActiveTool] = useState<"morse" | "timer" | "rapidfire">("morse");
 
   if (overlayMode === "overlay") {
     return <MorsePage overlayMode />;
@@ -52,16 +53,30 @@ function App() {
     return <TimerPage overlayMode="counter-position" />;
   }
 
+  if (overlayMode === "rapidfire-display") {
+    return <RapidfirePage overlayMode="display" />;
+  }
+
+  if (overlayMode === "rapidfire-position") {
+    return <RapidfirePage overlayMode="position" />;
+  }
+
   const activeToolMeta = activeTool === "morse"
     ? {
         icon: <RiRadarLine />,
         eyebrow: "Workspace / Morse",
         title: "摩斯密码解析工作台",
       }
-    : {
+    : activeTool === "timer"
+    ? {
         icon: <RiTimerLine />,
         eyebrow: "Workspace / Timer & Counter",
         title: "计时\\计数器工作台",
+      }
+    : {
+        icon: <RiGamepadLine />,
+        eyebrow: "Workspace / Rapidfire",
+        title: "连发器工作台",
       };
 
   return (
@@ -98,6 +113,12 @@ function App() {
                     <span className="truncate">计时\\计数器</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton className="h-9 rounded-lg px-2.5" isActive={activeTool === "rapidfire"} onClick={() => setActiveTool("rapidfire")} tooltip="连发器" type="button">
+                    <RiGamepadLine />
+                    <span className="truncate">连发器</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -123,7 +144,7 @@ function App() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 xl:px-6 xl:pb-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="flex min-h-full flex-col">
               <div className="flex min-h-full flex-col rounded-[calc(var(--radius-3xl)+2px)] border border-border bg-card px-4 py-4 shadow-sm xl:px-6 xl:py-6">
-                {activeTool === "morse" ? <MorsePage /> : <TimerPage />}
+                {activeTool === "morse" ? <MorsePage /> : activeTool === "timer" ? <TimerPage /> : <RapidfirePage />}
               </div>
             </div>
           </div>

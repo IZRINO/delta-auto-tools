@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -20,8 +20,17 @@ use crate::hotkey_types::{self as types, HotkeyBinding, ModifierKey, PrimaryKey}
 
 pub type HotkeyAction = Arc<dyn Fn(AppHandle) + Send + Sync + 'static>;
 
+#[derive(Debug, Clone)]
+pub enum HoldAction {
+    Down,
+    Up,
+}
+
+pub type HoldActionCallback = Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync + 'static>;
+
 pub struct HotkeyManager {
     registrations: Arc<Mutex<Vec<HotkeyRegistration>>>,
+    hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
     install_error: Option<String>,
     #[cfg(target_os = "windows")]
@@ -37,9 +46,17 @@ struct HotkeyRegistration {
     action: HotkeyAction,
 }
 
+struct HoldRegistration {
+    scope: String,
+    primary_key: String,
+    enabled: bool,
+    action: HoldActionCallback,
+}
+
 impl HotkeyManager {
     pub fn start(app: AppHandle) -> Self {
         let registrations = Arc::new(Mutex::new(Vec::new()));
+        let hold_registrations = Arc::new(Mutex::new(HashMap::new()));
         let stopped = Arc::new(AtomicBool::new(false));
 
         #[cfg(target_os = "windows")]
@@ -47,6 +64,7 @@ impl HotkeyManager {
             let Some(hook) = willhook::keyboard_hook() else {
                 return Self {
                     registrations,
+                    hold_registrations,
                     stopped,
                     install_error: Some("键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string()),
                     worker: None,
@@ -54,21 +72,24 @@ impl HotkeyManager {
             };
 
             let worker_registrations = Arc::clone(&registrations);
+            let worker_hold_registrations = Arc::clone(&hold_registrations);
             let worker_stopped = Arc::clone(&stopped);
             let worker = thread::Builder::new()
                 .name("shared-hotkey-listener".to_string())
-                .spawn(move || run_listener(app, hook, worker_registrations, worker_stopped))
+                .spawn(move || run_listener(app, hook, worker_registrations, worker_hold_registrations, worker_stopped))
                 .map_err(|error| format!("启动热键监听线程失败: {error}"));
 
             match worker {
                 Ok(worker) => Self {
                     registrations,
+                    hold_registrations,
                     stopped,
                     install_error: None,
                     worker: Some(worker),
                 },
                 Err(error) => Self {
                     registrations,
+                    hold_registrations,
                     stopped,
                     install_error: Some(error),
                     worker: None,
@@ -81,6 +102,7 @@ impl HotkeyManager {
             let _ = app;
             Self {
                 registrations,
+                hold_registrations,
                 stopped,
                 install_error: Some("当前仅 Windows 桌面环境支持被动热键监听".to_string()),
                 _worker: (),
@@ -136,6 +158,60 @@ impl HotkeyManager {
         }
         Ok(())
     }
+
+    pub fn replace_hold_scope(
+        &self,
+        scope: &str,
+        bindings: Vec<(String, HoldActionCallback)>,
+    ) -> Result<(), String> {
+        if let Some(error) = &self.install_error {
+            return Err(error.clone());
+        }
+
+        let mut hold_regs = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+
+        hold_regs.remove(scope);
+
+        if !bindings.is_empty() {
+            let regs: Vec<HoldRegistration> = bindings
+                .into_iter()
+                .map(|(key, action)| HoldRegistration {
+                    scope: scope.to_string(),
+                    primary_key: key,
+                    enabled: true,
+                    action,
+                })
+                .collect();
+            hold_regs.insert(scope.to_string(), regs);
+        }
+
+        Ok(())
+    }
+
+    pub fn clear_hold_scope(&self, scope: &str) -> Result<(), String> {
+        let mut hold_regs = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        hold_regs.remove(scope);
+        Ok(())
+    }
+
+    pub fn set_hold_scope_enabled(&self, scope: &str, enabled: bool) -> Result<(), String> {
+        let mut hold_regs = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if let Some(regs) = hold_regs.get_mut(scope) {
+            for reg in regs.iter_mut() {
+                reg.enabled = enabled;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Drop for HotkeyManager {
@@ -159,6 +235,7 @@ fn run_listener(
     app: AppHandle,
     hook: Hook,
     registrations: Arc<Mutex<Vec<HotkeyRegistration>>>,
+    hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
 ) {
     let mut matcher = HotkeyMatcher::new();
@@ -166,6 +243,11 @@ fn run_listener(
     while !stopped.load(Ordering::SeqCst) {
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
+                let hold_actions = hold_actions_for_event(&hold_registrations, event);
+                for (action, hold_action) in hold_actions {
+                    action(app.clone(), hold_action);
+                }
+
                 if let Some(key_state) = matcher.handle_event(event) {
                     let actions = actions_for_key_state(&registrations, &key_state);
 
@@ -197,6 +279,43 @@ fn actions_for_key_state(
                 .filter(|registration| registration.enabled && matches_binding(&registration.binding, key_state))
                 .map(|registration| Arc::clone(&registration.action))
                 .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn hold_actions_for_event(
+    hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
+    event: KeyboardEvent,
+) -> Vec<(HoldActionCallback, HoldAction)> {
+    if matches!(event.is_injected, Some(IsEventInjected::Injected)) {
+        return Vec::new();
+    }
+
+    let key = match event.key.and_then(|k| types::key_to_primary_string(k)) {
+        Some(k) => k,
+        None => return Vec::new(),
+    };
+
+    let hold_action = match event.pressed {
+        KeyPress::Down(_) => HoldAction::Down,
+        KeyPress::Up(_) => HoldAction::Up,
+        KeyPress::Other(_) => return Vec::new(),
+    };
+
+    hold_registrations
+        .lock()
+        .ok()
+        .map(|regs| {
+            let mut actions = Vec::new();
+            for scope_regs in regs.values() {
+                for reg in scope_regs {
+                    if reg.enabled && reg.primary_key.eq_ignore_ascii_case(&key) {
+                        actions.push((Arc::clone(&reg.action), hold_action.clone()));
+                    }
+                }
+            }
+            actions
         })
         .unwrap_or_default()
 }
