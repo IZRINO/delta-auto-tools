@@ -65,6 +65,7 @@ export const RAPIDFIRE_AUTOSAVE_DELAY_MS = 400;
 export const RAPIDFIRE_MIN_INTERVAL_MS = 10;
 export const RAPIDFIRE_DISPLAY_MIN_WIDTH = 320;
 export const RAPIDFIRE_DISPLAY_MAX_WIDTH = 800;
+export const RAPIDFIRE_DEFAULT_INTERVAL_MS = 100;
 
 // ---- 转换函数 ----
 
@@ -85,31 +86,150 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
   };
 }
 
+const SUPPORTED_KEY_LABELS = new Set([
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
+  ..."0123456789".split(""),
+  ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`),
+  "Space",
+  "Enter",
+  "Tab",
+  "Esc",
+  "Backspace",
+  "Up",
+  "Down",
+  "Left",
+  "Right",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Insert",
+  "Delete",
+]);
+
+function normalizePositiveInteger(value: string, fallback: number): number {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function clampOverlayWidth(value: string): number {
+  const parsed = normalizePositiveInteger(value, RAPIDFIRE_DISPLAY_MIN_WIDTH);
+  return Math.max(RAPIDFIRE_DISPLAY_MIN_WIDTH, Math.min(RAPIDFIRE_DISPLAY_MAX_WIDTH, parsed));
+}
+
+function normalizeRapidfireKey(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (trimmed.includes("+")) return trimmed;
+
+  const aliasMap: Record<string, string> = {
+    " ": "Space",
+    Spacebar: "Space",
+    Escape: "Esc",
+    escape: "Esc",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    arrowup: "Up",
+    arrowdown: "Down",
+    arrowleft: "Left",
+    arrowright: "Right",
+    Pageup: "PageUp",
+    Pagedown: "PageDown",
+    pageup: "PageUp",
+    pagedown: "PageDown",
+    Del: "Delete",
+    del: "Delete",
+  };
+  const aliased = aliasMap[raw] ?? aliasMap[trimmed] ?? trimmed;
+
+  if (aliased.length === 1) {
+    return aliased.toUpperCase();
+  }
+
+  const functionMatch = /^f([1-9]|1[0-2])$/i.exec(aliased);
+  if (functionMatch) {
+    return `F${functionMatch[1]}`;
+  }
+
+  const supported = Array.from(SUPPORTED_KEY_LABELS).find((key) => key.toLowerCase() === aliased.toLowerCase());
+  return supported ?? aliased;
+}
+
+function validateRapidfireKey(key: string, label: string): void {
+  if (!key) {
+    throw new Error(`${label}不能为空。`);
+  }
+
+  if (key.includes("+")) {
+    throw new Error(`${label}必须是单键，不能包含组合键。`);
+  }
+
+  if (!SUPPORTED_KEY_LABELS.has(key)) {
+    throw new Error(`${label}不支持：${key}。`);
+  }
+}
+
 export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): RapidfireSettings {
+  if (form.cards.length === 0) {
+    throw new Error("至少需要保留一个连发器卡片。");
+  }
+
+  const enabledTriggerKeys = new Set<string>();
+  const cards = form.cards.map((card) => {
+    const name = card.name.trim();
+    if (!name) {
+      throw new Error("连发器卡片名称不能为空。");
+    }
+
+    const triggerKey = normalizeRapidfireKey(card.triggerKey);
+    const targetKey = normalizeRapidfireKey(card.targetKey);
+    validateRapidfireKey(triggerKey, `${name} 的触发键`);
+    validateRapidfireKey(targetKey, `${name} 的目标键`);
+
+    if (card.enabled) {
+      const triggerKeyId = triggerKey.toUpperCase();
+      if (enabledTriggerKeys.has(triggerKeyId)) {
+        throw new Error(`触发键 ${triggerKey} 已被其他连发器卡片使用。`);
+      }
+      enabledTriggerKeys.add(triggerKeyId);
+    }
+
+    const intervalMs = normalizePositiveInteger(card.intervalMs, RAPIDFIRE_DEFAULT_INTERVAL_MS);
+    if (intervalMs < RAPIDFIRE_MIN_INTERVAL_MS) {
+      throw new Error(`${name} 的连发间隔不能小于 ${RAPIDFIRE_MIN_INTERVAL_MS}ms。`);
+    }
+
+    return {
+      id: card.id,
+      name,
+      triggerKey,
+      targetKey,
+      intervalMs,
+      enabled: card.enabled,
+    };
+  });
+
   return {
     version: 1,
     rapidfireEnabled: form.rapidfireEnabled,
     showOverlay: form.showOverlay,
-    overlayWidth: parseInt(form.overlayWidth, 10) || RAPIDFIRE_DISPLAY_MIN_WIDTH,
     overlayPosition: form.overlayPosition,
-    cards: form.cards.map((card) => ({
-      id: card.id,
-      name: card.name.trim(),
-      triggerKey: card.triggerKey.trim(),
-      targetKey: card.targetKey.trim(),
-      intervalMs: parseInt(card.intervalMs, 10) || RAPIDFIRE_MIN_INTERVAL_MS,
-      enabled: card.enabled,
-    })),
+    overlayWidth: clampOverlayWidth(form.overlayWidth),
+    cards,
   };
 }
 
-export function createRapidfireCard(id: string): RapidfireCardForm {
+export function createRapidfireCard(id: string, existingCount = 0): RapidfireCardForm {
+  const triggerKey = `F${Math.min(12, 6 + existingCount)}`;
+
   return {
     id,
-    name: "",
-    triggerKey: "",
-    targetKey: "",
-    intervalMs: "100",
+    name: `连发器 ${existingCount + 1}`,
+    triggerKey,
+    targetKey: "Space",
+    intervalMs: String(RAPIDFIRE_DEFAULT_INTERVAL_MS),
     enabled: false,
   };
 }
@@ -119,8 +239,12 @@ export function isRapidfireDirty(
   form: RapidfireSettingsForm | null,
 ): boolean {
   if (bootstrap === null || form === null) return false;
-  const current = parseRapidfireSettingsForm(form);
-  return JSON.stringify(current) !== JSON.stringify(bootstrap.settings);
+  try {
+    const current = parseRapidfireSettingsForm(form);
+    return JSON.stringify(rapidfireSettingsToForm(current)) !== JSON.stringify(rapidfireSettingsToForm(bootstrap.settings));
+  } catch {
+    return true;
+  }
 }
 
 export function rapidfireRunsById(
@@ -159,6 +283,23 @@ export function rapidfireStatusVariant(
   }
 }
 
+export function moveRapidfireCard<T extends { id: string }>(items: T[], activeId: string, overId: string): T[] {
+  if (activeId === overId) return items;
+
+  const activeIndex = items.findIndex((item) => item.id === activeId);
+  const overIndex = items.findIndex((item) => item.id === overId);
+  if (activeIndex === -1 || overIndex === -1) return items;
+
+  const next = [...items];
+  const [moved] = next.splice(activeIndex, 1);
+  next.splice(overIndex, 0, moved);
+  return next;
+}
+
+export function rapidfireEnabledCards(settings: RapidfireSettingsForm | RapidfireSettings | null): number {
+  return settings?.cards.filter((card) => card.enabled).length ?? 0;
+}
+
 // ---- 支持的目标键列表 ----
 
 export const SUPPORTED_TARGET_KEYS = [
@@ -182,7 +323,5 @@ export const SUPPORTED_TARGET_KEYS = [
 // ---- 热键格式化（单键，不含修饰键） ----
 
 export function formatTriggerKey(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  return trimmed;
+  return normalizeRapidfireKey(raw);
 }

@@ -164,6 +164,33 @@ pub fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
         .ok_or_else(|| format!("暂不支持的热键主键: {segment}"))
 }
 
+pub fn primary_to_string(primary: PrimaryKey) -> String {
+    match primary {
+        PrimaryKey::Letter(value) => value.to_string(),
+        PrimaryKey::Digit(value) => value.to_string(),
+        PrimaryKey::Function(value) => format!("F{value}"),
+        PrimaryKey::Named(NamedKey::Space) => "Space".to_string(),
+        PrimaryKey::Named(NamedKey::Enter) => "Enter".to_string(),
+        PrimaryKey::Named(NamedKey::Tab) => "Tab".to_string(),
+        PrimaryKey::Named(NamedKey::Esc) => "Esc".to_string(),
+        PrimaryKey::Named(NamedKey::Up) => "Up".to_string(),
+        PrimaryKey::Named(NamedKey::Down) => "Down".to_string(),
+        PrimaryKey::Named(NamedKey::Left) => "Left".to_string(),
+        PrimaryKey::Named(NamedKey::Right) => "Right".to_string(),
+        PrimaryKey::Named(NamedKey::Home) => "Home".to_string(),
+        PrimaryKey::Named(NamedKey::End) => "End".to_string(),
+        PrimaryKey::Named(NamedKey::PageUp) => "PageUp".to_string(),
+        PrimaryKey::Named(NamedKey::PageDown) => "PageDown".to_string(),
+        PrimaryKey::Named(NamedKey::Insert) => "Insert".to_string(),
+        PrimaryKey::Named(NamedKey::Delete) => "Delete".to_string(),
+        PrimaryKey::Named(NamedKey::Backspace) => "Backspace".to_string(),
+    }
+}
+
+pub fn hotkey_primary_label(raw: &str) -> Result<String, String> {
+    HotkeyBinding::parse(raw).map(|binding| primary_to_string(binding.primary))
+}
+
 #[cfg(target_os = "windows")]
 pub fn to_modifier_key(key: willhook::event::KeyboardKey) -> Option<ModifierKey> {
     use willhook::event::KeyboardKey;
@@ -373,5 +400,11 @@ mod tests {
         let binding = HotkeyBinding::parse("F").expect("should parse");
         assert!(binding.modifiers.is_empty());
         assert_eq!(binding.primary, PrimaryKey::Letter('F'));
+    }
+
+    #[test]
+    fn extracts_primary_label_from_modified_hotkey() {
+        assert_eq!(hotkey_primary_label("Ctrl+Shift+F6").unwrap(), "F6");
+        assert_eq!(hotkey_primary_label("Alt+Space").unwrap(), "Space");
     }
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -20,7 +20,10 @@ pub use self::types::{
     RapidfireSelectionKind, RapidfireSelectionOutcome, RapidfireSettings,
 };
 
-use crate::hotkeys::{HoldAction, HoldActionCallback, HotkeyManager};
+use crate::{
+    hotkey_types,
+    hotkeys::{HoldAction, HoldActionCallback, HotkeyManager},
+};
 
 const RAPIDFIRE_DISPLAY_LABEL: &str = "rapidfire-display";
 const RAPIDFIRE_POSITION_LABEL: &str = "rapidfire-position";
@@ -45,7 +48,7 @@ struct RapidfireStateInner {
 struct CardRuntime {
     count: u64,
     status: RapidfireRunStatus,
-    abort_tx: Option<oneshot::Sender<()>>,
+    task_abort_tx: Option<oneshot::Sender<()>>,
 }
 
 struct PendingRapidfirePosition {
@@ -71,7 +74,9 @@ impl RapidfireStateInner {
                 let run = self.runs.get(&card.id);
                 RapidfireRunState {
                     card_id: card.id.clone(),
-                    status: run.map(|r| r.status.clone()).unwrap_or(RapidfireRunStatus::Idle),
+                    status: run
+                        .map(|r| r.status.clone())
+                        .unwrap_or(RapidfireRunStatus::Idle),
                     count: run.map(|r| r.count).unwrap_or(0),
                 }
             })
@@ -181,17 +186,22 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         return Err("连发器卡片名称不能为空".to_string());
     }
 
-    let trigger_key = card.trigger_key.trim();
+    let trigger_key = normalize_single_key(&card.trigger_key)
+        .map_err(|error| format!("{name} 的触发键{error}"))?;
     if trigger_key.is_empty() {
         return Err(format!("{} 的触发键不能为空", name));
     }
+    if parse_target_key(&trigger_key).is_none() {
+        return Err(format!("{} 的触发键不支持: {}", name, trigger_key));
+    }
 
-    let target_key = card.target_key.trim();
+    let target_key = normalize_single_key(&card.target_key)
+        .map_err(|error| format!("{name} 的目标键{error}"))?;
     if target_key.is_empty() {
         return Err(format!("{} 的目标键不能为空", name));
     }
 
-    if parse_target_key(target_key).is_none() {
+    if parse_target_key(&target_key).is_none() {
         return Err(format!("{} 的目标键不支持: {}", name, target_key));
     }
 
@@ -200,11 +210,24 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
     Ok(RapidfireCard {
         id: card.id.trim().to_string(),
         name: name.to_string(),
-        trigger_key: trigger_key.to_string(),
-        target_key: target_key.to_string(),
+        trigger_key,
+        target_key,
         interval_ms,
         enabled: card.enabled,
     })
+}
+
+fn normalize_single_key(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+
+    if trimmed.contains('+') {
+        return Err("必须是单键，不能包含组合键".to_string());
+    }
+
+    hotkey_types::hotkey_primary_label(trimmed).map_err(|_| format!("不支持: {trimmed}"))
 }
 
 fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<RapidfireSettings, String> {
@@ -224,16 +247,62 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
         .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
 
     let mut seen_ids = HashMap::new();
+    let mut seen_enabled_trigger_keys = HashSet::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());
     for card in &settings_value.cards {
         let normalized = normalize_card(card)?;
         if seen_ids.insert(normalized.id.clone(), true).is_some() {
             return Err(format!("连发器卡片 ID 重复: {}", normalized.id));
         }
+        if normalized.enabled
+            && !seen_enabled_trigger_keys.insert(normalized.trigger_key.to_ascii_uppercase())
+        {
+            return Err(format!(
+                "触发键 {} 已被其他连发器卡片使用",
+                normalized.trigger_key
+            ));
+        }
         cards.push(normalized);
     }
     settings_value.cards = cards;
     Ok(settings_value)
+}
+
+fn scope_name(scope: &str) -> &'static str {
+    match scope {
+        "morse" => "摩斯密码解析",
+        "timer" => "计时器",
+        "rapidfire" => "连发器",
+        _ => "其他工具",
+    }
+}
+
+fn validate_hotkey_conflicts(
+    hotkey_manager: &HotkeyManager,
+    settings_value: &RapidfireSettings,
+) -> Result<(), String> {
+    if !settings_value.rapidfire_enabled {
+        return Ok(());
+    }
+
+    let active_external_keys = hotkey_manager.active_primary_labels_except("rapidfire")?;
+    for card in settings_value.cards.iter().filter(|card| card.enabled) {
+        let trigger = card.trigger_key.to_ascii_uppercase();
+        if let Some((scope, key)) = active_external_keys
+            .iter()
+            .find(|(_, key)| key.eq_ignore_ascii_case(&trigger))
+        {
+            return Err(format!(
+                "{} 的触发键 {} 与{}的快捷键 {} 冲突",
+                card.name,
+                card.trigger_key,
+                scope_name(scope),
+                key
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 // ---- Hotkey registration ----
@@ -247,13 +316,15 @@ fn restart_hotkey_listeners(
         return hotkey_manager.clear_hold_scope("rapidfire");
     }
 
+    validate_hotkey_conflicts(hotkey_manager, settings_value)?;
+
     let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
     for card in &settings_value.cards {
         if !card.enabled {
             continue;
         }
         by_key
-            .entry(card.trigger_key.trim().to_string())
+            .entry(card.trigger_key.clone())
             .or_default()
             .push(card.id.clone());
     }
@@ -265,7 +336,8 @@ fn restart_hotkey_listeners(
                 let card_ids = card_ids.clone();
                 let hold_action = hold_action.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = handle_hold_event(&app_handle, card_ids, hold_action).await {
+                    if let Err(error) = handle_hold_event(&app_handle, card_ids, hold_action).await
+                    {
                         let _ = app_handle.emit_to("main", "rapidfire://hotkey-error", error);
                     }
                 });
@@ -324,9 +396,11 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 continue;
             };
 
-            // 如果正在补齐，取消补齐
             if let Some(run) = inner.runs.get_mut(&cid) {
-                if let Some(tx) = run.abort_tx.take() {
+                if run.status == RapidfireRunStatus::Firing {
+                    continue;
+                }
+                if let Some(tx) = run.task_abort_tx.take() {
                     let _ = tx.send(());
                 }
             }
@@ -337,7 +411,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 CardRuntime {
                     count: 0,
                     status: RapidfireRunStatus::Firing,
-                    abort_tx: Some(abort_tx),
+                    task_abort_tx: Some(abort_tx),
                 },
             );
 
@@ -378,7 +452,7 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             return Ok(());
         }
 
-        let mut tasks_to_spawn: Vec<(String, String, u64)> = Vec::new();
+        let mut tasks_to_spawn: Vec<(String, String, u64, oneshot::Receiver<()>)> = Vec::new();
 
         for card_id in &card_ids {
             // 先收集卡片信息
@@ -397,8 +471,11 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
                 continue;
             };
 
-            // 停止 tick 任务
-            if let Some(abort_tx) = run.abort_tx.take() {
+            if run.status != RapidfireRunStatus::Firing {
+                continue;
+            }
+
+            if let Some(abort_tx) = run.task_abort_tx.take() {
                 let _ = abort_tx.send(());
             }
 
@@ -410,7 +487,9 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             } else {
                 // 奇数：进入补齐等待
                 run.status = RapidfireRunStatus::PendingCompensation;
-                tasks_to_spawn.push((card_id.clone(), target_key, interval_ms));
+                let (abort_tx, abort_rx) = oneshot::channel();
+                run.task_abort_tx = Some(abort_tx);
+                tasks_to_spawn.push((card_id.clone(), target_key, interval_ms, abort_rx));
             }
         }
 
@@ -418,64 +497,72 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
     };
 
     // 在锁外执行补齐任务
-    for (card_id, target_key, interval_ms) in tasks_to_spawn {
+    for (card_id, target_key, interval_ms, abort_rx) in tasks_to_spawn {
         let app_handle = app.clone();
         tauri::async_runtime::spawn(async move {
-            // 等待一个间隔
-            time::sleep(Duration::from_millis(interval_ms)).await;
-
-            let state = app_handle.state::<RapidfireState>();
-            let should_fire = {
-                let mut inner = match state.inner.lock() {
-                    Ok(inner) => inner,
-                    Err(_) => return,
-                };
-
-                let Some(run) = inner.runs.get_mut(&card_id) else {
-                    return;
-                };
-
-                // 如果状态已改变（例如被新的按下列表取消），则不再补齐
-                if run.status != RapidfireRunStatus::PendingCompensation {
-                    return;
-                }
-
-                true
-            };
-
-            if should_fire {
-                // 触发一次目标键
-                if let Err(error) = fire_target_key(&target_key).await {
-                    let _ = app_handle.emit_to("main", "rapidfire://hotkey-error", error);
-                }
-
-                // 更新状态
-                let bootstrap = {
-                    let mut inner = match state.inner.lock() {
-                        Ok(inner) => inner,
-                        Err(_) => return,
-                    };
-
-                    if let Some(run) = inner.runs.get_mut(&card_id) {
-                        if run.status == RapidfireRunStatus::PendingCompensation {
-                            run.count += 1;
-                            run.status = RapidfireRunStatus::Idle;
-                        }
-                    }
-
-                    inner.bootstrap()
-                };
-
-                emit_state(&app_handle, bootstrap);
-            }
+            run_compensation_task(app_handle, card_id, target_key, interval_ms, abort_rx).await;
         });
     }
 
     emit_state(app, {
-        let inner = state.inner.lock().map_err(|_| "连发器状态已损坏".to_string())?;
+        let inner = state
+            .inner
+            .lock()
+            .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.bootstrap()
     });
     Ok(())
+}
+
+async fn run_compensation_task(
+    app: AppHandle,
+    card_id: String,
+    target_key: String,
+    interval_ms: u64,
+    mut abort_rx: oneshot::Receiver<()>,
+) {
+    tokio::select! {
+        _ = time::sleep(Duration::from_millis(interval_ms)) => {}
+        _ = &mut abort_rx => return,
+    }
+
+    let state = app.state::<RapidfireState>();
+    let should_fire = {
+        let inner = match state.inner.lock() {
+            Ok(inner) => inner,
+            Err(_) => return,
+        };
+        inner
+            .runs
+            .get(&card_id)
+            .map(|run| run.status == RapidfireRunStatus::PendingCompensation)
+            .unwrap_or(false)
+    };
+
+    if !should_fire {
+        return;
+    }
+
+    if let Err(error) = fire_target_key(&target_key).await {
+        let _ = app.emit_to("main", "rapidfire://hotkey-error", error);
+    }
+
+    let bootstrap = {
+        let mut inner = match state.inner.lock() {
+            Ok(inner) => inner,
+            Err(_) => return,
+        };
+        if let Some(run) = inner.runs.get_mut(&card_id) {
+            if run.status == RapidfireRunStatus::PendingCompensation {
+                run.count += 1;
+                run.status = RapidfireRunStatus::Idle;
+                run.task_abort_tx = None;
+            }
+        }
+        inner.bootstrap()
+    };
+
+    emit_state(&app, bootstrap);
 }
 
 async fn run_tick_task(
@@ -486,6 +573,8 @@ async fn run_tick_task(
     mut abort_rx: oneshot::Receiver<()>,
 ) {
     let mut interval = time::interval(Duration::from_millis(interval_ms));
+    interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+    interval.tick().await;
 
     loop {
         tokio::select! {
@@ -542,7 +631,11 @@ async fn run_tick_task(
 
 fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
     let _ = app.emit_to("main", "rapidfire://state-changed", bootstrap.clone());
-    let _ = app.emit_to(RAPIDFIRE_DISPLAY_LABEL, "rapidfire://state-changed", bootstrap);
+    let _ = app.emit_to(
+        RAPIDFIRE_DISPLAY_LABEL,
+        "rapidfire://state-changed",
+        bootstrap,
+    );
 }
 
 // ---- Window management ----
@@ -551,7 +644,10 @@ fn display_height(item_count: usize) -> i32 {
     RAPIDFIRE_DISPLAY_MIN_HEIGHT.max(32 + item_count.max(1) as i32 * 28)
 }
 
-fn ensure_overlay_window(app: &AppHandle, settings_value: &RapidfireSettings) -> Result<(), String> {
+fn ensure_overlay_window(
+    app: &AppHandle,
+    settings_value: &RapidfireSettings,
+) -> Result<(), String> {
     if !settings_value.show_overlay || !settings_value.rapidfire_enabled {
         hide_window(app, RAPIDFIRE_DISPLAY_LABEL);
         return Ok(());
@@ -620,16 +716,12 @@ fn destroy_position_windows(app: &AppHandle) {
 
 // ---- Initialize / Shutdown ----
 
-pub fn is_main_window_close(label: &str) -> bool {
-    label == "main"
-}
-
 pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_hold_scope("rapidfire");
     // Abort all running tasks
     if let Ok(mut inner) = state.inner.lock() {
         for run in inner.runs.values_mut() {
-            if let Some(abort_tx) = run.abort_tx.take() {
+            if let Some(abort_tx) = run.task_abort_tx.take() {
                 let _ = abort_tx.send(());
             }
         }
@@ -639,7 +731,10 @@ pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &Hotkey
     destroy_display_windows(app);
 }
 
-pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<RapidfireState, String> {
+pub fn initialize(
+    app: &AppHandle,
+    hotkey_manager: &HotkeyManager,
+) -> Result<RapidfireState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
     let state = RapidfireState {
         inner: Mutex::new(RapidfireStateInner {
@@ -665,7 +760,9 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Rap
 // ---- Tauri commands ----
 
 #[tauri::command]
-pub fn rapidfire_get_bootstrap(state: State<'_, RapidfireState>) -> Result<RapidfireBootstrap, String> {
+pub fn rapidfire_get_bootstrap(
+    state: State<'_, RapidfireState>,
+) -> Result<RapidfireBootstrap, String> {
     let inner = state
         .inner
         .lock()
@@ -681,9 +778,19 @@ pub fn rapidfire_save_settings(
     hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<RapidfireBootstrap, String> {
     let settings_value = normalize_settings(settings_value)?;
+    let previous_settings = {
+        let inner = state
+            .inner
+            .lock()
+            .map_err(|_| "连发器状态已损坏".to_string())?;
+        inner.settings.clone()
+    };
+
     settings::save_settings(&app, &settings_value)?;
 
     if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
+        let _ = settings::save_settings(&app, &previous_settings);
+        let _ = restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings);
         let mut inner = state
             .inner
             .lock()
@@ -709,7 +816,7 @@ pub fn rapidfire_save_settings(
             .collect();
         inner.runs.retain(|id, run| {
             if !active_card_ids.contains(id) {
-                if let Some(abort_tx) = run.abort_tx.take() {
+                if let Some(abort_tx) = run.task_abort_tx.take() {
                     let _ = abort_tx.send(());
                 }
                 false
@@ -721,7 +828,7 @@ pub fn rapidfire_save_settings(
         if !settings_value.rapidfire_enabled {
             // Abort all
             for run in inner.runs.values_mut() {
-                if let Some(abort_tx) = run.abort_tx.take() {
+                if let Some(abort_tx) = run.task_abort_tx.take() {
                     let _ = abort_tx.send(());
                 }
             }
@@ -737,14 +844,17 @@ pub fn rapidfire_save_settings(
 }
 
 #[tauri::command]
-pub fn rapidfire_stop(state: State<'_, RapidfireState>) -> Result<RapidfireBootstrap, String> {
+pub fn rapidfire_stop(
+    app: AppHandle,
+    state: State<'_, RapidfireState>,
+) -> Result<RapidfireBootstrap, String> {
     let bootstrap = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         for run in inner.runs.values_mut() {
-            if let Some(abort_tx) = run.abort_tx.take() {
+            if let Some(abort_tx) = run.task_abort_tx.take() {
                 let _ = abort_tx.send(());
             }
             run.status = RapidfireRunStatus::Idle;
@@ -753,6 +863,7 @@ pub fn rapidfire_stop(state: State<'_, RapidfireState>) -> Result<RapidfireBoots
         inner.runs.clear();
         inner.bootstrap()
     };
+    emit_state(&app, bootstrap.clone());
     Ok(bootstrap)
 }
 
@@ -789,11 +900,17 @@ pub async fn rapidfire_begin_position_selection(
     destroy_window(&app, RAPIDFIRE_POSITION_LABEL);
 
     let display_width = {
-        let inner = state.inner.lock().map_err(|_| "连发器状态已损坏".to_string())?;
+        let inner = state
+            .inner
+            .lock()
+            .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.settings.overlay_width
     };
     let display_height = {
-        let inner = state.inner.lock().map_err(|_| "连发器状态已损坏".to_string())?;
+        let inner = state
+            .inner
+            .lock()
+            .map_err(|_| "连发器状态已损坏".to_string())?;
         display_height(inner.settings.cards.iter().filter(|c| c.enabled).count())
     };
 
@@ -818,7 +935,10 @@ pub async fn rapidfire_begin_position_selection(
 
     let close_app = app.clone();
     window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed | WindowEvent::CloseRequested { .. }) {
+        if matches!(
+            event,
+            WindowEvent::Destroyed | WindowEvent::CloseRequested { .. }
+        ) {
             let state = close_app.state::<RapidfireState>();
             let mut inner = match state.inner.lock() {
                 Ok(inner) => inner,
@@ -969,6 +1089,30 @@ mod tests {
     }
 
     #[test]
+    fn normalize_card_rejects_trigger_key_with_modifier() {
+        let card = sample_card("a", "Ctrl+F1");
+        let error = normalize_card(&card).unwrap_err();
+        assert!(error.contains("必须是单键"));
+    }
+
+    #[test]
+    fn normalize_card_rejects_unsupported_trigger_key() {
+        let card = sample_card("a", "F13");
+        let error = normalize_card(&card).unwrap_err();
+        assert!(error.contains("触发键不支持"));
+    }
+
+    #[test]
+    fn normalize_card_normalizes_key_labels() {
+        let mut card = sample_card("a", "space");
+        card.target_key = "escape".to_string();
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.trigger_key, "Space");
+        assert_eq!(normalized.target_key, "Esc");
+    }
+
+    #[test]
     fn parse_target_key_supports_all_valid_keys() {
         assert!(parse_target_key("A").is_some());
         assert!(parse_target_key("F1").is_some());
@@ -1010,6 +1154,28 @@ mod tests {
     }
 
     #[test]
+    fn normalize_settings_rejects_duplicate_enabled_trigger_keys() {
+        let mut settings = RapidfireSettings::default();
+        settings.cards = vec![sample_card("a", "F1"), sample_card("b", "f1")];
+
+        let error = normalize_settings(settings).unwrap_err();
+
+        assert!(error.contains("已被其他连发器卡片使用"));
+    }
+
+    #[test]
+    fn normalize_settings_allows_duplicate_disabled_trigger_keys() {
+        let mut settings = RapidfireSettings::default();
+        let mut disabled = sample_card("b", "F1");
+        disabled.enabled = false;
+        settings.cards = vec![sample_card("a", "F1"), disabled];
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(normalized.cards.len(), 2);
+    }
+
+    #[test]
     fn normalize_settings_clamps_overlay_width() {
         let mut settings = RapidfireSettings::default();
         settings.overlay_width = 100;
@@ -1027,12 +1193,5 @@ mod tests {
         assert_eq!(display_height(0), RAPIDFIRE_DISPLAY_MIN_HEIGHT);
         assert_eq!(display_height(1), RAPIDFIRE_DISPLAY_MIN_HEIGHT);
         assert_eq!(display_height(5), 172);
-    }
-
-    #[test]
-    fn main_window_close_is_app_shutdown_request() {
-        assert!(is_main_window_close("main"));
-        assert!(!is_main_window_close(RAPIDFIRE_DISPLAY_LABEL));
-        assert!(!is_main_window_close(RAPIDFIRE_POSITION_LABEL));
     }
 }

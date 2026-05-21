@@ -66,7 +66,9 @@ impl HotkeyManager {
                     registrations,
                     hold_registrations,
                     stopped,
-                    install_error: Some("键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string()),
+                    install_error: Some(
+                        "键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string(),
+                    ),
                     worker: None,
                 };
             };
@@ -76,7 +78,15 @@ impl HotkeyManager {
             let worker_stopped = Arc::clone(&stopped);
             let worker = thread::Builder::new()
                 .name("shared-hotkey-listener".to_string())
-                .spawn(move || run_listener(app, hook, worker_registrations, worker_hold_registrations, worker_stopped))
+                .spawn(move || {
+                    run_listener(
+                        app,
+                        hook,
+                        worker_registrations,
+                        worker_hold_registrations,
+                        worker_stopped,
+                    )
+                })
                 .map_err(|error| format!("启动热键监听线程失败: {error}"));
 
             match worker {
@@ -153,7 +163,10 @@ impl HotkeyManager {
             .registrations
             .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
-        for registration in registrations.iter_mut().filter(|registration| registration.scope == scope) {
+        for registration in registrations
+            .iter_mut()
+            .filter(|registration| registration.scope == scope)
+        {
             registration.enabled = enabled;
         }
         Ok(())
@@ -200,17 +213,53 @@ impl HotkeyManager {
         Ok(())
     }
 
-    pub fn set_hold_scope_enabled(&self, scope: &str, enabled: bool) -> Result<(), String> {
-        let mut hold_regs = self
-            .hold_registrations
-            .lock()
-            .map_err(|_| "热键监听状态已损坏".to_string())?;
-        if let Some(regs) = hold_regs.get_mut(scope) {
-            for reg in regs.iter_mut() {
-                reg.enabled = enabled;
+    pub fn active_primary_labels_except(
+        &self,
+        excluded_scope: &str,
+    ) -> Result<Vec<(String, String)>, String> {
+        let mut labels = Vec::new();
+
+        {
+            let registrations = self
+                .registrations
+                .lock()
+                .map_err(|_| "热键监听状态已损坏".to_string())?;
+            labels.extend(
+                registrations
+                    .iter()
+                    .filter(|registration| {
+                        registration.enabled && registration.scope != excluded_scope
+                    })
+                    .map(|registration| {
+                        (
+                            registration.scope.clone(),
+                            types::primary_to_string(registration.binding.primary),
+                        )
+                    }),
+            );
+        }
+
+        {
+            let hold_registrations = self
+                .hold_registrations
+                .lock()
+                .map_err(|_| "热键监听状态已损坏".to_string())?;
+            for (scope, registrations) in hold_registrations.iter() {
+                if scope == excluded_scope {
+                    continue;
+                }
+                labels.extend(
+                    registrations
+                        .iter()
+                        .filter(|registration| registration.enabled)
+                        .map(|registration| {
+                            (registration.scope.clone(), registration.primary_key.clone())
+                        }),
+                );
             }
         }
-        Ok(())
+
+        Ok(labels)
     }
 }
 
@@ -239,11 +288,13 @@ fn run_listener(
     stopped: Arc<AtomicBool>,
 ) {
     let mut matcher = HotkeyMatcher::new();
+    let mut active_hold_keys = HashSet::new();
 
     while !stopped.load(Ordering::SeqCst) {
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
-                let hold_actions = hold_actions_for_event(&hold_registrations, event);
+                let hold_actions =
+                    hold_actions_for_event(&hold_registrations, event, &mut active_hold_keys);
                 for (action, hold_action) in hold_actions {
                     action(app.clone(), hold_action);
                 }
@@ -276,7 +327,9 @@ fn actions_for_key_state(
         .map(|registrations| {
             registrations
                 .iter()
-                .filter(|registration| registration.enabled && matches_binding(&registration.binding, key_state))
+                .filter(|registration| {
+                    registration.enabled && matches_binding(&registration.binding, key_state)
+                })
                 .map(|registration| Arc::clone(&registration.action))
                 .collect::<Vec<_>>()
         })
@@ -287,6 +340,7 @@ fn actions_for_key_state(
 fn hold_actions_for_event(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     event: KeyboardEvent,
+    active_hold_keys: &mut HashSet<String>,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
     if matches!(event.is_injected, Some(IsEventInjected::Injected)) {
         return Vec::new();
@@ -298,8 +352,16 @@ fn hold_actions_for_event(
     };
 
     let hold_action = match event.pressed {
-        KeyPress::Down(_) => HoldAction::Down,
-        KeyPress::Up(_) => HoldAction::Up,
+        KeyPress::Down(_) => {
+            if !active_hold_keys.insert(key.clone()) {
+                return Vec::new();
+            }
+            HoldAction::Down
+        }
+        KeyPress::Up(_) => {
+            active_hold_keys.remove(&key);
+            HoldAction::Up
+        }
         KeyPress::Other(_) => return Vec::new(),
     };
 
