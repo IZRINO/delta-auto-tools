@@ -14,7 +14,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardHeader } from "@/components/ui/card";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -22,6 +22,16 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  AppPage,
+  CardBody,
+  ControlTile,
+  PageHero,
+  SaveStateBadge,
+  SectionHeader,
+  SignalTile,
+  TacticalCard,
+} from "@/components/app/app-ui";
 import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode, TimerDisplayTarget, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
 import { getErrorMessage } from "@/lib/error-utils";
@@ -455,52 +465,56 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   }, [isNativeShell]);
 
   return (
-    <Tabs defaultValue="timers" className="flex h-full min-h-0 flex-col gap-0 bg-background">
-      <section className="border-b border-border/70 bg-card/95 px-4 py-4 shadow-sm backdrop-blur-sm xl:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+    <Tabs defaultValue="timers" className="min-h-0">
+      <AppPage>
+        <PageHero
+          eyebrow="Timer Matrix"
+          title="计时\\计数器"
+          description="计时器负责阶段节奏，计数器负责战局累加；两套透明窗口和快捷键各自独立。"
+          badges={
+            <>
               <Badge variant={form?.timerEnabled ? "default" : "secondary"}>计时{form?.timerEnabled ? "已开启" : "已关闭"}</Badge>
               <Badge variant={form?.counterEnabled ? "default" : "secondary"}>计数{form?.counterEnabled ? "已开启" : "已关闭"}</Badge>
-              {saving ? <Badge variant="outline">保存中</Badge> : dirty ? <Badge variant="outline">待保存</Badge> : <Badge variant="outline">已保存</Badge>}
+              <SaveStateBadge dirty={dirty} saving={saving} />
               {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">计时\计数器</h1>
-              <p className="mt-1 text-sm text-muted-foreground">计时器支持正/反计时与进度背景；计数器通过快捷键累加，可单独显示并一键重置。</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-border/70 bg-background px-4 py-3">
-            <TabsList className="h-11 w-full bg-border text-foreground shadow-inner">
-              <TabsTrigger className="px-5 py-2 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-sm" value="timers">计时器</TabsTrigger>
-              <TabsTrigger className="px-5 py-2 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-sm" value="counters">计数器</TabsTrigger>
+            </>
+          }
+          actions={
+            <TabsList className="h-11 rounded-lg border border-border bg-background/70 p-1 shadow-sm">
+              <TabsTrigger className="rounded-xl px-5 py-2 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-sm" value="timers">计时器</TabsTrigger>
+              <TabsTrigger className="rounded-xl px-5 py-2 text-sm font-semibold text-muted-foreground data-active:bg-primary data-active:text-primary-foreground data-active:shadow-sm" value="counters">计数器</TabsTrigger>
             </TabsList>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-                <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("timerEnabled", checked)} />
-                <div>
-                  <p className="text-sm font-medium text-foreground">计时器总开关</p>
-                  <p className="mt-1 text-xs text-muted-foreground">控制计时器快捷键和透明窗口。</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-                <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("counterEnabled", checked)} />
-                <div>
-                  <p className="text-sm font-medium text-foreground">计数器总开关</p>
-                  <p className="mt-1 text-xs text-muted-foreground">控制计数器快捷键和透明窗口。</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+          }
+          stats={
+            <>
+              <SignalTile label="计时卡片" value={form?.timers.length ?? 0} detail={`${bootstrap?.runs.filter((run) => run.status === "running").length ?? 0} 个运行中`} />
+              <SignalTile label="计数卡片" value={form?.counters.length ?? 0} detail={`${bootstrap?.counterRuns.length ?? 0} 个计数状态`} />
+              <SignalTile label="状态消息" value={saving ? "保存中" : dirty ? "待保存" : "已保存"} detail={statusMessage} />
+            </>
+          }
+        />
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 xl:px-5">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <ControlTile className="flex items-center gap-3">
+            <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("timerEnabled", checked)} />
+            <div>
+              <p className="text-sm font-medium text-foreground">计时器总开关</p>
+              <p className="mt-1 text-xs text-muted-foreground">控制计时器快捷键和透明窗口。</p>
+            </div>
+          </ControlTile>
+          <ControlTile className="flex items-center gap-3">
+            <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("counterEnabled", checked)} />
+            <div>
+              <p className="text-sm font-medium text-foreground">计数器总开关</p>
+              <p className="mt-1 text-xs text-muted-foreground">控制计数器快捷键和透明窗口。</p>
+            </div>
+          </ControlTile>
+        </div>
+
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
           {pageError ? <FieldError>{pageError}</FieldError> : null}
 
-          <TabsContent value="timers" className="flex flex-col gap-4">
+          <TabsContent value="timers" className="flex flex-col gap-5">
             <DisplaySettingsCard
               controlsDisabled={controlsDisabled || !form?.timerEnabled}
               description="宽度可调，每个计时器一行；倒计时进度条会作为文本背景随剩余时间减少。"
@@ -536,7 +550,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               <AddCard controlsDisabled={controlsDisabled || !form} title="添加计时器" description="名称、秒数、计时方向、快捷键均可自定义。" onClick={addTimer} />
             </div>
           </TabsContent>
-          <TabsContent value="counters" className="flex flex-col gap-4">
+          <TabsContent value="counters" className="flex flex-col gap-5">
             <DisplaySettingsCard
               controlsDisabled={controlsDisabled || !form?.counterEnabled}
               description="计数器拥有独立透明窗口；按快捷键累加，重置会回到设置的起始数。"
@@ -575,7 +589,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
             </div>
           </TabsContent>
         </div>
-      </div>
+      </AppPage>
     </Tabs>
   );
 }
@@ -594,17 +608,14 @@ type DisplaySettingsCardProps = {
 
 function DisplaySettingsCard({ controlsDisabled, description, display, statusMessage, target, title, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsCardProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
-      <CardHeader className="border-b border-border/70">
-        <div className="flex items-center gap-2">
-          <RiEyeLine className="text-muted-foreground" />
-          <div>
-            <CardTitle>{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+    <TacticalCard>
+      <SectionHeader
+        eyebrow={target === "timer" ? "Timer Overlay" : "Counter Overlay"}
+        icon={<RiEyeLine />}
+        title={title}
+        description={description}
+      />
+      <CardBody className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <FieldGroup className="gap-4">
           <Field>
             <FieldLabel>字体透明度</FieldLabel>
@@ -621,14 +632,14 @@ function DisplaySettingsCard({ controlsDisabled, description, display, statusMes
               <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
             </FieldContent>
           </Field>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">{statusMessage}</div>
+          <ControlTile className="text-xs text-muted-foreground">{statusMessage}</ControlTile>
         </FieldGroup>
         <Button disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline">
           <RiMapPinLine data-icon="inline-start" />
           设置透明窗口位置
         </Button>
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -652,17 +663,19 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
-    <Card size="sm" className={isDragging ? "border-primary shadow-sm" : "border-border shadow-sm"} onPointerEnter={onDragOver}>
-      <CardHeader className="border-b border-border/70">
+    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80")} onPointerEnter={onDragOver}>
+      <SectionHeader
+        eyebrow={`Timer ${String(index + 1).padStart(2, "0")}`}
+        icon={<RiTimerLine />}
+        title={timer.name || `计时器 ${index + 1}`}
+        description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
+        badge={<Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge>}
+      />
+      <CardHeader className="border-b border-border/70 pt-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart} />
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</div>
-            <RiTimerLine className="text-muted-foreground" />
-            <div className="min-w-0">
-              <CardTitle>{timer.name || `计时器 ${index + 1}`}</CardTitle>
-              <CardDescription>{run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}</CardDescription>
-            </div>
+            <Badge variant="outline">排序</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={timer.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
@@ -672,7 +685,7 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardBody>
         <FieldGroup className="gap-4">
           <Field>
             <FieldLabel htmlFor={`${timer.id}-name`}>名称</FieldLabel>
@@ -704,7 +717,7 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
               <p className="text-xs text-muted-foreground">总时长 {Number.parseInt(timer.durationSeconds, 10) * Number.parseInt(timer.segmentCount, 10)} 秒，每次触发减少 {timer.durationSeconds} 秒</p>
             ) : null}
           </Field>
-          <div className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
+          <ControlTile className="flex items-center gap-3">
             <Switch
               checked={timer.ignoreRunning}
               disabled={controlsDisabled}
@@ -714,17 +727,17 @@ function TimerCard({ canRemove, controlsDisabled, index, isDragging, isRecording
               <p className="text-sm font-medium text-foreground">运行中忽略触发</p>
               <p className="text-xs text-muted-foreground">开启后运行时快捷键无效；关闭后运行时触发会重置计时器。</p>
             </div>
-          </div>
+          </ControlTile>
           <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} />
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
+          <ControlTile>
             <div className="flex items-center gap-2 text-sm text-foreground">
               <RiKeyboardLine className="text-muted-foreground" />
               <span>{timer.hotkey || "未设置快捷键"}</span>
             </div>
-          </div>
+          </ControlTile>
         </FieldGroup>
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -748,17 +761,19 @@ type CounterCardProps = {
 
 function CounterCard({ canRemove, controlsDisabled, counter, index, isDragging, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
-    <Card size="sm" className={isDragging ? "border-primary shadow-sm" : "border-border shadow-sm"} onPointerEnter={onDragOver}>
-      <CardHeader className="border-b border-border/70">
+    <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80")} onPointerEnter={onDragOver}>
+      <SectionHeader
+        eyebrow={`Counter ${String(index + 1).padStart(2, "0")}`}
+        icon={<RiSpeedUpLine />}
+        title={counter.name || `计数器 ${index + 1}`}
+        description={`当前计数 · ${run?.value ?? counter.startValue}`}
+        badge={<Badge variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge>}
+      />
+      <CardHeader className="border-b border-border/70 pt-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart} />
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{index + 1}</div>
-            <RiSpeedUpLine className="text-muted-foreground" />
-            <div className="min-w-0">
-              <CardTitle>{counter.name || `计数器 ${index + 1}`}</CardTitle>
-              <CardDescription>当前计数 · {run?.value ?? counter.startValue}</CardDescription>
-            </div>
+            <Badge variant="outline">排序</Badge>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={counter.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
@@ -768,7 +783,7 @@ function CounterCard({ canRemove, controlsDisabled, counter, index, isDragging, 
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardBody>
         <FieldGroup className="gap-4">
           <Field>
             <FieldLabel htmlFor={`${counter.id}-name`}>名称</FieldLabel>
@@ -787,15 +802,15 @@ function CounterCard({ canRemove, controlsDisabled, counter, index, isDragging, 
             <RiResetLeftLine data-icon="inline-start" />
             重置为起始数
           </Button>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
+          <ControlTile>
             <div className="flex items-center gap-2 text-sm text-foreground">
               <RiKeyboardLine className="text-muted-foreground" />
               <span>{counter.hotkey || "未设置快捷键"}</span>
             </div>
-          </div>
+          </ControlTile>
         </FieldGroup>
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -824,7 +839,7 @@ function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyR
 function AddCard({ controlsDisabled, description, onClick, title }: { controlsDisabled: boolean; description: string; onClick: () => void; title: string }) {
   return (
     <button
-      className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center transition-colors hover:bg-muted/35 disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-6 text-center shadow-sm transition-colors hover:bg-muted/35 disabled:cursor-not-allowed disabled:opacity-50"
       disabled={controlsDisabled}
       onClick={onClick}
       type="button"

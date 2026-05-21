@@ -27,13 +27,22 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardHeader } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import {
+  AppPage,
+  CardBody,
+  ControlTile,
+  PageHero,
+  SaveStateBadge,
+  SectionHeader,
+  SignalTile,
+  TacticalCard,
+} from "@/components/app/app-ui";
 import type {
   RapidfireBootstrap,
   RapidfireCardForm,
@@ -366,7 +375,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
 
   if (!form) {
     return (
-      <Empty className="min-h-[360px] border">
+      <Empty className="min-h-[360px] rounded-xl border bg-card/80">
         <EmptyMedia variant="icon">
           <RiPulseLine />
         </EmptyMedia>
@@ -379,7 +388,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    <AppPage>
       {pageError && (
         <Alert variant="destructive">
           <RiPulseLine />
@@ -388,42 +397,53 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
         </Alert>
       )}
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <Card className="border-primary/15 bg-card/95">
-          <CardHeader>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>
-                    {form.rapidfireEnabled ? "已启用" : "未启用"}
-                  </Badge>
-                  <Badge variant="secondary">{enabledCount} 张卡片可触发</Badge>
-                  {dirty && <Badge variant="outline">待保存</Badge>}
-                </div>
-                <CardTitle className="mt-3 text-xl">连发器控制台</CardTitle>
-                <CardDescription className="mt-1">
-                  按住触发键持续触发目标键；松开后如果次数为奇数，会等待一个间隔补齐触发。
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={beginPositionSelection}>
-                  <RiMapPinLine data-icon="inline-start" />
-                  设置位置
-                </Button>
-                <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={stopAll}>
-                  <RiStopLine data-icon="inline-start" />
-                  全部停止
-                </Button>
-                <Button variant="default" size="sm" disabled={controlsDisabled} onClick={addCard}>
-                  <RiAddLine data-icon="inline-start" />
-                  添加卡片
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup className="grid gap-3 md:grid-cols-3">
-              <Field orientation="horizontal" className="rounded-lg border bg-background/60 p-3">
+      <PageHero
+        eyebrow="Rapidfire Control"
+        title="连发器控制台"
+        description="按住触发键持续触发目标键；松开后如果次数为奇数，会等待一个间隔补齐触发。"
+        badges={
+          <>
+            <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "已启用" : "未启用"}</Badge>
+            <Badge variant="secondary">{enabledCount} 张卡片可触发</Badge>
+            <SaveStateBadge dirty={dirty} saving={saving} />
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={beginPositionSelection}>
+              <RiMapPinLine data-icon="inline-start" />
+              设置位置
+            </Button>
+            <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={stopAll}>
+              <RiStopLine data-icon="inline-start" />
+              全部停止
+            </Button>
+            <Button variant="default" size="sm" disabled={controlsDisabled} onClick={addCard}>
+              <RiAddLine data-icon="inline-start" />
+              添加卡片
+            </Button>
+          </>
+        }
+        stats={
+          <>
+            <SignalTile label="运行中" value={activeRunCount} detail="非空闲卡片数量" />
+            <SignalTile label="已启用" value={enabledCount} detail="参与触发键监听" />
+            <SignalTile label="本轮次数" value={totalFireCount} detail={statusMessage} />
+          </>
+        }
+      />
+
+      <TacticalCard>
+        <SectionHeader
+          eyebrow="Overlay & Hotkeys"
+          icon={<RiPulseLine />}
+          title="全局控制"
+          description="总开关、透明窗口和显示宽度会自动保存。"
+        />
+        <CardBody>
+          <FieldGroup className="grid gap-3 md:grid-cols-3">
+            <ControlTile>
+              <Field orientation="horizontal">
                 <Switch
                   id="rapidfireEnabled"
                   checked={form.rapidfireEnabled}
@@ -435,7 +455,9 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   <FieldDescription>关闭后解绑触发键并隐藏透明窗口。</FieldDescription>
                 </FieldContent>
               </Field>
-              <Field orientation="horizontal" className="rounded-lg border bg-background/60 p-3">
+            </ControlTile>
+            <ControlTile>
+              <Field orientation="horizontal">
                 <Switch
                   id="showOverlay"
                   checked={form.showOverlay}
@@ -447,7 +469,9 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   <FieldDescription>游戏内只显示启用卡片和运行次数。</FieldDescription>
                 </FieldContent>
               </Field>
-              <Field className="rounded-lg border bg-background/60 p-3">
+            </ControlTile>
+            <ControlTile>
+              <Field>
                 <FieldLabel htmlFor="overlayWidth">透明窗口宽度</FieldLabel>
                 <Input
                   id="overlayWidth"
@@ -461,32 +485,10 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                 />
                 <FieldDescription>{RAPIDFIRE_DISPLAY_MIN_WIDTH}-{RAPIDFIRE_DISPLAY_MAX_WIDTH}px。</FieldDescription>
               </Field>
-            </FieldGroup>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-muted/35">
-          <CardHeader>
-            <CardTitle>运行态</CardTitle>
-            <CardDescription>透明窗口与主界面共享同一状态。</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <StatusTile label="运行中" value={activeRunCount} />
-              <StatusTile label="已启用" value={enabledCount} />
-              <StatusTile label="本轮次数" value={totalFireCount} />
-            </div>
-            <Separator />
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>保存状态</span>
-                <span>{saving ? "保存中" : dirty ? "待保存" : "已保存"}</span>
-              </div>
-            </div>
-            <p className="text-xs/relaxed text-muted-foreground">{statusMessage}</p>
-          </CardContent>
-        </Card>
-      </section>
+            </ControlTile>
+          </FieldGroup>
+        </CardBody>
+      </TacticalCard>
 
       <section className="grid min-h-0 gap-3 xl:grid-cols-2">
         {form.cards.map((card, index) => {
@@ -536,16 +538,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-function StatusTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border bg-background/70 px-3 py-2">
-      <div className="font-heading text-lg font-semibold tabular-nums">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-    </div>
+    </AppPage>
   );
 }
 
@@ -586,26 +579,30 @@ function RapidfireCardEditor({
   const isPending = run?.status === "pendingCompensation";
 
   return (
-    <Card className={cn("transition-colors", isRunning && "border-primary/60 bg-primary/5", isPending && "border-border bg-muted/50")}>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={rapidfireStatusVariant(run?.status ?? "idle")}>
-                {rapidfireStatusLabel(run?.status ?? "idle")}
-                {run && run.status !== "idle" ? ` · ${run.count}` : ""}
-              </Badge>
-              {!card.enabled && <Badge variant="outline">未启用</Badge>}
-            </div>
+    <TacticalCard active={isRunning || isPending} className={cn(!card.enabled && "opacity-80")}>
+      <SectionHeader
+        eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
+        icon={<RiPulseLine />}
+        title={card.name || `连发器 ${index + 1}`}
+        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · ${card.intervalMs || "--"}ms`}
+        badge={
+          <Badge variant={rapidfireStatusVariant(run?.status ?? "idle")}>
+            {rapidfireStatusLabel(run?.status ?? "idle")}
+            {run && run.status !== "idle" ? ` · ${run.count}` : ""}
+          </Badge>
+        }
+      />
+      <CardHeader className="border-b border-border/70 pt-0">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
             <Input
-              className="mt-3 max-w-72 font-medium"
+              className="max-w-80 font-medium"
               placeholder="卡片名称"
               value={card.name}
               disabled={disabled}
               onChange={(event) => onUpdate(card.id, { name: event.target.value })}
             />
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -633,52 +630,60 @@ function RapidfireCardEditor({
             <Button variant="ghost" size="icon-sm" disabled={disabled || total <= 1} onClick={onDelete} aria-label="删除卡片">
               <RiDeleteBinLine />
             </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <FieldGroup className="grid gap-3 md:grid-cols-3">
-          <Field>
-            <FieldLabel>触发键</FieldLabel>
-            <KeyRecorderButton
-              value={card.triggerKey}
-              active={isRecording && recordingField === "triggerKey"}
-              disabled={disabled}
-              onClick={() => onRecord(card, "triggerKey")}
-              onKeyDown={onRecorderKeyDown}
-            />
-            <FieldDescription>按住此键开始连发。</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel>目标键</FieldLabel>
-            <KeyRecorderButton
-              value={card.targetKey}
-              active={isRecording && recordingField === "targetKey"}
-              disabled={disabled}
-              onClick={() => onRecord(card, "targetKey")}
-              onKeyDown={onRecorderKeyDown}
-            />
-            <FieldDescription>连发时触发此键。</FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${card.id}-interval`}>连发间隔</FieldLabel>
-            <div className="flex items-center gap-2">
-              <Input
-                id={`${card.id}-interval`}
-                className="max-w-28 font-mono"
-                type="number"
-                min={RAPIDFIRE_MIN_INTERVAL_MS}
-                value={card.intervalMs}
-                disabled={disabled}
-                onChange={(event) => onUpdate(card.id, { intervalMs: event.target.value })}
-              />
-              <FieldTitle>ms</FieldTitle>
             </div>
-            <FieldDescription>最小 {RAPIDFIRE_MIN_INTERVAL_MS}ms。</FieldDescription>
-          </Field>
+          </div>
+          {!card.enabled && <Badge className="w-fit" variant="outline">未启用</Badge>}
+          </div>
+      </CardHeader>
+      <CardBody>
+        <FieldGroup className="grid gap-3 md:grid-cols-3">
+          <ControlTile>
+            <Field>
+              <FieldLabel>触发键</FieldLabel>
+              <KeyRecorderButton
+                value={card.triggerKey}
+                active={isRecording && recordingField === "triggerKey"}
+                disabled={disabled}
+                onClick={() => onRecord(card, "triggerKey")}
+                onKeyDown={onRecorderKeyDown}
+              />
+              <FieldDescription>按住此键开始连发。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field>
+              <FieldLabel>目标键</FieldLabel>
+              <KeyRecorderButton
+                value={card.targetKey}
+                active={isRecording && recordingField === "targetKey"}
+                disabled={disabled}
+                onClick={() => onRecord(card, "targetKey")}
+                onKeyDown={onRecorderKeyDown}
+              />
+              <FieldDescription>连发时触发此键。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field>
+              <FieldLabel htmlFor={`${card.id}-interval`}>连发间隔</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
+                  id={`${card.id}-interval`}
+                  className="max-w-28 font-mono"
+                  type="number"
+                  min={RAPIDFIRE_MIN_INTERVAL_MS}
+                  value={card.intervalMs}
+                  disabled={disabled}
+                  onChange={(event) => onUpdate(card.id, { intervalMs: event.target.value })}
+                />
+                <FieldTitle>ms</FieldTitle>
+              </div>
+              <FieldDescription>最小 {RAPIDFIRE_MIN_INTERVAL_MS}ms。</FieldDescription>
+            </Field>
+          </ControlTile>
         </FieldGroup>
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 

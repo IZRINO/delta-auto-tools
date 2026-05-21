@@ -1,7 +1,6 @@
 import { RiAlertLine, RiRoadMapLine } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Empty,
   EmptyDescription,
@@ -9,6 +8,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { AppPage, CardBody, PageHero, SectionHeader, TacticalCard } from "@/components/app/app-ui";
 
 type ToolPlaceholderPageProps = {
   title: string;
@@ -24,22 +24,22 @@ const pendingItems = [
 
 export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlaceholderPageProps) {
   return (
-    <div className="flex flex-1 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] border border-border/70 bg-card/92 px-5 py-4 shadow-sm">
-        <div className="min-w-0">
-          <p className="text-[0.625rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">Utility Module</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-base font-semibold tracking-tight">{title}</h1>
+    <AppPage>
+      <PageHero
+        eyebrow="Utility Module"
+        title={title}
+        description={description}
+        badges={
+          <>
             <Badge variant="secondary">未开放</Badge>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        </div>
-        <Badge variant="outline">{shortLabel}</Badge>
-      </div>
+            <Badge variant="outline">{shortLabel}</Badge>
+          </>
+        }
+      />
 
-      <div className="grid flex-1 gap-3 xl:grid-cols-[minmax(0,1.1fr)_300px]">
-        <Card className="min-h-72" size="sm">
-          <CardContent className="flex h-full items-center justify-center">
+      <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_320px]">
+        <TacticalCard className="min-h-72">
+          <CardBody className="flex h-full items-center justify-center">
             <Empty className="border-border bg-muted/20">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
@@ -49,18 +49,17 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
                 <EmptyDescription>当前只保留菜单入口，页面内容将在后续接入。</EmptyDescription>
               </EmptyHeader>
             </Empty>
-          </CardContent>
-        </Card>
+          </CardBody>
+        </TacticalCard>
 
-        <Card size="sm">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <RiRoadMapLine className="text-muted-foreground" />
-              <CardTitle>准备项</CardTitle>
-            </div>
-            <CardDescription>保持桌面工具壳层，等待模块补全。</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <TacticalCard>
+          <SectionHeader
+            eyebrow="Roadmap"
+            icon={<RiRoadMapLine />}
+            title="准备项"
+            description="保持桌面工具壳层，等待模块补全。"
+          />
+          <CardBody>
             <ul className="grid gap-2 text-xs/relaxed text-muted-foreground">
               {pendingItems.map((item) => (
                 <li key={item} className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2.5">
@@ -68,9 +67,9 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
+          </CardBody>
+        </TacticalCard>
       </div>
-    </div>
+    </AppPage>
   );
 }

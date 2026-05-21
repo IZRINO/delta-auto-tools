@@ -9,7 +9,7 @@
   2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
   3. **连发器工作台**：主界面负责多张连发器卡片配置、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时自动补齐触发次数为偶数 → 独立透明窗口置顶点击穿透显示结果。
   4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQSafe 鉴权和游戏数据查询能力，当前阶段以原生命令与存储为主，尚未接入前端页面（前端仅有 `ToolPlaceholderPage` 占位组件）。
-- 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-mira` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
+- 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-vega` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
 
 ## AI 输出规范
@@ -72,6 +72,8 @@ src/
 │       ├── timer-utils.test.ts # 计时\计数器前端测试文件
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
+│       ├── rapidfire-types.test.ts # 连发器前端测试文件
+│       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       └── tool-placeholder-page.tsx  # Delta 工具模块占位组件（未开放状态）
 ```
 
@@ -237,20 +239,23 @@ src-tauri/src/
 
 ## UI and Styling Rules
 
-- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**
-- **禁止自定义 CSS 类** - 不得创建 `.desktop-*` 或其他自定义 CSS 类
-- 所有样式必须通过以下方式实现：
-  - shadcn/ui 组件（Button、Card、Badge 等）
-  - Tailwind 工具类（`bg-primary`、`text-foreground`、`rounded-lg` 等）
-  - 仅在绝对必要时使用内联样式（例如动态定位）
-- `src/App.css` 中的 @theme 块定义的主题令牌是颜色的唯一来源
-- 当现有 shadcn/ui 组件无法满足需求时，应组合使用它们而不是编写自定义 CSS
+- **整体视觉方向**：当前 UI 是“战术白色操作台”（Tactical White Console），不是营销页、模板首页或普通后台卡片堆叠。后续新增页面必须延续轻量军规仪表感：暖白背景、橄榄绿色主色、细网格底纹、模块化信号块、清晰状态徽章和高密度但不拥挤的工具布局；边界保持低圆角、硬朗仪表感，避免大面积胶囊化。
+- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**。禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类；桌面页面样式通过 shadcn/ui、Tailwind 工具类和 `src/App.css` 主题 token 实现。
+- `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、背景底纹和 overlay 基础样式；全局圆角以 vega 的紧凑硬朗半径为准，不要在业务组件里堆叠 `rounded-3xl` / `rounded-[2rem]` 形成过度圆润界面，也不要硬编码大面积 raw color（例如 `bg-blue-500`）替代 token。
+- 桌面主界面优先复用 `src/components/app/app-ui.tsx` 的共享视觉积木：`AppPage`、`PageHero`、`SignalTile`、`TacticalCard`、`SectionHeader`、`ControlTile`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
+- 工作台页面应采用“PageHero + 信号指标 + TacticalCard 内容区”的结构：顶部说明当前工具目的与状态，中部放开关/透明窗口/校准等关键控制，下部放可编辑卡片或历史记录。
+- 表单仍使用 `FieldGroup` + `Field` + `FieldLabel` + `FieldContent`；开关设置放在 `ControlTile` 中；提示与异常优先用 `Alert` / `FieldError` / `Badge`，不要手写自定义 callout。
+- 图标继续使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `data-icon="inline-end"`；不要引入 lucide 或混用其他图标库。
+- 透明窗口和位置设置窗口属于游戏叠加层，可以保留深色半透明 overlay 风格；不要套用主界面的白色卡片背景，也不要破坏无边框、透明、置顶、点击穿透约束。
+- 设计改动必须保持功能不变：不要为了重构 UI 改 Tauri command 名称、查询参数 mode、状态机、保存逻辑或原生窗口 label。
+- 新增复杂 UI 前先检查 `src/components/ui/*` 已安装组件和 `components.json` 配置；已有 shadcn/ui 组件能组合解决时，不新增第三方 UI 依赖。
 
 ## Frontend conventions
 
 - 使用现有别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`
 - Tailwind v4 使用 CSS-first 方案（`@import "tailwindcss"`），主题 token 在 `src/App.css`；**不存在** `tailwind.config.js`
-- 优先复用 `src/components/ui/*` 中已有基础组件（基于 shadcn/ui 的 radix-mira 风格，remixicon 图标库）
+- 优先复用 `src/components/ui/*` 中已有基础组件（基于 shadcn/ui 的 radix-vega 风格，remixicon 图标库）
+- 优先复用 `src/components/app/app-ui.tsx` 中的桌面工具共享展示组件；如果发现三个以上页面需要同一种视觉结构，应先扩展共享组件，而不是复制粘贴 Tailwind 片段。
 - `src/components/app/morse-page.tsx` 负责容器与状态编排；展示块拆在 app 子组件中，纯逻辑放 `morse-utils.ts`
 - `src/App.css` 仅承载主题 token 与 overlay 相关样式；所有桌面壳层样式改用 shadcn/ui + Tailwind
 - form 状态使用转层模式：`MorseSettings`（原始类型，int 字段）↔ `MorseSettingsForm`（表单类型，string 字段），通过 `settingsToForm()` / `parseSettingsForm()` 转换

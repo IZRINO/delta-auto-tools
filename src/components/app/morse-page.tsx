@@ -7,6 +7,7 @@ import { useSyncedRef } from "@/hooks/use-synced-ref";
 import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
 
 import { Badge } from "@/components/ui/badge";
+import { AppPage, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
 import { RegionSelectionOverlay } from "@/components/app/morse-overlay";
 import { HistoryPanel, ResultPanel, SelectionPanel, WorkbenchControlPanel } from "@/components/app/morse-panels";
 import {
@@ -481,40 +482,28 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const controlsDisabled = isBusy || !isNativeShell;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <section className="border-b border-border/70 bg-card/95 px-4 py-4 shadow-sm backdrop-blur-sm xl:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
-              {saving ? <Badge variant="outline">保存中</Badge> : isDirty ? <Badge variant="outline">待保存</Badge> : <Badge variant="outline">已保存</Badge>}
-              {isBusy ? <Badge variant="outline">处理中</Badge> : <Badge variant="outline">空闲</Badge>}
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">摩斯密码解析</h1>
-              <p className="mt-1 text-sm text-muted-foreground">先配置区域，再调整参数并验证，最后查看识别结果。</p>
-            </div>
-          </div>
+    <AppPage>
+      <PageHero
+        eyebrow="Morse Recognition"
+        title="摩斯密码解析"
+        description="把区域框选、识别参数、验证输入和历史结果串成一条清晰流程，适合战局中快速校准。"
+        badges={
+          <>
+            <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
+            <SaveStateBadge dirty={isDirty} saving={saving} />
+            <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "处理中" : "空闲"}</Badge>
+          </>
+        }
+        stats={
+          <>
+            <SignalTile label="区域配置" value={`${configuredCount}/3`} detail="三段采样区域连续框选" />
+            <SignalTile label="最近结果" value={latestResultValue ?? "---"} detail={latestRunErrorOrFallback(latestRun?.error)} />
+            <SignalTile label="最近时间" value={formatTimestamp(latestResultTime)} detail="自动输入与热键触发同步记录" />
+          </>
+        }
+      />
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[25rem] lg:max-w-[34rem] lg:flex-1">
-            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">区域配置</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{configuredCount}/3</p>
-            </div>
-            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">最近结果</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{latestResultValue ?? "---"}</p>
-            </div>
-            <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
-              <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">最近时间</p>
-              <p className="mt-1 text-sm font-medium text-foreground">{formatTimestamp(latestResultTime)}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex-1 overflow-y-auto px-4 py-4 xl:px-5">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
           <SelectionPanel
             configuredCount={configuredCount}
             form={form}
@@ -559,9 +548,11 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           <div className="pt-2">
             <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
           </div>
-        </div>
       </div>
-
-    </div>
+    </AppPage>
   );
+}
+
+function latestRunErrorOrFallback(error: string | null | undefined): string {
+  return error ? "最近一次识别失败" : "最新三位结果会在这里放大显示";
 }

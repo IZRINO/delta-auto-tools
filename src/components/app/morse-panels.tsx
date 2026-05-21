@@ -10,11 +10,11 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CardBody, ControlTile, SectionHeader, TacticalCard } from "@/components/app/app-ui";
 import type {
   HistoryEntry,
   MorseRegionDetail,
@@ -37,20 +37,15 @@ type SelectionPanelProps = {
 
 export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = false, selectingSlot, isPreviewMode, onSelectAll, onSelectOne }: SelectionPanelProps) {
   return (
-    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
-      <CardHeader className="border-b border-border/70">
-        <div className="flex items-center gap-2">
-          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
-            1
-          </div>
-          <RiLayoutGridLine className="text-muted-foreground" />
-          <div>
-            <CardTitle>步骤 1：配置采样区域</CardTitle>
-            <CardDescription>先完成 3 个区域配置，再执行识别</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 xl:space-y-5">
+    <TacticalCard active={isPrimary}>
+      <SectionHeader
+        eyebrow="Step 01"
+        icon={<RiLayoutGridLine />}
+        title="配置采样区域"
+        description="先完成 3 个区域配置，再执行识别。"
+        badge={<Badge variant={configuredCount === 3 ? "default" : "outline"}>{configuredCount}/3</Badge>}
+      />
+      <CardBody className="flex flex-col gap-4 xl:gap-5">
         {isPreviewMode ? (
           <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
@@ -59,12 +54,12 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-4">
+            <ControlTile className="flex flex-wrap items-center justify-between gap-3 bg-muted/32">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 1 ? 1 : 0.25 }}></div>
-                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 2 ? 1 : 0.25 }}></div>
-                  <div className="h-2.5 w-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 3 ? 1 : 0.25 }}></div>
+                  <div className="size-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 1 ? 1 : 0.25 }} />
+                  <div className="size-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 2 ? 1 : 0.25 }} />
+                  <div className="size-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 3 ? 1 : 0.25 }} />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">已配置 {configuredCount}/3</p>
@@ -75,7 +70,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                 <RiRefreshLine data-icon="inline-start" />
                 一次选择 3 个区域
               </Button>
-            </div>
+            </ControlTile>
 
             <div className="grid gap-3 xl:grid-cols-3">
               {REGION_LABELS.map((label, index) => {
@@ -84,7 +79,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                 const isSelecting = selectingSlot === index;
 
                 return (
-                  <div key={label} className="rounded-lg border border-border bg-background p-3">
+                  <ControlTile key={label} className="flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">{label}</p>
@@ -97,12 +92,12 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                       </Badge>
                     </div>
 
-                    <div className="mt-3 rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-3">
+                    <div className="rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-3">
                       <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
                       <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                     </div>
 
-                    <div className="mt-3 flex gap-2">
+                    <div className="flex gap-2">
                       <Button
                         className="flex-1"
                         disabled={isBusy}
@@ -113,14 +108,14 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                         {isSelecting ? "等待中..." : isConfigured ? "重选本区域" : "选择区域"}
                       </Button>
                     </div>
-                  </div>
+                  </ControlTile>
                 );
               })}
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -164,22 +159,18 @@ export function WorkbenchControlPanel({
   verificationValue,
 }: WorkbenchControlPanelProps) {
   return (
-    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
-      <CardHeader className="border-b border-border/70">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
-            2
-          </div>
-          <div className="min-w-0">
-            <CardTitle>步骤 2：调整设置并验证</CardTitle>
-            <CardDescription>区域准备完成后，在这里微调参数并验证识别效果</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
+    <TacticalCard active={isPrimary}>
+      <SectionHeader
+        eyebrow="Step 02"
+        icon={<RiSettings3Line />}
+        title="调整设置并验证"
+        description="区域准备完成后，在这里微调参数并验证识别效果。"
+        badge={<Badge variant={verificationStatus === "success" ? "default" : "outline"}>{verificationStatus === "running" ? "验证中" : "校准"}</Badge>}
+      />
 
-      <CardContent className="px-4 py-4 xl:min-h-88 xl:px-5 xl:py-5">
+      <CardBody className="xl:min-h-88">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
-          <section className="min-h-0 rounded-lg border border-border/50 bg-muted/20 px-4 py-4">
+          <section className="min-h-0 rounded-xl border border-border/60 bg-muted/20 px-4 py-4">
 
             <div className="mb-4 flex items-center gap-2">
 
@@ -243,7 +234,7 @@ export function WorkbenchControlPanel({
               <div className="text-xs text-muted-foreground">正在加载设置...</div>
             )}
           </section>
-          <section className="min-h-0 rounded-lg border border-border/50 bg-muted/20 px-4 py-4">
+          <section className="min-h-0 rounded-xl border border-border/60 bg-muted/20 px-4 py-4">
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -268,7 +259,7 @@ export function WorkbenchControlPanel({
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-lg border border-border bg-background p-4 shadow-sm">
+            <div className="mt-4 rounded-lg border border-border bg-background/78 p-4 shadow-sm">
               <Input
                 className="h-12 rounded-lg px-4 font-mono text-base tracking-[0.22em]"
                 id="verification-input"
@@ -292,8 +283,8 @@ export function WorkbenchControlPanel({
             </div>
           </section>
         </div>
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -309,29 +300,24 @@ type ResultPanelProps = {
 
 export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTyped, latestRunError, latestRunValue, latestTriggeredBy, runDetails }: ResultPanelProps) {
   return (
-    <Card size="sm" className={isPrimary ? "border-border shadow-sm ring-1 ring-primary/15" : "border-border shadow-sm"}>
-      <CardHeader className="border-b border-border/70">
-        <div className="flex items-center gap-2">
-          <div className={isPrimary ? "flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground" : "flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground"}>
-            3
-          </div>
-          <RiCheckboxCircleLine className="text-muted-foreground" />
-          <div>
-            <CardTitle>步骤 3：查看结果</CardTitle>
-            <CardDescription>完成前两步后，这里会显示最新识别结果</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 min-h-0 px-4 pt-4 pb-4">
+    <TacticalCard active={isPrimary}>
+      <SectionHeader
+        eyebrow="Step 03"
+        icon={<RiCheckboxCircleLine />}
+        title="查看结果"
+        description="完成前两步后，这里会显示最新识别结果。"
+        badge={<Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>{latestRunError ? "失败" : latestRunValue ? "成功" : "待机"}</Badge>}
+      />
+      <CardBody className="flex min-h-0 flex-col gap-4">
         {!hasResult ? (
-          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
             <RiCheckboxCircleLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">等待执行</p>
             <p className="mt-1 text-xs text-muted-foreground">完成前两步后，结果会显示在这里。</p>
           </div>
         ) : (
           <>
-            <div className="rounded-lg border border-border bg-background px-5 py-5 shadow-sm">
+            <div className="rounded-xl border border-border bg-background/80 px-5 py-5 shadow-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
                   {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
@@ -371,8 +357,8 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
             </div>
           </>
         )}
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
 
@@ -383,19 +369,16 @@ type HistoryPanelProps = {
 
 export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
   return (
-    <Card size="sm" className="border-border shadow-sm">
-      <CardHeader className="border-b border-border/70">
-        <div className="flex items-center gap-2">
-          <RiHistoryLine className="text-muted-foreground" />
-          <div>
-            <CardTitle>历史记录</CardTitle>
-            <CardDescription>最近的识别记录</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <TacticalCard>
+      <SectionHeader
+        eyebrow="Archive"
+        icon={<RiHistoryLine />}
+        title="历史记录"
+        description="最近的识别记录。"
+      />
+      <CardBody>
         {isPreviewMode ? (
-          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">预览模式</p>
             <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以查看历史记录</p>
@@ -416,7 +399,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
                   </Empty>
                 ) : (
                   history.map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                    <div key={entry.id} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>
@@ -434,7 +417,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
             </ScrollArea>
           </>
         )}
-      </CardContent>
-    </Card>
+      </CardBody>
+    </TacticalCard>
   );
 }
