@@ -1,0 +1,1 @@
+fatal: write failure on 'stdout': Bad file descriptor

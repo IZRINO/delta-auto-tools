@@ -296,7 +296,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
       }
 
       const nextKey = formatTriggerKey(event.key);
-      if (!nextKey || nextKey.includes("+")) {
+      if (!nextKey || nextKey.includes("+") || (event.ctrlKey && event.key !== "Control") || (event.metaKey && event.key !== "Meta")) {
         setStatusMessage("请按下一个可识别的单键。");
         return;
       }
@@ -400,7 +400,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
       <PageHero
         eyebrow="Rapidfire Control"
         title="连发器控制台"
-        description="按住触发键持续触发目标键；松开后如果次数为奇数，会等待一个间隔补齐触发。"
+        description="按住触发键持续触发目标键；松开后如果次数为奇数，立即补发一次使次数为偶数。"
         badges={
           <>
             <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "已启用" : "未启用"}</Badge>

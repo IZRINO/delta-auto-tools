@@ -299,9 +299,10 @@ src-tauri/src/
 - `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>）、`pending_position`、`hotkey_error`。
 - 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
 - 触发键为单键（不支持组合键），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发。
-- 状态机：`Idle → Firing → (偶数→Idle, 奇数→PendingCompensation→Idle)`。
-- 触发键 Up 时 count 为偶数直接结束，奇数进入补齐等待（等待一个 interval 后额外触发 1 次）。
-- 补齐等待期间再次按下触发键会取消补齐并重新开始。
+- 触发键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
+- 同一快捷键可绑定多个连发器卡片，按下时同时触发所有绑定的卡片。
+- 状态机：`Idle → Firing → Idle`。触发键 Up 时 count 为偶数直接结束，奇数立即补发一次（10ms 固定延迟，无视设置间隔），补发 fire-and-forget 不阻塞，状态立即设为 Idle。
+- 补发期间再次按下触发键不取消补发，直接启动新的连发轮次。
 - 连发器透明窗口 label 是 `"rapidfire-display"`，位置设置窗口 label 是 `"rapidfire-position"`。
 - `RapidfireSettings.rapidfire_enabled` 控制 hold 热键注册、透明窗口显示和运行态。
 - 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
@@ -396,7 +397,7 @@ src-tauri/src/
 - 录制热键时通过 `morse_set_hotkey_recording` 暂停监听（`set_paused(true)`），并 drain 积压事件
 - 非 Windows 平台直接返回错误，不做降级处理
 - 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K` 等格式
-- `HotkeyManager` 同时支持按住动作（hold）注册：`replace_hold_scope` / `clear_hold_scope`，用于连发器的触发键 Down/Up 检测。hold 热键只匹配主键（无修饰键），通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
+- `HotkeyManager` 同时支持按住动作（hold）注册：`replace_hold_scope` / `clear_hold_scope`，用于连发器的触发键 Down/Up 检测。hold 热键匹配主键（包括 Alt 和符号键），通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
 
 ## Tauri 事件模式
 

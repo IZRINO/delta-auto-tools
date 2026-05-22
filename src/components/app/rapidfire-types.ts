@@ -105,6 +105,18 @@ const SUPPORTED_KEY_LABELS = new Set([
   "PageDown",
   "Insert",
   "Delete",
+  "Alt",
+  ";",
+  ",",
+  ".",
+  "/",
+  "\\",
+  "[",
+  "]",
+  "-",
+  "=",
+  "`",
+  "'",
 ]);
 
 function normalizePositiveInteger(value: string, fallback: number): number {
@@ -141,6 +153,28 @@ function normalizeRapidfireKey(raw: string): string {
     pagedown: "PageDown",
     Del: "Delete",
     del: "Delete",
+    Semicolon: ";",
+    semicolon: ";",
+    Comma: ",",
+    comma: ",",
+    Period: ".",
+    period: ".",
+    Slash: "/",
+    slash: "/",
+    Backslash: "\\",
+    backslash: "\\",
+    BracketLeft: "[",
+    bracketleft: "[",
+    BracketRight: "]",
+    bracketright: "]",
+    Minus: "-",
+    minus: "-",
+    Equal: "=",
+    equal: "=",
+    Backquote: "`",
+    backquote: "`",
+    Quote: "'",
+    quote: "'",
   };
   const aliased = aliasMap[raw] ?? aliasMap[trimmed] ?? trimmed;
 
@@ -176,7 +210,6 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     throw new Error("至少需要保留一个连发器卡片。");
   }
 
-  const enabledTriggerKeys = new Set<string>();
   const cards = form.cards.map((card) => {
     const name = card.name.trim();
     if (!name) {
@@ -187,14 +220,6 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     const targetKey = normalizeRapidfireKey(card.targetKey);
     validateRapidfireKey(triggerKey, `${name} 的触发键`);
     validateRapidfireKey(targetKey, `${name} 的目标键`);
-
-    if (card.enabled) {
-      const triggerKeyId = triggerKey.toUpperCase();
-      if (enabledTriggerKeys.has(triggerKeyId)) {
-        throw new Error(`触发键 ${triggerKey} 已被其他连发器卡片使用。`);
-      }
-      enabledTriggerKeys.add(triggerKeyId);
-    }
 
     const intervalMs = normalizePositiveInteger(card.intervalMs, RAPIDFIRE_DEFAULT_INTERVAL_MS);
     if (intervalMs < RAPIDFIRE_MIN_INTERVAL_MS) {
@@ -266,7 +291,7 @@ export function rapidfireStatusLabel(status: RapidfireRunStatus): string {
     case "firing":
       return "连发中";
     case "pendingCompensation":
-      return "补齐等待";
+      return "补齐中";
   }
 }
 
@@ -306,6 +331,14 @@ export const SUPPORTED_TARGET_KEYS = [
   { group: "字母键", keys: "A-Z".split("").map((k) => k) },
   { group: "数字键", keys: "0-9".split("").map((k) => k) },
   { group: "功能键", keys: Array.from({ length: 12 }, (_, i) => `F${i + 1}`) },
+  {
+    group: "修饰键",
+    keys: ["Alt"],
+  },
+  {
+    group: "符号键",
+    keys: [";", ",", ".", "/", "\\", "[", "]", "-", "=", "`", "'"],
+  },
   {
     group: "特殊键",
     keys: ["Space", "Enter", "Tab", "Esc", "Backspace"],

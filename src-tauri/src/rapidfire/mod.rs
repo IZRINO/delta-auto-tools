@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 
@@ -174,6 +174,18 @@ fn parse_target_key(key: &str) -> Option<enigo::Key> {
         "PAGEDOWN" => Some(Key::PageDown),
         "INSERT" => Some(Key::Insert),
         "DELETE" => Some(Key::Delete),
+        "ALT" => Some(Key::Alt),
+        ";" | "SEMICOLON" => Some(Key::Unicode(';')),
+        "," | "COMMA" => Some(Key::Unicode(',')),
+        "." | "PERIOD" => Some(Key::Unicode('.')),
+        "/" | "SLASH" => Some(Key::Unicode('/')),
+        "\\" | "BACKSLASH" => Some(Key::Unicode('\\')),
+        "[" | "BRACKETLEFT" => Some(Key::Unicode('[')),
+        "]" | "BRACKETRIGHT" => Some(Key::Unicode(']')),
+        "-" | "MINUS" => Some(Key::Unicode('-')),
+        "=" | "EQUAL" => Some(Key::Unicode('=')),
+        "`" | "BACKQUOTE" => Some(Key::Unicode('`')),
+        "'" | "QUOTE" => Some(Key::Unicode('\'')),
         _ => None,
     }
 }
@@ -227,6 +239,11 @@ fn normalize_single_key(raw: &str) -> Result<String, String> {
         return Err("必须是单键，不能包含组合键".to_string());
     }
 
+    // Alt 等修饰键在连发器中作为单键使用，直接返回规范化标签
+    if trimmed.eq_ignore_ascii_case("alt") {
+        return Ok("Alt".to_string());
+    }
+
     hotkey_types::hotkey_primary_label(trimmed).map_err(|_| format!("不支持: {trimmed}"))
 }
 
@@ -247,20 +264,11 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
         .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
 
     let mut seen_ids = HashMap::new();
-    let mut seen_enabled_trigger_keys = HashSet::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());
     for card in &settings_value.cards {
         let normalized = normalize_card(card)?;
         if seen_ids.insert(normalized.id.clone(), true).is_some() {
             return Err(format!("连发器卡片 ID 重复: {}", normalized.id));
-        }
-        if normalized.enabled
-            && !seen_enabled_trigger_keys.insert(normalized.trigger_key.to_ascii_uppercase())
-        {
-            return Err(format!(
-                "触发键 {} 已被其他连发器卡片使用",
-                normalized.trigger_key
-            ));
         }
         cards.push(normalized);
     }
@@ -440,9 +448,12 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
     Ok(())
 }
 
+// 补齐常量：奇数次数时立即补发，固定延迟
+const COMPENSATION_DELAY_MS: u64 = 10;
+
 async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
-    let tasks_to_spawn = {
+    let compensations: Vec<(String, String)> = {
         let mut inner = state
             .inner
             .lock()
@@ -452,18 +463,17 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             return Ok(());
         }
 
-        let mut tasks_to_spawn: Vec<(String, String, u64, oneshot::Receiver<()>)> = Vec::new();
+        let mut compensations = Vec::new();
 
         for card_id in &card_ids {
-            // 先收集卡片信息
             let card_info = inner
                 .settings
                 .cards
                 .iter()
                 .find(|c| c.id == *card_id)
-                .map(|c| (c.target_key.clone(), c.interval_ms));
+                .map(|c| c.target_key.clone());
 
-            let Some((target_key, interval_ms)) = card_info else {
+            let Some(target_key) = card_info else {
                 continue;
             };
 
@@ -484,23 +494,27 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             if count % 2 == 0 {
                 // 偶数：直接结束
                 run.status = RapidfireRunStatus::Idle;
+                run.task_abort_tx = None;
             } else {
-                // 奇数：进入补齐等待
-                run.status = RapidfireRunStatus::PendingCompensation;
-                let (abort_tx, abort_rx) = oneshot::channel();
-                run.task_abort_tx = Some(abort_tx);
-                tasks_to_spawn.push((card_id.clone(), target_key, interval_ms, abort_rx));
+                // 奇数：立即补发（10ms 延迟，无视设置间隔），设为 Idle
+                run.count += 1;
+                run.status = RapidfireRunStatus::Idle;
+                run.task_abort_tx = None;
+                compensations.push((card_id.clone(), target_key));
             }
         }
 
-        tasks_to_spawn
+        compensations
     };
 
-    // 在锁外执行补齐任务
-    for (card_id, target_key, interval_ms, abort_rx) in tasks_to_spawn {
+    // 立即补发（fire-and-forget，10ms 延迟）
+    for (_card_id, target_key) in compensations {
         let app_handle = app.clone();
         tauri::async_runtime::spawn(async move {
-            run_compensation_task(app_handle, card_id, target_key, interval_ms, abort_rx).await;
+            time::sleep(Duration::from_millis(COMPENSATION_DELAY_MS)).await;
+            if let Err(error) = fire_target_key(&target_key).await {
+                let _ = app_handle.emit_to("main", "rapidfire://hotkey-error", error);
+            }
         });
     }
 
@@ -512,57 +526,6 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
         inner.bootstrap()
     });
     Ok(())
-}
-
-async fn run_compensation_task(
-    app: AppHandle,
-    card_id: String,
-    target_key: String,
-    interval_ms: u64,
-    mut abort_rx: oneshot::Receiver<()>,
-) {
-    tokio::select! {
-        _ = time::sleep(Duration::from_millis(interval_ms)) => {}
-        _ = &mut abort_rx => return,
-    }
-
-    let state = app.state::<RapidfireState>();
-    let should_fire = {
-        let inner = match state.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return,
-        };
-        inner
-            .runs
-            .get(&card_id)
-            .map(|run| run.status == RapidfireRunStatus::PendingCompensation)
-            .unwrap_or(false)
-    };
-
-    if !should_fire {
-        return;
-    }
-
-    if let Err(error) = fire_target_key(&target_key).await {
-        let _ = app.emit_to("main", "rapidfire://hotkey-error", error);
-    }
-
-    let bootstrap = {
-        let mut inner = match state.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return,
-        };
-        if let Some(run) = inner.runs.get_mut(&card_id) {
-            if run.status == RapidfireRunStatus::PendingCompensation {
-                run.count += 1;
-                run.status = RapidfireRunStatus::Idle;
-                run.task_abort_tx = None;
-            }
-        }
-        inner.bootstrap()
-    };
-
-    emit_state(&app, bootstrap);
 }
 
 async fn run_tick_task(
@@ -1113,6 +1076,26 @@ mod tests {
     }
 
     #[test]
+    fn normalize_card_normalizes_alt_key() {
+        let mut card = sample_card("a", "alt");
+        card.target_key = "alt".to_string();
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.trigger_key, "Alt");
+        assert_eq!(normalized.target_key, "Alt");
+    }
+
+    #[test]
+    fn normalize_card_normalizes_symbol_keys() {
+        let mut card = sample_card("a", ";");
+        card.target_key = ",".to_string();
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.trigger_key, ";");
+        assert_eq!(normalized.target_key, ",");
+    }
+
+    #[test]
     fn parse_target_key_supports_all_valid_keys() {
         assert!(parse_target_key("A").is_some());
         assert!(parse_target_key("F1").is_some());
@@ -1134,6 +1117,19 @@ mod tests {
         assert!(parse_target_key("Delete").is_some());
         assert!(parse_target_key("0").is_some());
         assert!(parse_target_key("9").is_some());
+        // 新增键位
+        assert!(parse_target_key("Alt").is_some());
+        assert!(parse_target_key(";").is_some());
+        assert!(parse_target_key(",").is_some());
+        assert!(parse_target_key(".").is_some());
+        assert!(parse_target_key("/").is_some());
+        assert!(parse_target_key("\\").is_some());
+        assert!(parse_target_key("[").is_some());
+        assert!(parse_target_key("]").is_some());
+        assert!(parse_target_key("-").is_some());
+        assert!(parse_target_key("=").is_some());
+        assert!(parse_target_key("`").is_some());
+        assert!(parse_target_key("'").is_some());
         assert!(parse_target_key("Unknown").is_none());
     }
 
@@ -1154,13 +1150,15 @@ mod tests {
     }
 
     #[test]
-    fn normalize_settings_rejects_duplicate_enabled_trigger_keys() {
+    fn normalize_settings_allows_same_enabled_trigger_keys() {
         let mut settings = RapidfireSettings::default();
         settings.cards = vec![sample_card("a", "F1"), sample_card("b", "f1")];
 
-        let error = normalize_settings(settings).unwrap_err();
+        let normalized = normalize_settings(settings).unwrap();
 
-        assert!(error.contains("已被其他连发器卡片使用"));
+        assert_eq!(normalized.cards.len(), 2);
+        assert_eq!(normalized.cards[0].trigger_key, "F1");
+        assert_eq!(normalized.cards[1].trigger_key, "F1");
     }
 
     #[test]

@@ -33,6 +33,18 @@ pub enum NamedKey {
     Insert,
     Delete,
     Backspace,
+    Alt,
+    Semicolon,
+    Comma,
+    Period,
+    Slash,
+    Backslash,
+    BracketLeft,
+    BracketRight,
+    Minus,
+    Equal,
+    Backquote,
+    Quote,
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +145,30 @@ pub fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
         Some(NamedKey::Tab)
     } else if segment.eq_ignore_ascii_case("esc") || segment.eq_ignore_ascii_case("escape") {
         Some(NamedKey::Esc)
+    } else if segment.eq_ignore_ascii_case("alt") {
+        Some(NamedKey::Alt)
+    } else if segment == ";" || segment.eq_ignore_ascii_case("semicolon") {
+        Some(NamedKey::Semicolon)
+    } else if segment == "," || segment.eq_ignore_ascii_case("comma") {
+        Some(NamedKey::Comma)
+    } else if segment == "." || segment.eq_ignore_ascii_case("period") {
+        Some(NamedKey::Period)
+    } else if segment == "/" || segment.eq_ignore_ascii_case("slash") {
+        Some(NamedKey::Slash)
+    } else if segment == "\\" || segment.eq_ignore_ascii_case("backslash") {
+        Some(NamedKey::Backslash)
+    } else if segment == "[" || segment.eq_ignore_ascii_case("bracketleft") {
+        Some(NamedKey::BracketLeft)
+    } else if segment == "]" || segment.eq_ignore_ascii_case("bracketright") {
+        Some(NamedKey::BracketRight)
+    } else if segment == "-" || segment.eq_ignore_ascii_case("minus") {
+        Some(NamedKey::Minus)
+    } else if segment == "=" || segment.eq_ignore_ascii_case("equal") {
+        Some(NamedKey::Equal)
+    } else if segment == "`" || segment.eq_ignore_ascii_case("backquote") {
+        Some(NamedKey::Backquote)
+    } else if segment == "'" || segment.eq_ignore_ascii_case("quote") {
+        Some(NamedKey::Quote)
     } else if segment.eq_ignore_ascii_case("up") {
         Some(NamedKey::Up)
     } else if segment.eq_ignore_ascii_case("down") {
@@ -184,6 +220,18 @@ pub fn primary_to_string(primary: PrimaryKey) -> String {
         PrimaryKey::Named(NamedKey::Insert) => "Insert".to_string(),
         PrimaryKey::Named(NamedKey::Delete) => "Delete".to_string(),
         PrimaryKey::Named(NamedKey::Backspace) => "Backspace".to_string(),
+        PrimaryKey::Named(NamedKey::Alt) => "Alt".to_string(),
+        PrimaryKey::Named(NamedKey::Semicolon) => ";".to_string(),
+        PrimaryKey::Named(NamedKey::Comma) => ",".to_string(),
+        PrimaryKey::Named(NamedKey::Period) => ".".to_string(),
+        PrimaryKey::Named(NamedKey::Slash) => "/".to_string(),
+        PrimaryKey::Named(NamedKey::Backslash) => "\\".to_string(),
+        PrimaryKey::Named(NamedKey::BracketLeft) => "[".to_string(),
+        PrimaryKey::Named(NamedKey::BracketRight) => "]".to_string(),
+        PrimaryKey::Named(NamedKey::Minus) => "-".to_string(),
+        PrimaryKey::Named(NamedKey::Equal) => "=".to_string(),
+        PrimaryKey::Named(NamedKey::Backquote) => "`".to_string(),
+        PrimaryKey::Named(NamedKey::Quote) => "'".to_string(),
     }
 }
 
@@ -282,6 +330,18 @@ pub fn to_primary_key(key: willhook::event::KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::Insert => Some(PrimaryKey::Named(NamedKey::Insert)),
         KeyboardKey::Delete => Some(PrimaryKey::Named(NamedKey::Delete)),
         KeyboardKey::BackSpace => Some(PrimaryKey::Named(NamedKey::Backspace)),
+        KeyboardKey::LeftAlt | KeyboardKey::RightAlt => Some(PrimaryKey::Named(NamedKey::Alt)),
+        KeyboardKey::Other(0xBA) => Some(PrimaryKey::Named(NamedKey::Semicolon)),
+        KeyboardKey::Other(0xBB) => Some(PrimaryKey::Named(NamedKey::Equal)),
+        KeyboardKey::Other(0xBC) => Some(PrimaryKey::Named(NamedKey::Comma)),
+        KeyboardKey::Other(0xBD) => Some(PrimaryKey::Named(NamedKey::Minus)),
+        KeyboardKey::Other(0xBE) => Some(PrimaryKey::Named(NamedKey::Period)),
+        KeyboardKey::Other(0xBF) => Some(PrimaryKey::Named(NamedKey::Slash)),
+        KeyboardKey::Other(0xC0) => Some(PrimaryKey::Named(NamedKey::Backquote)),
+        KeyboardKey::Other(0xDB) => Some(PrimaryKey::Named(NamedKey::BracketLeft)),
+        KeyboardKey::Other(0xDC) => Some(PrimaryKey::Named(NamedKey::Backslash)),
+        KeyboardKey::Other(0xDD) => Some(PrimaryKey::Named(NamedKey::BracketRight)),
+        KeyboardKey::Other(0xDE) => Some(PrimaryKey::Named(NamedKey::Quote)),
         _ => None,
     }
 }
@@ -366,6 +426,18 @@ pub fn key_to_primary_string(key: willhook::event::KeyboardKey) -> Option<String
         KeyboardKey::Insert => Some("Insert".to_string()),
         KeyboardKey::Delete => Some("Delete".to_string()),
         KeyboardKey::BackSpace => Some("Backspace".to_string()),
+        KeyboardKey::LeftAlt | KeyboardKey::RightAlt => Some("Alt".to_string()),
+        KeyboardKey::Other(0xBA) => Some(";".to_string()),
+        KeyboardKey::Other(0xBB) => Some("=".to_string()),
+        KeyboardKey::Other(0xBC) => Some(",".to_string()),
+        KeyboardKey::Other(0xBD) => Some("-".to_string()),
+        KeyboardKey::Other(0xBE) => Some(".".to_string()),
+        KeyboardKey::Other(0xBF) => Some("/".to_string()),
+        KeyboardKey::Other(0xC0) => Some("`".to_string()),
+        KeyboardKey::Other(0xDB) => Some("[".to_string()),
+        KeyboardKey::Other(0xDC) => Some("\\".to_string()),
+        KeyboardKey::Other(0xDD) => Some("]".to_string()),
+        KeyboardKey::Other(0xDE) => Some("'".to_string()),
         _ => None,
     }
 }

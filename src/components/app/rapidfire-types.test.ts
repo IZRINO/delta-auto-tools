@@ -57,7 +57,7 @@ describe("rapidfire-types", () => {
     expect(() => parseRapidfireSettingsForm(form)).toThrow("单键");
   });
 
-  it("rejects duplicate enabled trigger keys", () => {
+  it("allows duplicate enabled trigger keys across cards", () => {
     const form = rapidfireSettingsToForm(sampleSettings());
     form.cards.push({
       id: "rf-b",
@@ -68,7 +68,10 @@ describe("rapidfire-types", () => {
       enabled: true,
     });
 
-    expect(() => parseRapidfireSettingsForm(form)).toThrow("已被其他连发器卡片使用");
+    const parsed = parseRapidfireSettingsForm(form);
+    expect(parsed.cards).toHaveLength(2);
+    expect(parsed.cards[0].triggerKey).toBe("F6");
+    expect(parsed.cards[1].triggerKey).toBe("F6");
   });
 
   it("moves cards by id while preserving all cards", () => {
