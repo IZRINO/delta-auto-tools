@@ -34,8 +34,8 @@ const RAPIDFIRE_DISPLAY_MIN_WIDTH: i32 = 320;
 const RAPIDFIRE_DISPLAY_MAX_WIDTH: i32 = 800;
 const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 10;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
-const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 8;
-const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 12;
+const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
+const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 200;
 
 static NEXT_RAPIDFIRE_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -169,21 +169,23 @@ fn target_fire_actions(has_held_trigger_key: bool) -> Vec<TargetKeyAction> {
     actions
 }
 
-fn press_jitter_duration_ms() -> u64 {
-    let span = RAPIDFIRE_PRESS_JITTER_MAX_MS - RAPIDFIRE_PRESS_JITTER_MIN_MS + 1;
+fn press_jitter_duration_ms(min_ms: u64, max_ms: u64) -> u64 {
+    let span = max_ms - min_ms + 1;
     let counter = RAPIDFIRE_JITTER_COUNTER.fetch_add(1, Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| u64::from(duration.subsec_nanos()))
         .unwrap_or(0);
 
-    RAPIDFIRE_PRESS_JITTER_MIN_MS + ((nanos ^ counter.rotate_left(13)) % span)
+    min_ms + ((nanos ^ counter.rotate_left(13)) % span)
 }
 
 /// 将目标键字符串映射为 enigo Key，并执行真实按下/抬起
 fn press_release_target_key(
     target_key: &str,
     held_trigger_key: Option<&str>,
+    press_jitter_min_ms: u64,
+    press_jitter_max_ms: u64,
 ) -> Result<(), String> {
     use enigo::{Direction, Enigo, Keyboard, Settings};
 
@@ -202,7 +204,10 @@ fn press_release_target_key(
     enigo
         .key(plan.target_key.clone(), Direction::Press)
         .map_err(|error| format!("按下连发目标键 {key_str} 失败: {error}"))?;
-    thread::sleep(Duration::from_millis(press_jitter_duration_ms()));
+    thread::sleep(Duration::from_millis(press_jitter_duration_ms(
+        press_jitter_min_ms,
+        press_jitter_max_ms,
+    )));
     enigo
         .key(plan.target_key, Direction::Release)
         .map_err(|error| format!("抬起连发目标键 {key_str} 失败: {error}"))
@@ -319,6 +324,18 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
     }
 
     let interval_ms = card.interval_ms.max(RAPIDFIRE_MIN_INTERVAL_MS);
+    let press_jitter_min_ms = card
+        .press_jitter_min_ms
+        .max(RAPIDFIRE_PRESS_JITTER_MIN_MS)
+        .min(RAPIDFIRE_PRESS_JITTER_MAX_MS);
+    let press_jitter_max_ms = card
+        .press_jitter_max_ms
+        .max(RAPIDFIRE_PRESS_JITTER_MIN_MS)
+        .min(RAPIDFIRE_PRESS_JITTER_MAX_MS);
+
+    if press_jitter_min_ms > press_jitter_max_ms {
+        return Err(format!("{} 的触发抖动最小值不能大于最大值", name));
+    }
 
     Ok(RapidfireCard {
         id: card.id.trim().to_string(),
@@ -326,6 +343,8 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         trigger_key,
         target_key,
         interval_ms,
+        press_jitter_min_ms,
+        press_jitter_max_ms,
         enabled: card.enabled,
     })
 }
@@ -504,10 +523,12 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                         c.trigger_key.clone(),
                         c.target_key.clone(),
                         c.interval_ms,
+                        c.press_jitter_min_ms,
+                        c.press_jitter_max_ms,
                     )
                 });
 
-            let Some((cid, trigger, target, interval)) = card_info else {
+            let Some((cid, trigger, target, interval, jitter_min, jitter_max)) = card_info else {
                 continue;
             };
 
@@ -530,6 +551,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 trigger_key: trigger,
                 target_key: target,
                 interval_ms: interval,
+                press_jitter_min_ms: jitter_min,
+                press_jitter_max_ms: jitter_max,
                 control_rx,
             });
         }
@@ -600,6 +623,8 @@ struct RapidfireSessionWorker {
     trigger_key: String,
     target_key: String,
     interval_ms: u64,
+    press_jitter_min_ms: u64,
+    press_jitter_max_ms: u64,
     control_rx: mpsc::Receiver<SessionControl>,
 }
 
@@ -638,7 +663,12 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     loop {
         match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
             WorkerDecision::Fire { stop_after_fire } => {
-                match press_release_target_key(&worker.target_key, Some(&worker.trigger_key)) {
+                match press_release_target_key(
+                    &worker.target_key,
+                    Some(&worker.trigger_key),
+                    worker.press_jitter_min_ms,
+                    worker.press_jitter_max_ms,
+                ) {
                     Ok(()) => {
                         count += 1;
                         if !update_session_count(&app, &worker.card_id, &worker.session_id, count) {
@@ -669,7 +699,12 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     }
 
     if count % 2 == 1 {
-        match press_release_target_key(&worker.target_key, None) {
+        match press_release_target_key(
+            &worker.target_key,
+            None,
+            worker.press_jitter_min_ms,
+            worker.press_jitter_max_ms,
+        ) {
             Ok(()) => {
                 count += 1;
                 let _ = update_session_count(&app, &worker.card_id, &worker.session_id, count);
@@ -1225,6 +1260,9 @@ pub fn rapidfire_position_moved(
 mod tests {
     use super::*;
 
+    const RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS: u64 = 8;
+    const RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS: u64 = 12;
+
     fn sample_card(id: &str, trigger: &str) -> RapidfireCard {
         RapidfireCard {
             id: id.to_string(),
@@ -1232,6 +1270,8 @@ mod tests {
             trigger_key: trigger.to_string(),
             target_key: "1".to_string(),
             interval_ms: 100,
+            press_jitter_min_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS,
+            press_jitter_max_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS,
             enabled: true,
         }
     }
@@ -1250,6 +1290,35 @@ mod tests {
         card.interval_ms = 5;
         let normalized = normalize_card(&card).unwrap();
         assert_eq!(normalized.interval_ms, RAPIDFIRE_MIN_INTERVAL_MS);
+    }
+
+    #[test]
+    fn normalize_card_clamps_press_jitter_to_supported_range() {
+        let mut card = sample_card("a", "F1");
+        card.press_jitter_min_ms = 0;
+        card.press_jitter_max_ms = 500;
+
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(
+            normalized.press_jitter_min_ms,
+            RAPIDFIRE_PRESS_JITTER_MIN_MS
+        );
+        assert_eq!(
+            normalized.press_jitter_max_ms,
+            RAPIDFIRE_PRESS_JITTER_MAX_MS
+        );
+    }
+
+    #[test]
+    fn normalize_card_rejects_inverted_press_jitter_range() {
+        let mut card = sample_card("a", "F1");
+        card.press_jitter_min_ms = 30;
+        card.press_jitter_max_ms = 20;
+
+        let error = normalize_card(&card).unwrap_err();
+
+        assert!(error.contains("触发抖动"));
     }
 
     #[test]
@@ -1383,13 +1452,13 @@ mod tests {
     }
 
     #[test]
-    fn press_jitter_stays_between_8_and_12_ms() {
+    fn press_jitter_stays_within_custom_range() {
         for _ in 0..100 {
-            let jitter = press_jitter_duration_ms();
+            let jitter = press_jitter_duration_ms(15, 25);
 
             assert!(
-                (RAPIDFIRE_PRESS_JITTER_MIN_MS..=RAPIDFIRE_PRESS_JITTER_MAX_MS).contains(&jitter),
-                "按下抖动应落在 8-12ms，实际为 {jitter}ms"
+                (15..=25).contains(&jitter),
+                "按下抖动应落在 15-25ms，实际为 {jitter}ms"
             );
         }
     }

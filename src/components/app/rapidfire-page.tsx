@@ -45,6 +45,8 @@ import {
   RAPIDFIRE_DISPLAY_MAX_WIDTH,
   RAPIDFIRE_DISPLAY_MIN_WIDTH,
   RAPIDFIRE_MIN_INTERVAL_MS,
+  RAPIDFIRE_PRESS_JITTER_MAX_MS,
+  RAPIDFIRE_PRESS_JITTER_MIN_MS,
   createRapidfireCard,
   formatTriggerKey,
   isRapidfireDirty,
@@ -565,7 +567,7 @@ function RapidfireCardEditor({
         eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
         icon={<RiPulseLine />}
         title={card.name || `连发器 ${index + 1}`}
-        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · ${card.intervalMs || "--"}ms`}
+        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 抖动 ${card.pressJitterMinMs || "--"}-${card.pressJitterMaxMs || "--"}ms`}
         badge={
           <Badge variant={status.variant}>
             {status.label}
@@ -626,7 +628,7 @@ function RapidfireCardEditor({
             <AlertDescription>{cardError}</AlertDescription>
           </Alert>
         ) : null}
-        <FieldGroup className="grid gap-3 md:grid-cols-3">
+        <FieldGroup className="grid gap-3 md:grid-cols-2">
           <ControlTile>
             <Field>
               <FieldLabel>触发键</FieldLabel>
@@ -659,7 +661,7 @@ function RapidfireCardEditor({
               <div className="flex items-center gap-2">
                 <Input
                   id={`${card.id}-interval`}
-                  className="max-w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
                   type="number"
                   min={RAPIDFIRE_MIN_INTERVAL_MS}
                   value={card.intervalMs}
@@ -669,6 +671,38 @@ function RapidfireCardEditor({
                 <FieldTitle>ms</FieldTitle>
               </div>
               <FieldDescription>最小 {RAPIDFIRE_MIN_INTERVAL_MS}ms。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field>
+              <FieldLabel>触发抖动</FieldLabel>
+              <div className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
+                <Input
+                  id={`${card.id}-jitter-min`}
+                  className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  type="number"
+                  min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                  max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                  value={card.pressJitterMinMs}
+                  disabled={disabled}
+                  aria-label="触发抖动最小值"
+                  onChange={(event) => onUpdate(card.id, { pressJitterMinMs: event.target.value })}
+                />
+                <span className="text-xs text-muted-foreground">至</span>
+                <Input
+                  id={`${card.id}-jitter-max`}
+                  className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  type="number"
+                  min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                  max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                  value={card.pressJitterMaxMs}
+                  disabled={disabled}
+                  aria-label="触发抖动最大值"
+                  onChange={(event) => onUpdate(card.id, { pressJitterMaxMs: event.target.value })}
+                />
+                <FieldTitle>ms</FieldTitle>
+              </div>
+              <FieldDescription>目标键按下保持时间。</FieldDescription>
             </Field>
           </ControlTile>
         </FieldGroup>

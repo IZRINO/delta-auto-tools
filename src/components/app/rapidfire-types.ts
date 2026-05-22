@@ -9,6 +9,8 @@ export type RapidfireCard = {
   triggerKey: string;
   targetKey: string;
   intervalMs: number;
+  pressJitterMinMs: number;
+  pressJitterMaxMs: number;
   enabled: boolean;
 };
 
@@ -48,6 +50,8 @@ export type RapidfireCardForm = {
   triggerKey: string;
   targetKey: string;
   intervalMs: string; // 字符串用于输入框
+  pressJitterMinMs: string;
+  pressJitterMaxMs: string;
   enabled: boolean;
 };
 
@@ -66,6 +70,10 @@ export const RAPIDFIRE_MIN_INTERVAL_MS = 10;
 export const RAPIDFIRE_DISPLAY_MIN_WIDTH = 320;
 export const RAPIDFIRE_DISPLAY_MAX_WIDTH = 800;
 export const RAPIDFIRE_DEFAULT_INTERVAL_MS = 100;
+export const RAPIDFIRE_PRESS_JITTER_MIN_MS = 1;
+export const RAPIDFIRE_PRESS_JITTER_MAX_MS = 200;
+export const RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS = 8;
+export const RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS = 12;
 
 // ---- 转换函数 ----
 
@@ -81,6 +89,8 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
       triggerKey: card.triggerKey,
       targetKey: card.targetKey,
       intervalMs: String(card.intervalMs),
+      pressJitterMinMs: String(card.pressJitterMinMs),
+      pressJitterMaxMs: String(card.pressJitterMaxMs),
       enabled: card.enabled,
     })),
   };
@@ -225,6 +235,14 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     if (intervalMs < RAPIDFIRE_MIN_INTERVAL_MS) {
       throw new Error(`${name} 的连发间隔不能小于 ${RAPIDFIRE_MIN_INTERVAL_MS}ms。`);
     }
+    const pressJitterMinMs = normalizePositiveInteger(card.pressJitterMinMs, RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS);
+    const pressJitterMaxMs = normalizePositiveInteger(card.pressJitterMaxMs, RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS);
+    if (pressJitterMinMs < RAPIDFIRE_PRESS_JITTER_MIN_MS || pressJitterMaxMs > RAPIDFIRE_PRESS_JITTER_MAX_MS) {
+      throw new Error(`${name} 的触发抖动必须在 ${RAPIDFIRE_PRESS_JITTER_MIN_MS}-${RAPIDFIRE_PRESS_JITTER_MAX_MS}ms 之间。`);
+    }
+    if (pressJitterMinMs > pressJitterMaxMs) {
+      throw new Error(`${name} 的触发抖动最小值不能大于最大值。`);
+    }
 
     return {
       id: card.id,
@@ -232,6 +250,8 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       triggerKey,
       targetKey,
       intervalMs,
+      pressJitterMinMs,
+      pressJitterMaxMs,
       enabled: card.enabled,
     };
   });
@@ -255,6 +275,8 @@ export function createRapidfireCard(id: string, existingCount = 0): RapidfireCar
     triggerKey,
     targetKey: "Space",
     intervalMs: String(RAPIDFIRE_DEFAULT_INTERVAL_MS),
+    pressJitterMinMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS),
+    pressJitterMaxMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS),
     enabled: false,
   };
 }

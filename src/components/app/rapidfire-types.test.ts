@@ -25,6 +25,8 @@ function sampleSettings(): RapidfireSettings {
         triggerKey: "F6",
         targetKey: "Space",
         intervalMs: 80,
+        pressJitterMinMs: 8,
+        pressJitterMaxMs: 12,
         enabled: true,
       },
     ],
@@ -67,6 +69,8 @@ describe("rapidfire-types", () => {
       triggerKey: "f6",
       targetKey: "1",
       intervalMs: "100",
+      pressJitterMinMs: "10",
+      pressJitterMaxMs: "18",
       enabled: true,
     });
 
@@ -74,6 +78,25 @@ describe("rapidfire-types", () => {
     expect(parsed.cards).toHaveLength(2);
     expect(parsed.cards[0].triggerKey).toBe("F6");
     expect(parsed.cards[1].triggerKey).toBe("F6");
+  });
+
+  it("round trips custom press jitter through form state", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].pressJitterMinMs = "15";
+    form.cards[0].pressJitterMaxMs = "25";
+
+    const parsed = parseRapidfireSettingsForm(form);
+
+    expect(parsed.cards[0].pressJitterMinMs).toBe(15);
+    expect(parsed.cards[0].pressJitterMaxMs).toBe(25);
+  });
+
+  it("rejects an inverted press jitter range", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].pressJitterMinMs = "30";
+    form.cards[0].pressJitterMaxMs = "20";
+
+    expect(() => parseRapidfireSettingsForm(form)).toThrow("触发抖动");
   });
 
   it("moves cards by id while preserving all cards", () => {
