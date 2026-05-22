@@ -12,18 +12,8 @@ import {
   RiPulseLine,
   RiStopLine,
 } from "@remixicon/react";
+import { toast } from "sonner";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,11 +50,12 @@ import {
   isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
+  rapidfireCardError,
+  rapidfireCardStatus,
   rapidfireEnabledCards,
   rapidfireRunsById,
   rapidfireSettingsToForm,
   rapidfireStatusLabel,
-  rapidfireStatusVariant,
 } from "@/components/app/rapidfire-types";
 import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
@@ -99,7 +90,6 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const [loading, setLoading] = useState(isNativeShell);
   const [saving, setSaving] = useState(false);
   const [recordingTarget, setRecordingTarget] = useState<RecordingTarget>(null);
-  const [pendingDeleteCard, setPendingDeleteCard] = useState<RapidfireCardForm | null>(null);
   const keyDraftRef = useRef("");
   const [statusMessage, setStatusMessage] = useState(
     isNativeShell ? "正在加载连发器..." : "浏览器预览模式：只显示界面，原生命令请在桌面端运行。",
@@ -322,15 +312,21 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
 
   const removeCard = useCallback((id: string) => {
     clearStaleConfigError();
-    setForm((current) =>
-      current && current.cards.length > 1
-        ? {
-            ...current,
-            cards: current.cards.filter((card) => card.id !== id),
-          }
-        : current,
-    );
-    setPendingDeleteCard(null);
+    setForm((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (current.cards.length <= 1) {
+        toast.info("至少保留一张连发器卡片，无需删除最后一张。");
+        return current;
+      }
+
+      return {
+        ...current,
+        cards: current.cards.filter((card) => card.id !== id),
+      };
+    });
   }, [clearStaleConfigError]);
 
   const moveCard = useCallback((activeId: string, overId: string) => {
@@ -375,7 +371,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
 
   if (!form) {
     return (
-      <Empty className="min-h-[360px] rounded-xl border bg-card/80">
+      <Empty className="min-h-[360px] rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] backdrop-blur-md">
         <EmptyMedia variant="icon">
           <RiPulseLine />
         </EmptyMedia>
@@ -417,10 +413,6 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
             <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={stopAll}>
               <RiStopLine data-icon="inline-start" />
               全部停止
-            </Button>
-            <Button variant="default" size="sm" disabled={controlsDisabled} onClick={addCard}>
-              <RiAddLine data-icon="inline-start" />
-              添加卡片
             </Button>
           </>
         }
@@ -490,10 +482,11 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
         </CardBody>
       </TacticalCard>
 
-      <section className="grid min-h-0 gap-3 xl:grid-cols-2">
+      <section className="grid min-h-0 gap-4 xl:grid-cols-2">
         {form.cards.map((card, index) => {
           const run = runsById.get(card.id);
           const isRecording = recordingTarget?.cardId === card.id;
+          const cardError = rapidfireCardError(card, pageError);
           return (
             <RapidfireCardEditor
               key={card.id}
@@ -503,6 +496,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               previousId={form.cards[index - 1]?.id ?? null}
               nextId={form.cards[index + 1]?.id ?? null}
               run={run}
+              cardError={cardError}
               disabled={controlsDisabled}
               isRecording={isRecording}
               recordingField={recordingTarget?.field}
@@ -510,34 +504,12 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               onRecord={beginRecording}
               onRecorderKeyDown={handleRecorderKeyDown}
               onMove={moveCard}
-              onDelete={() => setPendingDeleteCard(card)}
+              onDelete={() => removeCard(card.id)}
             />
           );
         })}
+        <RapidfireAddCard controlsDisabled={controlsDisabled} onClick={addCard} />
       </section>
-
-      <AlertDialog open={pendingDeleteCard !== null} onOpenChange={(open) => !open && setPendingDeleteCard(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia>
-              <RiDeleteBinLine />
-            </AlertDialogMedia>
-            <AlertDialogTitle>删除连发器卡片？</AlertDialogTitle>
-            <AlertDialogDescription>
-              将删除「{pendingDeleteCard?.name || "未命名连发器"}」并停止它的运行状态。至少会保留一张卡片。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => pendingDeleteCard && removeCard(pendingDeleteCard.id)}
-            >
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </AppPage>
   );
 }
@@ -549,6 +521,7 @@ interface RapidfireCardEditorProps {
   previousId: string | null;
   nextId: string | null;
   run: RapidfireRunState | undefined;
+  cardError: string | null;
   disabled: boolean;
   isRecording: boolean;
   recordingField: "triggerKey" | "targetKey" | undefined;
@@ -566,6 +539,7 @@ function RapidfireCardEditor({
   previousId,
   nextId,
   run,
+  cardError,
   disabled,
   isRecording,
   recordingField,
@@ -577,65 +551,81 @@ function RapidfireCardEditor({
 }: RapidfireCardEditorProps) {
   const isRunning = run?.status === "firing";
   const isPending = run?.status === "pendingCompensation";
+  const status = rapidfireCardStatus(card, run, cardError);
 
   return (
-    <TacticalCard active={isRunning || isPending} className={cn(!card.enabled && "opacity-80")}>
+    <TacticalCard
+      active={status.active || isRunning || isPending}
+      className={cn(
+        !card.enabled && !status.error && "opacity-80",
+        status.error && "border-destructive/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--destructive)_9%,var(--surface-card-strong)),var(--surface-card-strong))] ring-1 ring-destructive/25 hover:border-destructive/75",
+      )}
+    >
       <SectionHeader
         eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
         icon={<RiPulseLine />}
         title={card.name || `连发器 ${index + 1}`}
         description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · ${card.intervalMs || "--"}ms`}
         badge={
-          <Badge variant={rapidfireStatusVariant(run?.status ?? "idle")}>
-            {rapidfireStatusLabel(run?.status ?? "idle")}
-            {run && run.status !== "idle" ? ` · ${run.count}` : ""}
+          <Badge variant={status.variant}>
+            {status.label}
           </Badge>
         }
+        className={cn(status.error && "border-destructive/30 bg-destructive/10")}
       />
-      <CardHeader className="border-b border-border/70 pt-0">
+      <CardHeader className="border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)] pt-0">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <Input
-              className="max-w-80 font-medium"
+              className="max-w-80 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-medium"
               placeholder="卡片名称"
               value={card.name}
               disabled={disabled}
               onChange={(event) => onUpdate(card.id, { name: event.target.value })}
             />
-            <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={disabled || index === 0}
-              aria-label="上移卡片"
-              onClick={() => previousId && onMove(card.id, previousId)}
-            >
-              <RiArrowUpLine />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={disabled || index >= total - 1}
-              aria-label="下移卡片"
-              onClick={() => nextId && onMove(card.id, nextId)}
-            >
-              <RiArrowDownLine />
-            </Button>
-            <Switch
-              checked={card.enabled}
-              disabled={disabled}
-              aria-label="启用卡片"
-              onCheckedChange={(checked) => onUpdate(card.id, { enabled: checked })}
-            />
-            <Button variant="ghost" size="icon-sm" disabled={disabled || total <= 1} onClick={onDelete} aria-label="删除卡片">
-              <RiDeleteBinLine />
-            </Button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={disabled || index === 0}
+                aria-label="上移卡片"
+                onClick={() => previousId && onMove(card.id, previousId)}
+              >
+                <RiArrowUpLine />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={disabled || index >= total - 1}
+                aria-label="下移卡片"
+                onClick={() => nextId && onMove(card.id, nextId)}
+              >
+                <RiArrowDownLine />
+              </Button>
+              <Switch
+                checked={card.enabled}
+                disabled={disabled}
+                aria-label="启用卡片"
+                onCheckedChange={(checked) => onUpdate(card.id, { enabled: checked })}
+              />
+              <Button variant="ghost" size="icon-sm" disabled={disabled} onClick={onDelete} aria-label="删除卡片">
+                <RiDeleteBinLine />
+              </Button>
             </div>
           </div>
-          {!card.enabled && <Badge className="w-fit" variant="outline">未启用</Badge>}
-          </div>
+        </div>
       </CardHeader>
       <CardBody>
+        {cardError ? (
+          <Alert
+            variant="destructive"
+            className="mb-3 border-destructive/45 bg-[color-mix(in_oklch,var(--destructive)_8%,transparent)]"
+          >
+            <RiPulseLine />
+            <AlertTitle>这张卡片的配置未生效</AlertTitle>
+            <AlertDescription>{cardError}</AlertDescription>
+          </Alert>
+        ) : null}
         <FieldGroup className="grid gap-3 md:grid-cols-3">
           <ControlTile>
             <Field>
@@ -669,7 +659,7 @@ function RapidfireCardEditor({
               <div className="flex items-center gap-2">
                 <Input
                   id={`${card.id}-interval`}
-                  className="max-w-28 font-mono"
+                  className="max-w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
                   type="number"
                   min={RAPIDFIRE_MIN_INTERVAL_MS}
                   value={card.intervalMs}
@@ -704,7 +694,7 @@ function KeyRecorderButton({
     <Button
       type="button"
       variant={active ? "default" : "outline"}
-      size="sm"
+      size="default"
       disabled={disabled}
       className="w-full justify-start font-mono"
       onClick={onClick}
@@ -713,6 +703,29 @@ function KeyRecorderButton({
       <RiKeyboardLine data-icon="inline-start" />
       <span className="truncate">{active ? "按任意键..." : value || "点击录制"}</span>
     </Button>
+  );
+}
+
+function RapidfireAddCard({ controlsDisabled, onClick }: { controlsDisabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      disabled={controlsDisabled}
+      onClick={onClick}
+      className={cn(
+        "group flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] p-6 text-center transition-all",
+        "hover:border-primary/35 hover:bg-[var(--surface-hover)]",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+      )}
+    >
+      <span className="mb-4 flex size-11 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/35 group-hover:bg-primary/5">
+        <RiAddLine />
+      </span>
+      <span className="text-sm font-semibold text-foreground">添加连发器</span>
+      <span className="mt-1 max-w-52 text-xs/relaxed text-muted-foreground">
+        创建新的触发键、目标键和间隔配置。
+      </span>
+    </button>
   );
 }
 
@@ -726,7 +739,7 @@ function RapidfireDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) 
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-1 font-mono text-white">
-      <div className="h-full w-full overflow-hidden rounded-lg border border-white/15 bg-black/20 px-2.5 py-1.5 shadow-[0_0_20px_rgba(0,0,0,0.32)] backdrop-blur-[1px]">
+      <div className="h-full w-full overflow-hidden rounded-lg border border-white/15 bg-black/20 px-2.5 py-1.5 backdrop-blur-[1px]">
         {enabledCards.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs font-semibold text-white/60">连发器未启用</div>
         ) : (
@@ -824,7 +837,7 @@ function RapidfirePositionOverlay({ isNativeShell }: { isNativeShell: boolean })
 
   return (
     <div
-      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-xl border-2 border-primary bg-background/82 px-4 py-4 text-foreground shadow-2xl backdrop-blur-md"
+      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-xl border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         setDragStart({ mouseX: event.screenX, mouseY: event.screenY, x: position.x, y: position.y });

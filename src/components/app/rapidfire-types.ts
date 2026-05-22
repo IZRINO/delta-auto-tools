@@ -308,6 +308,107 @@ export function rapidfireStatusVariant(
   }
 }
 
+export type RapidfireCardStatusView = {
+  label: string;
+  variant: "outline" | "default" | "secondary" | "destructive";
+  active: boolean;
+  error: boolean;
+};
+
+function errorIncludesAny(error: string, values: string[]): boolean {
+  return values.some((value) => value !== "" && error.includes(value));
+}
+
+export function rapidfireCardError(
+  card: Pick<RapidfireCardForm, "name" | "triggerKey" | "targetKey">,
+  pageError: string | null,
+): string | null {
+  if (!pageError) return null;
+
+  const name = card.name.trim();
+  const triggerKey = normalizeRapidfireKey(card.triggerKey);
+  const targetKey = normalizeRapidfireKey(card.targetKey);
+
+  if (name && pageError.includes(name)) {
+    return pageError;
+  }
+
+  if (!name && pageError.includes("名称不能为空")) {
+    return pageError;
+  }
+
+  const triggerPatterns = [
+    `触发键 ${triggerKey}`,
+    `触发键${triggerKey}`,
+    `触发键不支持：${triggerKey}`,
+    `触发键不支持: ${triggerKey}`,
+  ];
+  if (errorIncludesAny(pageError, triggerPatterns)) {
+    return pageError;
+  }
+
+  const targetPatterns = [
+    `目标键 ${targetKey}`,
+    `目标键${targetKey}`,
+    `目标键不支持：${targetKey}`,
+    `目标键不支持: ${targetKey}`,
+  ];
+  if (errorIncludesAny(pageError, targetPatterns)) {
+    return pageError;
+  }
+
+  return null;
+}
+
+export function rapidfireCardStatus(
+  card: Pick<RapidfireCardForm, "enabled">,
+  run: RapidfireRunState | undefined,
+  cardError: string | null,
+): RapidfireCardStatusView {
+  if (cardError) {
+    return {
+      label: "配置未生效",
+      variant: "destructive",
+      active: false,
+      error: true,
+    };
+  }
+
+  if (run?.status === "firing") {
+    return {
+      label: `连发中 · ${run.count}`,
+      variant: "default",
+      active: true,
+      error: false,
+    };
+  }
+
+  if (run?.status === "pendingCompensation") {
+    return {
+      label: `补齐中 · ${run.count}`,
+      variant: "secondary",
+      active: true,
+      error: false,
+    };
+  }
+
+  if (!card.enabled) {
+    return {
+      label: "未启用",
+      variant: "outline",
+      active: false,
+      error: false,
+    };
+  }
+
+  return {
+    label: "空闲",
+    variant: "outline",
+    active: false,
+    error: false,
+  };
+}
+
 export function moveRapidfireCard<T extends { id: string }>(items: T[], activeId: string, overId: string): T[] {
   if (activeId === overId) return items;
 

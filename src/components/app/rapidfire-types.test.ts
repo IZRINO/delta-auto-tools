@@ -6,6 +6,8 @@ import {
   isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
+  rapidfireCardError,
+  rapidfireCardStatus,
   rapidfireSettingsToForm,
 } from "@/components/app/rapidfire-types";
 
@@ -86,5 +88,53 @@ describe("rapidfire-types", () => {
     );
 
     expect(moved.map((card) => card.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("shows disabled cards as not enabled instead of idle", () => {
+    const card = rapidfireSettingsToForm(sampleSettings()).cards[0];
+    card.enabled = false;
+
+    expect(rapidfireCardStatus(card, undefined, null)).toMatchObject({
+      label: "未启用",
+      variant: "outline",
+    });
+  });
+
+  it("shows enabled cards without runs as idle", () => {
+    const card = rapidfireSettingsToForm(sampleSettings()).cards[0];
+
+    expect(rapidfireCardStatus(card, undefined, null)).toMatchObject({
+      label: "空闲",
+      variant: "outline",
+    });
+  });
+
+  it("keeps running count in the card status badge", () => {
+    const card = rapidfireSettingsToForm(sampleSettings()).cards[0];
+
+    expect(rapidfireCardStatus(card, { cardId: card.id, status: "firing", count: 7 }, null)).toMatchObject({
+      label: "连发中 · 7",
+      active: true,
+    });
+  });
+
+  it("prioritizes config errors over running state", () => {
+    const card = rapidfireSettingsToForm(sampleSettings()).cards[0];
+
+    expect(
+      rapidfireCardStatus(card, { cardId: card.id, status: "firing", count: 7 }, "测试连发器 的触发键 F6 与计时器的快捷键 F6 冲突"),
+    ).toMatchObject({
+      label: "配置未生效",
+      variant: "destructive",
+      error: true,
+    });
+  });
+
+  it("matches card errors by card name or key text", () => {
+    const card = rapidfireSettingsToForm(sampleSettings()).cards[0];
+
+    expect(rapidfireCardError(card, "测试连发器 的触发键 F6 与计时器的快捷键 F6 冲突")).toBeTruthy();
+    expect(rapidfireCardError(card, "连发器2 的触发键 F6 与计时器的快捷键 F6 冲突")).toBeTruthy();
+    expect(rapidfireCardError(card, "其他模块保存失败")).toBeNull();
   });
 });

@@ -40,7 +40,7 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
       <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_320px]">
         <TacticalCard className="min-h-72">
           <CardBody className="flex h-full items-center justify-center">
-            <Empty className="border-border bg-muted/20">
+            <Empty className="border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <RiAlertLine />
@@ -62,7 +62,7 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
           <CardBody>
             <ul className="grid gap-2 text-xs/relaxed text-muted-foreground">
               {pendingItems.map((item) => (
-                <li key={item} className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2.5">
+                <li key={item} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] px-3 py-2.5">
                   {item}
                 </li>
               ))}

@@ -1,16 +1,18 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex,
+    },
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl,
     WebviewWindowBuilder, WindowEvent,
 };
-use tokio::{
-    sync::oneshot,
-    time::{self, Duration},
-};
+use tokio::sync::oneshot;
 
 mod settings;
 mod types;
@@ -31,6 +33,12 @@ const RAPIDFIRE_DISPLAY_MIN_HEIGHT: i32 = 80;
 const RAPIDFIRE_DISPLAY_MIN_WIDTH: i32 = 320;
 const RAPIDFIRE_DISPLAY_MAX_WIDTH: i32 = 800;
 const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 10;
+const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
+const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 8;
+const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 12;
+
+static NEXT_RAPIDFIRE_SESSION_ID: AtomicU64 = AtomicU64::new(1);
+static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 // ---- State ----
 
@@ -45,10 +53,28 @@ struct RapidfireStateInner {
     hotkey_error: Option<String>,
 }
 
+#[derive(Default)]
 struct CardRuntime {
+    sessions: HashMap<String, RapidfireSessionRuntime>,
+    active_session_ids: Vec<String>,
+}
+
+struct RapidfireSessionRuntime {
     count: u64,
-    status: RapidfireRunStatus,
-    task_abort_tx: Option<oneshot::Sender<()>>,
+    status: RapidfireSessionStatus,
+    control_tx: Option<mpsc::Sender<SessionControl>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RapidfireSessionStatus {
+    Firing,
+    Stopping,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionControl {
+    StopWithCompensation,
+    Cancel,
 }
 
 struct PendingRapidfirePosition {
@@ -75,36 +101,110 @@ impl RapidfireStateInner {
                 RapidfireRunState {
                     card_id: card.id.clone(),
                     status: run
-                        .map(|r| r.status.clone())
+                        .map(CardRuntime::aggregate_status)
                         .unwrap_or(RapidfireRunStatus::Idle),
-                    count: run.map(|r| r.count).unwrap_or(0),
+                    count: run.map(CardRuntime::aggregate_count).unwrap_or(0),
                 }
             })
             .collect()
     }
 }
 
+impl CardRuntime {
+    fn aggregate_status(&self) -> RapidfireRunStatus {
+        if self.sessions.is_empty() {
+            RapidfireRunStatus::Idle
+        } else {
+            RapidfireRunStatus::Firing
+        }
+    }
+
+    fn aggregate_count(&self) -> u64 {
+        self.sessions.values().map(|session| session.count).sum()
+    }
+}
+
 // ---- Key mapping ----
 
-/// 将目标键字符串映射为 enigo Key 并触发一次点击
-async fn fire_target_key(target_key: &str) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TargetFirePlan {
+    target_key: enigo::Key,
+    held_trigger_key: Option<enigo::Key>,
+    actions: Vec<TargetKeyAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetKeyAction {
+    ReleaseHeldTrigger,
+    PressTarget,
+    ReleaseTarget,
+}
+
+fn target_fire_plan(
+    target_key: &str,
+    held_trigger_key: Option<&str>,
+) -> Result<TargetFirePlan, String> {
+    let target_key =
+        parse_target_key(target_key).ok_or_else(|| format!("不支持的目标键: {target_key}"))?;
+    let held_trigger_key = held_trigger_key
+        .map(|key| parse_target_key(key).ok_or_else(|| format!("不支持的触发键: {key}")))
+        .transpose()?;
+    let has_held_trigger_key = held_trigger_key.is_some();
+
+    Ok(TargetFirePlan {
+        target_key,
+        held_trigger_key,
+        actions: target_fire_actions(has_held_trigger_key),
+    })
+}
+
+fn target_fire_actions(has_held_trigger_key: bool) -> Vec<TargetKeyAction> {
+    let mut actions = Vec::new();
+    if has_held_trigger_key {
+        actions.push(TargetKeyAction::ReleaseHeldTrigger);
+    }
+    actions.push(TargetKeyAction::PressTarget);
+    actions.push(TargetKeyAction::ReleaseTarget);
+    actions
+}
+
+fn press_jitter_duration_ms() -> u64 {
+    let span = RAPIDFIRE_PRESS_JITTER_MAX_MS - RAPIDFIRE_PRESS_JITTER_MIN_MS + 1;
+    let counter = RAPIDFIRE_JITTER_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| u64::from(duration.subsec_nanos()))
+        .unwrap_or(0);
+
+    RAPIDFIRE_PRESS_JITTER_MIN_MS + ((nanos ^ counter.rotate_left(13)) % span)
+}
+
+/// 将目标键字符串映射为 enigo Key，并执行真实按下/抬起
+fn press_release_target_key(
+    target_key: &str,
+    held_trigger_key: Option<&str>,
+) -> Result<(), String> {
     use enigo::{Direction, Enigo, Keyboard, Settings};
 
-    let enigo_key = match parse_target_key(target_key) {
-        Some(k) => k,
-        None => return Err(format!("不支持的目标键: {target_key}")),
-    };
-
+    let plan = target_fire_plan(target_key, held_trigger_key)?;
     let key_str = target_key.to_string();
-    tokio::task::spawn_blocking(move || {
-        let mut enigo = Enigo::new(&Settings::default())
-            .map_err(|error| format!("初始化连发输入失败: {error}"))?;
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|error| format!("初始化连发输入失败: {error}"))?;
+
+    if let Some(trigger_key) = plan.held_trigger_key {
         enigo
-            .key(enigo_key, Direction::Click)
-            .map_err(|error| format!("连发触发键 {key_str} 失败: {error}"))
-    })
-    .await
-    .map_err(|error| format!("连发任务执行失败: {error}"))?
+            .key(trigger_key, Direction::Release)
+            .map_err(|error| format!("释放连发触发键失败: {error}"))?;
+        thread::sleep(Duration::from_millis(RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS));
+    }
+
+    enigo
+        .key(plan.target_key.clone(), Direction::Press)
+        .map_err(|error| format!("按下连发目标键 {key_str} 失败: {error}"))?;
+    thread::sleep(Duration::from_millis(press_jitter_duration_ms()));
+    enigo
+        .key(plan.target_key, Direction::Release)
+        .map_err(|error| format!("抬起连发目标键 {key_str} 失败: {error}"))
 }
 
 fn parse_target_key(key: &str) -> Option<enigo::Key> {
@@ -378,7 +478,7 @@ async fn handle_hold_event(
 
 async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
-    let tasks_to_spawn = {
+    let sessions_to_spawn = {
         let mut inner = state
             .inner
             .lock()
@@ -388,54 +488,60 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             return Ok(());
         }
 
-        let mut tasks_to_spawn: Vec<(String, String, u64)> = Vec::new();
+        let mut sessions_to_spawn = Vec::new();
 
         for card_id in &card_ids {
             let cid_owned = card_id.clone();
-            // 收集卡片信息（脱离不可变借用）
             let card_info = inner
                 .settings
                 .cards
                 .iter()
                 .find(|c| c.id == cid_owned && c.enabled)
-                .map(|c| (c.id.clone(), c.target_key.clone(), c.interval_ms));
+                .map(|c| {
+                    (
+                        c.id.clone(),
+                        c.trigger_key.clone(),
+                        c.target_key.clone(),
+                        c.interval_ms,
+                    )
+                });
 
-            let Some((cid, target, interval)) = card_info else {
+            let Some((cid, trigger, target, interval)) = card_info else {
                 continue;
             };
 
-            if let Some(run) = inner.runs.get_mut(&cid) {
-                if run.status == RapidfireRunStatus::Firing {
-                    continue;
-                }
-                if let Some(tx) = run.task_abort_tx.take() {
-                    let _ = tx.send(());
-                }
-            }
-
-            let (abort_tx, abort_rx) = oneshot::channel();
-            inner.runs.insert(
-                cid.clone(),
-                CardRuntime {
+            let session_id = next_session_id();
+            let (control_tx, control_rx) = mpsc::channel();
+            let run = inner.runs.entry(cid.clone()).or_default();
+            run.active_session_ids.push(session_id.clone());
+            run.sessions.insert(
+                session_id.clone(),
+                RapidfireSessionRuntime {
                     count: 0,
-                    status: RapidfireRunStatus::Firing,
-                    task_abort_tx: Some(abort_tx),
+                    status: RapidfireSessionStatus::Firing,
+                    control_tx: Some(control_tx),
                 },
             );
 
-            tasks_to_spawn.push((cid, target.clone(), interval));
-
-            // 启动 tick 任务
-            let app_handle = app.clone();
-            tauri::async_runtime::spawn(async move {
-                run_tick_task(app_handle, cid_owned, target, interval, abort_rx).await;
+            sessions_to_spawn.push(RapidfireSessionWorker {
+                card_id: cid_owned,
+                session_id,
+                trigger_key: trigger,
+                target_key: target,
+                interval_ms: interval,
+                control_rx,
             });
         }
 
-        tasks_to_spawn
+        sessions_to_spawn
     };
 
-    if !tasks_to_spawn.is_empty() {
+    let spawned_count = sessions_to_spawn.len();
+    for worker in sessions_to_spawn {
+        spawn_session_worker(app.clone(), worker);
+    }
+
+    if spawned_count > 0 {
         let bootstrap = {
             let inner = state
                 .inner
@@ -448,12 +554,9 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
     Ok(())
 }
 
-// 补齐常量：奇数次数时立即补发，固定延迟
-const COMPENSATION_DELAY_MS: u64 = 10;
-
 async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
-    let compensations: Vec<(String, String)> = {
+    let stopped_count = {
         let mut inner = state
             .inner
             .lock()
@@ -463,131 +566,262 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             return Ok(());
         }
 
-        let mut compensations = Vec::new();
+        let mut stopped_count = 0usize;
 
         for card_id in &card_ids {
-            let card_info = inner
-                .settings
-                .cards
-                .iter()
-                .find(|c| c.id == *card_id)
-                .map(|c| c.target_key.clone());
-
-            let Some(target_key) = card_info else {
-                continue;
-            };
-
             let Some(run) = inner.runs.get_mut(card_id) else {
                 continue;
             };
 
-            if run.status != RapidfireRunStatus::Firing {
-                continue;
-            }
-
-            if let Some(abort_tx) = run.task_abort_tx.take() {
-                let _ = abort_tx.send(());
-            }
-
-            let count = run.count;
-
-            if count % 2 == 0 {
-                // 偶数：直接结束
-                run.status = RapidfireRunStatus::Idle;
-                run.task_abort_tx = None;
-            } else {
-                // 奇数：立即补发（10ms 延迟，无视设置间隔），设为 Idle
-                run.count += 1;
-                run.status = RapidfireRunStatus::Idle;
-                run.task_abort_tx = None;
-                compensations.push((card_id.clone(), target_key));
+            if stop_latest_active_session(run, SessionControl::StopWithCompensation) {
+                stopped_count += 1;
             }
         }
 
-        compensations
+        stopped_count
     };
 
-    // 立即补发（fire-and-forget，10ms 延迟）
-    for (_card_id, target_key) in compensations {
-        let app_handle = app.clone();
-        tauri::async_runtime::spawn(async move {
-            time::sleep(Duration::from_millis(COMPENSATION_DELAY_MS)).await;
-            if let Err(error) = fire_target_key(&target_key).await {
-                let _ = app_handle.emit_to("main", "rapidfire://hotkey-error", error);
-            }
+    if stopped_count > 0 {
+        emit_state(app, {
+            let inner = state
+                .inner
+                .lock()
+                .map_err(|_| "连发器状态已损坏".to_string())?;
+            inner.bootstrap()
         });
     }
-
-    emit_state(app, {
-        let inner = state
-            .inner
-            .lock()
-            .map_err(|_| "连发器状态已损坏".to_string())?;
-        inner.bootstrap()
-    });
     Ok(())
 }
 
-async fn run_tick_task(
-    app: AppHandle,
+struct RapidfireSessionWorker {
     card_id: String,
+    session_id: String,
+    trigger_key: String,
     target_key: String,
     interval_ms: u64,
-    mut abort_rx: oneshot::Receiver<()>,
-) {
-    let mut interval = time::interval(Duration::from_millis(interval_ms));
-    interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
-    interval.tick().await;
+    control_rx: mpsc::Receiver<SessionControl>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkerDecision {
+    Fire { stop_after_fire: bool },
+    Stop,
+    Cancel,
+}
+
+fn next_session_id() -> String {
+    let id = NEXT_RAPIDFIRE_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+    format!("rapidfire-session-{id}")
+}
+
+fn spawn_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
+    let name = format!("rapidfire-{}", worker.session_id);
+    let error_app = app.clone();
+    let error_card_id = worker.card_id.clone();
+    let error_session_id = worker.session_id.clone();
+    let spawn_result = thread::Builder::new()
+        .name(name)
+        .spawn(move || run_session_worker(app, worker));
+
+    if let Err(error) = spawn_result {
+        finish_session(&error_app, &error_card_id, &error_session_id);
+        emit_hotkey_error(&error_app, format!("启动连发器线程失败: {error}"));
+    }
+}
+
+fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
+    let interval = Duration::from_millis(worker.interval_ms.max(RAPIDFIRE_MIN_INTERVAL_MS));
+    let mut count = 0u64;
+    let mut next_fire_at = Instant::now();
 
     loop {
-        tokio::select! {
-            _ = interval.tick() => {
-                // 检查状态是否仍为 Firing
-                let should_fire = {
-                    let state = app.state::<RapidfireState>();
-                    let inner = match state.inner.lock() {
-                        Ok(inner) => inner,
-                        Err(_) => break,
-                    };
-                    inner.runs.get(&card_id).map(|r| r.status == RapidfireRunStatus::Firing).unwrap_or(false)
-                };
-
-                if !should_fire {
-                    break;
-                }
-
-                // 触发目标键
-                if let Err(error) = fire_target_key(&target_key).await {
-                    let _ = app.emit_to("main", "rapidfire://hotkey-error", error);
-                    break;
-                }
-
-                // 更新计数
-                let state = app.state::<RapidfireState>();
-                let bootstrap = {
-                    let mut inner = match state.inner.lock() {
-                        Ok(inner) => inner,
-                        Err(_) => break,
-                    };
-                    if let Some(run) = inner.runs.get_mut(&card_id) {
-                        if run.status == RapidfireRunStatus::Firing {
-                            run.count += 1;
-                        } else {
-                            break;
+        match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
+            WorkerDecision::Fire { stop_after_fire } => {
+                match press_release_target_key(&worker.target_key, Some(&worker.trigger_key)) {
+                    Ok(()) => {
+                        count += 1;
+                        if !update_session_count(&app, &worker.card_id, &worker.session_id, count) {
+                            return;
                         }
-                    } else {
+                    }
+                    Err(error) => {
+                        emit_hotkey_error(&app, error);
                         break;
                     }
-                    inner.bootstrap()
-                };
+                }
 
-                emit_state(&app, bootstrap);
+                if stop_after_fire {
+                    break;
+                }
+                next_fire_at = Instant::now()
+                    .checked_add(interval)
+                    .unwrap_or_else(Instant::now);
             }
-            _ = &mut abort_rx => {
+            WorkerDecision::Stop => {
                 break;
+            }
+            WorkerDecision::Cancel => {
+                finish_session(&app, &worker.card_id, &worker.session_id);
+                return;
             }
         }
     }
+
+    if count % 2 == 1 {
+        match press_release_target_key(&worker.target_key, None) {
+            Ok(()) => {
+                count += 1;
+                let _ = update_session_count(&app, &worker.card_id, &worker.session_id, count);
+            }
+            Err(error) => emit_hotkey_error(&app, error),
+        }
+    }
+
+    finish_session(&app, &worker.card_id, &worker.session_id);
+}
+
+fn wait_for_next_fire(
+    control_rx: &mpsc::Receiver<SessionControl>,
+    fire_at: Instant,
+    count: u64,
+) -> WorkerDecision {
+    loop {
+        let now = Instant::now();
+        if now >= fire_at {
+            return match control_rx.try_recv() {
+                Ok(SessionControl::StopWithCompensation) if count == 0 => WorkerDecision::Fire {
+                    stop_after_fire: true,
+                },
+                Ok(SessionControl::StopWithCompensation) => WorkerDecision::Stop,
+                Ok(SessionControl::Cancel) => WorkerDecision::Cancel,
+                Err(mpsc::TryRecvError::Empty) => WorkerDecision::Fire {
+                    stop_after_fire: false,
+                },
+                Err(mpsc::TryRecvError::Disconnected) => WorkerDecision::Cancel,
+            };
+        }
+
+        let wait_for = fire_at.saturating_duration_since(now);
+        match control_rx.recv_timeout(wait_for) {
+            Ok(SessionControl::StopWithCompensation) if count == 0 => {
+                return WorkerDecision::Fire {
+                    stop_after_fire: true,
+                };
+            }
+            Ok(SessionControl::StopWithCompensation) => return WorkerDecision::Stop,
+            Ok(SessionControl::Cancel) => return WorkerDecision::Cancel,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return WorkerDecision::Cancel,
+        }
+    }
+}
+
+fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count: u64) -> bool {
+    let state = app.state::<RapidfireState>();
+    let bootstrap = {
+        let Ok(mut inner) = state.inner.lock() else {
+            emit_hotkey_error(app, "连发器状态已损坏".to_string());
+            return false;
+        };
+
+        let Some(run) = inner.runs.get_mut(card_id) else {
+            return false;
+        };
+        let Some(session) = run.sessions.get_mut(session_id) else {
+            return false;
+        };
+
+        session.count = count;
+        inner.bootstrap()
+    };
+
+    emit_state(app, bootstrap);
+    true
+}
+
+fn finish_session(app: &AppHandle, card_id: &str, session_id: &str) {
+    let state = app.state::<RapidfireState>();
+    let bootstrap = {
+        let Ok(mut inner) = state.inner.lock() else {
+            emit_hotkey_error(app, "连发器状态已损坏".to_string());
+            return;
+        };
+
+        let should_remove_run = if let Some(run) = inner.runs.get_mut(card_id) {
+            run.sessions.remove(session_id);
+            run.active_session_ids.retain(|id| id != session_id);
+            run.sessions.is_empty()
+        } else {
+            false
+        };
+
+        if should_remove_run {
+            inner.runs.remove(card_id);
+        }
+
+        inner.bootstrap()
+    };
+
+    emit_state(app, bootstrap);
+}
+
+fn stop_latest_active_session(run: &mut CardRuntime, control: SessionControl) -> bool {
+    while let Some(session_id) = run.active_session_ids.pop() {
+        let Some(session) = run.sessions.get_mut(&session_id) else {
+            continue;
+        };
+
+        session.status = RapidfireSessionStatus::Stopping;
+        if let Some(control_tx) = session.control_tx.take() {
+            let _ = control_tx.send(control);
+            return true;
+        }
+    }
+
+    false
+}
+
+fn stop_all_sessions(runs: &mut HashMap<String, CardRuntime>, control: SessionControl) {
+    for run in runs.values_mut() {
+        run.active_session_ids.clear();
+        for session in run.sessions.values_mut() {
+            session.status = RapidfireSessionStatus::Stopping;
+            if let Some(control_tx) = session.control_tx.take() {
+                let _ = control_tx.send(control);
+            }
+        }
+    }
+}
+
+fn stop_removed_or_disabled_sessions(
+    runs: &mut HashMap<String, CardRuntime>,
+    active_card_ids: &[String],
+) {
+    let removed_ids = runs
+        .keys()
+        .filter(|id| !active_card_ids.contains(id))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for id in &removed_ids {
+        if let Some(run) = runs.get_mut(id) {
+            run.active_session_ids.clear();
+            for session in run.sessions.values_mut() {
+                session.status = RapidfireSessionStatus::Stopping;
+                if let Some(control_tx) = session.control_tx.take() {
+                    let _ = control_tx.send(SessionControl::Cancel);
+                }
+            }
+        }
+    }
+
+    for id in removed_ids {
+        runs.remove(&id);
+    }
+}
+
+fn emit_hotkey_error(app: &AppHandle, error: String) {
+    let _ = app.emit_to("main", "rapidfire://hotkey-error", error);
 }
 
 // ---- Event emission ----
@@ -681,13 +915,8 @@ fn destroy_position_windows(app: &AppHandle) {
 
 pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_hold_scope("rapidfire");
-    // Abort all running tasks
     if let Ok(mut inner) = state.inner.lock() {
-        for run in inner.runs.values_mut() {
-            if let Some(abort_tx) = run.task_abort_tx.take() {
-                let _ = abort_tx.send(());
-            }
-        }
+        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
         inner.runs.clear();
     }
     destroy_position_windows(app);
@@ -770,31 +999,16 @@ pub fn rapidfire_save_settings(
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
 
-        // Abort runs for removed/disabled cards
         let active_card_ids: Vec<String> = settings_value
             .cards
             .iter()
             .filter(|c| c.enabled)
             .map(|c| c.id.clone())
             .collect();
-        inner.runs.retain(|id, run| {
-            if !active_card_ids.contains(id) {
-                if let Some(abort_tx) = run.task_abort_tx.take() {
-                    let _ = abort_tx.send(());
-                }
-                false
-            } else {
-                true
-            }
-        });
+        stop_removed_or_disabled_sessions(&mut inner.runs, &active_card_ids);
 
         if !settings_value.rapidfire_enabled {
-            // Abort all
-            for run in inner.runs.values_mut() {
-                if let Some(abort_tx) = run.task_abort_tx.take() {
-                    let _ = abort_tx.send(());
-                }
-            }
+            stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
             inner.runs.clear();
         }
 
@@ -816,13 +1030,7 @@ pub fn rapidfire_stop(
             .inner
             .lock()
             .map_err(|_| "连发器状态已损坏".to_string())?;
-        for run in inner.runs.values_mut() {
-            if let Some(abort_tx) = run.task_abort_tx.take() {
-                let _ = abort_tx.send(());
-            }
-            run.status = RapidfireRunStatus::Idle;
-            run.count = 0;
-        }
+        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
         inner.runs.clear();
         inner.bootstrap()
     };
@@ -1131,6 +1339,146 @@ mod tests {
         assert!(parse_target_key("`").is_some());
         assert!(parse_target_key("'").is_some());
         assert!(parse_target_key("Unknown").is_none());
+    }
+
+    #[test]
+    fn target_fire_plan_uses_press_and_release_actions() {
+        let plan = target_fire_plan("T", Some("T")).unwrap();
+
+        assert_eq!(plan.target_key, parse_target_key("T").unwrap());
+        assert_eq!(plan.held_trigger_key, parse_target_key("T"));
+        assert_eq!(
+            plan.actions,
+            vec![
+                TargetKeyAction::ReleaseHeldTrigger,
+                TargetKeyAction::PressTarget,
+                TargetKeyAction::ReleaseTarget
+            ]
+        );
+    }
+
+    #[test]
+    fn target_fire_plan_allows_compensation_without_held_trigger() {
+        let plan = target_fire_plan("T", None).unwrap();
+
+        assert_eq!(plan.target_key, parse_target_key("T").unwrap());
+        assert_eq!(plan.held_trigger_key, None);
+        assert_eq!(
+            plan.actions,
+            vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
+        );
+    }
+
+    #[test]
+    fn press_jitter_stays_between_8_and_12_ms() {
+        for _ in 0..100 {
+            let jitter = press_jitter_duration_ms();
+
+            assert!(
+                (RAPIDFIRE_PRESS_JITTER_MIN_MS..=RAPIDFIRE_PRESS_JITTER_MAX_MS).contains(&jitter),
+                "按下抖动应落在 8-12ms，实际为 {jitter}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn stop_before_first_tick_still_allows_one_fire_for_compensation() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(SessionControl::StopWithCompensation).unwrap();
+
+        let decision = wait_for_next_fire(&rx, Instant::now() + Duration::from_secs(1), 0);
+
+        assert_eq!(
+            decision,
+            WorkerDecision::Fire {
+                stop_after_fire: true
+            }
+        );
+    }
+
+    #[test]
+    fn stop_after_existing_count_exits_worker_loop_for_compensation_stage() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(SessionControl::StopWithCompensation).unwrap();
+
+        let decision = wait_for_next_fire(&rx, Instant::now() + Duration::from_secs(1), 3);
+
+        assert_eq!(decision, WorkerDecision::Stop);
+    }
+
+    #[test]
+    fn same_card_can_hold_multiple_sessions_without_overwriting() {
+        let mut runtime = CardRuntime::default();
+        let (tx1, _rx1) = mpsc::channel();
+        let (tx2, _rx2) = mpsc::channel();
+
+        runtime.active_session_ids.push("session-1".to_string());
+        runtime.sessions.insert(
+            "session-1".to_string(),
+            RapidfireSessionRuntime {
+                count: 1,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx1),
+            },
+        );
+        runtime.active_session_ids.push("session-2".to_string());
+        runtime.sessions.insert(
+            "session-2".to_string(),
+            RapidfireSessionRuntime {
+                count: 2,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx2),
+            },
+        );
+
+        assert_eq!(runtime.aggregate_status(), RapidfireRunStatus::Firing);
+        assert_eq!(runtime.aggregate_count(), 3);
+        assert_eq!(runtime.sessions.len(), 2);
+    }
+
+    #[test]
+    fn stop_latest_active_session_does_not_cancel_older_session() {
+        let mut runtime = CardRuntime::default();
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+
+        runtime.active_session_ids.push("session-1".to_string());
+        runtime.sessions.insert(
+            "session-1".to_string(),
+            RapidfireSessionRuntime {
+                count: 1,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx1),
+            },
+        );
+        runtime.active_session_ids.push("session-2".to_string());
+        runtime.sessions.insert(
+            "session-2".to_string(),
+            RapidfireSessionRuntime {
+                count: 1,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx2),
+            },
+        );
+
+        assert!(stop_latest_active_session(
+            &mut runtime,
+            SessionControl::StopWithCompensation
+        ));
+
+        assert!(rx1.try_recv().is_err());
+        assert_eq!(
+            rx2.try_recv().unwrap(),
+            SessionControl::StopWithCompensation
+        );
+        assert_eq!(
+            runtime.sessions["session-1"].status,
+            RapidfireSessionStatus::Firing
+        );
+        assert_eq!(
+            runtime.sessions["session-2"].status,
+            RapidfireSessionStatus::Stopping
+        );
     }
 
     #[test]

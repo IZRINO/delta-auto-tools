@@ -47,14 +47,14 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
       />
       <CardBody className="flex flex-col gap-4 xl:gap-5">
         {isPreviewMode ? (
-          <div className="rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+          <div className="rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">预览模式</p>
             <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以配置采样区域</p>
           </div>
         ) : (
           <>
-            <ControlTile className="flex flex-wrap items-center justify-between gap-3 bg-muted/32">
+            <ControlTile className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <div className="size-2.5 rounded-full bg-primary" style={{ opacity: configuredCount >= 1 ? 1 : 0.25 }} />
@@ -92,7 +92,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                       </Badge>
                     </div>
 
-                    <div className="rounded-lg border border-dashed border-border/80 bg-muted/30 px-3 py-3">
+                    <div className="rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_48%,transparent),var(--surface-tile))] px-3 py-3">
                       <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
                       <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                     </div>
@@ -170,7 +170,7 @@ export function WorkbenchControlPanel({
 
       <CardBody className="xl:min-h-88">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
-          <section className="min-h-0 rounded-xl border border-border/60 bg-muted/20 px-4 py-4">
+          <section className="min-h-0 rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_48%,transparent))] px-4 py-4">
 
             <div className="mb-4 flex items-center gap-2">
 
@@ -234,7 +234,7 @@ export function WorkbenchControlPanel({
               <div className="text-xs text-muted-foreground">正在加载设置...</div>
             )}
           </section>
-          <section className="min-h-0 rounded-xl border border-border/60 bg-muted/20 px-4 py-4">
+          <section className="min-h-0 rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_48%,transparent))] px-4 py-4">
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -259,7 +259,7 @@ export function WorkbenchControlPanel({
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-lg border border-border bg-background/78 p-4 shadow-sm">
+            <div className="mt-4 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_56%,transparent),var(--surface-tile))] p-4">
               <Input
                 className="h-12 rounded-lg px-4 font-mono text-base tracking-[0.22em]"
                 id="verification-input"
@@ -272,7 +272,7 @@ export function WorkbenchControlPanel({
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="rounded-lg border border-border bg-background px-3 py-3">
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_50%,transparent),var(--surface-tile))] px-3 py-3">
                 <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">验证模式</p>
                 <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框即可重新验证"}</p>
               </div>
@@ -310,14 +310,14 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
       />
       <CardBody className="flex min-h-0 flex-col gap-4">
         {!hasResult ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
             <RiCheckboxCircleLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">等待执行</p>
             <p className="mt-1 text-xs text-muted-foreground">完成前两步后，结果会显示在这里。</p>
           </div>
         ) : (
           <>
-            <div className="rounded-xl border border-border bg-background/80 px-5 py-5 shadow-sm">
+            <div className="rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_55%,transparent))] px-5 py-5">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
                   {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
@@ -333,7 +333,7 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
 
             <div className="grid gap-3 xl:grid-cols-3">
               {runDetails.map((detail) => (
-                <div key={detail.slot} className="rounded-lg border border-border bg-muted/20 p-4">
+                <div key={detail.slot} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_40%,transparent))] p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
                     <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
@@ -341,13 +341,13 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
                     </Badge>
                   </div>
                   <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
-                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
                       <p className="font-mono text-foreground/80">{detail.morse ?? "--"}</p>
                     </div>
-                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
                       <p className="text-foreground/80">{detail.thresholdMode}</p>
                     </div>
-                    <div className="rounded-lg border border-border bg-background px-3 py-2">
+                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
                       <p className="text-foreground/80">{detail.contourCount}</p>
                     </div>
                   </div>
@@ -378,7 +378,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
       />
       <CardBody>
         {isPreviewMode ? (
-          <div className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-4 py-8 text-center">
+          <div className="rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">预览模式</p>
             <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以查看历史记录</p>
@@ -388,7 +388,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
             <ScrollArea className="h-72">
               <div className="flex flex-col gap-3 pe-4">
                 {history.length === 0 ? (
-                  <Empty className="border-border bg-muted/20">
+                  <Empty className="border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <RiHistoryLine />
@@ -399,7 +399,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
                   </Empty>
                 ) : (
                   history.map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm">
+                    <div key={entry.id} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_45%,transparent))] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>

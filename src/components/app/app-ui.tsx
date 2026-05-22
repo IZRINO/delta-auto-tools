@@ -31,8 +31,9 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-xl border border-border/70 bg-card/92 px-5 py-5 shadow-sm",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,var(--primary)_0,transparent_26%),linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] before:bg-[length:100%_100%,28px_28px,28px_28px] before:opacity-[0.055]",
+        "relative overflow-hidden rounded-xl border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_32%,transparent))] px-5 py-5 backdrop-blur-xl",
+        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_0_0,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_28rem),radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_42%,transparent)_0.7px,transparent_0.95px)] before:bg-[length:100%_100%,22px_22px] before:opacity-[0.18]",
+        "after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-[linear-gradient(90deg,transparent,var(--surface-highlight),transparent)]",
         className,
       )}
     >
@@ -66,7 +67,12 @@ type SignalTileProps = {
 
 export function SignalTile({ className, detail, icon, label, value }: SignalTileProps) {
   return (
-    <div className={cn("rounded-lg border border-border/70 bg-background/76 px-4 py-3 shadow-sm", className)}>
+    <div
+      className={cn(
+        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_62%,transparent))] px-4 py-3 backdrop-blur-sm",
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-mono text-[0.65rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">
@@ -90,9 +96,9 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     <Card
       size={size}
       className={cn(
-        "border-border/70 bg-card/94 shadow-sm transition-colors",
-        "hover:border-primary/30 hover:bg-card",
-        active && "border-primary/35 bg-primary/5 ring-1 ring-primary/15",
+        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_28%,transparent))] backdrop-blur-md transition-[border-color,background-color,opacity]",
+        "hover:border-primary/30",
+        active && "border-primary/45 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--primary)_9%,var(--surface-card-strong)),color-mix(in_oklch,var(--surface-card)_78%,transparent))] ring-1 ring-primary/18",
         className,
       )}
       {...props}
@@ -113,11 +119,16 @@ type SectionHeaderProps = {
 
 export function SectionHeader({ badge, className, description, eyebrow, icon, title }: SectionHeaderProps) {
   return (
-    <CardHeader className={cn("border-b border-border/60 bg-muted/18", className)}>
+    <CardHeader
+      className={cn(
+        "border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)]",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-background text-primary shadow-sm">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_46%,transparent))] text-primary backdrop-blur-sm">
               {icon}
             </div>
           ) : null}
@@ -144,7 +155,12 @@ type ControlTileProps = {
 
 export function ControlTile({ children, className }: ControlTileProps) {
   return (
-    <div className={cn("rounded-lg border border-border/70 bg-background/72 p-3 shadow-sm", className)}>
+    <div
+      className={cn(
+        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_44%,transparent))] p-3 backdrop-blur-sm",
+        className,
+      )}
+    >
       {children}
     </div>
   );

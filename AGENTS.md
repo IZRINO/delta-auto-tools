@@ -292,22 +292,23 @@ src-tauri/src/
 
 ### 连发器端
 
-- `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 tick 编排。
+- `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、会话状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 worker 线程编排。
 - `src-tauri/src/rapidfire/types.rs` 定义所有连发器数据结构（`RapidfireSettings`、`RapidfireCard`、`RapidfireBootstrap`、`RapidfireRunState`、`RapidfireRunStatus`、`RapidfireRect` 等）。
 - `src-tauri/src/rapidfire/settings.rs` 的持久化文件是 `rapidfire_settings.json`。
 - `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段。
-- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>）、`pending_position`、`hotkey_error`。
+- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session）、`pending_position`、`hotkey_error`。
 - 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
 - 触发键为单键（不支持组合键），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发。
 - 触发键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
-- 同一快捷键可绑定多个连发器卡片，按下时同时触发所有绑定的卡片。
-- 状态机：`Idle → Firing → Idle`。触发键 Up 时 count 为偶数直接结束，奇数立即补发一次（10ms 固定延迟，无视设置间隔），补发 fire-and-forget 不阻塞，状态立即设为 Idle。
-- 补发期间再次按下触发键不取消补发，直接启动新的连发轮次。
+- 同一快捷键可绑定多个连发器卡片，按下时同时为所有绑定卡片创建独立连发 session 和独立 OS worker 线程。
+- 每次触发键 Down 都创建新的 session；同一卡片快速再次触发不会覆盖、取消或 abort 旧 session，旧 session 会在收到 Up 后完成必要补齐并自行退出。
+- 状态机以 session 为单位：`Firing → Stopping → Finished`；对外 `RapidfireRunState` 仍按 card 聚合，任一 session 存在时显示 `Firing`。
+- 触发键 Up 只停止本次对应 session；count 为偶数则线程退出，count 为奇数则在线程内额外触发一次目标键补齐为偶数后退出。
 - 连发器透明窗口 label 是 `"rapidfire-display"`，位置设置窗口 label 是 `"rapidfire-position"`。
 - `RapidfireSettings.rapidfire_enabled` 控制 hold 热键注册、透明窗口显示和运行态。
 - 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
 - 连发间隔最小 10ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
-- 目标键通过 `enigo::Key` 模拟触发（`fire_target_key()`），在 `spawn_blocking` 中执行。
+- 目标键通过 `enigo::Key` 模拟真实 `Press → 8-12ms 抖动等待 → Release`，不要使用 `Direction::Click` 作为连发主路径。
 - 修改连发器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### Delta 端

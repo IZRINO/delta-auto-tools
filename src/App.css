@@ -50,6 +50,21 @@
   --sidebar-accent-foreground: oklch(0.235 0.041 121);
   --sidebar-border: oklch(0.84 0.026 90);
   --sidebar-ring: oklch(0.52 0.095 145);
+  --surface-shell: color-mix(in oklch, var(--card) 46%, transparent);
+  --surface-panel: color-mix(in oklch, var(--secondary) 58%, transparent);
+  --surface-card: color-mix(in oklch, var(--card) 76%, transparent);
+  --surface-card-strong: color-mix(in oklch, var(--card) 88%, var(--secondary) 12%);
+  --surface-tile: color-mix(in oklch, var(--accent) 26%, transparent);
+  --surface-border: color-mix(in oklch, var(--primary) 14%, var(--border));
+  --surface-border-strong: color-mix(in oklch, var(--primary) 25%, var(--border));
+  --surface-hover: color-mix(in oklch, var(--accent) 34%, transparent);
+  --surface-highlight: color-mix(in oklch, white 58%, var(--accent) 10%);
+  --surface-dot: color-mix(in oklch, var(--primary) 30%, var(--border));
+  --shadow-shell: none;
+  --shadow-card: none;
+  --shadow-subtle: none;
+  --shadow-focus: none;
+  --shadow-tile: none;
 }
 
 @theme inline {
@@ -141,11 +156,12 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(circle at top left, color-mix(in oklch, var(--primary) 11%, transparent) 0, transparent 34rem),
-      linear-gradient(135deg, color-mix(in oklch, var(--muted) 70%, transparent), transparent 42%),
-      linear-gradient(to right, color-mix(in oklch, var(--border) 38%, transparent) 1px, transparent 1px),
-      linear-gradient(to bottom, color-mix(in oklch, var(--border) 38%, transparent) 1px, transparent 1px);
-    background-size: auto, auto, 32px 32px, 32px 32px;
+      radial-gradient(circle at 14% 8%, color-mix(in oklch, var(--primary) 16%, transparent) 0, transparent 28rem),
+      radial-gradient(circle at 86% 92%, color-mix(in oklch, var(--chart-3) 14%, transparent) 0, transparent 26rem),
+      linear-gradient(140deg, color-mix(in oklch, var(--muted) 68%, transparent), transparent 46%),
+      radial-gradient(circle, color-mix(in oklch, var(--surface-dot) 34%, transparent) 0.75px, transparent 0.95px);
+    background-position: center, center, center, 0 0;
+    background-size: auto, auto, auto, 24px 24px;
   }
 
   body[data-overlay-mode="true"] {
