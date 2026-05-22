@@ -11,7 +11,13 @@ pub fn load_settings(app: &AppHandle) -> Result<RapidfireSettings, String> {
 
     // 迁移旧版本：确保默认卡片存在
     if settings_value.cards.is_empty() {
-        settings_value.cards.push(RapidfireSettings::default().cards.into_iter().next().unwrap());
+        settings_value.cards.push(
+            RapidfireSettings::default()
+                .cards
+                .into_iter()
+                .next()
+                .unwrap(),
+        );
     }
 
     Ok(settings_value)
@@ -40,6 +46,8 @@ mod tests {
                 trigger_key: "F1".to_string(),
                 target_key: "1".to_string(),
                 interval_ms: 50,
+                press_jitter_min_ms: 10,
+                press_jitter_max_ms: 18,
                 enabled: true,
             }],
         }

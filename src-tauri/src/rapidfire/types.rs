@@ -4,6 +4,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_press_jitter_min_ms() -> u64 {
+    8
+}
+
+fn default_press_jitter_max_ms() -> u64 {
+    12
+}
+
 /// 连发器卡片
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +24,12 @@ pub struct RapidfireCard {
     pub target_key: String,
     /// 连发间隔（毫秒，最小 10）
     pub interval_ms: u64,
+    /// 目标键按下保持时间抖动下限（毫秒）
+    #[serde(default = "default_press_jitter_min_ms")]
+    pub press_jitter_min_ms: u64,
+    /// 目标键按下保持时间抖动上限（毫秒）
+    #[serde(default = "default_press_jitter_max_ms")]
+    pub press_jitter_max_ms: u64,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
@@ -60,6 +74,8 @@ impl Default for RapidfireSettings {
                 trigger_key: "F6".to_string(),
                 target_key: "Space".to_string(),
                 interval_ms: 100,
+                press_jitter_min_ms: default_press_jitter_min_ms(),
+                press_jitter_max_ms: default_press_jitter_max_ms(),
                 enabled: false,
             }],
         }
@@ -135,6 +151,24 @@ mod tests {
         assert_eq!(settings.cards[0].trigger_key, "F6");
         assert_eq!(settings.cards[0].target_key, "Space");
         assert_eq!(settings.cards[0].interval_ms, 100);
+        assert_eq!(settings.cards[0].press_jitter_min_ms, 8);
+        assert_eq!(settings.cards[0].press_jitter_max_ms, 12);
         assert!(!settings.cards[0].enabled);
+    }
+
+    #[test]
+    fn rapidfire_card_deserializes_legacy_jitter_defaults() {
+        let card: RapidfireCard = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "name": "旧配置",
+            "triggerKey": "F6",
+            "targetKey": "Space",
+            "intervalMs": 100,
+            "enabled": true
+        }))
+        .expect("旧卡片配置应补齐默认抖动");
+
+        assert_eq!(card.press_jitter_min_ms, 8);
+        assert_eq!(card.press_jitter_max_ms, 12);
     }
 }
