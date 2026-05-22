@@ -993,12 +993,9 @@ dependencies = [
 
 [[package]]
 name = "delta-auto-tools"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
- "chrono",
- "cookie",
  "encoding_rs",
  "enigo",
  "image",
@@ -1014,7 +1011,6 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
  "url",
  "willhook",
  "xcap",

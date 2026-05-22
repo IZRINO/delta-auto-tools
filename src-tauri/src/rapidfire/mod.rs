@@ -129,7 +129,7 @@ impl CardRuntime {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TargetFirePlan {
     target_key: enigo::Key,
-    held_trigger_key: Option<enigo::Key>,
+    trigger_key_to_release: Option<enigo::Key>,
     actions: Vec<TargetKeyAction>,
 }
 
@@ -149,12 +149,13 @@ fn target_fire_plan(
     let held_trigger_key = held_trigger_key
         .map(|key| parse_target_key(key).ok_or_else(|| format!("不支持的触发键: {key}")))
         .transpose()?;
-    let has_held_trigger_key = held_trigger_key.is_some();
+    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
+    let should_release_trigger_key = trigger_key_to_release.is_some();
 
     Ok(TargetFirePlan {
         target_key,
-        held_trigger_key,
-        actions: target_fire_actions(has_held_trigger_key),
+        trigger_key_to_release,
+        actions: target_fire_actions(should_release_trigger_key),
     })
 }
 
@@ -191,7 +192,7 @@ fn press_release_target_key(
     let mut enigo =
         Enigo::new(&Settings::default()).map_err(|error| format!("初始化连发输入失败: {error}"))?;
 
-    if let Some(trigger_key) = plan.held_trigger_key {
+    if let Some(trigger_key) = plan.trigger_key_to_release {
         enigo
             .key(trigger_key, Direction::Release)
             .map_err(|error| format!("释放连发触发键失败: {error}"))?;
@@ -211,42 +212,42 @@ fn parse_target_key(key: &str) -> Option<enigo::Key> {
     use enigo::Key;
     let upper = key.trim().to_uppercase();
     match upper.as_str() {
-        "A" => Some(Key::Unicode('a')),
-        "B" => Some(Key::Unicode('b')),
-        "C" => Some(Key::Unicode('c')),
-        "D" => Some(Key::Unicode('d')),
-        "E" => Some(Key::Unicode('e')),
-        "F" => Some(Key::Unicode('f')),
-        "G" => Some(Key::Unicode('g')),
-        "H" => Some(Key::Unicode('h')),
-        "I" => Some(Key::Unicode('i')),
-        "J" => Some(Key::Unicode('j')),
-        "K" => Some(Key::Unicode('k')),
-        "L" => Some(Key::Unicode('l')),
-        "M" => Some(Key::Unicode('m')),
-        "N" => Some(Key::Unicode('n')),
-        "O" => Some(Key::Unicode('o')),
-        "P" => Some(Key::Unicode('p')),
-        "Q" => Some(Key::Unicode('q')),
-        "R" => Some(Key::Unicode('r')),
-        "S" => Some(Key::Unicode('s')),
-        "T" => Some(Key::Unicode('t')),
-        "U" => Some(Key::Unicode('u')),
-        "V" => Some(Key::Unicode('v')),
-        "W" => Some(Key::Unicode('w')),
-        "X" => Some(Key::Unicode('x')),
-        "Y" => Some(Key::Unicode('y')),
-        "Z" => Some(Key::Unicode('z')),
-        "0" => Some(Key::Unicode('0')),
-        "1" => Some(Key::Unicode('1')),
-        "2" => Some(Key::Unicode('2')),
-        "3" => Some(Key::Unicode('3')),
-        "4" => Some(Key::Unicode('4')),
-        "5" => Some(Key::Unicode('5')),
-        "6" => Some(Key::Unicode('6')),
-        "7" => Some(Key::Unicode('7')),
-        "8" => Some(Key::Unicode('8')),
-        "9" => Some(Key::Unicode('9')),
+        "A" => Some(Key::A),
+        "B" => Some(Key::B),
+        "C" => Some(Key::C),
+        "D" => Some(Key::D),
+        "E" => Some(Key::E),
+        "F" => Some(Key::F),
+        "G" => Some(Key::G),
+        "H" => Some(Key::H),
+        "I" => Some(Key::I),
+        "J" => Some(Key::J),
+        "K" => Some(Key::K),
+        "L" => Some(Key::L),
+        "M" => Some(Key::M),
+        "N" => Some(Key::N),
+        "O" => Some(Key::O),
+        "P" => Some(Key::P),
+        "Q" => Some(Key::Q),
+        "R" => Some(Key::R),
+        "S" => Some(Key::S),
+        "T" => Some(Key::T),
+        "U" => Some(Key::U),
+        "V" => Some(Key::V),
+        "W" => Some(Key::W),
+        "X" => Some(Key::X),
+        "Y" => Some(Key::Y),
+        "Z" => Some(Key::Z),
+        "0" => Some(Key::Num0),
+        "1" => Some(Key::Num1),
+        "2" => Some(Key::Num2),
+        "3" => Some(Key::Num3),
+        "4" => Some(Key::Num4),
+        "5" => Some(Key::Num5),
+        "6" => Some(Key::Num6),
+        "7" => Some(Key::Num7),
+        "8" => Some(Key::Num8),
+        "9" => Some(Key::Num9),
         "F1" => Some(Key::F1),
         "F2" => Some(Key::F2),
         "F3" => Some(Key::F3),
@@ -275,17 +276,17 @@ fn parse_target_key(key: &str) -> Option<enigo::Key> {
         "INSERT" => Some(Key::Insert),
         "DELETE" => Some(Key::Delete),
         "ALT" => Some(Key::Alt),
-        ";" | "SEMICOLON" => Some(Key::Unicode(';')),
-        "," | "COMMA" => Some(Key::Unicode(',')),
-        "." | "PERIOD" => Some(Key::Unicode('.')),
-        "/" | "SLASH" => Some(Key::Unicode('/')),
-        "\\" | "BACKSLASH" => Some(Key::Unicode('\\')),
-        "[" | "BRACKETLEFT" => Some(Key::Unicode('[')),
-        "]" | "BRACKETRIGHT" => Some(Key::Unicode(']')),
-        "-" | "MINUS" => Some(Key::Unicode('-')),
-        "=" | "EQUAL" => Some(Key::Unicode('=')),
-        "`" | "BACKQUOTE" => Some(Key::Unicode('`')),
-        "'" | "QUOTE" => Some(Key::Unicode('\'')),
+        ";" | "SEMICOLON" => Some(Key::OEM1),
+        "," | "COMMA" => Some(Key::OEMComma),
+        "." | "PERIOD" => Some(Key::OEMPeriod),
+        "/" | "SLASH" => Some(Key::OEM2),
+        "\\" | "BACKSLASH" => Some(Key::OEM5),
+        "[" | "BRACKETLEFT" => Some(Key::OEM4),
+        "]" | "BRACKETRIGHT" => Some(Key::OEM6),
+        "-" | "MINUS" => Some(Key::OEMMinus),
+        "=" | "EQUAL" => Some(Key::OEMPlus),
+        "`" | "BACKQUOTE" => Some(Key::OEM3),
+        "'" | "QUOTE" => Some(Key::OEM7),
         _ => None,
     }
 }
@@ -1305,7 +1306,21 @@ mod tests {
 
     #[test]
     fn parse_target_key_supports_all_valid_keys() {
-        assert!(parse_target_key("A").is_some());
+        assert_eq!(parse_target_key("A"), Some(enigo::Key::A));
+        assert_eq!(parse_target_key("Z"), Some(enigo::Key::Z));
+        assert_eq!(parse_target_key("0"), Some(enigo::Key::Num0));
+        assert_eq!(parse_target_key("9"), Some(enigo::Key::Num9));
+        assert_eq!(parse_target_key(";"), Some(enigo::Key::OEM1));
+        assert_eq!(parse_target_key(","), Some(enigo::Key::OEMComma));
+        assert_eq!(parse_target_key("."), Some(enigo::Key::OEMPeriod));
+        assert_eq!(parse_target_key("/"), Some(enigo::Key::OEM2));
+        assert_eq!(parse_target_key("\\"), Some(enigo::Key::OEM5));
+        assert_eq!(parse_target_key("["), Some(enigo::Key::OEM4));
+        assert_eq!(parse_target_key("]"), Some(enigo::Key::OEM6));
+        assert_eq!(parse_target_key("-"), Some(enigo::Key::OEMMinus));
+        assert_eq!(parse_target_key("="), Some(enigo::Key::OEMPlus));
+        assert_eq!(parse_target_key("`"), Some(enigo::Key::OEM3));
+        assert_eq!(parse_target_key("'"), Some(enigo::Key::OEM7));
         assert!(parse_target_key("F1").is_some());
         assert!(parse_target_key("F12").is_some());
         assert!(parse_target_key("Space").is_some());
@@ -1323,21 +1338,7 @@ mod tests {
         assert!(parse_target_key("PageDown").is_some());
         assert!(parse_target_key("Insert").is_some());
         assert!(parse_target_key("Delete").is_some());
-        assert!(parse_target_key("0").is_some());
-        assert!(parse_target_key("9").is_some());
-        // 新增键位
         assert!(parse_target_key("Alt").is_some());
-        assert!(parse_target_key(";").is_some());
-        assert!(parse_target_key(",").is_some());
-        assert!(parse_target_key(".").is_some());
-        assert!(parse_target_key("/").is_some());
-        assert!(parse_target_key("\\").is_some());
-        assert!(parse_target_key("[").is_some());
-        assert!(parse_target_key("]").is_some());
-        assert!(parse_target_key("-").is_some());
-        assert!(parse_target_key("=").is_some());
-        assert!(parse_target_key("`").is_some());
-        assert!(parse_target_key("'").is_some());
         assert!(parse_target_key("Unknown").is_none());
     }
 
@@ -1346,7 +1347,7 @@ mod tests {
         let plan = target_fire_plan("T", Some("T")).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
-        assert_eq!(plan.held_trigger_key, parse_target_key("T"));
+        assert_eq!(plan.trigger_key_to_release, parse_target_key("T"));
         assert_eq!(
             plan.actions,
             vec![
@@ -1358,11 +1359,23 @@ mod tests {
     }
 
     #[test]
+    fn target_fire_plan_keeps_different_trigger_key_held() {
+        let plan = target_fire_plan("Space", Some("W")).unwrap();
+
+        assert_eq!(plan.target_key, parse_target_key("Space").unwrap());
+        assert_eq!(plan.trigger_key_to_release, None);
+        assert_eq!(
+            plan.actions,
+            vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
+        );
+    }
+
+    #[test]
     fn target_fire_plan_allows_compensation_without_held_trigger() {
         let plan = target_fire_plan("T", None).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
-        assert_eq!(plan.held_trigger_key, None);
+        assert_eq!(plan.trigger_key_to_release, None);
         assert_eq!(
             plan.actions,
             vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
