@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Arc, Mutex,
     },
     thread,
@@ -36,6 +36,9 @@ const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 10;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
 const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 200;
+const RAPIDFIRE_COMPENSATION_DELAY_MIN_MS: u64 = 100;
+const RAPIDFIRE_COMPENSATION_DELAY_MAX_MS: u64 = 150;
+const RAPIDFIRE_MIN_PRESS_SPACING_MS: u64 = 80;
 
 static NEXT_RAPIDFIRE_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -44,6 +47,7 @@ static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 pub struct RapidfireState {
     inner: Mutex<RapidfireStateInner>,
+    last_press_at: Arc<Mutex<Instant>>,
 }
 
 struct RapidfireStateInner {
@@ -63,6 +67,7 @@ struct RapidfireSessionRuntime {
     count: u64,
     status: RapidfireSessionStatus,
     control_tx: Option<mpsc::Sender<SessionControl>>,
+    compensate_now: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -498,6 +503,7 @@ async fn handle_hold_event(
 
 async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
+    let last_press_at = state.last_press_at.clone();
     let sessions_to_spawn = {
         let mut inner = state
             .inner
@@ -534,7 +540,13 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 
             let session_id = next_session_id();
             let (control_tx, control_rx) = mpsc::channel();
+            let compensate_now = Arc::new(AtomicBool::new(false));
             let run = inner.runs.entry(cid.clone()).or_default();
+
+            for session in run.sessions.values_mut() {
+                session.compensate_now.store(true, Ordering::Relaxed);
+            }
+
             run.active_session_ids.push(session_id.clone());
             run.sessions.insert(
                 session_id.clone(),
@@ -542,6 +554,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                     count: 0,
                     status: RapidfireSessionStatus::Firing,
                     control_tx: Some(control_tx),
+                    compensate_now: compensate_now.clone(),
                 },
             );
 
@@ -554,6 +567,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 press_jitter_min_ms: jitter_min,
                 press_jitter_max_ms: jitter_max,
                 control_rx,
+                compensate_now,
+                last_press_at: last_press_at.clone(),
             });
         }
 
@@ -626,8 +641,9 @@ struct RapidfireSessionWorker {
     press_jitter_min_ms: u64,
     press_jitter_max_ms: u64,
     control_rx: mpsc::Receiver<SessionControl>,
+    compensate_now: Arc<AtomicBool>,
+    last_press_at: Arc<Mutex<Instant>>,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkerDecision {
     Fire { stop_after_fire: bool },
@@ -638,6 +654,29 @@ enum WorkerDecision {
 fn next_session_id() -> String {
     let id = NEXT_RAPIDFIRE_SESSION_ID.fetch_add(1, Ordering::Relaxed);
     format!("rapidfire-session-{id}")
+}
+
+fn ensure_press_spacing(last_press_at: &Mutex<Instant>) {
+    let min_spacing = Duration::from_millis(RAPIDFIRE_MIN_PRESS_SPACING_MS);
+    let wait = {
+        let mut last = last_press_at.lock().unwrap();
+        let now = Instant::now();
+        if *last > now {
+            let wait = last.duration_since(now);
+            *last = last
+                .checked_add(min_spacing)
+                .unwrap_or_else(|| now + min_spacing);
+            wait
+        } else {
+            *last = now
+                .checked_add(min_spacing)
+                .unwrap_or_else(|| now + min_spacing);
+            Duration::ZERO
+        }
+    };
+    if !wait.is_zero() {
+        thread::sleep(wait);
+    }
 }
 
 fn spawn_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
@@ -663,6 +702,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     loop {
         match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
             WorkerDecision::Fire { stop_after_fire } => {
+                ensure_press_spacing(&worker.last_press_at);
                 match press_release_target_key(
                     &worker.target_key,
                     Some(&worker.trigger_key),
@@ -699,6 +739,19 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     }
 
     if count % 2 == 1 {
+        let compensation_delay = press_jitter_duration_ms(
+            RAPIDFIRE_COMPENSATION_DELAY_MIN_MS,
+            RAPIDFIRE_COMPENSATION_DELAY_MAX_MS,
+        );
+        let compensation_deadline = Instant::now() + Duration::from_millis(compensation_delay);
+        while Instant::now() < compensation_deadline {
+            if worker.compensate_now.load(Ordering::Relaxed) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        ensure_press_spacing(&worker.last_press_at);
         match press_release_target_key(
             &worker.target_key,
             None,
@@ -971,6 +1024,7 @@ pub fn initialize(
             pending_position: None,
             hotkey_error: None,
         }),
+        last_press_at: Arc::new(Mutex::new(Instant::now())),
     };
 
     if settings.rapidfire_enabled {
