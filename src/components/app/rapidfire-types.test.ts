@@ -18,6 +18,9 @@ function sampleSettings(): RapidfireSettings {
     showOverlay: true,
     overlayPosition: { x: 100, y: 200 },
     overlayWidth: 420,
+    compensationDelayMinMs: 100,
+    compensationDelayMaxMs: 150,
+    minPressSpacingMs: 80,
     cards: [
       {
         id: "rf-a",
@@ -89,6 +92,27 @@ describe("rapidfire-types", () => {
 
     expect(parsed.cards[0].pressJitterMinMs).toBe(15);
     expect(parsed.cards[0].pressJitterMaxMs).toBe(25);
+  });
+
+  it("round trips global rapidfire delay parameters through form state", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.compensationDelayMinMs = "120";
+    form.compensationDelayMaxMs = "180";
+    form.minPressSpacingMs = "90";
+
+    const parsed = parseRapidfireSettingsForm(form);
+
+    expect(parsed.compensationDelayMinMs).toBe(120);
+    expect(parsed.compensationDelayMaxMs).toBe(180);
+    expect(parsed.minPressSpacingMs).toBe(90);
+  });
+
+  it("rejects an inverted global compensation delay range", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.compensationDelayMinMs = "180";
+    form.compensationDelayMaxMs = "120";
+
+    expect(() => parseRapidfireSettingsForm(form)).toThrow("补齐延迟");
   });
 
   it("rejects an inverted press jitter range", () => {

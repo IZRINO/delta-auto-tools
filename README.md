@@ -27,6 +27,14 @@
 - 透明窗口字体透明度可调；计时结束后保持终值并高亮斜体显示
 - 位置设置窗口支持拖动位置，按 Enter 保存，按 Esc 退出修改
 
+### 连发器
+
+- 支持多个连发器卡片，每个卡片可编辑名称、触发键、目标键、连发间隔和目标键按下抖动
+- 相同触发键可绑定多张卡片，按下时同时启动独立连发会话
+- 松开触发键后如果触发次数为奇数，会按全局补齐延迟范围等待后补发一次
+- 全局按键最小间距可调，用于控制多个连发会话之间共享的目标键触发节流
+- 连发器透明窗口支持显示/隐藏、位置设置和宽度调整
+
 ### Delta API 工具
 
 - 账号管理支持 QQ、微信、QQ安全中心、Wegame QQ、Wegame 微信与先遣服扫码登录
@@ -102,6 +110,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `src/components/app/timer-page.tsx`：计时\计数器工作台、透明窗口与位置设置界面
 - `src/components/app/timer-utils.ts`：计时\计数器纯逻辑工具函数
 - `src/components/app/timer-types.ts`：计时\计数器前端内部共享类型与常量
+- `src/components/app/rapidfire-page.tsx`：连发器工作台、透明窗口与位置设置界面
+- `src/components/app/rapidfire-types.ts`：连发器前端内部共享类型、常量与表单转换函数
 - `src/components/app/delta-login-dialog.tsx`：Delta 账号扫码登录 Dialog
 - `src/components/app/delta-login-utils.ts`：Delta 登录 invoke 参数与响应提取工具
 - `src/components/app/delta-types.ts`：Delta 前端账号、能力、登录流程类型与常量
@@ -113,6 +123,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `src-tauri/src/hotkeys.rs`：共享热键监听，供摩斯与计时器注册各自快捷键
 - `src-tauri/src/timer/settings.rs`：计时器设置持久化
 - `src-tauri/src/timer/types.rs`：计时器 Rust DTO
+- `src-tauri/src/rapidfire/mod.rs`：连发器 Tauri command、状态、窗口和运行态编排
+- `src-tauri/src/rapidfire/settings.rs`：连发器设置持久化
+- `src-tauri/src/rapidfire/types.rs`：连发器 Rust DTO
 - `src-tauri/src/delta/commands.rs`：Delta Tauri commands 与账号持久化编排
 - `src-tauri/src/delta/services/`：QQ、微信、QQ安全中心、Wegame、先遣服与游戏数据服务
 - `src-tauri/src/delta/storage/repo.rs`：Delta 账号 SQLite 存储
@@ -125,3 +138,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - 一次进入 overlay 后应支持连续完成多个框选
 - 热键录制保持前端录制、Rust 保存与注册的职责划分
 - 计时器和计数器透明窗口保持无边框、透明、置顶、点击穿透，避免挡游戏
+- 连发器透明窗口保持无边框、透明、置顶、点击穿透，避免挡游戏

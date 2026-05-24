@@ -12,6 +12,18 @@ fn default_press_jitter_max_ms() -> u64 {
     12
 }
 
+pub(crate) fn default_compensation_delay_min_ms() -> u64 {
+    100
+}
+
+pub(crate) fn default_compensation_delay_max_ms() -> u64 {
+    150
+}
+
+pub(crate) fn default_min_press_spacing_ms() -> u64 {
+    80
+}
+
 /// 连发器卡片
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +64,15 @@ pub struct RapidfireSettings {
     /// 透明窗口宽度 (320-800)
     #[serde(default = "default_overlay_width")]
     pub overlay_width: i32,
+    /// 松开触发键后补齐奇数次数前的随机等待下限（毫秒）
+    #[serde(default = "default_compensation_delay_min_ms")]
+    pub compensation_delay_min_ms: u64,
+    /// 松开触发键后补齐奇数次数前的随机等待上限（毫秒）
+    #[serde(default = "default_compensation_delay_max_ms")]
+    pub compensation_delay_max_ms: u64,
+    /// 所有连发会话共享的目标键最小触发间距（毫秒）
+    #[serde(default = "default_min_press_spacing_ms")]
+    pub min_press_spacing_ms: u64,
     #[serde(default)]
     pub cards: Vec<RapidfireCard>,
 }
@@ -68,6 +89,9 @@ impl Default for RapidfireSettings {
             show_overlay: false,
             overlay_position: None,
             overlay_width: 400,
+            compensation_delay_min_ms: default_compensation_delay_min_ms(),
+            compensation_delay_max_ms: default_compensation_delay_max_ms(),
+            min_press_spacing_ms: default_min_press_spacing_ms(),
             cards: vec![RapidfireCard {
                 id: format!("rapidfire-{}", crate::utils::now_ms()),
                 name: "连发器 1".to_string(),
@@ -147,6 +171,9 @@ mod tests {
         assert!(!settings.show_overlay);
         assert!(settings.overlay_position.is_none());
         assert_eq!(settings.overlay_width, 400);
+        assert_eq!(settings.compensation_delay_min_ms, 100);
+        assert_eq!(settings.compensation_delay_max_ms, 150);
+        assert_eq!(settings.min_press_spacing_ms, 80);
         assert_eq!(settings.cards.len(), 1);
         assert_eq!(settings.cards[0].trigger_key, "F6");
         assert_eq!(settings.cards[0].target_key, "Space");
@@ -170,5 +197,22 @@ mod tests {
 
         assert_eq!(card.press_jitter_min_ms, 8);
         assert_eq!(card.press_jitter_max_ms, 12);
+    }
+
+    #[test]
+    fn rapidfire_settings_deserializes_legacy_global_delay_defaults() {
+        let settings: RapidfireSettings = serde_json::from_value(serde_json::json!({
+            "version": 1,
+            "rapidfireEnabled": true,
+            "showOverlay": true,
+            "overlayPosition": null,
+            "overlayWidth": 420,
+            "cards": []
+        }))
+        .expect("旧连发器设置应补齐全局延迟默认值");
+
+        assert_eq!(settings.compensation_delay_min_ms, 100);
+        assert_eq!(settings.compensation_delay_max_ms, 150);
+        assert_eq!(settings.min_press_spacing_ms, 80);
     }
 }

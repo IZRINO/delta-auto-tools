@@ -36,9 +36,8 @@ const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 10;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
 const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 200;
-const RAPIDFIRE_COMPENSATION_DELAY_MIN_MS: u64 = 100;
-const RAPIDFIRE_COMPENSATION_DELAY_MAX_MS: u64 = 150;
-const RAPIDFIRE_MIN_PRESS_SPACING_MS: u64 = 80;
+const RAPIDFIRE_GLOBAL_DELAY_MIN_MS: u64 = 0;
+const RAPIDFIRE_GLOBAL_DELAY_MAX_MS: u64 = 10_000;
 
 static NEXT_RAPIDFIRE_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -387,6 +386,30 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
         .overlay_width
         .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
         .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
+    if settings_value.compensation_delay_min_ms > settings_value.compensation_delay_max_ms {
+        return Err("补齐延迟最小值不能大于最大值".to_string());
+    }
+    if settings_value.compensation_delay_max_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
+        return Err(format!(
+            "补齐延迟不能大于 {}ms",
+            RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+        ));
+    }
+    if settings_value.min_press_spacing_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
+        return Err(format!(
+            "按键最小间距不能大于 {}ms",
+            RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+        ));
+    }
+    settings_value.compensation_delay_min_ms = settings_value
+        .compensation_delay_min_ms
+        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
+    settings_value.compensation_delay_max_ms = settings_value
+        .compensation_delay_max_ms
+        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
+    settings_value.min_press_spacing_ms = settings_value
+        .min_press_spacing_ms
+        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
 
     let mut seen_ids = HashMap::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());
@@ -514,6 +537,9 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             return Ok(());
         }
 
+        let compensation_delay_min_ms = inner.settings.compensation_delay_min_ms;
+        let compensation_delay_max_ms = inner.settings.compensation_delay_max_ms;
+        let min_press_spacing_ms = inner.settings.min_press_spacing_ms;
         let mut sessions_to_spawn = Vec::new();
 
         for card_id in &card_ids {
@@ -566,6 +592,9 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 interval_ms: interval,
                 press_jitter_min_ms: jitter_min,
                 press_jitter_max_ms: jitter_max,
+                compensation_delay_min_ms,
+                compensation_delay_max_ms,
+                min_press_spacing_ms,
                 control_rx,
                 compensate_now,
                 last_press_at: last_press_at.clone(),
@@ -640,6 +669,9 @@ struct RapidfireSessionWorker {
     interval_ms: u64,
     press_jitter_min_ms: u64,
     press_jitter_max_ms: u64,
+    compensation_delay_min_ms: u64,
+    compensation_delay_max_ms: u64,
+    min_press_spacing_ms: u64,
     control_rx: mpsc::Receiver<SessionControl>,
     compensate_now: Arc<AtomicBool>,
     last_press_at: Arc<Mutex<Instant>>,
@@ -656,10 +688,16 @@ fn next_session_id() -> String {
     format!("rapidfire-session-{id}")
 }
 
-fn ensure_press_spacing(last_press_at: &Mutex<Instant>) {
-    let min_spacing = Duration::from_millis(RAPIDFIRE_MIN_PRESS_SPACING_MS);
+fn ensure_press_spacing(last_press_at: &Mutex<Instant>, min_press_spacing_ms: u64) {
+    if min_press_spacing_ms == 0 {
+        return;
+    }
+
+    let min_spacing = Duration::from_millis(min_press_spacing_ms);
     let wait = {
-        let mut last = last_press_at.lock().unwrap();
+        let Ok(mut last) = last_press_at.lock() else {
+            return;
+        };
         let now = Instant::now();
         if *last > now {
             let wait = last.duration_since(now);
@@ -702,7 +740,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     loop {
         match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
             WorkerDecision::Fire { stop_after_fire } => {
-                ensure_press_spacing(&worker.last_press_at);
+                ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
                 match press_release_target_key(
                     &worker.target_key,
                     Some(&worker.trigger_key),
@@ -740,8 +778,8 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
 
     if count % 2 == 1 {
         let compensation_delay = press_jitter_duration_ms(
-            RAPIDFIRE_COMPENSATION_DELAY_MIN_MS,
-            RAPIDFIRE_COMPENSATION_DELAY_MAX_MS,
+            worker.compensation_delay_min_ms,
+            worker.compensation_delay_max_ms,
         );
         let compensation_deadline = Instant::now() + Duration::from_millis(compensation_delay);
         while Instant::now() < compensation_deadline {
@@ -751,7 +789,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
             thread::sleep(Duration::from_millis(10));
         }
 
-        ensure_press_spacing(&worker.last_press_at);
+        ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
         match press_release_target_key(
             &worker.target_key,
             None,
@@ -1672,6 +1710,44 @@ mod tests {
         settings2.overlay_width = 1000;
         let normalized2 = normalize_settings(settings2).unwrap();
         assert_eq!(normalized2.overlay_width, RAPIDFIRE_DISPLAY_MAX_WIDTH);
+    }
+
+    #[test]
+    fn normalize_settings_keeps_global_delay_parameters() {
+        let mut settings = RapidfireSettings::default();
+        settings.compensation_delay_min_ms = 120;
+        settings.compensation_delay_max_ms = 180;
+        settings.min_press_spacing_ms = 90;
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(normalized.compensation_delay_min_ms, 120);
+        assert_eq!(normalized.compensation_delay_max_ms, 180);
+        assert_eq!(normalized.min_press_spacing_ms, 90);
+    }
+
+    #[test]
+    fn normalize_settings_rejects_inverted_global_compensation_delay() {
+        let mut settings = RapidfireSettings::default();
+        settings.compensation_delay_min_ms = 180;
+        settings.compensation_delay_max_ms = 120;
+
+        let error = normalize_settings(settings).unwrap_err();
+
+        assert!(error.contains("补齐延迟"));
+    }
+
+    #[test]
+    fn normalize_settings_rejects_too_large_global_delays() {
+        let mut settings = RapidfireSettings::default();
+        settings.compensation_delay_max_ms = RAPIDFIRE_GLOBAL_DELAY_MAX_MS + 1;
+        let compensation_error = normalize_settings(settings).unwrap_err();
+        assert!(compensation_error.contains("补齐延迟"));
+
+        let mut settings2 = RapidfireSettings::default();
+        settings2.min_press_spacing_ms = RAPIDFIRE_GLOBAL_DELAY_MAX_MS + 1;
+        let spacing_error = normalize_settings(settings2).unwrap_err();
+        assert!(spacing_error.contains("按键最小间距"));
     }
 
     #[test]

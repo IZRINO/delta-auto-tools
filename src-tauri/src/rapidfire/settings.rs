@@ -40,6 +40,9 @@ mod tests {
             show_overlay: true,
             overlay_position: Some(RapidfireRect { x: 100, y: 200 }),
             overlay_width: 500,
+            compensation_delay_min_ms: 120,
+            compensation_delay_max_ms: 180,
+            min_press_spacing_ms: 90,
             cards: vec![RapidfireCard {
                 id: "rf-test".to_string(),
                 name: "测试连发器".to_string(),
@@ -76,6 +79,15 @@ mod tests {
         assert_eq!(loaded.show_overlay, s.show_overlay);
         assert_eq!(loaded.overlay_position, s.overlay_position);
         assert_eq!(loaded.overlay_width, s.overlay_width);
+        assert_eq!(
+            loaded.compensation_delay_min_ms,
+            s.compensation_delay_min_ms
+        );
+        assert_eq!(
+            loaded.compensation_delay_max_ms,
+            s.compensation_delay_max_ms
+        );
+        assert_eq!(loaded.min_press_spacing_ms, s.min_press_spacing_ms);
         assert_eq!(loaded.cards, s.cards);
     }
 

@@ -42,8 +42,13 @@ import type {
 } from "@/components/app/rapidfire-types";
 import {
   RAPIDFIRE_AUTOSAVE_DELAY_MS,
+  RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
+  RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS,
+  RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS,
   RAPIDFIRE_DISPLAY_MAX_WIDTH,
   RAPIDFIRE_DISPLAY_MIN_WIDTH,
+  RAPIDFIRE_GLOBAL_DELAY_MAX_MS,
+  RAPIDFIRE_GLOBAL_DELAY_MIN_MS,
   RAPIDFIRE_MIN_INTERVAL_MS,
   RAPIDFIRE_PRESS_JITTER_MAX_MS,
   RAPIDFIRE_PRESS_JITTER_MIN_MS,
@@ -106,6 +111,9 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
       rapidfireEnabled: false,
       showOverlay: true,
       overlayWidth: "400",
+      compensationDelayMinMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
+      compensationDelayMaxMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
+      minPressSpacingMs: String(RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
       overlayPosition: null,
       cards: [createRapidfireCard(rapidfireCardId(), 0)],
     });
@@ -432,7 +440,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
           eyebrow="Overlay & Hotkeys"
           icon={<RiPulseLine />}
           title="全局控制"
-          description="总开关、透明窗口和显示宽度会自动保存。"
+          description="总开关、透明窗口、补齐延迟和按键间距会自动保存。"
         />
         <CardBody>
           <FieldGroup className="grid gap-3 md:grid-cols-3">
@@ -478,6 +486,65 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   onChange={(event) => updateForm("overlayWidth", event.target.value)}
                 />
                 <FieldDescription>{RAPIDFIRE_DISPLAY_MIN_WIDTH}-{RAPIDFIRE_DISPLAY_MAX_WIDTH}px。</FieldDescription>
+              </Field>
+            </ControlTile>
+          </FieldGroup>
+          <FieldGroup className="mt-3 grid gap-3 md:grid-cols-3">
+            <ControlTile>
+              <Field>
+                <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="compensationDelayMinMs"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    type="number"
+                    min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                    max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                    value={form.compensationDelayMinMs}
+                    disabled={controlsDisabled}
+                    onChange={(event) => updateForm("compensationDelayMinMs", event.target.value)}
+                  />
+                  <FieldTitle>ms</FieldTitle>
+                </div>
+                <FieldDescription>奇数补齐前随机等待下限。</FieldDescription>
+              </Field>
+            </ControlTile>
+            <ControlTile>
+              <Field>
+                <FieldLabel htmlFor="compensationDelayMaxMs">补齐延迟上限</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="compensationDelayMaxMs"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    type="number"
+                    min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                    max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                    value={form.compensationDelayMaxMs}
+                    disabled={controlsDisabled}
+                    onChange={(event) => updateForm("compensationDelayMaxMs", event.target.value)}
+                  />
+                  <FieldTitle>ms</FieldTitle>
+                </div>
+                <FieldDescription>下限不能大于上限。</FieldDescription>
+              </Field>
+            </ControlTile>
+            <ControlTile>
+              <Field>
+                <FieldLabel htmlFor="minPressSpacingMs">按键最小间距</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="minPressSpacingMs"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    type="number"
+                    min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                    max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                    value={form.minPressSpacingMs}
+                    disabled={controlsDisabled}
+                    onChange={(event) => updateForm("minPressSpacingMs", event.target.value)}
+                  />
+                  <FieldTitle>ms</FieldTitle>
+                </div>
+                <FieldDescription>所有会话共享的目标键间距。</FieldDescription>
               </Field>
             </ControlTile>
           </FieldGroup>

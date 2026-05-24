@@ -20,6 +20,9 @@ export type RapidfireSettings = {
   showOverlay: boolean;
   overlayPosition: RapidfireRect | null;
   overlayWidth: number;
+  compensationDelayMinMs: number;
+  compensationDelayMaxMs: number;
+  minPressSpacingMs: number;
   cards: RapidfireCard[];
 };
 
@@ -59,6 +62,9 @@ export type RapidfireSettingsForm = {
   rapidfireEnabled: boolean;
   showOverlay: boolean;
   overlayWidth: string;
+  compensationDelayMinMs: string;
+  compensationDelayMaxMs: string;
+  minPressSpacingMs: string;
   overlayPosition: RapidfireRect | null;
   cards: RapidfireCardForm[];
 };
@@ -74,6 +80,11 @@ export const RAPIDFIRE_PRESS_JITTER_MIN_MS = 1;
 export const RAPIDFIRE_PRESS_JITTER_MAX_MS = 200;
 export const RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS = 8;
 export const RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS = 12;
+export const RAPIDFIRE_GLOBAL_DELAY_MIN_MS = 0;
+export const RAPIDFIRE_GLOBAL_DELAY_MAX_MS = 10000;
+export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS = 100;
+export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS = 150;
+export const RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS = 80;
 
 // ---- 转换函数 ----
 
@@ -82,6 +93,9 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
     rapidfireEnabled: settings.rapidfireEnabled,
     showOverlay: settings.showOverlay,
     overlayWidth: String(settings.overlayWidth),
+    compensationDelayMinMs: String(settings.compensationDelayMinMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
+    compensationDelayMaxMs: String(settings.compensationDelayMaxMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
+    minPressSpacingMs: String(settings.minPressSpacingMs ?? RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
     overlayPosition: settings.overlayPosition,
     cards: settings.cards.map((card) => ({
       id: card.id,
@@ -256,12 +270,44 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     };
   });
 
+  const compensationDelayMinMs = normalizePositiveInteger(
+    form.compensationDelayMinMs,
+    RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS,
+  );
+  const compensationDelayMaxMs = normalizePositiveInteger(
+    form.compensationDelayMaxMs,
+    RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
+  );
+  const minPressSpacingMs = normalizePositiveInteger(
+    form.minPressSpacingMs,
+    RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS,
+  );
+
+  if (
+    compensationDelayMinMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS ||
+    compensationDelayMaxMs > RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+  ) {
+    throw new Error(`补齐延迟必须在 ${RAPIDFIRE_GLOBAL_DELAY_MIN_MS}-${RAPIDFIRE_GLOBAL_DELAY_MAX_MS}ms 之间。`);
+  }
+  if (compensationDelayMinMs > compensationDelayMaxMs) {
+    throw new Error("补齐延迟最小值不能大于最大值。");
+  }
+  if (
+    minPressSpacingMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS ||
+    minPressSpacingMs > RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+  ) {
+    throw new Error(`按键最小间距必须在 ${RAPIDFIRE_GLOBAL_DELAY_MIN_MS}-${RAPIDFIRE_GLOBAL_DELAY_MAX_MS}ms 之间。`);
+  }
+
   return {
     version: 1,
     rapidfireEnabled: form.rapidfireEnabled,
     showOverlay: form.showOverlay,
     overlayPosition: form.overlayPosition,
     overlayWidth: clampOverlayWidth(form.overlayWidth),
+    compensationDelayMinMs,
+    compensationDelayMaxMs,
+    minPressSpacingMs,
     cards,
   };
 }
