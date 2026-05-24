@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   RiCrosshair2Line,
   RiGamepadLine,
@@ -9,12 +9,6 @@ import {
   RiToolsLine,
 } from "@remixicon/react";
 
-import { MorsePage } from "@/components/app/morse-page";
-import { TimerPage } from "@/components/app/timer-page";
-import { RapidfirePage } from "@/components/app/rapidfire-page";
-import { DeltaAccountsPage } from "@/components/app/delta-accounts-page";
-import { DeltaGamePage } from "@/components/app/delta-game-page";
-import { DeltaToolboxPage } from "@/components/app/delta-toolbox-page";
 import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
 import {
   Sidebar,
@@ -37,6 +31,33 @@ const appShellStyle = {
   "--sidebar-width": "16rem",
   "--sidebar-width-icon": "3rem",
 } as CSSProperties;
+
+const overlayWindowModes = new Set([
+  "overlay",
+  "timer-display",
+  "counter-display",
+  "timer-position",
+  "counter-position",
+  "rapidfire-display",
+  "rapidfire-position",
+]);
+
+const MorsePage = lazy(() =>
+  import("@/components/app/morse-page").then((module) => ({ default: module.MorsePage })),
+);
+const TimerPage = lazy(() =>
+  import("@/components/app/timer-page").then((module) => ({ default: module.TimerPage })),
+);
+const RapidfirePage = lazy(() =>
+  import("@/components/app/rapidfire-page").then((module) => ({ default: module.RapidfirePage })),
+);
+const DeltaAccountsPage = lazy(() =>
+  import("@/components/app/delta-accounts-page").then((module) => ({ default: module.DeltaAccountsPage })),
+);
+const DeltaGamePage = lazy(() => import("@/components/app/delta-game-page").then((module) => ({ default: module.DeltaGamePage })));
+const DeltaToolboxPage = lazy(() =>
+  import("@/components/app/delta-toolbox-page").then((module) => ({ default: module.DeltaToolboxPage })),
+);
 
 const tools = [
   {
@@ -82,14 +103,34 @@ const deltaTools = [
 
 type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"];
 
-const pageMap: Record<ToolId, React.FC> = {
-  morse: MorsePage,
-  timer: TimerPage,
-  rapidfire: RapidfirePage,
-  "delta-accounts": DeltaAccountsPage,
-  "delta-game": DeltaGamePage,
-  "delta-toolbox": DeltaToolboxPage,
-};
+function ToolPageFallback() {
+  return (
+    <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-6 text-center text-sm font-medium text-muted-foreground">
+      正在装载工具面板...
+    </div>
+  );
+}
+
+function ToolPageSuspense({ children, fallback = <ToolPageFallback /> }: { children: ReactNode; fallback?: ReactNode }) {
+  return <Suspense fallback={fallback}>{children}</Suspense>;
+}
+
+function renderToolPage(activeTool: ToolId) {
+  switch (activeTool) {
+    case "timer":
+      return <TimerPage />;
+    case "rapidfire":
+      return <RapidfirePage />;
+    case "delta-accounts":
+      return <DeltaAccountsPage />;
+    case "delta-game":
+      return <DeltaGamePage />;
+    case "delta-toolbox":
+      return <DeltaToolboxPage />;
+    case "morse":
+      return <MorsePage />;
+  }
+}
 
 function App() {
   const overlayMode = useMemo(() => {
@@ -97,36 +138,71 @@ function App() {
     return params.get("mode");
   }, []);
   const [activeTool, setActiveTool] = useState<ToolId>("morse");
+  const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
+
+  useEffect(() => {
+    if (!isOverlayWindowMode) return;
+    document.body.dataset.overlayMode = "true";
+    return () => {
+      delete document.body.dataset.overlayMode;
+    };
+  }, [isOverlayWindowMode]);
 
   if (overlayMode === "overlay") {
-    return <MorsePage overlayMode />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <MorsePage overlayMode />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "timer-display") {
-    return <TimerPage overlayMode="display" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <TimerPage overlayMode="display" />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "counter-display") {
-    return <TimerPage overlayMode="counter-display" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <TimerPage overlayMode="counter-display" />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "timer-position") {
-    return <TimerPage overlayMode="position" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <TimerPage overlayMode="position" />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "counter-position") {
-    return <TimerPage overlayMode="counter-position" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <TimerPage overlayMode="counter-position" />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "rapidfire-display") {
-    return <RapidfirePage overlayMode="display" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <RapidfirePage overlayMode="display" />
+      </ToolPageSuspense>
+    );
   }
 
   if (overlayMode === "rapidfire-position") {
-    return <RapidfirePage overlayMode="position" />;
+    return (
+      <ToolPageSuspense fallback={null}>
+        <RapidfirePage overlayMode="position" />
+      </ToolPageSuspense>
+    );
   }
-
-  const PageComponent = pageMap[activeTool] ?? MorsePage;
 
   return (
     <DeltaAccountsProvider>
@@ -240,7 +316,7 @@ function App() {
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="flex min-h-full flex-col">
                 <div className="flex min-h-full flex-col p-4 xl:p-5">
-                  <PageComponent />
+                  <ToolPageSuspense>{renderToolPage(activeTool)}</ToolPageSuspense>
                 </div>
               </div>
             </div>
