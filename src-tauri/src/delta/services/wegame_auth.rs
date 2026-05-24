@@ -67,10 +67,14 @@ impl WegameAuthService {
         self.client
             .get("https://xui.ptlogin2.qq.com/cgi-bin/xlogin")
             .query(&[
+                ("s_url", WEGAME_QQ_CALLBACK),
                 ("appid", WEGAME_QQ_APPID),
                 ("daid", WEGAME_QQ_DAID),
-                ("pt_3rd_aid", "0"),
-                ("s_url", WEGAME_QQ_CALLBACK),
+                ("style", "20"),
+                ("pt_no_auth", "0"),
+                ("target", "self"),
+                ("hide_close_icon", "1"),
+                ("hide_border", "1"),
             ])
             .send()
             .await?
@@ -79,7 +83,18 @@ impl WegameAuthService {
         let image = self
             .client
             .get("https://xui.ptlogin2.qq.com/ssl/ptqrshow")
-            .query(&[("appid", WEGAME_QQ_APPID), ("daid", WEGAME_QQ_DAID)])
+            .query(&[
+                ("appid", WEGAME_QQ_APPID),
+                ("e", "2"),
+                ("l", "M"),
+                ("s", "3"),
+                ("d", "72"),
+                ("v", "4"),
+                ("t", "0.6142752744667854"),
+                ("daid", WEGAME_QQ_DAID),
+                ("pt_3rd_aid", "0"),
+                ("u1", WEGAME_QQ_CALLBACK),
+            ])
             .send()
             .await?
             .bytes()
@@ -101,33 +116,32 @@ impl WegameAuthService {
         &self,
         req: WegameQqStatusRequest,
     ) -> Result<ApiResponse<Value>, DeltaError> {
-        restore_cookie_json(&self.jar, "https://ssl.ptlogin2.qq.com/", &req.cookie)?;
-        insert_cookie(&self.jar, "https://ssl.ptlogin2.qq.com/", "qrsig", &req.qr_sig)?;
+        restore_cookie_json(&self.jar, "https://xui.ptlogin2.qq.com/", &req.cookie)?;
+        insert_cookie(&self.jar, "https://xui.ptlogin2.qq.com/", "qrsig", &req.qr_sig)?;
 
         let action = format!("0-0-{}", current_millis());
         let body = self
             .client
-            .get("https://ssl.ptlogin2.qq.com/ptqrlogin")
+            .get("https://xui.ptlogin2.qq.com/ssl/ptqrlogin")
             .header("Referer", XLOGIN_REFERER)
             .query(&[
                 ("u1", WEGAME_QQ_CALLBACK),
                 ("ptqrtoken", req.qr_token.as_str()),
-                ("pt_login_sig", req.login_sig.as_str()),
-                ("qrsig", req.qr_sig.as_str()),
-                ("action", action.as_str()),
-                ("js_ver", "10143"),
-                ("js_type", "1"),
-                ("login_sig", ""),
-                ("pt_vcode_v1", "0"),
-                ("pt_verifysession_v1", "0"),
+                ("ptredirect", "0"),
                 ("h", "1"),
                 ("t", "1"),
                 ("g", "1"),
                 ("from_ui", "1"),
-                ("ptredirect", "0"),
+                ("ptlang", "2052"),
+                ("action", action.as_str()),
+                ("js_ver", "25051315"),
+                ("js_type", "1"),
+                ("login_sig", req.login_sig.as_str()),
+                ("pt_uistyle", "40"),
                 ("aid", WEGAME_QQ_APPID),
                 ("daid", WEGAME_QQ_DAID),
-                ("has_onekey", "1"),
+                ("o1vId", "3f7262f28e2853a1549dbdd4f0008b0f"),
+                ("pt_js_version", "9fce2a54"),
             ])
             .send()
             .await?
@@ -156,6 +170,7 @@ impl WegameAuthService {
             .json(&json!({
                 "clienttype": 1000005,
                 "mappid": 10001,
+                "mcode": null,
                 "config_params": { "lang_type": 0 },
                 "login_info": {
                     "qq_info_type": 6,
@@ -174,6 +189,7 @@ impl WegameAuthService {
     // -------- Wegame WeChat --------
 
     pub async fn get_wechat_login_qr(&self) -> Result<WechatQr, DeltaError> {
+        let ts = current_millis().to_string();
         let body = self
             .client
             .get("https://open.weixin.qq.com/connect/qrconnect")
@@ -183,7 +199,10 @@ impl WegameAuthService {
                 ("scope", "snsapi_login"),
                 ("redirect_uri", WEGAME_WECHAT_CALLBACK),
                 ("state", "1"),
+                ("login_type", "jssdk"),
                 ("self_redirect", "true"),
+                ("ts", ts.as_str()),
+                ("style", "black"),
             ])
             .send()
             .await?
@@ -214,6 +233,8 @@ impl WegameAuthService {
             .json(&json!({
                 "clienttype": 1000005,
                 "mappid": 10001,
+                "mcode": "",
+                "config_params": { "lang_type": 0 },
                 "login_info": {
                     "wx_info_type": 1,
                     "appid": WEGAME_WECHAT_APPID,
@@ -250,9 +271,12 @@ impl WegameAuthService {
         self.inject_ticket(ticket)?;
         let preview: Value = self
             .client
-            .post("https://www.wegame.com.cn/api/act/delta_force/OpenTreasureChest")
-            .header("Referer", WEGAME_BASE)
-            .json(&json!({}))
+            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/OpenTreasureChest")
+            .header("Referer", "https://www.wegame.com.cn/helper/df/")
+            .json(&json!({
+                "account_type": 1,
+                "from_src": "df_web",
+            }))
             .send()
             .await?
             .json()
@@ -264,9 +288,12 @@ impl WegameAuthService {
 
         let obtain: Value = self
             .client
-            .post("https://www.wegame.com.cn/api/act/delta_force/ObtainTreasureChest")
-            .header("Referer", WEGAME_BASE)
-            .json(&json!({}))
+            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/ObtainTreasureChest")
+            .header("Referer", "https://www.wegame.com.cn/helper/df/")
+            .json(&json!({
+                "account_type": 1,
+                "from_src": "df_web",
+            }))
             .send()
             .await?
             .json()
@@ -278,9 +305,11 @@ impl WegameAuthService {
         self.inject_ticket(ticket)?;
         let current: Value = self
             .client
-            .post("https://www.wegame.com.cn/api/act/delta_force/GetUserCards")
-            .header("Referer", WEGAME_BASE)
-            .json(&json!({}))
+            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/GetUserCards")
+            .header("Referer", "https://www.wegame.com.cn/helper/df/")
+            .json(&json!({
+                "from_src": "\u{4e09}\u{89d2}\u{6d32}\u{884c}\u{52a8}",
+            }))
             .send()
             .await?
             .json()
@@ -292,18 +321,22 @@ impl WegameAuthService {
 
         let _ = self
             .client
-            .post("https://www.wegame.com.cn/api/act/delta_force/DrawCard")
-            .header("Referer", WEGAME_BASE)
-            .json(&json!({}))
+            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/DrawCard")
+            .header("Referer", "https://www.wegame.com.cn/helper/df/")
+            .json(&json!({
+                "from_src": "\u{4e09}\u{89d2}\u{6d32}\u{884c}\u{52a8}",
+            }))
             .send()
             .await?
             .text()
             .await?;
         let combo: Value = self
             .client
-            .post("https://www.wegame.com.cn/api/act/delta_force/GetCardsBestCombination")
-            .header("Referer", WEGAME_BASE)
-            .json(&json!({}))
+            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/GetCardsBestCombination")
+            .header("Referer", "https://www.wegame.com.cn/helper/df/")
+            .json(&json!({
+                "from_src": "\u{4e09}\u{89d2}\u{6d32}\u{884c}\u{52a8}",
+            }))
             .send()
             .await?
             .json()
@@ -402,6 +435,54 @@ mod tests {
         assert_eq!(response.data["cookie"]["p_skey"], "abc");
     }
 
+    #[tokio::test]
+    async fn maps_wegame_qq_scanned_awaiting_confirm() {
+        let response =
+            WegameAuthService::map_qq_poll_body("ptuiCB('67','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.code, 2);
+        assert_eq!(response.msg, "已扫码待确认");
+    }
+
+    #[tokio::test]
+    async fn maps_wegame_qq_expired() {
+        let response =
+            WegameAuthService::map_qq_poll_body("ptuiCB('65','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.code, -2);
+        assert_eq!(response.msg, "二维码失效");
+    }
+
+    #[tokio::test]
+    async fn maps_wegame_qq_rejected() {
+        let response =
+            WegameAuthService::map_qq_poll_body("ptuiCB('86','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.code, -3);
+        assert_eq!(response.msg, "登录被拒绝");
+    }
+
+    #[tokio::test]
+    async fn maps_wegame_qq_unknown_status() {
+        let response =
+            WegameAuthService::map_qq_poll_body("ptuiCB('99','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
+        assert_eq!(response.code, -4);
+        assert_eq!(response.msg, "未知错误");
+    }
+
     #[test]
     fn parses_wegame_ticket_payload() {
         let ticket = WegameAuthService::parse_ticket(&json!({
@@ -419,5 +500,23 @@ mod tests {
                 ticket: "ticket-1".to_string()
             }
         );
+    }
+
+    #[test]
+    fn parses_wegame_ticket_returns_defaults_on_missing_fields() {
+        let ticket = WegameAuthService::parse_ticket(&json!({
+            "data": {}
+        }))
+        .unwrap();
+
+        assert_eq!(ticket.id, "");
+        assert_eq!(ticket.ticket, "");
+    }
+
+    #[test]
+    fn parses_wegame_ticket_returns_defaults_on_missing_data() {
+        let ticket = WegameAuthService::parse_ticket(&json!({})).unwrap();
+        assert_eq!(ticket.id, "");
+        assert_eq!(ticket.ticket, "");
     }
 }

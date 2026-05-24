@@ -9,6 +9,7 @@ use crate::delta::{
     response::ApiResponse,
     services::{
         game::{GameAuth, GameService},
+        pioneer_auth::{PioneerAuthService, PioneerLoginQr, PioneerStatusRequest},
         qq_auth::{QqAccessToken, QqAuthService, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
         qq_safe::{QqSafeAccess, QqSafeService},
         wechat_auth::{WechatAccessToken, WechatAuthService, WechatQr},
@@ -63,6 +64,56 @@ pub struct QqSafeBannedListRequest {
     pub openid: String,
     pub access_token: String,
     pub code: String,
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QqSafeReportRequest {
+    pub openid: String,
+    pub access_token: String,
+    pub user_id: String,
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerLoginRequest {
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerStatusRequestDto {
+    pub qr_token: String,
+    pub qr_sig: String,
+    pub login_sig: String,
+    pub cookie: String,
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerAccessTokenRequest {
+    pub cookie: String,
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerUpdateAccessTokenRequest {
+    pub openid: String,
+    pub access_token: String,
+    pub cookie: Option<String>,
+    pub options: Option<CommandOptions>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerGameTestListRequest {
+    pub key: String,
+    #[serde(default)]
+    pub list_type: Option<String>,
     pub options: Option<CommandOptions>,
 }
 
@@ -277,6 +328,76 @@ pub async fn delta_qqsafe_get_banned_list(
             code: req.code,
         })
         .await?;
+    Ok(ApiResponse::ok("获取成功", data))
+}
+
+#[tauri::command]
+pub async fn delta_qqsafe_report(
+    req: QqSafeReportRequest,
+) -> Result<ApiResponse<Value>, DeltaError> {
+    let service = QqSafeService::new(http_options(req.options))?;
+    let data = service.report(&req.openid, &req.access_token, &req.user_id).await?;
+    Ok(ApiResponse::ok("获取成功", data))
+}
+
+// -------- Pioneer (先遣服) --------
+
+#[tauri::command]
+pub async fn delta_pioneer_get_login_qr(
+    req: PioneerLoginRequest,
+) -> Result<ApiResponse<PioneerLoginQr>, DeltaError> {
+    let service = PioneerAuthService::new(http_options(req.options))?;
+    let data = service.get_login_qr().await?;
+    Ok(ApiResponse::ok("获取成功", data))
+}
+
+#[tauri::command]
+pub async fn delta_pioneer_poll_status(
+    req: PioneerStatusRequestDto,
+) -> Result<ApiResponse<Value>, DeltaError> {
+    let service = PioneerAuthService::new(http_options(req.options))?;
+    let data = service
+        .poll_login_status(PioneerStatusRequest {
+            qr_token: req.qr_token,
+            qr_sig: req.qr_sig,
+            login_sig: req.login_sig,
+            cookie: req.cookie,
+        })
+        .await?;
+    Ok(data)
+}
+
+#[tauri::command]
+pub async fn delta_pioneer_get_access_token(
+    req: PioneerAccessTokenRequest,
+) -> Result<ApiResponse<Value>, DeltaError> {
+    let service = PioneerAuthService::new(http_options(req.options))?;
+    let data = service.get_access_token(&req.cookie).await?;
+    Ok(ApiResponse::ok("获取成功", json!({ "key": data.key })))
+}
+
+#[tauri::command]
+pub async fn delta_pioneer_update_access_token(
+    req: PioneerUpdateAccessTokenRequest,
+) -> Result<ApiResponse<Value>, DeltaError> {
+    let service = PioneerAuthService::new(http_options(req.options))?;
+    let result = service
+        .update_access_token(&req.openid, &req.access_token, req.cookie.as_deref())
+        .await?;
+    if result {
+        Ok(ApiResponse::ok("更新成功", json!([])))
+    } else {
+        Ok(ApiResponse { code: -1, msg: "更新失败".to_string(), data: json!([]) })
+    }
+}
+
+#[tauri::command]
+pub async fn delta_pioneer_get_game_test_list(
+    req: PioneerGameTestListRequest,
+) -> Result<ApiResponse<Value>, DeltaError> {
+    let service = PioneerAuthService::new(http_options(req.options))?;
+    let list_type = req.list_type.as_deref().unwrap_or("pc");
+    let data = service.get_game_test_list(&req.key, list_type).await?;
     Ok(ApiResponse::ok("获取成功", data))
 }
 

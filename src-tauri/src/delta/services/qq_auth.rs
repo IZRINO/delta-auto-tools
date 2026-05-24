@@ -15,6 +15,7 @@ use crate::delta::{
         hashes::{get_gtk, get_qr_token},
         html::extract_query_param,
         jsonp::extract_jsonp_args,
+        time::current_millis,
     },
 };
 
@@ -97,8 +98,16 @@ impl QqAuthService {
             .query(&[
                 ("appid", QQ_LOGIN_APP_ID),
                 ("daid", QQ_LOGIN_DAID),
-                ("pt_3rd_aid", self.login_third_party_aid),
+                ("style", "33"),
+                ("login_text", "\u{767b}\u{5f55}"),
+                ("hide_title_bar", "1"),
+                ("hide_border", "1"),
+                ("target", "self"),
                 ("s_url", QQ_LOGIN_JUMP_URL),
+                ("pt_3rd_aid", self.login_third_party_aid),
+                ("pt_feedback_link", "https://support.qq.com/products/77942?customInfo=milo.qq.com.appid101491592"),
+                ("theme", "2"),
+                ("verify_theme", ""),
             ])
             .send()
             .await?
@@ -107,7 +116,18 @@ impl QqAuthService {
         let image = self
             .client
             .get("https://xui.ptlogin2.qq.com/ssl/ptqrshow")
-            .query(&[("appid", QQ_LOGIN_APP_ID), ("daid", QQ_LOGIN_DAID)])
+            .query(&[
+                ("appid", QQ_LOGIN_APP_ID),
+                ("e", "2"),
+                ("l", "M"),
+                ("s", "3"),
+                ("d", "72"),
+                ("v", "4"),
+                ("t", "0.6142752744667854"),
+                ("daid", QQ_LOGIN_DAID),
+                ("pt_3rd_aid", self.login_third_party_aid),
+                ("u1", self.poll_jump_url.as_str()),
+            ])
             .send()
             .await?
             .bytes()
@@ -135,7 +155,22 @@ impl QqAuthService {
             .query(&[
                 ("u1", self.poll_jump_url.as_str()),
                 ("ptqrtoken", req.qr_token.as_str()),
-                ("pt_login_sig", req.login_sig.as_str()),
+                ("ptredirect", "0"),
+                ("h", "1"),
+                ("t", "1"),
+                ("g", "1"),
+                ("from_ui", "1"),
+                ("ptlang", "2052"),
+                ("action", &format!("0-0-{}", current_millis())),
+                ("js_ver", "25040111"),
+                ("js_type", "1"),
+                ("login_sig", req.login_sig.as_str()),
+                ("pt_uistyle", "40"),
+                ("aid", QQ_LOGIN_APP_ID),
+                ("daid", QQ_LOGIN_DAID),
+                ("pt_3rd_aid", self.login_third_party_aid),
+                ("o1vId", "378b06c889d9113b39e814ca627809e3"),
+                ("pt_js_version", "530c3f68"),
             ])
             .send()
             .await?
@@ -155,6 +190,12 @@ impl QqAuthService {
         let p_skey = must_cookie(&self.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = get_gtk(&p_skey).to_string();
 
+        let auth_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+
         let resp = self
             .client
             .post("https://graph.qq.com/oauth2.0/authorize")
@@ -162,7 +203,16 @@ impl QqAuthService {
                 ("response_type", "code"),
                 ("client_id", self.oauth_client_id),
                 ("redirect_uri", self.oauth_redirect_uri),
+                ("scope", ""),
+                ("state", "STATE"),
+                ("switch", ""),
+                ("form_plogin", "1"),
+                ("src", "1"),
+                ("update_auth", "1"),
+                ("openapi", "1010"),
                 ("g_tk", gtk.as_str()),
+                ("auth_time", auth_time.as_str()),
+                ("ui", "979D48F3-6CE2-4E95-A789-3BD3187648B6"),
             ])
             .send()
             .await?;
@@ -206,6 +256,7 @@ impl QqAuthService {
             restore_cookie_json(&self.jar, "https://ssl.ptlogin2.qq.com/", cookie_json)?;
         }
 
+        let now = current_millis().to_string();
         let body = self
             .client
             .post("https://ams.game.qq.com/ams/userLoginSvr")
@@ -215,6 +266,10 @@ impl QqAuthService {
                 ("appid", appid),
                 ("access_token", req.access_token.as_str()),
                 ("openid", req.openid.as_str()),
+                ("refresh_token", ""),
+                ("ieg_ams_sign", "null"),
+                ("expires_time", "null"),
+                ("_", now.as_str()),
             ])
             .send()
             .await?
@@ -269,5 +324,58 @@ mod tests {
         .unwrap();
         assert_eq!(response.code, 0);
         assert_eq!(response.data["redirect"], "https://qq.com/callback?uin=10001");
+    }
+
+    #[tokio::test]
+    async fn maps_scanned_awaiting_confirm_status() {
+        let response = QqAuthService::map_poll_body("ptuiCB('67','0','','0','msg','')", |_| async {
+            Ok(json!({}))
+        })
+        .await
+        .unwrap();
+        assert_eq!(response.code, 2);
+        assert_eq!(response.msg, "已扫码,待确认");
+    }
+
+    #[tokio::test]
+    async fn maps_qr_expired_status() {
+        let response = QqAuthService::map_poll_body("ptuiCB('65','0','','0','msg','')", |_| async {
+            Ok(json!({}))
+        })
+        .await
+        .unwrap();
+        assert_eq!(response.code, -2);
+        assert_eq!(response.msg, "二维码失效");
+    }
+
+    #[tokio::test]
+    async fn maps_login_rejected_status() {
+        let response = QqAuthService::map_poll_body("ptuiCB('86','0','','0','msg','')", |_| async {
+            Ok(json!({}))
+        })
+        .await
+        .unwrap();
+        assert_eq!(response.code, -3);
+        assert_eq!(response.msg, "登录被拒绝");
+    }
+
+    #[tokio::test]
+    async fn maps_unknown_status() {
+        let response = QqAuthService::map_poll_body("ptuiCB('99','0','','0','msg','')", |_| async {
+            Ok(json!({}))
+        })
+        .await
+        .unwrap();
+        assert_eq!(response.code, -4);
+        assert_eq!(response.msg, "未知错误信息");
+    }
+
+    #[tokio::test]
+    async fn maps_empty_callback() {
+        let result = QqAuthService::map_poll_body("ptuiCB()", |_| async {
+            Ok(json!({}))
+        })
+        .await;
+        assert!(result.is_err() || result.unwrap().code == -4);
     }
 }

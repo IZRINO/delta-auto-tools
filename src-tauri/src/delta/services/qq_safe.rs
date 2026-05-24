@@ -51,6 +51,12 @@ impl QqSafeService {
         let p_skey = must_cookie(&self.qq_service.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = get_gtk(&p_skey).to_string();
 
+        let auth_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .to_string();
+
         let resp = self
             .qq_service
             .client
@@ -61,7 +67,14 @@ impl QqSafeService {
                 ("redirect_uri", QQSAFE_REDIRECT_URI),
                 ("scope", "all"),
                 ("state", "qqconnect_2"),
+                ("switch", ""),
+                ("form_plogin", "1"),
+                ("src", "1"),
+                ("update_auth", "1"),
+                ("openapi", "1010"),
                 ("g_tk", gtk.as_str()),
+                ("auth_time", auth_time.as_str()),
+                ("ui", "8414A4DC-B157-42EE-84AE-84477CD7832A"),
             ])
             .send()
             .await?;
@@ -110,15 +123,54 @@ impl QqSafeService {
             .await?;
         Ok(value["data"].clone())
     }
+
+    pub async fn report(&self, openid: &str, access_token: &str, user_id: &str) -> Result<Value, DeltaError> {
+        insert_cookie(&self.qq_service.jar, "https://wx.gamesafe.qq.com/", "openid", openid)?;
+        insert_cookie(&self.qq_service.jar, "https://wx.gamesafe.qq.com/", "access_token", access_token)?;
+
+        let value: Value = self
+            .qq_service
+            .client
+            .get("https://wx.gamesafe.qq.com/api/plat/user_report")
+            .query(&[("user_id", user_id)])
+            .header("User-Agent", "MicroMessenger")
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        let ret = value["ret"].as_i64().unwrap_or(-1);
+        if ret != 0 {
+            let msg = value["message"].as_str().unwrap_or("获取失败");
+            return Err(DeltaError::Parse(msg.to_string()));
+        }
+        Ok(value["data"].clone())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::delta::utils::html::decode_jwt_middle;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
     #[test]
     fn decodes_qqsafe_token_payload() {
         let payload = decode_jwt_middle("head.eyJ0b2tlbiI6InRva2VuIn0.tail").unwrap();
         assert_eq!(payload["token"], "token");
+    }
+
+    #[test]
+    fn decodes_qqsafe_token_with_multiple_fields() {
+        let json_str = r#"{"token":"abc123","uin":"10001"}"#;
+        let json_b64 = URL_SAFE_NO_PAD.encode(json_str);
+        let payload = decode_jwt_middle(&format!("head.{json_b64}.tail")).unwrap();
+        assert_eq!(payload["token"], "abc123");
+        assert_eq!(payload["uin"], "10001");
+    }
+
+    #[test]
+    fn decodes_qqsafe_token_returns_error_on_invalid_base64() {
+        let result = decode_jwt_middle("head.!!!invalid!!!.tail");
+        assert!(result.is_err());
     }
 }

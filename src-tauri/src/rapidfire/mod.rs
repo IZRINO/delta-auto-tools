@@ -1555,6 +1555,7 @@ mod tests {
                 count: 1,
                 status: RapidfireSessionStatus::Firing,
                 control_tx: Some(tx1),
+                compensate_now: Arc::new(AtomicBool::new(false)),
             },
         );
         runtime.active_session_ids.push("session-2".to_string());
@@ -1564,6 +1565,7 @@ mod tests {
                 count: 2,
                 status: RapidfireSessionStatus::Firing,
                 control_tx: Some(tx2),
+                compensate_now: Arc::new(AtomicBool::new(false)),
             },
         );
 
@@ -1585,6 +1587,7 @@ mod tests {
                 count: 1,
                 status: RapidfireSessionStatus::Firing,
                 control_tx: Some(tx1),
+                compensate_now: Arc::new(AtomicBool::new(false)),
             },
         );
         runtime.active_session_ids.push("session-2".to_string());
@@ -1594,6 +1597,7 @@ mod tests {
                 count: 1,
                 status: RapidfireSessionStatus::Firing,
                 control_tx: Some(tx2),
+                compensate_now: Arc::new(AtomicBool::new(false)),
             },
         );
 

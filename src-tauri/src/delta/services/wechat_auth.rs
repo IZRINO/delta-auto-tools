@@ -39,6 +39,7 @@ impl WechatAuthService {
     }
 
     pub async fn get_login_qr(&self) -> Result<WechatQr, DeltaError> {
+        let ts = current_millis().to_string();
         let html = self
             .client
             .get("https://open.weixin.qq.com/connect/qrconnect")
@@ -47,7 +48,10 @@ impl WechatAuthService {
                 ("scope", "snsapi_login"),
                 ("redirect_uri", WECHAT_REDIRECT_URI),
                 ("state", "1"),
+                ("login_type", "jssdk"),
                 ("self_redirect", "true"),
+                ("ts", &ts),
+                ("style", "black"),
             ])
             .header(reqwest::header::REFERER, DF_REFERER)
             .send()
@@ -92,11 +96,13 @@ impl WechatAuthService {
             .client
             .get("https://apps.game.qq.com/ams/ame/codeToOpenId.php")
             .query(&[
+                ("callback", ""),
                 ("appid", WECHAT_APP_ID),
                 ("wxcode", code),
                 ("originalUrl", WECHAT_ORIGINAL_URL),
                 ("wxcodedomain", WECHAT_CODE_DOMAIN),
                 ("acctype", "wx"),
+                ("sServiceType", "undefined"),
                 ("_", now.as_str()),
             ])
             .header(reqwest::header::REFERER, DF_REFERER)
@@ -112,6 +118,7 @@ impl WechatAuthService {
     }
 
     pub async fn update_access_token(&self, req: &UpdateTokenOnlyRequest) -> Result<bool, DeltaError> {
+        let now = current_millis().to_string();
         let body = self
             .client
             .post("https://ams.game.qq.com/ams/userLoginSvr")
@@ -121,6 +128,10 @@ impl WechatAuthService {
                 ("appid", WECHAT_APP_ID),
                 ("access_token", req.access_token.as_str()),
                 ("openid", req.openid.as_str()),
+                ("refresh_token", ""),
+                ("ieg_ams_sign", "null"),
+                ("expires_time", "null"),
+                ("_", now.as_str()),
             ])
             .send()
             .await?
@@ -145,5 +156,41 @@ mod tests {
     fn maps_wechat_waiting_status() {
         let response = WechatAuthService::map_status_body("window.wx_errcode=408;").unwrap();
         assert_eq!(response.code, 1);
+    }
+
+    #[test]
+    fn maps_wechat_scanned_status() {
+        let response = WechatAuthService::map_status_body("window.wx_errcode=404;").unwrap();
+        assert_eq!(response.code, 2);
+        assert_eq!(response.msg, "已扫码");
+    }
+
+    #[test]
+    fn maps_wechat_timeout_status() {
+        let response = WechatAuthService::map_status_body("window.wx_errcode=402;").unwrap();
+        assert_eq!(response.code, -2);
+        assert_eq!(response.msg, "二维码超时");
+    }
+
+    #[test]
+    fn maps_wechat_rejected_status() {
+        let response = WechatAuthService::map_status_body("window.wx_errcode=403;").unwrap();
+        assert_eq!(response.code, -3);
+        assert_eq!(response.msg, "扫码被拒绝");
+    }
+
+    #[test]
+    fn maps_wechat_unknown_status() {
+        let response = WechatAuthService::map_status_body("window.wx_errcode=500;").unwrap();
+        assert_eq!(response.code, -4);
+        assert_eq!(response.msg, "其他错误代码");
+        assert_eq!(response.data["wxErrcode"], 500);
+    }
+
+    #[test]
+    fn maps_wechat_success_with_empty_code() {
+        let response = WechatAuthService::map_status_body("window.wx_errcode=405;").unwrap();
+        assert_eq!(response.code, 3);
+        assert_eq!(response.data["wxCode"], "");
     }
 }
