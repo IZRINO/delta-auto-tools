@@ -13,6 +13,7 @@ pub enum AccountKind {
     QqSafe,
     WegameQq,
     WegameWechat,
+    Pioneer,
 }
 
 impl AccountKind {
@@ -23,6 +24,7 @@ impl AccountKind {
             Self::QqSafe => "qqsafe",
             Self::WegameQq => "wegame_qq",
             Self::WegameWechat => "wegame_wechat",
+            Self::Pioneer => "pioneer",
         }
     }
 
@@ -33,6 +35,7 @@ impl AccountKind {
             "qqsafe" => Ok(Self::QqSafe),
             "wegame_qq" => Ok(Self::WegameQq),
             "wegame_wechat" => Ok(Self::WegameWechat),
+            "pioneer" => Ok(Self::Pioneer),
             _ => Err(DeltaError::Parse(format!("unknown account kind: {value}"))),
         }
     }
@@ -268,5 +271,27 @@ mod tests {
 
         assert!(repo.delete_account(record.id).unwrap());
         assert!(repo.get_account(record.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn stores_pioneer_accounts() {
+        let dir = tempdir().unwrap();
+        let repo = DeltaRepo::new(&dir.path().join("delta.db")).unwrap();
+
+        let record = repo
+            .upsert_account(DeltaAccountUpsert {
+                kind: AccountKind::Pioneer,
+                uin_or_openid: "10002".to_string(),
+                cookie_json: r#"{"uin":"o10002"}"#.to_string(),
+                openid: None,
+                access_token: Some("key-1".to_string()),
+                extra_json: Some(r#"{"source":"pioneer"}"#.to_string()),
+                expires_at: None,
+                now: 400,
+            })
+            .unwrap();
+
+        assert_eq!(record.kind, AccountKind::Pioneer);
+        assert_eq!(record.uin_or_openid, "10002");
     }
 }

@@ -8,7 +8,7 @@
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
   2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
   3. **连发器工作台**：主界面负责多张连发器卡片配置、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时自动补齐触发次数为偶数 → 独立透明窗口置顶点击穿透显示结果。
-  4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQSafe 鉴权和游戏数据查询能力，当前阶段以原生命令与存储为主，尚未接入前端页面（前端仅有 `ToolPlaceholderPage` 占位组件）。
+  4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQ安全中心/先遣服鉴权和游戏数据查询能力，前端已接入账号管理、游戏数据与工具箱页面。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-vega` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
 
@@ -78,7 +78,7 @@ src/
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
 │       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
 │       ├── delta-game-page.tsx      # 游戏数据页：仪表盘分批加载 + 查询工作台
-│       ├── delta-toolbox-page.tsx   # 工具箱页：Wegame/QQSafe/先遣服按账号动态渲染
+│       ├── delta-toolbox-page.tsx   # 工具箱页：Wegame/QQ安全中心/先遣服按账号动态渲染
 │       ├── delta-types.ts          # Delta 前端 TypeScript 类型定义与常量
 │       ├── delta-types.test.ts     # Delta 类型常量测试（AccountKind camelCase 一致性等）
 │       ├── delta-utils.ts          # Delta 工具函数（令牌状态、账号能力、GameAuth 构造等）
@@ -102,9 +102,9 @@ src/
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
 - **热键录制**：录制时调用 `morse_set_hotkey_recording(true)` 暂停被动热键监听，录制后恢复。按 Escape 取消恢复旧值
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
-- **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
+- **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`、`Pioneer`→`"pioneer"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
 - **Delta 全局账号状态**：`DeltaAccountsProvider` 包裹整个应用，三页共享 `selectedAccountId`；切换页面后选中态保持
-- **Delta 登录流程**：`LOGIN_FLOW_MODE_MAP` 将 6 种 `LoginFlowKind` 映射到 QQ 模式或微信模式；`LoginFlowKind` 是前端内部路由概念，不等同于 `AccountKind`（如 `"pioneer"` 是 `LoginFlowKind` 但不是 `AccountKind`）
+- **Delta 登录流程**：`LOGIN_FLOW_MODE_MAP` 将 6 种 `LoginFlowKind` 映射到 QQ 模式或微信模式；`LoginFlowKind` 是前端内部路由概念，登录成功后按对应 `AccountKind` 持久化账号
 - **Delta 数据展示**：当前所有游戏 API 返回使用 `JSON.stringify` 原始展示；待 API 响应结构确认后替换为结构化渲染
 - **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；若当前选中账号不在过滤范围内，选择器显示为空（不会自动切换到第一个匹配账号）
 
@@ -148,7 +148,7 @@ src-tauri/src/
     │   ├── mod.rs
     │   ├── game.rs             # GameService：游戏数据查询（IDE gateway）
     │   ├── qq_auth.rs          # QQ 扫码登录 + 鉴权
-    │   ├── qq_safe.rs          # QQSafe 扫码登录 + 封禁查询
+    │   ├── qq_safe.rs          # QQ安全中心扫码登录 + 封禁查询
     │   ├── wechat_auth.rs      # 微信扫码登录 + 鉴权
     │   └── wegame_auth.rs      # Wegame QQ/微信登录 + 宝箱/抽卡
     ├── storage/
@@ -333,15 +333,16 @@ src-tauri/src/
 ### Delta 端
 
 - `src-tauri/src/delta/commands.rs` 负责 Delta DTO、Tauri commands、账号解析与持久化编排
-- `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQSafe / Wegame / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构
+- `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构
 - `src-tauri/src/delta/storage/repo.rs` 使用 SQLite 单表 `delta_accounts` 承载不同账号类型
 
-**AccountKind 枚举（5 种变体）**：
+**AccountKind 枚举（6 种变体）**：
 - `Qq` — QQ 账号
 - `Wechat` — 微信账号
-- `QqSafe` — QQSafe 安全中心
+- `QqSafe` — QQ安全中心
 - `WegameQq` — Wegame QQ 登录
 - `WegameWechat` — Wegame 微信登录
+- `Pioneer` — 先遣服登录
 
 新增账号类型应优先扩展此枚举，对应的 DB 存储使用 `kind.as_str()` / `AccountKind::from_str()` 序列化。
 
@@ -453,8 +454,9 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 ### 前端测试（Vitest）
 - `src/components/app/morse-utils.test.ts` — Morse 前端测试，测试工具函数
 - `src/components/app/timer-utils.test.ts` — 计时\计数器前端测试，测试设置转层、进度计算与倒计时格式化
-- `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、GameAuth 构造、QqSafe code 提取、显示名截断等 59 个用例）
-- `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等 15 个用例）
+- `src/components/app/delta-login-utils.test.ts` — Delta 登录工具测试（Tauri invoke 参数包装、轮询 cookie/wxCode 提取等 11 个用例）
+- `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、GameAuth 构造、QQ安全中心 code 提取、显示名截断等 63 个用例）
+- `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等 16 个用例）
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）

@@ -12,6 +12,22 @@ pub fn extract_query_param(url: &str, key: &str) -> Result<String, DeltaError> {
         .ok_or_else(|| DeltaError::Parse(format!("query param {key} not found")))
 }
 
+pub fn extract_raw_query_param(url: &str, key: &str) -> Result<String, DeltaError> {
+    let query = url
+        .split_once('?')
+        .map(|(_, query)| query)
+        .unwrap_or("");
+    for pair in query.split('&') {
+        let Some((name, value)) = pair.split_once('=') else {
+            continue;
+        };
+        if name == key {
+            return Ok(value.to_string());
+        }
+    }
+    Err(DeltaError::Parse(format!("query param {key} not found")))
+}
+
 pub fn extract_wx_qrcode_uuid(html: &str) -> Result<String, DeltaError> {
     let re = Regex::new(r#"/connect/qrcode/(?P<uuid>[A-Za-z0-9]+)"#)
         .map_err(|error| DeltaError::Parse(error.to_string()))?;
@@ -52,8 +68,8 @@ pub fn decode_jwt_middle(value: &str) -> Result<Value, DeltaError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_jwt_middle, extract_query_param, extract_wx_code, extract_wx_errcode,
-        extract_wx_qrcode_uuid,
+        decode_jwt_middle, extract_query_param, extract_raw_query_param, extract_wx_code,
+        extract_wx_errcode, extract_wx_qrcode_uuid,
     };
 
     #[test]
@@ -61,6 +77,14 @@ mod tests {
         let code =
             extract_query_param("https://qq.com/callback?code=abc123&state=1", "code").unwrap();
         assert_eq!(code, "abc123");
+    }
+
+    #[test]
+    fn extracts_raw_query_param_without_decoding() {
+        let code =
+            extract_raw_query_param("https://qq.com/callback?code=a%2Bb%252F&state=1", "code")
+                .unwrap();
+        assert_eq!(code, "a%2Bb%252F");
     }
 
     #[test]

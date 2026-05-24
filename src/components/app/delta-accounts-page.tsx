@@ -65,9 +65,11 @@ export function DeltaAccountsPage() {
       const cmd = cmdMap[account.kind];
       if (!cmd) return;
       await invoke(cmd, {
-        openid: account.openid,
-        accessToken: account.accessToken,
-        cookie: account.kind === "qq" ? account.cookieJson || undefined : undefined,
+        req: {
+          openid: account.openid,
+          accessToken: account.accessToken,
+          cookie: account.kind === "qq" ? account.cookieJson || undefined : undefined,
+        },
       });
       await refreshAccounts();
     } catch {

@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::delta::{
     client::http::HttpOptions,
-    constants::{QQSAFE_OAUTH_APP_ID, QQSAFE_REDIRECT_URI},
+    constants::{QQSAFE_OAUTH_APP_ID, QQSAFE_REDIRECT_URI, QQ_LOGIN_JUMP_URL},
     error::DeltaError,
     services::qq_auth::{QqAuthService, QqLoginQr, QqStatusRequest},
     utils::{cookies::{insert_cookie, must_cookie, restore_cookie_json}, hashes::get_gtk, html::{decode_jwt_middle, extract_query_param}},
@@ -27,7 +27,7 @@ impl QqSafeService {
         Ok(Self {
             qq_service: QqAuthService::with_config(
                 options,
-                QQSAFE_REDIRECT_URI.to_string(),
+                QQ_LOGIN_JUMP_URL.to_string(),
                 QQSAFE_OAUTH_APP_ID,
                 QQSAFE_REDIRECT_URI,
                 QQSAFE_OAUTH_APP_ID,
@@ -87,11 +87,13 @@ impl QqSafeService {
             .map_err(|error| DeltaError::Parse(error.to_string()))?
             .to_string();
         let code = extract_query_param(&location, "code")?;
+        let _ = self.qq_service.client.get(&location).send().await?;
         let _ = self
             .qq_service
             .client
             .get("https://gamesafe.qq.com/connect")
             .query(&[("code", code.as_str()), ("appId", QQSAFE_OAUTH_APP_ID), ("atype", "QQ")])
+            .header(reqwest::header::REFERER, "https://gamesafe.qq.com/login-ui/index.html")
             .send()
             .await?;
 

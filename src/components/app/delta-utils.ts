@@ -29,7 +29,7 @@ export function getCapabilities(kind: AccountKind): Capability[] {
 }
 
 export function canRefreshToken(kind: AccountKind): boolean {
-  return kind === "qq" || kind === "wechat";
+  return kind === "qq" || kind === "wechat" || kind === "pioneer";
 }
 
 export function buildGameAuth(account: DeltaAccountRecord): GameAuth | null {
@@ -62,7 +62,7 @@ export function extractQqSafeCode(extraJson: string | null): string | null {
 }
 
 export function getAccountDisplayName(account: DeltaAccountRecord): string {
-  if (account.kind === "qq" || account.kind === "qqSafe" || account.kind === "wegameQq") {
+  if (account.kind === "qq" || account.kind === "qqSafe" || account.kind === "wegameQq" || account.kind === "pioneer") {
     return account.uinOrOpenid;
   }
   const oid = account.openid ?? account.uinOrOpenid;

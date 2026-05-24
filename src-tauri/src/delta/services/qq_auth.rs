@@ -7,17 +7,29 @@ use serde_json::{json, Value};
 
 use crate::delta::{
     client::http::{build_client, HttpOptions},
-    constants::{QQ_LOGIN_APP_ID, QQ_LOGIN_DAID, QQ_LOGIN_JUMP_URL, QQ_OAUTH_APP_ID, QQ_REDIRECT_URI},
+    constants::{DF_REFERER, QQ_LOGIN_APP_ID, QQ_LOGIN_DAID, QQ_LOGIN_JUMP_URL, QQ_OAUTH_APP_ID, QQ_REDIRECT_URI},
     error::DeltaError,
     response::ApiResponse,
     utils::{
-        cookies::{dump_cookie_json, insert_cookie, must_cookie, restore_cookie_json},
+        cookies::{
+            dump_cookie_json, dump_cookie_json_for_urls, insert_cookie, must_cookie,
+            restore_cookie_json, restore_cookie_json_for_domain,
+        },
         hashes::{get_gtk, get_qr_token},
-        html::extract_query_param,
+        html::{extract_query_param, extract_raw_query_param},
         jsonp::extract_jsonp_args,
         time::current_millis,
     },
 };
+
+const QQ_COOKIE_DOMAIN: &str = ".qq.com";
+const QQ_LOGIN_COOKIE_URLS: &[&str] = &[
+    "https://xui.ptlogin2.qq.com/",
+    "https://ssl.ptlogin2.qq.com/",
+    "https://graph.qq.com/",
+    "https://ptlogin2.qq.com/",
+    "https://qq.com/",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,14 +191,14 @@ impl QqAuthService {
 
         Self::map_poll_body(&body, async |redirect_url| {
             let _ = self.client.get(&redirect_url).send().await?;
-            let cookie = dump_cookie_json(&self.jar, "https://graph.qq.com/")?;
+            let cookie = dump_cookie_json_for_urls(&self.jar, QQ_LOGIN_COOKIE_URLS)?;
             Ok(json!({ "cookie": cookie, "uin": extract_query_param(&redirect_url, "uin").ok() }))
         })
         .await
     }
 
     pub async fn get_access_token(&self, cookie_json: &str) -> Result<QqAccessToken, DeltaError> {
-        restore_cookie_json(&self.jar, "https://graph.qq.com/", cookie_json)?;
+        restore_cookie_json_for_domain(&self.jar, "https://graph.qq.com/", QQ_COOKIE_DOMAIN, cookie_json)?;
         let p_skey = must_cookie(&self.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = get_gtk(&p_skey).to_string();
 
@@ -214,6 +226,7 @@ impl QqAuthService {
                 ("auth_time", auth_time.as_str()),
                 ("ui", "979D48F3-6CE2-4E95-A789-3BD3187648B6"),
             ])
+            .header(reqwest::header::REFERER, "https://xui.ptlogin2.qq.com/")
             .send()
             .await?;
 
@@ -224,19 +237,31 @@ impl QqAuthService {
             .to_str()
             .map_err(|error| DeltaError::Parse(error.to_string()))?
             .to_string();
-        let code = extract_query_param(&location, "code")?;
+        let code = extract_raw_query_param(&location, "code")?;
         let _ = self.client.get(&location).send().await?;
 
+        let now = current_millis().to_string();
         let body = self
             .client
             .get("https://ams.game.qq.com/ams/userLoginSvr")
-            .query(&[("a", "qcCodeToOpenId"), ("code", code.as_str()), ("callback", "coolxitech")])
+            .query(&[
+                ("a", "qcCodeToOpenId"),
+                ("qc_code", code.as_str()),
+                ("appid", QQ_OAUTH_APP_ID),
+                ("redirect_uri", "https://milo.qq.com/comm-htdocs/login/qc_redirect.html"),
+                ("callback", "coolxitech"),
+                ("_", now.as_str()),
+            ])
+            .header(reqwest::header::REFERER, DF_REFERER)
             .send()
             .await?
             .text()
             .await?;
         let args = extract_jsonp_args(&body, "coolxitech")?;
         let payload: Value = serde_json::from_str(args.first().map(String::as_str).unwrap_or("{}"))?;
+        if payload["iRet"].as_i64().unwrap_or(-1) != 0 {
+            return Err(DeltaError::Parse(qq_access_token_error_message(&payload)));
+        }
 
         Ok(QqAccessToken {
             access_token: payload["access_token"].as_str().unwrap_or_default().to_string(),
@@ -298,11 +323,21 @@ impl QqAuthService {
     }
 }
 
+fn qq_access_token_error_message(payload: &Value) -> String {
+    let ret = payload["iRet"].as_i64().unwrap_or(-1);
+    let message = payload["sMsg"]
+        .as_str()
+        .or_else(|| payload["msg"].as_str())
+        .or_else(|| payload["message"].as_str())
+        .unwrap_or("AccessToken获取失败");
+    format!("AccessToken获取失败: iRet={ret}, {message}")
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::QqAuthService;
+    use super::{qq_access_token_error_message, QqAuthService};
 
     #[tokio::test]
     async fn maps_waiting_status() {
@@ -377,5 +412,15 @@ mod tests {
         })
         .await;
         assert!(result.is_err() || result.unwrap().code == -4);
+    }
+
+    #[test]
+    fn formats_access_token_failure_detail() {
+        let message = qq_access_token_error_message(&json!({
+            "iRet": -1,
+            "sMsg": "登录态无效"
+        }));
+
+        assert_eq!(message, "AccessToken获取失败: iRet=-1, 登录态无效");
     }
 }

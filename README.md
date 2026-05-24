@@ -1,6 +1,6 @@
 # Delta Auto Tools
 
-这是一个基于 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具仓库，当前提供 **摩斯密码解析工作台** 与 **计时\计数器工作台**。
+这是一个基于 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具仓库，当前提供 **摩斯密码解析工作台**、**计时\计数器工作台**、**连发器工作台** 与 **Delta API 工具**。
 
 ## 当前功能
 
@@ -26,6 +26,13 @@
 - 计时器和计数器各有独立总开关；关闭某一类功能后只隐藏对应透明窗口并解绑对应快捷键，配置仍持久化保留
 - 透明窗口字体透明度可调；计时结束后保持终值并高亮斜体显示
 - 位置设置窗口支持拖动位置，按 Enter 保存，按 Esc 退出修改
+
+### Delta API 工具
+
+- 账号管理支持 QQ、微信、QQ安全中心、Wegame QQ、Wegame 微信与先遣服扫码登录
+- 登录流程通过 Tauri commands 直接调用原生 Rust 服务，成功后持久化到本地 SQLite
+- 工具箱按账号能力展示 Wegame 运营、QQ安全中心查询与先遣服测试列表
+- 游戏数据页通过已登录 QQ/微信账号查询玩家、战绩、资产、对局等数据
 
 ## 常用命令
 
@@ -95,6 +102,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `src/components/app/timer-page.tsx`：计时\计数器工作台、透明窗口与位置设置界面
 - `src/components/app/timer-utils.ts`：计时\计数器纯逻辑工具函数
 - `src/components/app/timer-types.ts`：计时\计数器前端内部共享类型与常量
+- `src/components/app/delta-login-dialog.tsx`：Delta 账号扫码登录 Dialog
+- `src/components/app/delta-login-utils.ts`：Delta 登录 invoke 参数与响应提取工具
+- `src/components/app/delta-types.ts`：Delta 前端账号、能力、登录流程类型与常量
 - `src-tauri/src/morse/mod.rs`：摩斯 Tauri command 与主状态入口
 - `src-tauri/src/morse/overlay.rs`：摩斯区域框选状态机
 - `src-tauri/src/morse/settings.rs`：摩斯设置持久化
@@ -103,6 +113,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `src-tauri/src/hotkeys.rs`：共享热键监听，供摩斯与计时器注册各自快捷键
 - `src-tauri/src/timer/settings.rs`：计时器设置持久化
 - `src-tauri/src/timer/types.rs`：计时器 Rust DTO
+- `src-tauri/src/delta/commands.rs`：Delta Tauri commands 与账号持久化编排
+- `src-tauri/src/delta/services/`：QQ、微信、QQ安全中心、Wegame、先遣服与游戏数据服务
+- `src-tauri/src/delta/storage/repo.rs`：Delta 账号 SQLite 存储
 
 ## 关键约束
 

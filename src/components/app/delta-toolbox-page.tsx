@@ -14,7 +14,8 @@ import { Spinner } from "@/components/ui/spinner";
 
 const WEGAME_KINDS: AccountKind[] = ["wegameQq", "wegameWechat"];
 const QQSAFE_KINDS: AccountKind[] = ["qqSafe"];
-const ALL_TOOLBOX_KINDS: AccountKind[] = [...WEGAME_KINDS, ...QQSAFE_KINDS];
+const PIONEER_KINDS: AccountKind[] = ["pioneer"];
+const ALL_TOOLBOX_KINDS: AccountKind[] = [...WEGAME_KINDS, ...QQSAFE_KINDS, ...PIONEER_KINDS];
 
 export function DeltaToolboxPage() {
   const { selectedAccount, isNativeShell } = useDeltaAccounts();
@@ -28,7 +29,7 @@ export function DeltaToolboxPage() {
   const [cardResult, setCardResult] = useState<unknown>(null);
   const [cardError, setCardError] = useState<string | null>(null);
 
-  // QQSafe 状态
+  // QQ 安全中心状态
   const [bannedLoading, setBannedLoading] = useState(false);
   const [bannedResult, setBannedResult] = useState<unknown>(null);
   const [bannedError, setBannedError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export function DeltaToolboxPage() {
     setGiftError(null);
     setGiftResult(null);
     try {
-      const res = await invoke<ApiResponse<unknown>>("delta_wegame_open_treasure_gift", { ticket });
+      const res = await invoke<ApiResponse<unknown>>("delta_wegame_open_treasure_gift", { request: { ticket } });
       if (res.code === 0) setGiftResult(res.data);
       else setGiftError(res.msg || "领取失败");
     } catch (e) {
@@ -84,7 +85,7 @@ export function DeltaToolboxPage() {
     setCardError(null);
     setCardResult(null);
     try {
-      const res = await invoke<ApiResponse<unknown>>("delta_wegame_draw_daily_card", { ticket });
+      const res = await invoke<ApiResponse<unknown>>("delta_wegame_draw_daily_card", { request: { ticket } });
       if (res.code === 0) setCardResult(res.data);
       else setCardError(res.msg || "抽卡失败");
     } catch (e) {
@@ -94,7 +95,7 @@ export function DeltaToolboxPage() {
     }
   }, [selectedAccount]);
 
-  // QQSafe 封禁查询
+  // QQ 安全中心封禁查询
   const handleLoadBanned = useCallback(async () => {
     if (!selectedAccount || !selectedAccount.openid || !selectedAccount.accessToken) return;
     const code = extractQqSafeCode(selectedAccount.extraJson);
@@ -106,9 +107,11 @@ export function DeltaToolboxPage() {
     setBannedError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_qqsafe_get_banned_list", {
-        openid: selectedAccount.openid,
-        accessToken: selectedAccount.accessToken,
-        code,
+        req: {
+          openid: selectedAccount.openid,
+          accessToken: selectedAccount.accessToken,
+          code,
+        },
       });
       if (res.code === 0) setBannedResult(res.data);
       else setBannedError(res.msg || "查询失败");
@@ -119,16 +122,18 @@ export function DeltaToolboxPage() {
     }
   }, [selectedAccount]);
 
-  // QQSafe 举报
+  // QQ 安全中心举报
   const handleReport = useCallback(async () => {
     if (!selectedAccount || !selectedAccount.openid || !selectedAccount.accessToken || !reportUserId) return;
     setReportLoading(true);
     setReportError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_qqsafe_report", {
-        openid: selectedAccount.openid,
-        accessToken: selectedAccount.accessToken,
-        userId: reportUserId,
+        req: {
+          openid: selectedAccount.openid,
+          accessToken: selectedAccount.accessToken,
+          userId: reportUserId,
+        },
       });
       if (res.code === 0) setReportResult(res.data);
       else setReportError(res.msg || "查询失败");
@@ -146,8 +151,10 @@ export function DeltaToolboxPage() {
     setPioneerError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_pioneer_get_game_test_list", {
-        key: selectedAccount.accessToken,
-        listType: pioneerListType,
+        req: {
+          key: selectedAccount.accessToken,
+          listType: pioneerListType,
+        },
       });
       if (res.code === 0) setPioneerResult(res.data);
       else setPioneerError(res.msg || "查询失败");
@@ -185,7 +192,7 @@ export function DeltaToolboxPage() {
 
       <DeltaAccountSelector
         filterKinds={ALL_TOOLBOX_KINDS}
-        emptyText="请先在账号管理中添加 Wegame、QQSafe 或先遣服账号"
+        emptyText="请先在账号管理中添加 Wegame、QQ安全中心或先遣服账号"
       />
 
       {!selectedAccount && (
@@ -199,7 +206,7 @@ export function DeltaToolboxPage() {
       {selectedAccount && !hasWegame && !hasQqSafe && !hasPioneer && (
         <TacticalCard className="min-h-48">
           <CardBody className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            当前账号为 {ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQSafe 或先遣服账号。
+            当前账号为 {ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQ安全中心或先遣服账号。
           </CardBody>
         </TacticalCard>
       )}
@@ -244,9 +251,9 @@ export function DeltaToolboxPage() {
       {hasQqSafe && (
         <TacticalCard>
           <SectionHeader
-            eyebrow="QQSafe"
+            eyebrow="QQ安全中心"
             icon={<RiShieldLine />}
-            title="QQSafe 安全查询"
+            title="QQ安全中心查询"
             description="查询封禁记录与游戏报告"
           />
           <CardBody className="space-y-4">

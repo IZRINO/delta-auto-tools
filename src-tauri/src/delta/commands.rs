@@ -9,7 +9,7 @@ use crate::delta::{
     response::ApiResponse,
     services::{
         game::{GameAuth, GameService},
-        pioneer_auth::{PioneerAuthService, PioneerLoginQr, PioneerStatusRequest},
+        pioneer_auth::{PioneerAccessToken, PioneerAuthService, PioneerLoginQr, PioneerStatusRequest},
         qq_auth::{QqAccessToken, QqAuthService, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
         qq_safe::{QqSafeAccess, QqSafeService},
         wechat_auth::{WechatAccessToken, WechatAuthService, WechatQr},
@@ -369,11 +369,29 @@ pub async fn delta_pioneer_poll_status(
 
 #[tauri::command]
 pub async fn delta_pioneer_get_access_token(
+    state: State<'_, DeltaState>,
     req: PioneerAccessTokenRequest,
-) -> Result<ApiResponse<Value>, DeltaError> {
+) -> Result<ApiResponse<AccountBoundAccess<PioneerAccessToken>>, DeltaError> {
     let service = PioneerAuthService::new(http_options(req.options))?;
     let data = service.get_access_token(&req.cookie).await?;
-    Ok(ApiResponse::ok("获取成功", json!({ "key": data.key })))
+    let uin = cookie_identity(&req.cookie).unwrap_or_else(|| "pioneer".to_string());
+    let account = state.persist_account(
+        AccountKind::Pioneer,
+        uin,
+        req.cookie,
+        None,
+        Some(data.key.clone()),
+        None,
+        Some(json!({ "source": "pioneer" }).to_string()),
+    )?;
+    Ok(ApiResponse::ok(
+        "获取成功",
+        AccountBoundAccess {
+            account_id: account.id,
+            account,
+            auth: data,
+        },
+    ))
 }
 
 #[tauri::command]
@@ -431,6 +449,13 @@ fn http_options(options: Option<CommandOptions>) -> HttpOptions {
             .and_then(|options| options.insecure_skip_tls_verify)
             .unwrap_or(false),
     }
+}
+
+fn cookie_identity(cookie_json: &str) -> Option<String> {
+    let cookies: serde_json::Map<String, Value> = serde_json::from_str(cookie_json).ok()?;
+    let raw = cookies.get("uin")?.as_str()?;
+    let normalized = raw.trim_start_matches('o');
+    (!normalized.is_empty()).then(|| normalized.to_string())
 }
 
 // ============================================================================
@@ -813,7 +838,7 @@ pub async fn delta_game_get_bind(
 mod tests {
     use serde_json::json;
 
-    use super::GameGunsRequest;
+    use super::{cookie_identity, GameGunsRequest};
 
     #[test]
     fn deserializes_game_guns_request_from_gun_id() {
@@ -822,5 +847,18 @@ mod tests {
 
         assert_eq!(request.gun_id, "gun-akm");
         assert!(request.options.is_none());
+    }
+
+    #[test]
+    fn extracts_pioneer_identity_from_cookie_uin() {
+        assert_eq!(
+            cookie_identity(r#"{"uin":"o10002","p_skey":"abc"}"#),
+            Some("10002".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_for_missing_cookie_identity() {
+        assert_eq!(cookie_identity(r#"{"p_skey":"abc"}"#), None);
     }
 }

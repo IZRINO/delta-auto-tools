@@ -165,7 +165,7 @@ impl WegameAuthService {
         let body = self
             .client
             .post("https://www.wegame.com.cn/api/middle/clientapi/auth/login_by_qq")
-            .header("Referer", WEGAME_BASE)
+            .header("Referer", WEGAME_QQ_CALLBACK)
             .header("Origin", "https://www.wegame.com.cn")
             .json(&json!({
                 "clienttype": 1000005,
@@ -228,7 +228,7 @@ impl WegameAuthService {
         let body = self
             .client
             .post("https://www.wegame.com.cn/api/middle/clientapi/auth/login_by_wechat")
-            .header("Referer", WEGAME_BASE)
+            .header("Referer", "https://www.wegame.com.cn/login/callback.html")
             .header("Origin", "https://www.wegame.com.cn")
             .json(&json!({
                 "clienttype": 1000005,

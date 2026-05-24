@@ -1,4 +1,4 @@
-export type AccountKind = "qq" | "wechat" | "qqSafe" | "wegameQq" | "wegameWechat";
+export type AccountKind = "qq" | "wechat" | "qqSafe" | "wegameQq" | "wegameWechat" | "pioneer";
 
 export type DeltaAccountRecord = {
   id: number;
@@ -46,8 +46,10 @@ export type QqPollCode = 0 | 1 | 2 | -2 | -3 | -4;
 export type WechatPollCode = 1 | 2 | 3 | -2 | -3 | -4;
 
 export type QqLoginQrResult = {
-  qrImage: string;
-  qrToken: string;
+  image?: string;
+  qrImage?: string;
+  token?: number | string;
+  qrToken?: string;
   qrSig: string;
   loginSig: string;
   cookie: string;
@@ -150,9 +152,10 @@ export const EXPIRING_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
 export const ACCOUNT_KIND_LABELS: Record<AccountKind, string> = {
   qq: "QQ",
   wechat: "微信",
-  qqSafe: "QQSafe",
+  qqSafe: "QQ安全中心",
   wegameQq: "Wegame QQ",
   wegameWechat: "Wegame 微信",
+  pioneer: "先遣服",
 };
 
 export const ACCOUNT_KIND_CAPABILITIES: Record<AccountKind, Capability[]> = {
@@ -161,12 +164,13 @@ export const ACCOUNT_KIND_CAPABILITIES: Record<AccountKind, Capability[]> = {
   qqSafe: ["qqsafe"],
   wegameQq: ["wegame"],
   wegameWechat: ["wegame"],
+  pioneer: ["pioneer"],
 };
 
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   game_data: "游戏数据",
   wegame: "Wegame",
-  qqsafe: "QQSafe",
+  qqsafe: "QQ安全中心",
   pioneer: "先遣服",
 };
 
@@ -182,7 +186,7 @@ export const LOGIN_FLOW_KINDS: LoginFlowKind[] = [
 export const LOGIN_FLOW_KIND_LABELS: Record<LoginFlowKind, string> = {
   qq: "QQ",
   wechat: "微信",
-  qqsafe: "QQSafe",
+  qqsafe: "QQ安全中心",
   wegame_qq: "Wegame QQ",
   wegame_wechat: "Wegame 微信",
   pioneer: "先遣服",

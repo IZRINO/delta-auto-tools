@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { LoginFlowKind, QqLoginQrResult, QqPollCode, WechatLoginQrResult, WechatPollCode, QqAccessTokenResult, WechatAccessTokenResult, WegameQqAccessResult } from "@/components/app/delta-types";
 import { LOGIN_FLOW_KINDS, LOGIN_FLOW_KIND_LABELS, LOGIN_FLOW_MODE_MAP } from "@/components/app/delta-types";
+import {
+  buildAccessTokenInvokeArgs,
+  buildLoginQrInvokeArgs,
+  buildQqPollInvokeArgs,
+  buildWechatPollInvokeArgs,
+  extractQqPollCookie,
+  extractQqQrImage,
+  extractQqQrToken,
+  extractWechatCode,
+} from "@/components/app/delta-login-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +66,7 @@ const WECHAT_ACCESS_TOKEN_CMDS: Record<string, string> = {
 };
 
 type QqSession = { qrToken: string; qrSig: string; loginSig: string; cookie: string };
+type AccessTokenPayload = { cookie?: string; code?: string };
 
 // ── 组件 ──
 
@@ -117,7 +128,7 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
 
   // ── 获取访问令牌 ──
 
-  const fetchAccessToken = useCallback(async (wxCode?: string) => {
+  const fetchAccessToken = useCallback(async (payload: AccessTokenPayload = {}) => {
     const kind = flowKindRef.current;
     if (!kind) return;
     setStep("fetching_token");
@@ -127,14 +138,21 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
     try {
       let res: { code: number; msg: string };
 
-      if (mode === "qq" && qrSessionRef.current) {
+      if (mode === "qq" && (payload.cookie || qrSessionRef.current)) {
         const cmd = QQ_ACCESS_TOKEN_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的令牌获取流程"); return; }
-        res = await invoke<{ code: number; msg: string; data: QqAccessTokenResult | WegameQqAccessResult | { key: string } }>(cmd, { cookie: qrSessionRef.current.cookie });
-      } else if (mode === "wechat" && wxCode) {
+        const cookie = payload.cookie ?? qrSessionRef.current?.cookie;
+        res = await invoke<{ code: number; msg: string; data: QqAccessTokenResult | WegameQqAccessResult | { key: string } }>(
+          cmd,
+          buildAccessTokenInvokeArgs(kind, cookie),
+        );
+      } else if (mode === "wechat" && payload.code) {
         const cmd = WECHAT_ACCESS_TOKEN_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的令牌获取流程"); return; }
-        res = await invoke<{ code: number; msg: string; data: WechatAccessTokenResult }>(cmd, { code: wxCode });
+        res = await invoke<{ code: number; msg: string; data: WechatAccessTokenResult }>(
+          cmd,
+          buildAccessTokenInvokeArgs(kind, undefined, payload.code),
+        );
       } else {
         setStep("error"); setErrorMessage("缺少令牌获取所需参数"); return;
       }
@@ -174,16 +192,24 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
         if (mode === "qq" && qrSessionRef.current) {
           const session = qrSessionRef.current;
           const cmd = QQ_POLL_CMDS[flowKindRef.current!];
-          const res = await invoke<{ code: number; msg: string }>(cmd, {
-            qrToken: session.qrToken,
-            qrSig: session.qrSig,
-            loginSig: session.loginSig,
-            cookie: session.cookie,
-          });
+          const res = await invoke<{ code: number; msg: string; data: unknown }>(
+            cmd,
+            buildQqPollInvokeArgs(flowKindRef.current!, session),
+          );
           const code = res.code as QqPollCode;
           if (code === 0) {
+            const loggedInCookie = extractQqPollCookie(res);
+            if (!loggedInCookie) {
+              stopPolling();
+              setStep("error");
+              setErrorMessage("登录成功但未返回可用 Cookie，请重新扫码");
+              return;
+            }
+            const nextSession = { ...session, cookie: loggedInCookie };
+            qrSessionRef.current = nextSession;
+            setQrSession(nextSession);
             stopPolling(); setPollStatus("登录成功");
-            await fetchAccessToken();
+            await fetchAccessToken({ cookie: loggedInCookie });
           } else if (code === 1) {
             setPollStatus("等待扫描...");
           } else if (code === 2) {
@@ -197,13 +223,21 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
           }
         } else if (mode === "wechat" && wechatUuidRef.current) {
           const cmd = WECHAT_POLL_CMDS[flowKindRef.current!];
-          const res = await invoke<{ code: number; msg: string; wxErrcode?: string; wxCode?: string }>(cmd, {
-            uuid: wechatUuidRef.current,
-          });
+          const res = await invoke<{ code: number; msg: string; data: unknown }>(
+            cmd,
+            buildWechatPollInvokeArgs(flowKindRef.current!, wechatUuidRef.current),
+          );
           const code = res.code as WechatPollCode;
           if (code === 3) {
+            const wxCode = extractWechatCode(res);
+            if (!wxCode) {
+              stopPolling();
+              setStep("error");
+              setErrorMessage("登录成功但未返回微信授权码，请重新扫码");
+              return;
+            }
             stopPolling(); setPollStatus("登录成功");
-            await fetchAccessToken(res.wxCode);
+            await fetchAccessToken({ code: wxCode });
           } else if (code === 1) {
             setPollStatus("等待扫描...");
           } else if (code === 2) {
@@ -242,10 +276,20 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
         const cmd = QQ_LOGIN_QR_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的 QQ 流程"); return; }
 
-        const res = await invoke<{ code: number; msg: string; data: QqLoginQrResult }>(cmd);
+        const res = await invoke<{ code: number; msg: string; data: QqLoginQrResult }>(
+          cmd,
+          buildLoginQrInvokeArgs(kind),
+        );
         if (res.code === 0 && res.data) {
-          setQrImageData(res.data.qrImage);
-          setQrSession({ qrToken: res.data.qrToken, qrSig: res.data.qrSig, loginSig: res.data.loginSig, cookie: res.data.cookie });
+          const image = extractQqQrImage(res.data);
+          const qrToken = extractQqQrToken(res.data);
+          if (!image || !qrToken) {
+            setStep("error");
+            setErrorMessage("二维码数据不完整，请重新扫码");
+            return;
+          }
+          setQrImageData(image);
+          setQrSession({ qrToken, qrSig: res.data.qrSig, loginSig: res.data.loginSig, cookie: res.data.cookie });
           setQrCodeUrl(null);
           setStep("qr_code");
         } else {
@@ -256,7 +300,10 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
         const cmd = WECHAT_LOGIN_QR_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的微信流程"); return; }
 
-        const res = await invoke<{ code: number; msg: string; data: WechatLoginQrResult }>(cmd);
+        const res = await invoke<{ code: number; msg: string; data: WechatLoginQrResult }>(
+          cmd,
+          buildLoginQrInvokeArgs(kind),
+        );
         if (res.code === 0 && res.data) {
           setQrCodeUrl(res.data.qrCode);
           setWechatUuid(res.data.uuid);
@@ -326,12 +373,11 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
             )}
 
             {qrCodeUrl && !qrImageData && (
-              <div className="size-52 rounded-lg border border-[var(--surface-border)] bg-muted p-4 flex flex-col items-center justify-center gap-3">
-                <p className="text-center text-xs text-muted-foreground">请使用微信扫描下方链接</p>
-                <code className="block max-w-full truncate rounded bg-background/60 px-2 py-1 text-[0.6rem] font-mono text-foreground">
-                  {qrCodeUrl}
-                </code>
-              </div>
+              <img
+                src={qrCodeUrl}
+                alt="微信登录二维码"
+                className="size-52 rounded-lg border border-[var(--surface-border)] bg-muted p-3"
+              />
             )}
 
             <div className="flex items-center gap-2 text-sm">

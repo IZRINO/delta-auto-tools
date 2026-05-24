@@ -8,7 +8,7 @@ pub const QQ_REDIRECT_URI: &str =
 pub const QQSAFE_REDIRECT_URI: &str =
     "https://gamesafe.qq.com/login-ui/index.html?cPageName=middle&type=QQ&backUrl=reload&appId=101944512";
 pub const WECHAT_APP_ID: &str = "wxfa0c35392d06b82f";
-pub const WECHAT_REDIRECT_URI: &str = "https://iu.qq.com/df_pc/df_pc.html";
+pub const WECHAT_REDIRECT_URI: &str = "https://iu.qq.com/comm-htdocs/login/milosdk/wx_pc_redirect.html?appid=wxfa0c35392d06b82f&sServiceType=undefined&originalUrl=https%3A%2F%2Fdf.qq.com%2Fcp%2Frecord202410ver%2F&oriOrigin=https%3A%2F%2Fdf.qq.com";
 pub const WECHAT_ORIGINAL_URL: &str = "https://df.qq.com/cp/record202410ver/";
 pub const WECHAT_CODE_DOMAIN: &str = "iu.qq.com";
 pub const DF_REFERER: &str = "https://df.qq.com/";

@@ -121,6 +121,10 @@ describe("getCapabilities", () => {
   it("returns wegame for wegameWechat (camelCase)", () => {
     expect(getCapabilities("wegameWechat")).toEqual(["wegame"]);
   });
+
+  it("returns pioneer for pioneer", () => {
+    expect(getCapabilities("pioneer")).toEqual(["pioneer"]);
+  });
 });
 
 describe("canRefreshToken", () => {
@@ -142,6 +146,10 @@ describe("canRefreshToken", () => {
 
   it("returns false for wegameWechat", () => {
     expect(canRefreshToken("wegameWechat")).toBe(false);
+  });
+
+  it("returns true for pioneer", () => {
+    expect(canRefreshToken("pioneer")).toBe(true);
   });
 });
 
@@ -265,6 +273,10 @@ describe("getAccountDisplayName", () => {
     expect(getAccountDisplayName(makeAccount({ kind: "wegameQq" }))).toBe("1234567890");
   });
 
+  it("returns uinOrOpenid for pioneer kind", () => {
+    expect(getAccountDisplayName(makeAccount({ kind: "pioneer" }))).toBe("1234567890");
+  });
+
   it("truncates long openid for wechat kind", () => {
     const longId = "a".repeat(20);
     expect(getAccountDisplayName(makeAccount({ kind: "wechat", openid: longId }))).toBe(
@@ -322,5 +334,9 @@ describe("getAcctypeForKind", () => {
 
   it("returns 'wx' for wegameWechat (camelCase)", () => {
     expect(getAcctypeForKind("wegameWechat")).toBe("wx");
+  });
+
+  it("returns 'qc' for pioneer", () => {
+    expect(getAcctypeForKind("pioneer")).toBe("qc");
   });
 });

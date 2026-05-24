@@ -18,7 +18,7 @@ describe("EXPIRING_THRESHOLD_MS", () => {
 });
 
 describe("ACCOUNT_KIND_LABELS", () => {
-  const kinds: AccountKind[] = ["qq", "wechat", "qqSafe", "wegameQq", "wegameWechat"];
+  const kinds: AccountKind[] = ["qq", "wechat", "qqSafe", "wegameQq", "wegameWechat", "pioneer"];
 
   it("has a label for every AccountKind variant", () => {
     for (const kind of kinds) {
@@ -41,6 +41,7 @@ describe("ACCOUNT_KIND_CAPABILITIES", () => {
     expect(ACCOUNT_KIND_CAPABILITIES["qqSafe"]).toBeDefined();
     expect(ACCOUNT_KIND_CAPABILITIES["wegameQq"]).toBeDefined();
     expect(ACCOUNT_KIND_CAPABILITIES["wegameWechat"]).toBeDefined();
+    expect(ACCOUNT_KIND_CAPABILITIES.pioneer).toBeDefined();
   });
 
   it("does NOT contain snake_case keys (would break with Rust serde)", () => {
@@ -61,6 +62,10 @@ describe("ACCOUNT_KIND_CAPABILITIES", () => {
   it("qq and wechat both have game_data capability", () => {
     expect(ACCOUNT_KIND_CAPABILITIES.qq).toContain("game_data");
     expect(ACCOUNT_KIND_CAPABILITIES.wechat).toContain("game_data");
+  });
+
+  it("pioneer has pioneer capability", () => {
+    expect(ACCOUNT_KIND_CAPABILITIES.pioneer).toEqual(["pioneer"]);
   });
 });
 
@@ -122,8 +127,8 @@ describe("AccountKind camelCase consistency", () => {
   it("frontend AccountKind values match Rust serde camelCase output", () => {
     // Rust #[serde(rename_all = "camelCase")] produces:
     // Qq → "qq", Wechat → "wechat", QqSafe → "qqSafe",
-    // WegameQq → "wegameQq", WegameWechat → "wegameWechat"
-    const expected: AccountKind[] = ["qq", "wechat", "qqSafe", "wegameQq", "wegameWechat"];
+    // WegameQq → "wegameQq", WegameWechat → "wegameWechat", Pioneer → "pioneer"
+    const expected: AccountKind[] = ["qq", "wechat", "qqSafe", "wegameQq", "wegameWechat", "pioneer"];
     const actual = Object.keys(ACCOUNT_KIND_LABELS) as AccountKind[];
     expect(actual.sort()).toEqual(expected.sort());
   });
