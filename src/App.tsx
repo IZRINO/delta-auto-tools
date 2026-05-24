@@ -4,11 +4,18 @@ import {
   RiGamepadLine,
   RiRadarLine,
   RiTimerLine,
+  RiAccountPinCircleLine,
+  RiBarChartBoxLine,
+  RiToolsLine,
 } from "@remixicon/react";
 
 import { MorsePage } from "@/components/app/morse-page";
 import { TimerPage } from "@/components/app/timer-page";
 import { RapidfirePage } from "@/components/app/rapidfire-page";
+import { DeltaAccountsPage } from "@/components/app/delta-accounts-page";
+import { DeltaGamePage } from "@/components/app/delta-game-page";
+import { DeltaToolboxPage } from "@/components/app/delta-toolbox-page";
+import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
 import {
   Sidebar,
   SidebarContent,
@@ -52,7 +59,37 @@ const tools = [
   },
 ];
 
-type ToolId = (typeof tools)[number]["id"];
+const deltaTools = [
+  {
+    id: "delta-accounts" as const,
+    icon: RiAccountPinCircleLine,
+    label: "账号管理",
+    short: "Accounts",
+  },
+  {
+    id: "delta-game" as const,
+    icon: RiBarChartBoxLine,
+    label: "游戏数据",
+    short: "Game Data",
+  },
+  {
+    id: "delta-toolbox" as const,
+    icon: RiToolsLine,
+    label: "工具箱",
+    short: "Toolbox",
+  },
+];
+
+type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"];
+
+const pageMap: Record<ToolId, React.FC> = {
+  morse: MorsePage,
+  timer: TimerPage,
+  rapidfire: RapidfirePage,
+  "delta-accounts": DeltaAccountsPage,
+  "delta-game": DeltaGamePage,
+  "delta-toolbox": DeltaToolboxPage,
+};
 
 function App() {
   const overlayMode = useMemo(() => {
@@ -89,93 +126,129 @@ function App() {
     return <RapidfirePage overlayMode="position" />;
   }
 
+  const PageComponent = pageMap[activeTool] ?? MorsePage;
+
   return (
-    <SidebarProvider className="h-svh min-h-0 overflow-hidden bg-transparent" defaultOpen style={appShellStyle}>
-      <Sidebar
-        className="min-h-0 overflow-hidden border-r border-sidebar-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--sidebar)_64%,transparent))] backdrop-blur-2xl"
-        collapsible="none"
-        variant="sidebar"
-      >
-        <SidebarHeader className="p-4 pb-3">
-          <div className="relative overflow-hidden rounded-xl border border-sidebar-border/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--background)_58%,transparent))] px-4 py-4 backdrop-blur-xl">
-            <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_38%,transparent)_0.7px,transparent_0.95px)] bg-[length:20px_20px] opacity-20" />
-            <div className="flex items-center gap-3">
-              <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <RiCrosshair2Line />
+    <DeltaAccountsProvider>
+      <SidebarProvider className="h-svh min-h-0 overflow-hidden bg-transparent" defaultOpen style={appShellStyle}>
+        <Sidebar
+          className="min-h-0 overflow-hidden border-r border-sidebar-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--sidebar)_64%,transparent))] backdrop-blur-2xl"
+          collapsible="none"
+          variant="sidebar"
+        >
+          <SidebarHeader className="p-4 pb-3">
+            <div className="relative overflow-hidden rounded-xl border border-sidebar-border/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--background)_58%,transparent))] px-4 py-4 backdrop-blur-xl">
+              <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_38%,transparent)_0.7px,transparent_0.95px)] bg-[length:20px_20px] opacity-20" />
+              <div className="flex items-center gap-3">
+                <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <RiCrosshair2Line />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
+                  <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Delta Ops Console</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
-                <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Delta Ops Console</p>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
+                  <p className="font-mono text-sm font-semibold text-foreground">06</p>
+                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
+                </div>
+                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
+                  <p className="font-mono text-sm font-semibold text-foreground">07</p>
+                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
+                </div>
+                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
+                  <p className="font-mono text-sm font-semibold text-foreground">2.0</p>
+                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
+                </div>
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">03</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
-              </div>
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">07</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
-              </div>
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">2.0</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
-              </div>
-            </div>
-          </div>
-        </SidebarHeader>
+          </SidebarHeader>
 
-        <SidebarSeparator className="mx-4 mt-1" />
+          <SidebarSeparator className="mx-4 mt-1" />
 
-        <SidebarContent className="min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-2">
-                {tools.map((tool, index) => {
-                  const Icon = tool.icon;
-                  const active = activeTool === tool.id;
-                  return (
-                    <SidebarMenuItem key={tool.id}>
-                      <SidebarMenuButton
-                        className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
-                        isActive={active}
-                        onClick={() => setActiveTool(tool.id)}
-                        tooltip={tool.label}
-                        type="button"
-                      >
-                        <Icon />
-                        <span className="flex min-w-0 flex-1 flex-col items-start">
-                          <span className="truncate text-sm">{tool.label}</span>
-                          <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
-                            0{index + 1} / {tool.short}
+          <SidebarContent className="min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <SidebarGroup className="px-0 py-2">
+              <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-2">
+                  {tools.map((tool, index) => {
+                    const Icon = tool.icon;
+                    const active = activeTool === tool.id;
+                    return (
+                      <SidebarMenuItem key={tool.id}>
+                        <SidebarMenuButton
+                          className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
+                          isActive={active}
+                          onClick={() => setActiveTool(tool.id)}
+                          tooltip={tool.label}
+                          type="button"
+                        >
+                          <Icon />
+                          <span className="flex min-w-0 flex-1 flex-col items-start">
+                            <span className="truncate text-sm">{tool.label}</span>
+                            <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
+                              0{index + 1} / {tool.short}
+                            </span>
                           </span>
-                        </span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
 
-      <SidebarInset className="h-full min-h-0 overflow-hidden bg-transparent">
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <div className="flex min-h-full flex-col">
-              <div className="flex min-h-full flex-col p-4 xl:p-5">
-                {activeTool === "morse" ? <MorsePage /> : activeTool === "timer" ? <TimerPage /> : <RapidfirePage />}
+            <SidebarSeparator className="mx-1 my-1" />
+
+            <SidebarGroup className="px-0 py-2">
+              <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">三角洲行动 API</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-2">
+                  {deltaTools.map((tool, index) => {
+                    const Icon = tool.icon;
+                    const active = activeTool === tool.id;
+                    return (
+                      <SidebarMenuItem key={tool.id}>
+                        <SidebarMenuButton
+                          className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
+                          isActive={active}
+                          onClick={() => setActiveTool(tool.id)}
+                          tooltip={tool.label}
+                          type="button"
+                        >
+                          <Icon />
+                          <span className="flex min-w-0 flex-1 flex-col items-start">
+                            <span className="truncate text-sm">{tool.label}</span>
+                            <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
+                              D{index + 1} / {tool.short}
+                            </span>
+                          </span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+
+        <SidebarInset className="h-full min-h-0 overflow-hidden bg-transparent">
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="flex min-h-full flex-col">
+                <div className="flex min-h-full flex-col p-4 xl:p-5">
+                  <PageComponent />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </DeltaAccountsProvider>
   );
 }
 
 export default App;
-

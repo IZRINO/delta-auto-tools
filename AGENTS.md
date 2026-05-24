@@ -54,7 +54,8 @@ src/
 ├── main.tsx                    # React 入口，mount <App />，含 TooltipProvider
 ├── main.tsx                    # 提供 TooltipProvider
 ├── hooks/
-│   └── use-mobile.ts           # 响应式断点 hook
+│   ├── use-mobile.ts           # 响应式断点 hook
+│   └── use-delta-accounts.tsx  # Delta 账号全局 Context + Provider + hook
 ├── lib/
 │   └── utils.ts                # tailwind-merge + clsx 工具函数
 ├── components/
@@ -74,13 +75,26 @@ src/
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
-│       └── tool-placeholder-page.tsx  # Delta 工具模块占位组件（未开放状态）
+│       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
+│       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
+│       ├── delta-game-page.tsx      # 游戏数据页：仪表盘分批加载 + 查询工作台
+│       ├── delta-toolbox-page.tsx   # 工具箱页：Wegame/QQSafe/先遣服按账号动态渲染
+│       ├── delta-types.ts          # Delta 前端 TypeScript 类型定义与常量
+│       ├── delta-types.test.ts     # Delta 类型常量测试（AccountKind camelCase 一致性等）
+│       ├── delta-utils.ts          # Delta 工具函数（令牌状态、账号能力、GameAuth 构造等）
+│       ├── delta-utils.test.ts     # Delta 工具函数测试
+│       ├── delta-account-card.tsx   # 账号小卡片组件（类型 Badge + UIN + 令牌状态 + 能力标签）
+│       ├── delta-token-badge.tsx    # 令牌状态徽章组件
+│       ├── delta-login-dialog.tsx   # 扫码登录 Dialog（6 种鉴权流程 × 3 种模式）
+│       ├── delta-account-selector.tsx # 账号选择器横条组件（按类型过滤）
+│       ├── delta-data-card.tsx      # 数据展示卡片组件（loading/error/retry 通用）
+│       └── delta-query-workbench.tsx # 查询工作台（6 种参数化 API 动态表单）
 ```
 
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
 - 当前有三个真实工具页面（Morse、计时器、连发器），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
@@ -88,6 +102,11 @@ src/
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
 - **热键录制**：录制时调用 `morse_set_hotkey_recording(true)` 暂停被动热键监听，录制后恢复。按 Escape 取消恢复旧值
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
+- **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
+- **Delta 全局账号状态**：`DeltaAccountsProvider` 包裹整个应用，三页共享 `selectedAccountId`；切换页面后选中态保持
+- **Delta 登录流程**：`LOGIN_FLOW_MODE_MAP` 将 6 种 `LoginFlowKind` 映射到 QQ 模式或微信模式；`LoginFlowKind` 是前端内部路由概念，不等同于 `AccountKind`（如 `"pioneer"` 是 `LoginFlowKind` 但不是 `AccountKind`）
+- **Delta 数据展示**：当前所有游戏 API 返回使用 `JSON.stringify` 原始展示；待 API 响应结构确认后替换为结构化渲染
+- **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；若当前选中账号不在过滤范围内，选择器显示为空（不会自动切换到第一个匹配账号）
 
 ## 原生代码结构
 
@@ -434,6 +453,8 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 ### 前端测试（Vitest）
 - `src/components/app/morse-utils.test.ts` — Morse 前端测试，测试工具函数
 - `src/components/app/timer-utils.test.ts` — 计时\计数器前端测试，测试设置转层、进度计算与倒计时格式化
+- `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、GameAuth 构造、QqSafe code 提取、显示名截断等 59 个用例）
+- `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等 15 个用例）
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
