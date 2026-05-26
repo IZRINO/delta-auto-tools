@@ -200,6 +200,10 @@ export function timerProgressPercent(run: TimerRunState | undefined, durationSec
   return Math.max(0, Math.min(100, (run.remainingSeconds / total) * 100));
 }
 
+export function isTimerRunActive(run: TimerRunState | undefined): boolean {
+  return run?.status === "running";
+}
+
 export function timerRunsById(runs: TimerRunState[]): Map<string, TimerRunState> {
   return new Map(runs.map((run) => [run.id, run]));
 }

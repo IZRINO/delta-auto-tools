@@ -451,6 +451,119 @@ impl HotkeyMatcher {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "windows")]
+    fn keyboard_event(
+        key: willhook::event::KeyboardKey,
+        pressed: willhook::event::KeyPress,
+    ) -> KeyboardEvent {
+        KeyboardEvent {
+            pressed,
+            key: Some(key),
+            is_injected: Some(IsEventInjected::NotInjected),
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn ordinary_hotkey_dispatches_on_key_down_not_key_up() {
+        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+
+        let mut matcher = HotkeyMatcher::new();
+
+        let key_state = matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .expect("按下主键时应立即触发");
+
+        assert!(key_state.modifiers.is_empty());
+        assert_eq!(key_state.primary, PrimaryKey::Function(2));
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Up(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn modified_hotkey_dispatches_when_primary_key_goes_down() {
+        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+
+        let mut matcher = HotkeyMatcher::new();
+
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::LeftControl,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+
+        let key_state = matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .expect("组合键应在主键按下时触发");
+
+        assert!(key_state.modifiers.contains(&ModifierKey::Ctrl));
+        assert_eq!(key_state.primary, PrimaryKey::Function(2));
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Up(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::LeftControl,
+                KeyPress::Up(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+
+        let key_state_after_modifier_release = matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .expect("修饰键释放后主键应恢复为无组合键触发");
+        assert!(key_state_after_modifier_release.modifiers.is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn held_primary_key_does_not_repeat_before_release() {
+        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+
+        let mut matcher = HotkeyMatcher::new();
+
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .is_some());
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Up(IsSystemKeyPress::Normal),
+            ))
+            .is_none());
+        assert!(matcher
+            .handle_event(keyboard_event(
+                KeyboardKey::F2,
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ))
+            .is_some());
+    }
     #[test]
     #[cfg(target_os = "windows")]
     fn dispatches_one_key_state_to_all_matching_registrations() {

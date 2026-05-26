@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TimerSettings } from "@/components/app/timer-types";
-import { formatTimerRemaining, moveTimerItem, parseTimerSettingsForm, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
+import { formatTimerRemaining, isTimerRunActive, moveTimerItem, parseTimerSettingsForm, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
 
 function sampleSettings(): TimerSettings {
   return {
@@ -106,6 +106,29 @@ describe("timer-utils", () => {
   it("computes progress from remaining seconds", () => {
     expect(timerProgressPercent({ id: "a", currentSeconds: 5, remainingSeconds: 5, durationSeconds: 10, direction: "countdown", status: "running", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0, startedAtMs: 0, recoveryStartPool: 0 }, 10)).toBe(50);
     expect(timerProgressPercent({ id: "a", currentSeconds: 10, remainingSeconds: 0, durationSeconds: 10, direction: "countup", status: "finished", segmentCount: null, segmentDuration: 10, recovering: false, recoveringCount: 0, activeSegmentIndex: 0, startedAtMs: 0, recoveryStartPool: 0 }, 10)).toBe(0);
+  });
+
+  it("刚触发且秒数未变化时仍识别为运行中", () => {
+    const runningRun = {
+      id: "a",
+      currentSeconds: 30,
+      remainingSeconds: 30,
+      durationSeconds: 30,
+      direction: "countdown" as const,
+      status: "running" as const,
+      segmentCount: null,
+      segmentDuration: 30,
+      recovering: false,
+      recoveringCount: 0,
+      activeSegmentIndex: 0,
+      startedAtMs: 1000,
+      recoveryStartPool: 0,
+    };
+    const finishedRun = { ...runningRun, currentSeconds: 0, remainingSeconds: 0, status: "finished" as const };
+
+    expect(isTimerRunActive(runningRun)).toBe(true);
+    expect(isTimerRunActive(finishedRun)).toBe(false);
+    expect(isTimerRunActive(undefined)).toBe(false);
   });
 
   it("rejects zero second timers", () => {

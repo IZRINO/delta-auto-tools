@@ -45,6 +45,7 @@ import {
   createTimerItem,
   formatTimerHotkey,
   isTimerDirty,
+  isTimerRunActive,
   moveTimerItem,
   parseTimerSettingsForm,
   timerProgressPercent,
@@ -948,6 +949,7 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
         {bootstrap?.settings.timers.filter((t) => t.enabled).map((timer) => {
           const run = runsById.get(timer.id);
           const finished = run?.status === "finished";
+          const isActive = isTimerRunActive(run);
           const isMultiSegment = timer.segmentCount != null && timer.segmentCount >= 2;
           const progress = smoothProgress(run);
 
@@ -964,12 +966,15 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
           }
 
           return (
-            <div key={timer.id} className="relative my-0.5 min-w-0 overflow-hidden rounded-md px-2 py-0.5 text-base font-semibold tracking-wide">
+            <div key={timer.id} className={cn("relative my-0.5 min-w-0 overflow-hidden rounded-md px-2 py-0.5 text-base font-semibold tracking-wide", isActive ? "bg-primary/20 ring-1 ring-primary/70" : "")}>
               {(run && !isMultiSegment) || isMultiSegment ? (
                 <Progress aria-label={`${timer.name} 进度`} className="absolute inset-0 h-full rounded-md bg-white/20 [&_[data-slot=progress-indicator]]:bg-primary/60" value={progress} />
               ) : null}
               <div className="relative flex min-w-0 items-center justify-between gap-3">
-                <span className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {isActive ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" /> : null}
+                  <span className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+                </span>
                 <span className={finished && !isMultiSegment ? "shrink-0 text-primary-foreground italic" : "shrink-0 text-white"}>{displayValue}</span>
               </div>
             </div>
