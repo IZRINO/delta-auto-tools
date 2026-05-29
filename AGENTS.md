@@ -481,6 +481,14 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - `ide_form()` 辅助函数按 IDE 网关格式构造 expected request body
 - 每个测试验证：请求参数匹配 + 响应解析正确 + mock assertion
 
+## Gitee workflow
+
+- 本项目代码托管与问题跟踪以 Gitee 为准，当前远端为 `https://gitee.com/IZRINO/delta-auto-tools.git`。
+- 处理 Gitee Issues 时，先回复处理结论、变更范围、验证方式和需要用户确认的功能点；**不要在回复后直接关闭 Issue**。
+- Issue 回复后应保持开放状态，等待提报者或维护者确认功能行为符合预期；只有收到明确确认、重复问题已被合并追踪，或维护者明确判定无需继续处理时，才关闭 Issue。
+- 如果已提交修复但仍未确认，应在 Issue 中说明对应提交/版本与验证入口，并标记为待确认，而不是关闭。
+- 对无法复现或信息不足的问题，应回复需要补充的最小信息并保持开放；超出维护策略需要关闭时，也必须先给出原因与复现/补充路径。
+
 ## Repo-specific cautions
 
 - 使用 **Bun**，不要切换到 npm / pnpm / yarn
