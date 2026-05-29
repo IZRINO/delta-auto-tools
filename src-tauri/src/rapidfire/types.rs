@@ -30,7 +30,7 @@ pub(crate) fn default_min_press_spacing_ms() -> u64 {
 pub struct RapidfireCard {
     pub id: String,
     pub name: String,
-    /// 触发键（单键，如 F1、Space）
+    /// 触发键（单键或组合键，如 F1、Shift+-）
     pub trigger_key: String,
     /// 目标键（连发时触发）
     pub target_key: String,

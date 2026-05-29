@@ -8,7 +8,7 @@ pub enum ModifierKey {
     Super,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimaryKey {
     Letter(char),
     Digit(char),
@@ -16,7 +16,7 @@ pub enum PrimaryKey {
     Named(NamedKey),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NamedKey {
     Space,
     Enter,
@@ -43,6 +43,7 @@ pub enum NamedKey {
     BracketRight,
     Minus,
     Equal,
+    Plus,
     Backquote,
     Quote,
 }
@@ -60,30 +61,41 @@ impl HotkeyBinding {
             return Err("热键不能为空".to_string());
         }
 
-        let segments = trimmed
-            .split('+')
-            .map(str::trim)
-            .filter(|segment| !segment.is_empty())
-            .collect::<Vec<_>>();
+        let has_separator = trimmed.contains('+');
+        let mut segments = trimmed.split('+').map(str::trim).peekable();
 
-        if segments.is_empty() {
+        if segments.peek().is_none() {
             return Err("热键不能为空".to_string());
         }
 
         let mut modifiers = HashSet::new();
         let mut primary = None;
 
-        for segment in segments {
-            if let Some(modifier) = parse_modifier(segment) {
-                modifiers.insert(modifier);
+        while let Some(segment) = segments.next() {
+            let primary_segment = if segment.is_empty()
+                && primary.is_none()
+                && segments.peek().is_none()
+                && trimmed.ends_with('+')
+            {
+                "+"
+            } else if segment.is_empty() {
                 continue;
+            } else {
+                segment
+            };
+
+            if has_separator {
+                if let Some(modifier) = parse_modifier(primary_segment) {
+                    modifiers.insert(modifier);
+                    continue;
+                }
             }
 
             if primary.is_some() {
                 return Err(format!("热键格式无效，存在多个主键: {trimmed}"));
             }
 
-            primary = Some(parse_primary(segment)?);
+            primary = Some(parse_primary(primary_segment)?);
         }
 
         let Some(primary) = primary else {
@@ -165,6 +177,8 @@ pub fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
         Some(NamedKey::Minus)
     } else if segment == "=" || segment.eq_ignore_ascii_case("equal") {
         Some(NamedKey::Equal)
+    } else if segment == "+" || segment.eq_ignore_ascii_case("plus") {
+        Some(NamedKey::Plus)
     } else if segment == "`" || segment.eq_ignore_ascii_case("backquote") {
         Some(NamedKey::Backquote)
     } else if segment == "'" || segment.eq_ignore_ascii_case("quote") {
@@ -200,6 +214,15 @@ pub fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
         .ok_or_else(|| format!("暂不支持的热键主键: {segment}"))
 }
 
+pub fn modifier_to_string(modifier: ModifierKey) -> &'static str {
+    match modifier {
+        ModifierKey::Ctrl => "Ctrl",
+        ModifierKey::Alt => "Alt",
+        ModifierKey::Shift => "Shift",
+        ModifierKey::Super => "Super",
+    }
+}
+
 pub fn primary_to_string(primary: PrimaryKey) -> String {
     match primary {
         PrimaryKey::Letter(value) => value.to_string(),
@@ -230,9 +253,31 @@ pub fn primary_to_string(primary: PrimaryKey) -> String {
         PrimaryKey::Named(NamedKey::BracketRight) => "]".to_string(),
         PrimaryKey::Named(NamedKey::Minus) => "-".to_string(),
         PrimaryKey::Named(NamedKey::Equal) => "=".to_string(),
+        PrimaryKey::Named(NamedKey::Plus) => "+".to_string(),
         PrimaryKey::Named(NamedKey::Backquote) => "`".to_string(),
         PrimaryKey::Named(NamedKey::Quote) => "'".to_string(),
     }
+}
+
+pub fn binding_to_string(binding: &HotkeyBinding) -> String {
+    let primary = primary_to_string(binding.primary);
+    let mut segments = Vec::with_capacity(binding.modifiers.len() + 1);
+    for modifier in [
+        ModifierKey::Ctrl,
+        ModifierKey::Alt,
+        ModifierKey::Shift,
+        ModifierKey::Super,
+    ] {
+        if binding.modifiers.contains(&modifier) {
+            segments.push(modifier_to_string(modifier).to_string());
+        }
+    }
+    segments.push(primary);
+    segments.join("+")
+}
+
+pub fn hotkey_to_string(raw: &str) -> Result<String, String> {
+    HotkeyBinding::parse(raw).map(|binding| binding_to_string(&binding))
 }
 
 pub fn hotkey_primary_label(raw: &str) -> Result<String, String> {
@@ -333,6 +378,7 @@ pub fn to_primary_key(key: willhook::event::KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::LeftAlt | KeyboardKey::RightAlt => Some(PrimaryKey::Named(NamedKey::Alt)),
         KeyboardKey::Other(0xBA) => Some(PrimaryKey::Named(NamedKey::Semicolon)),
         KeyboardKey::Other(0xBB) => Some(PrimaryKey::Named(NamedKey::Equal)),
+        KeyboardKey::Other(0x6B) => Some(PrimaryKey::Named(NamedKey::Plus)),
         KeyboardKey::Other(0xBC) => Some(PrimaryKey::Named(NamedKey::Comma)),
         KeyboardKey::Other(0xBD) => Some(PrimaryKey::Named(NamedKey::Minus)),
         KeyboardKey::Other(0xBE) => Some(PrimaryKey::Named(NamedKey::Period)),
@@ -342,102 +388,6 @@ pub fn to_primary_key(key: willhook::event::KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::Other(0xDC) => Some(PrimaryKey::Named(NamedKey::Backslash)),
         KeyboardKey::Other(0xDD) => Some(PrimaryKey::Named(NamedKey::BracketRight)),
         KeyboardKey::Other(0xDE) => Some(PrimaryKey::Named(NamedKey::Quote)),
-        _ => None,
-    }
-}
-
-/// 将 KeyboardKey 转为字符串，用于 hold 热键匹配
-#[cfg(target_os = "windows")]
-pub fn key_to_primary_string(key: willhook::event::KeyboardKey) -> Option<String> {
-    use willhook::event::KeyboardKey;
-    match key {
-        KeyboardKey::A => Some("A".to_string()),
-        KeyboardKey::B => Some("B".to_string()),
-        KeyboardKey::C => Some("C".to_string()),
-        KeyboardKey::D => Some("D".to_string()),
-        KeyboardKey::E => Some("E".to_string()),
-        KeyboardKey::F => Some("F".to_string()),
-        KeyboardKey::G => Some("G".to_string()),
-        KeyboardKey::H => Some("H".to_string()),
-        KeyboardKey::I => Some("I".to_string()),
-        KeyboardKey::J => Some("J".to_string()),
-        KeyboardKey::K => Some("K".to_string()),
-        KeyboardKey::L => Some("L".to_string()),
-        KeyboardKey::M => Some("M".to_string()),
-        KeyboardKey::N => Some("N".to_string()),
-        KeyboardKey::O => Some("O".to_string()),
-        KeyboardKey::P => Some("P".to_string()),
-        KeyboardKey::Q => Some("Q".to_string()),
-        KeyboardKey::R => Some("R".to_string()),
-        KeyboardKey::S => Some("S".to_string()),
-        KeyboardKey::T => Some("T".to_string()),
-        KeyboardKey::U => Some("U".to_string()),
-        KeyboardKey::V => Some("V".to_string()),
-        KeyboardKey::W => Some("W".to_string()),
-        KeyboardKey::X => Some("X".to_string()),
-        KeyboardKey::Y => Some("Y".to_string()),
-        KeyboardKey::Z => Some("Z".to_string()),
-        KeyboardKey::Number0 => Some("0".to_string()),
-        KeyboardKey::Number1 => Some("1".to_string()),
-        KeyboardKey::Number2 => Some("2".to_string()),
-        KeyboardKey::Number3 => Some("3".to_string()),
-        KeyboardKey::Number4 => Some("4".to_string()),
-        KeyboardKey::Number5 => Some("5".to_string()),
-        KeyboardKey::Number6 => Some("6".to_string()),
-        KeyboardKey::Number7 => Some("7".to_string()),
-        KeyboardKey::Number8 => Some("8".to_string()),
-        KeyboardKey::Number9 => Some("9".to_string()),
-        KeyboardKey::F1 => Some("F1".to_string()),
-        KeyboardKey::F2 => Some("F2".to_string()),
-        KeyboardKey::F3 => Some("F3".to_string()),
-        KeyboardKey::F4 => Some("F4".to_string()),
-        KeyboardKey::F5 => Some("F5".to_string()),
-        KeyboardKey::F6 => Some("F6".to_string()),
-        KeyboardKey::F7 => Some("F7".to_string()),
-        KeyboardKey::F8 => Some("F8".to_string()),
-        KeyboardKey::F9 => Some("F9".to_string()),
-        KeyboardKey::F10 => Some("F10".to_string()),
-        KeyboardKey::F11 => Some("F11".to_string()),
-        KeyboardKey::F12 => Some("F12".to_string()),
-        KeyboardKey::F13 => Some("F13".to_string()),
-        KeyboardKey::F14 => Some("F14".to_string()),
-        KeyboardKey::F15 => Some("F15".to_string()),
-        KeyboardKey::F16 => Some("F16".to_string()),
-        KeyboardKey::F17 => Some("F17".to_string()),
-        KeyboardKey::F18 => Some("F18".to_string()),
-        KeyboardKey::F19 => Some("F19".to_string()),
-        KeyboardKey::F20 => Some("F20".to_string()),
-        KeyboardKey::F21 => Some("F21".to_string()),
-        KeyboardKey::F22 => Some("F22".to_string()),
-        KeyboardKey::F23 => Some("F23".to_string()),
-        KeyboardKey::F24 => Some("F24".to_string()),
-        KeyboardKey::Space => Some("Space".to_string()),
-        KeyboardKey::Enter => Some("Enter".to_string()),
-        KeyboardKey::Tab => Some("Tab".to_string()),
-        KeyboardKey::Escape => Some("Esc".to_string()),
-        KeyboardKey::ArrowUp => Some("Up".to_string()),
-        KeyboardKey::ArrowDown => Some("Down".to_string()),
-        KeyboardKey::ArrowLeft => Some("Left".to_string()),
-        KeyboardKey::ArrowRight => Some("Right".to_string()),
-        KeyboardKey::Home => Some("Home".to_string()),
-        KeyboardKey::Other(0x23) => Some("End".to_string()),
-        KeyboardKey::PageUp => Some("PageUp".to_string()),
-        KeyboardKey::PageDown => Some("PageDown".to_string()),
-        KeyboardKey::Insert => Some("Insert".to_string()),
-        KeyboardKey::Delete => Some("Delete".to_string()),
-        KeyboardKey::BackSpace => Some("Backspace".to_string()),
-        KeyboardKey::LeftAlt | KeyboardKey::RightAlt => Some("Alt".to_string()),
-        KeyboardKey::Other(0xBA) => Some(";".to_string()),
-        KeyboardKey::Other(0xBB) => Some("=".to_string()),
-        KeyboardKey::Other(0xBC) => Some(",".to_string()),
-        KeyboardKey::Other(0xBD) => Some("-".to_string()),
-        KeyboardKey::Other(0xBE) => Some(".".to_string()),
-        KeyboardKey::Other(0xBF) => Some("/".to_string()),
-        KeyboardKey::Other(0xC0) => Some("`".to_string()),
-        KeyboardKey::Other(0xDB) => Some("[".to_string()),
-        KeyboardKey::Other(0xDC) => Some("\\".to_string()),
-        KeyboardKey::Other(0xDD) => Some("]".to_string()),
-        KeyboardKey::Other(0xDE) => Some("'".to_string()),
         _ => None,
     }
 }
@@ -478,5 +428,25 @@ mod tests {
     fn extracts_primary_label_from_modified_hotkey() {
         assert_eq!(hotkey_primary_label("Ctrl+Shift+F6").unwrap(), "F6");
         assert_eq!(hotkey_primary_label("Alt+Space").unwrap(), "Space");
+    }
+
+    #[test]
+    fn normalizes_modified_hotkey_label_order() {
+        assert_eq!(hotkey_to_string("shift+ctrl+-").unwrap(), "Ctrl+Shift+-");
+        assert_eq!(
+            hotkey_to_string("win+alt+space").unwrap(),
+            "Alt+Super+Space"
+        );
+
+        assert_eq!(hotkey_to_string("shift++").unwrap(), "Shift++");
+    }
+
+    #[test]
+    fn parses_standalone_alt_as_primary_key() {
+        let binding = HotkeyBinding::parse("alt").expect("should parse");
+
+        assert!(binding.modifiers.is_empty());
+        assert_eq!(binding.primary, PrimaryKey::Named(NamedKey::Alt));
+        assert_eq!(hotkey_to_string("alt").unwrap(), "Alt");
     }
 }

@@ -141,7 +141,12 @@ const SUPPORTED_KEY_LABELS = new Set([
   "=",
   "`",
   "'",
+  "+",
 ]);
+
+const SUPPORTED_MODIFIER_KEY_LABELS = ["Ctrl", "Alt", "Shift", "Super"] as const;
+
+type SupportedModifierKeyLabel = (typeof SUPPORTED_MODIFIER_KEY_LABELS)[number];
 
 function normalizePositiveInteger(value: string, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
@@ -153,11 +158,12 @@ function clampOverlayWidth(value: string): number {
   return Math.max(RAPIDFIRE_DISPLAY_MIN_WIDTH, Math.min(RAPIDFIRE_DISPLAY_MAX_WIDTH, parsed));
 }
 
-function normalizeRapidfireKey(raw: string): string {
+function normalizeRapidfirePrimary(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
-  if (trimmed.includes("+")) return trimmed;
 
+  const modifierLabel = normalizeRapidfireModifier(trimmed);
+  if (modifierLabel) return SUPPORTED_KEY_LABELS.has(modifierLabel) ? modifierLabel : "";
   const aliasMap: Record<string, string> = {
     " ": "Space",
     Spacebar: "Space",
@@ -195,6 +201,8 @@ function normalizeRapidfireKey(raw: string): string {
     minus: "-",
     Equal: "=",
     equal: "=",
+    Plus: "+",
+    plus: "+",
     Backquote: "`",
     backquote: "`",
     Quote: "'",
@@ -215,17 +223,129 @@ function normalizeRapidfireKey(raw: string): string {
   return supported ?? aliased;
 }
 
-function validateRapidfireKey(key: string, label: string): void {
+function normalizeRapidfireKey(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  return trimmed.includes("+") ? normalizeRapidfireHotkey(trimmed) : normalizeRapidfirePrimary(trimmed);
+}
+
+function normalizeRapidfireCode(code: string): string {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1[0-2])$/.test(code)) return code;
+
+  const codeMap: Record<string, string> = {
+    Space: "Space",
+    Enter: "Enter",
+    NumpadEnter: "Enter",
+    Tab: "Tab",
+    Escape: "Esc",
+    Backspace: "Backspace",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    Insert: "Insert",
+    Delete: "Delete",
+    Semicolon: ";",
+    Comma: ",",
+    Period: ".",
+    Slash: "/",
+    Backslash: "\\",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Minus: "-",
+    Plus: "+",
+    Backquote: "`",
+    Quote: "'",
+  };
+
+  return codeMap[code] ?? "";
+}
+
+function normalizeRapidfireModifier(raw: string): SupportedModifierKeyLabel | null {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "control" || normalized === "ctrl") return "Ctrl";
+  if (normalized === "alt") return "Alt";
+  if (normalized === "shift") return "Shift";
+  if (["meta", "win", "windows", "super", "os"].includes(normalized)) return "Super";
+  return null;
+}
+
+function normalizeRapidfireHotkey(raw: string): string {
+  const trimmed = raw.trim();
+  const segments = trimmed.split("+").map((segment) => segment.trim());
+  if (segments.length === 0) return "";
+
+  const modifiers = new Set<SupportedModifierKeyLabel>();
+  let primary = "";
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] === "" && index === segments.length - 1 ? "+" : segments[index];
+    if (segment === "") continue;
+
+    const modifier = normalizeRapidfireModifier(segment);
+    if (modifier) {
+      modifiers.add(modifier);
+      continue;
+    }
+    if (primary) return trimmed;
+    primary = normalizeRapidfirePrimary(segment);
+  }
+
+  if (!primary) return trimmed;
+
+  return [...SUPPORTED_MODIFIER_KEY_LABELS.filter((modifier) => modifiers.has(modifier)), primary].join("+");
+}
+
+function rapidfirePrimaryKeyLabel(key: string): string {
+  const segments = key.split("+").map((segment) => segment.trim());
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    if (segments[index] !== "") return segments[index];
+    if (index === segments.length - 1) return "+";
+  }
+  return key;
+}
+
+function validateRapidfireHotkeyPrimary(key: string, label: string, allowModifiers: boolean): string {
+  if (!allowModifiers || !key.includes("+")) return key;
+
+  const segments = key.split("+").map((segment) => segment.trim());
+  let primaryKey = "";
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index] === "" && index === segments.length - 1 ? "+" : segments[index];
+    if (segment === "") continue;
+    if (normalizeRapidfireModifier(segment)) continue;
+    if (primaryKey) {
+      throw new Error(`${label}格式无效，组合键只能包含一个主键。`);
+    }
+    primaryKey = segment;
+  }
+
+  if (!primaryKey) {
+    throw new Error(`${label}格式无效，缺少主键。`);
+  }
+
+  return primaryKey;
+}
+
+function validateRapidfireKey(key: string, label: string, options: { allowModifiers: boolean }): void {
   if (!key) {
     throw new Error(`${label}不能为空。`);
   }
 
-  if (key.includes("+")) {
+  if (key.includes("+") && !options.allowModifiers) {
     throw new Error(`${label}必须是单键，不能包含组合键。`);
   }
 
-  if (!SUPPORTED_KEY_LABELS.has(key)) {
-    throw new Error(`${label}不支持：${key}。`);
+  const primaryKey = validateRapidfireHotkeyPrimary(key, label, options.allowModifiers);
+  if (!SUPPORTED_KEY_LABELS.has(primaryKey)) {
+    throw new Error(`${label}不支持：${primaryKey}。`);
   }
 }
 
@@ -242,8 +362,8 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
 
     const triggerKey = normalizeRapidfireKey(card.triggerKey);
     const targetKey = normalizeRapidfireKey(card.targetKey);
-    validateRapidfireKey(triggerKey, `${name} 的触发键`);
-    validateRapidfireKey(targetKey, `${name} 的目标键`);
+    validateRapidfireKey(triggerKey, `${name} 的触发键`, { allowModifiers: true });
+    validateRapidfireKey(targetKey, `${name} 的目标键`, { allowModifiers: false });
 
     const intervalMs = normalizePositiveInteger(card.intervalMs, RAPIDFIRE_DEFAULT_INTERVAL_MS);
     if (intervalMs < RAPIDFIRE_MIN_INTERVAL_MS) {
@@ -395,7 +515,8 @@ export function rapidfireCardError(
 
   const name = card.name.trim();
   const triggerKey = normalizeRapidfireKey(card.triggerKey);
-  const targetKey = normalizeRapidfireKey(card.targetKey);
+  const triggerPrimaryKey = rapidfirePrimaryKeyLabel(triggerKey);
+  const targetKey = rapidfirePrimaryKeyLabel(normalizeRapidfireKey(card.targetKey));
 
   if (name && pageError.includes(name)) {
     return pageError;
@@ -408,8 +529,12 @@ export function rapidfireCardError(
   const triggerPatterns = [
     `触发键 ${triggerKey}`,
     `触发键${triggerKey}`,
+    `触发键 ${triggerPrimaryKey}`,
+    `触发键${triggerPrimaryKey}`,
     `触发键不支持：${triggerKey}`,
     `触发键不支持: ${triggerKey}`,
+    `触发键不支持：${triggerPrimaryKey}`,
+    `触发键不支持: ${triggerPrimaryKey}`,
   ];
   if (errorIncludesAny(pageError, triggerPatterns)) {
     return pageError;
@@ -522,8 +647,25 @@ export const SUPPORTED_TARGET_KEYS = [
   },
 ];
 
-// ---- 热键格式化（单键，不含修饰键） ----
+// ---- 热键格式化 ----
 
 export function formatTriggerKey(raw: string): string {
   return normalizeRapidfireKey(raw);
+}
+
+export function formatTriggerHotkey(
+  event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+): string {
+  if (normalizeRapidfireModifier(event.key)) return "";
+
+  const primary = normalizeRapidfireCode(event.code) || normalizeRapidfireKey(event.key);
+  if (!primary || primary.includes("+")) return primary;
+
+  const modifiers: SupportedModifierKeyLabel[] = [];
+  if (event.ctrlKey) modifiers.push("Ctrl");
+  if (event.altKey) modifiers.push("Alt");
+  if (event.shiftKey) modifiers.push("Shift");
+  if (event.metaKey) modifiers.push("Super");
+
+  return [...modifiers, primary].join("+");
 }

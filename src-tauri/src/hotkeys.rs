@@ -20,7 +20,7 @@ use crate::hotkey_types::{self as types, HotkeyBinding, ModifierKey, PrimaryKey}
 
 pub type HotkeyAction = Arc<dyn Fn(AppHandle) + Send + Sync + 'static>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HoldAction {
     Down,
     Up,
@@ -48,7 +48,7 @@ struct HotkeyRegistration {
 
 struct HoldRegistration {
     scope: String,
-    primary_key: String,
+    binding: HotkeyBinding,
     enabled: bool,
     action: HoldActionCallback,
 }
@@ -191,13 +191,15 @@ impl HotkeyManager {
         if !bindings.is_empty() {
             let regs: Vec<HoldRegistration> = bindings
                 .into_iter()
-                .map(|(key, action)| HoldRegistration {
-                    scope: scope.to_string(),
-                    primary_key: key,
-                    enabled: true,
-                    action,
+                .map(|(key, action)| {
+                    HotkeyBinding::parse(&key).map(|binding| HoldRegistration {
+                        scope: scope.to_string(),
+                        binding,
+                        enabled: true,
+                        action,
+                    })
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
             hold_regs.insert(scope.to_string(), regs);
         }
 
@@ -213,7 +215,7 @@ impl HotkeyManager {
         Ok(())
     }
 
-    pub fn active_primary_labels_except(
+    pub fn active_binding_labels_except(
         &self,
         excluded_scope: &str,
     ) -> Result<Vec<(String, String)>, String> {
@@ -253,7 +255,10 @@ impl HotkeyManager {
                         .iter()
                         .filter(|registration| registration.enabled)
                         .map(|registration| {
-                            (registration.scope.clone(), registration.primary_key.clone())
+                            (
+                                registration.scope.clone(),
+                                types::binding_to_string(&registration.binding),
+                            )
                         }),
                 );
             }
@@ -288,13 +293,18 @@ fn run_listener(
     stopped: Arc<AtomicBool>,
 ) {
     let mut matcher = HotkeyMatcher::new();
-    let mut active_hold_keys = HashSet::new();
+    let mut active_hold_keys: HashMap<PrimaryKey, KeyState> = HashMap::new();
+    let mut active_hold_modifiers = HashSet::new();
 
     while !stopped.load(Ordering::SeqCst) {
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
-                let hold_actions =
-                    hold_actions_for_event(&hold_registrations, event, &mut active_hold_keys);
+                let hold_actions = hold_actions_for_event(
+                    &hold_registrations,
+                    event,
+                    &mut active_hold_keys,
+                    &mut active_hold_modifiers,
+                );
                 for (action, hold_action) in hold_actions {
                     action(app.clone(), hold_action);
                 }
@@ -340,31 +350,71 @@ fn actions_for_key_state(
 fn hold_actions_for_event(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     event: KeyboardEvent,
-    active_hold_keys: &mut HashSet<String>,
+    active_hold_keys: &mut HashMap<PrimaryKey, KeyState>,
+    active_hold_modifiers: &mut HashSet<ModifierKey>,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
     if matches!(event.is_injected, Some(IsEventInjected::Injected)) {
         return Vec::new();
     }
 
-    let key = match event.key.and_then(|k| types::key_to_primary_string(k)) {
-        Some(k) => k,
-        None => return Vec::new(),
+    let Some(key) = event.key else {
+        return Vec::new();
     };
+    let modifier = types::to_modifier_key(key);
+    let primary = types::to_primary_key(key);
 
-    let hold_action = match event.pressed {
+    match event.pressed {
         KeyPress::Down(_) => {
-            if !active_hold_keys.insert(key.clone()) {
+            let Some(primary) = primary else {
+                if let Some(modifier) = modifier {
+                    active_hold_modifiers.insert(modifier);
+                }
+                return Vec::new();
+            };
+
+            if active_hold_keys.contains_key(&primary) {
+                if let Some(modifier) = modifier {
+                    active_hold_modifiers.insert(modifier);
+                }
                 return Vec::new();
             }
-            HoldAction::Down
+
+            let key_state = KeyState {
+                modifiers: active_hold_modifiers.clone(),
+                primary,
+            };
+            let actions =
+                hold_actions_for_key_state(hold_registrations, &key_state, HoldAction::Down);
+            if !actions.is_empty() {
+                active_hold_keys.insert(primary, key_state);
+            }
+            if let Some(modifier) = modifier {
+                active_hold_modifiers.insert(modifier);
+            }
+            actions
         }
         KeyPress::Up(_) => {
-            active_hold_keys.remove(&key);
-            HoldAction::Up
+            if let Some(modifier) = modifier {
+                active_hold_modifiers.remove(&modifier);
+            }
+            let Some(primary) = primary else {
+                return Vec::new();
+            };
+            let Some(key_state) = active_hold_keys.remove(&primary) else {
+                return Vec::new();
+            };
+            hold_actions_for_key_state(hold_registrations, &key_state, HoldAction::Up)
         }
-        KeyPress::Other(_) => return Vec::new(),
-    };
+        KeyPress::Other(_) => Vec::new(),
+    }
+}
 
+#[cfg(target_os = "windows")]
+fn hold_actions_for_key_state(
+    hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
+    key_state: &KeyState,
+    hold_action: HoldAction,
+) -> Vec<(HoldActionCallback, HoldAction)> {
     hold_registrations
         .lock()
         .ok()
@@ -372,7 +422,7 @@ fn hold_actions_for_event(
             let mut actions = Vec::new();
             for scope_regs in regs.values() {
                 for reg in scope_regs {
-                    if reg.enabled && reg.primary_key.eq_ignore_ascii_case(&key) {
+                    if reg.enabled && matches_binding(&reg.binding, key_state) {
                         actions.push((Arc::clone(&reg.action), hold_action.clone()));
                     }
                 }
@@ -466,7 +516,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn ordinary_hotkey_dispatches_on_key_down_not_key_up() {
-        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
         let mut matcher = HotkeyMatcher::new();
 
@@ -490,7 +540,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn modified_hotkey_dispatches_when_primary_key_goes_down() {
-        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
         let mut matcher = HotkeyMatcher::new();
 
@@ -534,8 +584,73 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
+    fn modified_hold_dispatches_down_and_up_with_original_modifiers() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
+            "rapidfire".to_string(),
+            vec![HoldRegistration {
+                scope: "rapidfire".to_string(),
+                binding: HotkeyBinding::parse("Shift+-").expect("should parse"),
+                enabled: true,
+                action: callback,
+            }],
+        )])));
+        let mut active_hold_keys = HashMap::new();
+        let mut active_hold_modifiers = HashSet::new();
+
+        assert!(hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::LeftShift,
+                KeyPress::Down(IsSystemKeyPress::Normal)
+            ),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        )
+        .is_empty());
+
+        let down_actions = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::Other(0xBD),
+                KeyPress::Down(IsSystemKeyPress::Normal),
+            ),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        assert_eq!(down_actions.len(), 1);
+        assert_eq!(down_actions[0].1, HoldAction::Down);
+
+        assert!(hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::LeftShift,
+                KeyPress::Up(IsSystemKeyPress::Normal)
+            ),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        )
+        .is_empty());
+
+        let up_actions = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::Other(0xBD),
+                KeyPress::Up(IsSystemKeyPress::Normal),
+            ),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        assert_eq!(up_actions.len(), 1);
+        assert_eq!(up_actions[0].1, HoldAction::Up);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
     fn held_primary_key_does_not_repeat_before_release() {
-        use willhook::event::{IsSystemKeyPress, KeyboardKey, KeyPress};
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
         let mut matcher = HotkeyMatcher::new();
 

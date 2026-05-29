@@ -151,7 +151,9 @@ fn target_fire_plan(
     let target_key =
         parse_target_key(target_key).ok_or_else(|| format!("不支持的目标键: {target_key}"))?;
     let held_trigger_key = held_trigger_key
-        .map(|key| parse_target_key(key).ok_or_else(|| format!("不支持的触发键: {key}")))
+        .map(trigger_primary_label)
+        .transpose()?
+        .map(|key| parse_target_key(&key).ok_or_else(|| format!("不支持的触发键: {key}")))
         .transpose()?;
     let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
     let should_release_trigger_key = trigger_key_to_release.is_some();
@@ -294,10 +296,16 @@ fn parse_target_key(key: &str) -> Option<enigo::Key> {
         "]" | "BRACKETRIGHT" => Some(Key::OEM6),
         "-" | "MINUS" => Some(Key::OEMMinus),
         "=" | "EQUAL" => Some(Key::OEMPlus),
+        "+" | "PLUS" => Some(Key::Add),
         "`" | "BACKQUOTE" => Some(Key::OEM3),
         "'" | "QUOTE" => Some(Key::OEM7),
         _ => None,
     }
+}
+
+fn trigger_primary_label(trigger_key: &str) -> Result<String, String> {
+    hotkey_types::hotkey_primary_label(trigger_key)
+        .map_err(|_| format!("不支持的触发键: {trigger_key}"))
 }
 
 // ---- Normalization ----
@@ -308,13 +316,14 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         return Err("连发器卡片名称不能为空".to_string());
     }
 
-    let trigger_key = normalize_single_key(&card.trigger_key)
+    let trigger_key = normalize_trigger_key(&card.trigger_key)
         .map_err(|error| format!("{name} 的触发键{error}"))?;
     if trigger_key.is_empty() {
         return Err(format!("{} 的触发键不能为空", name));
     }
-    if parse_target_key(&trigger_key).is_none() {
-        return Err(format!("{} 的触发键不支持: {}", name, trigger_key));
+    let trigger_primary = trigger_primary_label(&trigger_key)?;
+    if parse_target_key(&trigger_primary).is_none() {
+        return Err(format!("{} 的触发键不支持: {}", name, trigger_primary));
     }
 
     let target_key = normalize_single_key(&card.target_key)
@@ -353,6 +362,15 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
     })
 }
 
+fn normalize_trigger_key(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+
+    hotkey_types::hotkey_to_string(trimmed).map_err(|_| format!("不支持: {trimmed}"))
+}
+
 fn normalize_single_key(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -361,11 +379,6 @@ fn normalize_single_key(raw: &str) -> Result<String, String> {
 
     if trimmed.contains('+') {
         return Err("必须是单键，不能包含组合键".to_string());
-    }
-
-    // Alt 等修饰键在连发器中作为单键使用，直接返回规范化标签
-    if trimmed.eq_ignore_ascii_case("alt") {
-        return Ok("Alt".to_string());
     }
 
     hotkey_types::hotkey_primary_label(trimmed).map_err(|_| format!("不支持: {trimmed}"))
@@ -440,8 +453,7 @@ fn validate_hotkey_conflicts(
     if !settings_value.rapidfire_enabled {
         return Ok(());
     }
-
-    let active_external_keys = hotkey_manager.active_primary_labels_except("rapidfire")?;
+    let active_external_keys = hotkey_manager.active_binding_labels_except("rapidfire")?;
     for card in settings_value.cards.iter().filter(|card| card.enabled) {
         let trigger = card.trigger_key.to_ascii_uppercase();
         if let Some((scope, key)) = active_external_keys
@@ -1422,15 +1434,31 @@ mod tests {
     }
 
     #[test]
-    fn normalize_card_rejects_trigger_key_with_modifier() {
-        let card = sample_card("a", "Ctrl+F1");
-        let error = normalize_card(&card).unwrap_err();
-        assert!(error.contains("必须是单键"));
+    fn normalize_card_allows_modified_trigger_key() {
+        let card = sample_card("a", "shift+-");
+        let normalized = normalize_card(&card).unwrap();
+        assert_eq!(normalized.trigger_key, "Shift+-");
+    }
+
+    #[test]
+    fn normalize_card_keeps_alt_as_trigger_primary_key() {
+        let card = sample_card("a", "alt");
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.trigger_key, "Alt");
+    }
+
+    #[test]
+    fn normalize_card_allows_plus_with_modifier_as_trigger_key() {
+        let card = sample_card("a", "shift++");
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.trigger_key, "Shift++");
     }
 
     #[test]
     fn normalize_card_rejects_unsupported_trigger_key() {
-        let card = sample_card("a", "F13");
+        let card = sample_card("a", "F25");
         let error = normalize_card(&card).unwrap_err();
         assert!(error.contains("触发键不支持"));
     }
@@ -1480,6 +1508,7 @@ mod tests {
         assert_eq!(parse_target_key("]"), Some(enigo::Key::OEM6));
         assert_eq!(parse_target_key("-"), Some(enigo::Key::OEMMinus));
         assert_eq!(parse_target_key("="), Some(enigo::Key::OEMPlus));
+        assert_eq!(parse_target_key("+"), Some(enigo::Key::Add));
         assert_eq!(parse_target_key("`"), Some(enigo::Key::OEM3));
         assert_eq!(parse_target_key("'"), Some(enigo::Key::OEM7));
         assert!(parse_target_key("F1").is_some());
@@ -1519,6 +1548,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn target_fire_plan_releases_same_primary_trigger_for_modified_hotkey() {
+        let plan = target_fire_plan("-", Some("Shift+-")).unwrap();
+
+        assert_eq!(plan.target_key, parse_target_key("-").unwrap());
+        assert_eq!(plan.trigger_key_to_release, parse_target_key("-"));
+        assert_eq!(
+            plan.actions,
+            vec![
+                TargetKeyAction::ReleaseHeldTrigger,
+                TargetKeyAction::PressTarget,
+                TargetKeyAction::ReleaseTarget
+            ]
+        );
+    }
     #[test]
     fn target_fire_plan_keeps_different_trigger_key_held() {
         let plan = target_fire_plan("Space", Some("W")).unwrap();

@@ -54,6 +54,7 @@ import {
   RAPIDFIRE_PRESS_JITTER_MIN_MS,
   createRapidfireCard,
   formatTriggerKey,
+  formatTriggerHotkey,
   isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
@@ -277,7 +278,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const beginRecording = useCallback((card: RapidfireCardForm, field: "triggerKey" | "targetKey") => {
     keyDraftRef.current = field === "triggerKey" ? card.triggerKey : card.targetKey;
     setRecordingTarget({ cardId: card.id, field });
-    setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按 Esc 取消。`);
+    setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按 Esc 取消。触发键可按住 Ctrl/Alt/Shift/Win 录制组合键。`);
   }, []);
 
   const handleRecorderKeyDown = useCallback(
@@ -295,9 +296,10 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
         return;
       }
 
-      const nextKey = formatTriggerKey(event.key);
-      if (!nextKey || nextKey.includes("+") || (event.ctrlKey && event.key !== "Control") || (event.metaKey && event.key !== "Meta")) {
-        setStatusMessage("请按下一个可识别的单键。");
+      const nextKey = recordingTarget.field === "triggerKey" ? formatTriggerHotkey(event) : formatTriggerKey(event.key);
+      const modifierOnly = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
+      if (!nextKey || modifierOnly || (recordingTarget.field === "targetKey" && nextKey.includes("+"))) {
+        setStatusMessage(recordingTarget.field === "triggerKey" ? "请按下组合键的主键。" : "目标键必须是单键。");
         return;
       }
 
@@ -706,7 +708,7 @@ function RapidfireCardEditor({
                 onClick={() => onRecord(card, "triggerKey")}
                 onKeyDown={onRecorderKeyDown}
               />
-              <FieldDescription>按住此键开始连发。</FieldDescription>
+              <FieldDescription>按住此键开始连发；支持 Shift+- 这类组合键。</FieldDescription>
             </Field>
           </ControlTile>
           <ControlTile>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RapidfireSettings } from "@/components/app/rapidfire-types";
 import {
+  formatTriggerHotkey,
   formatTriggerKey,
   isRapidfireDirty,
   moveRapidfireCard,
@@ -57,11 +58,46 @@ describe("rapidfire-types", () => {
     expect(formatTriggerKey("f6")).toBe("F6");
   });
 
-  it("rejects modifier combinations for trigger keys", () => {
+  it("allows modifier combinations for trigger keys", () => {
     const form = rapidfireSettingsToForm(sampleSettings());
-    form.cards[0].triggerKey = "Ctrl+F6";
+    form.cards[0].triggerKey = "shift+ctrl+-";
+
+    const parsed = parseRapidfireSettingsForm(form);
+    expect(parsed.cards[0].triggerKey).toBe("Ctrl+Shift+-");
+  });
+
+  it("keeps standalone Alt as a trigger primary key", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].triggerKey = "alt";
+
+    const parsed = parseRapidfireSettingsForm(form);
+    expect(parsed.cards[0].triggerKey).toBe("Alt");
+  });
+
+  it("allows plus as a trigger hotkey primary key", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].triggerKey = "shift++";
+
+    const parsed = parseRapidfireSettingsForm(form);
+    expect(parsed.cards[0].triggerKey).toBe("Shift++");
+  });
+
+  it("rejects modifier combinations for target keys", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].targetKey = "Ctrl+F6";
 
     expect(() => parseRapidfireSettingsForm(form)).toThrow("单键");
+  });
+  it("formats trigger hotkeys from physical keyboard codes", () => {
+    expect(
+      formatTriggerHotkey({ key: "_", code: "Minus", ctrlKey: false, altKey: false, shiftKey: true, metaKey: false }),
+    ).toBe("Shift+-");
+    expect(
+      formatTriggerHotkey({ key: "A", code: "KeyA", ctrlKey: true, altKey: true, shiftKey: false, metaKey: false }),
+    ).toBe("Ctrl+Alt+A");
+    expect(
+      formatTriggerHotkey({ key: "Shift", code: "ShiftLeft", ctrlKey: false, altKey: false, shiftKey: true, metaKey: false }),
+    ).toBe("");
   });
 
   it("allows duplicate enabled trigger keys across cards", () => {
