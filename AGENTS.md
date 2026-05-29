@@ -317,7 +317,7 @@ src-tauri/src/
 - `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段。
 - `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session）、`pending_position`、`hotkey_error`。
 - 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
-- 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键按下时只在主键 Down 时启动，主键 Up 时停止。
+- 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键按下时会根据当前修饰键集合动态切换：修饰键释放会停止原组合键 session，若主键仍按住且存在无修饰键绑定则启动无修饰键 session；先按主键再按修饰键也会从无修饰键绑定切换到组合键绑定。
 - 触发键主键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
 - 同一快捷键可绑定多个连发器卡片，按下时同时为所有绑定卡片创建独立连发 session 和独立 OS worker 线程。
 - 每次触发键 Down 都创建新的 session；同一卡片快速再次触发不会覆盖、取消或 abort 旧 session，旧 session 会在收到 Up 后完成必要补齐并自行退出。
@@ -487,6 +487,7 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - 处理 Gitee Issues 时，先回复处理结论、变更范围、验证方式和需要用户确认的功能点；**不要在回复后直接关闭 Issue**。
 - Issue 回复后应保持开放状态，等待提报者或维护者确认功能行为符合预期；只有收到明确确认、重复问题已被合并追踪，或维护者明确判定无需继续处理时，才关闭 Issue。
 - 如果已提交修复但仍未确认，应在 Issue 中说明对应提交/版本与验证入口，并标记为待确认，而不是关闭。
+- 更新版本号时必须同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json`；如 `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
 - 对无法复现或信息不足的问题，应回复需要补充的最小信息并保持开放；超出维护策略需要关闭时，也必须先给出原因与复现/补充路径。
 
 ## Repo-specific cautions
