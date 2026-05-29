@@ -13,6 +13,12 @@
       "skillPath": "skills/engineering/diagnose/SKILL.md",
       "computedHash": "1c3c85517ac42116fe5f2bfb5150f7b3e38ad23808e40b33fbb01f1afb611983"
     },
+    "gh-cli": {
+      "source": "trailofbits/skills",
+      "sourceType": "github",
+      "skillPath": ".codex/skills/gh-cli/SKILL.md",
+      "computedHash": "003f480814f63531bde8e8854b130a8353a21f1252d214bd5ef43db8f730687e"
+    },
     "grill-me": {
       "source": "mattpocock/skills",
       "sourceType": "github",

@@ -99,6 +99,14 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 执行 Rust 单元测试。
 
+## Gitee 协作流程
+
+- 仓库地址：`https://gitee.com/IZRINO/delta-auto-tools.git`。
+- Issues 回复应说明处理结论、影响范围、验证方式和需要确认的功能点。
+- 回复 Issue 后默认保持开放，等待提报者或维护者确认功能符合预期；不要回复后直接关闭。
+- 只有收到明确确认、重复问题已合并追踪，或维护者明确判定无需继续处理时，才关闭 Issue。
+- 修复已提交但尚未确认时，在 Issue 中标明提交/版本与验证入口，并保持待确认状态。
+
 ## 目录概览
 
 - `src/App.tsx`：桌面壳层、当前工具菜单与 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` 分支
