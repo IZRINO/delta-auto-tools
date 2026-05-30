@@ -330,7 +330,7 @@ fn run_listener(
     stopped: Arc<AtomicBool>,
 ) {
     let mut matcher = HotkeyMatcher::new();
-    let mut active_hold_keys: HashMap<PrimaryKey, Option<KeyState>> = HashMap::new();
+    let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
     let mut active_hold_modifiers = HashSet::new();
 
     while !stopped.load(Ordering::SeqCst) {
@@ -387,7 +387,7 @@ fn actions_for_key_state(
 fn hold_actions_for_event(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     event: KeyboardEvent,
-    active_hold_keys: &mut HashMap<PrimaryKey, Option<KeyState>>,
+    active_hold_keys: &mut HashMap<PrimaryKey, Vec<HotkeyBinding>>,
     active_hold_modifiers: &mut HashSet<ModifierKey>,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
     if matches!(event.is_injected, Some(IsEventInjected::Injected)) {
@@ -432,16 +432,9 @@ fn hold_actions_for_event(
             }
 
             let key_state = key_state_for_primary(primary, active_hold_modifiers);
-            let mut actions =
-                hold_actions_for_key_state(hold_registrations, &key_state, HoldAction::Down);
-            active_hold_keys.insert(
-                primary,
-                if actions.is_empty() {
-                    None
-                } else {
-                    Some(key_state)
-                },
-            );
+            let (active_bindings, mut actions) =
+                hold_matches_for_key_state(hold_registrations, &key_state, HoldAction::Down);
+            active_hold_keys.insert(primary, active_bindings);
 
             if let Some(modifier) = modifier {
                 if active_hold_modifiers.insert(modifier) {
@@ -463,10 +456,10 @@ fn hold_actions_for_event(
 
             let mut actions = Vec::new();
             if let Some(primary) = primary {
-                if let Some(Some(key_state)) = active_hold_keys.remove(&primary) {
-                    actions.extend(hold_actions_for_key_state(
+                if let Some(active_bindings) = active_hold_keys.remove(&primary) {
+                    actions.extend(hold_actions_for_bindings(
                         hold_registrations,
-                        &key_state,
+                        active_bindings.as_slice(),
                         HoldAction::Up,
                     ));
                 }
@@ -490,7 +483,7 @@ fn hold_actions_for_event(
 #[cfg(target_os = "windows")]
 fn transition_pressed_hold_keys(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
-    active_hold_keys: &mut HashMap<PrimaryKey, Option<KeyState>>,
+    active_hold_keys: &mut HashMap<PrimaryKey, Vec<HotkeyBinding>>,
     active_hold_modifiers: &HashSet<ModifierKey>,
     ignored_primary: Option<PrimaryKey>,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
@@ -503,28 +496,37 @@ fn transition_pressed_hold_keys(
 
     for primary in primaries {
         let next_state = key_state_for_primary(primary, active_hold_modifiers);
-        let current_state = active_hold_keys.get(&primary).cloned().flatten();
+        let next_bindings = hold_bindings_for_key_state(hold_registrations, &next_state);
+        let current_bindings = active_hold_keys.remove(&primary).unwrap_or_default();
 
-        if current_state.as_ref() == Some(&next_state) {
+        if same_hold_bindings(current_bindings.as_slice(), next_bindings.as_slice()) {
+            active_hold_keys.insert(primary, current_bindings);
             continue;
         }
 
-        if let Some(key_state) = current_state {
-            actions.extend(hold_actions_for_key_state(
-                hold_registrations,
-                &key_state,
-                HoldAction::Up,
-            ));
-        }
+        let removed_bindings = current_bindings
+            .iter()
+            .filter(|binding| !next_bindings.contains(binding))
+            .cloned()
+            .collect::<Vec<_>>();
+        actions.extend(hold_actions_for_bindings(
+            hold_registrations,
+            removed_bindings.as_slice(),
+            HoldAction::Up,
+        ));
 
-        let down_actions =
-            hold_actions_for_key_state(hold_registrations, &next_state, HoldAction::Down);
-        if down_actions.is_empty() {
-            active_hold_keys.insert(primary, None);
-        } else {
-            active_hold_keys.insert(primary, Some(next_state));
-            actions.extend(down_actions);
-        }
+        let added_bindings = next_bindings
+            .iter()
+            .filter(|binding| !current_bindings.contains(binding))
+            .cloned()
+            .collect::<Vec<_>>();
+        actions.extend(hold_actions_for_bindings(
+            hold_registrations,
+            added_bindings.as_slice(),
+            HoldAction::Down,
+        ));
+
+        active_hold_keys.insert(primary, next_bindings);
     }
 
     actions
@@ -554,20 +556,71 @@ fn effective_hold_modifiers(
 }
 
 #[cfg(target_os = "windows")]
-fn hold_actions_for_key_state(
+fn same_hold_bindings(left: &[HotkeyBinding], right: &[HotkeyBinding]) -> bool {
+    left.len() == right.len() && left.iter().all(|binding| right.contains(binding))
+}
+
+#[cfg(target_os = "windows")]
+fn matches_hold_binding(binding: &HotkeyBinding, key_state: &KeyState) -> bool {
+    binding.primary == key_state.primary && binding.modifiers.is_subset(&key_state.modifiers)
+}
+
+#[cfg(target_os = "windows")]
+fn hold_matches_for_key_state(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     key_state: &KeyState,
     hold_action: HoldAction,
+) -> (Vec<HotkeyBinding>, Vec<(HoldActionCallback, HoldAction)>) {
+    hold_registrations
+        .lock()
+        .ok()
+        .map(|regs| {
+            let mut bindings = Vec::new();
+            let mut actions = Vec::new();
+            for scope_regs in regs.values() {
+                for reg in scope_regs {
+                    if reg.enabled && matches_hold_binding(&reg.binding, key_state) {
+                        if !bindings.contains(&reg.binding) {
+                            bindings.push(reg.binding.clone());
+                        }
+                        actions.push((Arc::clone(&reg.action), hold_action.clone()));
+                    }
+                }
+            }
+            (bindings, actions)
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "windows")]
+fn hold_bindings_for_key_state(
+    hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
+    key_state: &KeyState,
+) -> Vec<HotkeyBinding> {
+    hold_matches_for_key_state(hold_registrations, key_state, HoldAction::Down).0
+}
+
+#[cfg(target_os = "windows")]
+fn hold_actions_for_bindings(
+    hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
+    bindings: &[HotkeyBinding],
+    hold_action: HoldAction,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
+    if bindings.is_empty() {
+        return Vec::new();
+    }
+
     hold_registrations
         .lock()
         .ok()
         .map(|regs| {
             let mut actions = Vec::new();
-            for scope_regs in regs.values() {
-                for reg in scope_regs {
-                    if reg.enabled && matches_binding(&reg.binding, key_state) {
-                        actions.push((Arc::clone(&reg.action), hold_action.clone()));
+            for binding in bindings {
+                for scope_regs in regs.values() {
+                    for reg in scope_regs {
+                        if reg.enabled && reg.binding == *binding {
+                            actions.push((Arc::clone(&reg.action), hold_action.clone()));
+                        }
                     }
                 }
             }
@@ -851,10 +904,11 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn hold_switches_from_modified_binding_to_bare_binding_when_modifier_releases() {
+    fn hold_keeps_bare_binding_active_when_modified_binding_releases() {
         use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
-        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let modified_callback: HoldActionCallback = Arc::new(|_, _| {});
+        let bare_callback: HoldActionCallback = Arc::new(|_, _| {});
         let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
             "rapidfire".to_string(),
             vec![
@@ -862,13 +916,13 @@ mod tests {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("Shift+1").expect("should parse"),
                     enabled: true,
-                    action: Arc::clone(&callback),
+                    action: Arc::clone(&modified_callback),
                 },
                 HoldRegistration {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("1").expect("should parse"),
                     enabled: true,
-                    action: callback,
+                    action: Arc::clone(&bare_callback),
                 },
             ],
         )])));
@@ -895,10 +949,13 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         );
-        assert_eq!(down_actions.len(), 1);
+        assert_eq!(down_actions.len(), 2);
+        assert!(Arc::ptr_eq(&down_actions[0].0, &modified_callback));
         assert_eq!(down_actions[0].1, HoldAction::Down);
+        assert!(Arc::ptr_eq(&down_actions[1].0, &bare_callback));
+        assert_eq!(down_actions[1].1, HoldAction::Down);
 
-        let switch_actions = hold_actions_for_event(
+        let modifier_up_actions = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(
                 KeyboardKey::LeftShift,
@@ -907,9 +964,9 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         );
-        assert_eq!(switch_actions.len(), 2);
-        assert_eq!(switch_actions[0].1, HoldAction::Up);
-        assert_eq!(switch_actions[1].1, HoldAction::Down);
+        assert_eq!(modifier_up_actions.len(), 1);
+        assert!(Arc::ptr_eq(&modifier_up_actions[0].0, &modified_callback));
+        assert_eq!(modifier_up_actions[0].1, HoldAction::Up);
 
         let up_actions = hold_actions_for_event(
             &hold_registrations,
@@ -918,15 +975,17 @@ mod tests {
             &mut active_hold_modifiers,
         );
         assert_eq!(up_actions.len(), 1);
+        assert!(Arc::ptr_eq(&up_actions[0].0, &bare_callback));
         assert_eq!(up_actions[0].1, HoldAction::Up);
     }
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn hold_switches_from_bare_binding_to_modified_binding_when_modifier_presses_late() {
+    fn hold_keeps_bare_binding_active_when_modifier_presses_late() {
         use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
-        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let bare_callback: HoldActionCallback = Arc::new(|_, _| {});
+        let modified_callback: HoldActionCallback = Arc::new(|_, _| {});
         let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
             "rapidfire".to_string(),
             vec![
@@ -934,13 +993,13 @@ mod tests {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("1").expect("should parse"),
                     enabled: true,
-                    action: Arc::clone(&callback),
+                    action: Arc::clone(&bare_callback),
                 },
                 HoldRegistration {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("Shift+1").expect("should parse"),
                     enabled: true,
-                    action: callback,
+                    action: Arc::clone(&modified_callback),
                 },
             ],
         )])));
@@ -957,9 +1016,10 @@ mod tests {
             &mut active_hold_modifiers,
         );
         assert_eq!(down_actions.len(), 1);
+        assert!(Arc::ptr_eq(&down_actions[0].0, &bare_callback));
         assert_eq!(down_actions[0].1, HoldAction::Down);
 
-        let switch_actions = hold_actions_for_event(
+        let modifier_down_actions = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(
                 KeyboardKey::LeftShift,
@@ -968,9 +1028,9 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         );
-        assert_eq!(switch_actions.len(), 2);
-        assert_eq!(switch_actions[0].1, HoldAction::Up);
-        assert_eq!(switch_actions[1].1, HoldAction::Down);
+        assert_eq!(modifier_down_actions.len(), 1);
+        assert!(Arc::ptr_eq(&modifier_down_actions[0].0, &modified_callback));
+        assert_eq!(modifier_down_actions[0].1, HoldAction::Down);
 
         let modifier_up_actions = hold_actions_for_event(
             &hold_registrations,
@@ -981,9 +1041,19 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         );
-        assert_eq!(modifier_up_actions.len(), 2);
+        assert_eq!(modifier_up_actions.len(), 1);
+        assert!(Arc::ptr_eq(&modifier_up_actions[0].0, &modified_callback));
         assert_eq!(modifier_up_actions[0].1, HoldAction::Up);
-        assert_eq!(modifier_up_actions[1].1, HoldAction::Down);
+
+        let up_actions = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::Number1, KeyPress::Up(IsSystemKeyPress::Normal)),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        assert_eq!(up_actions.len(), 1);
+        assert!(Arc::ptr_eq(&up_actions[0].0, &bare_callback));
+        assert_eq!(up_actions[0].1, HoldAction::Up);
     }
 
     #[test]

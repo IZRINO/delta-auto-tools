@@ -320,7 +320,7 @@ src-tauri/src/
 - `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段。
 - `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session）、`pending_position`、`hotkey_error`。
 - 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
-- 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键按下时会根据当前修饰键集合动态切换：修饰键释放会停止原组合键 session，若主键仍按住且存在无修饰键绑定则启动无修饰键 session；先按主键再按修饰键也会从无修饰键绑定切换到组合键绑定。
+- 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键触发键按下时也会同时触发同主键的无修饰键绑定（例如 `Shift+1` 同时触发 `Shift+1` 和 `1`），松开修饰键只停止组合键 session 并保留无修饰键 session；先按主键再按修饰键只新增组合键 session，不重启已运行的无修饰键 session。
 - 触发键主键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
 - 同一快捷键可绑定多个连发器卡片，按下时同时为所有绑定卡片创建独立连发 session 和独立 OS worker 线程。
 - 每次触发键 Down 都创建新的 session；同一卡片快速再次触发不会覆盖、取消或 abort 旧 session，旧 session 会在收到 Up 后完成必要补齐并自行退出。
