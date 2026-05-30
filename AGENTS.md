@@ -483,8 +483,8 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 
 ## GitHub workflow
 
-- 本项目代码托管、Issue 跟踪、Tag 与 Release 发布以 GitHub 为准，当前远端应为 `https://github.com/IZRINO/delta-auto-tools.git`；不得再恢复或使用 Gitee 远程地址。
-- GitHub 初次迁移或远程异常时，按顺序处理：确认 `gh auth status` 已登录 → 必要时用 `gh repo create IZRINO/delta-auto-tools --public --description "三角洲行动工具：Tauri 2 + React + Rust 桌面工具"` 创建仓库 → 用 `git remote set-url origin https://github.com/IZRINO/delta-auto-tools.git` 切换远程 → `git push -u origin master` 推送主分支。
+- 本项目代码托管、Issue 跟踪、Tag 与 Release 发布以 GitHub 为准，当前远端应为 `https://github.com/IZRINO/delta-auto-tools`；不得再恢复或使用旧远程地址。
+- GitHub 初次迁移或远程异常时，按顺序处理：确认 `gh auth status` 已登录 → 必要时用 `gh repo create IZRINO/delta-auto-tools --public --description "三角洲行动工具：Tauri 2 + React + Rust 桌面工具"` 创建仓库 → 用 `git remote set-url origin https://github.com/IZRINO/delta-auto-tools` 切换远程 → `git push -u origin master` 推送主分支。
 - 更新版本号时必须同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json`；如 `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
 - 每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包；打包成功后检查以下两个产物存在：`src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi` 与 `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`。
 - 每次版本发布必须创建并推送对应 `v<version>` Tag：`git tag -a v<version> -m "发布 v<version>"`，然后 `git push origin v<version>`。
