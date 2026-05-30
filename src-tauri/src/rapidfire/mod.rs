@@ -437,42 +437,6 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
     Ok(settings_value)
 }
 
-fn scope_name(scope: &str) -> &'static str {
-    match scope {
-        "morse" => "摩斯密码解析",
-        "timer" => "计时器",
-        "rapidfire" => "连发器",
-        _ => "其他工具",
-    }
-}
-
-fn validate_hotkey_conflicts(
-    hotkey_manager: &HotkeyManager,
-    settings_value: &RapidfireSettings,
-) -> Result<(), String> {
-    if !settings_value.rapidfire_enabled {
-        return Ok(());
-    }
-    let active_external_keys = hotkey_manager.active_binding_labels_except("rapidfire")?;
-    for card in settings_value.cards.iter().filter(|card| card.enabled) {
-        let trigger = card.trigger_key.to_ascii_uppercase();
-        if let Some((scope, key)) = active_external_keys
-            .iter()
-            .find(|(_, key)| key.eq_ignore_ascii_case(&trigger))
-        {
-            return Err(format!(
-                "{} 的触发键 {} 与{}的快捷键 {} 冲突",
-                card.name,
-                card.trigger_key,
-                scope_name(scope),
-                key
-            ));
-        }
-    }
-
-    Ok(())
-}
-
 // ---- Hotkey registration ----
 
 fn restart_hotkey_listeners(
@@ -483,8 +447,6 @@ fn restart_hotkey_listeners(
     if !settings_value.rapidfire_enabled {
         return hotkey_manager.clear_hold_scope("rapidfire");
     }
-
-    validate_hotkey_conflicts(hotkey_manager, settings_value)?;
 
     let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
     for card in &settings_value.cards {

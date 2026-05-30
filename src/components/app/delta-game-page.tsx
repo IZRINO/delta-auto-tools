@@ -3,8 +3,26 @@ import { invoke } from "@tauri-apps/api/core";
 import { RiBarChartBoxLine, RiSwordLine, RiTrophyLine, RiShieldLine, RiKey2Line, RiUserLine } from "@remixicon/react";
 import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
-import type { AccountKind, ApiResponse, DeltaAccountRecord } from "@/components/app/delta-types";
-import { buildGameAuth, getCapabilities } from "@/components/app/delta-utils";
+import type { AccountKind, ApiResponse, DeltaAccountRecord, GameAccountRequest } from "@/components/app/delta-types";
+import { getCapabilities } from "@/components/app/delta-utils";
+import {
+  DETAIL_GAME_DATA_KEYS,
+  GAME_DATA_COMMANDS,
+  GAME_DATA_KEYS,
+  PRIMARY_GAME_DATA_KEYS,
+  createInitialGameDataState,
+  markGameDataKeysLoading,
+  mergeGameDataResult,
+  normalizeGameDataError,
+  normalizeGameDataResponse,
+  shouldLoadDetailGameData,
+} from "@/components/app/delta-game-data-loader";
+import type {
+  GameDataItemState,
+  GameDataKey,
+  GameDataLoadResult,
+  GameDataState,
+} from "@/components/app/delta-game-data-loader";
 import { AppPage, PageHero, SignalTile, TacticalCard, CardBody } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { DeltaDataCard } from "@/components/app/delta-data-card";
@@ -19,47 +37,104 @@ import {
 
 const GAME_AUTH_KINDS: AccountKind[] = ["qq", "wechat"];
 
-type DataState<T> = {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
+type GameDataKeyResult = {
+  key: GameDataKey;
+  result: GameDataLoadResult<unknown>;
 };
 
-function useGameData<T>(account: DeltaAccountRecord | null, cmd: string | null, deps: unknown[] = []) {
-  const [state, setState] = useState<DataState<T>>({ data: null, loading: false, error: null });
+type GameDataViewState = GameDataItemState<unknown> & {
+  reload: () => void;
+};
+
+type GamePageDataState = Record<GameDataKey, GameDataViewState>;
+
+async function requestGameData(key: GameDataKey, accountId: number): Promise<GameDataLoadResult<unknown>> {
+  try {
+    const request: GameAccountRequest = { accountId };
+    const response = await invoke<ApiResponse<unknown>>(GAME_DATA_COMMANDS[key], { request });
+    return normalizeGameDataResponse(response);
+  } catch (error: unknown) {
+    return normalizeGameDataError(error);
+  }
+}
+
+function mergeGameDataResults(
+  state: Readonly<GameDataState<unknown>>,
+  results: readonly GameDataKeyResult[],
+): GameDataState<unknown> {
+  let next = state;
+  for (const { key, result } of results) {
+    next = mergeGameDataResult(next, key, result);
+  }
+  return next;
+}
+
+function useGamePageData(account: DeltaAccountRecord | null): GamePageDataState {
+  const [state, setState] = useState<GameDataState<unknown>>(() => createInitialGameDataState());
   const versionRef = useRef(0);
 
-  const load = useCallback(async () => {
-    if (!account || !cmd) return;
-    const auth = buildGameAuth(account);
-    if (!auth) return;
+  const loadSingleKey = useCallback(async (key: GameDataKey) => {
+    if (!account) return;
 
-    const ver = ++versionRef.current;
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const res = await invoke<ApiResponse<T>>(cmd, { auth });
-      if (ver !== versionRef.current) return;
-      if (res.code === 0) {
-        setState({ data: res.data, loading: false, error: null });
-      } else {
-        setState({ data: null, loading: false, error: res.msg || "请求失败" });
-      }
-    } catch (e) {
-      if (ver !== versionRef.current) return;
-      setState({ data: null, loading: false, error: String(e) });
-    }
-  }, [account, cmd]); // eslint-disable-line react-hooks/exhaustive-deps
+    const version = versionRef.current;
+    setState((current) => markGameDataKeysLoading(current, [key]));
+
+    const result = await requestGameData(key, account.id);
+    if (version !== versionRef.current) return;
+
+    setState((current) => mergeGameDataResult(current, key, result));
+  }, [account]);
 
   useEffect(() => {
-    versionRef.current++;
-    if (account && cmd && buildGameAuth(account)) {
-      load();
-    } else {
-      setState({ data: null, loading: false, error: null });
-    }
-  }, [account?.id, cmd, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
+    const version = versionRef.current + 1;
+    versionRef.current = version;
 
-  return { ...state, reload: load };
+    if (!account) {
+      setState(createInitialGameDataState());
+      return;
+    }
+
+    setState(markGameDataKeysLoading(createInitialGameDataState(), PRIMARY_GAME_DATA_KEYS));
+
+    const loadBatch = async () => {
+      const primaryResults = await Promise.all(
+        PRIMARY_GAME_DATA_KEYS.map(async (key) => ({
+          key,
+          result: await requestGameData(key, account.id),
+        })),
+      );
+      if (version !== versionRef.current) return;
+
+      setState((current) => mergeGameDataResults(current, primaryResults));
+
+      if (!shouldLoadDetailGameData(primaryResults.map(({ result }) => result))) return;
+
+      setState((current) => markGameDataKeysLoading(current, DETAIL_GAME_DATA_KEYS));
+      for (const key of DETAIL_GAME_DATA_KEYS) {
+        void (async () => {
+          const result = await requestGameData(key, account.id);
+          if (version !== versionRef.current) return;
+          setState((current) => mergeGameDataResult(current, key, result));
+        })();
+      }
+    };
+
+    void loadBatch();
+  }, [account]);
+
+  return useMemo(() => {
+    const withReload = (key: GameDataKey): GameDataViewState => ({
+      ...state[key],
+      reload: () => {
+        void loadSingleKey(key);
+      },
+    });
+
+    return GAME_DATA_KEYS.reduce((next, key) => {
+      next[key] = withReload(key);
+      return next;
+    }, {} as GamePageDataState);
+  }, [loadSingleKey, state]);
 }
 
 function JsonBlock({ data }: { data: unknown }) {
@@ -74,15 +149,8 @@ export function DeltaGamePage() {
   const { selectedAccount, isNativeShell } = useDeltaAccounts();
   const hasCapability = selectedAccount && getCapabilities(selectedAccount.kind).includes("game_data");
 
-  const auth = useMemo(() => selectedAccount ? buildGameAuth(selectedAccount) : null, [selectedAccount]);
-
-  const player = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_player");
-  const record = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_record");
-  const assets = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_assets");
-  const recent = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_recent");
-  const achievement = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_achievement");
-  const password = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_password");
-  const bind = useGameData<unknown>(hasCapability ? selectedAccount : null, "delta_game_get_bind");
+  const gameData = useGamePageData(hasCapability ? selectedAccount : null);
+  const { player, record, assets, recent, achievement, password, bind } = gameData;
 
   if (!isNativeShell) {
     return (
@@ -229,7 +297,7 @@ export function DeltaGamePage() {
             {bind.data ? <JsonBlock data={bind.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
           </DeltaDataCard>
 
-          <DeltaQueryWorkbench auth={auth} />
+          <DeltaQueryWorkbench accountId={selectedAccount.id} />
         </div>
       )}
     </AppPage>

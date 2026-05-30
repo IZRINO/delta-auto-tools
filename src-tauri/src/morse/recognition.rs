@@ -115,15 +115,19 @@ pub async fn run_recognition(
     })
 }
 
-pub fn missing_regions_details() -> Vec<MorseRegionDetail> {
-    (0..3)
-        .map(|slot| MorseRegionDetail {
-            slot,
-            threshold_mode: "not-run".to_string(),
-            contour_count: 0,
-            morse: None,
-            digit: None,
-            error: Some("该区域尚未配置".to_string()),
+pub fn missing_regions_details(regions: &[Option<RegionRect>; 3]) -> Vec<MorseRegionDetail> {
+    regions
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, region)| {
+            region.is_none().then(|| MorseRegionDetail {
+                slot,
+                threshold_mode: "not-run".to_string(),
+                contour_count: 0,
+                morse: None,
+                digit: None,
+                error: Some("该区域尚未配置".to_string()),
+            })
         })
         .collect()
 }
@@ -238,34 +242,43 @@ fn region_to_capture_bounds(
     monitor_height: u32,
     scale_factor: f32,
 ) -> Option<(u32, u32, u32, u32)> {
-    let monitor_right = monitor_left + monitor_width as i32;
-    let monitor_bottom = monitor_top + monitor_height as i32;
     let physical = rect_bounds(region.x, region.y, region.width, region.height);
 
-    if rect_fits_within(physical, monitor_left, monitor_top, monitor_right, monitor_bottom) {
-        return Some(to_local_capture_bounds(physical, monitor_left, monitor_top));
+    if scale_factor > 0.0 && (scale_factor - 1.0).abs() > SCALE_FACTOR_TOLERANCE {
+        let logical_left = (monitor_left as f32 / scale_factor).round() as i32;
+        let logical_top = (monitor_top as f32 / scale_factor).round() as i32;
+        let logical_right = logical_left + (monitor_width as f32 / scale_factor).round() as i32;
+        let logical_bottom = logical_top + (monitor_height as f32 / scale_factor).round() as i32;
+
+        if rect_fits_within(
+            physical,
+            logical_left,
+            logical_top,
+            logical_right,
+            logical_bottom,
+        ) {
+            return Some(to_scaled_local_capture_bounds(
+                physical,
+                logical_left,
+                logical_top,
+                monitor_width,
+                monitor_height,
+                scale_factor,
+            ));
+        }
     }
 
-    if (scale_factor - 1.0).abs() <= SCALE_FACTOR_TOLERANCE {
-        return None;
-    }
+    let monitor_right = monitor_left + monitor_width as i32;
+    let monitor_bottom = monitor_top + monitor_height as i32;
 
-    let logical_left = (monitor_left as f32 / scale_factor).round() as i32;
-    let logical_top = (monitor_top as f32 / scale_factor).round() as i32;
-    let logical_right = logical_left + (monitor_width as f32 / scale_factor).round() as i32;
-    let logical_bottom = logical_top + (monitor_height as f32 / scale_factor).round() as i32;
-    let logical = rect_bounds(region.x, region.y, region.width, region.height);
-
-    if !rect_fits_within(logical, logical_left, logical_top, logical_right, logical_bottom) {
-        return None;
-    }
-
-    let scaled_left = ((logical.0 - logical_left) as f32 * scale_factor).round() as u32;
-    let scaled_top = ((logical.1 - logical_top) as f32 * scale_factor).round() as u32;
-    let scaled_width = (region.width as f32 * scale_factor).round() as u32;
-    let scaled_height = (region.height as f32 * scale_factor).round() as u32;
-
-    Some((scaled_left, scaled_top, scaled_width.max(1), scaled_height.max(1)))
+    rect_fits_within(
+        physical,
+        monitor_left,
+        monitor_top,
+        monitor_right,
+        monitor_bottom,
+    )
+    .then(|| to_local_capture_bounds(physical, monitor_left, monitor_top))
 }
 
 fn rect_bounds(x: i32, y: i32, width: i32, height: i32) -> (i32, i32, i32, i32) {
@@ -282,7 +295,11 @@ fn rect_fits_within(
     rect.0 >= left && rect.1 >= top && rect.2 <= right && rect.3 <= bottom
 }
 
-fn to_local_capture_bounds(rect: (i32, i32, i32, i32), monitor_left: i32, monitor_top: i32) -> (u32, u32, u32, u32) {
+fn to_local_capture_bounds(
+    rect: (i32, i32, i32, i32),
+    monitor_left: i32,
+    monitor_top: i32,
+) -> (u32, u32, u32, u32) {
     (
         (rect.0 - monitor_left) as u32,
         (rect.1 - monitor_top) as u32,
@@ -291,6 +308,26 @@ fn to_local_capture_bounds(rect: (i32, i32, i32, i32), monitor_left: i32, monito
     )
 }
 
+fn to_scaled_local_capture_bounds(
+    rect: (i32, i32, i32, i32),
+    logical_left: i32,
+    logical_top: i32,
+    monitor_width: u32,
+    monitor_height: u32,
+    scale_factor: f32,
+) -> (u32, u32, u32, u32) {
+    let left = ((rect.0 - logical_left) as f32 * scale_factor).round() as i32;
+    let top = ((rect.1 - logical_top) as f32 * scale_factor).round() as i32;
+    let right = ((rect.2 - logical_left) as f32 * scale_factor).round() as i32;
+    let bottom = ((rect.3 - logical_top) as f32 * scale_factor).round() as i32;
+
+    let left = left.clamp(0, monitor_width.saturating_sub(1) as i32) as u32;
+    let top = top.clamp(0, monitor_height.saturating_sub(1) as i32) as u32;
+    let right = (right.max(left as i32 + 1) as u32).min(monitor_width);
+    let bottom = (bottom.max(top as i32 + 1) as u32).min(monitor_height);
+
+    (left, top, right - left, bottom - top)
+}
 
 fn detect_morse(
     image: &RgbaImage,
@@ -314,7 +351,15 @@ fn detect_morse(
 
     for (mode, threshold_value, invert) in stages {
         match detect_morse_with_threshold(&gray, mode, threshold_value, invert, binary_threshold) {
-            Ok(success) => return Ok(success),
+            Ok(success) if decoder::decode(success.morse.as_str()).is_ok() => return Ok(success),
+            Ok(success) => {
+                last_failure = DetectionFailure {
+                    threshold_mode: success.threshold_mode,
+                    contour_count: success.contour_count,
+                    morse: Some(success.morse.clone()),
+                    message: format!("无法识别的摩斯密码: {}", success.morse),
+                };
+            }
             Err(failure) => last_failure = failure,
         }
     }
@@ -352,7 +397,9 @@ fn detect_morse_with_threshold(
         return Err(DetectionFailure {
             threshold_mode: mode,
             contour_count,
-            morse: Some(components_to_morse(&select_components(components.as_slice()))),
+            morse: Some(components_to_morse(&select_components(
+                components.as_slice(),
+            ))),
             message: format!(
                 "轮廓过多（{contour_count}），当前阈值 {binary_threshold}，请重新框选或调整阈值"
             ),
@@ -510,4 +557,44 @@ fn detect_components(binary: &GrayImage) -> Vec<ComponentBounds> {
     components
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    fn rect(x: i32, y: i32, width: i32, height: i32) -> RegionRect {
+        RegionRect {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn region_to_capture_bounds_keeps_physical_region_when_scale_is_one() {
+        let bounds = region_to_capture_bounds(&rect(100, 120, 80, 30), 0, 0, 1920, 1080, 1.0);
+
+        assert_eq!(bounds, Some((100, 120, 80, 30)));
+    }
+
+    #[test]
+    fn region_to_capture_bounds_scales_logical_overlay_region_on_high_dpi_monitor() {
+        let bounds = region_to_capture_bounds(&rect(100, 120, 80, 30), 0, 0, 1920, 1080, 2.0);
+
+        assert_eq!(bounds, Some((200, 240, 160, 60)));
+    }
+
+    #[test]
+    fn region_to_capture_bounds_scales_logical_region_for_non_primary_monitor() {
+        let bounds = region_to_capture_bounds(&rect(1060, 100, 100, 40), 1920, 0, 2560, 1440, 2.0);
+
+        assert_eq!(bounds, Some((200, 200, 200, 80)));
+    }
+
+    #[test]
+    fn region_to_capture_bounds_rejects_cross_monitor_region() {
+        let bounds = region_to_capture_bounds(&rect(900, 100, 200, 40), 0, 0, 960, 540, 2.0);
+
+        assert_eq!(bounds, None);
+    }
+}

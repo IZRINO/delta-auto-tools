@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { LoginFlowKind, QqLoginQrResult, QqPollCode, WechatLoginQrResult, WechatPollCode, QqAccessTokenResult, WechatAccessTokenResult, WegameQqAccessResult } from "@/components/app/delta-types";
+import type { AccountLoginResult, LoginFlowKind, QqLoginQrResult, QqPollCode, WechatLoginQrResult, WechatPollCode } from "@/components/app/delta-types";
 import { LOGIN_FLOW_KINDS, LOGIN_FLOW_KIND_LABELS, LOGIN_FLOW_MODE_MAP } from "@/components/app/delta-types";
 import {
   buildAccessTokenInvokeArgs,
   buildLoginQrInvokeArgs,
   buildQqPollInvokeArgs,
   buildWechatPollInvokeArgs,
-  extractQqPollCookie,
+  extractPollSessionKey,
   extractQqQrImage,
   extractQqQrToken,
-  extractWechatCode,
 } from "@/components/app/delta-login-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,8 +64,8 @@ const WECHAT_ACCESS_TOKEN_CMDS: Record<string, string> = {
   wegame_wechat: "delta_wegame_wechat_get_access_token",
 };
 
-type QqSession = { qrToken: string; qrSig: string; loginSig: string; cookie: string };
-type AccessTokenPayload = { cookie?: string; code?: string };
+type QqSession = { qrToken: string; qrSig: string; loginSig: string; sessionKey: string };
+type AccessTokenPayload = { sessionKey?: string };
 
 // ── 组件 ──
 
@@ -138,20 +137,20 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
     try {
       let res: { code: number; msg: string };
 
-      if (mode === "qq" && (payload.cookie || qrSessionRef.current)) {
+      if (mode === "qq" && (payload.sessionKey || qrSessionRef.current)) {
         const cmd = QQ_ACCESS_TOKEN_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的令牌获取流程"); return; }
-        const cookie = payload.cookie ?? qrSessionRef.current?.cookie;
-        res = await invoke<{ code: number; msg: string; data: QqAccessTokenResult | WegameQqAccessResult | { key: string } }>(
+        const sessionKey = payload.sessionKey ?? qrSessionRef.current?.sessionKey;
+        res = await invoke<{ code: number; msg: string; data: AccountLoginResult }>(
           cmd,
-          buildAccessTokenInvokeArgs(kind, cookie),
+          buildAccessTokenInvokeArgs(kind, sessionKey),
         );
-      } else if (mode === "wechat" && payload.code) {
+      } else if (mode === "wechat" && payload.sessionKey) {
         const cmd = WECHAT_ACCESS_TOKEN_CMDS[kind];
         if (!cmd) { setStep("error"); setErrorMessage("未知的令牌获取流程"); return; }
-        res = await invoke<{ code: number; msg: string; data: WechatAccessTokenResult }>(
+        res = await invoke<{ code: number; msg: string; data: AccountLoginResult }>(
           cmd,
-          buildAccessTokenInvokeArgs(kind, undefined, payload.code),
+          buildAccessTokenInvokeArgs(kind, payload.sessionKey),
         );
       } else {
         setStep("error"); setErrorMessage("缺少令牌获取所需参数"); return;
@@ -198,18 +197,15 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
           );
           const code = res.code as QqPollCode;
           if (code === 0) {
-            const loggedInCookie = extractQqPollCookie(res);
-            if (!loggedInCookie) {
+            const sessionKey = extractPollSessionKey(res);
+            if (!sessionKey) {
               stopPolling();
               setStep("error");
-              setErrorMessage("登录成功但未返回可用 Cookie，请重新扫码");
+              setErrorMessage("登录成功但未返回会话标识，请重新扫码");
               return;
             }
-            const nextSession = { ...session, cookie: loggedInCookie };
-            qrSessionRef.current = nextSession;
-            setQrSession(nextSession);
             stopPolling(); setPollStatus("登录成功");
-            await fetchAccessToken({ cookie: loggedInCookie });
+            await fetchAccessToken({ sessionKey });
           } else if (code === 1) {
             setPollStatus("等待扫描...");
           } else if (code === 2) {
@@ -229,15 +225,15 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
           );
           const code = res.code as WechatPollCode;
           if (code === 3) {
-            const wxCode = extractWechatCode(res);
-            if (!wxCode) {
+            const sessionKey = extractPollSessionKey(res);
+            if (!sessionKey) {
               stopPolling();
               setStep("error");
-              setErrorMessage("登录成功但未返回微信授权码，请重新扫码");
+              setErrorMessage("登录成功但未返回会话标识，请重新扫码");
               return;
             }
             stopPolling(); setPollStatus("登录成功");
-            await fetchAccessToken({ code: wxCode });
+            await fetchAccessToken({ sessionKey });
           } else if (code === 1) {
             setPollStatus("等待扫描...");
           } else if (code === 2) {
@@ -289,7 +285,7 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
             return;
           }
           setQrImageData(image);
-          setQrSession({ qrToken, qrSig: res.data.qrSig, loginSig: res.data.loginSig, cookie: res.data.cookie });
+          setQrSession({ qrToken, qrSig: res.data.qrSig, loginSig: res.data.loginSig, sessionKey: res.data.sessionKey });
           setQrCodeUrl(null);
           setStep("qr_code");
         } else {

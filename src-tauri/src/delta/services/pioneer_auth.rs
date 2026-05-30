@@ -117,7 +117,12 @@ impl PioneerAuthService {
         req: PioneerStatusRequest,
     ) -> Result<ApiResponse<Value>, DeltaError> {
         restore_cookie_json(&self.jar, "https://xui.ptlogin2.qq.com/", &req.cookie)?;
-        insert_cookie(&self.jar, "https://xui.ptlogin2.qq.com/", "qrsig", &req.qr_sig)?;
+        insert_cookie(
+            &self.jar,
+            "https://xui.ptlogin2.qq.com/",
+            "qrsig",
+            &req.qr_sig,
+        )?;
 
         let body = self
             .client
@@ -155,7 +160,10 @@ impl PioneerAuthService {
         .await
     }
 
-    pub async fn get_access_token(&self, cookie_json: &str) -> Result<PioneerAccessToken, DeltaError> {
+    pub async fn get_access_token(
+        &self,
+        cookie_json: &str,
+    ) -> Result<PioneerAccessToken, DeltaError> {
         restore_cookie_json(&self.jar, "https://graph.qq.com/", cookie_json)?;
         let p_skey = must_cookie(&self.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = crate::delta::utils::hashes::get_gtk(&p_skey).to_string();
@@ -224,6 +232,7 @@ impl PioneerAuthService {
         Ok(PioneerAccessToken { key })
     }
 
+    #[allow(dead_code)]
     pub async fn update_access_token(
         &self,
         openid: &str,
@@ -253,10 +262,14 @@ impl PioneerAuthService {
             .await?
             .text()
             .await?;
-        Ok(body.contains("\"isLogin\":1"))
+        crate::delta::services::qq_auth::parse_login_valid(&body)
     }
 
-    pub async fn get_game_test_list(&self, key: &str, list_type: &str) -> Result<Value, DeltaError> {
+    pub async fn get_game_test_list(
+        &self,
+        key: &str,
+        list_type: &str,
+    ) -> Result<Value, DeltaError> {
         insert_cookie(&self.jar, "https://gamer.qq.com/", "key", key)?;
 
         let sub_type = match list_type {
@@ -288,12 +301,17 @@ impl PioneerAuthService {
             return Ok(list["list"].clone());
         }
 
-        let items = list["list"].as_array().ok_or_else(|| DeltaError::Parse("invalid list".to_string()))?;
+        let items = list["list"]
+            .as_array()
+            .ok_or_else(|| DeltaError::Parse("invalid list".to_string()))?;
         let mut enriched = Vec::new();
         for item in items {
             let jump_url = item["szJumpUrl"].as_str().unwrap_or("");
             if let Some(id_str) = extract_test_detail_id(jump_url) {
-                let detail = self.get_game_detail(key, &id_str).await.unwrap_or(json!(null));
+                let detail = self
+                    .get_game_detail(key, &id_str)
+                    .await
+                    .unwrap_or(json!(null));
                 let mut enriched_item = item.clone();
                 enriched_item["detail"] = detail;
                 enriched.push(enriched_item);
@@ -323,7 +341,10 @@ impl PioneerAuthService {
         Ok(value["result"].clone())
     }
 
-    pub async fn map_poll_body<F, Fut>(body: &str, on_success: F) -> Result<ApiResponse<Value>, DeltaError>
+    pub async fn map_poll_body<F, Fut>(
+        body: &str,
+        on_success: F,
+    ) -> Result<ApiResponse<Value>, DeltaError>
     where
         F: FnOnce(String) -> Fut,
         Fut: std::future::Future<Output = Result<Value, DeltaError>>,
@@ -334,16 +355,37 @@ impl PioneerAuthService {
                 let redirect_url = args.get(2).cloned().unwrap_or_default();
                 Ok(ApiResponse::ok("登录成功", on_success(redirect_url).await?))
             }
-            Some("66") => Ok(ApiResponse { code: 1, msg: "等待扫码".to_string(), data: json!([]) }),
-            Some("67") => Ok(ApiResponse { code: 2, msg: "已扫码,待确认".to_string(), data: json!([]) }),
-            Some("65") => Ok(ApiResponse { code: -2, msg: "二维码失效".to_string(), data: json!([]) }),
-            Some("86") => Ok(ApiResponse { code: -3, msg: "登录被拒绝".to_string(), data: json!([]) }),
-            _ => Ok(ApiResponse { code: -4, msg: "未知错误信息".to_string(), data: json!([]) }),
+            Some("66") => Ok(ApiResponse {
+                code: 1,
+                msg: "等待扫码".to_string(),
+                data: json!([]),
+            }),
+            Some("67") => Ok(ApiResponse {
+                code: 2,
+                msg: "已扫码,待确认".to_string(),
+                data: json!([]),
+            }),
+            Some("65") => Ok(ApiResponse {
+                code: -2,
+                msg: "二维码失效".to_string(),
+                data: json!([]),
+            }),
+            Some("86") => Ok(ApiResponse {
+                code: -3,
+                msg: "登录被拒绝".to_string(),
+                data: json!([]),
+            }),
+            _ => Ok(ApiResponse {
+                code: -4,
+                msg: "未知错误信息".to_string(),
+                data: json!([]),
+            }),
         }
     }
 }
 
 fn extract_test_detail_id(jump_url: &str) -> Option<String> {
     let re = regex::Regex::new(r"/detail/\d+/(\d+)").ok()?;
-    re.captures(jump_url).and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
+    re.captures(jump_url)
+        .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
 }

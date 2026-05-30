@@ -35,7 +35,11 @@ fn default_acctype() -> String {
 
 impl GameAuth {
     pub fn acctype_api(&self) -> &str {
-        if self.acctype == "wx" { "wx" } else { "qc" }
+        if self.acctype == "wx" {
+            "wx"
+        } else {
+            "qc"
+        }
     }
 }
 
@@ -132,9 +136,7 @@ impl GameService {
             "place": place,
             "hasPriceData": true,
         });
-        let body = self
-            .ide(IdeCall::new(352143, "YWRywA", param))
-            .await?;
+        let body = self.ide(IdeCall::new(352143, "YWRywA", param)).await?;
         Ok(body["data"][place]["list"].clone())
     }
 
@@ -147,17 +149,22 @@ impl GameService {
             .await?;
 
         if with_recent {
-            if let Some(map) = latest.as_object_mut() {
-                for key in map.keys().cloned().collect::<Vec<_>>() {
-                    let recent = self
-                        .ide(
-                            IdeCall::new(352143, "YWRywA", json!({ "objectID": key }))
-                                .with_method("dfm/object.price.recent"),
-                        )
-                        .await?;
-                    if let Some(entry) = map.get_mut(&key) {
-                        entry["recent"] = recent["objectPriceRecent"]["list"].clone();
-                    }
+            let Some(map) = latest.as_object_mut() else {
+                return Err(DeltaError::Parse("物价最新数据格式异常".to_string()));
+            };
+            for key in map.keys().cloned().collect::<Vec<_>>() {
+                let recent = self
+                    .ide(
+                        IdeCall::new(352143, "YWRywA", json!({ "objectID": key }))
+                            .with_method("dfm/object.price.recent"),
+                    )
+                    .await?;
+                let recent_list = recent["objectPriceRecent"]["list"]
+                    .as_array()
+                    .ok_or_else(|| DeltaError::Parse("物价近期数据格式异常".to_string()))?
+                    .clone();
+                if let Some(entry) = map.get_mut(&key) {
+                    entry["recent"] = Value::Array(recent_list);
                 }
             }
         }
@@ -231,15 +238,27 @@ impl GameService {
         });
         let raw = self.ide(IdeCall::new(318948, "Plaqzy", param)).await?;
 
-        if raw.get("ret").and_then(|value| value.as_i64()) == Some(-4000) {
+        let ret = raw.get("ret").and_then(Value::as_i64);
+        if ret == Some(-4000) {
             return Ok(ApiResponse::of(
                 -1,
                 "您的账号由于腾讯内部错误无法使用这个功能",
                 json!([]),
             ));
         }
+        if matches!(ret, Some(value) if value != 0) {
+            let msg = raw
+                .get("msg")
+                .or_else(|| raw.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("资产查询失败");
+            return Ok(ApiResponse::of(-1, msg, json!([])));
+        }
 
-        let data = raw.get("jData").cloned().unwrap_or(raw);
+        let data = raw
+            .get("jData")
+            .cloned()
+            .ok_or_else(|| DeltaError::Parse("资产数据格式异常".to_string()))?;
         Ok(ApiResponse::ok("获取成功", data))
     }
 
@@ -298,10 +317,14 @@ impl GameService {
             .await?;
 
         let mut out = serde_json::Map::new();
-        let items = data.as_array().or_else(|| data.get("data").and_then(Value::as_array));
+        let items = data
+            .as_array()
+            .or_else(|| data.get("data").and_then(Value::as_array));
         if let Some(items) = items {
             for item in items {
-                if let (Some(name), Some(secret)) = (item["mapName"].as_str(), item["secret"].as_str()) {
+                if let (Some(name), Some(secret)) =
+                    (item["mapName"].as_str(), item["secret"].as_str())
+                {
                     out.insert(name.to_string(), Value::String(secret.to_string()));
                 }
             }
@@ -372,12 +395,21 @@ impl GameService {
             .await?;
         let body = decode_gbk(&resp);
         let parsed = crate::delta::utils::game::parse_bind_role_js(&body)?;
-        let checkparam = parsed.get("checkparam").cloned().unwrap_or_default();
-        let md5str = parsed.get("md5str").cloned().unwrap_or_default();
+        let checkparam = parsed
+            .get("checkparam")
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .ok_or_else(|| DeltaError::Parse("角色绑定缺少 checkparam".to_string()))?;
+        let md5str = parsed
+            .get("md5str")
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .ok_or_else(|| DeltaError::Parse("角色绑定缺少 md5str".to_string()))?;
         let role_id = checkparam
             .split('|')
             .nth(2)
-            .unwrap_or_default()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("角色绑定缺少 role_id".to_string()))?
             .to_string();
 
         let bind_param = json!({
@@ -406,10 +438,7 @@ mod tests {
     use url::form_urlencoded::Serializer;
 
     use super::{GameAuth, GameService};
-    use crate::delta::{
-        constants::DF_REFERER,
-        utils::game::AmmoItem,
-    };
+    use crate::delta::{constants::DF_REFERER, utils::game::AmmoItem};
 
     fn make_service(
         ide_gateway: String,
@@ -512,7 +541,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service
             .get_price(vec![37100500001, 37100500002], true)
             .await
@@ -524,6 +557,52 @@ mod tests {
         latest_mock.assert_async().await;
         recent_first_mock.assert_async().await;
         recent_second_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_price_rejects_missing_recent_list() {
+        let mut server = Server::new_async().await;
+
+        server
+            .mock("POST", "/ide/")
+            .match_body(ide_form(
+                352143,
+                "YWRywA",
+                Some("dfm/object.price.latest"),
+                None,
+                json!({ "ids": [37100500001_i64] }),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "37100500001": { "avgPrice": 12345 } }).to_string())
+            .create_async()
+            .await;
+
+        server
+            .mock("POST", "/ide/")
+            .match_body(ide_form(
+                352143,
+                "YWRywA",
+                Some("dfm/object.price.recent"),
+                None,
+                json!({ "objectID": "37100500001" }),
+            ))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "objectPriceRecent": {} }).to_string())
+            .create_async()
+            .await;
+
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        let error = service
+            .get_price(vec![37100500001], true)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("物价近期数据格式异常"));
     }
 
     #[tokio::test]
@@ -546,13 +625,76 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let response = service.get_assets(&auth).await.unwrap();
 
         assert_eq!(response.code, -1);
         assert_eq!(response.msg, "您的账号由于腾讯内部错误无法使用这个功能");
         assert_eq!(response.data, json!([]));
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn get_assets_maps_application_error() {
+        let mut server = Server::new_async().await;
+        let auth = sample_auth();
+        let param = json!({
+            "openid": auth.openid,
+            "access_token": auth.access_token,
+            "acctype": auth.acctype_api(),
+        });
+
+        server
+            .mock("POST", "/ide/")
+            .match_body(ide_form(318948, "Plaqzy", None, None, param))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "ret": -1, "msg": "登录态失效" }).to_string())
+            .create_async()
+            .await;
+
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        let response = service.get_assets(&auth).await.unwrap();
+
+        assert_eq!(response.code, -1);
+        assert_eq!(response.msg, "登录态失效");
+        assert_eq!(response.data, json!([]));
+    }
+
+    #[tokio::test]
+    async fn get_assets_requires_jdata_on_success() {
+        let mut server = Server::new_async().await;
+        let auth = sample_auth();
+        let param = json!({
+            "openid": auth.openid,
+            "access_token": auth.access_token,
+            "acctype": auth.acctype_api(),
+        });
+
+        server
+            .mock("POST", "/ide/")
+            .match_body(ide_form(318948, "Plaqzy", None, None, param))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({ "ret": 0 }).to_string())
+            .create_async()
+            .await;
+
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        let error = service.get_assets(&auth).await.unwrap_err();
+        assert!(error.to_string().contains("资产数据格式异常"));
     }
 
     #[tokio::test]
@@ -604,7 +746,11 @@ mod tests {
                 .await;
         }
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_player(&auth).await.unwrap();
 
         assert_eq!(data["data"]["charac_name"], "Alice Bob");
@@ -640,7 +786,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_logs(&auth, 3, 1).await.unwrap();
 
         assert_eq!(data, json!([{ "totalMoney": 88 }]));
@@ -672,7 +822,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_recent(&auth).await.unwrap();
 
         assert_eq!(data["data"]["solDetail"], json!([]));
@@ -706,7 +860,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_achievement(&auth).await.unwrap();
 
         assert_eq!(data["data"]["points"], 7);
@@ -743,7 +901,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_password(&auth).await.unwrap();
 
         assert_eq!(data, json!({ "零号大坝": "1234", "长弓溪谷": "5678" }));
@@ -774,7 +936,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_manufacture(&auth).await.unwrap();
 
         assert_eq!(data["data"][0]["status"], "busy");
@@ -826,7 +992,11 @@ mod tests {
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), ammo_config, accessory_config);
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            ammo_config,
+            accessory_config,
+        );
         let data = service.get_guns("gun-akm").await.unwrap();
 
         assert_eq!(data[0]["gunDetail"]["caliber"], "ammo7.62x51");
@@ -854,11 +1024,17 @@ mod tests {
             ))
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(json!({ "data": { "tech": { "list": [{ "name": "合金板" }] } } }).to_string())
+            .with_body(
+                json!({ "data": { "tech": { "list": [{ "name": "合金板" }] } } }).to_string(),
+            )
             .create_async()
             .await;
 
-        let service = make_service(format!("{}/ide/", server.url()), HashMap::new(), HashMap::new());
+        let service = make_service(
+            format!("{}/ide/", server.url()),
+            HashMap::new(),
+            HashMap::new(),
+        );
         let data = service.get_recommendation("tech").await.unwrap();
 
         assert_eq!(data, json!([{ "name": "合金板" }]));

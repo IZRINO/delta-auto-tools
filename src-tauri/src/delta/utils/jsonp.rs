@@ -97,7 +97,9 @@ fn find_jsonp_end(body: &str, start: usize) -> Result<usize, DeltaError> {
         }
     }
 
-    Err(DeltaError::Parse("missing jsonp closing bracket".to_string()))
+    Err(DeltaError::Parse(
+        "missing jsonp closing bracket".to_string(),
+    ))
 }
 
 fn trim_arg(value: &str) -> String {
@@ -107,10 +109,48 @@ fn trim_arg(value: &str) -> String {
         let first = bytes[0] as char;
         let last = bytes[trimmed.len() - 1] as char;
         if (first == '\'' && last == '\'') || (first == '"' && last == '"') {
-            return trimmed[1..trimmed.len() - 1].to_string();
+            return decode_js_string_literal(trimmed)
+                .unwrap_or_else(|| trimmed[1..trimmed.len() - 1].to_string());
         }
     }
     trimmed.to_string()
+}
+
+fn decode_js_string_literal(value: &str) -> Option<String> {
+    let quote = value.chars().next()?;
+    if quote != '\'' && quote != '"' || !value.ends_with(quote) {
+        return None;
+    }
+
+    let mut output = String::with_capacity(value.len().saturating_sub(2));
+    let mut chars = value[1..value.len() - 1].chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            output.push(ch);
+            continue;
+        }
+
+        match chars.next()? {
+            '\\' => output.push('\\'),
+            '\'' => output.push('\''),
+            '"' => output.push('"'),
+            '/' => output.push('/'),
+            'b' => output.push('\u{0008}'),
+            'f' => output.push('\u{000C}'),
+            'n' => output.push('\n'),
+            'r' => output.push('\r'),
+            't' => output.push('\t'),
+            'u' => {
+                let mut code = 0_u32;
+                for _ in 0..4 {
+                    code = (code << 4) | chars.next()?.to_digit(16)?;
+                }
+                output.push(char::from_u32(code)?);
+            }
+            other => output.push(other),
+        }
+    }
+    Some(output)
 }
 
 #[cfg(test)]
@@ -134,6 +174,16 @@ mod tests {
         let args = extract_jsonp_args("ptuiCB('66','0','','0','msg','')", "ptuiCB").unwrap();
         assert_eq!(args[0], "66");
         assert_eq!(args[4], "msg");
+    }
+
+    #[test]
+    fn decodes_js_string_escapes() {
+        let args = extract_jsonp_args(
+            r#"ptuiCB('0','0','https:\/\/qq.com\/cb?msg=\u4e2d\u6587','0','ok','')"#,
+            "ptuiCB",
+        )
+        .unwrap();
+        assert_eq!(args[2], "https://qq.com/cb?msg=中文");
     }
 
     #[test]

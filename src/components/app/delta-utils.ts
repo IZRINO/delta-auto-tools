@@ -1,8 +1,8 @@
-import type { AccountKind, Capability, TokenStatus, DeltaAccountRecord, GameAuth } from "@/components/app/delta-types";
+import type { AccountKind, Capability, TokenStatus, DeltaAccountRecord } from "@/components/app/delta-types";
 import { EXPIRING_THRESHOLD_MS, ACCOUNT_KIND_CAPABILITIES } from "@/components/app/delta-types";
 
 export function getTokenStatus(account: DeltaAccountRecord): TokenStatus {
-  if (!account.accessToken) return "none";
+  if (!account.hasAccessToken) return "none";
   if (account.expiresAt === null) return "none";
   const now = Date.now();
   const expires = account.expiresAt * 1000;
@@ -29,44 +29,12 @@ export function getCapabilities(kind: AccountKind): Capability[] {
 }
 
 export function canRefreshToken(kind: AccountKind): boolean {
-  return kind === "qq" || kind === "wechat" || kind === "pioneer";
-}
-
-export function buildGameAuth(account: DeltaAccountRecord): GameAuth | null {
-  if (!account.openid || !account.accessToken) return null;
-  return {
-    openid: account.openid,
-    accessToken: account.accessToken,
-    acctype: account.kind === "wechat" ? "wx" : "qc",
-  };
-}
-
-export function buildWegameTicket(account: DeltaAccountRecord): { id: string; ticket: string } | null {
-  if (!account.accessToken) return null;
-  return {
-    id: account.uinOrOpenid,
-    ticket: account.accessToken,
-  };
-}
-
-export function extractQqSafeCode(extraJson: string | null): string | null {
-  if (!extraJson) return null;
-  try {
-    const parsed = JSON.parse(extraJson);
-    if (typeof parsed.code === "string" && parsed.code) return parsed.code;
-    if (typeof parsed.code === "number") return String(parsed.code);
-    return null;
-  } catch {
-    return null;
-  }
+  return kind === "qq" || kind === "wechat";
 }
 
 export function getAccountDisplayName(account: DeltaAccountRecord): string {
-  if (account.kind === "qq" || account.kind === "qqSafe" || account.kind === "wegameQq" || account.kind === "pioneer") {
-    return account.uinOrOpenid;
-  }
-  const oid = account.openid ?? account.uinOrOpenid;
-  return oid.length > 12 ? `${oid.slice(0, 8)}...` : oid;
+  const id = account.uinOrOpenid;
+  return id.length > 12 ? `${id.slice(0, 8)}...` : id;
 }
 
 export function getAcctypeForKind(kind: AccountKind): "qc" | "wx" {

@@ -4,25 +4,16 @@ export type DeltaAccountRecord = {
   id: number;
   kind: AccountKind;
   uinOrOpenid: string;
-  cookieJson: string;
-  openid: string | null;
-  accessToken: string | null;
-  extraJson: string | null;
+  hasAccessToken: boolean;
   expiresAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
 
-export type GameAuth = {
-  openid: string;
-  accessToken: string;
-  acctype: "qc" | "wx";
+export type GameAccountRequest = {
+  accountId: number;
 };
 
-export type WegameTicket = {
-  id: string;
-  ticket: string;
-};
 
 export type TokenStatus = "valid" | "expiring_soon" | "expired" | "none";
 
@@ -52,7 +43,7 @@ export type QqLoginQrResult = {
   qrToken?: string;
   qrSig: string;
   loginSig: string;
-  cookie: string;
+  sessionKey: string;
 };
 
 export type WechatLoginQrResult = {
@@ -60,28 +51,9 @@ export type WechatLoginQrResult = {
   uuid: string;
 };
 
-export type QqAccessTokenResult = {
+export type AccountLoginResult = {
   accountId: number;
   account: DeltaAccountRecord;
-  auth: { openid: string; accessToken: string; expiresIn: number };
-};
-
-export type WechatAccessTokenResult = {
-  accountId: number;
-  account: DeltaAccountRecord;
-  auth: {
-    accessToken: string;
-    refreshToken: string | null;
-    openid: string;
-    unionid: string | null;
-    expiresIn: number;
-  };
-};
-
-export type WegameQqAccessResult = {
-  accountId: number;
-  account: DeltaAccountRecord;
-  auth: { tgpId: string; tgpTicket: string };
 };
 
 export type ApiResponse<T> = {
@@ -96,15 +68,8 @@ export type Capability =
   | "qqsafe"
   | "pioneer";
 
-export type QqSafeBannedListRequest = {
-  openid: string;
-  accessToken: string;
-  code: string;
-};
-
 export type QqSafeReportRequest = {
-  openid: string;
-  accessToken: string;
+  accountId: number;
   userId: string;
 };
 
@@ -124,7 +89,7 @@ export type GameGunsQuery = {
 };
 
 export type GameLogsQuery = {
-  auth: GameAuth;
+  accountId: number;
   logType: number;
   page: number;
 };

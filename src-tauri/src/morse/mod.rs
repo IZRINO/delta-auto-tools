@@ -52,14 +52,16 @@ impl MorseStateInner {
     }
 }
 
-fn push_history_with_limit(history: &mut VecDeque<HistoryEntry>, entry: HistoryEntry, limit: usize) {
+fn push_history_with_limit(
+    history: &mut VecDeque<HistoryEntry>,
+    entry: HistoryEntry,
+    limit: usize,
+) {
     history.push_front(entry);
     while history.len() > limit {
         history.pop_back();
     }
 }
-
-
 
 fn restart_hotkey_listener(
     state: &MorseState,
@@ -140,7 +142,7 @@ async fn run_recognition_flow(
         let mut result = if configured_regions != 3 {
             MorseRunResult {
                 value: None,
-                details: recognition::missing_regions_details(),
+                details: recognition::missing_regions_details(&settings_snapshot.regions),
                 triggered_by: triggered_by.to_string(),
                 auto_typed: false,
                 occurred_at_ms: now_ms(),
@@ -229,7 +231,9 @@ pub fn morse_save_settings(
     }
 
     if hotkey_changed {
-        if let Err(error) = restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey) {
+        if let Err(error) =
+            restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
+        {
             let _ = settings::save_settings(&app, &previous_settings);
             return Err(error);
         }
@@ -270,21 +274,22 @@ pub fn morse_overlay_submit_selection(
 ) -> Result<RegionSelectionProgress, String> {
     let prepared = overlay::prepare_selection(slot, rect, &state)?;
     let progress = prepared.progress.clone();
+    let is_complete = prepared.is_complete;
 
-    if prepared.is_complete {
-        let mut settings_snapshot = {
+    overlay::commit_selection(&app, prepared, &state)?;
+
+    if is_complete {
+        let settings_snapshot = {
             let inner = state
                 .inner
                 .lock()
                 .map_err(|_| "摩斯状态已损坏".to_string())?;
             inner.settings.clone()
         };
-        settings_snapshot.regions = progress.regions.clone();
         settings::save_settings(&app, &settings_snapshot)?;
     }
 
     let _ = app.emit_to("main", "morse://selection-progress", progress.clone());
-    overlay::commit_selection(&app, prepared, &state)?;
 
     Ok(progress)
 }

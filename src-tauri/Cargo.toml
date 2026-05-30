@@ -29,6 +29,7 @@ xcap = "0.9.4"
 enigo = "0.6.1"
 image = "0.25"
 willhook = "0.6.3"
+windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_System_Memory"] }
 
 [dev-dependencies]
 mockito = "1"

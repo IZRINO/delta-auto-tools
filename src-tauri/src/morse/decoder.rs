@@ -18,7 +18,6 @@ pub fn decode(morse: &str) -> Result<char, String> {
         .ok_or_else(|| format!("无法识别的摩斯密码: {morse}"))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::decode;

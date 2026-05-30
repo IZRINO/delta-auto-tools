@@ -4,7 +4,7 @@ export type QqLikeSession = {
   qrToken: string;
   qrSig: string;
   loginSig: string;
-  cookie: string;
+  sessionKey: string;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -13,8 +13,8 @@ function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" ? value as UnknownRecord : null;
 }
 
-export function buildLoginQrInvokeArgs(kind: LoginFlowKind): UnknownRecord {
-  return kind === "pioneer" ? { req: {} } : {};
+export function buildLoginQrInvokeArgs(_kind: LoginFlowKind): UnknownRecord {
+  return {};
 }
 
 export function buildQqPollInvokeArgs(kind: LoginFlowKind, session: QqLikeSession): UnknownRecord {
@@ -35,22 +35,13 @@ export function buildWechatPollInvokeArgs(kind: LoginFlowKind, uuid: string): Un
 
 export function buildAccessTokenInvokeArgs(
   kind: LoginFlowKind,
-  cookie?: string,
-  code?: string,
+  sessionKey?: string,
 ): UnknownRecord {
-  if (kind === "wegame_qq") {
-    return { request: { cookie } };
+  if (kind === "wegame_qq" || kind === "wegame_wechat") {
+    return { request: { sessionKey } };
   }
 
-  if (kind === "wegame_wechat") {
-    return { request: { code } };
-  }
-
-  if (kind === "wechat") {
-    return { req: { code } };
-  }
-
-  return { req: { cookie } };
+  return { req: { sessionKey } };
 }
 
 export function extractQqQrImage(data: unknown): string | null {
@@ -68,18 +59,9 @@ export function extractQqQrToken(data: unknown): string | null {
   return typeof token === "string" && token ? token : null;
 }
 
-export function extractQqPollCookie(response: unknown): string | null {
+export function extractPollSessionKey(response: unknown): string | null {
   const responseRecord = asRecord(response);
   const dataRecord = asRecord(responseRecord?.data);
-  const cookie = dataRecord?.cookie;
-  if (typeof cookie === "string" && cookie) return cookie;
-  if (cookie && typeof cookie === "object") return JSON.stringify(cookie);
-  return null;
-}
-
-export function extractWechatCode(response: unknown): string | null {
-  const responseRecord = asRecord(response);
-  const dataRecord = asRecord(responseRecord?.data);
-  const code = dataRecord?.wxCode ?? dataRecord?.wx_code ?? responseRecord?.wxCode ?? responseRecord?.wx_code;
-  return typeof code === "string" && code ? code : null;
+  const sessionKey = dataRecord?.sessionKey ?? responseRecord?.sessionKey;
+  return typeof sessionKey === "string" && sessionKey ? sessionKey : null;
 }

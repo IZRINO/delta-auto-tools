@@ -31,9 +31,9 @@ export function DeltaAccountsPage() {
   const stats = useMemo(() => {
     const now = Date.now();
     const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-    const valid = accounts.filter((a) => a.accessToken && a.expiresAt !== null && a.expiresAt * 1000 > now).length;
+    const valid = accounts.filter((a) => a.hasAccessToken && a.expiresAt !== null && a.expiresAt * 1000 > now).length;
     const expiring = accounts.filter((a) => {
-      if (!a.accessToken || a.expiresAt === null) return false;
+      if (!a.hasAccessToken || a.expiresAt === null) return false;
       const exp = a.expiresAt * 1000;
       return exp > now && exp <= now + threeDaysMs;
     }).length;
@@ -55,21 +55,17 @@ export function DeltaAccountsPage() {
   }, [selectedAccountId, selectAccount, refreshAccounts]);
 
   const handleRefreshToken = useCallback(async (account: DeltaAccountRecord) => {
-    if (!canRefreshToken(account.kind) || !account.openid || !account.accessToken) return;
+    if (!canRefreshToken(account.kind) || !account.hasAccessToken) return;
     setRefreshingId(account.id);
     try {
-      const cmdMap: Record<string, string> = {
+      const cmdMap: Partial<Record<typeof account.kind, string>> = {
         qq: "delta_qq_update_access_token",
         wechat: "delta_wechat_update_access_token",
       };
       const cmd = cmdMap[account.kind];
       if (!cmd) return;
       await invoke(cmd, {
-        req: {
-          openid: account.openid,
-          accessToken: account.accessToken,
-          cookie: account.kind === "qq" ? account.cookieJson || undefined : undefined,
-        },
+        req: { accountId: account.id },
       });
       await refreshAccounts();
     } catch {
@@ -148,7 +144,7 @@ export function DeltaAccountsPage() {
                     />
                   </ContextMenuTrigger>
                   <ContextMenuContent>
-                    {canRefreshToken(account.kind) && account.accessToken && account.openid && (
+                    {canRefreshToken(account.kind) && account.hasAccessToken && (
                       <ContextMenuItem
                         onClick={() => handleRefreshToken(account)}
                         disabled={refreshingId === account.id}

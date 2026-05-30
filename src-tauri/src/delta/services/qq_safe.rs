@@ -6,7 +6,11 @@ use crate::delta::{
     constants::{QQSAFE_OAUTH_APP_ID, QQSAFE_REDIRECT_URI, QQ_LOGIN_JUMP_URL},
     error::DeltaError,
     services::qq_auth::{QqAuthService, QqLoginQr, QqStatusRequest},
-    utils::{cookies::{insert_cookie, must_cookie, restore_cookie_json}, hashes::get_gtk, html::{decode_jwt_middle, extract_query_param}},
+    utils::{
+        cookies::{insert_cookie, must_cookie, restore_cookie_json},
+        hashes::get_gtk,
+        html::{decode_jwt_middle, extract_query_param},
+    },
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,8 +96,15 @@ impl QqSafeService {
             .qq_service
             .client
             .get("https://gamesafe.qq.com/connect")
-            .query(&[("code", code.as_str()), ("appId", QQSAFE_OAUTH_APP_ID), ("atype", "QQ")])
-            .header(reqwest::header::REFERER, "https://gamesafe.qq.com/login-ui/index.html")
+            .query(&[
+                ("code", code.as_str()),
+                ("appId", QQSAFE_OAUTH_APP_ID),
+                ("atype", "QQ"),
+            ])
+            .header(
+                reqwest::header::REFERER,
+                "https://gamesafe.qq.com/login-ui/index.html",
+            )
             .send()
             .await?;
 
@@ -101,18 +112,44 @@ impl QqSafeService {
         let openid = must_cookie(&self.qq_service.jar, "https://gamesafe.qq.com/", "gs_id")?;
         let payload = decode_jwt_middle(&gs_code)?;
 
+        let access_token = payload["token"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("QQ安全中心鉴权失败: 缺少 token".to_string()))?
+            .to_string();
+
         Ok(QqSafeAccess {
-            access_token: payload["token"].as_str().unwrap_or_default().to_string(),
+            access_token,
             openid,
             code: gs_code,
         })
     }
 
     pub async fn get_banned_list(&self, req: &QqSafeAccess) -> Result<Value, DeltaError> {
-        insert_cookie(&self.qq_service.jar, "https://gamesafe.qq.com/", "openid", &req.openid)?;
-        insert_cookie(&self.qq_service.jar, "https://gamesafe.qq.com/", "access_token", &req.access_token)?;
-        insert_cookie(&self.qq_service.jar, "https://gamesafe.qq.com/", "gs_id", &req.openid)?;
-        insert_cookie(&self.qq_service.jar, "https://gamesafe.qq.com/", "gs_code", &req.code)?;
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://gamesafe.qq.com/",
+            "openid",
+            &req.openid,
+        )?;
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://gamesafe.qq.com/",
+            "access_token",
+            &req.access_token,
+        )?;
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://gamesafe.qq.com/",
+            "gs_id",
+            &req.openid,
+        )?;
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://gamesafe.qq.com/",
+            "gs_code",
+            &req.code,
+        )?;
 
         let value: Value = self
             .qq_service
@@ -126,9 +163,24 @@ impl QqSafeService {
         Ok(value["data"].clone())
     }
 
-    pub async fn report(&self, openid: &str, access_token: &str, user_id: &str) -> Result<Value, DeltaError> {
-        insert_cookie(&self.qq_service.jar, "https://wx.gamesafe.qq.com/", "openid", openid)?;
-        insert_cookie(&self.qq_service.jar, "https://wx.gamesafe.qq.com/", "access_token", access_token)?;
+    pub async fn report(
+        &self,
+        openid: &str,
+        access_token: &str,
+        user_id: &str,
+    ) -> Result<Value, DeltaError> {
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://wx.gamesafe.qq.com/",
+            "openid",
+            openid,
+        )?;
+        insert_cookie(
+            &self.qq_service.jar,
+            "https://wx.gamesafe.qq.com/",
+            "access_token",
+            access_token,
+        )?;
 
         let value: Value = self
             .qq_service

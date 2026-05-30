@@ -120,6 +120,77 @@ impl HotkeyManager {
         }
     }
 
+    fn validate_scope_conflicts(
+        &self,
+        scope: &str,
+        new_bindings: &[HotkeyBinding],
+    ) -> Result<(), String> {
+        let registrations = self
+            .registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        for new_binding in new_bindings {
+            if let Some(existing) = registrations.iter().find(|registration| {
+                registration.enabled
+                    && registration.scope != scope
+                    && registration.binding == *new_binding
+            }) {
+                return Err(format!(
+                    "快捷键 {} 与{}的快捷键冲突",
+                    types::binding_to_string(new_binding),
+                    scope_name(existing.scope.as_str())
+                ));
+            }
+        }
+        drop(registrations);
+
+        let hold_registrations = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        for new_binding in new_bindings {
+            for registrations in hold_registrations.values() {
+                if let Some(existing) = registrations.iter().find(|registration| {
+                    registration.enabled
+                        && registration.scope != scope
+                        && registration.binding == *new_binding
+                }) {
+                    return Err(format!(
+                        "快捷键 {} 与{}的触发键冲突",
+                        types::binding_to_string(new_binding),
+                        scope_name(existing.scope.as_str())
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_hold_scope_conflicts(
+        &self,
+        scope: &str,
+        new_bindings: &[HotkeyBinding],
+    ) -> Result<(), String> {
+        let registrations = self
+            .registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        for new_binding in new_bindings {
+            if let Some(existing) = registrations.iter().find(|registration| {
+                registration.enabled
+                    && registration.scope != scope
+                    && registration.binding == *new_binding
+            }) {
+                return Err(format!(
+                    "触发键 {} 与{}的快捷键冲突",
+                    types::binding_to_string(new_binding),
+                    scope_name(existing.scope.as_str())
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn replace_scope(
         &self,
         scope: &str,
@@ -138,6 +209,11 @@ impl HotkeyManager {
                 action,
             });
         }
+        let parsed_bindings = next_registrations
+            .iter()
+            .map(|registration| registration.binding.clone())
+            .collect::<Vec<_>>();
+        self.validate_scope_conflicts(scope, parsed_bindings.as_slice())?;
 
         let mut registrations = self
             .registrations
@@ -181,6 +257,21 @@ impl HotkeyManager {
             return Err(error.clone());
         }
 
+        let mut regs = Vec::with_capacity(bindings.len());
+        for (key, action) in bindings {
+            regs.push(HoldRegistration {
+                scope: scope.to_string(),
+                binding: HotkeyBinding::parse(&key)?,
+                enabled: true,
+                action,
+            });
+        }
+        let parsed_bindings = regs
+            .iter()
+            .map(|registration| registration.binding.clone())
+            .collect::<Vec<_>>();
+        self.validate_hold_scope_conflicts(scope, parsed_bindings.as_slice())?;
+
         let mut hold_regs = self
             .hold_registrations
             .lock()
@@ -188,18 +279,7 @@ impl HotkeyManager {
 
         hold_regs.remove(scope);
 
-        if !bindings.is_empty() {
-            let regs: Vec<HoldRegistration> = bindings
-                .into_iter()
-                .map(|(key, action)| {
-                    HotkeyBinding::parse(&key).map(|binding| HoldRegistration {
-                        scope: scope.to_string(),
-                        binding,
-                        enabled: true,
-                        action,
-                    })
-                })
-                .collect::<Result<_, _>>()?;
+        if !regs.is_empty() {
             hold_regs.insert(scope.to_string(), regs);
         }
 
@@ -214,57 +294,14 @@ impl HotkeyManager {
         hold_regs.remove(scope);
         Ok(())
     }
+}
 
-    pub fn active_binding_labels_except(
-        &self,
-        excluded_scope: &str,
-    ) -> Result<Vec<(String, String)>, String> {
-        let mut labels = Vec::new();
-
-        {
-            let registrations = self
-                .registrations
-                .lock()
-                .map_err(|_| "热键监听状态已损坏".to_string())?;
-            labels.extend(
-                registrations
-                    .iter()
-                    .filter(|registration| {
-                        registration.enabled && registration.scope != excluded_scope
-                    })
-                    .map(|registration| {
-                        (
-                            registration.scope.clone(),
-                            types::primary_to_string(registration.binding.primary),
-                        )
-                    }),
-            );
-        }
-
-        {
-            let hold_registrations = self
-                .hold_registrations
-                .lock()
-                .map_err(|_| "热键监听状态已损坏".to_string())?;
-            for (scope, registrations) in hold_registrations.iter() {
-                if scope == excluded_scope {
-                    continue;
-                }
-                labels.extend(
-                    registrations
-                        .iter()
-                        .filter(|registration| registration.enabled)
-                        .map(|registration| {
-                            (
-                                registration.scope.clone(),
-                                types::binding_to_string(&registration.binding),
-                            )
-                        }),
-                );
-            }
-        }
-
-        Ok(labels)
+fn scope_name(scope: &str) -> &'static str {
+    match scope {
+        "morse" => "摩斯密码解析",
+        "timer" => "计时器",
+        "rapidfire" => "连发器",
+        _ => "其他工具",
     }
 }
 
@@ -607,6 +644,64 @@ impl HotkeyMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_manager() -> HotkeyManager {
+        HotkeyManager {
+            registrations: Arc::new(Mutex::new(Vec::new())),
+            hold_registrations: Arc::new(Mutex::new(HashMap::new())),
+            stopped: Arc::new(AtomicBool::new(false)),
+            install_error: None,
+            #[cfg(target_os = "windows")]
+            worker: None,
+            #[cfg(not(target_os = "windows"))]
+            _worker: (),
+        }
+    }
+
+    #[test]
+    fn replace_scope_rejects_existing_hold_binding_from_other_scope() {
+        let manager = test_manager();
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        manager
+            .replace_hold_scope("rapidfire", vec![("Shift+-".to_string(), callback)])
+            .expect("应注册连发器组合触发键");
+
+        let action: HotkeyAction = Arc::new(|_| {});
+        let error = manager
+            .replace_scope("timer", vec![("Shift+-".to_string(), action)])
+            .expect_err("相同组合键应被结构化冲突检测拒绝");
+
+        assert!(error.contains("与连发器的触发键冲突"));
+    }
+
+    #[test]
+    fn replace_hold_scope_rejects_existing_normal_binding_from_other_scope() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope("morse", vec![("Ctrl+F2".to_string(), action)])
+            .expect("应注册摩斯快捷键");
+
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let error = manager
+            .replace_hold_scope("rapidfire", vec![("Ctrl+F2".to_string(), callback)])
+            .expect_err("连发器触发键不能复用其他工具快捷键");
+
+        assert!(error.contains("与摩斯密码解析的快捷键冲突"));
+    }
+
+    #[test]
+    fn replace_scope_allows_same_scope_replacement() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope("timer", vec![("F2".to_string(), Arc::clone(&action))])
+            .expect("首次注册应成功");
+
+        manager
+            .replace_scope("timer", vec![("F2".to_string(), action)])
+            .expect("同一工具覆盖自身快捷键应成功");
+    }
 
     #[cfg(target_os = "windows")]
     fn keyboard_event(

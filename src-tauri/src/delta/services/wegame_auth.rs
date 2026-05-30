@@ -117,7 +117,12 @@ impl WegameAuthService {
         req: WegameQqStatusRequest,
     ) -> Result<ApiResponse<Value>, DeltaError> {
         restore_cookie_json(&self.jar, "https://xui.ptlogin2.qq.com/", &req.cookie)?;
-        insert_cookie(&self.jar, "https://xui.ptlogin2.qq.com/", "qrsig", &req.qr_sig)?;
+        insert_cookie(
+            &self.jar,
+            "https://xui.ptlogin2.qq.com/",
+            "qrsig",
+            &req.qr_sig,
+        )?;
 
         let action = format!("0-0-{}", current_millis());
         let body = self
@@ -288,7 +293,9 @@ impl WegameAuthService {
 
         let obtain: Value = self
             .client
-            .post("https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/ObtainTreasureChest")
+            .post(
+                "https://www.wegame.com.cn/api/v1/wegame.pallas.dfm.DfmSocial/ObtainTreasureChest",
+            )
             .header("Referer", "https://www.wegame.com.cn/helper/df/")
             .json(&json!({
                 "account_type": 1,
@@ -315,7 +322,10 @@ impl WegameAuthService {
             .json()
             .await?;
 
-        if current["data"]["has_drawn_today"].as_bool().unwrap_or(false) {
+        if current["data"]["has_drawn_today"]
+            .as_bool()
+            .unwrap_or(false)
+        {
             return Ok(current["data"].clone());
         }
 
@@ -389,10 +399,17 @@ impl WegameAuthService {
     }
 
     pub fn parse_ticket(value: &Value) -> Result<WegameTicket, DeltaError> {
-        Ok(WegameTicket {
-            id: value["data"]["user_id"].as_str().unwrap_or_default().to_string(),
-            ticket: value["data"]["wt"].as_str().unwrap_or_default().to_string(),
-        })
+        let id = value["data"]["user_id"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("Wegame 登录失败: 缺少 user_id".to_string()))?
+            .to_string();
+        let ticket = value["data"]["wt"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("Wegame 登录失败: 缺少票据".to_string()))?
+            .to_string();
+        Ok(WegameTicket { id, ticket })
     }
 }
 
@@ -417,14 +434,15 @@ mod tests {
 
     #[tokio::test]
     async fn maps_wegame_qq_success_status() {
-        let response = WegameAuthService::map_qq_poll_body(
-            "ptuiCB('0','0','https://www.wegame.com.cn/login/callback.html?t=qq','0','ok','')",
-            |redirect| async move {
-                Ok(json!({ "redirect": redirect, "cookie": { "p_skey": "abc" } }))
-            },
-        )
-        .await
-        .unwrap();
+        let response =
+            WegameAuthService::map_qq_poll_body(
+                "ptuiCB('0','0','https://www.wegame.com.cn/login/callback.html?t=qq','0','ok','')",
+                |redirect| async move {
+                    Ok(json!({ "redirect": redirect, "cookie": { "p_skey": "abc" } }))
+                },
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.code, 0);
         assert_eq!(response.msg, "登录成功");
@@ -503,20 +521,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_wegame_ticket_returns_defaults_on_missing_fields() {
-        let ticket = WegameAuthService::parse_ticket(&json!({
-            "data": {}
-        }))
-        .unwrap();
-
-        assert_eq!(ticket.id, "");
-        assert_eq!(ticket.ticket, "");
-    }
-
-    #[test]
-    fn parses_wegame_ticket_returns_defaults_on_missing_data() {
-        let ticket = WegameAuthService::parse_ticket(&json!({})).unwrap();
-        assert_eq!(ticket.id, "");
-        assert_eq!(ticket.ticket, "");
+    fn parse_ticket_rejects_missing_fields() {
+        assert!(WegameAuthService::parse_ticket(&json!({ "data": {} })).is_err());
+        assert!(WegameAuthService::parse_ticket(&json!({})).is_err());
     }
 }

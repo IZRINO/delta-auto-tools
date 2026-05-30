@@ -7,7 +7,10 @@ use serde_json::{json, Value};
 
 use crate::delta::{
     client::http::{build_client, HttpOptions},
-    constants::{DF_REFERER, QQ_LOGIN_APP_ID, QQ_LOGIN_DAID, QQ_LOGIN_JUMP_URL, QQ_OAUTH_APP_ID, QQ_REDIRECT_URI},
+    constants::{
+        DF_REFERER, QQ_LOGIN_APP_ID, QQ_LOGIN_DAID, QQ_LOGIN_JUMP_URL, QQ_OAUTH_APP_ID,
+        QQ_REDIRECT_URI,
+    },
     error::DeltaError,
     response::ApiResponse,
     utils::{
@@ -117,7 +120,10 @@ impl QqAuthService {
                 ("target", "self"),
                 ("s_url", QQ_LOGIN_JUMP_URL),
                 ("pt_3rd_aid", self.login_third_party_aid),
-                ("pt_feedback_link", "https://support.qq.com/products/77942?customInfo=milo.qq.com.appid101491592"),
+                (
+                    "pt_feedback_link",
+                    "https://support.qq.com/products/77942?customInfo=milo.qq.com.appid101491592",
+                ),
                 ("theme", "2"),
                 ("verify_theme", ""),
             ])
@@ -157,9 +163,17 @@ impl QqAuthService {
         })
     }
 
-    pub async fn poll_login_status(&self, req: QqStatusRequest) -> Result<ApiResponse<Value>, DeltaError> {
+    pub async fn poll_login_status(
+        &self,
+        req: QqStatusRequest,
+    ) -> Result<ApiResponse<Value>, DeltaError> {
         restore_cookie_json(&self.jar, "https://ssl.ptlogin2.qq.com/", &req.cookie)?;
-        insert_cookie(&self.jar, "https://ssl.ptlogin2.qq.com/", "qrsig", &req.qr_sig)?;
+        insert_cookie(
+            &self.jar,
+            "https://ssl.ptlogin2.qq.com/",
+            "qrsig",
+            &req.qr_sig,
+        )?;
 
         let body = self
             .client
@@ -192,13 +206,18 @@ impl QqAuthService {
         Self::map_poll_body(&body, async |redirect_url| {
             let _ = self.client.get(&redirect_url).send().await?;
             let cookie = dump_cookie_json_for_urls(&self.jar, QQ_LOGIN_COOKIE_URLS)?;
-            Ok(json!({ "cookie": cookie, "uin": extract_query_param(&redirect_url, "uin").ok() }))
+            Ok(json!({ "cookie": cookie, "sessionKey": extract_query_param(&redirect_url, "uin").unwrap_or_else(|_| req.qr_sig.clone()), "uin": extract_query_param(&redirect_url, "uin").ok() }))
         })
         .await
     }
 
     pub async fn get_access_token(&self, cookie_json: &str) -> Result<QqAccessToken, DeltaError> {
-        restore_cookie_json_for_domain(&self.jar, "https://graph.qq.com/", QQ_COOKIE_DOMAIN, cookie_json)?;
+        restore_cookie_json_for_domain(
+            &self.jar,
+            "https://graph.qq.com/",
+            QQ_COOKIE_DOMAIN,
+            cookie_json,
+        )?;
         let p_skey = must_cookie(&self.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = get_gtk(&p_skey).to_string();
 
@@ -248,7 +267,10 @@ impl QqAuthService {
                 ("a", "qcCodeToOpenId"),
                 ("qc_code", code.as_str()),
                 ("appid", QQ_OAUTH_APP_ID),
-                ("redirect_uri", "https://milo.qq.com/comm-htdocs/login/qc_redirect.html"),
+                (
+                    "redirect_uri",
+                    "https://milo.qq.com/comm-htdocs/login/qc_redirect.html",
+                ),
                 ("callback", "coolxitech"),
                 ("_", now.as_str()),
             ])
@@ -258,15 +280,31 @@ impl QqAuthService {
             .text()
             .await?;
         let args = extract_jsonp_args(&body, "coolxitech")?;
-        let payload: Value = serde_json::from_str(args.first().map(String::as_str).unwrap_or("{}"))?;
+        let payload: Value =
+            serde_json::from_str(args.first().map(String::as_str).unwrap_or("{}"))?;
         if payload["iRet"].as_i64().unwrap_or(-1) != 0 {
             return Err(DeltaError::Parse(qq_access_token_error_message(&payload)));
         }
 
+        let access_token = payload["access_token"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("AccessToken获取失败: 缺少 access_token".to_string()))?
+            .to_string();
+        let openid = payload["openid"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| DeltaError::Parse("AccessToken获取失败: 缺少 openid".to_string()))?
+            .to_string();
+        let expires_in = payload["expires_in"]
+            .as_i64()
+            .filter(|value| *value > 0)
+            .ok_or_else(|| DeltaError::Parse("AccessToken获取失败: 缺少有效期".to_string()))?;
+
         Ok(QqAccessToken {
-            access_token: payload["access_token"].as_str().unwrap_or_default().to_string(),
-            openid: payload["openid"].as_str().unwrap_or_default().to_string(),
-            expires_in: payload["expires_in"].as_i64().unwrap_or_default(),
+            access_token,
+            openid,
+            expires_in,
         })
     }
 
@@ -300,10 +338,13 @@ impl QqAuthService {
             .await?
             .text()
             .await?;
-        Ok(body.contains("\"isLogin\":1"))
+        parse_login_valid(&body)
     }
 
-    pub async fn map_poll_body<F, Fut>(body: &str, on_success: F) -> Result<ApiResponse<Value>, DeltaError>
+    pub async fn map_poll_body<F, Fut>(
+        body: &str,
+        on_success: F,
+    ) -> Result<ApiResponse<Value>, DeltaError>
     where
         F: FnOnce(String) -> Fut,
         Fut: std::future::Future<Output = Result<Value, DeltaError>>,
@@ -314,13 +355,39 @@ impl QqAuthService {
                 let redirect_url = args.get(2).cloned().unwrap_or_default();
                 Ok(ApiResponse::ok("登录成功", on_success(redirect_url).await?))
             }
-            Some("66") => Ok(ApiResponse { code: 1, msg: "等待扫码".to_string(), data: json!([]) }),
-            Some("67") => Ok(ApiResponse { code: 2, msg: "已扫码,待确认".to_string(), data: json!([]) }),
-            Some("65") => Ok(ApiResponse { code: -2, msg: "二维码失效".to_string(), data: json!([]) }),
-            Some("86") => Ok(ApiResponse { code: -3, msg: "登录被拒绝".to_string(), data: json!([]) }),
-            _ => Ok(ApiResponse { code: -4, msg: "未知错误信息".to_string(), data: json!([]) }),
+            Some("66") => Ok(ApiResponse {
+                code: 1,
+                msg: "等待扫码".to_string(),
+                data: json!([]),
+            }),
+            Some("67") => Ok(ApiResponse {
+                code: 2,
+                msg: "已扫码,待确认".to_string(),
+                data: json!([]),
+            }),
+            Some("65") => Ok(ApiResponse {
+                code: -2,
+                msg: "二维码失效".to_string(),
+                data: json!([]),
+            }),
+            Some("86") => Ok(ApiResponse {
+                code: -3,
+                msg: "登录被拒绝".to_string(),
+                data: json!([]),
+            }),
+            _ => Ok(ApiResponse {
+                code: -4,
+                msg: "未知错误信息".to_string(),
+                data: json!([]),
+            }),
         }
     }
+}
+
+pub(crate) fn parse_login_valid(body: &str) -> Result<bool, DeltaError> {
+    let args = extract_jsonp_args(body, "coolxitech")?;
+    let payload: Value = serde_json::from_str(args.first().map(String::as_str).unwrap_or("{}"))?;
+    Ok(payload["isLogin"].as_i64() == Some(1))
 }
 
 fn qq_access_token_error_message(payload: &Value) -> String {
@@ -337,15 +404,15 @@ fn qq_access_token_error_message(payload: &Value) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::{qq_access_token_error_message, QqAuthService};
-
+    use super::{parse_login_valid, qq_access_token_error_message, QqAuthService};
     #[tokio::test]
     async fn maps_waiting_status() {
-        let response = QqAuthService::map_poll_body("ptuiCB('66','0','','0','msg','')", |_| async {
-            Ok(json!({}))
-        })
-        .await
-        .unwrap();
+        let response =
+            QqAuthService::map_poll_body("ptuiCB('66','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
         assert_eq!(response.code, 1);
     }
 
@@ -358,59 +425,63 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(response.code, 0);
-        assert_eq!(response.data["redirect"], "https://qq.com/callback?uin=10001");
+        assert_eq!(
+            response.data["redirect"],
+            "https://qq.com/callback?uin=10001"
+        );
     }
 
     #[tokio::test]
     async fn maps_scanned_awaiting_confirm_status() {
-        let response = QqAuthService::map_poll_body("ptuiCB('67','0','','0','msg','')", |_| async {
-            Ok(json!({}))
-        })
-        .await
-        .unwrap();
+        let response =
+            QqAuthService::map_poll_body("ptuiCB('67','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
         assert_eq!(response.code, 2);
         assert_eq!(response.msg, "已扫码,待确认");
     }
 
     #[tokio::test]
     async fn maps_qr_expired_status() {
-        let response = QqAuthService::map_poll_body("ptuiCB('65','0','','0','msg','')", |_| async {
-            Ok(json!({}))
-        })
-        .await
-        .unwrap();
+        let response =
+            QqAuthService::map_poll_body("ptuiCB('65','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
         assert_eq!(response.code, -2);
         assert_eq!(response.msg, "二维码失效");
     }
 
     #[tokio::test]
     async fn maps_login_rejected_status() {
-        let response = QqAuthService::map_poll_body("ptuiCB('86','0','','0','msg','')", |_| async {
-            Ok(json!({}))
-        })
-        .await
-        .unwrap();
+        let response =
+            QqAuthService::map_poll_body("ptuiCB('86','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
         assert_eq!(response.code, -3);
         assert_eq!(response.msg, "登录被拒绝");
     }
 
     #[tokio::test]
     async fn maps_unknown_status() {
-        let response = QqAuthService::map_poll_body("ptuiCB('99','0','','0','msg','')", |_| async {
-            Ok(json!({}))
-        })
-        .await
-        .unwrap();
+        let response =
+            QqAuthService::map_poll_body("ptuiCB('99','0','','0','msg','')", |_| async {
+                Ok(json!({}))
+            })
+            .await
+            .unwrap();
         assert_eq!(response.code, -4);
         assert_eq!(response.msg, "未知错误信息");
     }
 
     #[tokio::test]
     async fn maps_empty_callback() {
-        let result = QqAuthService::map_poll_body("ptuiCB()", |_| async {
-            Ok(json!({}))
-        })
-        .await;
+        let result = QqAuthService::map_poll_body("ptuiCB()", |_| async { Ok(json!({})) }).await;
         assert!(result.is_err() || result.unwrap().code == -4);
     }
 
@@ -422,5 +493,11 @@ mod tests {
         }));
 
         assert_eq!(message, "AccessToken获取失败: iRet=-1, 登录态无效");
+    }
+
+    #[test]
+    fn parses_refresh_login_state_structurally() {
+        assert!(parse_login_valid(r#"coolxitech({"isLogin":1})"#).unwrap());
+        assert!(!parse_login_valid(r#"coolxitech({"isLogin":0,"message":"失效"})"#).unwrap());
     }
 }

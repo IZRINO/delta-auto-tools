@@ -13,10 +13,7 @@ pub fn extract_query_param(url: &str, key: &str) -> Result<String, DeltaError> {
 }
 
 pub fn extract_raw_query_param(url: &str, key: &str) -> Result<String, DeltaError> {
-    let query = url
-        .split_once('?')
-        .map(|(_, query)| query)
-        .unwrap_or("");
+    let query = url.split_once('?').map(|(_, query)| query).unwrap_or("");
     for pair in query.split('&') {
         let Some((name, value)) = pair.split_once('=') else {
             continue;

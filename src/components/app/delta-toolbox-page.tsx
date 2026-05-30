@@ -4,7 +4,7 @@ import { RiGiftLine, RiShieldLine, RiRocketLine, RiArrowDownSLine } from "@remix
 import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { AccountKind, ApiResponse } from "@/components/app/delta-types";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
-import { buildWegameTicket, extractQqSafeCode, getCapabilities } from "@/components/app/delta-utils";
+import { getCapabilities } from "@/components/app/delta-utils";
 import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { Button } from "@/components/ui/button";
@@ -61,13 +61,11 @@ export function DeltaToolboxPage() {
   // Wegame 操作
   const handleOpenGift = useCallback(async () => {
     if (!selectedAccount) return;
-    const ticket = buildWegameTicket(selectedAccount);
-    if (!ticket) return;
     setGiftLoading(true);
     setGiftError(null);
     setGiftResult(null);
     try {
-      const res = await invoke<ApiResponse<unknown>>("delta_wegame_open_treasure_gift", { request: { ticket } });
+      const res = await invoke<ApiResponse<unknown>>("delta_wegame_open_treasure_gift", { request: { accountId: selectedAccount.id } });
       if (res.code === 0) setGiftResult(res.data);
       else setGiftError(res.msg || "领取失败");
     } catch (e) {
@@ -79,13 +77,11 @@ export function DeltaToolboxPage() {
 
   const handleDrawCard = useCallback(async () => {
     if (!selectedAccount) return;
-    const ticket = buildWegameTicket(selectedAccount);
-    if (!ticket) return;
     setCardLoading(true);
     setCardError(null);
     setCardResult(null);
     try {
-      const res = await invoke<ApiResponse<unknown>>("delta_wegame_draw_daily_card", { request: { ticket } });
+      const res = await invoke<ApiResponse<unknown>>("delta_wegame_draw_daily_card", { request: { accountId: selectedAccount.id } });
       if (res.code === 0) setCardResult(res.data);
       else setCardError(res.msg || "抽卡失败");
     } catch (e) {
@@ -97,21 +93,12 @@ export function DeltaToolboxPage() {
 
   // QQ 安全中心封禁查询
   const handleLoadBanned = useCallback(async () => {
-    if (!selectedAccount || !selectedAccount.openid || !selectedAccount.accessToken) return;
-    const code = extractQqSafeCode(selectedAccount.extraJson);
-    if (!code) {
-      setBannedError("令牌信息不完整，请重新登录");
-      return;
-    }
+    if (!selectedAccount) return;
     setBannedLoading(true);
     setBannedError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_qqsafe_get_banned_list", {
-        req: {
-          openid: selectedAccount.openid,
-          accessToken: selectedAccount.accessToken,
-          code,
-        },
+        req: { accountId: selectedAccount.id },
       });
       if (res.code === 0) setBannedResult(res.data);
       else setBannedError(res.msg || "查询失败");
@@ -124,14 +111,13 @@ export function DeltaToolboxPage() {
 
   // QQ 安全中心举报
   const handleReport = useCallback(async () => {
-    if (!selectedAccount || !selectedAccount.openid || !selectedAccount.accessToken || !reportUserId) return;
+    if (!selectedAccount || !reportUserId) return;
     setReportLoading(true);
     setReportError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_qqsafe_report", {
         req: {
-          openid: selectedAccount.openid,
-          accessToken: selectedAccount.accessToken,
+          accountId: selectedAccount.id,
           userId: reportUserId,
         },
       });
@@ -146,13 +132,13 @@ export function DeltaToolboxPage() {
 
   // Pioneer 测试列表
   const handleLoadPioneer = useCallback(async () => {
-    if (!selectedAccount || !selectedAccount.accessToken) return;
+    if (!selectedAccount) return;
     setPioneerLoading(true);
     setPioneerError(null);
     try {
       const res = await invoke<ApiResponse<unknown>>("delta_pioneer_get_game_test_list", {
         req: {
-          key: selectedAccount.accessToken,
+          accountId: selectedAccount.id,
           listType: pioneerListType,
         },
       });

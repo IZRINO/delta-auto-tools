@@ -30,7 +30,8 @@ pub const PIONEER_3RD_AID: &str = "101477677";
 pub const PIONEER_OAUTH_APP_ID: &str = "101477677";
 pub const PIONEER_REDIRECT_URI: &str = "https://m.gamer.qq.com/v2/passport/qq/callback?url=https%3A%2F%2Fm.gamer.qq.com%2Fv2%2Fhome%2Fmy";
 pub const PIONEER_CALLBACK: &str = "https://graph.qq.com/oauth2.0/login_jump";
-pub const PIONEER_FEEDBACK_LINK: &str = "https://support.qq.com/products/77942?customInfo=milo.qq.com.appid101477677";
+pub const PIONEER_FEEDBACK_LINK: &str =
+    "https://support.qq.com/products/77942?customInfo=milo.qq.com.appid101477677";
 
 // Game IDE gateway
 pub const IDE_GATEWAY: &str = "https://comm.ams.game.qq.com/ide/";

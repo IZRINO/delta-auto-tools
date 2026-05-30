@@ -18,7 +18,9 @@ pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timer::types::{CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect};
+    use crate::timer::types::{
+        CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect,
+    };
 
     fn sample_settings() -> TimerSettings {
         TimerSettings {
@@ -69,7 +71,10 @@ mod tests {
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
 
         let loaded = settings::load_settings::<TimerSettings>(&path).unwrap();
-        assert_eq!(loaded.timers[0].duration_seconds, TimerSettings::default().timers[0].duration_seconds);
+        assert_eq!(
+            loaded.timers[0].duration_seconds,
+            TimerSettings::default().timers[0].duration_seconds
+        );
     }
 
     #[test]

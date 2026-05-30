@@ -4,16 +4,16 @@ import {
   buildLoginQrInvokeArgs,
   buildQqPollInvokeArgs,
   buildWechatPollInvokeArgs,
-  extractQqPollCookie,
+  extractPollSessionKey,
   extractQqQrImage,
-  extractWechatCode,
+  extractQqQrToken,
 } from "@/components/app/delta-login-utils";
 
 const qqSession = {
   qrToken: "token-1",
   qrSig: "sig-1",
   loginSig: "login-1",
-  cookie: "{\"qrsig\":\"sig-1\"}",
+  sessionKey: "session-1",
 };
 
 describe("delta-login-utils invoke args", () => {
@@ -37,13 +37,8 @@ describe("delta-login-utils invoke args", () => {
     });
   });
 
-  it("wraps Pioneer QR request with req", () => {
-    expect(buildLoginQrInvokeArgs("pioneer")).toEqual({
-      req: {},
-    });
-  });
-
-  it("uses bare args for normal QQ QR request", () => {
+  it("uses bare args for QR requests", () => {
+    expect(buildLoginQrInvokeArgs("pioneer")).toEqual({});
     expect(buildLoginQrInvokeArgs("qq")).toEqual({});
   });
 
@@ -54,21 +49,21 @@ describe("delta-login-utils invoke args", () => {
     });
   });
 
-  it("wraps access token requests by command signature", () => {
-    expect(buildAccessTokenInvokeArgs("qq", "cookie-1")).toEqual({
-      req: { cookie: "cookie-1" },
+  it("wraps access token requests with one-time sessionKey", () => {
+    expect(buildAccessTokenInvokeArgs("qq", "session-1")).toEqual({
+      req: { sessionKey: "session-1" },
     });
-    expect(buildAccessTokenInvokeArgs("pioneer", "cookie-1")).toEqual({
-      req: { cookie: "cookie-1" },
+    expect(buildAccessTokenInvokeArgs("pioneer", "session-1")).toEqual({
+      req: { sessionKey: "session-1" },
     });
-    expect(buildAccessTokenInvokeArgs("wegame_qq", "cookie-1")).toEqual({
-      request: { cookie: "cookie-1" },
+    expect(buildAccessTokenInvokeArgs("wegame_qq", "session-1")).toEqual({
+      request: { sessionKey: "session-1" },
     });
-    expect(buildAccessTokenInvokeArgs("wechat", undefined, "code-1")).toEqual({
-      req: { code: "code-1" },
+    expect(buildAccessTokenInvokeArgs("wechat", "session-1")).toEqual({
+      req: { sessionKey: "session-1" },
     });
-    expect(buildAccessTokenInvokeArgs("wegame_wechat", undefined, "code-1")).toEqual({
-      request: { code: "code-1" },
+    expect(buildAccessTokenInvokeArgs("wegame_wechat", "session-1")).toEqual({
+      request: { sessionKey: "session-1" },
     });
   });
 });
@@ -78,19 +73,17 @@ describe("delta-login-utils response extraction", () => {
     expect(extractQqQrImage({ image: "base64-image" })).toBe("base64-image");
   });
 
-  it("prefers the logged-in cookie returned by polling", () => {
-    expect(extractQqPollCookie({ code: 0, msg: "ok", data: { cookie: "{\"p_skey\":\"abc\"}" } })).toBe(
-      "{\"p_skey\":\"abc\"}",
+  it("reads numeric QR token", () => {
+    expect(extractQqQrToken({ token: 123 })).toBe("123");
+  });
+
+  it("reads sessionKey from ApiResponse data", () => {
+    expect(extractPollSessionKey({ code: 0, msg: "ok", data: { sessionKey: "session-1" } })).toBe(
+      "session-1",
     );
   });
 
-  it("serializes object cookie payloads for compatibility with php-shaped responses", () => {
-    expect(extractQqPollCookie({ code: 0, msg: "ok", data: { cookie: { p_skey: "abc" } } })).toBe(
-      "{\"p_skey\":\"abc\"}",
-    );
-  });
-
-  it("reads wxCode from ApiResponse data", () => {
-    expect(extractWechatCode({ code: 3, msg: "ok", data: { wxCode: "wx-code-1" } })).toBe("wx-code-1");
+  it("returns null when sessionKey is missing", () => {
+    expect(extractPollSessionKey({ code: 0, msg: "ok", data: {} })).toBeNull();
   });
 });

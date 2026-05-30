@@ -37,7 +37,10 @@ mod tests {
 
         let loaded = settings::load_settings::<MorseSettings>(&path).unwrap();
         assert_eq!(loaded.hotkey, MorseSettings::default().hotkey);
-        assert_eq!(loaded.binary_threshold, MorseSettings::default().binary_threshold);
+        assert_eq!(
+            loaded.binary_threshold,
+            MorseSettings::default().binary_threshold
+        );
     }
 
     #[test]

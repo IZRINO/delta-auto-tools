@@ -77,11 +77,13 @@ src/
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
 │       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
+│       ├── delta-game-data-loader.ts # 游戏数据分批加载 Module（主数据批次 + 详情批次 + 版本号防陈旧）
+│       ├── delta-game-data-loader.test.ts # 游戏数据分批加载测试
 │       ├── delta-game-page.tsx      # 游戏数据页：仪表盘分批加载 + 查询工作台
 │       ├── delta-toolbox-page.tsx   # 工具箱页：Wegame/QQ安全中心/先遣服按账号动态渲染
 │       ├── delta-types.ts          # Delta 前端 TypeScript 类型定义与常量
 │       ├── delta-types.test.ts     # Delta 类型常量测试（AccountKind camelCase 一致性等）
-│       ├── delta-utils.ts          # Delta 工具函数（令牌状态、账号能力、GameAuth 构造等）
+│       ├── delta-utils.ts          # Delta 工具函数（令牌状态、账号能力、显示名等）
 │       ├── delta-utils.test.ts     # Delta 工具函数测试
 │       ├── delta-account-card.tsx   # 账号小卡片组件（类型 Badge + UIN + 令牌状态 + 能力标签）
 │       ├── delta-token-badge.tsx    # 令牌状态徽章组件
@@ -104,9 +106,10 @@ src/
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
 - **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`、`Pioneer`→`"pioneer"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
 - **Delta 全局账号状态**：`DeltaAccountsProvider` 包裹整个应用，三页共享 `selectedAccountId`；切换页面后选中态保持
-- **Delta 登录流程**：`LOGIN_FLOW_MODE_MAP` 将 6 种 `LoginFlowKind` 映射到 QQ 模式或微信模式；`LoginFlowKind` 是前端内部路由概念，登录成功后按对应 `AccountKind` 持久化账号
+- **Delta 登录流程**：`LOGIN_FLOW_MODE_MAP` 将 6 种 `LoginFlowKind` 映射到 QQ 模式或微信模式；登录二维码和轮询只在前端传递一次性 `sessionKey`，cookie、access token、Wegame ticket、QQ安全中心 code 等凭据只保存在 Rust 状态/SQLite 中。
+- **Delta 游戏数据分批加载**：`delta-game-data-loader.ts` 是游戏数据页的加载 Module；先请求 `player + record`，至少一个主请求成功后再请求 `assets + recent + achievement + password + bind`，并用版本号丢弃账号切换后的陈旧响应。
 - **Delta 数据展示**：当前所有游戏 API 返回使用 `JSON.stringify` 原始展示；待 API 响应结构确认后替换为结构化渲染
-- **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；若当前选中账号不在过滤范围内，选择器显示为空（不会自动切换到第一个匹配账号）
+- **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；当前实现会在选中账号不在过滤范围且存在匹配账号时自动切换到第一个匹配账号
 
 ## 原生代码结构
 
@@ -232,16 +235,16 @@ src-tauri/src/
 - `delta_game_get_price(args, withRecent?)` — 物价查询
 - `delta_game_get_firearm_mod_list(page, pageSize)` — 枪械改装方案
 - `delta_game_get_recommendation(place)` — 地图推荐装备
-- `delta_game_get_record(auth)` — 战绩记录（含 gun + operator）
-- `delta_game_get_player(auth)` — 玩家信息
-- `delta_game_get_assets(auth)` — 资产查询
-- `delta_game_get_logs(auth, logType, page)` — 操作日志
-- `delta_game_get_recent(auth)` — 近期对局
-- `delta_game_get_achievement(auth)` — 成就
-- `delta_game_get_password(auth)` — 地图保险密码（返回 Map<地图名, 密码>）
-- `delta_game_get_manufacture(auth)` — 制造列表
+- `delta_game_get_record(accountId)` — 战绩记录（含 gun + operator）
+- `delta_game_get_player(accountId)` — 玩家信息
+- `delta_game_get_assets(accountId)` — 资产查询
+- `delta_game_get_logs(accountId, logType, page)` — 操作日志
+- `delta_game_get_recent(accountId)` — 近期对局
+- `delta_game_get_achievement(accountId)` — 成就
+- `delta_game_get_password(accountId)` — 地图保险密码（返回 Map<地图名, 密码>）
+- `delta_game_get_manufacture(accountId)` — 制造列表
 - `delta_game_get_guns(gunId)` — 枪械详情（含弹药/配件 enrich）
-- `delta_game_get_bind(auth)` — 角色绑定
+- `delta_game_get_bind(accountId)` — 角色绑定
 
 ## UI and workflow constraints
 
@@ -348,10 +351,17 @@ src-tauri/src/
 
 新增账号类型应优先扩展此枚举，对应的 DB 存储使用 `kind.as_str()` / `AccountKind::from_str()` 序列化。
 
+**凭据边界**：
+- 前端账号视图使用 `DeltaAccountView`，只暴露 `id`、`kind`、`uinOrOpenid`、`hasAccessToken`、`expiresAt` 和时间戳；不得向前端返回 `cookie_json`、`openid`、`access_token`、`extra_json`、Wegame ticket 或 QQ安全中心 code。
+- QQ/QQ安全中心/Wegame QQ/先遣服扫码流程返回 `sessionKey`，轮询成功后 Rust 将 cookie 转存到一次性 pending 会话；获取令牌命令消费该 `sessionKey`，不能让前端传 cookie。
+- 微信/Wegame 微信轮询成功后只返回 `sessionKey`，Rust pending 会话保存授权 code；获取令牌命令消费该 `sessionKey`。
+- 游戏数据、QQ安全中心、Wegame、先遣服工具命令从 `accountId` 解析后端持有凭据，不接受前端传入的 openid/access token/ticket/code。
+- `DeltaRepo` 写入 `cookie_json`、`access_token`、`extra_json` 前必须通过 `storage::secrets` 本地加密；启动时 `migrate_plaintext_secrets()` 迁移旧明文记录。
+
 ### Rust serde conventions（全仓通用）
 
 所有对外序列化的 Rust 结构体 **必须** 使用 `#[serde(rename_all = "camelCase")]`：
-- Delta 端：`ApiResponse<T>`、`DeltaAccountRecord`、`AccountKind`、服务 DTO（`QqLoginQr`、`WechatQr`、`WegameTicket`、`GameAuth` 等）、请求 struct（`CommandOptions`、`AccountCookieRequest` 等）
+- Delta 端：`ApiResponse<T>`、`DeltaAccountView`、`AccountKind`、服务 DTO（`QqLoginQr`、`WechatQr`、`WegameTicket`、`GameAuth` 等）、请求 struct（`AccountIdRequest`、`AccountSessionRequest`、游戏数据请求等）
 - Morse 端：`MorseSettings`、`MorseBootstrap`、`RegionRect`、`MorseRunResult`、`HistoryEntry`、`RegionSelectionProgress`、`RegionSelectionOutcome` 等
 - 计时器端：`TimerSettings`、`TimerItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState`、`TimerSelectionOutcome` 等
 
@@ -364,9 +374,9 @@ src-tauri/src/
 ### Delta 命令 DTO 模式
 
 每个 Delta command 都有对应的请求 struct，前端通过 camelCase JSON 反序列化：
-- `AccountCookieRequest`：支持显式 `cookie` 或 `accountId` 两种指定方式
-- 所有请求 DTO 都带有可选 `options: Option<CommandOptions>` 字段（目前仅 `insecureSkipTlsVerify`）
-- 游戏数据命令的鉴权统一使用 `GameAuth { openid, access_token, acctype }` 结构
+- `AccountIdRequest` 是账号型命令的标准输入，字段为 `accountId`
+- `AccountSessionRequest` 是登录取令牌命令的标准输入，字段为一次性 `sessionKey`
+- 游戏数据命令的鉴权由 Rust 根据 `accountId` 构造 `GameAuth { openid, access_token, acctype }`，前端不得构造或传入 `GameAuth`
 
 ### IDE 网关模式（GameService 核心）
 
@@ -385,7 +395,7 @@ src-tauri/src/
 - `cookie_provider`（Arc\<Jar\>，由调用方持有复用）
 - `default_headers(browser_headers())`（模拟浏览器）
 - `redirect(Policy::none())`（不自动跟随重定向）
-- `danger_accept_invalid_certs` 可选（通过 `HttpOptions` 控制）
+- 不允许前端控制 TLS 校验；`HttpOptions` 不再包含 `insecureSkipTlsVerify`，客户端必须拒绝无效证书
 
 ### Delta 状态管理
 
@@ -394,8 +404,8 @@ src-tauri/src/
 - `buckets: Mutex<HashMap<i64, DeltaAccountRecord>>` — 内存账号缓存，与 DB 同步
 - `pending: Mutex<HashMap<String, PendingSession>>` — 扫码登录中会话（QQ/Wegame QQ）
 
-账号持久化使用 `persist_account()` 辅助函数（`commands.rs`）：DB upsert + 内存 buckets 同步更新。
-扫码登录 pending 会话使用 `remember_pending()` 函数存储。
+账号持久化使用 `persist_account()` 辅助函数（`commands.rs`）：DB upsert + 内存 buckets 同步更新，返回前必须转成 `DeltaAccountView` / `AccountLoginResult`。
+扫码登录 pending 会话使用 `remember_pending()` / `pending_cookie()` / `consume_pending_cookie()`，sessionKey 有 5 分钟 TTL，取令牌流程必须一次性消费。
 
 ### Morse 状态管理（与 Delta 不同）
 
@@ -415,12 +425,13 @@ src-tauri/src/
 
 ### 被动热键监听（Windows only）
 
-`src-tauri/src/morse/input_listener.rs` 使用 `willhook` crate 注册底层键盘钩子：
-- 独立线程轮询键盘事件，匹配热键组合（modifier + primary key）
-- 录制热键时通过 `morse_set_hotkey_recording` 暂停监听（`set_paused(true)`），并 drain 积压事件
-- 非 Windows 平台直接返回错误，不做降级处理
-- 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K` 等格式
-- `HotkeyManager` 同时支持按住动作（hold）注册：`replace_hold_scope` / `clear_hold_scope`，用于连发器的触发键 Down/Up 检测。hold 热键匹配主键（包括 Alt 和符号键），通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
+`src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子：
+- Morse、计时器和连发器都必须通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
+- 普通快捷键使用 `replace_scope`；连发器按住触发键使用 `replace_hold_scope` / `clear_hold_scope`，通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
+- `HotkeyManager` 在注册时基于解析后的 `HotkeyBinding` 做跨 scope 冲突检测；不要用显示字符串或主键 label 自行比较。
+- 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K`、`Shift+-`、单独 `Alt` 等格式，组合触发键能力属于连发器已完成特性，不得回退。
+- 录制 Morse 热键时通过 `morse_set_hotkey_recording` 暂停 Morse scope（`set_scope_enabled("morse", false)`），录制后恢复。
+- 非 Windows 平台直接返回错误，不做降级处理。
 
 ## Tauri 事件模式
 
@@ -451,26 +462,30 @@ overlay 框选流程使用 `oneshot::Sender<RegionSelectionKind>` 实现完成�
 
 overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查询参数进入 overlay 模式。
 
+识别截图时，overlay 上报的逻辑坐标会在 Rust 侧按显示器 scale factor 转换为 `xcap::Monitor::capture_region` 需要的物理坐标；高 DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
+
 ## 测试模式
 
 ### 前端测试（Vitest）
 - `src/components/app/morse-utils.test.ts` — Morse 前端测试，测试工具函数
 - `src/components/app/timer-utils.test.ts` — 计时\计数器前端测试，测试设置转层、进度计算与倒计时格式化
-- `src/components/app/delta-login-utils.test.ts` — Delta 登录工具测试（Tauri invoke 参数包装、轮询 cookie/wxCode 提取等 11 个用例）
-- `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、GameAuth 构造、QQ安全中心 code 提取、显示名截断等 63 个用例）
-- `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等 16 个用例）
+- `src/components/app/delta-login-utils.test.ts` — Delta 登录工具测试（Tauri invoke 参数包装、sessionKey 提取等）
+- `src/components/app/delta-game-data-loader.test.ts` — 游戏数据分批加载测试（主批次、详情批次、陈旧响应丢弃、重试入口）
+- `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、显示名截断等）
+- `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等）
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
 - `src-tauri/src/morse/mod.rs` — 测试 history push limit
 - `src-tauri/src/morse/types.rs` — 测试 settings 默认值
 - `src-tauri/src/morse/decoder.rs` — 测试解码器和未知 pattern 错误
+- `src-tauri/src/morse/recognition.rs` — 测试高 DPI/多显示器区域坐标转换
 - `src-tauri/src/timer/types.rs` — 测试计时器默认值
 - `src-tauri/src/timer/settings.rs` — 测试计时器设置读写与反序列化错误
-- `src-tauri/src/timer/hotkey.rs` — 测试计时器快捷键解析
+- `src-tauri/src/hotkey_types.rs` / `src-tauri/src/hotkeys.rs` — 测试热键解析、共享监听分发、hold 切换和跨 scope 冲突检测
 - `src-tauri/src/timer/mod.rs` — 测试透明窗口尺寸计算与设置校验
 - `src-tauri/src/delta/commands.rs` — 测试 DTO 反序列化
-- `src-tauri/src/delta/storage/repo.rs` — 测试 upsert、list、delete（使用 tempfile）
+- `src-tauri/src/delta/storage/repo.rs` — 测试 upsert、list、delete、明文凭据迁移与加密读写（使用 tempfile）
 - `src-tauri/src/delta/utils/game.rs` — 测试 caliber 标准化、bind-role 解析、enrich_gun_detail
 - `src-tauri/src/delta/services/game.rs` — 核心测试文件，使用 `mockito` mock HTTP 服务端，覆盖所有 game API 端点
 

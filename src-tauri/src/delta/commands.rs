@@ -8,153 +8,122 @@ use crate::delta::{
     error::DeltaError,
     response::ApiResponse,
     services::{
-        game::{GameAuth, GameService},
-        pioneer_auth::{PioneerAccessToken, PioneerAuthService, PioneerLoginQr, PioneerStatusRequest},
-        qq_auth::{QqAccessToken, QqAuthService, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
+        game::GameService,
+        pioneer_auth::{PioneerAuthService, PioneerLoginQr, PioneerStatusRequest},
+        qq_auth::{QqAuthService, QqLoginQr, QqStatusRequest, UpdateTokenOnlyRequest},
         qq_safe::{QqSafeAccess, QqSafeService},
-        wechat_auth::{WechatAccessToken, WechatAuthService, WechatQr},
-        wegame_auth::{WegameAuthService, WegameQqLoginQr, WegameQqStatusRequest, WegameTicket},
+        wechat_auth::{WechatAuthService, WechatQr},
+        wegame_auth::{WegameAuthService, WegameQqLoginQr},
     },
     state::DeltaState,
-    storage::{AccountKind, DeltaAccountRecord},
+    storage::{AccountKind, DeltaAccountRecord, DeltaAccountView},
 };
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandOptions {
-    pub insecure_skip_tls_verify: Option<bool>,
+pub struct AccountIdRequest {
+    pub account_id: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCookieRequest {
-    pub account_id: Option<i64>,
-    pub cookie: Option<String>,
-    pub options: Option<CommandOptions>,
+pub struct AccountSessionRequest {
+    pub session_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QqUpdateRequest {
-    pub account_id: Option<i64>,
-    pub cookie: Option<String>,
-    pub openid: String,
-    pub access_token: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WechatAccessRequest {
-    pub code: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WechatUpdateRequest {
-    pub openid: String,
-    pub access_token: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QqSafeBannedListRequest {
-    pub openid: String,
-    pub access_token: String,
-    pub code: String,
-    pub options: Option<CommandOptions>,
+pub struct QqLikePollRequest {
+    pub qr_token: String,
+    pub qr_sig: String,
+    pub login_sig: String,
+    pub session_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QqSafeReportRequest {
-    pub openid: String,
-    pub access_token: String,
+    pub account_id: i64,
     pub user_id: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PioneerLoginRequest {
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PioneerStatusRequestDto {
-    pub qr_token: String,
-    pub qr_sig: String,
-    pub login_sig: String,
-    pub cookie: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PioneerAccessTokenRequest {
-    pub cookie: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PioneerUpdateAccessTokenRequest {
-    pub openid: String,
-    pub access_token: String,
-    pub cookie: Option<String>,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PioneerGameTestListRequest {
-    pub key: String,
+    pub account_id: i64,
     #[serde(default)]
     pub list_type: Option<String>,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountBoundAccess<T>
-where
-    T: Serialize,
-{
+pub struct AccountLoginResult {
     pub account_id: i64,
-    pub account: DeltaAccountRecord,
-    pub auth: T,
+    pub account: DeltaAccountView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QqLoginQrView {
+    pub qr_sig: String,
+    pub image: String,
+    pub token: i64,
+    pub login_sig: String,
+    pub session_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WegameQqLoginQrView {
+    pub qr_sig: String,
+    pub image: String,
+    pub token: i64,
+    pub login_sig: String,
+    pub session_key: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PioneerLoginQrView {
+    pub qr_sig: String,
+    pub image: String,
+    pub token: i64,
+    pub login_sig: String,
+    pub session_key: String,
 }
 
 #[tauri::command]
 pub async fn delta_qq_get_login_qr(
     state: State<'_, DeltaState>,
-    options: Option<CommandOptions>,
-) -> Result<ApiResponse<QqLoginQr>, DeltaError> {
-    let service = QqAuthService::new(http_options(options))?;
+) -> Result<ApiResponse<QqLoginQrView>, DeltaError> {
+    let service = QqAuthService::new(http_options())?;
     let qr = service.get_login_qr().await?;
     state.remember_pending("qq", qr.qr_sig.clone(), qr.cookie.clone())?;
-    Ok(ApiResponse::ok("获取成功", qr))
+    Ok(ApiResponse::ok("获取成功", qq_login_qr_view(qr)))
 }
 
 #[tauri::command]
 pub async fn delta_qq_poll_login_status(
-    req: QqStatusRequest,
-    options: Option<CommandOptions>,
+    state: State<'_, DeltaState>,
+    req: QqLikePollRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = QqAuthService::new(http_options(options))?;
-    service.poll_login_status(req).await
+    let session_key = req.session_key.clone();
+    let cookie = state.pending_cookie("qq", &session_key)?;
+    let service = QqAuthService::new(http_options())?;
+    let mut response = service
+        .poll_login_status(qq_status_request(req, cookie))
+        .await?;
+    sanitize_qq_like_poll_success(&state, "qq", "qq_access", &session_key, &mut response, "QQ")?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_qq_get_access_token(
     state: State<'_, DeltaState>,
-    req: AccountCookieRequest,
-) -> Result<ApiResponse<AccountBoundAccess<QqAccessToken>>, DeltaError> {
-    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
-    let service = QqAuthService::new(http_options(req.options))?;
+    req: AccountSessionRequest,
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let cookie = state.consume_pending_cookie("qq_access", &req.session_key)?;
+    let service = QqAuthService::new(http_options())?;
     let auth = service.get_access_token(&cookie).await?;
     let account = state.persist_account(
         AccountKind::Qq,
@@ -165,69 +134,56 @@ pub async fn delta_qq_get_access_token(
         Some(auth.expires_in),
         Some(json!({ "appid": QQ_OAUTH_APP_ID }).to_string()),
     )?;
-    Ok(ApiResponse::ok(
-        "获取成功",
-        AccountBoundAccess {
-            account_id: account.id,
-            account,
-            auth,
-        },
-    ))
+    Ok(ApiResponse::ok("获取成功", account_login_result(&account)))
 }
 
 #[tauri::command]
 pub async fn delta_qq_update_access_token(
     state: State<'_, DeltaState>,
-    req: QqUpdateRequest,
+    req: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
-    let service = QqAuthService::new(http_options(req.options))?;
+    let auth = state.game_auth(req.account_id)?;
+    let cookie = state.get_account_cookie(req.account_id)?;
+    let service = QqAuthService::new(http_options())?;
     let valid = service
         .update_access_token(
             &UpdateTokenOnlyRequest {
-                openid: req.openid,
-                access_token: req.access_token,
+                openid: auth.openid,
+                access_token: auth.access_token,
             },
             Some(&cookie),
             "qc",
             QQ_OAUTH_APP_ID,
         )
         .await?;
-    Ok(if valid {
-        ApiResponse::ok("鉴权仍然有效", json!([]))
-    } else {
-        ApiResponse {
-            code: -1,
-            msg: "鉴权已失效".to_string(),
-            data: json!([]),
-        }
-    })
+    token_refresh_response(valid)
 }
 
 #[tauri::command]
-pub async fn delta_wechat_get_login_qr(
-    options: Option<CommandOptions>,
-) -> Result<ApiResponse<WechatQr>, DeltaError> {
-    let service = WechatAuthService::new(http_options(options))?;
+pub async fn delta_wechat_get_login_qr() -> Result<ApiResponse<WechatQr>, DeltaError> {
+    let service = WechatAuthService::new(http_options())?;
     Ok(ApiResponse::ok("获取成功", service.get_login_qr().await?))
 }
 
 #[tauri::command]
 pub async fn delta_wechat_poll_status(
+    state: State<'_, DeltaState>,
     uuid: String,
-    options: Option<CommandOptions>,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WechatAuthService::new(http_options(options))?;
-    service.poll_status(&uuid).await
+    let service = WechatAuthService::new(http_options())?;
+    let mut response = service.poll_status(&uuid).await?;
+    sanitize_wechat_poll_success(&state, "wechat_access", &uuid, &mut response)?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_wechat_get_access_token(
     state: State<'_, DeltaState>,
-    req: WechatAccessRequest,
-) -> Result<ApiResponse<AccountBoundAccess<WechatAccessToken>>, DeltaError> {
-    let service = WechatAuthService::new(http_options(req.options))?;
-    let auth = service.get_access_token(&req.code).await?;
+    req: AccountSessionRequest,
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let code = state.consume_pending_cookie("wechat_access", &req.session_key)?;
+    let service = WechatAuthService::new(http_options())?;
+    let auth = service.get_access_token(&code).await?;
     let account = state.persist_account(
         AccountKind::Wechat,
         auth.openid.clone(),
@@ -240,62 +196,62 @@ pub async fn delta_wechat_get_access_token(
                 .to_string(),
         ),
     )?;
-    Ok(ApiResponse::ok(
-        "获取成功",
-        AccountBoundAccess {
-            account_id: account.id,
-            account,
-            auth,
-        },
-    ))
+    Ok(ApiResponse::ok("获取成功", account_login_result(&account)))
 }
 
 #[tauri::command]
 pub async fn delta_wechat_update_access_token(
-    req: WechatUpdateRequest,
+    state: State<'_, DeltaState>,
+    req: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WechatAuthService::new(http_options(req.options))?;
+    let auth = state.game_auth(req.account_id)?;
+    let service = WechatAuthService::new(http_options())?;
     let valid = service
         .update_access_token(&UpdateTokenOnlyRequest {
-            openid: req.openid,
-            access_token: req.access_token,
+            openid: auth.openid,
+            access_token: auth.access_token,
         })
         .await?;
-    Ok(if valid {
-        ApiResponse::ok("鉴权仍然有效", json!([]))
-    } else {
-        ApiResponse {
-            code: -1,
-            msg: "鉴权已失效".to_string(),
-            data: json!([]),
-        }
-    })
+    token_refresh_response(valid)
 }
 
 #[tauri::command]
 pub async fn delta_qqsafe_get_login_qr(
-    options: Option<CommandOptions>,
-) -> Result<ApiResponse<QqLoginQr>, DeltaError> {
-    let service = QqSafeService::new(http_options(options))?;
-    Ok(ApiResponse::ok("获取成功", service.get_login_qr().await?))
+    state: State<'_, DeltaState>,
+) -> Result<ApiResponse<QqLoginQrView>, DeltaError> {
+    let service = QqSafeService::new(http_options())?;
+    let qr = service.get_login_qr().await?;
+    state.remember_pending("qqsafe", qr.qr_sig.clone(), qr.cookie.clone())?;
+    Ok(ApiResponse::ok("获取成功", qq_login_qr_view(qr)))
 }
 
 #[tauri::command]
 pub async fn delta_qqsafe_poll_status(
-    req: QqStatusRequest,
-    options: Option<CommandOptions>,
+    state: State<'_, DeltaState>,
+    req: QqLikePollRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = QqSafeService::new(http_options(options))?;
-    service.poll_status(req).await
+    let session_key = req.session_key.clone();
+    let cookie = state.pending_cookie("qqsafe", &session_key)?;
+    let service = QqSafeService::new(http_options())?;
+    let mut response = service.poll_status(qq_status_request(req, cookie)).await?;
+    sanitize_qq_like_poll_success(
+        &state,
+        "qqsafe",
+        "qqsafe_access",
+        &session_key,
+        &mut response,
+        "QQ安全中心",
+    )?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_qqsafe_get_access_token(
     state: State<'_, DeltaState>,
-    req: AccountCookieRequest,
-) -> Result<ApiResponse<AccountBoundAccess<QqSafeAccess>>, DeltaError> {
-    let cookie = state.get_account_cookie(req.account_id, req.cookie.clone())?;
-    let service = QqSafeService::new(http_options(req.options))?;
+    req: AccountSessionRequest,
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let cookie = state.consume_pending_cookie("qqsafe_access", &req.session_key)?;
+    let service = QqSafeService::new(http_options())?;
     let auth = service.get_access_token(&cookie).await?;
     let account = state.persist_account(
         AccountKind::QqSafe,
@@ -306,26 +262,21 @@ pub async fn delta_qqsafe_get_access_token(
         None,
         Some(json!({ "code": auth.code }).to_string()),
     )?;
-    Ok(ApiResponse::ok(
-        "获取成功",
-        AccountBoundAccess {
-            account_id: account.id,
-            account,
-            auth,
-        },
-    ))
+    Ok(ApiResponse::ok("获取成功", account_login_result(&account)))
 }
 
 #[tauri::command]
 pub async fn delta_qqsafe_get_banned_list(
-    req: QqSafeBannedListRequest,
+    state: State<'_, DeltaState>,
+    req: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = QqSafeService::new(http_options(req.options))?;
+    let (openid, access_token, code) = state.qq_safe_access(req.account_id)?;
+    let service = QqSafeService::new(http_options())?;
     let data = service
         .get_banned_list(&QqSafeAccess {
-            openid: req.openid,
-            access_token: req.access_token,
-            code: req.code,
+            openid,
+            access_token,
+            code,
         })
         .await?;
     Ok(ApiResponse::ok("获取成功", data))
@@ -333,96 +284,101 @@ pub async fn delta_qqsafe_get_banned_list(
 
 #[tauri::command]
 pub async fn delta_qqsafe_report(
+    state: State<'_, DeltaState>,
     req: QqSafeReportRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = QqSafeService::new(http_options(req.options))?;
-    let data = service.report(&req.openid, &req.access_token, &req.user_id).await?;
+    let (openid, access_token, _) = state.qq_safe_access(req.account_id)?;
+    let service = QqSafeService::new(http_options())?;
+    let data = service.report(&openid, &access_token, &req.user_id).await?;
     Ok(ApiResponse::ok("获取成功", data))
 }
 
-// -------- Pioneer (先遣服) --------
-
 #[tauri::command]
 pub async fn delta_pioneer_get_login_qr(
-    req: PioneerLoginRequest,
-) -> Result<ApiResponse<PioneerLoginQr>, DeltaError> {
-    let service = PioneerAuthService::new(http_options(req.options))?;
-    let data = service.get_login_qr().await?;
-    Ok(ApiResponse::ok("获取成功", data))
+    state: State<'_, DeltaState>,
+) -> Result<ApiResponse<PioneerLoginQrView>, DeltaError> {
+    let service = PioneerAuthService::new(http_options())?;
+    let qr = service.get_login_qr().await?;
+    state.remember_pending("pioneer", qr.qr_sig.clone(), qr.cookie.clone())?;
+    Ok(ApiResponse::ok("获取成功", pioneer_login_qr_view(qr)))
 }
 
 #[tauri::command]
 pub async fn delta_pioneer_poll_status(
-    req: PioneerStatusRequestDto,
+    state: State<'_, DeltaState>,
+    req: QqLikePollRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = PioneerAuthService::new(http_options(req.options))?;
-    let data = service
+    let session_key = req.session_key.clone();
+    let cookie = state.pending_cookie("pioneer", &session_key)?;
+    let service = PioneerAuthService::new(http_options())?;
+    let mut response = service
         .poll_login_status(PioneerStatusRequest {
             qr_token: req.qr_token,
             qr_sig: req.qr_sig,
             login_sig: req.login_sig,
-            cookie: req.cookie,
+            cookie,
         })
         .await?;
-    Ok(data)
+    sanitize_qq_like_poll_success(
+        &state,
+        "pioneer",
+        "pioneer_access",
+        &session_key,
+        &mut response,
+        "先遣服",
+    )?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_pioneer_get_access_token(
     state: State<'_, DeltaState>,
-    req: PioneerAccessTokenRequest,
-) -> Result<ApiResponse<AccountBoundAccess<PioneerAccessToken>>, DeltaError> {
-    let service = PioneerAuthService::new(http_options(req.options))?;
-    let data = service.get_access_token(&req.cookie).await?;
-    let uin = cookie_identity(&req.cookie).unwrap_or_else(|| "pioneer".to_string());
+    req: AccountSessionRequest,
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let cookie = state.consume_pending_cookie("pioneer_access", &req.session_key)?;
+    let service = PioneerAuthService::new(http_options())?;
+    let data = service.get_access_token(&cookie).await?;
+    let uin = cookie_identity(&cookie).unwrap_or_else(|| "pioneer".to_string());
     let account = state.persist_account(
         AccountKind::Pioneer,
         uin,
-        req.cookie,
+        cookie,
         None,
-        Some(data.key.clone()),
+        Some(data.key),
         None,
         Some(json!({ "source": "pioneer" }).to_string()),
     )?;
-    Ok(ApiResponse::ok(
-        "获取成功",
-        AccountBoundAccess {
-            account_id: account.id,
-            account,
-            auth: data,
-        },
-    ))
+    Ok(ApiResponse::ok("获取成功", account_login_result(&account)))
 }
 
 #[tauri::command]
 pub async fn delta_pioneer_update_access_token(
-    req: PioneerUpdateAccessTokenRequest,
+    _state: State<'_, DeltaState>,
+    _req: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = PioneerAuthService::new(http_options(req.options))?;
-    let result = service
-        .update_access_token(&req.openid, &req.access_token, req.cookie.as_deref())
-        .await?;
-    if result {
-        Ok(ApiResponse::ok("更新成功", json!([])))
-    } else {
-        Ok(ApiResponse { code: -1, msg: "更新失败".to_string(), data: json!([]) })
-    }
+    Ok(ApiResponse {
+        code: -1,
+        msg: "先遣服账号不支持自动刷新，请重新扫码登录".to_string(),
+        data: json!([]),
+    })
 }
 
 #[tauri::command]
 pub async fn delta_pioneer_get_game_test_list(
+    state: State<'_, DeltaState>,
     req: PioneerGameTestListRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = PioneerAuthService::new(http_options(req.options))?;
+    let key = state.pioneer_key(req.account_id)?;
+    let service = PioneerAuthService::new(http_options())?;
     let list_type = req.list_type.as_deref().unwrap_or("pc");
-    let data = service.get_game_test_list(&req.key, list_type).await?;
+    let data = service.get_game_test_list(&key, list_type).await?;
     Ok(ApiResponse::ok("获取成功", data))
 }
 
 #[tauri::command]
 pub fn delta_list_accounts(
     state: State<'_, DeltaState>,
-) -> Result<ApiResponse<Vec<DeltaAccountRecord>>, DeltaError> {
+) -> Result<ApiResponse<Vec<DeltaAccountView>>, DeltaError> {
     Ok(ApiResponse::ok("获取成功", state.list_accounts()?))
 }
 
@@ -443,55 +399,29 @@ pub fn delta_delete_account(
     }
 }
 
-fn http_options(options: Option<CommandOptions>) -> HttpOptions {
-    HttpOptions {
-        insecure_skip_tls_verify: options
-            .and_then(|options| options.insecure_skip_tls_verify)
-            .unwrap_or(false),
-    }
-}
-
-fn cookie_identity(cookie_json: &str) -> Option<String> {
-    let cookies: serde_json::Map<String, Value> = serde_json::from_str(cookie_json).ok()?;
-    let raw = cookies.get("uin")?.as_str()?;
-    let normalized = raw.trim_start_matches('o');
-    (!normalized.is_empty()).then(|| normalized.to_string())
-}
-
-// ============================================================================
-// Wegame commands
-// ============================================================================
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WegameCodeRequest {
-    pub code: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WegameTicketRequest {
-    pub ticket: WegameTicket,
-    pub options: Option<CommandOptions>,
+    pub session_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WegameQqPollRequest {
-    pub request: WegameQqStatusRequest,
-    pub options: Option<CommandOptions>,
+    pub request: QqLikePollRequest,
 }
 
 #[tauri::command]
 pub async fn delta_wegame_qq_get_login_qr(
     state: State<'_, DeltaState>,
-    options: Option<CommandOptions>,
-) -> Result<ApiResponse<WegameQqLoginQr>, DeltaError> {
-    let service = WegameAuthService::new(http_options(options))?;
+) -> Result<ApiResponse<WegameQqLoginQrView>, DeltaError> {
+    let service = WegameAuthService::new(http_options())?;
     let qr = service.get_qq_login_qr().await?;
     state.remember_pending("wegame_qq", qr.qr_sig.clone(), qr.cookie.clone())?;
-    Ok(ApiResponse::ok("获取二维码成功", qr))
+    Ok(ApiResponse::ok(
+        "获取二维码成功",
+        wegame_qq_login_qr_view(qr),
+    ))
 }
 
 #[tauri::command]
@@ -499,69 +429,49 @@ pub async fn delta_wegame_qq_poll_status(
     state: State<'_, DeltaState>,
     request: WegameQqPollRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WegameAuthService::new(http_options(request.options.clone()))?;
-    let resp = service.poll_qq_login_status(request.request.clone()).await?;
-    if resp.code == 0 {
-        // Persist cookie under wegame_qq once redirect completes
-        let cookie_json = resp
-            .data
-            .get("cookie")
-            .and_then(Value::as_str)
-            .unwrap_or("{}")
-            .to_string();
-        let uin = resp
-            .data
-            .get("uin")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        if !uin.is_empty() {
-            let _ = state.persist_account(
-                AccountKind::WegameQq,
-                uin,
-                cookie_json,
-                None,
-                None,
-                None,
-                None,
-            )?;
-        }
-    }
-    Ok(resp)
+    let session_key = request.request.session_key.clone();
+    let cookie = state.pending_cookie("wegame_qq", &session_key)?;
+    let service = WegameAuthService::new(http_options())?;
+    let mut response = service
+        .poll_qq_login_status(wegame_qq_status_request(request.request, cookie))
+        .await?;
+    sanitize_qq_like_poll_success(
+        &state,
+        "wegame_qq",
+        "wegame_qq_access",
+        &session_key,
+        &mut response,
+        "Wegame QQ",
+    )?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_wegame_qq_get_access_token(
     state: State<'_, DeltaState>,
-    request: AccountCookieRequest,
-) -> Result<ApiResponse<AccountBoundAccess<WegameTicket>>, DeltaError> {
-    let cookie = state.get_account_cookie(request.account_id, request.cookie)?;
-    let service = WegameAuthService::new(http_options(request.options))?;
+    request: AccountSessionRequest,
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let cookie = state.consume_pending_cookie("wegame_qq_access", &request.session_key)?;
+    let service = WegameAuthService::new(http_options())?;
     let ticket = service.get_qq_access_token(&cookie).await?;
     let record = state.persist_account(
         AccountKind::WegameQq,
         ticket.id.clone(),
         cookie,
         None,
-        Some(ticket.ticket.clone()),
+        Some(ticket.ticket),
         None,
         None,
     )?;
     Ok(ApiResponse::ok(
         "获取Wegame票据成功",
-        AccountBoundAccess {
-            account_id: record.id,
-            account: record,
-            auth: ticket,
-        },
+        account_login_result(&record),
     ))
 }
 
 #[tauri::command]
-pub async fn delta_wegame_wechat_get_login_qr(
-    options: Option<CommandOptions>,
-) -> Result<ApiResponse<WechatQr>, DeltaError> {
-    let service = WegameAuthService::new(http_options(options))?;
+pub async fn delta_wegame_wechat_get_login_qr() -> Result<ApiResponse<WechatQr>, DeltaError> {
+    let service = WegameAuthService::new(http_options())?;
     let qr = service.get_wechat_login_qr().await?;
     Ok(ApiResponse::ok("获取二维码成功", qr))
 }
@@ -570,82 +480,72 @@ pub async fn delta_wegame_wechat_get_login_qr(
 #[serde(rename_all = "camelCase")]
 pub struct WegameWechatPollRequest {
     pub uuid: String,
-    pub options: Option<CommandOptions>,
 }
 
 #[tauri::command]
 pub async fn delta_wegame_wechat_poll_status(
+    state: State<'_, DeltaState>,
     request: WegameWechatPollRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WegameAuthService::new(http_options(request.options.clone()))?;
-    service
-        .poll_wechat_status(&request.uuid, http_options(request.options))
-        .await
+    let service = WegameAuthService::new(http_options())?;
+    let mut response = service
+        .poll_wechat_status(&request.uuid, http_options())
+        .await?;
+    sanitize_wechat_poll_success(&state, "wegame_wechat_access", &request.uuid, &mut response)?;
+    Ok(response)
 }
 
 #[tauri::command]
 pub async fn delta_wegame_wechat_get_access_token(
     state: State<'_, DeltaState>,
     request: WegameCodeRequest,
-) -> Result<ApiResponse<AccountBoundAccess<WegameTicket>>, DeltaError> {
-    let service = WegameAuthService::new(http_options(request.options))?;
-    let ticket = service.get_wechat_access_token(&request.code).await?;
+) -> Result<ApiResponse<AccountLoginResult>, DeltaError> {
+    let code = state.consume_pending_cookie("wegame_wechat_access", &request.session_key)?;
+    let service = WegameAuthService::new(http_options())?;
+    let ticket = service.get_wechat_access_token(&code).await?;
     let record = state.persist_account(
         AccountKind::WegameWechat,
         ticket.id.clone(),
         "{}".to_string(),
         None,
-        Some(ticket.ticket.clone()),
+        Some(ticket.ticket),
         None,
         None,
     )?;
     Ok(ApiResponse::ok(
         "获取Wegame票据成功",
-        AccountBoundAccess {
-            account_id: record.id,
-            account: record,
-            auth: ticket,
-        },
+        account_login_result(&record),
     ))
 }
 
 #[tauri::command]
 pub async fn delta_wegame_open_treasure_gift(
-    request: WegameTicketRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WegameAuthService::new(http_options(request.options))?;
-    let data = service.open_treasure_gift(&request.ticket).await?;
+    let ticket = state.wegame_ticket(request.account_id)?;
+    let service = WegameAuthService::new(http_options())?;
+    let data = service.open_treasure_gift(&ticket).await?;
     Ok(ApiResponse::ok("开启宝箱成功", data))
 }
 
 #[tauri::command]
 pub async fn delta_wegame_draw_daily_card(
-    request: WegameTicketRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = WegameAuthService::new(http_options(request.options))?;
-    let data = service.draw_daily_card(&request.ticket).await?;
+    let ticket = state.wegame_ticket(request.account_id)?;
+    let service = WegameAuthService::new(http_options())?;
+    let data = service.draw_daily_card(&ticket).await?;
     Ok(ApiResponse::ok("抽卡成功", data))
-}
-
-// ============================================================================
-// Game commands
-// ============================================================================
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GameAuthRequest {
-    pub auth: GameAuth,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameItemsRequest {
-    #[serde(rename = "type")]
     pub type_id: i64,
     pub sub_type: i64,
     pub item_id: Option<String>,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -654,16 +554,14 @@ pub struct GamePriceRequest {
     pub args: Vec<i64>,
     #[serde(default)]
     pub with_recent: bool,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameLogsRequest {
-    pub auth: GameAuth,
+    pub account_id: i64,
     pub log_type: i64,
     pub page: i64,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -671,34 +569,25 @@ pub struct GameLogsRequest {
 pub struct GameFirearmModListRequest {
     pub page: i64,
     pub page_size: i64,
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameRecommendationRequest {
     pub place: String,
-    pub options: Option<CommandOptions>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GameNoAuthOptions {
-    pub options: Option<CommandOptions>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameGunsRequest {
     pub gun_id: String,
-    pub options: Option<CommandOptions>,
 }
 
 #[tauri::command]
 pub async fn delta_game_get_items(
     request: GameItemsRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let service = GameService::new(http_options())?;
     let data = service
         .get_items(request.type_id, request.sub_type, request.item_id)
         .await?;
@@ -706,10 +595,8 @@ pub async fn delta_game_get_items(
 }
 
 #[tauri::command]
-pub async fn delta_game_get_config(
-    request: GameNoAuthOptions,
-) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+pub async fn delta_game_get_config() -> Result<ApiResponse<Value>, DeltaError> {
+    let service = GameService::new(http_options())?;
     let data = service.get_config().await?;
     Ok(ApiResponse::ok("ok", data))
 }
@@ -718,7 +605,7 @@ pub async fn delta_game_get_config(
 pub async fn delta_game_get_price(
     request: GamePriceRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let service = GameService::new(http_options())?;
     let data = service.get_price(request.args, request.with_recent).await?;
     Ok(ApiResponse::ok("ok", data))
 }
@@ -727,7 +614,7 @@ pub async fn delta_game_get_price(
 pub async fn delta_game_get_firearm_mod_list(
     request: GameFirearmModListRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let service = GameService::new(http_options())?;
     let data = service
         .get_firearm_mod_list(request.page, request.page_size)
         .await?;
@@ -738,81 +625,97 @@ pub async fn delta_game_get_firearm_mod_list(
 pub async fn delta_game_get_recommendation(
     request: GameRecommendationRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let service = GameService::new(http_options())?;
     let data = service.get_recommendation(&request.place).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_record(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_record(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_record(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_player(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_player(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_player(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_assets(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    service.get_assets(&request.auth).await
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    service.get_assets(&auth).await
 }
 
 #[tauri::command]
 pub async fn delta_game_get_logs(
+    state: State<'_, DeltaState>,
     request: GameLogsRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
     let data = service
-        .get_logs(&request.auth, request.log_type, request.page)
+        .get_logs(&auth, request.log_type, request.page)
         .await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_recent(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_recent(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_recent(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_achievement(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_achievement(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_achievement(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_password(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_password(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_password(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_manufacture(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_manufacture(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_manufacture(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
@@ -820,45 +723,214 @@ pub async fn delta_game_get_manufacture(
 pub async fn delta_game_get_guns(
     request: GameGunsRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
+    let service = GameService::new(http_options())?;
     let data = service.get_guns(&request.gun_id).await?;
     Ok(ApiResponse::ok("ok", data))
 }
 
 #[tauri::command]
 pub async fn delta_game_get_bind(
-    request: GameAuthRequest,
+    state: State<'_, DeltaState>,
+    request: AccountIdRequest,
 ) -> Result<ApiResponse<Value>, DeltaError> {
-    let service = GameService::new(http_options(request.options))?;
-    let data = service.get_bind(&request.auth).await?;
+    let auth = state.game_auth(request.account_id)?;
+    let service = GameService::new(http_options())?;
+    let data = service.get_bind(&auth).await?;
     Ok(ApiResponse::ok("ok", data))
+}
+
+fn http_options() -> HttpOptions {
+    HttpOptions
+}
+
+fn account_login_result(record: &DeltaAccountRecord) -> AccountLoginResult {
+    AccountLoginResult {
+        account_id: record.id,
+        account: DeltaAccountView::from(record),
+    }
+}
+
+fn qq_login_qr_view(qr: QqLoginQr) -> QqLoginQrView {
+    QqLoginQrView {
+        session_key: qr.qr_sig.clone(),
+        qr_sig: qr.qr_sig,
+        image: qr.image,
+        token: qr.token,
+        login_sig: qr.login_sig,
+    }
+}
+
+fn wegame_qq_login_qr_view(qr: WegameQqLoginQr) -> WegameQqLoginQrView {
+    WegameQqLoginQrView {
+        session_key: qr.qr_sig.clone(),
+        qr_sig: qr.qr_sig,
+        image: qr.image,
+        token: qr.token,
+        login_sig: qr.login_sig,
+    }
+}
+
+fn pioneer_login_qr_view(qr: PioneerLoginQr) -> PioneerLoginQrView {
+    PioneerLoginQrView {
+        session_key: qr.qr_sig.clone(),
+        qr_sig: qr.qr_sig,
+        image: qr.image,
+        token: qr.token,
+        login_sig: qr.login_sig,
+    }
+}
+
+fn qq_status_request(req: QqLikePollRequest, cookie: String) -> QqStatusRequest {
+    QqStatusRequest {
+        qr_token: req.qr_token,
+        qr_sig: req.qr_sig,
+        login_sig: req.login_sig,
+        cookie,
+    }
+}
+
+fn wegame_qq_status_request(
+    req: QqLikePollRequest,
+    cookie: String,
+) -> crate::delta::services::wegame_auth::WegameQqStatusRequest {
+    crate::delta::services::wegame_auth::WegameQqStatusRequest {
+        qr_token: req.qr_token,
+        qr_sig: req.qr_sig,
+        login_sig: req.login_sig,
+        cookie,
+    }
+}
+
+fn sanitize_qq_like_poll_success(
+    state: &DeltaState,
+    source_kind: &str,
+    access_kind: &str,
+    session_key: &str,
+    response: &mut ApiResponse<Value>,
+    label: &str,
+) -> Result<(), DeltaError> {
+    if response.code == 0 {
+        let cookie = response
+            .data
+            .get("cookie")
+            .and_then(Value::as_str)
+            .filter(|cookie| !cookie.is_empty())
+            .ok_or_else(|| DeltaError::Parse(format!("{label} 登录成功但缺少 Cookie")))?
+            .to_string();
+        let uin = response.data.get("uin").cloned().unwrap_or(Value::Null);
+        state.forget_pending(source_kind, session_key)?;
+        state.remember_pending(access_kind, session_key.to_string(), cookie)?;
+        response.data = json!({ "sessionKey": session_key, "uin": uin });
+    } else if response.code < 0 {
+        state.forget_pending(source_kind, session_key)?;
+    }
+    Ok(())
+}
+
+fn sanitize_wechat_poll_success(
+    state: &DeltaState,
+    access_kind: &str,
+    session_key: &str,
+    response: &mut ApiResponse<Value>,
+) -> Result<(), DeltaError> {
+    if response.code == 3 {
+        let code = response
+            .data
+            .get("wxCode")
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty())
+            .ok_or_else(|| DeltaError::Parse("微信登录成功但缺少授权码".to_string()))?
+            .to_string();
+        state.remember_pending(access_kind, session_key.to_string(), code)?;
+        response.data = json!({ "sessionKey": session_key });
+    }
+    Ok(())
+}
+
+fn token_refresh_response(valid: bool) -> Result<ApiResponse<Value>, DeltaError> {
+    Ok(if valid {
+        ApiResponse::ok("鉴权仍然有效", json!([]))
+    } else {
+        ApiResponse {
+            code: -1,
+            msg: "鉴权已失效".to_string(),
+            data: json!([]),
+        }
+    })
+}
+
+fn cookie_identity(cookie_json: &str) -> Option<String> {
+    let cookies: serde_json::Map<String, Value> = serde_json::from_str(cookie_json).ok()?;
+    let raw = cookies.get("uin")?.as_str()?;
+    let normalized = raw.trim_start_matches('o');
+    (!normalized.is_empty()).then(|| normalized.to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
-    use super::{cookie_identity, GameGunsRequest};
-
-    #[test]
-    fn deserializes_game_guns_request_from_gun_id() {
-        let request: GameGunsRequest =
-            serde_json::from_value(json!({ "gunId": "gun-akm" })).unwrap();
-
-        assert_eq!(request.gun_id, "gun-akm");
-        assert!(request.options.is_none());
-    }
+    use super::{cookie_identity, PioneerGameTestListRequest};
+    use super::{AccountIdRequest, GameGunsRequest, GameItemsRequest, QqSafeReportRequest};
 
     #[test]
-    fn extracts_pioneer_identity_from_cookie_uin() {
+    fn extracts_cookie_identity_from_uin_cookie() {
         assert_eq!(
-            cookie_identity(r#"{"uin":"o10002","p_skey":"abc"}"#),
-            Some("10002".to_string())
+            cookie_identity(r#"{"uin":"o10001"}"#).as_deref(),
+            Some("10001")
         );
     }
 
     #[test]
-    fn returns_none_for_missing_cookie_identity() {
-        assert_eq!(cookie_identity(r#"{"p_skey":"abc"}"#), None);
+    fn ignores_empty_cookie_identity() {
+        assert_eq!(cookie_identity(r#"{"uin":"o"}"#), None);
+    }
+
+    #[test]
+    fn deserializes_game_guns_request_camel_case() {
+        let request: GameGunsRequest = serde_json::from_value(serde_json::json!({
+            "gunId": "weapon-1"
+        }))
+        .unwrap();
+        assert_eq!(request.gun_id, "weapon-1");
+    }
+
+    #[test]
+    fn deserializes_account_id_request_camel_case() {
+        let request: AccountIdRequest = serde_json::from_value(serde_json::json!({
+            "accountId": 42
+        }))
+        .unwrap();
+        assert_eq!(request.account_id, 42);
+    }
+
+    #[test]
+    fn deserializes_game_items_request_camel_case() {
+        let request: GameItemsRequest = serde_json::from_value(serde_json::json!({
+            "typeId": 3,
+            "subType": 4,
+            "itemId": "item-1"
+        }))
+        .unwrap();
+        assert_eq!(request.type_id, 3);
+        assert_eq!(request.sub_type, 4);
+        assert_eq!(request.item_id.as_deref(), Some("item-1"));
+    }
+
+    #[test]
+    fn deserializes_tool_account_requests_camel_case() {
+        let report: QqSafeReportRequest = serde_json::from_value(serde_json::json!({
+            "accountId": 7,
+            "userId": "target-user"
+        }))
+        .unwrap();
+        assert_eq!(report.account_id, 7);
+        assert_eq!(report.user_id, "target-user");
+
+        let pioneer: PioneerGameTestListRequest = serde_json::from_value(serde_json::json!({
+            "accountId": 8,
+            "listType": "pc"
+        }))
+        .unwrap();
+        assert_eq!(pioneer.account_id, 8);
+        assert_eq!(pioneer.list_type.as_deref(), Some("pc"));
     }
 }

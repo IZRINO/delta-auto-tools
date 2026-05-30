@@ -48,7 +48,7 @@ pub enum NamedKey {
     Quote,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotkeyBinding {
     pub modifiers: HashSet<ModifierKey>,
     pub primary: PrimaryKey,

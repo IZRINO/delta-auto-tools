@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { GameAuth, QueryWorkbenchKind, ApiResponse } from "@/components/app/delta-types";
+import type { QueryWorkbenchKind, ApiResponse } from "@/components/app/delta-types";
 import { QUERY_WORKBENCH_LABELS, QUERY_WORKBENCH_KINDS } from "@/components/app/delta-types";
 import { TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { RiSearchLine } from "@remixicon/react";
 
 type DeltaQueryWorkbenchProps = {
-  auth: GameAuth | null;
+  accountId: number;
 };
 
 // 各查询类型必需参数校验
@@ -36,7 +36,7 @@ function validateQuery(kind: QueryWorkbenchKind, params: Record<string, string>)
   return null;
 }
 
-export function DeltaQueryWorkbench({ auth }: DeltaQueryWorkbenchProps) {
+export function DeltaQueryWorkbench({ accountId }: DeltaQueryWorkbenchProps) {
   const [kind, setKind] = useState<QueryWorkbenchKind>("items");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<unknown>(null);
@@ -82,26 +82,25 @@ export function DeltaQueryWorkbench({ auth }: DeltaQueryWorkbenchProps) {
         case "items": {
           const p: Record<string, unknown> = { typeId: Number(typeId) || 0, subType: Number(subType) || 0 };
           if (itemId) p.itemId = itemId;
-          res = await invoke("delta_game_get_items", p);
+          res = await invoke("delta_game_get_items", { request: p });
           break;
         }
         case "price": {
           const parsed = priceArgs.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0);
-          res = await invoke("delta_game_get_price", { args: parsed, withRecent });
+          res = await invoke("delta_game_get_price", { request: { args: parsed, withRecent } });
           break;
         }
         case "guns":
-          res = await invoke("delta_game_get_guns", { gunId });
+          res = await invoke("delta_game_get_guns", { request: { gunId } });
           break;
         case "logs":
-          if (!auth) { setError("操作日志需要登录账号"); return; }
-          res = await invoke("delta_game_get_logs", { auth, logType: Number(logType) || 0, page: Math.max(1, Number(logPage) || 1) });
+          res = await invoke("delta_game_get_logs", { request: { accountId, logType: Number(logType) || 0, page: Math.max(1, Number(logPage) || 1) } });
           break;
         case "firearm_mod_list":
-          res = await invoke("delta_game_get_firearm_mod_list", { page: Math.max(1, Number(fmPage) || 1), pageSize: Math.max(1, Number(fmPageSize) || 20) });
+          res = await invoke("delta_game_get_firearm_mod_list", { request: { page: Math.max(1, Number(fmPage) || 1), pageSize: Math.max(1, Number(fmPageSize) || 20) } });
           break;
         case "recommendation":
-          res = await invoke("delta_game_get_recommendation", { place });
+          res = await invoke("delta_game_get_recommendation", { request: { place } });
           break;
         default:
           return;
@@ -117,10 +116,10 @@ export function DeltaQueryWorkbench({ auth }: DeltaQueryWorkbenchProps) {
     } finally {
       setLoading(false);
     }
-  }, [kind, typeId, subType, itemId, priceArgs, withRecent, gunId, logType, logPage, fmPage, fmPageSize, place, auth]);
+  }, [kind, typeId, subType, itemId, priceArgs, withRecent, gunId, logType, logPage, fmPage, fmPageSize, place, accountId]);
 
   const needsAuth = kind === "logs";
-  const canQuery = !needsAuth || !!auth;
+  const canQuery = !needsAuth || accountId > 0;
 
   return (
     <TacticalCard className="lg:col-span-2">
@@ -221,7 +220,7 @@ export function DeltaQueryWorkbench({ auth }: DeltaQueryWorkbenchProps) {
             {loading ? <Spinner className="mr-1.5 size-3.5" /> : <RiSearchLine data-icon="inline-start" className="mr-1.5 size-3.5" />}
             查询
           </Button>
-          {needsAuth && !auth && (
+          {needsAuth && !canQuery && (
             <span className="text-xs text-destructive">此查询需要登录账号</span>
           )}
         </div>

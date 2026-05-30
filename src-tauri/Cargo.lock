@@ -1013,6 +1013,7 @@ dependencies = [
  "tokio",
  "url",
  "willhook",
+ "windows-sys 0.61.2",
  "xcap",
 ]
 

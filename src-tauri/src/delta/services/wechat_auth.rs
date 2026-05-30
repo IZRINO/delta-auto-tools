@@ -3,11 +3,16 @@ use serde_json::{json, Value};
 
 use crate::delta::{
     client::http::{build_client, HttpOptions},
-    constants::{DF_REFERER, WECHAT_APP_ID, WECHAT_CODE_DOMAIN, WECHAT_ORIGINAL_URL, WECHAT_REDIRECT_URI},
+    constants::{
+        DF_REFERER, WECHAT_APP_ID, WECHAT_CODE_DOMAIN, WECHAT_ORIGINAL_URL, WECHAT_REDIRECT_URI,
+    },
     error::DeltaError,
     response::ApiResponse,
     services::qq_auth::UpdateTokenOnlyRequest,
-    utils::{html::{extract_wx_code, extract_wx_errcode, extract_wx_qrcode_uuid}, time::current_millis},
+    utils::{
+        html::{extract_wx_code, extract_wx_errcode, extract_wx_qrcode_uuid},
+        time::current_millis,
+    },
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,12 +86,41 @@ impl WechatAuthService {
         let errcode = extract_wx_errcode(body)?;
         let wx_code = extract_wx_code(body).unwrap_or_default();
         Ok(match errcode {
-            405 => ApiResponse { code: 3, msg: "扫码成功".to_string(), data: json!({ "wxErrcode": 405, "wxCode": wx_code }) },
-            404 => ApiResponse { code: 2, msg: "已扫码".to_string(), data: json!([]) },
-            408 => ApiResponse { code: 1, msg: "等待扫码".to_string(), data: json!([]) },
-            402 => ApiResponse { code: -2, msg: "二维码超时".to_string(), data: json!([]) },
-            403 => ApiResponse { code: -3, msg: "扫码被拒绝".to_string(), data: json!([]) },
-            _ => ApiResponse { code: -4, msg: "其他错误代码".to_string(), data: json!({ "wxErrcode": errcode, "wxCode": wx_code }) },
+            405 if !wx_code.is_empty() => ApiResponse {
+                code: 3,
+                msg: "扫码成功".to_string(),
+                data: json!({ "wxErrcode": 405, "wxCode": wx_code }),
+            },
+            405 => ApiResponse {
+                code: -4,
+                msg: "扫码成功但缺少授权码".to_string(),
+                data: json!({ "wxErrcode": 405 }),
+            },
+            404 => ApiResponse {
+                code: 2,
+                msg: "已扫码".to_string(),
+                data: json!([]),
+            },
+            408 => ApiResponse {
+                code: 1,
+                msg: "等待扫码".to_string(),
+                data: json!([]),
+            },
+            402 => ApiResponse {
+                code: -2,
+                msg: "二维码超时".to_string(),
+                data: json!([]),
+            },
+            403 => ApiResponse {
+                code: -3,
+                msg: "扫码被拒绝".to_string(),
+                data: json!([]),
+            },
+            _ => ApiResponse {
+                code: -4,
+                msg: "其他错误代码".to_string(),
+                data: json!({ "wxErrcode": errcode, "wxCode": wx_code }),
+            },
         })
     }
 
@@ -117,7 +151,10 @@ impl WechatAuthService {
         serde_json::from_str(nested).map_err(Into::into)
     }
 
-    pub async fn update_access_token(&self, req: &UpdateTokenOnlyRequest) -> Result<bool, DeltaError> {
+    pub async fn update_access_token(
+        &self,
+        req: &UpdateTokenOnlyRequest,
+    ) -> Result<bool, DeltaError> {
         let now = current_millis().to_string();
         let body = self
             .client
@@ -137,7 +174,7 @@ impl WechatAuthService {
             .await?
             .text()
             .await?;
-        Ok(body.contains("\"isLogin\":1"))
+        crate::delta::services::qq_auth::parse_login_valid(&body)
     }
 }
 
@@ -147,7 +184,9 @@ mod tests {
 
     #[test]
     fn maps_wechat_success_status() {
-        let response = WechatAuthService::map_status_body("window.wx_errcode=405;window.wx_code='abc';").unwrap();
+        let response =
+            WechatAuthService::map_status_body("window.wx_errcode=405;window.wx_code='abc';")
+                .unwrap();
         assert_eq!(response.code, 3);
         assert_eq!(response.data["wxCode"], "abc");
     }
@@ -188,9 +227,9 @@ mod tests {
     }
 
     #[test]
-    fn maps_wechat_success_with_empty_code() {
+    fn maps_wechat_success_with_empty_code_as_error() {
         let response = WechatAuthService::map_status_body("window.wx_errcode=405;").unwrap();
-        assert_eq!(response.code, 3);
-        assert_eq!(response.data["wxCode"], "");
+        assert_eq!(response.code, -4);
+        assert_eq!(response.msg, "扫码成功但缺少授权码");
     }
 }

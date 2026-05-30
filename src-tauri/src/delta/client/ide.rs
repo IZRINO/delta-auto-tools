@@ -2,10 +2,7 @@ use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::delta::{
-    constants::DF_REFERER,
-    error::DeltaError,
-};
+use crate::delta::{constants::DF_REFERER, error::DeltaError};
 
 /// Common IDE gateway form-post call used by game data endpoints.
 #[derive(Debug, Clone, Serialize)]
@@ -19,7 +16,13 @@ pub struct IdeCall<'a> {
 
 impl<'a> IdeCall<'a> {
     pub fn new(chart_id: u64, ide_token: &'a str, param: Value) -> Self {
-        Self { chart_id, ide_token, method: None, source: None, param }
+        Self {
+            chart_id,
+            ide_token,
+            method: None,
+            source: None,
+            param,
+        }
     }
 
     pub fn with_method(mut self, method: &'a str) -> Self {
