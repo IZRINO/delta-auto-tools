@@ -12,6 +12,7 @@ export type RapidfireCard = {
   pressJitterMinMs: number;
   pressJitterMaxMs: number;
   enabled: boolean;
+  skipCompensation: boolean;
 };
 
 export type RapidfireSettings = {
@@ -56,6 +57,7 @@ export type RapidfireCardForm = {
   pressJitterMinMs: string;
   pressJitterMaxMs: string;
   enabled: boolean;
+  skipCompensation: boolean;
 };
 
 export type RapidfireSettingsForm = {
@@ -106,6 +108,7 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
       pressJitterMinMs: String(card.pressJitterMinMs),
       pressJitterMaxMs: String(card.pressJitterMaxMs),
       enabled: card.enabled,
+      skipCompensation: card.skipCompensation ?? false,
     })),
   };
 }
@@ -387,6 +390,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       pressJitterMinMs,
       pressJitterMaxMs,
       enabled: card.enabled,
+      skipCompensation: card.skipCompensation,
     };
   });
 
@@ -444,6 +448,7 @@ export function createRapidfireCard(id: string, existingCount = 0): RapidfireCar
     pressJitterMinMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS),
     pressJitterMaxMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS),
     enabled: false,
+    skipCompensation: false,
   };
 }
 

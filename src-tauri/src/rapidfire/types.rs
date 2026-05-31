@@ -44,6 +44,9 @@ pub struct RapidfireCard {
     pub press_jitter_max_ms: u64,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// 开启后松开触发键时不执行奇数补齐，单数次数保持单数
+    #[serde(default)]
+    pub skip_compensation: bool,
 }
 
 /// 连发器设置
@@ -101,6 +104,7 @@ impl Default for RapidfireSettings {
                 press_jitter_min_ms: default_press_jitter_min_ms(),
                 press_jitter_max_ms: default_press_jitter_max_ms(),
                 enabled: false,
+                skip_compensation: false,
             }],
         }
     }
@@ -181,6 +185,7 @@ mod tests {
         assert_eq!(settings.cards[0].press_jitter_min_ms, 8);
         assert_eq!(settings.cards[0].press_jitter_max_ms, 12);
         assert!(!settings.cards[0].enabled);
+        assert!(!settings.cards[0].skip_compensation);
     }
 
     #[test]
@@ -197,6 +202,7 @@ mod tests {
 
         assert_eq!(card.press_jitter_min_ms, 8);
         assert_eq!(card.press_jitter_max_ms, 12);
+        assert!(!card.skip_compensation);
     }
 
     #[test]

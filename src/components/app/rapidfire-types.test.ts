@@ -32,6 +32,7 @@ function sampleSettings(): RapidfireSettings {
         pressJitterMinMs: 8,
         pressJitterMaxMs: 12,
         enabled: true,
+        skipCompensation: false,
       },
     ],
   };
@@ -43,6 +44,24 @@ describe("rapidfire-types", () => {
     const parsed = parseRapidfireSettingsForm(rapidfireSettingsToForm(settings));
 
     expect(parsed).toEqual(settings);
+  });
+
+  it("round trips per-card no-append compensation switch", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].skipCompensation = true;
+
+    const parsed = parseRapidfireSettingsForm(form);
+
+    expect(parsed.cards[0].skipCompensation).toBe(true);
+    expect(rapidfireSettingsToForm(parsed).cards[0].skipCompensation).toBe(true);
+  });
+
+  it("defaults legacy cards to automatic compensation", () => {
+    const legacy = sampleSettings();
+    const legacyCard = legacy.cards[0] as Partial<RapidfireSettings["cards"][number]>;
+    delete legacyCard.skipCompensation;
+
+    expect(rapidfireSettingsToForm(legacy).cards[0].skipCompensation).toBe(false);
   });
 
   it("does not mark saved settings dirty because of object key order", () => {
@@ -111,6 +130,7 @@ describe("rapidfire-types", () => {
       pressJitterMinMs: "10",
       pressJitterMaxMs: "18",
       enabled: true,
+      skipCompensation: false,
     });
 
     const parsed = parseRapidfireSettingsForm(form);

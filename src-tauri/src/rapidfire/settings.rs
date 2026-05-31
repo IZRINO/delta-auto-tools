@@ -52,6 +52,7 @@ mod tests {
                 press_jitter_min_ms: 10,
                 press_jitter_max_ms: 18,
                 enabled: true,
+                skip_compensation: false,
             }],
         }
     }

@@ -38,6 +38,7 @@ import type {
   RapidfireCardForm,
   RapidfireRunState,
   RapidfireSettings,
+  RapidfireSelectionOutcome,
   RapidfireSettingsForm,
 } from "@/components/app/rapidfire-types";
 import {
@@ -138,7 +139,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
         const next = await syncBootstrap(true);
         if (!disposed) {
           setForm(rapidfireSettingsToForm(next.settings));
-          setStatusMessage("连发器已就绪。按住触发键开始，松开后自动补齐奇数次数。");
+          setStatusMessage("连发器已就绪。按住触发键开始；未开启不追加的卡片会在松开后自动补齐奇数次数。");
         }
       } catch (error) {
         if (!disposed) {
@@ -371,9 +372,15 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
     if (!isNativeShell) return;
     try {
       setStatusMessage("正在打开连发器透明窗口位置设置...");
-      await invoke("rapidfire_begin_position_selection");
-      await syncBootstrap();
-      setStatusMessage("位置设置已结束。");
+      const outcome = await invoke<RapidfireSelectionOutcome>("rapidfire_begin_position_selection");
+      await syncBootstrap(true);
+      if (outcome.kind === "selected") {
+        setStatusMessage("连发器透明窗口位置已保存。");
+      } else if (outcome.kind === "cancelled") {
+        setStatusMessage("连发器透明窗口位置修改已取消。");
+      } else {
+        setStatusMessage("连发器透明窗口位置设置窗口已关闭。");
+      }
     } catch (error) {
       const message = getErrorMessage(error);
       setPageError(message);
@@ -408,7 +415,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
       <PageHero
         eyebrow="Rapidfire Control"
         title="连发器控制台"
-        description="按住触发键持续触发目标键；松开后如果次数为奇数，立即补发一次使次数为偶数。"
+        description="按住触发键持续触发目标键；松开后默认补齐奇数次数，也可为单张卡片开启不追加。"
         badges={
           <>
             <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "已启用" : "未启用"}</Badge>
@@ -636,7 +643,7 @@ function RapidfireCardEditor({
         eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
         icon={<RiPulseLine />}
         title={card.name || `连发器 ${index + 1}`}
-        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 抖动 ${card.pressJitterMinMs || "--"}-${card.pressJitterMaxMs || "--"}ms`}
+        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 抖动 ${card.pressJitterMinMs || "--"}-${card.pressJitterMaxMs || "--"}ms · ${card.skipCompensation ? "不追加" : "自动补齐"}`}
         badge={
           <Badge variant={status.variant}>
             {status.label}
@@ -722,6 +729,20 @@ function RapidfireCardEditor({
                 onKeyDown={onRecorderKeyDown}
               />
               <FieldDescription>连发时触发此键。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field orientation="horizontal">
+              <Switch
+                id={`${card.id}-skip-compensation`}
+                checked={card.skipCompensation}
+                disabled={disabled}
+                onCheckedChange={(checked) => onUpdate(card.id, { skipCompensation: checked })}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor={`${card.id}-skip-compensation`}>不追加补齐</FieldLabel>
+                <FieldDescription>开启后松开触发键时不再补发，单数次数保持单数。</FieldDescription>
+              </FieldContent>
             </Field>
           </ControlTile>
           <ControlTile>

@@ -359,6 +359,7 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         press_jitter_min_ms,
         press_jitter_max_ms,
         enabled: card.enabled,
+        skip_compensation: card.skip_compensation,
     })
 }
 
@@ -531,10 +532,13 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                         c.interval_ms,
                         c.press_jitter_min_ms,
                         c.press_jitter_max_ms,
+                        c.skip_compensation,
                     )
                 });
 
-            let Some((cid, trigger, target, interval, jitter_min, jitter_max)) = card_info else {
+            let Some((cid, trigger, target, interval, jitter_min, jitter_max, skip_compensation)) =
+                card_info
+            else {
                 continue;
             };
 
@@ -566,6 +570,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 interval_ms: interval,
                 press_jitter_min_ms: jitter_min,
                 press_jitter_max_ms: jitter_max,
+                skip_compensation,
                 compensation_delay_min_ms,
                 compensation_delay_max_ms,
                 min_press_spacing_ms,
@@ -643,6 +648,7 @@ struct RapidfireSessionWorker {
     interval_ms: u64,
     press_jitter_min_ms: u64,
     press_jitter_max_ms: u64,
+    skip_compensation: bool,
     compensation_delay_min_ms: u64,
     compensation_delay_max_ms: u64,
     min_press_spacing_ms: u64,
@@ -706,6 +712,10 @@ fn spawn_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     }
 }
 
+fn should_compensate_count(count: u64, skip_compensation: bool) -> bool {
+    count % 2 == 1 && !skip_compensation
+}
+
 fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     let interval = Duration::from_millis(worker.interval_ms.max(RAPIDFIRE_MIN_INTERVAL_MS));
     let mut count = 0u64;
@@ -750,7 +760,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
         }
     }
 
-    if count % 2 == 1 {
+    if should_compensate_count(count, worker.skip_compensation) {
         let compensation_delay = press_jitter_duration_ms(
             worker.compensation_delay_min_ms,
             worker.compensation_delay_max_ms,
@@ -1339,6 +1349,7 @@ mod tests {
             press_jitter_min_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS,
             press_jitter_max_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS,
             enabled: true,
+            skip_compensation: false,
         }
     }
 
@@ -1385,6 +1396,16 @@ mod tests {
         let error = normalize_card(&card).unwrap_err();
 
         assert!(error.contains("触发抖动"));
+    }
+
+    #[test]
+    fn normalize_card_preserves_skip_compensation() {
+        let mut card = sample_card("a", "F1");
+        card.skip_compensation = true;
+
+        let normalized = normalize_card(&card).unwrap();
+
+        assert!(normalized.skip_compensation);
     }
 
     #[test]
@@ -1584,6 +1605,13 @@ mod tests {
         let decision = wait_for_next_fire(&rx, Instant::now() + Duration::from_secs(1), 3);
 
         assert_eq!(decision, WorkerDecision::Stop);
+    }
+
+    #[test]
+    fn should_compensate_count_respects_no_append_switch() {
+        assert!(should_compensate_count(1, false));
+        assert!(!should_compensate_count(2, false));
+        assert!(!should_compensate_count(1, true));
     }
 
     #[test]
