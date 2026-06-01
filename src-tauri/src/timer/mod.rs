@@ -12,12 +12,13 @@ use tokio::{
     time::{self, Duration},
 };
 
+mod counter_state;
 mod settings;
 mod types;
-
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
 use crate::utils::now_ms;
 
+use self::counter_state::CounterState;
 use self::types::{
     CounterItem, CounterRunState, TimerBootstrap, TimerDirection, TimerDisplaySettings,
     TimerDisplayTarget, TimerItem, TimerRect, TimerRunState, TimerRunStatus, TimerSelectionKind,
@@ -129,6 +130,19 @@ impl TimerStateInner {
             })
             .collect()
     }
+ }
+
+/// 把当前 `counter_runs` 落盘。仅写入 `settings.counters` 里仍存在的 ID，
+/// 孤儿 ID（counter 已删但 state 文件残留）自动清理。写盘失败不阻塞主流程。
+fn persist_counter_runs(app: &AppHandle, inner: &TimerStateInner) {
+    let mut runs = std::collections::BTreeMap::new();
+    for counter in &inner.settings.counters {
+        if let Some(value) = inner.counter_runs.get(&counter.id) {
+            runs.insert(counter.id.clone(), *value);
+        }
+    }
+    let state = CounterState { runs };
+    let _ = counter_state::save(app, &state);
 }
 
 fn display_height(item_count: usize) -> i32 {
@@ -478,6 +492,11 @@ pub fn is_main_window_close(label: &str) -> bool {
 pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("timer");
     let _ = stop_tick_task(state);
+    // 关闭软件时把 counter 累加值落盘（兜底：理论上每次累加 / reset 已写，
+    // 这里在进程异常退出 / 用户直接关窗没走 reset 流程时仍有最后一份）。
+    if let Ok(inner) = state.inner.lock() {
+        persist_counter_runs(app, &inner);
+    }
     destroy_position_windows(app);
     destroy_display_windows(app);
 }
@@ -678,6 +697,7 @@ fn trigger_hotkey_targets(
         }
 
         if inner.settings.counter_enabled {
+            let mut counter_changed = false;
             for counter_id in &targets.counter_ids {
                 let Some((id, start_value)) = inner
                     .settings
@@ -690,6 +710,10 @@ fn trigger_hotkey_targets(
                 };
                 let value = inner.counter_runs.entry(id).or_insert(start_value);
                 *value += 1;
+                counter_changed = true;
+            }
+            if counter_changed {
+                persist_counter_runs(app, &inner);
             }
         }
 
@@ -745,18 +769,25 @@ fn position_title_for_target(target: &TimerDisplayTarget) -> &'static str {
         TimerDisplayTarget::Counter => "设置计数器位置",
     }
 }
-
 pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<TimerState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
+    let counter_state = counter_state::load(app);
+    let mut counter_runs: HashMap<String, i64> = HashMap::new();
+    for counter in &settings.counters {
+        let value = counter_state
+            .runs
+            .get(&counter.id)
+            .copied()
+            .unwrap_or(counter.start_value);
+        counter_runs.insert(counter.id.clone(), value);
+    }
+    // 孤儿 ID（settings.counters 已删、counter_state 还残留）直接丢弃，不污染运行态。
+
     let state = TimerState {
         inner: Mutex::new(TimerStateInner {
             settings: settings.clone(),
             runs: HashMap::new(),
-            counter_runs: settings
-                .counters
-                .iter()
-                .map(|counter| (counter.id.clone(), counter.start_value))
-                .collect(),
+            counter_runs,
             pending_position: None,
             hotkey_error: None,
         }),
@@ -896,6 +927,7 @@ pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBo
             return Err("未找到计数器".to_string());
         };
         inner.counter_runs.insert(id, start_value);
+        persist_counter_runs(&app, &inner);
         inner.bootstrap()
     };
 

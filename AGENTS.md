@@ -320,6 +320,7 @@ src-tauri/src/
 - 计时器支持 `Countdown`（10→0）和 `Countup`（0→10）两种方向；运行中重复快捷键触发会被忽略，结束后才能再次触发。
 - 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
 - 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
+- 计数器运行态独立持久化到 `timer_counter_state.json`（`src-tauri/src/timer/counter_state.rs`），与 `timer_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### 连发器端
