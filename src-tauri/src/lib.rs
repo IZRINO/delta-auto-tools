@@ -4,6 +4,7 @@ mod hotkeys;
 mod morse;
 mod rapidfire;
 mod settings;
+mod strategy;
 mod timer;
 mod utils;
 
@@ -111,6 +112,7 @@ pub fn run() {
             rapidfire::rapidfire_position_commit,
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
+            strategy::fetch::fetch_strategy_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

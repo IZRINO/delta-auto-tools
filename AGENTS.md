@@ -7,7 +7,8 @@
 - 当前产品由四部分原生能力组成：
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
   2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
-  3. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、全局补齐延迟/按键间距、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
+- 3. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、全局补齐延迟/按键间距、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
+- 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*`、`src-tauri/src/rapidfire/*`、`src-tauri/src/strategy/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
   4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQ安全中心/先遣服鉴权和游戏数据查询能力，前端已接入账号管理、游戏数据与工具箱页面。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-vega` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
@@ -102,7 +103,7 @@ src/
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page）**：通过 `tauri-plugin-opener` + iframe 集成 `https://www.kkrb.net/?viewpage=view%2Foverview` 与 `https://orzice.com/v/rb` 两类外部攻略页面；每张卡片提供 `关闭 / 30s / 1m / 2m / 5m / 10m` 自动刷新档位、立即刷新、浏览器打开按钮。自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。iframe 在 12 秒内未触发 `onLoad` 时标记为"拒绝内嵌"并暂停自动刷新。
+- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证），前端用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL。页面采用 `Tabs` 切换两个站点，每个 Tab 内单卡片全屏展示；卡片支持自动刷新档位、立即刷新、浏览器打开与最近拉取时间显示。拉取失败时通过 Alert 提示并降级到"浏览器打开"。自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -338,10 +339,13 @@ src-tauri/src/
 - `RapidfireSettings.min_press_spacing_ms` 控制所有连发会话共享的目标键最小触发间距；默认 80ms，可由 UI 全局设置。
 - 目标键通过 `enigo::Key` 模拟真实 `Press → 8-12ms 抖动等待 → Release`，不要使用 `Direction::Click` 作为连发主路径。
 - 修改连发器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+- 连发器卡片支持按 `moveRapidfireCard` 顺序拖拽排序（与计时器拖拽实现一致：pointerdown 启动 / pointerup 收尾 / pointerenter 即时重排），卡片头部新增 `↕` DragButton；保留上移/下移按钮作为可访问性兜底。
+
+### 攻略网站端
+
+- `src-tauri/src/strategy/mod.rs` 暴露唯一的 Tauri command `strategy_fetch_page`，由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。
 
 ### Delta 端
-
-- `src-tauri/src/delta/commands.rs` 负责 Delta DTO、Tauri commands、账号解析与持久化编排
 - `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构
 - `src-tauri/src/delta/storage/repo.rs` 使用 SQLite 单表 `delta_accounts` 承载不同账号类型
 

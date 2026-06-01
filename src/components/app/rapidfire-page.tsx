@@ -100,12 +100,24 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const [saving, setSaving] = useState(false);
   const [recordingTarget, setRecordingTarget] = useState<RecordingTarget>(null);
   const keyDraftRef = useRef("");
+  const draggingCardIdRef = useRef<string | null>(null);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState(
     isNativeShell ? "正在加载连发器..." : "浏览器预览模式：只显示界面，原生命令请在桌面端运行。",
   );
   const [pageError, setPageError] = useState<string | null>(null);
   const saveTimeoutRef = useTimeoutCleanup();
   const autosaveVersionRef = useRef(0);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    const handlePointerUp = () => {
+      draggingCardIdRef.current = null;
+      setDraggingCardId(null);
+    };
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, [isNativeShell]);
 
   useEffect(() => {
     if (isNativeShell) return;
@@ -354,6 +366,19 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
     );
   }, [clearStaleConfigError]);
 
+  const beginCardDrag = useCallback((id: string) => {
+    draggingCardIdRef.current = id;
+    setDraggingCardId(id);
+  }, []);
+
+  const moveDraggingCardOver = useCallback((overId: string) => {
+    const activeId = draggingCardIdRef.current;
+    if (!activeId || activeId === overId) {
+      return;
+    }
+    moveCard(activeId, overId);
+  }, [moveCard]);
+
   const stopAll = useCallback(async () => {
     if (!isNativeShell) return;
     try {
@@ -577,11 +602,14 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               cardError={cardError}
               disabled={controlsDisabled}
               isRecording={isRecording}
+              isDragging={draggingCardId === card.id}
               recordingField={recordingTarget?.field}
               onUpdate={updateCard}
               onRecord={beginRecording}
               onRecorderKeyDown={handleRecorderKeyDown}
               onMove={moveCard}
+              onDragStart={() => beginCardDrag(card.id)}
+              onDragOver={() => moveDraggingCardOver(card.id)}
               onDelete={() => removeCard(card.id)}
             />
           );
@@ -602,11 +630,14 @@ interface RapidfireCardEditorProps {
   cardError: string | null;
   disabled: boolean;
   isRecording: boolean;
+  isDragging: boolean;
   recordingField: "triggerKey" | "targetKey" | undefined;
   onUpdate: (id: string, value: Partial<RapidfireCardForm>) => void;
   onRecord: (card: RapidfireCardForm, field: "triggerKey" | "targetKey") => void;
   onRecorderKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onMove: (activeId: string, overId: string) => void;
+  onDragStart: () => void;
+  onDragOver: () => void;
   onDelete: () => void;
 }
 
@@ -620,11 +651,14 @@ function RapidfireCardEditor({
   cardError,
   disabled,
   isRecording,
+  isDragging,
   recordingField,
   onUpdate,
   onRecord,
   onRecorderKeyDown,
   onMove,
+  onDragStart,
+  onDragOver,
   onDelete,
 }: RapidfireCardEditorProps) {
   const isRunning = run?.status === "firing";
@@ -633,10 +667,12 @@ function RapidfireCardEditor({
 
   return (
     <TacticalCard
-      active={status.active || isRunning || isPending}
+      active={status.active || isRunning || isPending || isDragging}
+      onPointerEnter={onDragOver}
       className={cn(
         !card.enabled && !status.error && "opacity-80",
         status.error && "border-destructive/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--destructive)_9%,var(--surface-card-strong)),var(--surface-card-strong))] ring-1 ring-destructive/25 hover:border-destructive/75",
+        isDragging && "ring-2 ring-primary/55",
       )}
     >
       <SectionHeader
@@ -658,10 +694,13 @@ function RapidfireCardEditor({
               className="max-w-80 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-medium"
               placeholder="卡片名称"
               value={card.name}
-              disabled={disabled}
               onChange={(event) => onUpdate(card.id, { name: event.target.value })}
             />
             <div className="flex shrink-0 items-center gap-1.5">
+              <RapidfireCardDragHandle disabled={disabled} onDragStart={onDragStart} />
+              <Badge variant="outline" className="px-1.5 py-0.5 text-[0.6875rem] font-mono">
+                拖动 ↕ 排序
+              </Badge>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -1010,4 +1049,23 @@ function useRapidfireOverlayBootstrap(isNativeShell: boolean, setBootstrap: (val
       unlistenStateChanged?.();
     };
   }, [isNativeShell, setBootstrap]);
+}
+
+function RapidfireCardDragHandle({ disabled, onDragStart }: { disabled: boolean; onDragStart: () => void }) {
+  return (
+    <Button
+      aria-label="拖动排序"
+      className="cursor-grab active:cursor-grabbing"
+      disabled={disabled}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        onDragStart();
+      }}
+      size="icon-sm"
+      type="button"
+      variant="ghost"
+    >
+      <span aria-hidden className="font-mono text-xs font-bold leading-none">↕</span>
+    </Button>
+  );
 }

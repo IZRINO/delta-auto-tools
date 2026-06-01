@@ -7,6 +7,22 @@
 
 export type StrategySiteId = "kkrb" | "orzice";
 
+/**
+ * Tauri 端 `strategy_fetch_page` 命令的响应。
+ *
+ * - `status`：HTTP 状态码
+ * - `finalUrl`：跳转后的最终 URL
+ * - `contentType`：原始响应 Content-Type
+ * - `html`：HTML 文本（UTF-8 解码后的）
+ * - `byteLength`：原始响应字节数
+ */
+export type StrategyFetchResponse = {
+  status: number;
+  finalUrl: string;
+  contentType: string;
+  html: string;
+  byteLength: number;
+};
 export type StrategySite = {
   /** 站点内部 ID，用于本地存储、aria-label 等 */
   id: StrategySiteId;
@@ -182,4 +198,34 @@ export function nextRefreshDelayMs(seconds: StrategyRefreshInterval): number | n
     return null;
   }
   return seconds * 1000;
+}
+
+/**
+ * 给 HTML 注入 `<base href>` 并返回适合 `iframe.srcDoc` 的字符串。
+ *
+ * 把站点资源（CSS / JS / 图片）的相对路径解析为绝对 URL，避免 `srcDoc` 上下文（`about:srcdoc`）
+ * 找不到 `/assets/...`、`/static/...` 这类相对资源。
+ */
+export function injectBaseHrefIntoHtml(html: string, baseUrl: string): string {
+  const safeBase = escapeHtmlAttribute(baseUrl);
+  const baseTag = `<base href="${safeBase}">`;
+  const headMatch = html.match(/<head[^>]*>/i);
+  if (headMatch && typeof headMatch.index === "number") {
+    const insertAt = headMatch.index + headMatch[0].length;
+    return `${html.slice(0, insertAt)}${baseTag}${html.slice(insertAt)}`;
+  }
+  const htmlMatch = html.match(/<html[^>]*>/i);
+  if (htmlMatch && typeof htmlMatch.index === "number") {
+    const insertAt = htmlMatch.index + htmlMatch[0].length;
+    return `${html.slice(0, insertAt)}<head>${baseTag}</head>${html.slice(insertAt)}`;
+  }
+  return `${baseTag}${html}`;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

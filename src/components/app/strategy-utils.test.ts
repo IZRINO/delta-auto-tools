@@ -4,6 +4,7 @@ import {
   DEFAULT_STRATEGY_REFRESH_SECONDS,
   STRATEGY_REFRESH_INTERVAL_SECONDS,
   formatStrategyRefreshLabel,
+  injectBaseHrefIntoHtml,
   nextRefreshDelayMs,
   normalizeStrategyRefreshSeconds,
   readStoredRefreshSeconds,
@@ -11,6 +12,7 @@ import {
 } from "@/components/app/strategy-utils";
 
 describe("strategy-utils", () => {
+
   describe("normalizeStrategyRefreshSeconds", () => {
     it("returns null for nullish inputs", () => {
       expect(normalizeStrategyRefreshSeconds(null)).toBeNull();
@@ -107,6 +109,29 @@ describe("strategy-utils", () => {
 
     it("returns the default when storage is null", () => {
       expect(readStoredRefreshSeconds("kkrb", null)).toBe(DEFAULT_STRATEGY_REFRESH_SECONDS);
+    });
+  });
+
+  describe("injectBaseHrefIntoHtml", () => {
+    it("prepends base href inside <head> when head exists", () => {
+      const html = "<html><head><title>KK</title></head><body>x</body></html>";
+      const out = injectBaseHrefIntoHtml(html, "https://www.kkrb.net/");
+      expect(out.indexOf("<base href=\"https://www.kkrb.net/\">")).toBeGreaterThan(-1);
+      expect(out.indexOf("<base")).toBeLessThan(out.indexOf("<title>"));
+    });
+
+    it("adds a head section when only <html> is present", () => {
+      const html = "<html><body>hello</body></html>";
+      const out = injectBaseHrefIntoHtml(html, "https://orzice.com/");
+      expect(out).toContain("<head><base href=\"https://orzice.com/\"></head>");
+    });
+
+    it("escapes attribute special characters", () => {
+      const html = "<html><head></head><body></body></html>";
+      const out = injectBaseHrefIntoHtml(html, "https://example.com/?a=1&b=\"<x>");
+      expect(out).toContain("&amp;");
+      expect(out).toContain("&quot;");
+      expect(out).not.toContain("=\"<x>");
     });
   });
 });

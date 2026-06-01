@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCheckboxCircleLine,
+  RiErrorWarningLine,
   RiExternalLinkLine,
   RiRefreshLine,
   RiSettings3Line,
   RiTimeLine,
-  RiWifiOffLine,
 } from "@remixicon/react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +22,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AppPage,
   CardBody,
@@ -34,18 +37,22 @@ import {
   STRATEGY_REFRESH_INTERVAL_SECONDS,
   STRATEGY_SITES,
   formatStrategyRefreshLabel,
+  injectBaseHrefIntoHtml,
   nextRefreshDelayMs,
   normalizeStrategyRefreshSeconds,
   readStoredRefreshSeconds,
   writeStoredRefreshSeconds,
+  type StrategyFetchResponse,
   type StrategyRefreshInterval,
   type StrategySite,
 } from "@/components/app/strategy-utils";
+import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "refresh-seconds";
-const IFRAME_LOAD_TIMEOUT_MS = 12_000;
+/** 单次代理拉取的失败兜底超时（毫秒）。 */
+const FETCH_TIMEOUT_MS = 18_000;
 
 const REFRESH_BUCKET_LABELS: Record<number, string> = {
   30: "30 秒",
@@ -55,15 +62,22 @@ const REFRESH_BUCKET_LABELS: Record<number, string> = {
   600: "10 分钟",
 };
 
+type LoadStatus = "idle" | "loading" | "loaded" | "error";
+
 type SiteRuntime = {
-  /** iframe `src` 每次刷新时累加，绕过同源缓存 */
+  /** 拉取次数（用于 force-refresh 与 cache-busting） */
   nonce: number;
-  /** 是否已成功加载（onLoad 触发且未超时） */
-  loaded: boolean;
-  /** 是否在加载超时后被标记为"无法内嵌" */
-  blocked: boolean;
+  /** 当前 srcDoc 内容（已注入 `<base href>`） */
+  srcDoc: string | null;
+  /** 当前拉取的最终 URL（用于 UI 展示与状态） */
+  finalUrl: string | null;
+  status: LoadStatus;
+  /** 最近一次错误的展示文本 */
+  errorMessage: string | null;
   /** 当前正在倒计时的剩余毫秒数；null 表示已关闭 */
   countdownMs: number | null;
+  /** 最近一次成功拉取的时间戳（毫秒） */
+  lastLoadedAt: number | null;
 };
 
 function buildInitialRuntimes(): Record<string, SiteRuntime> {
@@ -71,27 +85,47 @@ function buildInitialRuntimes(): Record<string, SiteRuntime> {
   for (const site of STRATEGY_SITES) {
     runtime[site.id] = {
       nonce: 0,
-      loaded: false,
-      blocked: false,
+      srcDoc: null,
+      finalUrl: null,
+      status: "idle",
+      errorMessage: null,
       countdownMs: null,
+      lastLoadedAt: null,
     };
   }
   return runtime;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`请求超过 ${Math.round(ms / 1000)} 秒未响应`)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function StrategyPage() {
   const isNativeShell = useNativeShell();
+  const firstSiteId = STRATEGY_SITES[0]?.id ?? "kkrb";
 
   return (
     <AppPage>
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="把常用攻略站点整合到一个面板，可独立设置自动刷新间隔，支持一键外部打开与内嵌回退。"
+        description="通过桌面代理拉取攻略页面，模拟完整 Chrome 浏览器请求头，避开 WebView UA 引发的人机验证。支持按站点自动刷新、立即刷新与外部打开。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
-            <Badge variant="outline">Web / Iframe</Badge>
+            <Badge variant="outline">Chrome UA 代理</Badge>
           </>
         }
         stats={
@@ -100,57 +134,72 @@ export function StrategyPage() {
               label="已集成站点"
               value={STRATEGY_SITES.length}
               icon={<RiCheckboxCircleLine />}
-              detail="按需求添加 KOL 攻略入口。"
+              detail="按站点切换 Tab，全屏查看。"
             />
             <SignalTile
               label="默认刷新"
               value={formatStrategyRefreshLabel(DEFAULT_STRATEGY_REFRESH_SECONDS)}
               icon={<RiTimeLine />}
-              detail="每张卡片可独立覆盖。"
+              detail="每个站点可独立覆盖。"
             />
             <SignalTile
               label="运行模式"
-              value={isNativeShell ? "桌面" : "浏览器预览"}
+              value={isNativeShell ? "桌面代理" : "浏览器预览"}
               icon={<RiSettings3Line />}
-              detail="非 Tauri 模式下仍可访问页面与按钮。"
+              detail="桌面端走 Rust 端 fetch 代理，预览模式只读。"
             />
           </>
         }
       />
 
       <TacticalCard>
-        <CardBody className="grid gap-5 xl:grid-cols-2">
-          {STRATEGY_SITES.map((site, index) => (
-            <StrategySiteCard
-              key={site.id}
-              site={site}
-              index={index}
-              isNativeShell={isNativeShell}
-            />
-          ))}
-        </CardBody>
+        <Tabs defaultValue={firstSiteId} className="min-h-0">
+          <CardBody className="flex flex-col gap-4">
+            <TabsList variant="line" className="self-start">
+              {STRATEGY_SITES.map((site) => (
+                <TabsTrigger key={site.id} value={site.id}>
+                  <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
+                  <span>{site.label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {STRATEGY_SITES.map((site) => (
+              <TabsContent key={site.id} value={site.id} className="flex flex-col gap-4">
+                <StrategySitePanel site={site} isNativeShell={isNativeShell} />
+              </TabsContent>
+            ))}
+          </CardBody>
+        </Tabs>
       </TacticalCard>
     </AppPage>
   );
 }
 
-type StrategySiteCardProps = {
+type StrategySitePanelProps = {
   site: StrategySite;
-  index: number;
   isNativeShell: boolean;
 };
 
-function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps) {
+function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
   const storageKey = `${site.id}:${STORAGE_KEY}`;
   const [intervalSeconds, setIntervalSecondsState] = useState<StrategyRefreshInterval>(() =>
     readStoredRefreshSeconds(storageKey),
   );
   const [runtime, setRuntime] = useState<SiteRuntime>(
-    () => buildInitialRuntimes()[site.id] ?? { nonce: 0, loaded: false, blocked: false, countdownMs: null },
+    () => buildInitialRuntimes()[site.id] ?? {
+      nonce: 0,
+      srcDoc: null,
+      finalUrl: null,
+      status: "idle",
+      errorMessage: null,
+      countdownMs: null,
+      lastLoadedAt: null,
+    },
   );
   const autoRefreshRef = useRef<number | null>(null);
   const countdownTickRef = useRef<number | null>(null);
-  const loadWatchdogRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
 
   const updateInterval = useCallback(
     (next: StrategyRefreshInterval) => {
@@ -161,36 +210,81 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
     [storageKey],
   );
 
-  // 倒计时：每秒递减，仅在自动刷新启用时运行。
-  useEffect(() => {
-    if (countdownTickRef.current !== null) {
-      window.clearInterval(countdownTickRef.current);
-      countdownTickRef.current = null;
-    }
-    if (intervalSeconds === null) {
-      return;
-    }
-    countdownTickRef.current = window.setInterval(() => {
-      setRuntime((current) => {
-        if (current.countdownMs === null || current.blocked) {
-          return current;
-        }
-        const nextMs = current.countdownMs - 1000;
-        return {
+  const fetchPage = useCallback(
+    async (mode: "auto" | "manual" = "auto") => {
+      if (!isNativeShell) {
+        setRuntime((current) => ({
           ...current,
-          countdownMs: nextMs <= 0 ? nextRefreshDelayMs(intervalSeconds) : nextMs,
-        };
-      });
-    }, 1000);
-    return () => {
-      if (countdownTickRef.current !== null) {
-        window.clearInterval(countdownTickRef.current);
-        countdownTickRef.current = null;
+          status: "error",
+          errorMessage: "浏览器预览模式下无法调用代理，请在桌面端打开。",
+        }));
+        return;
       }
-    };
-  }, [intervalSeconds]);
+      setRuntime((current) => ({
+        ...current,
+        status: "loading",
+        errorMessage: null,
+        countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
+      }));
+      try {
+        const response = await withTimeout(
+          invoke<StrategyFetchResponse>("strategy_fetch_page", {
+            request: { url: site.url },
+          }),
+          FETCH_TIMEOUT_MS,
+        );
+        if (!mountedRef.current) {
+          return;
+        }
+        if (response.status >= 400) {
+          throw new Error(`HTTP ${response.status}：目标站返回错误。`);
+        }
+        const srcDoc = injectBaseHrefIntoHtml(response.html, response.finalUrl);
+        setRuntime((current) => ({
+          ...current,
+          srcDoc,
+          finalUrl: response.finalUrl,
+          status: "loaded",
+          errorMessage: null,
+          nonce: current.nonce + 1,
+          lastLoadedAt: Date.now(),
+          countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
+        }));
+        if (mode === "manual") {
+          toast.success(`${site.shortLabel} 已刷新（${(response.byteLength / 1024).toFixed(1)} KB）`);
+        }
+      } catch (error) {
+        if (!mountedRef.current) {
+          return;
+        }
+        const message = getErrorMessage(error);
+        setRuntime((current) => ({
+          ...current,
+          status: "error",
+          errorMessage: message,
+        }));
+        if (mode === "manual") {
+          toast.error(`${site.shortLabel} 刷新失败：${message}`);
+        }
+      }
+    },
+    [isNativeShell, intervalSeconds, site.shortLabel, site.url],
+  );
 
-  // 自动刷新主循环：每次到期时递增 nonce 强制刷新 iframe，并重置倒计时。
+  // 首次进入面板时主动拉取一次。
+  useEffect(() => {
+    mountedRef.current = true;
+    if (isNativeShell && runtime.status === "idle" && runtime.srcDoc === null) {
+      void fetchPage("auto");
+    }
+    return () => {
+      mountedRef.current = false;
+    };
+    // 仅在面板挂载 + 切到非 idle 时拉取；显式排除 runtime / fetchPage 避免循环。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNativeShell, site.id]);
+
+  // 自动刷新主循环：到点后调用 fetchPage("auto")，并重置倒计时。
   useEffect(() => {
     if (autoRefreshRef.current !== null) {
       window.clearInterval(autoRefreshRef.current);
@@ -207,18 +301,7 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
     setRuntime((current) => ({ ...current, countdownMs: delay }));
 
     autoRefreshRef.current = window.setInterval(() => {
-      setRuntime((current) => {
-        if (current.blocked) {
-          return { ...current, countdownMs: null };
-        }
-        return {
-          ...current,
-          nonce: current.nonce + 1,
-          loaded: false,
-          blocked: false,
-          countdownMs: nextRefreshDelayMs(intervalSeconds),
-        };
-      });
+      void fetchPage("auto");
     }, delay);
 
     return () => {
@@ -227,48 +310,40 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
         autoRefreshRef.current = null;
       }
     };
-  }, [intervalSeconds]);
+  }, [intervalSeconds, fetchPage]);
 
-  // 加载看门狗：若 iframe 超过 IFRAME_LOAD_TIMEOUT_MS 仍未 onLoad，标记为 blocked。
+  // 倒计时：每秒递减，仅在自动刷新启用时运行。
   useEffect(() => {
-    if (runtime.loaded || runtime.blocked) {
+    if (countdownTickRef.current !== null) {
+      window.clearInterval(countdownTickRef.current);
+      countdownTickRef.current = null;
+    }
+    if (intervalSeconds === null || runtime.status === "error") {
       return;
     }
-    if (loadWatchdogRef.current !== null) {
-      window.clearTimeout(loadWatchdogRef.current);
-    }
-    loadWatchdogRef.current = window.setTimeout(() => {
-      setRuntime((current) => (current.loaded ? current : { ...current, blocked: true, countdownMs: null }));
-    }, IFRAME_LOAD_TIMEOUT_MS);
+    countdownTickRef.current = window.setInterval(() => {
+      setRuntime((current) => {
+        if (current.countdownMs === null || current.status === "error") {
+          return current;
+        }
+        const nextMs = current.countdownMs - 1000;
+        return {
+          ...current,
+          countdownMs: nextMs <= 0 ? nextRefreshDelayMs(intervalSeconds) : nextMs,
+        };
+      });
+    }, 1000);
     return () => {
-      if (loadWatchdogRef.current !== null) {
-        window.clearTimeout(loadWatchdogRef.current);
-        loadWatchdogRef.current = null;
+      if (countdownTickRef.current !== null) {
+        window.clearInterval(countdownTickRef.current);
+        countdownTickRef.current = null;
       }
     };
-  }, [runtime.nonce, runtime.loaded, runtime.blocked]);
+  }, [intervalSeconds, runtime.status]);
 
   const triggerRefresh = useCallback(() => {
-    if (loadWatchdogRef.current !== null) {
-      window.clearTimeout(loadWatchdogRef.current);
-      loadWatchdogRef.current = null;
-    }
-    setRuntime((current) => ({
-      ...current,
-      nonce: current.nonce + 1,
-      loaded: false,
-      blocked: false,
-      countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
-    }));
-  }, [intervalSeconds]);
-
-  const handleIframeLoad = useCallback(() => {
-    if (loadWatchdogRef.current !== null) {
-      window.clearTimeout(loadWatchdogRef.current);
-      loadWatchdogRef.current = null;
-    }
-    setRuntime((current) => ({ ...current, loaded: true, blocked: false }));
-  }, []);
+    void fetchPage("manual");
+  }, [fetchPage]);
 
   const handleOpenExternal = useCallback(async () => {
     if (isNativeShell) {
@@ -280,7 +355,6 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
         return;
       }
     }
-    // 浏览器预览模式：直接用 window.open，避开 Tauri 桥。
     window.open(site.externalUrl, "_blank", "noopener,noreferrer");
   }, [isNativeShell, site.externalUrl]);
 
@@ -288,38 +362,49 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
     if (intervalSeconds === null) {
       return "自动刷新已关闭";
     }
-    if (runtime.blocked) {
-      return "站点拒绝内嵌，已暂停自动刷新";
+    if (runtime.status === "error") {
+      return "代理拉取失败，请用\"立即刷新\"重试，或点\"浏览器打开\"查看。";
+    }
+    if (runtime.status === "loading" && runtime.countdownMs === null) {
+      return "正在拉取代理响应…";
     }
     if (runtime.countdownMs === null) {
       return "准备中…";
     }
     const totalSeconds = Math.max(1, Math.round(runtime.countdownMs / 1000));
     return `下次刷新 ${totalSeconds} 秒后`;
-  }, [intervalSeconds, runtime.blocked, runtime.countdownMs]);
+  }, [intervalSeconds, runtime.countdownMs, runtime.status]);
 
-  const iframeSrc = `${site.url}${site.url.includes("?") ? "&" : "?"}_t=${runtime.nonce}`;
   const statusBadge = (() => {
-    if (runtime.blocked) {
-      return <Badge variant="destructive">拒绝内嵌</Badge>;
+    switch (runtime.status) {
+      case "loading":
+        return <Badge variant="outline">拉取中</Badge>;
+      case "loaded":
+        return <Badge variant="secondary">已加载</Badge>;
+      case "error":
+        return <Badge variant="destructive">拉取失败</Badge>;
+      default:
+        return <Badge variant="outline">待加载</Badge>;
     }
-    if (runtime.loaded) {
-      return <Badge variant="secondary">已加载</Badge>;
-    }
-    return <Badge variant="outline">加载中</Badge>;
   })();
+
+  const lastLoadedLabel = runtime.lastLoadedAt
+    ? new Date(runtime.lastLoadedAt).toLocaleTimeString("zh-CN", { hour12: false })
+    : "—";
+
   return (
-    <TacticalCard className="flex flex-col gap-3" size="sm">
+    <TacticalCard size="sm" className="flex flex-col gap-4">
       <SectionHeader
-        eyebrow={`Station 0${index + 1}`}
-        icon={<img alt="" className="size-5 rounded-sm" src={site.favicon} />}
+        eyebrow={`Station · ${site.shortLabel}`}
+        icon={<img alt="" aria-hidden className="size-5 rounded-sm" src={site.favicon} />}
         title={site.label}
         description={site.description}
         badge={statusBadge}
       />
+
       <CardBody className="flex flex-col gap-4">
         <ControlTile>
-          <FieldGroup className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <FieldGroup className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-end">
             <Field>
               <FieldLabel>自动刷新设置</FieldLabel>
               <FieldContent>
@@ -350,13 +435,13 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel>手动刷新</FieldLabel>
+              <FieldLabel>立即刷新</FieldLabel>
               <FieldContent>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={triggerRefresh}
-                  disabled={runtime.blocked}
+                  disabled={runtime.status === "loading"}
                 >
                   <RiRefreshLine data-icon="inline-start" />
                   立即刷新
@@ -372,71 +457,75 @@ function StrategySiteCard({ site, index, isNativeShell }: StrategySiteCardProps)
                 </Button>
               </FieldContent>
             </Field>
+            <Field>
+              <FieldLabel>最近一次拉取</FieldLabel>
+              <FieldContent>
+                <div className="flex h-9 items-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] px-3 font-mono text-xs text-muted-foreground">
+                  {lastLoadedLabel}
+                </div>
+              </FieldContent>
+            </Field>
           </FieldGroup>
         </ControlTile>
 
-        <StrategySiteFrame
-          site={site}
-          src={iframeSrc}
-          blocked={runtime.blocked}
-          loaded={runtime.loaded}
-          onLoad={handleIframeLoad}
-          onOpenExternal={handleOpenExternal}
-        />
+        {runtime.status === "error" ? (
+          <Alert variant="destructive">
+            <RiErrorWarningLine />
+            <AlertTitle>{site.shortLabel} 代理拉取失败</AlertTitle>
+            <AlertDescription>
+              {runtime.errorMessage ?? "未知错误。"}建议点击"浏览器打开"在系统浏览器中查看，刷新频率与人机验证问题可在真实浏览器里完成。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <StrategyFrame status={runtime.status} srcDoc={runtime.srcDoc} site={site} />
       </CardBody>
     </TacticalCard>
   );
 }
 
-type StrategySiteFrameProps = {
+type StrategyFrameProps = {
+  status: LoadStatus;
+  srcDoc: string | null;
   site: StrategySite;
-  src: string;
-  blocked: boolean;
-  loaded: boolean;
-  onLoad: () => void;
-  onOpenExternal: () => void;
 };
 
-function StrategySiteFrame({ site, src, blocked, loaded, onLoad, onOpenExternal }: StrategySiteFrameProps) {
-  if (blocked) {
+function StrategyFrame({ status, srcDoc, site }: StrategyFrameProps) {
+  if (status === "error") {
+    // 已由 Alert 区域展示错误信息，iframe 留白以避免视觉噪声。
     return (
       <div
         className={cn(
-          "flex min-h-72 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground",
+          "flex min-h-72 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground",
         )}
       >
-        <RiWifiOffLine className="size-6 text-primary" />
-        <p className="font-medium text-foreground">{site.shortLabel} 拒绝被内嵌展示</p>
-        <p className="max-w-md text-xs/relaxed">
-          站点设置了 X-Frame-Options / CSP frame-ancestors。请使用"浏览器打开"按钮在系统浏览器查看，自动刷新已暂停。
-        </p>
-        <Button type="button" variant="secondary" onClick={onOpenExternal}>
-          <RiExternalLinkLine data-icon="inline-start" />
-          在系统浏览器打开
-        </Button>
+        <p className="font-medium text-foreground">未能拉取 {site.shortLabel} 内容</p>
+        <p className="max-w-md text-xs/relaxed">请点上方"立即刷新"重试，或用"浏览器打开"在系统浏览器中查看。</p>
       </div>
     );
   }
+
+  if (status === "loading" || srcDoc === null) {
+    return (
+      <div
+        className={cn(
+          "flex min-h-72 flex-col items-center justify-center gap-2 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground",
+        )}
+      >
+        <RiTimeLine className="size-5 animate-pulse text-primary" />
+        <p className="font-medium text-foreground">正在通过桌面代理拉取 {site.shortLabel}…</p>
+        <p className="max-w-md text-xs/relaxed">代理使用 Chrome 135 User-Agent + 完整 Sec-Ch-Ua / Sec-Fetch-* 请求头，避开 WebView UA 引发的人机验证。</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-background">
-      <iframe
-        title={site.label}
-        src={src}
-        onLoad={onLoad}
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-        className="block h-[28rem] w-full bg-background"
-      />
-      {!loaded ? (
-        <div className="flex items-center gap-2 border-t border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_30%,transparent))] px-3 py-2 text-xs text-muted-foreground">
-          <RiTimeLine className="size-3.5" />
-          正在加载 {site.shortLabel}…若长时间无内容，请改用"浏览器打开"。
-        </div>
-      ) : null}
-    </div>
+    <iframe
+      title={site.label}
+      srcDoc={srcDoc}
+      sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+      referrerPolicy="no-referrer-when-downgrade"
+      className="block h-[64vh] min-h-[480px] w-full rounded-lg border border-[var(--surface-border)] bg-background"
+    />
   );
 }
-
-export type { StrategySite };
-export type StrategyPageNode = ReactNode;
