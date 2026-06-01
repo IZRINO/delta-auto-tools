@@ -182,3 +182,24 @@
     @apply font-mono;
   }
 }
+
+@keyframes favorite-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 55%, transparent);
+    transform: translateZ(0) scale(1);
+  }
+  35% {
+    box-shadow: 0 0 0 12px color-mix(in oklch, var(--primary) 26%, transparent);
+    transform: translateZ(0) scale(1.012);
+  }
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent);
+    transform: translateZ(0) scale(1);
+  }
+}
+
+@layer utilities {
+  .favorite-highlight {
+    animation: favorite-highlight-pulse 1.5s ease-out 1;
+  }
+}

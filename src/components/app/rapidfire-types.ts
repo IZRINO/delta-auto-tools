@@ -74,7 +74,7 @@ export type RapidfireSettingsForm = {
 // ---- 常量 ----
 
 export const RAPIDFIRE_AUTOSAVE_DELAY_MS = 400;
-export const RAPIDFIRE_MIN_INTERVAL_MS = 10;
+export const RAPIDFIRE_MIN_INTERVAL_MS = 1;
 export const RAPIDFIRE_DISPLAY_MIN_WIDTH = 320;
 export const RAPIDFIRE_DISPLAY_MAX_WIDTH = 800;
 export const RAPIDFIRE_DEFAULT_INTERVAL_MS = 100;

@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   RiCrosshair2Line,
   RiGamepadLine,
   RiRadarLine,
+  RiStarFill,
   RiTimerLine,
   RiAccountPinCircleLine,
   RiBarChartBoxLine,
@@ -11,6 +12,8 @@ import {
 } from "@remixicon/react";
 
 import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
+import { FavoritesProvider, useFavorites } from "@/hooks/use-favorites";
+import type { FavoriteCardKind } from "@/components/app/favorites-utils";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +23,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -61,6 +65,9 @@ const DeltaToolboxPage = lazy(() =>
 );
 const StrategyPage = lazy(() =>
   import("@/components/app/strategy-page").then((module) => ({ default: module.StrategyPage })),
+);
+const FavoritesPage = lazy(() =>
+  import("@/components/app/favorites-page").then((module) => ({ default: module.FavoritesPage })),
 );
  const tools = [
   {
@@ -110,7 +117,7 @@ const deltaTools = [
   },
 ];
 
-type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"];
+type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | "favorites";
 
 function ToolPageFallback() {
   return (
@@ -124,12 +131,28 @@ function ToolPageSuspense({ children, fallback = <ToolPageFallback /> }: { child
   return <Suspense fallback={fallback}>{children}</Suspense>;
 }
 
-function renderToolPage(activeTool: ToolId) {
+type ToolHighlight = { kind: "timer" | "counter"; cardId: string; nonce: number } | { kind: "rapidfire"; cardId: string; nonce: number } | null;
+
+function renderToolPage(
+  activeTool: ToolId,
+  highlightCardId: ToolHighlight,
+  onNavigateFavorite: (kind: FavoriteCardKind, cardId: string) => void,
+) {
   switch (activeTool) {
     case "timer":
-      return <TimerPage />;
+      return (
+        <TimerPage
+          highlightCardId={highlightCardId && (highlightCardId.kind === "timer" || highlightCardId.kind === "counter") ? highlightCardId : null}
+        />
+      );
     case "rapidfire":
-      return <RapidfirePage />;
+      return (
+        <RapidfirePage
+          highlightCardId={highlightCardId && highlightCardId.kind === "rapidfire" ? highlightCardId : null}
+        />
+      );
+    case "favorites":
+      return <FavoritesPage onNavigate={onNavigateFavorite} />;
     case "delta-accounts":
       return <DeltaAccountsPage />;
     case "delta-game":
@@ -143,13 +166,67 @@ function renderToolPage(activeTool: ToolId) {
   }
 }
 
+function FavoritesSidebarGroup({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
+  return (
+    <SidebarGroup className="px-0 py-2">
+      <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">收藏</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu className="gap-2">
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
+              isActive={active}
+              onClick={onClick}
+              tooltip="收藏的计时器、计数器与连发器"
+              type="button"
+            >
+              <RiStarFill className={active ? "text-amber-500" : "text-muted-foreground"} />
+              <span className="flex min-w-0 flex-1 flex-col items-start">
+                <span className="truncate text-sm">收藏夹</span>
+                <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
+                  FAV / {count} 项
+                </span>
+              </span>
+              {count > 0 ? <SidebarMenuBadge>{count}</SidebarMenuBadge> : null}
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 function App() {
+  return (
+    <FavoritesProvider>
+      <DeltaAccountsProvider>
+        <AppShell />
+      </DeltaAccountsProvider>
+    </FavoritesProvider>
+  );
+}
+
+function AppShell() {
   const overlayMode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("mode");
   }, []);
   const [activeTool, setActiveTool] = useState<ToolId>("morse");
+  const [highlightCardId, setHighlightCardId] = useState<ToolHighlight>(null);
+  const highlightNonceRef = useRef(0);
+  const favorites = useFavorites();
   const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
+
+  const handleFavoritesNavigate = useCallback((kind: FavoriteCardKind, cardId: string) => {
+    highlightNonceRef.current += 1;
+    if (kind === "rapidfire") {
+      setActiveTool("rapidfire");
+      setHighlightCardId({ kind: "rapidfire", cardId, nonce: highlightNonceRef.current });
+    } else {
+      setActiveTool("timer");
+      setHighlightCardId({ kind, cardId, nonce: highlightNonceRef.current });
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOverlayWindowMode) return;
@@ -158,7 +235,6 @@ function App() {
       delete document.body.dataset.overlayMode;
     };
   }, [isOverlayWindowMode]);
-
   if (overlayMode === "overlay") {
     return (
       <ToolPageSuspense fallback={null}>
@@ -256,6 +332,10 @@ function App() {
           <SidebarSeparator className="mx-4 mt-1" />
 
           <SidebarContent className="min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <FavoritesSidebarGroup active={activeTool === "favorites"} count={favorites.items.length} onClick={() => setActiveTool("favorites")} />
+
+            <SidebarSeparator className="mx-1 my-1" />
+
             <SidebarGroup className="px-0 py-2">
               <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
               <SidebarGroupContent>
@@ -327,7 +407,7 @@ function App() {
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <div className="flex min-h-full flex-col">
                 <div className="flex min-h-full flex-col p-4 xl:p-5">
-                  <ToolPageSuspense>{renderToolPage(activeTool)}</ToolPageSuspense>
+                  <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
                 </div>
               </div>
             </div>

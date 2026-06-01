@@ -32,7 +32,7 @@ const RAPIDFIRE_POSITION_LABEL: &str = "rapidfire-position";
 const RAPIDFIRE_DISPLAY_MIN_HEIGHT: i32 = 80;
 const RAPIDFIRE_DISPLAY_MIN_WIDTH: i32 = 320;
 const RAPIDFIRE_DISPLAY_MAX_WIDTH: i32 = 800;
-const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 10;
+const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 1;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
 const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 200;
@@ -1364,7 +1364,7 @@ mod tests {
     #[test]
     fn normalize_card_clamps_interval_to_minimum() {
         let mut card = sample_card("a", "F1");
-        card.interval_ms = 5;
+        card.interval_ms = 0;
         let normalized = normalize_card(&card).unwrap();
         assert_eq!(normalized.interval_ms, RAPIDFIRE_MIN_INTERVAL_MS);
     }

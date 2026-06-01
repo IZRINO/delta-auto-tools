@@ -9,6 +9,8 @@ import {
   RiMapPinLine,
   RiResetLeftLine,
   RiSpeedUpLine,
+  RiStarFill,
+  RiStarLine,
   RiTimerLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -52,8 +54,21 @@ import {
   timerRunsById,
   timerSettingsToForm,
 } from "@/components/app/timer-utils";
+import { useFavorites } from "@/hooks/use-favorites";
 
-export function TimerPage({ overlayMode }: { overlayMode?: TimerDisplayMode }) {
+export type TimerHighlightTarget = {
+  kind: "timer" | "counter";
+  cardId: string;
+  /** nonce 用于强制重触发高亮动画（用户重复点击同一卡片） */
+  nonce: number;
+};
+
+type TimerPageProps = {
+  overlayMode?: TimerDisplayMode;
+  highlightCardId?: TimerHighlightTarget | null;
+};
+
+export function TimerPage({ overlayMode, highlightCardId }: TimerPageProps) {
   const isNativeShell = useNativeShell();
 
   if (overlayMode === "display") {
@@ -72,10 +87,10 @@ export function TimerPage({ overlayMode }: { overlayMode?: TimerDisplayMode }) {
     return <TimerPositionOverlay isNativeShell={isNativeShell} target="counter" />;
   }
 
-  return <TimerWorkbench isNativeShell={isNativeShell} />;
+  return <TimerWorkbench highlightCardId={highlightCardId ?? null} isNativeShell={isNativeShell} />;
 }
 
-function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
+function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: TimerHighlightTarget | null; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
   const [form, setForm] = useState<TimerSettingsForm | null>(null);
   const [loading, setLoading] = useState(isNativeShell);
@@ -90,6 +105,29 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const [pageError, setPageError] = useState<string | null>(null);
   const saveTimeoutRef = useTimeoutCleanup();
   const autosaveVersionRef = useRef(0);
+  const favorites = useFavorites();
+
+  // 高亮跳转：从收藏页跳过来时滚动到目标卡片并加 1.5s 高亮动画
+  useEffect(() => {
+    if (!highlightCardId) {
+      return;
+    }
+    const selector = `[data-favorite-card="${highlightCardId.kind}:${highlightCardId.cardId}"]`;
+    const handle = window.setTimeout(() => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) {
+        return;
+      }
+      element.classList.remove("favorite-highlight");
+      // 强制 reflow 重新触发动画
+      void element.offsetWidth;
+      element.classList.add("favorite-highlight");
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [highlightCardId]);
 
   useEffect(() => {
     const handlePointerUp = () => {
@@ -540,7 +578,6 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
             <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("counterEnabled", checked)} />
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">计数器总开关</p>
-              <p className="mt-1 text-xs text-muted-foreground">控制计数器快捷键和透明窗口。</p>
             </div>
           </ControlTile>
         </div>
@@ -567,6 +604,8 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   key={timer.id}
                   controlsDisabled={controlsDisabled}
                   index={index}
+                  isFavorite={favorites.isFavorite("timer", timer.id)}
+                  isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "timer" && highlightCardId.cardId === timer.id)}
                   isRecording={recordingTarget?.type === "timer" && recordingTarget.id === timer.id}
                   isDragging={draggingTimerId === timer.id}
                   run={runsById.get(timer.id)}
@@ -576,6 +615,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   onBeginHotkeyRecording={() => beginTimerHotkeyRecording(timer)}
                   onHotkeyKeyDown={(event) => handleTimerHotkeyRecorderKeyDown(timer, event)}
                   onRemove={() => removeTimer(timer.id)}
+                  onToggleFavorite={() => favorites.toggleFavorite("timer", timer.id)}
                   onUpdate={(value) => updateTimer(timer.id, value)}
                 />
               ))}
@@ -603,6 +643,8 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   controlsDisabled={controlsDisabled}
                   counter={counter}
                   index={index}
+                  isFavorite={favorites.isFavorite("counter", counter.id)}
+                  isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "counter" && highlightCardId.cardId === counter.id)}
                   isDragging={draggingCounterId === counter.id}
                   isRecording={recordingTarget?.type === "counter" && recordingTarget.id === counter.id}
                   run={counterRunsByIdMap.get(counter.id)}
@@ -613,6 +655,7 @@ function TimerWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
                   onRemove={() => removeCounter(counter.id)}
                   onReset={() => void resetCounter(counter.id)}
                   resetDisabled={controlsDisabled || !form?.counterEnabled}
+                  onToggleFavorite={() => favorites.toggleFavorite("counter", counter.id)}
                   onUpdate={(value) => updateCounter(counter.id, value)}
                 />
               ))}
@@ -678,6 +721,8 @@ function DisplaySettingsCard({ controlsDisabled, description, display, statusMes
 type TimerCardProps = {
   controlsDisabled: boolean;
   index: number;
+  isFavorite: boolean;
+  isHighlighted: boolean;
   isDragging: boolean;
   isRecording: boolean;
   run: TimerRunState | undefined;
@@ -687,14 +732,15 @@ type TimerCardProps = {
   onDragStart: () => void;
   onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   onRemove: () => void;
+  onToggleFavorite: () => void;
   onUpdate: (value: Partial<TimerItemForm>) => void;
 };
 
-function TimerCard({ controlsDisabled, index, isDragging, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onUpdate, run, timer }: TimerCardProps) {
+function TimerCard({ controlsDisabled, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onToggleFavorite, onUpdate, run, timer }: TimerCardProps) {
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
-    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80")} onPointerEnter={onDragOver}>
+    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
         eyebrow={`Timer ${String(index + 1).padStart(2, "0")}`}
         icon={<RiTimerLine />}
@@ -709,6 +755,19 @@ function TimerCard({ controlsDisabled, index, isDragging, isRecording, onBeginHo
             <Badge variant="outline">排序</Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              aria-label={isFavorite ? "取消收藏" : "加入收藏"}
+              aria-pressed={isFavorite}
+              className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+              data-icon="inline-start"
+              disabled={controlsDisabled}
+              onClick={onToggleFavorite}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              {isFavorite ? <RiStarFill /> : <RiStarLine />}
+            </Button>
             <Switch checked={timer.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
             <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
               <RiDeleteBinLine />
@@ -776,6 +835,8 @@ type CounterCardProps = {
   controlsDisabled: boolean;
   counter: CounterItemForm;
   index: number;
+  isFavorite: boolean;
+  isHighlighted: boolean;
   isDragging: boolean;
   isRecording: boolean;
   run: CounterRunState | undefined;
@@ -786,12 +847,13 @@ type CounterCardProps = {
   onRemove: () => void;
   onReset: () => void;
   resetDisabled: boolean;
+  onToggleFavorite: () => void;
   onUpdate: (value: Partial<CounterItemForm>) => void;
 };
 
-function CounterCard({ controlsDisabled, counter, index, isDragging, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onUpdate, resetDisabled, run }: CounterCardProps) {
+function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
-    <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80")} onPointerEnter={onDragOver}>
+    <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
         eyebrow={`Counter ${String(index + 1).padStart(2, "0")}`}
         icon={<RiSpeedUpLine />}
@@ -806,6 +868,19 @@ function CounterCard({ controlsDisabled, counter, index, isDragging, isRecording
             <Badge variant="outline">排序</Badge>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              aria-label={isFavorite ? "取消收藏" : "加入收藏"}
+              aria-pressed={isFavorite}
+              className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+              data-icon="inline-start"
+              disabled={controlsDisabled}
+              onClick={onToggleFavorite}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              {isFavorite ? <RiStarFill /> : <RiStarLine />}
+            </Button>
             <Switch checked={counter.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
             <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
               <RiDeleteBinLine />

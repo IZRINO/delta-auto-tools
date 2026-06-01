@@ -340,7 +340,7 @@ src-tauri/src/
 - 连发器透明窗口 label 是 `"rapidfire-display"`，位置设置窗口 label 是 `"rapidfire-position"`。
 - `RapidfireSettings.rapidfire_enabled` 控制 hold 热键注册、透明窗口显示和运行态。
 - 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
-- 连发间隔最小 10ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
+- 连发间隔最小 1ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
 - `RapidfireSettings.compensation_delay_min_ms` / `compensation_delay_max_ms` 控制奇数次数补齐前的随机等待范围；默认 100-150ms，可由 UI 全局设置。
 - `RapidfireSettings.min_press_spacing_ms` 控制所有连发会话共享的目标键最小触发间距；默认 80ms，可由 UI 全局设置。
 - 目标键通过 `enigo::Key` 模拟真实 `Press → 8-12ms 抖动等待 → Release`，不要使用 `Direction::Click` 作为连发主路径。

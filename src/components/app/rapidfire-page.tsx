@@ -10,6 +10,8 @@ import {
   RiKeyboardLine,
   RiMapPinLine,
   RiPulseLine,
+  RiStarFill,
+  RiStarLine,
   RiStopLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -67,6 +69,7 @@ import {
   rapidfireStatusLabel,
 } from "@/components/app/rapidfire-types";
 import { getErrorMessage } from "@/lib/error-utils";
+import { useFavorites } from "@/hooks/use-favorites";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
 import { cn } from "@/lib/utils";
@@ -79,7 +82,19 @@ function rapidfireCardId(): string {
   return `rapidfire-${suffix}`;
 }
 
-export function RapidfirePage({ overlayMode }: { overlayMode?: RapidfireDisplayMode }) {
+export type RapidfireHighlightTarget = {
+  kind: "rapidfire";
+  cardId: string;
+  /** nonce 用于强制重触发高亮动画 */
+  nonce: number;
+};
+
+type RapidfirePageProps = {
+  overlayMode?: RapidfireDisplayMode;
+  highlightCardId?: RapidfireHighlightTarget | null;
+};
+
+export function RapidfirePage({ highlightCardId, overlayMode }: RapidfirePageProps) {
   const isNativeShell = useNativeShell();
 
   if (overlayMode === "display") {
@@ -90,10 +105,10 @@ export function RapidfirePage({ overlayMode }: { overlayMode?: RapidfireDisplayM
     return <RapidfirePositionOverlay isNativeShell={isNativeShell} />;
   }
 
-  return <RapidfireWorkbench isNativeShell={isNativeShell} />;
+  return <RapidfireWorkbench highlightCardId={highlightCardId ?? null} isNativeShell={isNativeShell} />;
 }
 
-function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
+function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: RapidfireHighlightTarget | null; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<RapidfireBootstrap | null>(null);
   const [form, setForm] = useState<RapidfireSettingsForm | null>(null);
   const [loading, setLoading] = useState(isNativeShell);
@@ -108,6 +123,23 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const [pageError, setPageError] = useState<string | null>(null);
   const saveTimeoutRef = useTimeoutCleanup();
   const autosaveVersionRef = useRef(0);
+  const favorites = useFavorites();
+
+  useEffect(() => {
+    if (!highlightCardId) return;
+    if (highlightCardId.kind !== "rapidfire") return;
+    const cardId = highlightCardId.cardId;
+    const timer = window.setTimeout(() => {
+      const element = document.querySelector(`[data-favorite-card="rapidfire:${cardId}"]`);
+      if (element instanceof HTMLElement) {
+        element.classList.remove("favorite-highlight");
+        void element.offsetWidth;
+        element.classList.add("favorite-highlight");
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [highlightCardId]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -601,6 +633,8 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               run={run}
               cardError={cardError}
               disabled={controlsDisabled}
+              isFavorite={favorites.isFavorite("rapidfire", card.id)}
+              isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "rapidfire" && highlightCardId.cardId === card.id)}
               isRecording={isRecording}
               isDragging={draggingCardId === card.id}
               recordingField={recordingTarget?.field}
@@ -611,6 +645,7 @@ function RapidfireWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
               onDragStart={() => beginCardDrag(card.id)}
               onDragOver={() => moveDraggingCardOver(card.id)}
               onDelete={() => removeCard(card.id)}
+              onToggleFavorite={() => favorites.toggleFavorite("rapidfire", card.id)}
             />
           );
         })}
@@ -629,6 +664,8 @@ interface RapidfireCardEditorProps {
   run: RapidfireRunState | undefined;
   cardError: string | null;
   disabled: boolean;
+  isFavorite: boolean;
+  isHighlighted: boolean;
   isRecording: boolean;
   isDragging: boolean;
   recordingField: "triggerKey" | "targetKey" | undefined;
@@ -639,6 +676,7 @@ interface RapidfireCardEditorProps {
   onDragStart: () => void;
   onDragOver: () => void;
   onDelete: () => void;
+  onToggleFavorite: () => void;
 }
 
 function RapidfireCardEditor({
@@ -650,6 +688,8 @@ function RapidfireCardEditor({
   run,
   cardError,
   disabled,
+  isFavorite,
+  isHighlighted,
   isRecording,
   isDragging,
   recordingField,
@@ -660,6 +700,7 @@ function RapidfireCardEditor({
   onDragStart,
   onDragOver,
   onDelete,
+  onToggleFavorite,
 }: RapidfireCardEditorProps) {
   const isRunning = run?.status === "firing";
   const isPending = run?.status === "pendingCompensation";
@@ -668,11 +709,13 @@ function RapidfireCardEditor({
   return (
     <TacticalCard
       active={status.active || isRunning || isPending || isDragging}
+      data-favorite-card={`rapidfire:${card.id}`}
       onPointerEnter={onDragOver}
       className={cn(
         !card.enabled && !status.error && "opacity-80",
         status.error && "border-destructive/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--destructive)_9%,var(--surface-card-strong)),var(--surface-card-strong))] ring-1 ring-destructive/25 hover:border-destructive/75",
         isDragging && "ring-2 ring-primary/55",
+        isHighlighted && "ring-2 ring-primary/70",
       )}
     >
       <SectionHeader
@@ -725,6 +768,19 @@ function RapidfireCardEditor({
                 aria-label="启用卡片"
                 onCheckedChange={(checked) => onUpdate(card.id, { enabled: checked })}
               />
+              <Button
+                aria-label={isFavorite ? "取消收藏" : "加入收藏"}
+                aria-pressed={isFavorite}
+                className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+                data-icon="inline-start"
+                disabled={disabled}
+                onClick={onToggleFavorite}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                {isFavorite ? <RiStarFill /> : <RiStarLine />}
+              </Button>
               <Button variant="ghost" size="icon-sm" disabled={disabled} onClick={onDelete} aria-label="删除卡片">
                 <RiDeleteBinLine />
               </Button>
