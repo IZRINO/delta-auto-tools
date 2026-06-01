@@ -103,7 +103,7 @@ src/
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证）。Rust 端在解析响应体后会嗅探 `document.cookie = '...'; location.href = '...'` 模式（典型：kkrb.net），将 cookie 写入 reqwest 的 cookie jar 并自动向跳转目标再发起一次请求，最多跟随 3 次，避免 iframe 重新以 WebView UA 抓取同源 URL 导致 cookie 丢失的循环。前端用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors。页面采用 `Tabs` 切换站点：内置 2 个不可删除（kkrb / orzice），用户可通过"新增攻略网站"对话框追加任意 URL（自动生成 `user_xxx` ID），通过 Tab 头部的"删除此网站"按钮移除自定义站点；用户新增站点通过 `localStorage`（前缀 `delta-auto-tools:strategy:user-sites`）持久化，损坏值/非 `user_` 前缀条目均被丢弃。每个 Tab 卡片支持自动刷新档位、立即刷新、浏览器打开与最近拉取时间显示；自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。
+- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证）。Rust 端在解析响应体后会嗅探 `document.cookie = '...'; location.href = '...'` 模式（典型：kkrb.net），将 cookie 写入 reqwest 的 cookie jar 并自动向跳转目标再发起一次请求，最多跟随 3 次，避免 iframe 重新以 WebView UA 抓取同源 URL 导致 cookie 丢失的循环。**对于纯客户端人机验证**（如 kkrb cdn-shield / CC check：检测 `navigator.webdriver` / `HeadlessChrome` UA / 零 viewport / `window._phantom` / `performance.navigation`），Rust 端在 `detect_cc_check` 嗅探到 `<title>CC check</title>` / `/cdn-shield/` / "安全验证" + "点击确认您是真人" / `verification-card` 时，不渲染 srcDoc，而是把 `challenge = { kind: "ccCheck", message }` 返回给前端。前端收到 challenge 后把"应用内打开"按钮（`strategy_open_in_view` Tauri 命令）升到主操作位：由 Tauri 在主进程下新建 `WebviewWindow(url: WebviewUrl::External(...))`（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制），由真正的 WebView2 Chromium 跑过验证；同一 host 派生 label（`strategy-view-kkrb-net` 等）复用窗口；窗口默认 1024×720 最小 640×480，确保 `window.innerWidth > 0` 通过 zero-viewport 检测。普通页面用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL。页面采用 `Tabs` 切换站点：内置 2 个不可删除（kkrb / orzice），用户可通过"新增攻略网站"对话框追加任意 URL（自动生成 `user_xxx` ID），通过 Tab 头部的"删除此网站"按钮移除自定义站点；用户新增站点通过 `localStorage`（前缀 `delta-auto-tools:strategy:user-sites`）持久化，损坏值/非 `user_` 前缀条目均被丢弃。每个 Tab 卡片支持自动刷新档位、立即刷新、应用内打开、浏览器打开与最近拉取时间显示；自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态；命中 challenge 时自动刷新倒计时会被暂停以避免重复代理拉取。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -221,7 +221,12 @@ src-tauri/src/
 | `rapidfire_position_cancel` | Esc 取消位置设置 |
 | `rapidfire_position_moved` | 位置设置窗口拖动时暂存坐标 |
 
-### Delta 命令面
+### 攻略网站命令面
+
+| 命令 | 说明 |
+|------|------|
+| `strategy_fetch_page` | 拉取目标攻略页面：带完整 Chrome 135 头 + JS 重定向跟随 + CC check 嗅探；命中人机验证时 `challenge` 字段非空 |
+| `strategy_open_in_view` | 在 Tauri 内新建 WebView2 子窗口打开外部 URL（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制）；同一 host 复用窗口 |
 
 **账号与鉴权**：
 - `delta_list_accounts` / `delta_delete_account`
@@ -343,7 +348,7 @@ src-tauri/src/
 
 ### 攻略网站端
 
-- `src-tauri/src/strategy/mod.rs` 暴露唯一的 Tauri command `strategy_fetch_page`，由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。`fetch_with_js_redirect_following` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` 模式后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_JS_REDIRECTS = 3` 次；非 HTML 响应（>10 MB）则直接拒绝。
+- `src-tauri/src/strategy/mod.rs` 暴露两个 Tauri command：`strategy_fetch_page` 与 `strategy_open_in_view`。`strategy_fetch_page` 由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL + 可选的 `challenge`。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。`fetch_with_js_redirect_following` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` 模式后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_JS_REDIRECTS = 3` 次；非 HTML 响应（>10 MB）则直接拒绝。`detect_cc_check` 在响应体内嗅探 `<title>CC check</title>` / `/cdn-shield/` / "安全验证" + "点击确认您是真人" / `verification-card` 等 cdn-shield 特征，命中时把 `challenge = { kind: "ccCheck", message }` 写进响应（payload 大于 64 KB 视为正常内容跳过嗅探）。`strategy_open_in_view` 在 Tauri 主进程下新建 `WebviewWindow(url: WebviewUrl::External(...))`（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制），由真正的 WebView2 Chromium 跑过客户端人机验证；同一 host 派生 label（`strategy-view-kkrb-net` 等）复用窗口；窗口默认 1024×720 最小 640×480，确保 `window.innerWidth > 0` 通过 zero-viewport 检测。`capabilities/default.json` 的 `windows` 列表需包含 `strategy-view-*` 通配以放行新窗口。
 
 ### Delta 端
 - `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构
