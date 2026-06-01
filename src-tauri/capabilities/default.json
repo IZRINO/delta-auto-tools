@@ -2,7 +2,17 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "morse-overlay", "timer-display", "timer-position", "counter-display", "counter-position", "rapidfire-display", "rapidfire-position"],
+  "windows": [
+    "main",
+    "morse-overlay",
+    "timer-display",
+    "timer-position",
+    "counter-display",
+    "counter-position",
+    "rapidfire-display",
+    "rapidfire-position",
+    "strategy-view-*"
+  ],
   "permissions": [
     "core:default",
     "opener:default"

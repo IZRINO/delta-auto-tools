@@ -113,6 +113,7 @@ pub fn run() {
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
             strategy::fetch::fetch_strategy_page,
+            strategy::fetch::strategy_open_in_view,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

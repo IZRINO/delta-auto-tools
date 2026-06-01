@@ -41,6 +41,32 @@ export type StrategyFetchResponse = {
   contentType: string;
   html: string;
   byteLength: number;
+  /** 命中客户端人机验证时由 Rust 端填充，前端应引导用户改用应用内打开。 */
+  challenge?: StrategyChallenge;
+};
+
+/**
+ * 代理层嗅探到的人机验证挑战。
+ */
+export type StrategyChallenge = {
+  /** 挑战类型，固定为 `ccCheck`（kkrb cdn-shield 风格）。 */
+  kind: "ccCheck";
+  /** 提示用户的中文文案。 */
+  message: string;
+};
+
+/**
+ * Tauri 端 `strategy_open_in_view` 命令的请求 / 响应。
+ */
+export type StrategyOpenInViewRequest = {
+  url: string;
+  title?: string;
+  label?: string;
+};
+
+export type StrategyOpenInViewResponse = {
+  label: string;
+  reused: boolean;
 };
 
 /**

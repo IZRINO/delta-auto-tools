@@ -7,7 +7,9 @@ import {
   RiExternalLinkLine,
   RiRefreshLine,
   RiSettings3Line,
+  RiShieldCheckLine,
   RiTimeLine,
+  RiWindowLine,
 } from "@remixicon/react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -59,7 +61,9 @@ import {
   readStoredUserSites,
   writeStoredRefreshSeconds,
   writeStoredUserSites,
+  type StrategyChallenge,
   type StrategyFetchResponse,
+  type StrategyOpenInViewRequest,
   type StrategyRefreshInterval,
   type StrategySite,
   type UserStrategySite,
@@ -88,6 +92,8 @@ type SiteRuntime = {
   errorMessage: string | null;
   countdownMs: number | null;
   lastLoadedAt: number | null;
+  /** 代理层嗅探到的人机验证挑战；命中后由前端引导用户改用"应用内打开"。 */
+  challenge: StrategyChallenge | null;
 };
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -355,6 +361,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
     errorMessage: null,
     countdownMs: null,
     lastLoadedAt: null,
+    challenge: null,
   });
   const autoRefreshRef = useRef<number | null>(null);
   const countdownTickRef = useRef<number | null>(null);
@@ -386,6 +393,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
         ...prev,
         status: "loading",
         errorMessage: null,
+        challenge: null,
         countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
       }));
       try {
@@ -398,6 +406,25 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
         if (!mountedRef.current) {
           return;
         }
+        if (response.challenge) {
+          // 命中客户端人机验证：保持 loaded 状态以避免自动重试，
+          // 但清空 srcDoc（iframe 没法跑 JS 验证），让 Alert + 应用内打开按钮接管。
+          setRuntime((prev) => ({
+            ...prev,
+            srcDoc: null,
+            finalUrl: response.finalUrl,
+            status: "loaded",
+            errorMessage: null,
+            challenge: response.challenge ?? null,
+            nonce: prev.nonce + 1,
+            lastLoadedAt: Date.now(),
+            countdownMs: null,
+          }));
+          if (mode === "manual") {
+            toast.warning(`${current.shortLabel} 启用了人机验证，请改用'应用内打开'`);
+          }
+          return;
+        }
         if (response.status >= 400) {
           throw new Error(`HTTP ${response.status}：目标站返回错误。`);
         }
@@ -408,6 +435,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
           finalUrl: response.finalUrl,
           status: "loaded",
           errorMessage: null,
+          challenge: null,
           nonce: prev.nonce + 1,
           lastLoadedAt: Date.now(),
           countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
@@ -424,6 +452,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
           ...prev,
           status: "error",
           errorMessage: message,
+          challenge: null,
         }));
         if (mode === "manual") {
           toast.error(`${current.shortLabel} 刷新失败：${message}`);
@@ -432,6 +461,27 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
     },
     [isNativeShell, intervalSeconds],
   );
+
+  const handleOpenInView = useCallback(async () => {
+    const current = siteRef.current;
+    if (!isNativeShell) {
+      toast.error("浏览器预览模式下无法打开应用内窗口，请在桌面端打开。");
+      return;
+    }
+    try {
+      await invoke<{ label: string; reused: boolean }>("strategy_open_in_view", {
+        request: {
+          url: current.url,
+          title: current.label,
+          label: undefined,
+        } satisfies StrategyOpenInViewRequest,
+      });
+      toast.success(`已打开应用内窗口：${current.label}`);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      toast.error(`打开应用内窗口失败：${message}`);
+    }
+  }, [isNativeShell]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -574,7 +624,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
 
       <CardBody className="flex flex-col gap-4">
         <ControlTile>
-          <FieldGroup className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] lg:items-end">
+          <FieldGroup className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto] lg:items-end">
             <Field>
               <FieldLabel>自动刷新设置</FieldLabel>
               <FieldContent>
@@ -619,6 +669,20 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
               </FieldContent>
             </Field>
             <Field>
+              <FieldLabel>应用内打开</FieldLabel>
+              <FieldContent>
+                <Button
+                  type="button"
+                  variant={runtime.challenge ? "default" : "secondary"}
+                  onClick={handleOpenInView}
+                  title="在 Tauri 内部 WebView2 窗口中打开，由真正的 Chromium 跑过人机验证"
+                >
+                  <RiWindowLine data-icon="inline-start" />
+                  应用内打开
+                </Button>
+              </FieldContent>
+            </Field>
+            <Field>
               <FieldLabel>外部打开</FieldLabel>
               <FieldContent>
                 <Button type="button" variant="secondary" onClick={handleOpenExternal}>
@@ -638,17 +702,32 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
           </FieldGroup>
         </ControlTile>
 
+        {runtime.challenge ? (
+          <Alert>
+            <RiShieldCheckLine />
+            <AlertTitle>{site.shortLabel} 启用了客户端人机验证</AlertTitle>
+            <AlertDescription>
+              {runtime.challenge.message}推荐点击
+              <strong>"应用内打开"</strong>
+              按钮，由 Tauri 自带的 WebView2（真 Chromium）跑过验证；如要保留下登录态 / cookie，验证一次后会话就会持久化在该窗口。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {runtime.status === "error" ? (
           <Alert variant="destructive">
             <RiErrorWarningLine />
             <AlertTitle>{site.shortLabel} 代理拉取失败</AlertTitle>
             <AlertDescription>
-              {runtime.errorMessage ?? "未知错误。"}建议点击"浏览器打开"在系统浏览器中查看；如果是 JS 重定向循环，Rust 端已自动跟随 `document.cookie + location.href` 模式（最多 3 次），若仍失败说明站点升级了风控策略。
+              {runtime.errorMessage ?? "未知错误。"}
+              建议点击"应用内打开"或"浏览器打开"查看；如果是 JS 重定向循环，Rust 端已自动跟随 `document.cookie + location.href` 模式（最多 3 次），命中人机验证时会改用
+              <strong>"应用内打开"</strong>
+              提示。
             </AlertDescription>
           </Alert>
         ) : null}
 
-        <StrategyFrame status={runtime.status} srcDoc={runtime.srcDoc} site={site} />
+        <StrategyFrame status={runtime.status} srcDoc={runtime.srcDoc} site={site} challenge={runtime.challenge} />
       </CardBody>
     </TacticalCard>
   );
@@ -658,9 +737,10 @@ type StrategyFrameProps = {
   status: LoadStatus;
   srcDoc: string | null;
   site: StrategySite;
+  challenge: StrategyChallenge | null;
 };
 
-function StrategyFrame({ status, srcDoc, site }: StrategyFrameProps) {
+function StrategyFrame({ status, srcDoc, site, challenge }: StrategyFrameProps) {
   if (status === "error") {
     return (
       <div
@@ -675,6 +755,21 @@ function StrategyFrame({ status, srcDoc, site }: StrategyFrameProps) {
   }
 
   if (status === "loading" || srcDoc === null) {
+    if (challenge) {
+      return (
+        <div
+          className={cn(
+            "flex min-h-72 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground",
+          )}
+        >
+          <RiShieldCheckLine className="size-5 text-primary" />
+          <p className="font-medium text-foreground">等待在应用内窗口完成 {site.shortLabel} 的人机验证…</p>
+          <p className="max-w-md text-xs/relaxed">
+            iframe 代理无法跑 JS 验证。请点上方的"应用内打开"按钮，由 Tauri WebView2 跑过 cdn-shield 验证后再回到这里。
+          </p>
+        </div>
+      );
+    }
     return (
       <div
         className={cn(

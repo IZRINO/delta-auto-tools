@@ -15,15 +15,20 @@
 //! `window.location.href / location.replace` 模式时，把 cookie 注入到 reqwest 的 cookie jar
 //! 并继续向跳转目标再发起一次请求，最多跟随 `MAX_JS_REDIRECTS` 次。
 use std::time::Duration;
+
 use regex::Regex;
 use reqwest::cookie::Jar;
 use reqwest::header::{
     HeaderMap, HeaderName, HeaderValue, ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CACHE_CONTROL,
     REFERER, UPGRADE_INSECURE_REQUESTS, USER_AGENT,
 };
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
-use super::types::{StrategyFetchRequest, StrategyFetchResponse};
+use super::types::{
+    StrategyChallenge, StrategyFetchRequest, StrategyFetchResponse, StrategyOpenInViewRequest,
+    StrategyOpenInViewResponse,
+};
 
 /// 单次 HTTP 请求的最长等待时间。
 const FETCH_TIMEOUT_SECS: u64 = 15;
@@ -164,6 +169,45 @@ fn push_cookie(jar: &Jar, base_url: &Url, raw: &str) -> Result<(), String> {
     jar.add_cookie_str(&normalized, base_url);
     Ok(())
 }
+
+/// 嗅探 HTML 是否为客户端人机验证挑战页（典型：kkrb cdn-shield）。
+///
+/// 命中条件（任一即可）：
+/// - `<title>CC check</title>`
+/// - 表单 action 指向 `/cdn-shield/`
+/// - body 文本含 "安全验证" + "点击确认您是真人"（kkrb CC check 模板特征）
+/// - body 文本含 `verification-card` 容器类
+///
+/// 返回 Some(StrategyChallenge) 时，前端应引导用户改用 `strategy_open_in_view`
+/// （在 Tauri 内部 WebView2 窗口中打开），由真正的 Chromium 跑过验证。
+fn detect_cc_check(html: &str, final_url: &str) -> Option<StrategyChallenge> {
+    if html.len() > 64 * 1024 {
+        // 真实内容页一般远大于 CC check 模板，64KB 足够覆盖全部 kkrb 变体；
+        // 过大的 HTML 视为正常页面，避免误判。
+        return None;
+    }
+    let title_match = Regex::new(r#"(?is)<title>\s*CC\s*check\s*</title>"#)
+        .ok()?
+        .is_match(html);
+    let cdn_shield_match = Regex::new(r#"(?i)cdn-shield[/'"]"#)
+        .ok()?
+        .is_match(html)
+        || Regex::new(r#"(?i)action\s*=\s*['"][^'"]*cdn-shield"#)
+            .ok()?
+            .is_match(html);
+    let verification_text_match = html.contains("安全验证")
+        && (html.contains("点击确认您是真人") || html.contains("verification-card"));
+    if !(title_match || cdn_shield_match || verification_text_match) {
+        return None;
+    }
+    Some(StrategyChallenge {
+        kind: "ccCheck".to_string(),
+        message: format!(
+            "目标站点 {final_url} 启用了客户端人机验证（cdn-shield / CC check），代理层无法通过。请改用\"应用内打开\"按钮。"
+        ),
+    })
+}
+
 #[derive(Debug, Clone)]
 struct FetchedPage {
     status: u16,
@@ -171,6 +215,7 @@ struct FetchedPage {
     content_type: String,
     html: String,
     byte_length: usize,
+    challenge: Option<StrategyChallenge>,
 }
 
 /// 单次拉取（包含 JS 重定向嗅探跟随）。
@@ -221,12 +266,14 @@ async fn fetch_with_js_redirect_following(
             ));
         }
         let html = String::from_utf8_lossy(&bytes).into_owned();
+        let challenge = detect_cc_check(&html, &final_url);
         let page = FetchedPage {
             status: status.as_u16(),
             final_url: final_url.clone(),
             content_type,
             html: html.clone(),
             byte_length: bytes.len(),
+            challenge,
         };
 
         if hop == MAX_JS_REDIRECTS {
@@ -270,7 +317,96 @@ pub async fn fetch_strategy_page(
         content_type: page.content_type,
         html: page.html,
         byte_length: page.byte_length,
+        challenge: page.challenge,
     })
+}
+
+/// 应用内打开攻略网站：在 Tauri 主进程下新建一个 WebviewWindow 加载外部 URL。
+///
+/// 使用场景：当 `fetch_strategy_page` 命中人机验证挑战（典型：kkrb cdn-shield），
+/// 代理层无法通过 JavaScript 验证，需要由真正的 Chromium 内核（WebView2）跑过
+/// CC check。这种情况下，前端改调本命令，弹出独立的子窗口，避开 X-Frame-Options
+/// / CSP frame-ancestors 限制（这是 top-level navigation，不是 iframe）。
+///
+/// 同一站点（按 host 派生 label）只维护一个窗口；再次调用会聚焦已有窗口并
+/// 重新加载（避免堆叠多个同站子窗口）。
+#[tauri::command]
+pub async fn strategy_open_in_view(
+    app: AppHandle,
+    request: StrategyOpenInViewRequest,
+) -> Result<StrategyOpenInViewResponse, String> {
+    let parsed = Url::parse(request.url.trim())
+        .map_err(|error| format!("目标 URL 解析失败：{error}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("目标 URL 协议必须是 http / https，当前是 {other}")),
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "目标 URL 缺少 host".to_string())?
+        .to_string();
+    let derived_label = derive_view_label(&host);
+    let label = request
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .unwrap_or(derived_label);
+
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| host.clone());
+
+    // 同一 host 复用窗口：若已存在则聚焦 + 重新加载，避免堆叠。
+    if let Some(existing) = app.get_webview_window(&label) {
+        if let Err(error) = existing.set_focus() {
+            return Err(format!("聚焦已存在的窗口失败：{error}"));
+        }
+        if let Err(error) = existing.close() {
+            return Err(format!("关闭旧窗口失败：{error}"));
+        }
+    }
+
+    let url = WebviewUrl::External(parsed);
+    let builder = WebviewWindowBuilder::new(&app, &label, url)
+        .title(title)
+        .inner_size(1024.0, 720.0)
+        .min_inner_size(640.0, 480.0)
+        .resizable(true)
+        .decorations(true)
+        .focused(true)
+        .visible(true);
+
+    builder
+        .build()
+        .map_err(|error| format!("创建应用内浏览器窗口失败：{error}"))?;
+
+    Ok(StrategyOpenInViewResponse {
+        label,
+        reused: false,
+    })
+}
+
+/// 从 host 派生出稳定的窗口 label。
+/// kkrb.net -> strategy-view-kkrb-net
+/// 字符仅保留 `[a-z0-9-]`，避免 Tauri label 字符限制。
+fn derive_view_label(host: &str) -> String {
+    let mut sanitized = String::with_capacity(host.len());
+    for ch in host.chars() {
+        let lower = ch.to_ascii_lowercase();
+        if lower.is_ascii_alphanumeric() {
+            sanitized.push(lower);
+        } else {
+            sanitized.push('-');
+        }
+    }
+    format!("strategy-view-{sanitized}")
 }
 
 #[cfg(test)]
@@ -440,5 +576,81 @@ window.location.href='/'</script>"#;
         assert!(response.content_type.starts_with("text/html"));
         assert!(response.html.contains("KK 日报"));
         assert!(response.byte_length > 0);
+    }
+
+    #[test]
+    fn detect_cc_check_matches_title() {
+        let html = r#"<html><head><title>CC check</title></head><body>...</body></html>"#;
+        let challenge = detect_cc_check(html, "https://www.kkrb.net/").expect("challenge");
+        assert_eq!(challenge.kind, "ccCheck");
+        assert!(challenge.message.contains("kkrb.net"));
+    }
+
+    #[test]
+    fn detect_cc_check_matches_verification_text() {
+        let html = r#"
+            <html><head><title>安全验证</title></head>
+            <body><div class="verification-card">点击确认您是真人</div></body>
+            </html>
+        "#;
+        let challenge = detect_cc_check(html, "https://www.kkrb.net/").expect("challenge");
+        assert_eq!(challenge.kind, "ccCheck");
+    }
+
+    #[test]
+    fn detect_cc_check_matches_cdn_shield_action() {
+        let html = r#"<form action="/cdn-shield/check" method="POST"></form>"#;
+        let challenge = detect_cc_check(html, "https://www.kkrb.net/").expect("challenge");
+        assert_eq!(challenge.kind, "ccCheck");
+    }
+
+    #[test]
+    fn detect_cc_check_ignores_real_html() {
+        let html = r#"<html><head><title>KK 日报 - 热点内容一图流</title></head><body>...</body></html>"#;
+        assert!(detect_cc_check(html, "https://www.kkrb.net/").is_none());
+    }
+
+    #[test]
+    fn detect_cc_check_ignores_large_html() {
+        // 真实内容页 64KB+ 一定不是 CC check 模板，跳过嗅探避免误判。
+        let html = "a".repeat(70 * 1024);
+        assert!(detect_cc_check(&html, "https://www.kkrb.net/").is_none());
+    }
+
+    #[test]
+    fn derive_view_label_normalizes_host() {
+        assert_eq!(derive_view_label("kkrb.net"), "strategy-view-kkrb-net");
+        assert_eq!(derive_view_label("www.kkrb.net"), "strategy-view-www-kkrb-net");
+        assert_eq!(
+            derive_view_label("orzice.com"),
+            "strategy-view-orzice-com"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_strategy_page_surfaces_cc_check_challenge() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("content-type", "text/html; charset=utf-8")
+            .with_body(
+                r#"<html><head><title>CC check</title></head>
+                <body><div class="verification-card">点击确认您是真人</div></body>
+                </html>"#,
+            )
+            .create_async()
+            .await;
+
+        let request = StrategyFetchRequest {
+            url: format!("{}/", server.url()),
+            referer: None,
+        };
+        let response = fetch_strategy_page(request).await.expect("response");
+        mock.assert_async().await;
+
+        let challenge = response.challenge.expect("challenge");
+        assert_eq!(challenge.kind, "ccCheck");
+        assert!(challenge.message.contains("人机验证"));
     }
 }
