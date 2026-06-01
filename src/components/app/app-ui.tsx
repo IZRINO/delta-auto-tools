@@ -114,10 +114,11 @@ type SectionHeaderProps = {
   eyebrow?: string;
   icon?: ReactNode;
   badge?: ReactNode;
+  actions?: ReactNode;
   className?: string;
 };
 
-export function SectionHeader({ badge, className, description, eyebrow, icon, title }: SectionHeaderProps) {
+export function SectionHeader({ actions, badge, className, description, eyebrow, icon, title }: SectionHeaderProps) {
   return (
     <CardHeader
       className={cn(
@@ -142,7 +143,10 @@ export function SectionHeader({ badge, className, description, eyebrow, icon, ti
             {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
           </div>
         </div>
-        {badge ? <div className="shrink-0">{badge}</div> : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          {badge ? <div className="shrink-0">{badge}</div> : null}
+        </div>
       </div>
     </CardHeader>
   );

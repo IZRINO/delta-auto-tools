@@ -103,7 +103,7 @@ src/
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证），前端用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL。页面采用 `Tabs` 切换两个站点，每个 Tab 内单卡片全屏展示；卡片支持自动刷新档位、立即刷新、浏览器打开与最近拉取时间显示。拉取失败时通过 Alert 提示并降级到"浏览器打开"。自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。
+- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证）。Rust 端在解析响应体后会嗅探 `document.cookie = '...'; location.href = '...'` 模式（典型：kkrb.net），将 cookie 写入 reqwest 的 cookie jar 并自动向跳转目标再发起一次请求，最多跟随 3 次，避免 iframe 重新以 WebView UA 抓取同源 URL 导致 cookie 丢失的循环。前端用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors。页面采用 `Tabs` 切换站点：内置 2 个不可删除（kkrb / orzice），用户可通过"新增攻略网站"对话框追加任意 URL（自动生成 `user_xxx` ID），通过 Tab 头部的"删除此网站"按钮移除自定义站点；用户新增站点通过 `localStorage`（前缀 `delta-auto-tools:strategy:user-sites`）持久化，损坏值/非 `user_` 前缀条目均被丢弃。每个 Tab 卡片支持自动刷新档位、立即刷新、浏览器打开与最近拉取时间显示；自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -343,7 +343,7 @@ src-tauri/src/
 
 ### 攻略网站端
 
-- `src-tauri/src/strategy/mod.rs` 暴露唯一的 Tauri command `strategy_fetch_page`，由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。
+- `src-tauri/src/strategy/mod.rs` 暴露唯一的 Tauri command `strategy_fetch_page`，由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。`fetch_with_js_redirect_following` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` 模式后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_JS_REDIRECTS = 3` 次；非 HTML 响应（>10 MB）则直接拒绝。
 
 ### Delta 端
 - `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构

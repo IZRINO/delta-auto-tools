@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  RiAddLine,
   RiCheckboxCircleLine,
+  RiDeleteBinLine,
   RiErrorWarningLine,
   RiExternalLinkLine,
   RiRefreshLine,
@@ -15,12 +17,23 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -33,25 +46,29 @@ import {
   TacticalCard,
 } from "@/components/app/app-ui";
 import {
+  BUILTIN_STRATEGY_SITES,
   DEFAULT_STRATEGY_REFRESH_SECONDS,
   STRATEGY_REFRESH_INTERVAL_SECONDS,
-  STRATEGY_SITES,
+  createStrategySite,
   formatStrategyRefreshLabel,
   injectBaseHrefIntoHtml,
+  mergeStrategySites,
   nextRefreshDelayMs,
   normalizeStrategyRefreshSeconds,
   readStoredRefreshSeconds,
+  readStoredUserSites,
   writeStoredRefreshSeconds,
+  writeStoredUserSites,
   type StrategyFetchResponse,
   type StrategyRefreshInterval,
   type StrategySite,
+  type UserStrategySite,
 } from "@/components/app/strategy-utils";
 import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "refresh-seconds";
-/** 单次代理拉取的失败兜底超时（毫秒）。 */
 const FETCH_TIMEOUT_MS = 18_000;
 
 const REFRESH_BUCKET_LABELS: Record<number, string> = {
@@ -61,40 +78,17 @@ const REFRESH_BUCKET_LABELS: Record<number, string> = {
   300: "5 分钟",
   600: "10 分钟",
 };
-
 type LoadStatus = "idle" | "loading" | "loaded" | "error";
 
 type SiteRuntime = {
-  /** 拉取次数（用于 force-refresh 与 cache-busting） */
   nonce: number;
-  /** 当前 srcDoc 内容（已注入 `<base href>`） */
   srcDoc: string | null;
-  /** 当前拉取的最终 URL（用于 UI 展示与状态） */
   finalUrl: string | null;
   status: LoadStatus;
-  /** 最近一次错误的展示文本 */
   errorMessage: string | null;
-  /** 当前正在倒计时的剩余毫秒数；null 表示已关闭 */
   countdownMs: number | null;
-  /** 最近一次成功拉取的时间戳（毫秒） */
   lastLoadedAt: number | null;
 };
-
-function buildInitialRuntimes(): Record<string, SiteRuntime> {
-  const runtime: Record<string, SiteRuntime> = {};
-  for (const site of STRATEGY_SITES) {
-    runtime[site.id] = {
-      nonce: 0,
-      srcDoc: null,
-      finalUrl: null,
-      status: "idle",
-      errorMessage: null,
-      countdownMs: null,
-      lastLoadedAt: null,
-    };
-  }
-  return runtime;
-}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -114,14 +108,55 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 export function StrategyPage() {
   const isNativeShell = useNativeShell();
-  const firstSiteId = STRATEGY_SITES[0]?.id ?? "kkrb";
+  const [userSites, setUserSites] = useState<StrategySite[]>(() => readStoredUserSites());
+  const allSites = useMemo(() => mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites), [userSites]);
+  const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? allSites[0]?.id ?? "");
+
+  // 当用户删除了 activeId 对应的卡片，自动回退到第一个可用 Tab。
+  useEffect(() => {
+    if (allSites.length === 0) {
+      return;
+    }
+    if (!allSites.some((site) => site.id === activeId)) {
+      setActiveId(allSites[0].id);
+    }
+  }, [allSites, activeId]);
+
+  const handleAddSite = useCallback((draft: UserStrategySite) => {
+    const created = createStrategySite(draft);
+    if (!created) {
+      toast.error("网址无效：检查简称、标签与 URL 格式（必须以 http:// 或 https:// 开头）");
+      return false;
+    }
+    setUserSites((current) => {
+      const next = [...current, created];
+      writeStoredUserSites(next);
+      return next;
+    });
+    setActiveId(created.id);
+    toast.success(`已新增攻略网站：${created.label}`);
+    return true;
+  }, []);
+
+  const handleDeleteSite = useCallback((id: string) => {
+    setUserSites((current) => {
+      const target = current.find((site) => site.id === id);
+      if (!target) {
+        return current;
+      }
+      const next = current.filter((site) => site.id !== id);
+      writeStoredUserSites(next);
+      toast.success(`已删除攻略网站：${target.label}`);
+      return next;
+    });
+  }, []);
 
   return (
     <AppPage>
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="通过桌面代理拉取攻略页面，模拟完整 Chrome 浏览器请求头，避开 WebView UA 引发的人机验证。支持按站点自动刷新、立即刷新与外部打开。"
+        description="通过桌面代理拉取攻略页面，模拟完整 Chrome 浏览器请求头，避开 WebView UA 引发的人机验证。支持按站点自动刷新、立即刷新、外部打开，以及自定义新增/删除攻略网站。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
@@ -132,9 +167,9 @@ export function StrategyPage() {
           <>
             <SignalTile
               label="已集成站点"
-              value={STRATEGY_SITES.length}
+              value={allSites.length}
               icon={<RiCheckboxCircleLine />}
-              detail="按站点切换 Tab，全屏查看。"
+              detail={`${BUILTIN_STRATEGY_SITES.length} 个内置 + ${userSites.length} 个自定义`}
             />
             <SignalTile
               label="默认刷新"
@@ -146,29 +181,43 @@ export function StrategyPage() {
               label="运行模式"
               value={isNativeShell ? "桌面代理" : "浏览器预览"}
               icon={<RiSettings3Line />}
-              detail="桌面端走 Rust 端 fetch 代理，预览模式只读。"
+              detail="桌面端走 Rust 端 fetch 代理。"
             />
           </>
         }
       />
 
       <TacticalCard>
-        <Tabs defaultValue={firstSiteId} className="min-h-0">
+        <Tabs value={activeId} onValueChange={setActiveId} className="min-h-0">
           <CardBody className="flex flex-col gap-4">
-            <TabsList variant="line" className="self-start">
-              {STRATEGY_SITES.map((site) => (
-                <TabsTrigger key={site.id} value={site.id}>
-                  <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
-                  <span>{site.label}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabsList variant="line" className="self-start">
+                {allSites.map((site) => (
+                  <TabsTrigger key={site.id} value={site.id}>
+                    <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
+                    <span>{site.label}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              <NewSiteDialog onSubmit={handleAddSite} />
+            </div>
 
-            {STRATEGY_SITES.map((site) => (
-              <TabsContent key={site.id} value={site.id} className="flex flex-col gap-4">
-                <StrategySitePanel site={site} isNativeShell={isNativeShell} />
-              </TabsContent>
-            ))}
+            {allSites.length === 0 ? (
+              <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">还没有任何攻略网站</p>
+                <p className="max-w-md text-xs/relaxed">点上方"新增攻略网站"按钮，填入 URL 后即可加入工作台。</p>
+              </div>
+            ) : (
+              allSites.map((site) => (
+                <TabsContent key={site.id} value={site.id} className="flex flex-col gap-4">
+                  <StrategySitePanel
+                    site={site}
+                    isNativeShell={isNativeShell}
+                    onDelete={site.builtin ? null : () => handleDeleteSite(site.id)}
+                  />
+                </TabsContent>
+              ))
+            )}
           </CardBody>
         </Tabs>
       </TacticalCard>
@@ -176,30 +225,142 @@ export function StrategyPage() {
   );
 }
 
+type NewSiteDialogProps = {
+  onSubmit: (draft: UserStrategySite) => boolean;
+};
+
+function NewSiteDialog({ onSubmit }: NewSiteDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [shortLabel, setShortLabel] = useState("");
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [description, setDescription] = useState("");
+
+  const reset = useCallback(() => {
+    setShortLabel("");
+    setLabel("");
+    setUrl("");
+    setDescription("");
+  }, []);
+
+  const handleSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const ok = onSubmit({ shortLabel, label, url, description });
+      if (ok) {
+        reset();
+        setOpen(false);
+      }
+    },
+    [description, label, onSubmit, reset, shortLabel, url],
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="default" size="sm">
+          <RiAddLine data-icon="inline-start" />
+          新增攻略网站
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>新增攻略网站</DialogTitle>
+          <DialogDescription>填入网址后，会在 Tabs 列表最右侧追加一个 Tab。</DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-3" onSubmit={handleSubmit}>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="strategy-new-short">简称</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="strategy-new-short"
+                  value={shortLabel}
+                  maxLength={12}
+                  placeholder="例如：KK 日报"
+                  onChange={(event) => setShortLabel(event.target.value)}
+                  required
+                />
+                <FieldDescription>2-6 个字符，显示在 Tab 上。</FieldDescription>
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="strategy-new-label">完整标签</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="strategy-new-label"
+                  value={label}
+                  maxLength={32}
+                  placeholder="例如：KK 日报攻略总览"
+                  onChange={(event) => setLabel(event.target.value)}
+                  required
+                />
+              </FieldContent>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="strategy-new-url">URL</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="strategy-new-url"
+                  value={url}
+                  type="url"
+                  placeholder="https://..."
+                  onChange={(event) => setUrl(event.target.value)}
+                  required
+                />
+                <FieldDescription>必须以 http:// 或 https:// 开头。</FieldDescription>
+              </FieldContent>
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="strategy-new-description">简介</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="strategy-new-description"
+                  value={description}
+                  maxLength={64}
+                  placeholder="一句话说明这个站点做什么"
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              </FieldContent>
+            </Field>
+          </FieldGroup>
+          <DialogFooter className="gap-2">
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">取消</Button>
+            </DialogClose>
+            <Button type="submit" variant="default">新增</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type StrategySitePanelProps = {
   site: StrategySite;
   isNativeShell: boolean;
+  onDelete: (() => void) | null;
 };
 
-function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
+function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelProps) {
   const storageKey = `${site.id}:${STORAGE_KEY}`;
   const [intervalSeconds, setIntervalSecondsState] = useState<StrategyRefreshInterval>(() =>
     readStoredRefreshSeconds(storageKey),
   );
-  const [runtime, setRuntime] = useState<SiteRuntime>(
-    () => buildInitialRuntimes()[site.id] ?? {
-      nonce: 0,
-      srcDoc: null,
-      finalUrl: null,
-      status: "idle",
-      errorMessage: null,
-      countdownMs: null,
-      lastLoadedAt: null,
-    },
-  );
+  const [runtime, setRuntime] = useState<SiteRuntime>({
+    nonce: 0,
+    srcDoc: null,
+    finalUrl: null,
+    status: "idle",
+    errorMessage: null,
+    countdownMs: null,
+    lastLoadedAt: null,
+  });
   const autoRefreshRef = useRef<number | null>(null);
   const countdownTickRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const siteRef = useRef(site);
+  siteRef.current = site;
 
   const updateInterval = useCallback(
     (next: StrategyRefreshInterval) => {
@@ -212,16 +373,17 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
 
   const fetchPage = useCallback(
     async (mode: "auto" | "manual" = "auto") => {
+      const current = siteRef.current;
       if (!isNativeShell) {
-        setRuntime((current) => ({
-          ...current,
+        setRuntime((prev) => ({
+          ...prev,
           status: "error",
           errorMessage: "浏览器预览模式下无法调用代理，请在桌面端打开。",
         }));
         return;
       }
-      setRuntime((current) => ({
-        ...current,
+      setRuntime((prev) => ({
+        ...prev,
         status: "loading",
         errorMessage: null,
         countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
@@ -229,7 +391,7 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
       try {
         const response = await withTimeout(
           invoke<StrategyFetchResponse>("strategy_fetch_page", {
-            request: { url: site.url },
+            request: { url: current.url },
           }),
           FETCH_TIMEOUT_MS,
         );
@@ -240,38 +402,37 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
           throw new Error(`HTTP ${response.status}：目标站返回错误。`);
         }
         const srcDoc = injectBaseHrefIntoHtml(response.html, response.finalUrl);
-        setRuntime((current) => ({
-          ...current,
+        setRuntime((prev) => ({
+          ...prev,
           srcDoc,
           finalUrl: response.finalUrl,
           status: "loaded",
           errorMessage: null,
-          nonce: current.nonce + 1,
+          nonce: prev.nonce + 1,
           lastLoadedAt: Date.now(),
           countdownMs: intervalSeconds === null ? null : nextRefreshDelayMs(intervalSeconds),
         }));
         if (mode === "manual") {
-          toast.success(`${site.shortLabel} 已刷新（${(response.byteLength / 1024).toFixed(1)} KB）`);
+          toast.success(`${current.shortLabel} 已刷新（${(response.byteLength / 1024).toFixed(1)} KB）`);
         }
       } catch (error) {
         if (!mountedRef.current) {
           return;
         }
         const message = getErrorMessage(error);
-        setRuntime((current) => ({
-          ...current,
+        setRuntime((prev) => ({
+          ...prev,
           status: "error",
           errorMessage: message,
         }));
         if (mode === "manual") {
-          toast.error(`${site.shortLabel} 刷新失败：${message}`);
+          toast.error(`${current.shortLabel} 刷新失败：${message}`);
         }
       }
     },
-    [isNativeShell, intervalSeconds, site.shortLabel, site.url],
+    [isNativeShell, intervalSeconds],
   );
 
-  // 首次进入面板时主动拉取一次。
   useEffect(() => {
     mountedRef.current = true;
     if (isNativeShell && runtime.status === "idle" && runtime.srcDoc === null) {
@@ -280,25 +441,21 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
     return () => {
       mountedRef.current = false;
     };
-    // 仅在面板挂载 + 切到非 idle 时拉取；显式排除 runtime / fetchPage 避免循环。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNativeShell, site.id]);
 
-  // 自动刷新主循环：到点后调用 fetchPage("auto")，并重置倒计时。
   useEffect(() => {
     if (autoRefreshRef.current !== null) {
       window.clearInterval(autoRefreshRef.current);
       autoRefreshRef.current = null;
     }
     if (intervalSeconds === null) {
-      setRuntime((current) =>
-        current.countdownMs === null ? current : { ...current, countdownMs: null },
-      );
+      setRuntime((prev) => (prev.countdownMs === null ? prev : { ...prev, countdownMs: null }));
       return;
     }
 
     const delay = nextRefreshDelayMs(intervalSeconds) ?? 0;
-    setRuntime((current) => ({ ...current, countdownMs: delay }));
+    setRuntime((prev) => ({ ...prev, countdownMs: delay }));
 
     autoRefreshRef.current = window.setInterval(() => {
       void fetchPage("auto");
@@ -312,7 +469,6 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
     };
   }, [intervalSeconds, fetchPage]);
 
-  // 倒计时：每秒递减，仅在自动刷新启用时运行。
   useEffect(() => {
     if (countdownTickRef.current !== null) {
       window.clearInterval(countdownTickRef.current);
@@ -346,17 +502,23 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
   }, [fetchPage]);
 
   const handleOpenExternal = useCallback(async () => {
+    const current = siteRef.current;
     if (isNativeShell) {
       try {
-        await openUrl(site.externalUrl);
+        await openUrl(current.externalUrl);
         return;
       } catch (error) {
-        toast.error(`外部打开失败：${error instanceof Error ? error.message : String(error)}`);
-        return;
       }
     }
-    window.open(site.externalUrl, "_blank", "noopener,noreferrer");
-  }, [isNativeShell, site.externalUrl]);
+    window.open(current.externalUrl, "_blank", "noopener,noreferrer");
+  }, [isNativeShell]);
+
+  const handleDelete = useCallback(() => {
+    if (!onDelete) {
+      return;
+    }
+    onDelete();
+  }, [onDelete]);
 
   const countdownText = useMemo(() => {
     if (intervalSeconds === null) {
@@ -400,6 +562,14 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
         title={site.label}
         description={site.description}
         badge={statusBadge}
+        actions={
+          onDelete ? (
+            <Button type="button" variant="ghost" size="sm" onClick={handleDelete}>
+              <RiDeleteBinLine data-icon="inline-start" />
+              删除此网站
+            </Button>
+          ) : null
+        }
       />
 
       <CardBody className="flex flex-col gap-4">
@@ -473,7 +643,7 @@ function StrategySitePanel({ site, isNativeShell }: StrategySitePanelProps) {
             <RiErrorWarningLine />
             <AlertTitle>{site.shortLabel} 代理拉取失败</AlertTitle>
             <AlertDescription>
-              {runtime.errorMessage ?? "未知错误。"}建议点击"浏览器打开"在系统浏览器中查看，刷新频率与人机验证问题可在真实浏览器里完成。
+              {runtime.errorMessage ?? "未知错误。"}建议点击"浏览器打开"在系统浏览器中查看；如果是 JS 重定向循环，Rust 端已自动跟随 `document.cookie + location.href` 模式（最多 3 次），若仍失败说明站点升级了风控策略。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -492,7 +662,6 @@ type StrategyFrameProps = {
 
 function StrategyFrame({ status, srcDoc, site }: StrategyFrameProps) {
   if (status === "error") {
-    // 已由 Alert 区域展示错误信息，iframe 留白以避免视觉噪声。
     return (
       <div
         className={cn(
@@ -514,7 +683,10 @@ function StrategyFrame({ status, srcDoc, site }: StrategyFrameProps) {
       >
         <RiTimeLine className="size-5 animate-pulse text-primary" />
         <p className="font-medium text-foreground">正在通过桌面代理拉取 {site.shortLabel}…</p>
-        <p className="max-w-md text-xs/relaxed">代理使用 Chrome 135 User-Agent + 完整 Sec-Ch-Ua / Sec-Fetch-* 请求头，避开 WebView UA 引发的人机验证。</p>
+        <p className="max-w-md text-xs/relaxed">
+          代理使用 Chrome 135 User-Agent + 完整 Sec-Ch-Ua / Sec-Fetch-* 请求头，避开 WebView UA 引发的人机验证；
+          若站点是 JS 重定向（document.cookie + location.href）模式，Rust 端会自动跟随。
+        </p>
       </div>
     );
   }
