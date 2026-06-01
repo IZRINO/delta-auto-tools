@@ -7,8 +7,8 @@
  *
  * 轮询器通过 `gh issue list` 查询指定仓库的开放 issue，发现新增条目后：
  * - 未提供 prompt：通过 `ctx.ui.notify` 通知
- * - 提供 prompt：把 issue 列表 + prompt 入队为用户消息（`sendUserMessage` + `deliverAs: "followUp"`），
- *   用户在交互模式下可审阅后按 Enter 提交
+ * - 提供 prompt：把 issue 列表 + prompt 作为 `nextTurn` custom message 注入，
+ *   并通过 `triggerTurn` 自动触发下一轮 Agent 执行
  *
  * 默认仓库为本项目 `IZRINO/delta-auto-tools`，默认间隔 60 分钟。
  */
@@ -51,6 +51,12 @@ export interface PollState {
     resolveStopped: (() => void) | null;
     lastOutputAt: Date | null;
     nextRunAt: Date | null;
+}
+
+interface GhIssuesPromptDetails {
+    repo: string;
+    issueNumbers: number[];
+    prompt: string;
 }
 
 function formatTimestamp(date: Date | null): string {
@@ -112,6 +118,7 @@ function createStoppedPromise(): { promise: Promise<void>; resolve: () => void }
 const DEFAULT_REPO = "IZRINO/delta-auto-tools";
 const DEFAULT_INTERVAL_MIN = 60;
 const ISSUES_PER_PAGE = 30;
+const GH_ISSUES_PROMPT_TYPE = "gh-issues-prompt";
 
 let active: PollState | null = null;
 
@@ -152,7 +159,7 @@ export default function (pi: ExtensionAPI): void {
             "  /gh-issues                                          # 仅通知（默认本仓库、60 分钟）",
             "  /gh-issues owner/repo                               # 自定义仓库 + 通知",
             "  /gh-issues 30                                       # 自定义间隔 + 通知",
-            "  /gh-issues \"请逐个分析\"                            # 自定义 prompt + 入队",
+            "  /gh-issues \"请逐个分析\"                            # 自定义 prompt + 自动触发 Agent",
             "  /gh-issues owner/repo 30                            # 自定义仓库 + 间隔",
             "  /gh-issues owner/repo 30 \"请逐个分析\"              # 全部自定义",
         ].join("\n"),
@@ -183,7 +190,7 @@ export default function (pi: ExtensionAPI): void {
             ctx.ui.notify(
                 withScheduleLines(
                     `[gh-issues] ${replacedExisting ? "已停止旧轮询器并" : ""}监听 ${repo}，每 ${intervalMin} 分钟一次${
-                        prompt ? "（新 issue 将入队为用户消息）" : "（仅通知）"
+                        prompt ? "（新 issue 将自动触发 Agent 执行）" : "（仅通知）"
                     }；按 Esc 停止`,
                     state,
                 ),
@@ -216,10 +223,23 @@ export default function (pi: ExtensionAPI): void {
                         markOutputAndNextRun(state);
                         if (prompt) {
                             const message = formatPrompt(repo, fresh, prompt);
-                            pi.sendUserMessage(message, { deliverAs: "followUp" });
+                            pi.sendMessage<GhIssuesPromptDetails>(
+                                {
+                                    customType: GH_ISSUES_PROMPT_TYPE,
+                                    content: message,
+                                    display: true,
+                                    details: {
+                                        repo,
+                                        issueNumbers: fresh.map((i) => i.number),
+                                        prompt,
+                                    },
+                                    attribution: "user",
+                                },
+                                { deliverAs: "nextTurn", triggerTurn: true },
+                            );
                             ctx.ui.notify(
                                 withScheduleLines(
-                                    `[gh-issues] ${fresh.length} 个新 issue 已入队（带提示词），按 Enter 提交`,
+                                    `[gh-issues] ${fresh.length} 个新 issue 已自动触发 Agent 执行（带提示词）`,
                                     state,
                                 ),
                                 "info",
@@ -447,8 +467,8 @@ function formatPrompt(
         })
         .join("\n\n---\n\n");
 
-    const header = `[gh-issues] 仓库 ${repo} 新增 ${issues.length} 个 issue：`;
+    const header = `[gh-issues] 仓库 ${repo} 新增 ${issues.length} 个 issue。以下消息由 /gh-issues 自动触发，请根据 issue 列表直接执行用户提示，不要等待用户再次确认：`;
     return prompt
-        ? `${header}\n\n${sections}\n\n---\n\n${prompt}`
+        ? `${header}\n\n${sections}\n\n---\n\n用户提示：\n${prompt}`
         : `${header}\n\n${sections}`;
 }

@@ -36,6 +36,20 @@ interface NotificationEntry {
     type: "info" | "warning" | "error" | undefined;
 }
 
+interface SentMessage {
+    message: {
+        customType: string;
+        content: string | unknown[];
+        display: boolean;
+        details?: unknown;
+        attribution?: string;
+    };
+    options?: {
+        triggerTurn?: boolean;
+        deliverAs?: string;
+    };
+}
+
 interface ExtensionHarness {
     commands: Record<string, CommandRegistration>;
     ctx: ExtensionCommandContext;
@@ -43,6 +57,7 @@ interface ExtensionHarness {
     workingMessages: Array<string | undefined>;
     statuses: Array<{ key: string; text: string | undefined }>;
     notifications: NotificationEntry[];
+    sentMessages: SentMessage[];
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -109,12 +124,16 @@ function createHarness(
     const workingMessages: Array<string | undefined> = [];
     const statuses: Array<{ key: string; text: string | undefined }> = [];
     const notifications: NotificationEntry[] = [];
+    const sentMessages: SentMessage[] = [];
     const pi = {
         on: () => undefined,
         registerCommand: (name: string, options: CommandRegistration) => {
             commands[name] = options;
         },
         exec,
+        sendMessage: (message: SentMessage["message"], options?: SentMessage["options"]) => {
+            sentMessages.push({ message, options });
+        },
         sendUserMessage: () => undefined,
     } as unknown as ExtensionAPI;
 
@@ -142,7 +161,7 @@ function createHarness(
     } as unknown as ExtensionCommandContext;
 
     registerGhIssues(pi);
-    return { commands, ctx, terminalHandlers, workingMessages, statuses, notifications };
+    return { commands, ctx, terminalHandlers, workingMessages, statuses, notifications, sentMessages };
 }
 
 describe("parseArgs", () => {
@@ -272,6 +291,39 @@ describe("gh-issues poller", () => {
 
             expect(harness.notifications.some((n) => n.message.includes("#2 三分钟后新增"))).toBe(true);
             expect(timers.scheduled[1]?.delay).toBe(180_000);
+
+            harness.terminalHandlers[0]?.("\u001b");
+            await run;
+        } finally {
+            timers.restore();
+        }
+    });
+
+    test("auto-triggers agent execution when prompt is provided", async () => {
+        const timers = installTimerCapture();
+        const harness = createHarness(() => Promise.resolve(issuesResult([sampleIssue(7, "需要自动处理")])));
+
+        try {
+            const prompt = "读取待办的issues并处理，根据开发流程完成开发后更新版本号，使用bun run tauri build打包上传release。回复issues并关闭；";
+            const run = harness.commands["gh-issues"].handler(`10 "${prompt}"`, harness.ctx);
+            await flushMicrotasks();
+
+            expect(harness.sentMessages).toHaveLength(1);
+            expect(harness.sentMessages[0]?.message).toMatchObject({
+                customType: "gh-issues-prompt",
+                display: true,
+                attribution: "user",
+                details: {
+                    repo: "IZRINO/delta-auto-tools",
+                    issueNumbers: [7],
+                    prompt,
+                },
+            });
+            expect(harness.sentMessages[0]?.message.content).toContain("不要等待用户再次确认");
+            expect(harness.sentMessages[0]?.message.content).toContain("用户提示：");
+            expect(harness.sentMessages[0]?.message.content).toContain(prompt);
+            expect(harness.sentMessages[0]?.options).toEqual({ deliverAs: "nextTurn", triggerTurn: true });
+            expect(harness.notifications.some((n) => n.message.includes("已自动触发 Agent 执行"))).toBe(true);
 
             harness.terminalHandlers[0]?.("\u001b");
             await run;
