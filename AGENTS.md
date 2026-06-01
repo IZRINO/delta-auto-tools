@@ -74,6 +74,9 @@ src/
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
+│       ├── strategy-page.tsx  # 攻略网站工作台：内嵌 + 自动刷新 + 外部打开
+│       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、刷新档位、localStorage 读写）
+│       ├── strategy-utils.test.ts # 攻略网站前端测试
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
 │       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
@@ -97,8 +100,9 @@ src/
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
-- 当前有三个真实工具页面（Morse、计时器、连发器），侧边栏在“当前工具”下切换
+- 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
+- **攻略网站工作台（strategy-page）**：通过 `tauri-plugin-opener` + iframe 集成 `https://www.kkrb.net/?viewpage=view%2Foverview` 与 `https://orzice.com/v/rb` 两类外部攻略页面；每张卡片提供 `关闭 / 30s / 1m / 2m / 5m / 10m` 自动刷新档位、立即刷新、浏览器打开按钮。自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态。iframe 在 12 秒内未触发 `onLoad` 时标记为"拒绝内嵌"并暂停自动刷新。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖

@@ -7,6 +7,7 @@ import {
   RiAccountPinCircleLine,
   RiBarChartBoxLine,
   RiToolsLine,
+  RiCompassDiscoverLine,
 } from "@remixicon/react";
 
 import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
@@ -58,8 +59,10 @@ const DeltaGamePage = lazy(() => import("@/components/app/delta-game-page").then
 const DeltaToolboxPage = lazy(() =>
   import("@/components/app/delta-toolbox-page").then((module) => ({ default: module.DeltaToolboxPage })),
 );
-
-const tools = [
+const StrategyPage = lazy(() =>
+  import("@/components/app/strategy-page").then((module) => ({ default: module.StrategyPage })),
+);
+ const tools = [
   {
     id: "morse" as const,
     icon: RiRadarLine,
@@ -77,6 +80,12 @@ const tools = [
     icon: RiGamepadLine,
     label: "连发器",
     short: "Rapidfire",
+  },
+  {
+    id: "strategy" as const,
+    icon: RiCompassDiscoverLine,
+    label: "攻略网站",
+    short: "Strategy",
   },
 ];
 
@@ -127,6 +136,8 @@ function renderToolPage(activeTool: ToolId) {
       return <DeltaGamePage />;
     case "delta-toolbox":
       return <DeltaToolboxPage />;
+    case "strategy":
+      return <StrategyPage />;
     case "morse":
       return <MorsePage />;
   }
@@ -227,7 +238,7 @@ function App() {
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                  <p className="font-mono text-sm font-semibold text-foreground">06</p>
+                  <p className="font-mono text-sm font-semibold text-foreground">07</p>
                   <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
                 </div>
                 <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
