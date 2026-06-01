@@ -515,12 +515,32 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - 不要虚构仓库中不存在的 lint/test/CI 命令
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需要随重大功能变更一起更新
 - 仓库当前允许提交项目级 skills 目录：`.agents/skills/` 与 `.claude/skills/`；不要把它们误当成本地垃圾直接删除
+- 项目级 OMP 扩展位于 `.omp/extensions/<name>/`；扩展子包自带 `.gitignore` 排除 `node_modules` 与 `bun.lock`，不要把这些误当成本地垃圾直接删除；扩展自身的 devDep 仅装在子包内，不要污染根 `package.json`
 - 忽略本地或生成产物：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`.claude/settings.local.json`、`temp/`、`test-results/`
 - 不存在 `tailwind.config.js` — Tailwind v4 通过 CSS `@import "tailwindcss"` 配置
 - `GameService` 的弹药/配件配置已内联在 `game_config.rs`，**不需要**仓库根目录下的 `ammo.php` / `accessory.php`
 - 前端仅对 `src/components/app/morse-utils.ts` 有测试覆盖
 - 新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和 `src-tauri/capabilities/default.json`
 - 仓库根目录的 `ammo.json` 和 `accessory.json`（`resources/` 下）为空数组，未被实际使用
+
+## OMP 扩展
+
+- OMP 扩展放在项目级 `.omp/extensions/<name>/`，包形式（`package.json#omp.extensions` 入口声明 + `index.ts`），启动时由 OMP native provider 自动发现
+- 每个扩展子包独立 `node_modules`，只装自己需要的 devDep（`@oh-my-pi/pi-coding-agent` 仅用于 `import type` 校验），不要把扩展依赖写到根 `package.json`
+- 加载期禁止调用运行时方法（`pi.sendMessage` / `pi.sendUserMessage` 等会抛 `ExtensionRuntimeNotInitializedError`）
+- `pi.sendUserMessage` 不支持 `triggerTurn`；需要让 OMP 处理扩展入队的消息时，用 `sendUserMessage(content, { deliverAs: "followUp" })` 入队 + `ctx.ui.notify` 提示用户按 Enter 提交，不要假装自动触发新 turn
+- 新增 OMP 扩展属于"新项目级 skills / agents 目录约定"，需在本节登记扩展名、入口、命令/工具清单与默认行为
+
+### `gh-issues`（`.omp/extensions/gh-issues/`）
+
+- 依赖：`gh` CLI（需已 `gh auth login`），`@oh-my-pi/pi-coding-agent` 和 `@types/bun` devDep 用于类型校验与扩展子包测试
+- 命令：
+  - `/gh-issues [repo] [interval-min] [prompt]` — 启动长期轮询器；仓库默认 `IZRINO/delta-auto-tools`、间隔默认 60 分钟、prompt 空时仅通知；再次执行会先停止并 abort 旧轮询器，再启动新配置
+  - `/gh-issues-stop` — 停止当前轮询器
+- 行为：通过 `pi.exec` 调 `gh issue list --json ...`，按 issue `number` 去重；无 prompt 时发现新 issue 用 `ctx.ui.notify` 通知前 5 条，新轮询无新增时也通知“本轮检查完成”以证明周期执行；每次启动、输出和状态栏刷新都会显示“上次输出”与“下次运行”时间；有 prompt 时把新 issue 摘要 + 用户提示词入队为用户消息（`deliverAs: "followUp"`），用户按 Enter 提交；命令 handler 会保持未完成以维持主 OMP working 状态，`ctx.ui.setWorkingMessage` / `setStatus` 显示长期运行提示；按 Esc 或执行 `/gh-issues-stop` 会停止 timer、abort 运行中的 `gh` 命令并 resolve handler；后续轮询使用 `setTimeout` 链式调度，上一轮完整结束后才开始下一轮间隔计时，不使用 `setInterval` 重叠执行；`session_shutdown` 时自动清理定时器并 abort 运行中的 `gh` 命令
+- 状态：本会话内 in-memory，不跨会话持久化
+- 类型：`Issue`、`ParsedArgs`、`PollState` 三个 interface 在该扩展内声明
+- 验证：扩展子包提供 `bun test` 与 `bunx tsc --noEmit`
 
 ## If the project changes again
 
@@ -529,6 +549,6 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - 新的持久化结构
 - 新的开发脚本
 - 路由系统或新的应用壳层
-- 新的项目级 skills / agents 目录约定
+- 新的项目级 skills / agents / OMP 扩展目录约定
 
 请在同一轮改动里同步更新 `README.md` 与 `AGENTS.md`。
