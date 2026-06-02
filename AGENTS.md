@@ -540,20 +540,20 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 ## OMP 扩展
 
 - OMP 扩展放在项目级 `.omp/extensions/<name>/`，包形式（`package.json#omp.extensions` 入口声明 + `index.ts`），启动时由 OMP native provider 自动发现
-- 每个扩展子包独立 `node_modules`，只装自己需要的 devDep（`@oh-my-pi/pi-coding-agent` 仅用于 `import type` 校验），不要把扩展依赖写到根 `package.json`
+- 每个扩展子包独立 `node_modules`，只装自己需要的 devDep（例如 `@oh-my-pi/pi-coding-agent`、`@oh-my-pi/pi-tui`、`@types/bun` 用于类型校验与扩展子包测试），不要把扩展依赖写到根 `package.json`
 - 加载期禁止调用运行时方法（`pi.sendMessage` / `pi.sendUserMessage` 等会抛 `ExtensionRuntimeNotInitializedError`）
 - `pi.sendUserMessage` 不支持 `triggerTurn`；需要自动触发后续 Agent turn 时，使用 `pi.sendMessage({ customType, content, display, attribution }, { deliverAs: "nextTurn", triggerTurn: true })` 注入 custom message，不要用 `sendUserMessage(..., { deliverAs: "followUp" })` 假装会自动执行
 - 新增 OMP 扩展属于"新项目级 skills / agents 目录约定"，需在本节登记扩展名、入口、命令/工具清单与默认行为
 
 ### `gh-issues`（`.omp/extensions/gh-issues/`）
 
-- 依赖：`gh` CLI（需已 `gh auth login`），`@oh-my-pi/pi-coding-agent` 和 `@types/bun` devDep 用于类型校验与扩展子包测试
+- 依赖：`gh` CLI（需已 `gh auth login`），`@oh-my-pi/pi-coding-agent`、`@oh-my-pi/pi-tui` 和 `@types/bun` devDep 用于类型校验与扩展子包测试
 - 命令：
   - `/gh-issues [repo] [interval-min] [prompt]` — 启动长期轮询器；仓库默认 `IZRINO/delta-auto-tools`、间隔默认 60 分钟、prompt 空时仅通知；再次执行会先停止并 abort 旧轮询器，再启动新配置
   - `/gh-issues-stop` — 停止当前轮询器
-- 行为：通过 `pi.exec` 调 `gh issue list --json ...`，按 issue `number` 去重；无 prompt 时发现新 issue 用 `ctx.ui.notify` 通知前 5 条，新轮询无新增时也通知“本轮检查完成”以证明周期执行；每次启动、输出和状态栏刷新都会显示“上次输出”与“下次运行”时间；有 prompt 时把新 issue 摘要 + 用户提示词作为 `gh-issues-prompt` custom message 通过 `deliverAs: "nextTurn"` + `triggerTurn: true` 注入并自动触发 Agent 执行，不再要求用户二次按 Enter；命令 handler 会保持未完成以维持主 OMP working 状态，`ctx.ui.setWorkingMessage` / `setStatus` 显示长期运行提示；按 Esc 或执行 `/gh-issues-stop` 会停止 timer、abort 运行中的 `gh` 命令并 resolve handler；后续轮询使用 `setTimeout` 链式调度，上一轮完整结束后才开始下一轮间隔计时，不使用 `setInterval` 重叠执行；`session_shutdown` 时自动清理定时器并 abort 运行中的 `gh` 命令
+- 行为：通过 `pi.exec` 调 `gh issue list --json ...`，按 issue `number` 去重；无 prompt 时发现新 issue 用 `ctx.ui.notify` 通知前 5 条，新轮询无新增时也通知“本轮检查完成”以证明周期执行；每次启动、输出和状态栏刷新都会显示“上次输出”与“下次运行”时间；有 prompt 时把新 issue 摘要 + 用户提示词作为 `gh-issues-prompt` custom message 通过 `deliverAs: "nextTurn"` + `triggerTurn: true` 注入并自动触发 Agent 执行，不再要求用户二次按 Enter；命令 handler 会保持未完成以维持主 OMP working 状态，`ctx.ui.setWorkingMessage` / `setStatus` 显示长期运行提示；按 `app.interrupt` 绑定键（默认 Esc，兼容 Kitty/modifyOtherKeys 终端序列与用户重映射）或执行 `/gh-issues-stop` 会停止 timer、abort 运行中的 `gh` 命令并 resolve handler；后续轮询使用 `setTimeout` 链式调度，上一轮完整结束后才开始下一轮间隔计时，不使用 `setInterval` 重叠执行；`session_shutdown` 时自动清理定时器并 abort 运行中的 `gh` 命令
 - 状态：本会话内 in-memory，不跨会话持久化
-- 类型：`Issue`、`ParsedArgs`、`PollState`、`GhIssuesPromptDetails` 四个 interface 在该扩展内声明
+- 类型：`Issue`、`IssueAuthor`、`IssueLabel`、`ParsedArgs` 为导出或核心接口；内部 `GhIssuesWatcher` 持有轮询状态、定时器、AbortController 与 UI 清理逻辑
 - 验证：扩展子包提供 `bun test` 与 `bunx tsc --noEmit`
 
 ## If the project changes again
