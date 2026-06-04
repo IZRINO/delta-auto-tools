@@ -222,10 +222,13 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
 
     settings_value.enabled = settings_value.timer_enabled || settings_value.counter_enabled;
 
-    normalize_display(&mut settings_value.display, settings_value.timers.len())?;
+    normalize_display(
+        &mut settings_value.display,
+        settings_value.timers.iter().filter(|t| t.enabled).count(),
+    )?;
     normalize_display(
         &mut settings_value.counter_display,
-        settings_value.counters.len(),
+        settings_value.counters.iter().filter(|c| c.enabled).count(),
     )?;
 
     if settings_value.timers.is_empty() {

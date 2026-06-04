@@ -164,6 +164,17 @@ async fn run_recognition_flow(
             }
         }
 
+        // 自动点击：识别成功 + auto_click_enabled 开启 + 有配置点击区域
+        if settings_snapshot.auto_click_enabled && result.value.is_some() && !result.error.is_some() {
+            if let Err(error) = input::click_regions(
+                &settings_snapshot.click_regions,
+                settings_snapshot.auto_click_delay_ms,
+            )
+            .await
+            {
+                result.error = Some(error);
+            }
+        }
         Ok::<MorseRunResult, String>(result)
     }
     .await;
@@ -259,10 +270,11 @@ pub fn morse_set_hotkey_recording(
 #[tauri::command]
 pub async fn morse_begin_region_selection(
     slots: Vec<usize>,
+    target: String,
     app: AppHandle,
     state: State<'_, MorseState>,
 ) -> Result<RegionSelectionOutcome, String> {
-    overlay::begin_region_selection(&app, slots, state).await
+    overlay::begin_region_selection(&app, slots, target, state).await
 }
 
 #[tauri::command]

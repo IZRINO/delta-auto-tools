@@ -20,6 +20,9 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: 120,
       autoInputDelay: 80,
+      autoClickEnabled: false,
+      autoClickDelayMs: 500,
+      clickRegions: new Array(7).fill(null),
     });
 
     expect(form).toEqual({
@@ -27,6 +30,9 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: "120",
       autoInputDelay: "80",
+      autoClickEnabled: false,
+      autoClickDelayMs: "500",
+      clickRegions: new Array(7).fill(null),
     });
   });
 
@@ -36,6 +42,9 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: "127",
       autoInputDelay: "50",
+      autoClickEnabled: false,
+      autoClickDelayMs: "500",
+      clickRegions: new Array(7).fill(null),
     };
 
     expect(parseSettingsForm(form)).toEqual({
@@ -43,6 +52,9 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: 127,
       autoInputDelay: 50,
+      autoClickEnabled: false,
+      autoClickDelayMs: 500,
+      clickRegions: new Array(7).fill(null),
     });
   });
 
@@ -53,20 +65,23 @@ describe("morse-utils", () => {
         regions: [null, null, null],
         binaryThreshold: "127",
         autoInputDelay: "50",
-      }),
+        autoClickEnabled: false,
+        autoClickDelayMs: "500",
+        clickRegions: [],
+      } as MorseSettingsForm),
     ).toThrow("热键不能为空");
   });
-
-  it("rejects an invalid threshold", () => {
     expect(() =>
       parseSettingsForm({
         hotkey: "F1",
         regions: [null, null, null],
         binaryThreshold: "300",
         autoInputDelay: "50",
-      }),
+        autoClickEnabled: false,
+        autoClickDelayMs: "500",
+        clickRegions: [],
+      } as MorseSettingsForm),
     ).toThrow("二值化阈值必须是 0 到 255 之间的整数");
-  });
 
   it("rejects an invalid auto input delay", () => {
     expect(() =>
@@ -75,7 +90,10 @@ describe("morse-utils", () => {
         regions: [null, null, null],
         binaryThreshold: "127",
         autoInputDelay: "-1",
-      }),
+        autoClickEnabled: false,
+        autoClickDelayMs: "500",
+        clickRegions: [],
+      } as MorseSettingsForm),
     ).toThrow("输入延迟必须是大于等于 0 的整数毫秒值");
   });
 

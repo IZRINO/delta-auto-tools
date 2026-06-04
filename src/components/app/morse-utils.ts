@@ -18,6 +18,9 @@ export function settingsToForm(settings: MorseSettings): MorseSettingsForm {
     regions: settings.regions,
     binaryThreshold: String(settings.binaryThreshold),
     autoInputDelay: String(settings.autoInputDelay),
+    autoClickEnabled: settings.autoClickEnabled ?? false,
+    autoClickDelayMs: String(settings.autoClickDelayMs ?? 500),
+    clickRegions: settings.clickRegions ?? new Array(7).fill(null),
   };
 }
 
@@ -42,6 +45,9 @@ export function parseSettingsForm(form: MorseSettingsForm): MorseSettings {
     regions: form.regions,
     binaryThreshold,
     autoInputDelay,
+    autoClickEnabled: form.autoClickEnabled,
+    autoClickDelayMs: Number.parseInt(form.autoClickDelayMs, 10) || 500,
+    clickRegions: form.clickRegions,
   };
 }
 

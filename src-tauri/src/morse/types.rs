@@ -16,6 +16,19 @@ pub struct MorseSettings {
     pub regions: [Option<RegionRect>; 3],
     pub binary_threshold: u8,
     pub auto_input_delay: u64,
+    /// 识别成功后自动点击已配置区域
+    #[serde(default)]
+    pub auto_click_enabled: bool,
+    /// 每次点击前的延迟（毫秒）
+    #[serde(default = "default_auto_click_delay")]
+    pub auto_click_delay_ms: u64,
+    /// 点击区域（最多 7 个），使用与采样区域相同的 RegionRect
+    #[serde(default)]
+    pub click_regions: [Option<RegionRect>; 7],
+}
+
+fn default_auto_click_delay() -> u64 {
+    500
 }
 
 impl Default for MorseSettings {
@@ -25,6 +38,9 @@ impl Default for MorseSettings {
             regions: [None, None, None],
             binary_threshold: 127,
             auto_input_delay: 50,
+            auto_click_enabled: false,
+            auto_click_delay_ms: 500,
+            click_regions: Default::default(),
         }
     }
 }
@@ -78,6 +94,9 @@ pub struct RegionSelectionProgress {
     pub current_slot: Option<usize>,
     pub regions: [Option<RegionRect>; 3],
     pub completed_slots: Vec<usize>,
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub click_regions: Option<Vec<Option<RegionRect>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +104,9 @@ pub struct RegionSelectionProgress {
 pub struct RegionSelectionOutcome {
     pub kind: RegionSelectionKind,
     pub regions: [Option<RegionRect>; 3],
+    pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub click_regions: Option<Vec<Option<RegionRect>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

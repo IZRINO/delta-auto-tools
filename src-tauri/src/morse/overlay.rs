@@ -9,9 +9,10 @@ use super::{
 
 #[derive(Debug)]
 pub struct PendingSelection {
+    pub target: String,
     pub slots: Vec<usize>,
     pub current_index: usize,
-    pub staged_regions: [Option<RegionRect>; 3],
+    pub staged: Vec<Option<RegionRect>>,
     pub sender: oneshot::Sender<RegionSelectionKind>,
 }
 
@@ -52,37 +53,34 @@ fn destroy_overlay_window(app: &AppHandle) {
         let _ = window.destroy();
     }
 }
-
-fn parse_slots(slots: &[usize]) -> Result<Vec<usize>, String> {
+fn parse_slots(slots: &[usize], max_slots: usize) -> Result<Vec<usize>, String> {
     if slots.is_empty() {
         return Err("至少需要选择一个区域槽位".to_string());
     }
 
-    let mut seen = [false; 3];
+    let mut seen = vec![false; max_slots];
     let mut parsed = Vec::with_capacity(slots.len());
 
     for &slot in slots {
-        if slot >= 3 {
-            return Err(format!("无效区域槽位: {slot}"));
+        if slot >= max_slots {
+            return Err(format!("无效区域槽位: {slot}（最大 {}）", max_slots - 1));
         }
-
         if seen[slot] {
-            return Err(format!("区域槽位重复: {slot}"));
+            return Err(format!("区域槽位 {slot} 重复"));
         }
-
         seen[slot] = true;
         parsed.push(slot);
     }
 
     Ok(parsed)
 }
-
 fn prepare_selection_from_pending(
     pending: &PendingSelection,
     slot: usize,
     rect: RegionRect,
 ) -> Result<PreparedSelection, String> {
-    if slot >= 3 {
+    let max_slots = pending.staged.len();
+    if slot >= max_slots {
         return Err(format!("无效区域槽位: {slot}"));
     }
 
@@ -101,8 +99,8 @@ fn prepare_selection_from_pending(
         ));
     }
 
-    let mut regions = pending.staged_regions.clone();
-    regions[slot] = Some(rect);
+    let mut staged = pending.staged.clone();
+    staged[slot] = Some(rect);
 
     let next_index = pending.current_index + 1;
     let is_complete = next_index >= pending.slots.len();
@@ -112,6 +110,17 @@ fn prepare_selection_from_pending(
         pending.slots.get(next_index).copied()
     };
 
+    let (regions, click_regions) = if pending.target == "click" {
+        ([None, None, None], Some(staged))
+    } else {
+        // Convert Vec<Option<RegionRect>> back to [Option<RegionRect>; 3]
+        let mut arr = [None, None, None];
+        for (i, r) in staged.into_iter().enumerate().take(3) {
+            arr[i] = r;
+        }
+        (arr, None)
+    };
+
     Ok(PreparedSelection {
         expected_slot,
         is_complete,
@@ -119,6 +128,8 @@ fn prepare_selection_from_pending(
             current_slot,
             regions,
             completed_slots: pending.completed_slots(next_index),
+            target: pending.target.clone(),
+            click_regions,
         },
     })
 }
@@ -126,9 +137,11 @@ fn prepare_selection_from_pending(
 pub async fn begin_region_selection(
     app: &AppHandle,
     slots: Vec<usize>,
+    target: String,
     state: State<'_, MorseState>,
 ) -> Result<RegionSelectionOutcome, String> {
-    let slots = parse_slots(&slots)?;
+    let max_slots = if target == "click" { 7 } else { 3 };
+    let slots = parse_slots(&slots, max_slots)?;
     let (sender, receiver) = oneshot::channel();
 
     {
@@ -145,10 +158,17 @@ pub async fn begin_region_selection(
             return Err("当前识别任务正在运行，请稍后再试".to_string());
         }
 
+        let initial = if target == "click" {
+            inner.settings.click_regions.to_vec()
+        } else {
+            inner.settings.regions.to_vec()
+        };
+
         inner.pending_selection = Some(PendingSelection {
+            target: target.clone(),
             slots: slots.clone(),
             current_index: 0,
-            staged_regions: inner.settings.regions.clone(),
+            staged: initial,
             sender,
         });
     }
@@ -205,20 +225,31 @@ pub async fn begin_region_selection(
     };
     destroy_overlay_window(app);
 
-    let regions = {
+
+    let (regions, target, click_regions) = {
         let inner = state
             .inner
             .lock()
             .map_err(|_| "区域选择状态已损坏".to_string())?;
 
         if let Some(pending) = inner.pending_selection.as_ref() {
-            pending.staged_regions.clone()
+            let (regions, click_regions) = if pending.target == "click" {
+                ([None, None, None], Some(pending.staged.clone()))
+            } else {
+                let mut arr = [None, None, None];
+                for (i, r) in pending.staged.iter().enumerate().take(3) {
+                    arr[i] = r.clone();
+                }
+                (arr, None)
+            };
+            (regions, pending.target.clone(), click_regions)
         } else {
-            inner.settings.regions.clone()
+            let regions = inner.settings.regions.clone();
+            (regions, "sampling".to_string(), None)
         }
     };
 
-    Ok(RegionSelectionOutcome { kind, regions })
+    Ok(RegionSelectionOutcome { kind, regions, target, click_regions })
 }
 
 pub fn prepare_selection(
@@ -273,13 +304,27 @@ pub fn commit_selection(
                 .pending_selection
                 .take()
                 .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
-            inner.settings.regions = prepared.progress.regions.clone();
+            let is_click = pending.target == "click";
+            if is_click {
+                if let Some(ref click_regions) = prepared.progress.click_regions {
+                    for (i, r) in click_regions.iter().enumerate().take(7) {
+                        inner.settings.click_regions[i] = r.clone();
+                    }
+                }
+            } else {
+                inner.settings.regions = prepared.progress.regions.clone();
+            }
             sender = Some(pending.sender);
         } else if let Some(pending) = inner.pending_selection.as_mut() {
-            pending.staged_regions = prepared.progress.regions.clone();
+            if let Some(ref click_regions) = prepared.progress.click_regions {
+                pending.staged = click_regions.clone();
+            } else {
+                pending.staged = prepared.progress.regions.iter().cloned().collect();
+            }
             pending.current_index = prepared.progress.completed_slots.len();
         }
     }
+
 
     if let Some(sender) = sender {
         destroy_overlay_window(app);
@@ -296,10 +341,6 @@ pub fn cancel_selection(
     slot: usize,
     state: &State<'_, MorseState>,
 ) -> Result<(), String> {
-    if slot >= 3 {
-        return Err(format!("无效区域槽位: {slot}"));
-    }
-
     let mut inner = state
         .inner
         .lock()
@@ -309,6 +350,10 @@ pub fn cancel_selection(
         .pending_selection
         .take()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
+
+    if slot >= pending.staged.len() {
+        return Err(format!("无效区域槽位: {slot}"));
+    }
 
     let expected_slot = pending
         .current_slot()
@@ -335,13 +380,13 @@ pub fn cancel_selection(
 mod tests {
     use super::*;
     use tokio::sync::oneshot;
-
     fn sample_pending(slots: Vec<usize>, current_index: usize) -> PendingSelection {
         let (sender, _receiver) = oneshot::channel();
         PendingSelection {
+            target: "sampling".to_string(),
             slots,
             current_index,
-            staged_regions: [None, None, None],
+            staged: vec![None, None, None],
             sender,
         }
     }
@@ -357,10 +402,10 @@ mod tests {
 
     #[test]
     fn parse_slots_validates_inputs() {
-        assert_eq!(parse_slots(&[0, 2]).unwrap(), vec![0, 2]);
-        assert!(parse_slots(&[]).is_err());
-        assert!(parse_slots(&[3]).is_err());
-        assert!(parse_slots(&[1, 1]).is_err());
+        assert_eq!(parse_slots(&[0, 2], 3).unwrap(), vec![0, 2]);
+        assert!(parse_slots(&[], 3).is_err());
+        assert!(parse_slots(&[3], 3).is_err());
+        assert!(parse_slots(&[1, 1], 3).is_err());
     }
 
     #[test]
@@ -394,13 +439,12 @@ mod tests {
     #[test]
     fn prepare_selection_advances_to_next_slot() {
         let mut pending = sample_pending(vec![0, 2], 0);
-        pending.staged_regions[1] = Some(RegionRect {
+        pending.staged[1] = Some(RegionRect {
             x: 1,
             y: 1,
             width: 2,
             height: 2,
         });
-
         let prepared = prepare_selection_from_pending(&pending, 0, sample_rect()).unwrap();
         assert!(!prepared.is_complete);
         assert_eq!(prepared.expected_slot, 0);

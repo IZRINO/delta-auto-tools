@@ -16,6 +16,12 @@ export type MorseSettings = {
   regions: RegionTuple;
   binaryThreshold: number;
   autoInputDelay: number;
+  /** 识别成功后自动点击已配置区域 */
+  autoClickEnabled: boolean;
+  /** 每次点击前的延迟（毫秒） */
+  autoClickDelayMs: number;
+  /** 点击区域（最多 7 个） */
+  clickRegions: (RegionRect | null)[];
 };
 
 export type MorseSettingsForm = {
@@ -23,6 +29,12 @@ export type MorseSettingsForm = {
   regions: RegionTuple;
   binaryThreshold: string;
   autoInputDelay: string;
+  /** 识别成功后自动点击已配置区域 */
+  autoClickEnabled: boolean;
+  /** 每次点击前的延迟（毫秒） */
+  autoClickDelayMs: string;
+  /** 点击区域（最多 7 个） */
+  clickRegions: (RegionRect | null)[];
 };
 
 export type VerificationStatus = "idle" | "running" | "success" | "empty" | "error";
@@ -71,6 +83,8 @@ export type RegionSelectionProgress = {
 export type RegionSelectionOutcome = {
   kind: "selected" | "cancelled" | "closed";
   regions: RegionTuple;
+  target: string;
+  clickRegions?: (RegionRect | null)[] | null;
 };
 
 export type Point = {

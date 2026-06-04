@@ -232,8 +232,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   const dirty = useMemo(() => isTimerDirty(bootstrap, form), [bootstrap, form]);
   const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
   const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
-  const controlsDisabled = loading || saving || !isNativeShell;
-
+  const controlsDisabled = loading || !isNativeShell;
   const updateForm = useCallback(<K extends keyof TimerSettingsForm>(key: K, value: TimerSettingsForm[K]) => {
     setForm((current) => (current ? { ...current, [key]: value } : current));
   }, []);
@@ -989,7 +988,12 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
     if (run.segmentCount != null && run.segmentCount >= 2) {
       const durationMs = run.durationSeconds * 1000;
       const poolMs = run.recoveryStartPool * 1000 + (now - run.startedAtMs);
-      return Math.max(0, Math.min(100, (poolMs / durationMs) * 100));
+      const cappedPoolMs = Math.max(0, Math.min(durationMs, poolMs));
+      if (run.direction === "countdown") {
+        // 倒计时多段：进度 = 已消耗 / 总时长
+        return Math.max(0, Math.min(100, ((durationMs - cappedPoolMs) / durationMs) * 100));
+      }
+      return Math.max(0, Math.min(100, (cappedPoolMs / durationMs) * 100));
     }
     const durationMs = run.durationSeconds * 1000;
     if (run.direction === "countup") {
@@ -1003,6 +1007,10 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
       return "";
     }
     if (!run.startedAtMs || run.status === "finished") {
+      if (run.segmentCount != null && run.segmentCount >= 2 && run.direction === "countdown") {
+        // 多段倒计时结束：已消耗 = 总时长 - 当前池子 (= 总时长 - 总时长 = 0)
+        return Math.floor(run.durationSeconds - run.currentSeconds).toString();
+      }
       return Math.floor(run.currentSeconds).toString();
     }
     if (run.segmentCount != null && run.segmentCount >= 2) {
@@ -1020,6 +1028,10 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   function smoothSegmentDisplayValue(run: TimerRunState): string {
     const durationMs = run.durationSeconds * 1000;
     const poolMs = Math.min(durationMs, run.recoveryStartPool * 1000 + (now - run.startedAtMs));
+    if (run.direction === "countdown") {
+      // 倒计时：显示已消耗的时间 = 总时长 - 当前池子
+      return Math.ceil((durationMs - poolMs) / 1000).toString();
+    }
     return Math.floor(poolMs / 1000).toString();
   }
 

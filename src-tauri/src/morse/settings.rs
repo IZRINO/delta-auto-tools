@@ -27,6 +27,9 @@ mod tests {
             regions: [None, None, None],
             binary_threshold: 100,
             auto_input_delay: 25,
+            auto_click_enabled: false,
+            auto_click_delay_ms: 500,
+            click_regions: Default::default(),
         }
     }
 

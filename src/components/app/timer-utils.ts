@@ -200,6 +200,10 @@ export function timerProgressPercent(run: TimerRunState | undefined, durationSec
   }
 
   const total = run.durationSeconds || durationSeconds;
+  // 多段倒计时：进度 = 已消耗 / 总时长
+  if (run.segmentCount != null && run.segmentCount >= 2 && run.direction === "countdown") {
+    return Math.max(0, Math.min(100, ((total - run.remainingSeconds) / total) * 100));
+  }
   return Math.max(0, Math.min(100, (run.remainingSeconds / total) * 100));
 }
 
