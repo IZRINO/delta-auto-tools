@@ -282,7 +282,8 @@ fn restart_hotkey_listeners(
     settings_value: &TimerSettings,
 ) -> Result<(), String> {
     if !settings_value.timer_enabled && !settings_value.counter_enabled {
-        return hotkey_manager.clear_scope("timer");
+        hotkey_manager.clear_scope("timer")?;
+        return hotkey_manager.clear_hold_scope("timer");
     }
 
     // 收集所有热键绑定的目标
@@ -366,6 +367,9 @@ fn restart_hotkey_listeners(
 
     // 先清空 scope，再分别注册普通和 hold 绑定
     hotkey_manager.clear_scope("timer")?;
+    // 始终调用 clear_hold_scope，避免 release 模式计时器全部移除后
+    // 旧的 hold 绑定残留导致 Up 事件仍触发空回调
+    hotkey_manager.clear_hold_scope("timer")?;
 
     if !normal_bindings.is_empty() {
         hotkey_manager.replace_scope("timer", normal_bindings)?;
@@ -374,7 +378,6 @@ fn restart_hotkey_listeners(
     if !hold_bindings.is_empty() {
         hotkey_manager.replace_hold_scope("timer", hold_bindings)?;
     }
-
     if let Ok(mut inner) = state.inner.lock() {
         inner.hotkey_error = None;
     }
