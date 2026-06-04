@@ -133,16 +133,16 @@ type WorkbenchControlPanelProps = {
   verificationStatus: VerificationStatus;
   verificationValue: string;
   autoClickEnabled: boolean;
-  autoClickDelayMs: string;
-  clickRegions: (RegionRect | null)[];
-  onAutoClickDelayChange: (value: string) => void;
+  clickRegions: { rect: RegionRect | null; delayMs: string }[];
   onAutoClickEnabledChange: (value: boolean) => void;
   onAutoInputDelayChange: (value: string) => void;
   onBeginHotkeyRecording: () => void;
   onBinaryThresholdChange: (value: string) => void;
   onHotkeyRecorderBlur: () => void;
   onHotkeyRecorderKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
-  onSelectClickRegions: () => void;
+  onUpdateClickRegionDelay: (index: number, delayMs: string) => void;
+  onAddClickRegion: () => void;
+  onRemoveClickRegion: (index: number) => void;
   onVerificationChange: (value: string) => void;
   onVerificationFocus: () => void;
   onVerificationRetry: () => void;
@@ -157,16 +157,16 @@ export function WorkbenchControlPanel({
   isPrimary = false,
   isVerifying,
   autoClickEnabled,
-  autoClickDelayMs,
   clickRegions,
-  onAutoClickDelayChange,
   onAutoClickEnabledChange,
   onAutoInputDelayChange,
   onBeginHotkeyRecording,
   onBinaryThresholdChange,
   onHotkeyRecorderBlur,
   onHotkeyRecorderKeyDown,
-  onSelectClickRegions,
+  onUpdateClickRegionDelay,
+  onAddClickRegion,
+  onRemoveClickRegion,
   onVerificationChange,
   onVerificationFocus,
   onVerificationRetry,
@@ -257,45 +257,50 @@ export function WorkbenchControlPanel({
                     <p className="mt-1 text-xs text-muted-foreground">识别成功后按延迟依次点击已配置区域。</p>
                   </div>
                 </ControlTile>
-
                 {autoClickEnabled && (
                   <>
-                    <Field className="xl:min-h-0">
-                      <FieldLabel htmlFor="auto-click-delay">点击延迟（毫秒）</FieldLabel>
-                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
-                        <Input
-                          id="auto-click-delay"
-                          inputMode="numeric"
-                          min="0"
-                          value={autoClickDelayMs}
-                          onChange={(event) => onAutoClickDelayChange(event.currentTarget.value)}
-                        />
-                      </FieldContent>
-                    </Field>
-
                     <Field className="xl:min-h-0">
                       <FieldLabel>点击区域（最多 7 个）</FieldLabel>
                       <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                         <div className="flex flex-col gap-2">
-                          {clickRegions.slice(0, 7).map((region, index) => (
-                            <div key={index} className="flex items-center gap-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] px-3 py-2">
-                              <Badge variant={region ? "default" : "outline"} className="shrink-0">
+                          {clickRegions.slice(0, 7).map((cr, index) => (
+                            <ControlTile key={index} className="flex items-center gap-3">
+                              <Badge variant={cr.rect ? "default" : "outline"} className="shrink-0">
                                 {index + 1}
                               </Badge>
-                              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-muted-foreground">
-                                {region ? `x:${region.x} y:${region.y} w:${region.width} h:${region.height}` : "未配置"}
+                              <span className="flex-1 font-mono text-xs text-muted-foreground">
+                                {formatRegion(cr.rect)}
                               </span>
-                            </div>
+                              <Input
+                                className="w-20"
+                                inputMode="numeric"
+                                min="0"
+                                value={cr.delayMs}
+                                onChange={(e) => onUpdateClickRegionDelay(index, e.currentTarget.value)}
+                              />
+                              <span className="text-xs text-muted-foreground">ms</span>
+                              <Button
+                                className="h-7 w-7 shrink-0 p-0"
+                                disabled={isBusy}
+                                onClick={() => onRemoveClickRegion(index)}
+                                type="button"
+                                variant="ghost"
+                              >
+                                ×
+                              </Button>
+                            </ControlTile>
                           ))}
-                          <Button
-                            disabled={isBusy}
-                            onClick={onSelectClickRegions}
-                            type="button"
-                            variant="outline"
-                          >
-                            <RiLayoutGridLine data-icon="inline-start" />
-                            设置点击区域
-                          </Button>
+                          {clickRegions.filter((r) => r.rect).length < 7 && (
+                            <Button
+                              disabled={isBusy}
+                              onClick={onAddClickRegion}
+                              type="button"
+                              variant="outline"
+                            >
+                              <RiLayoutGridLine data-icon="inline-start" />
+                              添加点击区域
+                            </Button>
+                          )}
                         </div>
                       </FieldContent>
                     </Field>

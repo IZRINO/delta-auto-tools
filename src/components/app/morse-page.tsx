@@ -371,43 +371,65 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     }
   }, [isNativeShell, syncBootstrap]);
 
-  const performClickRegionSelection = useCallback(async () => {
+  const handleUpdateClickRegionDelay = useCallback((index: number, delayMs: string) => {
+    setForm((current) => {
+      if (!current) return current;
+      const next = current.clickRegions.map((r, i) =>
+        i === index ? { ...r, delayMs } : r,
+      );
+      return { ...current, clickRegions: next };
+    });
+  }, []);
+
+  const handleAddClickRegion = useCallback(async () => {
     if (!isNativeShell) {
       setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
-      return false;
+      return;
+    }
+
+    // 找到第一个空槽位
+    const regions = form?.clickRegions ?? [];
+    const emptyIndex = regions.findIndex((r) => !r.rect);
+    if (emptyIndex === -1) {
+      setStatusMessage("点击区域已满（最多 7 个）。");
+      return;
     }
 
     setSelectingSlot(-2);
-    setStatusMessage("请在悬浮层中完成最多 7 个点击区域的框选。");
+    setStatusMessage(`请在悬浮层中框选一个新的点击区域（槽位 ${emptyIndex + 1}）。`);
 
     try {
       const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
-        slots: [0, 1, 2, 3, 4, 5, 6],
+        slots: [emptyIndex],
         target: "click",
       });
       await syncBootstrap("full");
 
       if (outcome.kind === "selected") {
-        setStatusMessage("点击区域已更新。");
-        return true;
-      }
-
-      if (outcome.kind === "cancelled") {
+        setStatusMessage(`点击区域 ${emptyIndex + 1} 已添加。`);
+      } else if (outcome.kind === "cancelled") {
         setStatusMessage("点击区域选择已取消。");
-        return false;
+      } else {
+        setStatusMessage("点击区域选择窗口已关闭。");
       }
-
-      setStatusMessage("点击区域选择窗口已关闭。");
-      return false;
     } catch (error) {
       const message = getErrorMessage(error);
       setPageError(message);
       setStatusMessage(message);
-      return false;
     } finally {
       setSelectingSlot(null);
     }
-  }, [isNativeShell, syncBootstrap]);
+  }, [form?.clickRegions, isNativeShell, syncBootstrap]);
+
+  const handleRemoveClickRegion = useCallback((index: number) => {
+    setForm((current) => {
+      if (!current) return current;
+      const next = current.clickRegions.map((r, i) =>
+        i === index ? { rect: null, delayMs: "500" } : r,
+      );
+      return { ...current, clickRegions: next };
+    });
+  }, []);
 
   const handleVerificationRun = useCallback(async () => {
     if (!isNativeShell) {
@@ -572,12 +594,12 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
             verificationStatus={verificationStatus}
             verificationValue={verificationValue}
             autoClickEnabled={form?.autoClickEnabled ?? false}
-            autoClickDelayMs={form?.autoClickDelayMs ?? "500"}
-            clickRegions={form?.clickRegions ?? new Array(7).fill(null)}
+            clickRegions={form?.clickRegions ?? []}
             isBusy={isBusy}
             onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
-            onAutoClickDelayChange={(value) => updateForm("autoClickDelayMs", value)}
-            onSelectClickRegions={() => void performClickRegionSelection()}
+            onUpdateClickRegionDelay={handleUpdateClickRegionDelay}
+            onAddClickRegion={() => void handleAddClickRegion()}
+            onRemoveClickRegion={handleRemoveClickRegion}
           />
 
           <ResultPanel

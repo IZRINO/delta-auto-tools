@@ -3,16 +3,30 @@ use tokio::sync::oneshot;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use super::{
-    types::{RegionRect, RegionSelectionKind, RegionSelectionOutcome, RegionSelectionProgress},
+    types::{ClickRegion, RegionRect, RegionSelectionKind, RegionSelectionOutcome, RegionSelectionProgress},
     MorseState,
 };
+
+/// 将 click 模式的 `Vec<ClickRegion>` 转换为 slot 索引的 `Vec<Option<ClickRegion>>`，补齐到 7 个槽位。
+fn click_regions_to_staged(click_regions: &[ClickRegion]) -> Vec<Option<ClickRegion>> {
+    let mut staged = vec![None; 7];
+    for (i, cr) in click_regions.iter().enumerate() {
+        staged[i] = Some(cr.clone());
+    }
+    staged
+}
+
+/// 将 slot 索引的 `Vec<Option<ClickRegion>>` 过滤为 `Vec<ClickRegion>`（去掉未配置的槽位）。
+fn staged_to_click_regions(staged: &[Option<ClickRegion>]) -> Vec<ClickRegion> {
+    staged.iter().filter_map(|x| x.clone()).collect()
+}
 
 #[derive(Debug)]
 pub struct PendingSelection {
     pub target: String,
     pub slots: Vec<usize>,
     pub current_index: usize,
-    pub staged: Vec<Option<RegionRect>>,
+    pub staged: Vec<Option<ClickRegion>>,
     pub sender: oneshot::Sender<RegionSelectionKind>,
 }
 
@@ -53,6 +67,7 @@ fn destroy_overlay_window(app: &AppHandle) {
         let _ = window.destroy();
     }
 }
+
 fn parse_slots(slots: &[usize], max_slots: usize) -> Result<Vec<usize>, String> {
     if slots.is_empty() {
         return Err("至少需要选择一个区域槽位".to_string());
@@ -74,6 +89,7 @@ fn parse_slots(slots: &[usize], max_slots: usize) -> Result<Vec<usize>, String> 
 
     Ok(parsed)
 }
+
 fn prepare_selection_from_pending(
     pending: &PendingSelection,
     slot: usize,
@@ -100,7 +116,9 @@ fn prepare_selection_from_pending(
     }
 
     let mut staged = pending.staged.clone();
-    staged[slot] = Some(rect);
+    // 保留已有区域的 delay_ms，新区域默认 500ms
+    let existing_delay = staged[slot].as_ref().map(|c| c.delay_ms).unwrap_or(500);
+    staged[slot] = Some(ClickRegion { rect, delay_ms: existing_delay });
 
     let next_index = pending.current_index + 1;
     let is_complete = next_index >= pending.slots.len();
@@ -111,12 +129,11 @@ fn prepare_selection_from_pending(
     };
 
     let (regions, click_regions) = if pending.target == "click" {
-        ([None, None, None], Some(staged))
+        ([None, None, None], Some(staged_to_click_regions(&staged)))
     } else {
-        // Convert Vec<Option<RegionRect>> back to [Option<RegionRect>; 3]
         let mut arr = [None, None, None];
-        for (i, r) in staged.into_iter().enumerate().take(3) {
-            arr[i] = r;
+        for (i, opt) in staged.iter().enumerate().take(3) {
+            arr[i] = opt.as_ref().map(|c| c.rect.clone());
         }
         (arr, None)
     };
@@ -158,10 +175,12 @@ pub async fn begin_region_selection(
             return Err("当前识别任务正在运行，请稍后再试".to_string());
         }
 
-        let initial = if target == "click" {
-            inner.settings.click_regions.to_vec()
+        let initial: Vec<Option<ClickRegion>> = if target == "click" {
+            click_regions_to_staged(&inner.settings.click_regions)
         } else {
-            inner.settings.regions.to_vec()
+            inner.settings.regions.iter().map(|r| {
+                r.as_ref().map(|rect| ClickRegion { rect: rect.clone(), delay_ms: 500 })
+            }).collect()
         };
 
         inner.pending_selection = Some(PendingSelection {
@@ -225,7 +244,6 @@ pub async fn begin_region_selection(
     };
     destroy_overlay_window(app);
 
-
     let (regions, target, click_regions) = {
         let inner = state
             .inner
@@ -234,11 +252,11 @@ pub async fn begin_region_selection(
 
         if let Some(pending) = inner.pending_selection.as_ref() {
             let (regions, click_regions) = if pending.target == "click" {
-                ([None, None, None], Some(pending.staged.clone()))
+                ([None, None, None], Some(staged_to_click_regions(&pending.staged)))
             } else {
                 let mut arr = [None, None, None];
-                for (i, r) in pending.staged.iter().enumerate().take(3) {
-                    arr[i] = r.clone();
+                for (i, opt) in pending.staged.iter().enumerate().take(3) {
+                    arr[i] = opt.as_ref().map(|c| c.rect.clone());
                 }
                 (arr, None)
             };
@@ -307,9 +325,7 @@ pub fn commit_selection(
             let is_click = pending.target == "click";
             if is_click {
                 if let Some(ref click_regions) = prepared.progress.click_regions {
-                    for (i, r) in click_regions.iter().enumerate().take(7) {
-                        inner.settings.click_regions[i] = r.clone();
-                    }
+                    inner.settings.click_regions = click_regions.clone();
                 }
             } else {
                 inner.settings.regions = prepared.progress.regions.clone();
@@ -317,14 +333,21 @@ pub fn commit_selection(
             sender = Some(pending.sender);
         } else if let Some(pending) = inner.pending_selection.as_mut() {
             if let Some(ref click_regions) = prepared.progress.click_regions {
-                pending.staged = click_regions.clone();
+                // 非完成态下，click_regions 是当前的 Vec<ClickRegion>，
+                // 回填到 slot 索引的 staged 中
+                let mut new_staged = vec![None; pending.staged.len()];
+                for (i, cr) in click_regions.iter().enumerate() {
+                    new_staged[i] = Some(cr.clone());
+                }
+                pending.staged = new_staged;
             } else {
-                pending.staged = prepared.progress.regions.iter().cloned().collect();
+                pending.staged = prepared.progress.regions.iter().map(|r| {
+                    r.as_ref().map(|rect| ClickRegion { rect: rect.clone(), delay_ms: 500 })
+                }).collect();
             }
             pending.current_index = prepared.progress.completed_slots.len();
         }
     }
-
 
     if let Some(sender) = sender {
         destroy_overlay_window(app);
@@ -332,6 +355,38 @@ pub fn commit_selection(
             .send(RegionSelectionKind::Selected)
             .map_err(|_| "无法完成区域选择回传".to_string())?;
     }
+
+    Ok(())
+}
+
+/// 提前结束区域选择（仅 click 模式）。保存当前已选区域并关闭 overlay。
+pub fn finish_early(app: &AppHandle, state: &State<'_, MorseState>) -> Result<(), String> {
+    let mut inner = state
+        .inner
+        .lock()
+        .map_err(|_| "区域选择状态已损坏".to_string())?;
+
+    let pending = inner
+        .pending_selection
+        .take()
+        .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
+
+    if pending.target != "click" {
+        // 采样模式不支持提前结束
+        inner.pending_selection = Some(pending);
+        return Err("当前不是点击区域选择，不支持提前结束".to_string());
+    }
+
+    // 保存当前已选的 click 区域
+    inner.settings.click_regions = staged_to_click_regions(&pending.staged);
+
+    drop(inner);
+    destroy_overlay_window(app);
+
+    pending
+        .sender
+        .send(RegionSelectionKind::Selected)
+        .map_err(|_| "无法完成区域选择回传".to_string())?;
 
     Ok(())
 }
@@ -380,6 +435,8 @@ pub fn cancel_selection(
 mod tests {
     use super::*;
     use tokio::sync::oneshot;
+
+    /// 创建一个包含 3 个空槽位的 PendingSelection，用于采样模式测试。
     fn sample_pending(slots: Vec<usize>, current_index: usize) -> PendingSelection {
         let (sender, _receiver) = oneshot::channel();
         PendingSelection {
@@ -439,11 +496,9 @@ mod tests {
     #[test]
     fn prepare_selection_advances_to_next_slot() {
         let mut pending = sample_pending(vec![0, 2], 0);
-        pending.staged[1] = Some(RegionRect {
-            x: 1,
-            y: 1,
-            width: 2,
-            height: 2,
+        pending.staged[1] = Some(ClickRegion {
+            rect: RegionRect { x: 1, y: 1, width: 2, height: 2 },
+            delay_ms: 500,
         });
         let prepared = prepare_selection_from_pending(&pending, 0, sample_rect()).unwrap();
         assert!(!prepared.is_complete);

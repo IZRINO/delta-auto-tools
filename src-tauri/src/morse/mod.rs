@@ -168,7 +168,6 @@ async fn run_recognition_flow(
         if settings_snapshot.auto_click_enabled && result.value.is_some() && !result.error.is_some() {
             if let Err(error) = input::click_regions(
                 &settings_snapshot.click_regions,
-                settings_snapshot.auto_click_delay_ms,
             )
             .await
             {
@@ -313,6 +312,24 @@ pub fn morse_overlay_cancel_selection(
     state: State<'_, MorseState>,
 ) -> Result<(), String> {
     overlay::cancel_selection(&app, slot, &state)
+}
+
+/// 提前结束点击区域选择（Enter 键触发），保存当前已选区域。
+#[tauri::command]
+pub fn morse_overlay_finish_early(
+    app: AppHandle,
+    state: State<'_, MorseState>,
+) -> Result<(), String> {
+    overlay::finish_early(&app, &state)?;
+    let settings_snapshot = {
+        let inner = state
+            .inner
+            .lock()
+            .map_err(|_| "摩斯状态已损坏".to_string())?;
+        inner.settings.clone()
+    };
+    settings::save_settings(&app, &settings_snapshot)?;
+    Ok(())
 }
 
 #[tauri::command]

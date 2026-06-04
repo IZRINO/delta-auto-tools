@@ -8,8 +8,14 @@ export type RegionRect = {
   width: number;
   height: number;
 };
-
 export type RegionTuple = [RegionRect | null, RegionRect | null, RegionRect | null];
+
+
+export type ClickRegion = {
+  rect: RegionRect;
+  /** 该点击区域的独立延迟（毫秒） */
+  delayMs: number;
+};
 
 export type MorseSettings = {
   hotkey: string;
@@ -18,10 +24,8 @@ export type MorseSettings = {
   autoInputDelay: number;
   /** 识别成功后自动点击已配置区域 */
   autoClickEnabled: boolean;
-  /** 每次点击前的延迟（毫秒） */
-  autoClickDelayMs: number;
-  /** 点击区域（最多 7 个） */
-  clickRegions: (RegionRect | null)[];
+  /** 点击区域（最多 7 个），每个区域独立延迟 */
+  clickRegions: ClickRegion[];
 };
 
 export type MorseSettingsForm = {
@@ -31,10 +35,8 @@ export type MorseSettingsForm = {
   autoInputDelay: string;
   /** 识别成功后自动点击已配置区域 */
   autoClickEnabled: boolean;
-  /** 每次点击前的延迟（毫秒） */
-  autoClickDelayMs: string;
-  /** 点击区域（最多 7 个） */
-  clickRegions: (RegionRect | null)[];
+  /** 点击区域（最多 7 个），每个区域独立延迟字符串 */
+  clickRegions: { rect: RegionRect | null; delayMs: string }[];
 };
 
 export type VerificationStatus = "idle" | "running" | "success" | "empty" | "error";
@@ -80,11 +82,14 @@ export type RegionSelectionProgress = {
   completedSlots: number[];
 };
 
+export type RegionSelectionKind = "selected" | "cancelled" | "closed";
+
 export type RegionSelectionOutcome = {
-  kind: "selected" | "cancelled" | "closed";
+  kind: RegionSelectionKind;
   regions: RegionTuple;
   target: string;
-  clickRegions?: (RegionRect | null)[] | null;
+  /** 点击区域的完整选择结果，仅当 target === "click" 时有值 */
+  clickRegions?: ClickRegion[] | null;
 };
 
 export type Point = {

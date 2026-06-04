@@ -20,7 +20,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
   const [regions, setRegions] = useState<RegionTuple>(EMPTY_REGIONS);
   const [completedSlots, setCompletedSlots] = useState<number[]>([]);
   const [currentSlot, setCurrentSlot] = useState<number | null>(slots[0] ?? null);
-  const [statusMessage, setStatusMessage] = useState("拖拽框选当前区域，Esc 或右键取消。");
+  const [statusMessage, setStatusMessage] = useState("拖拽框选区域，Enter 完成，Esc 取消");
   const [submitting, setSubmitting] = useState(false);
 
   const currentRect = useMemo(() => {
@@ -49,18 +49,37 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
     }
   }, [currentSlot, submitting]);
 
+
+  const finishEarly = useCallback(async () => {
+    if (completedSlots.length === 0 || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setStatusMessage("正在提交已选区域...");
+
+    try {
+      await invoke("morse_overlay_finish_early");
+    } catch (error) {
+      setStatusMessage(getErrorMessage(error));
+      setSubmitting(false);
+    }
+  }, [completedSlots, submitting]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         void cancelSelection();
+      } else if (event.key === "Enter" && completedSlots.length > 0 && !submitting) {
+        event.preventDefault();
+        void finishEarly();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cancelSelection]);
-
+  }, [cancelSelection, completedSlots, finishEarly, submitting]);
   const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (currentSlot === null || submitting || event.button !== 0) {
       return;
@@ -180,7 +199,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
             {`X ${currentRect.x} · Y ${currentRect.y} · W ${currentRect.width} · H ${currentRect.height}`}
           </p>
         ) : (
-          <p className="mt-3 text-xs text-muted-foreground">拖拽鼠标完成当前区域，右键或 Esc 可取消本轮选择。</p>
+          <p className="mt-3 text-xs text-muted-foreground">拖拽鼠标完成当前区域，Enter 提交，Esc 或右键取消。</p>
         )}
       </div>
 

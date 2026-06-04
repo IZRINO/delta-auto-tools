@@ -95,6 +95,7 @@ pub fn run() {
             morse::morse_begin_region_selection,
             morse::morse_overlay_submit_selection,
             morse::morse_overlay_cancel_selection,
+            morse::morse_overlay_finish_early,
             morse::morse_run_recognition,
             timer::timer_get_bootstrap,
             timer::timer_save_settings,
@@ -114,6 +115,7 @@ pub fn run() {
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
             strategy::webview::strategy_open_window,
+            strategy::fetch::strategy_fetch_page,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

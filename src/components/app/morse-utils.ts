@@ -19,8 +19,16 @@ export function settingsToForm(settings: MorseSettings): MorseSettingsForm {
     binaryThreshold: String(settings.binaryThreshold),
     autoInputDelay: String(settings.autoInputDelay),
     autoClickEnabled: settings.autoClickEnabled ?? false,
-    autoClickDelayMs: String(settings.autoClickDelayMs ?? 500),
-    clickRegions: settings.clickRegions ?? new Array(7).fill(null),
+    clickRegions: (() => {
+      const regions: { rect: RegionRect | null; delayMs: string }[] = (settings.clickRegions ?? []).map((r) => ({
+        rect: r.rect,
+        delayMs: String(r.delayMs ?? 500),
+      }));
+      while (regions.length < 7) {
+        regions.push({ rect: null, delayMs: "500" });
+      }
+      return regions;
+    })(),
   };
 }
 
@@ -35,6 +43,7 @@ export function parseSettingsForm(form: MorseSettingsForm): MorseSettings {
     throw new Error("二值化阈值必须是 0 到 255 之间的整数。");
   }
 
+
   const autoInputDelay = Number.parseInt(form.autoInputDelay, 10);
   if (!Number.isInteger(autoInputDelay) || autoInputDelay < 0) {
     throw new Error("输入延迟必须是大于等于 0 的整数毫秒值。");
@@ -46,8 +55,12 @@ export function parseSettingsForm(form: MorseSettingsForm): MorseSettings {
     binaryThreshold,
     autoInputDelay,
     autoClickEnabled: form.autoClickEnabled,
-    autoClickDelayMs: Number.parseInt(form.autoClickDelayMs, 10) || 500,
-    clickRegions: form.clickRegions,
+    clickRegions: (form.clickRegions ?? [])
+      .filter((r) => r.rect !== null)
+      .map((r) => ({
+        rect: r.rect!,
+        delayMs: Number.parseInt(r.delayMs, 10) || 500,
+      })),
   };
 }
 

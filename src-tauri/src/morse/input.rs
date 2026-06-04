@@ -1,7 +1,7 @@
 use std::{thread, time::Duration};
 
 use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
-use crate::morse::types::RegionRect;
+use crate::morse::types::ClickRegion;
 pub async fn type_result(value: &str, delay_ms: u64) -> Result<(), String> {
     let value = value.to_string();
 
@@ -25,32 +25,34 @@ pub async fn type_result(value: &str, delay_ms: u64) -> Result<(), String> {
     .map_err(|error| format!("自动输入任务执行失败: {error}"))?
 }
 
-/// 按顺序点击已配置的点击区域
+/// 按顺序点击已配置的点击区域，每个区域使用独立的延迟
 pub async fn click_regions(
-    regions: &[Option<RegionRect>],
-    delay_ms: u64,
+    regions: &[ClickRegion],
 ) -> Result<(), String> {
-    let regions: Vec<RegionRect> = regions
-        .iter()
-        .filter_map(|r| r.clone())
-        .collect();
-
     if regions.is_empty() {
         return Ok(());
     }
+
+    let regions: Vec<(i32, i32, u64)> = regions
+        .iter()
+        .map(|c| {
+            let center_x = c.rect.x + c.rect.width / 2;
+            let center_y = c.rect.y + c.rect.height / 2;
+            (center_x, center_y, c.delay_ms)
+        })
+        .collect();
+
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|error| format!("初始化鼠标点击失败: {error}"))?;
 
-        for region in &regions {
-            if delay_ms > 0 {
-                thread::sleep(Duration::from_millis(delay_ms));
+        for (center_x, center_y, delay_ms) in &regions {
+            if *delay_ms > 0 {
+                thread::sleep(Duration::from_millis(*delay_ms));
             }
-            let center_x = region.x + region.width / 2;
-            let center_y = region.y + region.height / 2;
             enigo
-                .move_mouse(center_x, center_y, Coordinate::Abs)
+                .move_mouse(*center_x, *center_y, Coordinate::Abs)
                 .map_err(|error| format!("移动鼠标到 ({center_x}, {center_y}) 失败: {error}"))?;
             enigo
                 .button(enigo::Button::Left, Direction::Click)

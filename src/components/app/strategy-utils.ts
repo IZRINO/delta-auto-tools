@@ -48,6 +48,15 @@ export type StrategyOpenWindowResponse = {
 };
 
 /**
+ * Tauri 端 `strategy_fetch_page` 命令的响应。
+ */
+export type StrategyFetchResponse = {
+  html: string;
+  finalUrl: string;
+  challenge: { kind: string; message: string } | null;
+};
+
+/**
  * 内置两个攻略站点（只读、不可删除）。
  *
  * - kkrb → https://www.kkrb.net/?viewpage=view%2Foverview

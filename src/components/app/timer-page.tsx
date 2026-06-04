@@ -11,6 +11,7 @@ import {
   RiSpeedUpLine,
   RiStarFill,
   RiStarLine,
+  RiSubtractLine,
   RiTimerLine,
 } from "@remixicon/react";
 import { toast } from "sonner";
@@ -521,6 +522,23 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     }
   }, [isNativeShell]);
 
+  const adjustCounter = useCallback(async (counterId: string, delta: number) => {
+    if (!isNativeShell) {
+      setStatusMessage("浏览器预览模式下不可调整计数器，请在桌面端使用。");
+      return;
+    }
+
+    try {
+      const next = await invoke<TimerBootstrap>("timer_counter_adjust", { counterId, delta });
+      setBootstrap(next);
+      setStatusMessage(delta > 0 ? `计数器已加 ${delta}。` : `计数器已减 ${Math.abs(delta)}。`);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setPageError(message);
+      setStatusMessage(message);
+    }
+  }, [isNativeShell]);
+
   return (
     <Tabs defaultValue="timers" className="min-h-0">
       <AppPage>
@@ -643,6 +661,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                   isDragging={draggingCounterId === counter.id}
                   isRecording={recordingTarget?.type === "counter" && recordingTarget.id === counter.id}
                   run={counterRunsByIdMap.get(counter.id)}
+                  onAdjust={(delta) => void adjustCounter(counter.id, delta)}
                   onBeginHotkeyRecording={() => beginCounterHotkeyRecording(counter)}
                   onDragOver={() => moveDraggingCounterOver(counter.id)}
                   onDragStart={() => beginCounterDrag(counter.id)}
@@ -844,6 +863,7 @@ type CounterCardProps = {
   isDragging: boolean;
   isRecording: boolean;
   run: CounterRunState | undefined;
+  onAdjust: (delta: number) => void;
   onBeginHotkeyRecording: () => void;
   onDragOver: () => void;
   onDragStart: () => void;
@@ -855,7 +875,7 @@ type CounterCardProps = {
   onUpdate: (value: Partial<CounterItemForm>) => void;
 };
 
-function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
+function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
@@ -907,6 +927,28 @@ function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite,
             </FieldContent>
           </Field>
           <HotkeyField controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`} isRecording={isRecording} hotkey={counter.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} />
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              disabled={resetDisabled}
+              onClick={() => onAdjust(-1)}
+              type="button"
+              variant="outline"
+            >
+              <RiSubtractLine data-icon="inline-start" />
+              -1
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={resetDisabled}
+              onClick={() => onAdjust(1)}
+              type="button"
+              variant="outline"
+            >
+              <RiAddLine data-icon="inline-start" />
+              +1
+            </Button>
+          </div>
           <Button disabled={resetDisabled} onClick={onReset} type="button" variant="outline">
             <RiResetLeftLine data-icon="inline-start" />
             重置为起始数

@@ -9,6 +9,20 @@ pub struct RegionRect {
     pub height: i32,
 }
 
+/// 点击区域配置，包含区域坐标和独立延迟
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClickRegion {
+    pub rect: RegionRect,
+    /// 点击此区域前的延迟（毫秒）
+    #[serde(default = "default_click_delay")]
+    pub delay_ms: u64,
+}
+
+fn default_click_delay() -> u64 {
+    500
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MorseSettings {
@@ -19,16 +33,9 @@ pub struct MorseSettings {
     /// 识别成功后自动点击已配置区域
     #[serde(default)]
     pub auto_click_enabled: bool,
-    /// 每次点击前的延迟（毫秒）
-    #[serde(default = "default_auto_click_delay")]
-    pub auto_click_delay_ms: u64,
-    /// 点击区域（最多 7 个），使用与采样区域相同的 RegionRect
+    /// 点击区域（1~7 个），每个有独立延迟
     #[serde(default)]
-    pub click_regions: [Option<RegionRect>; 7],
-}
-
-fn default_auto_click_delay() -> u64 {
-    500
+    pub click_regions: Vec<ClickRegion>,
 }
 
 impl Default for MorseSettings {
@@ -39,8 +46,7 @@ impl Default for MorseSettings {
             binary_threshold: 127,
             auto_input_delay: 50,
             auto_click_enabled: false,
-            auto_click_delay_ms: 500,
-            click_regions: Default::default(),
+            click_regions: Vec::new(),
         }
     }
 }
@@ -96,7 +102,7 @@ pub struct RegionSelectionProgress {
     pub completed_slots: Vec<usize>,
     pub target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub click_regions: Option<Vec<Option<RegionRect>>>,
+    pub click_regions: Option<Vec<ClickRegion>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,7 +112,7 @@ pub struct RegionSelectionOutcome {
     pub regions: [Option<RegionRect>; 3],
     pub target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub click_regions: Option<Vec<Option<RegionRect>>>,
+    pub click_regions: Option<Vec<ClickRegion>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,5 +134,6 @@ mod tests {
         assert_eq!(settings.binary_threshold, 127);
         assert_eq!(settings.auto_input_delay, 50);
         assert_eq!(settings.regions, [None, None, None]);
+        assert!(settings.click_regions.is_empty());
     }
 }

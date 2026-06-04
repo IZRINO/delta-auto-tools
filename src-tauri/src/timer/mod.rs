@@ -673,19 +673,11 @@ fn trigger_hotkey_targets(
                     }
                     let total_duration = seg_count as u64 * duration_seconds;
 
-                    // 读取当前 pool，已完成则恢复为满值
-                    // 防御性修复：已完成的多段计时器，pool 应恢复为满值。
-                    // 即使 tick 未能及时更新 remaining_seconds，触发时也确保正确扣除。
+                    // 读取当前 pool（首次触发时为 total_duration）
                     let pool = inner
                         .runs
                         .get(&timer_id)
-                        .map(|r| {
-                            if r.status == TimerRunStatus::Finished {
-                                total_duration
-                            } else {
-                                r.remaining_seconds
-                            }
-                        })
+                        .map(|r| r.remaining_seconds)
                         .unwrap_or(total_duration);
                     if pool < duration_seconds {
                         continue; // not enough pool to deduct

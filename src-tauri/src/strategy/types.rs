@@ -29,3 +29,27 @@ pub struct StrategyOpenWindowResponse {
     pub label: String,
     pub reused: bool,
 }
+
+/// `strategy_fetch_page` 命令的响应。
+///
+/// - `html`：最终页面的 HTML 内容
+/// - `final_url`：最终请求的 URL（经过 HTTP / JS 重定向后）
+/// - `challenge`：如果命中 CC check 验证页面，返回 challenge 信息；否则为 None
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyFetchResponse {
+    pub html: String,
+    pub final_url: String,
+    pub challenge: Option<ChallengeInfo>,
+}
+
+/// CC check 验证信息。
+///
+/// - `kind`：验证类型，当前固定为 `"ccCheck"`
+/// - `message`：人类可读的验证提示
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChallengeInfo {
+    pub kind: String,
+    pub message: String,
+}

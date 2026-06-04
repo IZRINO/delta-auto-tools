@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   RiAddLine,
   RiDeleteBinLine,
   RiExternalLinkLine,
+  RiRefreshLine,
   RiWindowLine,
 } from "@remixicon/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -44,6 +45,7 @@ import {
   mergeStrategySites,
   readStoredUserSites,
   writeStoredUserSites,
+  type StrategyFetchResponse,
   type StrategyOpenWindowRequest,
   type StrategyOpenWindowResponse,
   type StrategySite,
@@ -105,11 +107,11 @@ export function StrategyPage() {
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="在 Tauri 桌面窗口中打开攻略页面，由 WebView2 (Chromium) 真实渲染；支持自定义新增/删除攻略网站。"
+        description="通过 Rust 端 HTTP 抓取目标页面 HTML，在前端 iframe 中嵌入渲染；支持手动与定时刷新，CC check 命中时自动降级到 Tauri 窗口。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
-            <Badge variant="outline">WebView2 窗口</Badge>
+            <Badge variant="outline">iframe 渲染</Badge>
           </>
         }
         stats={
@@ -121,16 +123,16 @@ export function StrategyPage() {
               detail={`${BUILTIN_STRATEGY_SITES.length} 个内置 + ${userSites.length} 个自定义`}
             />
             <SignalTile
-              label="打开方式"
-              value="应用内窗口"
+              label="渲染方式"
+              value="iframe 嵌入"
               icon={<RiWindowLine />}
-              detail="默认在 Tauri 桌面窗口打开；可改用系统浏览器。"
+              detail="Rust 端抓取 HTML，前端 iframe 展示；CC check 降级 WebviewWindow。"
             />
             <SignalTile
               label="运行模式"
               value={isNativeShell ? "桌面应用" : "浏览器预览"}
               icon={<RiAddLine />}
-              detail={isNativeShell ? "桌面端调 Tauri WebviewWindow。" : "浏览器预览模式无法打开窗口。"}
+              detail={isNativeShell ? "桌面端可抓取并嵌入页面。" : "浏览器预览模式无法调用 Tauri 命令。"}
             />
           </>
         }
@@ -288,6 +290,13 @@ function NewSiteDialog({ onSubmit }: NewSiteDialogProps) {
   );
 }
 
+function injectBaseHref(html: string, baseUrl: string): string {
+  const base = `<base href="${baseUrl}">`;
+  if (html.includes("<head>")) {
+    return html.replace("<head>", `<head>${base}`);
+  }
+  return `${base}${html}`;
+}
 type StrategySitePanelProps = {
   site: StrategySite;
   isNativeShell: boolean;
@@ -295,25 +304,67 @@ type StrategySitePanelProps = {
 };
 
 function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelProps) {
-  const handleOpenInView = useCallback(async () => {
-    if (!isNativeShell) {
-      toast.error("浏览器预览模式下无法打开应用内窗口，请在桌面端打开。");
-      return;
-    }
+  const [fetchedHtml, setFetchedHtml] = useState<string | null>(null);
+  const [refreshInterval, setRefreshInterval] = useState<number>(0); // 0 = 关闭
+  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchPage = useCallback(async () => {
     try {
-      await invoke<StrategyOpenWindowResponse>("strategy_open_window", {
-        request: {
-          url: site.url,
-          title: site.label,
-          label: undefined,
-        } satisfies StrategyOpenWindowRequest,
+      const response = await invoke<StrategyFetchResponse>("strategy_fetch_page", {
+        url: site.url,
       });
-      toast.success(`已在 Tauri 窗口中打开：${site.label}`);
+      if (response.challenge) {
+        // CC check 命中，降级到 WebviewWindow
+        await invoke<StrategyOpenWindowResponse>("strategy_open_window", {
+          request: {
+            url: site.url,
+            title: site.label,
+            label: undefined,
+          } satisfies StrategyOpenWindowRequest,
+        });
+        toast.warning(`${response.challenge.message} 已降级到 Tauri 窗口打开。`);
+        return;
+      }
+      setFetchedHtml(response.html);
+      setLastFetchTime(new Date());
     } catch (error) {
       const message = getErrorMessage(error);
-      toast.error(`打开应用内窗口失败：${message}`);
+      toast.error(`获取页面失败：${message}`);
     }
-  }, [isNativeShell, site.url, site.label]);
+  }, [site.url, site.label]);
+
+  // 首次加载 + 关闭面板时清理 interval
+  useEffect(() => {
+    fetchPage();
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [site.url]); // 仅在切换站点时重新加载
+
+  // 定时刷新逻辑
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (refreshInterval > 0) {
+      intervalRef.current = setInterval(fetchPage, refreshInterval * 1000);
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [refreshInterval, fetchPage]);
+
+  const handleManualRefresh = useCallback(() => {
+    fetchPage();
+  }, [fetchPage]);
 
   const handleOpenExternal = useCallback(async () => {
     if (isNativeShell) {
@@ -341,7 +392,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
         icon={<img alt="" aria-hidden className="size-5 rounded-sm" src={site.favicon} />}
         title={site.label}
         description={site.description}
-        badge={<Badge variant="secondary">Tauri 窗口</Badge>}
+        badge={<Badge variant="secondary">iframe 嵌入</Badge>}
         actions={
           onDelete ? (
             <Button type="button" variant="ghost" size="sm" onClick={handleDelete}>
@@ -361,20 +412,14 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
                 {site.url}
               </div>
               <FieldDescription>
-                在 Tauri 主进程下新建 WebviewWindow 加载该 URL，尺寸默认 1024×720、可调整，同一 host 复用窗口。
+                页面由 Rust 端通过 HTTP 抓取 HTML，在前端 iframe 中嵌入渲染。
               </FieldDescription>
             </FieldContent>
           </Field>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="default"
-              onClick={handleOpenInView}
-              disabled={!isNativeShell}
-              title="在 Tauri 桌面窗口（WebView2 Chromium）中打开目标站点"
-            >
-              <RiWindowLine data-icon="inline-start" />
-              在窗口中打开
+            <Button type="button" variant="default" onClick={handleManualRefresh}>
+              <RiRefreshLine data-icon="inline-start" />
+              手动刷新
             </Button>
             <Button type="button" variant="secondary" onClick={handleOpenExternal}>
               <RiExternalLinkLine data-icon="inline-start" />
@@ -383,18 +428,47 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
           </div>
         </FieldGroup>
 
+        {/* 定时刷新选择器 */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>定时刷新：</span>
+          <select
+            className="h-8 rounded-md border border-[var(--surface-border)] bg-[var(--surface-tile)] px-2 text-xs"
+            value={refreshInterval}
+            onChange={(e) => setRefreshInterval(Number(e.target.value))}
+          >
+            <option value={0}>关闭</option>
+            <option value={30}>30 秒</option>
+            <option value={60}>60 秒</option>
+            <option value={120}>120 秒</option>
+            <option value={300}>300 秒</option>
+          </select>
+          {lastFetchTime && (
+            <span className="text-xs">
+              上次更新：{lastFetchTime.toLocaleTimeString("zh-CN")}
+            </span>
+          )}
+        </div>
+
+        {/* iframe 渲染区域 */}
         {!isNativeShell ? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-8 text-center text-sm text-muted-foreground">
             <p className="font-medium text-foreground">该工具需要在桌面端使用</p>
             <p className="max-w-md text-xs/relaxed">
-              浏览器预览模式下无法调起 Tauri WebviewWindow。请在桌面端打开 "三角洲行动工具" 后再使用。
+              浏览器预览模式下无法调用 Tauri 命令。请在桌面端打开 "三角洲行动工具" 后再使用。
             </p>
           </div>
+        ) : fetchedHtml ? (
+          <iframe
+            srcDoc={injectBaseHref(fetchedHtml, site.url)}
+            className="w-full h-[600px] rounded-lg border border-[var(--surface-border)]"
+            sandbox="allow-scripts allow-same-origin"
+            title={site.label}
+          />
         ) : (
-          <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-8 text-center text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">点击 "在窗口中打开" 启动 Tauri 窗口</p>
+          <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-8 text-center text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">加载中...</p>
             <p className="max-w-md text-xs/relaxed">
-              每个站点的目标 URL 会作为 top-level navigation 加载到独立的 Tauri 子窗口（带标题栏、可拖动、可关闭），由真正的 Chromium 直接渲染站点本身。
+              正在从 {site.url} 抓取页面内容，请稍候。
             </p>
           </div>
         )}

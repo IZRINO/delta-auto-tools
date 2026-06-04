@@ -21,8 +21,7 @@ describe("morse-utils", () => {
       binaryThreshold: 120,
       autoInputDelay: 80,
       autoClickEnabled: false,
-      autoClickDelayMs: 500,
-      clickRegions: new Array(7).fill(null),
+      clickRegions: [],
     });
 
     expect(form).toEqual({
@@ -31,8 +30,7 @@ describe("morse-utils", () => {
       binaryThreshold: "120",
       autoInputDelay: "80",
       autoClickEnabled: false,
-      autoClickDelayMs: "500",
-      clickRegions: new Array(7).fill(null),
+      clickRegions: new Array(7).fill(null).map(() => ({ rect: null, delayMs: "500" })),
     });
   });
 
@@ -43,8 +41,7 @@ describe("morse-utils", () => {
       binaryThreshold: "127",
       autoInputDelay: "50",
       autoClickEnabled: false,
-      autoClickDelayMs: "500",
-      clickRegions: new Array(7).fill(null),
+      clickRegions: [],
     };
 
     expect(parseSettingsForm(form)).toEqual({
@@ -53,8 +50,7 @@ describe("morse-utils", () => {
       binaryThreshold: 127,
       autoInputDelay: 50,
       autoClickEnabled: false,
-      autoClickDelayMs: 500,
-      clickRegions: new Array(7).fill(null),
+      clickRegions: [],
     });
   });
 
@@ -66,7 +62,6 @@ describe("morse-utils", () => {
         binaryThreshold: "127",
         autoInputDelay: "50",
         autoClickEnabled: false,
-        autoClickDelayMs: "500",
         clickRegions: [],
       } as MorseSettingsForm),
     ).toThrow("热键不能为空");
@@ -78,7 +73,6 @@ describe("morse-utils", () => {
         binaryThreshold: "300",
         autoInputDelay: "50",
         autoClickEnabled: false,
-        autoClickDelayMs: "500",
         clickRegions: [],
       } as MorseSettingsForm),
     ).toThrow("二值化阈值必须是 0 到 255 之间的整数");
@@ -91,7 +85,6 @@ describe("morse-utils", () => {
         binaryThreshold: "127",
         autoInputDelay: "-1",
         autoClickEnabled: false,
-        autoClickDelayMs: "500",
         clickRegions: [],
       } as MorseSettingsForm),
     ).toThrow("输入延迟必须是大于等于 0 的整数毫秒值");
