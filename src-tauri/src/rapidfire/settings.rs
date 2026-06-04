@@ -43,6 +43,8 @@ mod tests {
             compensation_delay_min_ms: 120,
             compensation_delay_max_ms: 180,
             min_press_spacing_ms: 90,
+            trigger_jitter_max_ms: 0,
+            cancel_jitter_on_release: true,
             cards: vec![RapidfireCard {
                 id: "rf-test".to_string(),
                 name: "测试连发器".to_string(),

@@ -22,6 +22,8 @@ function sampleSettings(): RapidfireSettings {
     compensationDelayMinMs: 100,
     compensationDelayMaxMs: 150,
     minPressSpacingMs: 80,
+    triggerJitterMaxMs: 0,
+    cancelJitterOnRelease: true,
     cards: [
       {
         id: "rf-a",

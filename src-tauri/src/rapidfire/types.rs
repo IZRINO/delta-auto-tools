@@ -76,6 +76,12 @@ pub struct RapidfireSettings {
     /// 所有连发会话共享的目标键最小触发间距（毫秒）
     #[serde(default = "default_min_press_spacing_ms")]
     pub min_press_spacing_ms: u64,
+    /// 触发键按下后开始连发的抖动延迟上限（毫秒，0=关闭，最大 1000）
+    #[serde(default)]
+    pub trigger_jitter_max_ms: u64,
+    /// 触发键松开时无视抖动剩余时长立即松开的开关
+    #[serde(default = "default_true")]
+    pub cancel_jitter_on_release: bool,
     #[serde(default)]
     pub cards: Vec<RapidfireCard>,
 }
@@ -95,6 +101,8 @@ impl Default for RapidfireSettings {
             compensation_delay_min_ms: default_compensation_delay_min_ms(),
             compensation_delay_max_ms: default_compensation_delay_max_ms(),
             min_press_spacing_ms: default_min_press_spacing_ms(),
+            trigger_jitter_max_ms: 0,
+            cancel_jitter_on_release: true,
             cards: vec![RapidfireCard {
                 id: format!("rapidfire-{}", crate::utils::now_ms()),
                 name: "连发器 1".to_string(),

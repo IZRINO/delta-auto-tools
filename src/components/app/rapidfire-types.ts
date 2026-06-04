@@ -24,6 +24,10 @@ export type RapidfireSettings = {
   compensationDelayMinMs: number;
   compensationDelayMaxMs: number;
   minPressSpacingMs: number;
+  /** 触发键按下后连发抖动延迟（毫秒，0=关闭，上限 1000） */
+  triggerJitterMaxMs: number;
+  /** 抖动期间松开触发键是否立即触发 */
+  cancelJitterOnRelease: boolean;
   cards: RapidfireCard[];
 };
 
@@ -67,6 +71,10 @@ export type RapidfireSettingsForm = {
   compensationDelayMinMs: string;
   compensationDelayMaxMs: string;
   minPressSpacingMs: string;
+  /** 触发键按下后连发抖动延迟（毫秒，0=关闭，上限 1000） */
+  triggerJitterMaxMs: string;
+  /** 抖动期间松开触发键是否立即触发 */
+  cancelJitterOnRelease: boolean;
   overlayPosition: RapidfireRect | null;
   cards: RapidfireCardForm[];
 };
@@ -98,6 +106,8 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
     compensationDelayMinMs: String(settings.compensationDelayMinMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
     compensationDelayMaxMs: String(settings.compensationDelayMaxMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
     minPressSpacingMs: String(settings.minPressSpacingMs ?? RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
+    triggerJitterMaxMs: String(settings.triggerJitterMaxMs ?? 0),
+    cancelJitterOnRelease: settings.cancelJitterOnRelease ?? true,
     overlayPosition: settings.overlayPosition,
     cards: settings.cards.map((card) => ({
       id: card.id,
@@ -432,6 +442,8 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     compensationDelayMinMs,
     compensationDelayMaxMs,
     minPressSpacingMs,
+    triggerJitterMaxMs: normalizePositiveInteger(form.triggerJitterMaxMs, 0),
+    cancelJitterOnRelease: form.cancelJitterOnRelease ?? true,
     cards,
   };
 }

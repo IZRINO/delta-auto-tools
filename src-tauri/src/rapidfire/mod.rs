@@ -424,6 +424,8 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
     settings_value.min_press_spacing_ms = settings_value
         .min_press_spacing_ms
         .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
+    // 触发抖动上限 0-1000ms
+    settings_value.trigger_jitter_max_ms = settings_value.trigger_jitter_max_ms.min(1000);
 
     let mut seen_ids = HashMap::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());
@@ -515,6 +517,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
         let compensation_delay_min_ms = inner.settings.compensation_delay_min_ms;
         let compensation_delay_max_ms = inner.settings.compensation_delay_max_ms;
         let min_press_spacing_ms = inner.settings.min_press_spacing_ms;
+        let trigger_jitter_max_ms = inner.settings.trigger_jitter_max_ms;
+        let cancel_jitter_on_release = inner.settings.cancel_jitter_on_release;
         let mut sessions_to_spawn = Vec::new();
 
         for card_id in &card_ids {
@@ -574,6 +578,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 compensation_delay_min_ms,
                 compensation_delay_max_ms,
                 min_press_spacing_ms,
+                trigger_jitter_max_ms,
+                cancel_jitter_on_release,
                 control_rx,
                 compensate_now,
                 last_press_at: last_press_at.clone(),
@@ -652,6 +658,10 @@ struct RapidfireSessionWorker {
     compensation_delay_min_ms: u64,
     compensation_delay_max_ms: u64,
     min_press_spacing_ms: u64,
+    /// 触发按键抖动延迟上限（毫秒，0=关闭）
+    trigger_jitter_max_ms: u64,
+    /// 抖动期间释放按键是否立即触发并追加
+    cancel_jitter_on_release: bool,
     control_rx: mpsc::Receiver<SessionControl>,
     compensate_now: Arc<AtomicBool>,
     last_press_at: Arc<Mutex<Instant>>,
@@ -721,41 +731,95 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     let mut count = 0u64;
     let mut next_fire_at = Instant::now();
 
-    loop {
-        match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
-            WorkerDecision::Fire { stop_after_fire } => {
-                ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
-                match press_release_target_key(
-                    &worker.target_key,
-                    Some(&worker.trigger_key),
-                    worker.press_jitter_min_ms,
-                    worker.press_jitter_max_ms,
-                ) {
-                    Ok(()) => {
-                        count += 1;
-                        if !update_session_count(&app, &worker.card_id, &worker.session_id, count) {
-                            return;
-                        }
-                    }
-                    Err(error) => {
-                        emit_hotkey_error(&app, error);
+    // 触发抖动延迟：按键按下后等待 jitter 时长再开始连发
+    if worker.trigger_jitter_max_ms > 0 {
+        let jitter_duration = Duration::from_millis(worker.trigger_jitter_max_ms);
+        let jitter_deadline = Instant::now() + jitter_duration;
+        let mut early_release = false;
+        while Instant::now() < jitter_deadline {
+            let remaining = jitter_deadline.saturating_duration_since(Instant::now());
+            match worker.control_rx.recv_timeout(remaining) {
+                Ok(SessionControl::StopWithCompensation) => {
+                    if worker.cancel_jitter_on_release {
+                        // 抖动期间释放：立即触发一次并执行追加判定
+                        early_release = true;
                         break;
                     }
+                    // 不取消抖动：继续等待
                 }
+                Ok(SessionControl::Cancel) => {
+                    finish_session(&app, &worker.card_id, &worker.session_id);
+                    return;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    break; // jitter 到期
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    finish_session(&app, &worker.card_id, &worker.session_id);
+                    return;
+                }
+            }
+        }
 
-                if stop_after_fire {
+        if early_release {
+            // 抖动期间释放：触发一次按压
+            ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
+            match press_release_target_key(
+                &worker.target_key,
+                Some(&worker.trigger_key),
+                worker.press_jitter_min_ms,
+                worker.press_jitter_max_ms,
+            ) {
+                Ok(()) => {
+                    count = 1;
+                    let _ = update_session_count(&app, &worker.card_id, &worker.session_id, count);
+                }
+                Err(error) => emit_hotkey_error(&app, error),
+            }
+            // 进入补偿判断（main loop 后的 should_compensate_count 逻辑）
+        }
+    }
+
+    // 如果是早期释放且已触发，跳转到补偿阶段
+    if worker.trigger_jitter_max_ms > 0 && count > 0 {
+        // 直接进入补偿判断，跳过主循环
+    } else {
+        loop {
+            match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
+                WorkerDecision::Fire { stop_after_fire } => {
+                    ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
+                    match press_release_target_key(
+                        &worker.target_key,
+                        Some(&worker.trigger_key),
+                        worker.press_jitter_min_ms,
+                        worker.press_jitter_max_ms,
+                    ) {
+                        Ok(()) => {
+                            count += 1;
+                            if !update_session_count(&app, &worker.card_id, &worker.session_id, count) {
+                                return;
+                            }
+                        }
+                        Err(error) => {
+                            emit_hotkey_error(&app, error);
+                            break;
+                        }
+                    }
+
+                    if stop_after_fire {
+                        break;
+                    }
+                    next_fire_at = Instant::now()
+                        .checked_add(interval)
+                        .unwrap_or_else(Instant::now);
+                }
+                WorkerDecision::Stop => {
                     break;
                 }
-                next_fire_at = Instant::now()
-                    .checked_add(interval)
-                    .unwrap_or_else(Instant::now);
-            }
-            WorkerDecision::Stop => {
-                break;
-            }
-            WorkerDecision::Cancel => {
-                finish_session(&app, &worker.card_id, &worker.session_id);
-                return;
+                WorkerDecision::Cancel => {
+                    finish_session(&app, &worker.card_id, &worker.session_id);
+                    return;
+                }
             }
         }
     }

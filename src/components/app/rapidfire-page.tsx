@@ -161,6 +161,8 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       compensationDelayMaxMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
       minPressSpacingMs: String(RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
       overlayPosition: null,
+      triggerJitterMaxMs: "0",
+      cancelJitterOnRelease: true,
       cards: [createRapidfireCard(rapidfireCardId(), 0)],
     });
   }, [isNativeShell]);

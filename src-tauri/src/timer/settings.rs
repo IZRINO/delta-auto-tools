@@ -19,7 +19,7 @@ pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<
 mod tests {
     use super::*;
     use crate::timer::types::{
-        CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect,
+        CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect, TimerTriggerMode,
     };
 
     fn sample_settings() -> TimerSettings {
@@ -51,6 +51,7 @@ mod tests {
                 duration_seconds: 300,
                 hotkey: "Ctrl+F2".to_string(),
                 direction: TimerDirection::Countdown,
+                trigger_mode: TimerTriggerMode::Press,
                 enabled: true,
                 ignore_running: true,
                 segment_count: None,

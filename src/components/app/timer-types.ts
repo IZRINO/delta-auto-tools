@@ -12,12 +12,15 @@ export type TimerDisplaySettings = {
 
 export type TimerDirection = "countdown" | "countup";
 
+export type TimerTriggerMode = "press" | "release";
+
 export type TimerItem = {
   id: string;
   name: string;
   durationSeconds: number;
   hotkey: string;
   direction: TimerDirection;
+  triggerMode: TimerTriggerMode;
   enabled: boolean;
   ignoreRunning: boolean;
   segmentCount: number | null;
@@ -77,6 +80,7 @@ export type TimerItemForm = {
   durationSeconds: string;
   hotkey: string;
   direction: TimerDirection;
+  triggerMode: TimerTriggerMode;
   enabled: boolean;
   ignoreRunning: boolean;
   segmentCount: string;

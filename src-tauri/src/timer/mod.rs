@@ -15,14 +15,14 @@ use tokio::{
 mod counter_state;
 mod settings;
 mod types;
-use crate::hotkeys::{HotkeyAction, HotkeyManager};
+use crate::hotkeys::{HoldAction, HoldActionCallback, HotkeyAction, HotkeyManager};
 use crate::utils::now_ms;
 
 use self::counter_state::CounterState;
 use self::types::{
     CounterItem, CounterRunState, TimerBootstrap, TimerDirection, TimerDisplaySettings,
     TimerDisplayTarget, TimerItem, TimerRect, TimerRunState, TimerRunStatus, TimerSelectionKind,
-    TimerSelectionOutcome, TimerSettings,
+    TimerSelectionOutcome, TimerSettings, TimerTriggerMode,
 };
 
 const TIMER_DISPLAY_LABEL: &str = "timer-display";
@@ -181,22 +181,16 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
         }
     }
 
-    // Multi-segment only works with countup; silently clear for countdown
-    let segment_count = if timer.direction == TimerDirection::Countdown {
-        None
-    } else {
-        timer.segment_count
-    };
-
     Ok(TimerItem {
         id: timer.id.trim().to_string(),
         name: name.to_string(),
         duration_seconds: timer.duration_seconds,
         hotkey: hotkey.to_string(),
         direction: timer.direction.clone(),
+        trigger_mode: timer.trigger_mode.clone(),
         enabled: timer.enabled,
         ignore_running: timer.ignore_running,
-        segment_count,
+        segment_count: timer.segment_count,
     })
 }
 
@@ -241,6 +235,7 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
             duration_seconds: 30,
             hotkey: "F2".to_string(),
             direction: TimerDirection::Countdown,
+            trigger_mode: TimerTriggerMode::Press,
             enabled: true,
             ignore_running: true,
             segment_count: None,
@@ -290,20 +285,22 @@ fn restart_hotkey_listeners(
         return hotkey_manager.clear_scope("timer");
     }
 
-    let mut by_hotkey: HashMap<String, HotkeyTriggerTargets> = HashMap::new();
+    // 收集所有热键绑定的目标
+    let mut by_hotkey: HashMap<String, (Vec<String>, Vec<String>, Vec<String>)> = HashMap::new();
+    // (press_timer_ids, release_timer_ids, counter_ids)
+
     if settings_value.timer_enabled {
         for timer in &settings_value.timers {
             if !timer.enabled {
                 continue;
             }
-            by_hotkey
+            let entry = by_hotkey
                 .entry(timer.hotkey.trim().to_string())
-                .or_insert_with(|| HotkeyTriggerTargets {
-                    timer_ids: Vec::new(),
-                    counter_ids: Vec::new(),
-                })
-                .timer_ids
-                .push(timer.id.clone());
+                .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
+            match timer.trigger_mode {
+                TimerTriggerMode::Press => entry.0.push(timer.id.clone()),
+                TimerTriggerMode::Release => entry.1.push(timer.id.clone()),
+            }
         }
     }
     if settings_value.counter_enabled {
@@ -313,18 +310,48 @@ fn restart_hotkey_listeners(
             }
             by_hotkey
                 .entry(counter.hotkey.trim().to_string())
-                .or_insert_with(|| HotkeyTriggerTargets {
-                    timer_ids: Vec::new(),
-                    counter_ids: Vec::new(),
-                })
-                .counter_ids
+                .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()))
+                .2
                 .push(counter.id.clone());
         }
     }
 
-    let bindings = by_hotkey
-        .into_iter()
-        .map(|(hotkey, targets)| {
+    let mut normal_bindings: Vec<(String, HotkeyAction)> = Vec::new();
+    let mut hold_bindings: Vec<(String, HoldActionCallback)> = Vec::new();
+
+    for (hotkey, (press_timer_ids, release_timer_ids, counter_ids)) in by_hotkey {
+        if !release_timer_ids.is_empty() {
+            // 有释放模式计时器：使用 hold 绑定，Down 触发按压模式，Up 触发释放模式
+            let press_targets = HotkeyTriggerTargets {
+                timer_ids: press_timer_ids,
+                counter_ids,
+            };
+            let release_targets = HotkeyTriggerTargets {
+                timer_ids: release_timer_ids,
+                counter_ids: Vec::new(),
+            };
+            let hold_callback: HoldActionCallback = Arc::new(move |app_handle, action| {
+                let targets = match action {
+                    HoldAction::Down => press_targets.clone(),
+                    HoldAction::Up => release_targets.clone(),
+                };
+                if targets.timer_ids.is_empty() && targets.counter_ids.is_empty() {
+                    return;
+                }
+                let app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = trigger_hotkey_targets(&app, targets) {
+                        let _ = app.emit_to("main", "timer://hotkey-error", error);
+                    }
+                });
+            });
+            hold_bindings.push((hotkey, hold_callback));
+        } else {
+            // 纯按压模式：使用普通绑定（当前行为）
+            let targets = HotkeyTriggerTargets {
+                timer_ids: press_timer_ids,
+                counter_ids,
+            };
             let action: HotkeyAction = Arc::new(move |app_handle| {
                 let targets = targets.clone();
                 tauri::async_runtime::spawn(async move {
@@ -333,17 +360,25 @@ fn restart_hotkey_listeners(
                     }
                 });
             });
-            (hotkey, action)
-        })
-        .collect::<Vec<_>>();
-
-    let result = hotkey_manager.replace_scope("timer", bindings);
-    if result.is_ok() {
-        if let Ok(mut inner) = state.inner.lock() {
-            inner.hotkey_error = None;
+            normal_bindings.push((hotkey, action));
         }
     }
-    result
+
+    // 先清空 scope，再分别注册普通和 hold 绑定
+    hotkey_manager.clear_scope("timer")?;
+
+    if !normal_bindings.is_empty() {
+        hotkey_manager.replace_scope("timer", normal_bindings)?;
+    }
+
+    if !hold_bindings.is_empty() {
+        hotkey_manager.replace_hold_scope("timer", hold_bindings)?;
+    }
+
+    if let Ok(mut inner) = state.inner.lock() {
+        inner.hotkey_error = None;
+    }
+    Ok(())
 }
 
 fn stop_tick_task(state: &TimerState) -> Result<(), String> {
@@ -491,8 +526,8 @@ pub fn is_main_window_close(label: &str) -> bool {
 
 pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("timer");
+    let _ = hotkey_manager.clear_hold_scope("timer");
     let _ = stop_tick_task(state);
-    // 关闭软件时把 counter 累加值落盘（兜底：理论上每次累加 / reset 已写，
     // 这里在进程异常退出 / 用户直接关窗没走 reset 流程时仍有最后一份）。
     if let Ok(inner) = state.inner.lock() {
         persist_counter_runs(app, &inner);
@@ -517,10 +552,11 @@ fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
             runtime.remaining_seconds = recovered;
             if recovered >= runtime.duration_seconds {
                 runtime.status = TimerRunStatus::Finished;
+                // 池恢复满时同步 recovery_start_pool，避免旧值导致下次按键错误计算
+                runtime.recovery_start_pool = runtime.duration_seconds;
             }
             return true;
         }
-        return false;
     }
 
     if runtime.status != TimerRunStatus::Running {
@@ -650,7 +686,7 @@ fn trigger_hotkey_targets(
                             current_seconds: new_pool,
                             remaining_seconds: new_pool,
                             duration_seconds: total_duration,
-                            direction: TimerDirection::Countup,
+                            direction: direction.clone(),
                             status: TimerRunStatus::Running,
                             segment_count: seg_count,
                             segment_duration: duration_seconds,
@@ -1104,6 +1140,7 @@ mod tests {
             duration_seconds: 30,
             hotkey: hotkey.to_string(),
             direction: TimerDirection::Countdown,
+            trigger_mode: TimerTriggerMode::Press,
             enabled: true,
             ignore_running: true,
             segment_count: None,

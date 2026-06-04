@@ -171,6 +171,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
           durationSeconds: Number.parseInt(card.durationSeconds, 10) || 0,
           hotkey: card.hotkey,
           direction: card.direction,
+          triggerMode: card.triggerMode,
           enabled: card.enabled,
           ignoreRunning: card.ignoreRunning,
           segmentCount: card.segmentCount === "" ? null : Number.parseInt(card.segmentCount, 10) || null,
@@ -209,7 +210,13 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   }, [items, timerSettingsForm, rapidfireSettingsForm, timerRunsById, counterRunsById]);
 
   // 在 detail 变化时清理孤儿收藏。
+  // 注意：数据未加载完成时（timerSettingsForm 和 rapidfireSettingsForm 均为 null）
+  // 不能执行 prune，否则会把所有收藏项当作孤儿清空。
   useEffect(() => {
+    // 数据尚未加载完成，跳过 prune
+    if (timerSettingsForm === null && rapidfireSettingsForm === null) {
+      return;
+    }
     const validKeys = new Set<string>();
     for (const entry of details) {
       if (entry.detail) {
@@ -220,7 +227,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
       return;
     }
     prune(validKeys);
-  }, [details, items, prune]);
+  }, [details, items, prune, timerSettingsForm, rapidfireSettingsForm]);
 
   const handleMoveUp = useCallback((index: number) => {
     if (index <= 0) {

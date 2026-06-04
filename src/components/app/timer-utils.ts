@@ -33,6 +33,7 @@ export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm 
       durationSeconds: String(timer.durationSeconds),
       hotkey: timer.hotkey,
       direction: timer.direction,
+      triggerMode: timer.triggerMode ?? "press",
       enabled: timer.enabled ?? true,
       ignoreRunning: timer.ignoreRunning ?? true,
       segmentCount: timer.segmentCount != null ? String(timer.segmentCount) : "",
@@ -91,6 +92,7 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
       durationSeconds,
       hotkey,
       direction: timer.direction,
+      triggerMode: timer.triggerMode,
       enabled: timer.enabled,
       ignoreRunning: timer.ignoreRunning,
       segmentCount: timer.segmentCount ? Number.parseInt(timer.segmentCount, 10) : null,
@@ -146,6 +148,7 @@ export function createTimerItem(existingCount: number): TimerItem {
     enabled: true,
     ignoreRunning: true,
     segmentCount: null,
+    triggerMode: "press",
   };
 }
 

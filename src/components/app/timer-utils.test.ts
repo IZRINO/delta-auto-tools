@@ -33,6 +33,7 @@ function sampleSettings(): TimerSettings {
         durationSeconds: 300,
         hotkey: "Ctrl+F2",
         direction: "countdown",
+        triggerMode: "press" as const,
         enabled: true,
         ignoreRunning: true,
         segmentCount: null,
@@ -72,9 +73,9 @@ describe("timer-utils", () => {
   it("moves timer items by id while preserving all items", () => {
     const settings = sampleSettings();
     settings.timers = [
-      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
-      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countup", enabled: true, ignoreRunning: true, segmentCount: null },
-      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countup", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
     ];
     const form = timerSettingsToForm(settings);
 
@@ -86,10 +87,10 @@ describe("timer-utils", () => {
   it("sizes display height for four timers without overflow", () => {
     const settings = sampleSettings();
     settings.timers = [
-      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
-      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
-      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
-      { id: "d", name: "D", durationSeconds: 1, hotkey: "F4", direction: "countdown", enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "a", name: "A", durationSeconds: 1, hotkey: "F1", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "b", name: "B", durationSeconds: 1, hotkey: "F2", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "c", name: "C", durationSeconds: 1, hotkey: "F3", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
+      { id: "d", name: "D", durationSeconds: 1, hotkey: "F4", direction: "countdown", triggerMode: "press" as const, enabled: true, ignoreRunning: true, segmentCount: null },
     ];
 
     const parsed = parseTimerSettingsForm(timerSettingsToForm(settings));

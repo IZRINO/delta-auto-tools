@@ -59,10 +59,22 @@ pub enum TimerDirection {
     Countup,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TimerTriggerMode {
+    /// 快捷键按下时触发计时（当前默认行为）
+    Press,
+    /// 快捷键释放时触发计时
+    Release,
+}
+
 fn default_timer_direction() -> TimerDirection {
     TimerDirection::Countdown
 }
 
+fn default_trigger_mode() -> TimerTriggerMode {
+    TimerTriggerMode::Press
+}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimerItem {
@@ -72,6 +84,8 @@ pub struct TimerItem {
     pub hotkey: String,
     #[serde(default = "default_timer_direction")]
     pub direction: TimerDirection,
+    #[serde(default = "default_trigger_mode")]
+    pub trigger_mode: TimerTriggerMode,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default = "default_true")]
@@ -122,6 +136,7 @@ impl Default for TimerSettings {
                 duration_seconds: 30,
                 hotkey: "F2".to_string(),
                 direction: TimerDirection::Countdown,
+                trigger_mode: TimerTriggerMode::Press,
                 enabled: true,
                 ignore_running: true,
                 segment_count: None,
