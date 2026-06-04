@@ -213,8 +213,8 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   // 注意：数据未加载完成时（timerSettingsForm 和 rapidfireSettingsForm 均为 null）
   // 不能执行 prune，否则会把所有收藏项当作孤儿清空。
   useEffect(() => {
-    // 数据尚未加载完成，跳过 prune
-    if (timerSettingsForm === null && rapidfireSettingsForm === null) {
+    // 任一表单未加载完成就跳过 prune，避免在异步加载期间误清空
+    if (timerSettingsForm === null || rapidfireSettingsForm === null) {
       return;
     }
     const validKeys = new Set<string>();

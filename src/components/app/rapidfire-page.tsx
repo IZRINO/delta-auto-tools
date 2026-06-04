@@ -614,6 +614,35 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 </div>
                 <FieldDescription>所有会话共享的目标键间距。</FieldDescription>
               </Field>
+              <Field>
+                <FieldLabel htmlFor="triggerJitterMaxMs">触发抖动延迟上限</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="triggerJitterMaxMs"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={form.triggerJitterMaxMs}
+                    disabled={controlsDisabled}
+                    onChange={(event) => updateForm("triggerJitterMaxMs", event.target.value)}
+                  />
+                  <FieldTitle>ms（0=关闭）</FieldTitle>
+                </div>
+                <FieldDescription>按下触发键后延迟此毫秒数再开始连发，防止误触</FieldDescription>
+              </Field>
+              <ControlTile className="flex items-center gap-3 mt-2">
+                <Switch
+                  id="cancelJitterOnRelease"
+                  checked={form.cancelJitterOnRelease}
+                  disabled={controlsDisabled}
+                  onCheckedChange={(checked) => updateForm("cancelJitterOnRelease", checked)}
+                />
+                <div className="min-w-0">
+                  <label htmlFor="cancelJitterOnRelease" className="text-sm font-medium text-foreground cursor-pointer">抖动期间松手立即触发</label>
+                  <p className="mt-1 text-xs text-muted-foreground">若开启触发抖动延迟，抖动期间松开按键会立刻触发一次连发并追加补齐奇数次数</p>
+                </div>
+              </ControlTile>
             </ControlTile>
           </FieldGroup>
         </CardBody>

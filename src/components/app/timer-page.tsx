@@ -267,10 +267,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
     setForm((current) => {
       if (!current) { return current; }
-      // Clear segmentCount when direction changes to countdown
-      if (value.direction === "countdown" && "direction" in value) {
-        value = { ...value, segmentCount: "" };
-      }
       return {
         ...current,
         timers: current.timers.map((timer) => timer.id === id ? { ...timer, ...value } : timer),
@@ -795,6 +791,15 @@ function TimerCard({ controlsDisabled, index, isDragging, isFavorite, isHighligh
               <ToggleGroup className="w-full rounded-lg bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))]" disabled={controlsDisabled} type="single" value={timer.direction} variant="outline" onValueChange={(value) => value ? onUpdate({ direction: value as TimerItemForm["direction"] }) : undefined}>
                 <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countup">正</ToggleGroupItem>
                 <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countdown">反</ToggleGroupItem>
+              </ToggleGroup>
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>触发模式</FieldLabel>
+            <FieldContent>
+              <ToggleGroup className="w-full rounded-lg bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))]" disabled={controlsDisabled} type="single" value={timer.triggerMode} variant="outline" onValueChange={(value) => value ? onUpdate({ triggerMode: value as TimerItemForm["triggerMode"] }) : undefined}>
+                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="press">按下</ToggleGroupItem>
+                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="release">释放</ToggleGroupItem>
               </ToggleGroup>
             </FieldContent>
           </Field>
