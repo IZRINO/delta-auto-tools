@@ -371,6 +371,44 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     }
   }, [isNativeShell, syncBootstrap]);
 
+  const performClickRegionSelection = useCallback(async () => {
+    if (!isNativeShell) {
+      setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
+      return false;
+    }
+
+    setSelectingSlot(-2);
+    setStatusMessage("请在悬浮层中完成最多 7 个点击区域的框选。");
+
+    try {
+      const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
+        slots: [0, 1, 2, 3, 4, 5, 6],
+        target: "click",
+      });
+      await syncBootstrap("full");
+
+      if (outcome.kind === "selected") {
+        setStatusMessage("点击区域已更新。");
+        return true;
+      }
+
+      if (outcome.kind === "cancelled") {
+        setStatusMessage("点击区域选择已取消。");
+        return false;
+      }
+
+      setStatusMessage("点击区域选择窗口已关闭。");
+      return false;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setPageError(message);
+      setStatusMessage(message);
+      return false;
+    } finally {
+      setSelectingSlot(null);
+    }
+  }, [isNativeShell, syncBootstrap]);
+
   const handleVerificationRun = useCallback(async () => {
     if (!isNativeShell) {
       setVerificationStatus("error");
@@ -533,6 +571,13 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
             verificationMessage={verificationMessage}
             verificationStatus={verificationStatus}
             verificationValue={verificationValue}
+            autoClickEnabled={form?.autoClickEnabled ?? false}
+            autoClickDelayMs={form?.autoClickDelayMs ?? "500"}
+            clickRegions={form?.clickRegions ?? new Array(7).fill(null)}
+            isBusy={isBusy}
+            onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
+            onAutoClickDelayChange={(value) => updateForm("autoClickDelayMs", value)}
+            onSelectClickRegions={() => void performClickRegionSelection()}
           />
 
           <ResultPanel

@@ -10,15 +10,18 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CardBody, ControlTile, SectionHeader, TacticalCard } from "@/components/app/app-ui";
+
 import type {
   HistoryEntry,
   MorseRegionDetail,
   MorseSettingsForm,
+  RegionRect,
   VerificationStatus,
 } from "@/components/app/morse-types";
 import { REGION_LABELS } from "@/components/app/morse-types";
@@ -118,22 +121,28 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
     </TacticalCard>
   );
 }
-
 type WorkbenchControlPanelProps = {
   form: MorseSettingsForm | null;
   hotkeyError: string | null | undefined;
   hotkeyButtonRef: React.RefObject<HTMLButtonElement | null>;
+  isBusy: boolean;
   isRecordingHotkey: boolean;
   isPrimary?: boolean;
   isVerifying: boolean;
   verificationMessage: string;
   verificationStatus: VerificationStatus;
   verificationValue: string;
+  autoClickEnabled: boolean;
+  autoClickDelayMs: string;
+  clickRegions: (RegionRect | null)[];
+  onAutoClickDelayChange: (value: string) => void;
+  onAutoClickEnabledChange: (value: boolean) => void;
   onAutoInputDelayChange: (value: string) => void;
   onBeginHotkeyRecording: () => void;
   onBinaryThresholdChange: (value: string) => void;
   onHotkeyRecorderBlur: () => void;
   onHotkeyRecorderKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onSelectClickRegions: () => void;
   onVerificationChange: (value: string) => void;
   onVerificationFocus: () => void;
   onVerificationRetry: () => void;
@@ -143,14 +152,21 @@ export function WorkbenchControlPanel({
   form,
   hotkeyButtonRef,
   hotkeyError,
+  isBusy,
   isRecordingHotkey,
   isPrimary = false,
   isVerifying,
+  autoClickEnabled,
+  autoClickDelayMs,
+  clickRegions,
+  onAutoClickDelayChange,
+  onAutoClickEnabledChange,
   onAutoInputDelayChange,
   onBeginHotkeyRecording,
   onBinaryThresholdChange,
   onHotkeyRecorderBlur,
   onHotkeyRecorderKeyDown,
+  onSelectClickRegions,
   onVerificationChange,
   onVerificationFocus,
   onVerificationRetry,
@@ -229,6 +245,62 @@ export function WorkbenchControlPanel({
                      />
                    </FieldContent>
                 </Field>
+
+                <ControlTile className="flex items-center gap-3">
+                  <Switch
+                    checked={autoClickEnabled}
+                    disabled={isBusy}
+                    onCheckedChange={onAutoClickEnabledChange}
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">识别后自动点击</p>
+                    <p className="mt-1 text-xs text-muted-foreground">识别成功后按延迟依次点击已配置区域。</p>
+                  </div>
+                </ControlTile>
+
+                {autoClickEnabled && (
+                  <>
+                    <Field className="xl:min-h-0">
+                      <FieldLabel htmlFor="auto-click-delay">点击延迟（毫秒）</FieldLabel>
+                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
+                        <Input
+                          id="auto-click-delay"
+                          inputMode="numeric"
+                          min="0"
+                          value={autoClickDelayMs}
+                          onChange={(event) => onAutoClickDelayChange(event.currentTarget.value)}
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field className="xl:min-h-0">
+                      <FieldLabel>点击区域（最多 7 个）</FieldLabel>
+                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
+                        <div className="flex flex-col gap-2">
+                          {clickRegions.slice(0, 7).map((region, index) => (
+                            <div key={index} className="flex items-center gap-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] px-3 py-2">
+                              <Badge variant={region ? "default" : "outline"} className="shrink-0">
+                                {index + 1}
+                              </Badge>
+                              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-muted-foreground">
+                                {region ? `x:${region.x} y:${region.y} w:${region.width} h:${region.height}` : "未配置"}
+                              </span>
+                            </div>
+                          ))}
+                          <Button
+                            disabled={isBusy}
+                            onClick={onSelectClickRegions}
+                            type="button"
+                            variant="outline"
+                          >
+                            <RiLayoutGridLine data-icon="inline-start" />
+                            设置点击区域
+                          </Button>
+                        </div>
+                      </FieldContent>
+                    </Field>
+                  </>
+                )}
               </FieldGroup>
             ) : (
               <div className="text-xs text-muted-foreground">正在加载设置...</div>

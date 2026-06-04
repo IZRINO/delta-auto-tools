@@ -673,11 +673,19 @@ fn trigger_hotkey_targets(
                     }
                     let total_duration = seg_count as u64 * duration_seconds;
 
-                    // Read current pool or use full
+                    // 读取当前 pool，已完成则恢复为满值
+                    // 防御性修复：已完成的多段计时器，pool 应恢复为满值。
+                    // 即使 tick 未能及时更新 remaining_seconds，触发时也确保正确扣除。
                     let pool = inner
                         .runs
                         .get(&timer_id)
-                        .map(|r| r.remaining_seconds)
+                        .map(|r| {
+                            if r.status == TimerRunStatus::Finished {
+                                total_duration
+                            } else {
+                                r.remaining_seconds
+                            }
+                        })
                         .unwrap_or(total_duration);
                     if pool < duration_seconds {
                         continue; // not enough pool to deduct
@@ -975,6 +983,49 @@ pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBo
 
     emit_state(&app, bootstrap.clone());
     ensure_display_windows(&app, &bootstrap.settings)?;
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn timer_counter_adjust(
+    counter_id: String,
+    delta: i32,
+    app: AppHandle,
+    state: State<'_, TimerState>,
+) -> Result<TimerBootstrap, String> {
+    let bootstrap = {
+        let mut inner = state
+            .inner
+            .lock()
+            .map_err(|_| "计数器状态已损坏".to_string())?;
+
+        // 验证 counter 存在且启用
+        let exists = inner
+            .settings
+            .counters
+            .iter()
+            .any(|c| c.id == counter_id && c.enabled);
+        if !exists {
+            return Err("计数器不存在或未启用".to_string());
+        }
+
+        let start_value = inner
+            .settings
+            .counters
+            .iter()
+            .find(|c| c.id == counter_id)
+            .map(|c| c.start_value)
+            .unwrap_or(0);
+
+        let current = inner.counter_runs.entry(counter_id).or_insert(start_value as i64);
+        let new_value = (*current + delta as i64).max(0);
+        *current = new_value;
+
+        persist_counter_runs(&app, &inner);
+        inner.bootstrap()
+    };
+
+    emit_state(&app, bootstrap.clone());
     Ok(bootstrap)
 }
 
