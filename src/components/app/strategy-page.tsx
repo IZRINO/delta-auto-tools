@@ -292,8 +292,10 @@ function NewSiteDialog({ onSubmit }: NewSiteDialogProps) {
 
 function injectBaseHref(html: string, baseUrl: string): string {
   const base = `<base href="${baseUrl}">`;
-  if (html.includes("<head>")) {
-    return html.replace("<head>", `<head>${base}`);
+  const headMatch = /<head(\s[^>]*)?>|<head>/i.exec(html);
+  if (headMatch) {
+    const insertPos = headMatch.index + headMatch[0].length;
+    return html.slice(0, insertPos) + base + html.slice(insertPos);
   }
   return `${base}${html}`;
 }

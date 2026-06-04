@@ -673,11 +673,19 @@ fn trigger_hotkey_targets(
                     }
                     let total_duration = seg_count as u64 * duration_seconds;
 
-                    // 读取当前 pool（首次触发时为 total_duration）
+                    // 读取当前 pool（首次触发或旧普通计时器残留时为 total_duration）
                     let pool = inner
                         .runs
                         .get(&timer_id)
-                        .map(|r| r.remaining_seconds)
+                        .and_then(|r| {
+                            // 如果旧 runtime 是普通计时器（segment_count <= 1），
+                            // 而当前配置为多段（seg_count >= 2），视为过期条目
+                            if r.segment_count <= 1 && seg_count >= 2 {
+                                None
+                            } else {
+                                Some(r.remaining_seconds)
+                            }
+                        })
                         .unwrap_or(total_duration);
                     if pool < duration_seconds {
                         continue; // not enough pool to deduct

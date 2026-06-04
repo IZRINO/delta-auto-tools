@@ -263,7 +263,7 @@ export function WorkbenchControlPanel({
                       <FieldLabel>点击区域（最多 7 个）</FieldLabel>
                       <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                         <div className="flex flex-col gap-2">
-                          {clickRegions.slice(0, 7).map((cr, index) => (
+                          {clickRegions.filter((cr) => cr?.rect).slice(0, 7).map((cr, index) => (
                             <ControlTile key={index} className="flex items-center gap-3">
                               <Badge variant={cr.rect ? "default" : "outline"} className="shrink-0">
                                 {index + 1}
