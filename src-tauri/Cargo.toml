@@ -1,7 +1,6 @@
 [package]
 name = "delta-auto-tools"
-version = "0.11.0"
-authors = ["you"]
+version = "0.11.1"
 edition = "2021"
 
 [lib]
