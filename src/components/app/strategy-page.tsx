@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   RiAddLine,
   RiDeleteBinLine,
   RiExternalLinkLine,
-  RiRefreshLine,
   RiWindowLine,
 } from "@remixicon/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -45,9 +44,8 @@ import {
   mergeStrategySites,
   readStoredUserSites,
   writeStoredUserSites,
-  type StrategyFetchResponse,
-  type StrategyOpenWindowRequest,
-  type StrategyOpenWindowResponse,
+  type StrategyOpenBrowserRequest,
+  type StrategyOpenBrowserResponse,
   type StrategySite,
   type UserStrategySite,
 } from "@/components/app/strategy-utils";
@@ -57,13 +55,9 @@ import { useNativeShell } from "@/hooks/use-native-shell";
 export function StrategyPage() {
   const isNativeShell = useNativeShell();
   const [userSites, setUserSites] = useState<StrategySite[]>(() => readStoredUserSites());
-  const allSites = (() => {
-    const merged = mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites);
-    return merged;
-  })();
-  const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? allSites[0]?.id ?? "");
+  const allSites = mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites);
+  const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? "");
 
-  // 当用户删除了 activeId 对应的卡片，自动回退到第一个可用 Tab。
   useEffect(() => {
     if (allSites.length === 0) {
       return;
@@ -107,11 +101,11 @@ export function StrategyPage() {
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="通过 Rust 端 HTTP 抓取目标页面 HTML，在前端 iframe 中嵌入渲染；支持手动与定时刷新，CC check 命中时自动降级到 Tauri 窗口。"
+        description="集中维护攻略网址；网页内容通过独立攻略浏览器窗口的 WebView2 真实导航加载，避免 iframe/srcDoc 破坏 cookie、JS 与同源接口。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
-            <Badge variant="outline">iframe 渲染</Badge>
+            <Badge variant="outline">真实 WebView2</Badge>
           </>
         }
         stats={
@@ -123,16 +117,16 @@ export function StrategyPage() {
               detail={`${BUILTIN_STRATEGY_SITES.length} 个内置 + ${userSites.length} 个自定义`}
             />
             <SignalTile
-              label="渲染方式"
-              value="iframe 嵌入"
+              label="打开方式"
+              value="攻略浏览器"
               icon={<RiWindowLine />}
-              detail="Rust 端抓取 HTML，前端 iframe 展示；CC check 降级 WebviewWindow。"
+              detail="固定 strategy-browser 窗口承载站点切换与真实网页导航。"
             />
             <SignalTile
               label="运行模式"
               value={isNativeShell ? "桌面应用" : "浏览器预览"}
               icon={<RiAddLine />}
-              detail={isNativeShell ? "桌面端可抓取并嵌入页面。" : "浏览器预览模式无法调用 Tauri 命令。"}
+              detail={isNativeShell ? "桌面端可打开攻略浏览器窗口。" : "浏览器预览模式无法调用 Tauri 命令。"}
             />
           </>
         }
@@ -156,7 +150,7 @@ export function StrategyPage() {
             {allSites.length === 0 ? (
               <div className="flex min-h-72 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-10 text-center text-sm text-muted-foreground">
                 <p className="font-medium text-foreground">还没有任何攻略网站</p>
-                <p className="max-w-md text-xs/relaxed">点上方"新增攻略网站"按钮，填入 URL 后即可加入工作台。</p>
+                <p className="max-w-md text-xs/relaxed">点上方“新增攻略网站”按钮，填入 URL 后即可加入工作台。</p>
               </div>
             ) : (
               allSites.map((site) => (
@@ -290,15 +284,6 @@ function NewSiteDialog({ onSubmit }: NewSiteDialogProps) {
   );
 }
 
-function injectBaseHref(html: string, baseUrl: string): string {
-  const base = `<base href="${baseUrl}">`;
-  const headMatch = /<head(\s[^>]*)?>|<head>/i.exec(html);
-  if (headMatch) {
-    const insertPos = headMatch.index + headMatch[0].length;
-    return html.slice(0, insertPos) + base + html.slice(insertPos);
-  }
-  return `${base}${html}`;
-}
 type StrategySitePanelProps = {
   site: StrategySite;
   isNativeShell: boolean;
@@ -306,67 +291,25 @@ type StrategySitePanelProps = {
 };
 
 function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelProps) {
-  const [fetchedHtml, setFetchedHtml] = useState<string | null>(null);
-  const [refreshInterval, setRefreshInterval] = useState<number>(0); // 0 = 关闭
-  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const handleOpenBrowser = useCallback(async () => {
+    if (!isNativeShell) {
+      toast.warning("浏览器预览模式下不可打开攻略浏览器，请在桌面端使用。");
+      return;
+    }
 
-  const fetchPage = useCallback(async () => {
     try {
-      const response = await invoke<StrategyFetchResponse>("strategy_fetch_page", {
-        url: site.url,
+      const response = await invoke<StrategyOpenBrowserResponse>("strategy_open_browser", {
+        request: {
+          siteId: site.id,
+          url: site.url,
+          title: site.label,
+        } satisfies StrategyOpenBrowserRequest,
       });
-      if (response.challenge) {
-        // CC check 命中，降级到 WebviewWindow
-        await invoke<StrategyOpenWindowResponse>("strategy_open_window", {
-          request: {
-            url: site.url,
-            title: site.label,
-            label: undefined,
-          } satisfies StrategyOpenWindowRequest,
-        });
-        toast.warning(`${response.challenge.message} 已降级到 Tauri 窗口打开。`);
-        return;
-      }
-      setFetchedHtml(response.html);
-      setLastFetchTime(new Date());
+      toast.success(response.reused ? "已刷新攻略浏览器窗口。" : "已打开攻略浏览器窗口。");
     } catch (error) {
-      const message = getErrorMessage(error);
-      toast.error(`获取页面失败：${message}`);
+      toast.error(`打开攻略浏览器失败：${getErrorMessage(error)}`);
     }
-  }, [site.url, site.label]);
-
-  // 首次加载 + 关闭面板时清理 interval
-  useEffect(() => {
-    fetchPage();
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [site.url]); // 仅在切换站点时重新加载
-
-  // 定时刷新逻辑
-  useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (refreshInterval > 0) {
-      intervalRef.current = setInterval(fetchPage, refreshInterval * 1000);
-    }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [refreshInterval, fetchPage]);
-
-  const handleManualRefresh = useCallback(() => {
-    fetchPage();
-  }, [fetchPage]);
+  }, [isNativeShell, site.id, site.label, site.url]);
 
   const handleOpenExternal = useCallback(async () => {
     if (isNativeShell) {
@@ -374,7 +317,7 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
         await openUrl(site.url);
         return;
       } catch {
-        // 落到 window.open 兜底
+        // 落到 window.open 兜底。
       }
     }
     window.open(site.url, "_blank", "noopener,noreferrer");
@@ -393,8 +336,8 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
         eyebrow={`Station · ${site.shortLabel}`}
         icon={<img alt="" aria-hidden className="size-5 rounded-sm" src={site.favicon} />}
         title={site.label}
-        description={site.description}
-        badge={<Badge variant="secondary">iframe 嵌入</Badge>}
+        description={site.description || "自定义攻略站点。"}
+        badge={<Badge variant="secondary">真实导航</Badge>}
         actions={
           onDelete ? (
             <Button type="button" variant="ghost" size="sm" onClick={handleDelete}>
@@ -414,14 +357,14 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
                 {site.url}
               </div>
               <FieldDescription>
-                页面由 Rust 端通过 HTTP 抓取 HTML，在前端 iframe 中嵌入渲染。
+                网页内容在独立攻略浏览器中用 WebView2 真实加载；cookie、JS 跳转和同源接口由站点自身处理。
               </FieldDescription>
             </FieldContent>
           </Field>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="default" onClick={handleManualRefresh}>
-              <RiRefreshLine data-icon="inline-start" />
-              手动刷新
+            <Button type="button" variant="default" onClick={handleOpenBrowser} disabled={!isNativeShell}>
+              <RiWindowLine data-icon="inline-start" />
+              打开攻略浏览器
             </Button>
             <Button type="button" variant="secondary" onClick={handleOpenExternal}>
               <RiExternalLinkLine data-icon="inline-start" />
@@ -430,48 +373,16 @@ function StrategySitePanel({ site, isNativeShell, onDelete }: StrategySitePanelP
           </div>
         </FieldGroup>
 
-        {/* 定时刷新选择器 */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>定时刷新：</span>
-          <select
-            className="h-8 rounded-md border border-[var(--surface-border)] bg-[var(--surface-tile)] px-2 text-xs"
-            value={refreshInterval}
-            onChange={(e) => setRefreshInterval(Number(e.target.value))}
-          >
-            <option value={0}>关闭</option>
-            <option value={30}>30 秒</option>
-            <option value={60}>60 秒</option>
-            <option value={120}>120 秒</option>
-            <option value={300}>300 秒</option>
-          </select>
-          {lastFetchTime && (
-            <span className="text-xs">
-              上次更新：{lastFetchTime.toLocaleTimeString("zh-CN")}
-            </span>
-          )}
-        </div>
-
-        {/* iframe 渲染区域 */}
         {!isNativeShell ? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-8 text-center text-sm text-muted-foreground">
             <p className="font-medium text-foreground">该工具需要在桌面端使用</p>
             <p className="max-w-md text-xs/relaxed">
-              浏览器预览模式下无法调用 Tauri 命令。请在桌面端打开 "三角洲行动工具" 后再使用。
+              浏览器预览模式下无法调用 Tauri 命令。请在桌面端打开“三角洲行动工具”后再使用。
             </p>
           </div>
-        ) : fetchedHtml ? (
-          <iframe
-            srcDoc={injectBaseHref(fetchedHtml, site.url)}
-            className="w-full h-[600px] rounded-lg border border-[var(--surface-border)]"
-            sandbox="allow-scripts allow-same-origin"
-            title={site.label}
-          />
         ) : (
-          <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-6 py-8 text-center text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">加载中...</p>
-            <p className="max-w-md text-xs/relaxed">
-              正在从 {site.url} 抓取页面内容，请稍候。
-            </p>
+          <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_36%,transparent))] px-4 py-3 text-sm text-muted-foreground">
+            主窗口只负责站点集合管理；点击“打开攻略浏览器”后在固定窗口内切换站点和刷新真实网页。
           </div>
         )}
       </CardBody>

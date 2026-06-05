@@ -11,6 +11,9 @@ export type RapidfireCard = {
   intervalMs: number;
   pressJitterMinMs: number;
   pressJitterMaxMs: number;
+  minPressSpacingMs: number;
+  triggerJitterMaxMs: number;
+  cancelJitterOnRelease: boolean;
   enabled: boolean;
   skipCompensation: boolean;
 };
@@ -23,11 +26,12 @@ export type RapidfireSettings = {
   overlayWidth: number;
   compensationDelayMinMs: number;
   compensationDelayMaxMs: number;
-  minPressSpacingMs: number;
-  /** 触发键按下后连发抖动延迟（毫秒，0=关闭，上限 1000） */
-  triggerJitterMaxMs: number;
-  /** 抖动期间松开触发键是否立即触发 */
-  cancelJitterOnRelease: boolean;
+  /** 旧配置兼容：旧全局按键间距；新 UI 按卡片保存 */
+  minPressSpacingMs?: number;
+  /** 旧配置兼容：旧全局启动抖动延迟；新 UI 按卡片保存 */
+  triggerJitterMaxMs?: number;
+  /** 旧配置兼容：旧全局抖动期间松手策略；新 UI 按卡片保存 */
+  cancelJitterOnRelease?: boolean;
   cards: RapidfireCard[];
 };
 
@@ -60,6 +64,9 @@ export type RapidfireCardForm = {
   intervalMs: string; // 字符串用于输入框
   pressJitterMinMs: string;
   pressJitterMaxMs: string;
+  minPressSpacingMs: string;
+  triggerJitterMaxMs: string;
+  cancelJitterOnRelease: boolean;
   enabled: boolean;
   skipCompensation: boolean;
 };
@@ -70,11 +77,7 @@ export type RapidfireSettingsForm = {
   overlayWidth: string;
   compensationDelayMinMs: string;
   compensationDelayMaxMs: string;
-  minPressSpacingMs: string;
-  /** 触发键按下后连发抖动延迟（毫秒，0=关闭，上限 1000） */
-  triggerJitterMaxMs: string;
-  /** 抖动期间松开触发键是否立即触发 */
-  cancelJitterOnRelease: boolean;
+  /** 旧配置兼容字段不在表单中展示；解析时写回默认值给 Rust 兼容层 */
   overlayPosition: RapidfireRect | null;
   cards: RapidfireCardForm[];
 };
@@ -105,9 +108,6 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
     overlayWidth: String(settings.overlayWidth),
     compensationDelayMinMs: String(settings.compensationDelayMinMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
     compensationDelayMaxMs: String(settings.compensationDelayMaxMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
-    minPressSpacingMs: String(settings.minPressSpacingMs ?? RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
-    triggerJitterMaxMs: String(settings.triggerJitterMaxMs ?? 0),
-    cancelJitterOnRelease: settings.cancelJitterOnRelease ?? true,
     overlayPosition: settings.overlayPosition,
     cards: settings.cards.map((card) => ({
       id: card.id,
@@ -117,6 +117,9 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
       intervalMs: String(card.intervalMs),
       pressJitterMinMs: String(card.pressJitterMinMs),
       pressJitterMaxMs: String(card.pressJitterMaxMs),
+      minPressSpacingMs: String(card.minPressSpacingMs ?? settings.minPressSpacingMs ?? RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
+      triggerJitterMaxMs: String(card.triggerJitterMaxMs ?? settings.triggerJitterMaxMs ?? 0),
+      cancelJitterOnRelease: card.cancelJitterOnRelease ?? settings.cancelJitterOnRelease ?? true,
       enabled: card.enabled,
       skipCompensation: card.skipCompensation ?? false,
     })),
@@ -164,6 +167,11 @@ type SupportedModifierKeyLabel = (typeof SUPPORTED_MODIFIER_KEY_LABELS)[number];
 function normalizePositiveInteger(value: string, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function normalizeNonNegativeInteger(value: string, fallback: number): number {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function clampOverlayWidth(value: string): number {
@@ -391,6 +399,15 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       throw new Error(`${name} 的触发抖动最小值不能大于最大值。`);
     }
 
+    const minPressSpacingMs = normalizeNonNegativeInteger(card.minPressSpacingMs, RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS);
+    if (minPressSpacingMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS || minPressSpacingMs > RAPIDFIRE_GLOBAL_DELAY_MAX_MS) {
+      throw new Error(`${name} 的按键最小间距必须在 ${RAPIDFIRE_GLOBAL_DELAY_MIN_MS}-${RAPIDFIRE_GLOBAL_DELAY_MAX_MS}ms 之间。`);
+    }
+    const triggerJitterMaxMs = normalizeNonNegativeInteger(card.triggerJitterMaxMs, 0);
+    if (triggerJitterMaxMs > 1000) {
+      throw new Error(`${name} 的触发抖动延迟上限不能大于 1000ms。`);
+    }
+
     return {
       id: card.id,
       name,
@@ -399,6 +416,9 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       intervalMs,
       pressJitterMinMs,
       pressJitterMaxMs,
+      minPressSpacingMs,
+      triggerJitterMaxMs,
+      cancelJitterOnRelease: card.cancelJitterOnRelease ?? true,
       enabled: card.enabled,
       skipCompensation: card.skipCompensation,
     };
@@ -412,10 +432,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     form.compensationDelayMaxMs,
     RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
   );
-  const minPressSpacingMs = normalizePositiveInteger(
-    form.minPressSpacingMs,
-    RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS,
-  );
+  const legacyMinPressSpacingMs = RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS;
 
   if (
     compensationDelayMinMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS ||
@@ -426,12 +443,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
   if (compensationDelayMinMs > compensationDelayMaxMs) {
     throw new Error("补齐延迟最小值不能大于最大值。");
   }
-  if (
-    minPressSpacingMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS ||
-    minPressSpacingMs > RAPIDFIRE_GLOBAL_DELAY_MAX_MS
-  ) {
-    throw new Error(`按键最小间距必须在 ${RAPIDFIRE_GLOBAL_DELAY_MIN_MS}-${RAPIDFIRE_GLOBAL_DELAY_MAX_MS}ms 之间。`);
-  }
+  
 
   return {
     version: 1,
@@ -441,9 +453,9 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     overlayWidth: clampOverlayWidth(form.overlayWidth),
     compensationDelayMinMs,
     compensationDelayMaxMs,
-    minPressSpacingMs,
-    triggerJitterMaxMs: normalizePositiveInteger(form.triggerJitterMaxMs, 0),
-    cancelJitterOnRelease: form.cancelJitterOnRelease ?? true,
+    minPressSpacingMs: legacyMinPressSpacingMs,
+    triggerJitterMaxMs: 0,
+    cancelJitterOnRelease: true,
     cards,
   };
 }
@@ -459,6 +471,9 @@ export function createRapidfireCard(id: string, existingCount = 0): RapidfireCar
     intervalMs: String(RAPIDFIRE_DEFAULT_INTERVAL_MS),
     pressJitterMinMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS),
     pressJitterMaxMs: String(RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS),
+    minPressSpacingMs: String(RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
+    triggerJitterMaxMs: "0",
+    cancelJitterOnRelease: true,
     enabled: false,
     skipCompensation: false,
   };

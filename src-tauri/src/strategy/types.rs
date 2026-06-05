@@ -30,6 +30,24 @@ pub struct StrategyOpenWindowResponse {
     pub reused: bool,
 }
 
+/// 打开固定攻略浏览器窗口的请求。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyOpenBrowserRequest {
+    pub site_id: String,
+    pub url: String,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// 打开固定攻略浏览器窗口的响应。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyOpenBrowserResponse {
+    pub label: String,
+    pub reused: bool,
+}
+
 /// `strategy_fetch_page` 命令的响应。
 ///
 /// - `html`：最终页面的 HTML 内容

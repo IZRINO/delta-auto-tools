@@ -8,9 +8,9 @@
 
 - **摩斯识别工作台**：支持区域框选、快捷键触发识别、识别结果展示、历史记录和自动输入。
 - **计时\计数器工作台**：支持多计时器、多计数器、独立总开关、快捷键触发，以及置顶透明显示窗口。
-- **连发器工作台**：支持多组连发配置、组合触发键、按住连发、卡片级不追加补齐和透明状态窗口。
+- **连发器工作台**：支持多组连发配置、组合触发键、按住连发、卡片级不追加补齐、卡片级按键最小间距 / 启动抖动策略，以及透明状态窗口。
 - **Delta 工具接口**：支持 QQ、微信、QQ 安全中心、Wegame 与先遣服相关登录流程、本地账号管理和游戏数据查询；账号凭据仅在 Rust 侧持有，本地敏感字段使用系统凭据加密保存。
-- **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，按 Tab 切换站点，每个 Tab 全屏展示。该面板由 Rust 端 `strategy_fetch_page` 命令代理拉取（完整 Chrome 135 浏览器头，避开 WebView UA 引发的人机验证；自动嗅探 `document.cookie + location.href` JS 重定向并跟随），前端再用 `<iframe srcDoc>` 渲染并自动注入 `<base href>`。**对于纯客户端人机验证**（如 kkrb cdn-shield / CC check：检测 `navigator.webdriver` / `HeadlessChrome` UA / 零 viewport / `window._phantom` / `performance.navigation`），代理层嗅探 `<title>CC check</title>` / `/cdn-shield/` / "安全验证" + "点击确认您是真人" / `verification-card` 后，把 `challenge` 字段返回给前端；前端把"应用内打开"按钮（`strategy_open_in_view` Tauri 命令）升到主操作位，由 Tauri 在主进程下新建 `WebviewWindow(WebviewUrl::External(...))` 子窗口（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制），由真正的 WebView2 Chromium 跑过验证；同一 host 复用窗口。支持**新增 / 删除自定义攻略网站**（localStorage 持久化，user_xxx 命名空间），按站点独立设置自动刷新间隔（30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟 / 关闭）、立即刷新、应用内打开、浏览器打开、最近拉取时间显示，代理拉取失败时通过 Alert 提示并降级到应用内 / 外部打开。
+- **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，主窗口负责内置 / 自定义网址集中管理；点击“打开攻略浏览器”后进入固定 `strategy-browser` Tauri 窗口，窗口内用 WebView2 子 WebView 对当前站点进行真实导航，cookie、JS 跳转、localStorage、同源 API 和人机验证均由目标站点自身处理，不再默认使用 iframe/srcDoc 代理渲染。保留 `strategy_fetch_page` 作为后端实验 / 兼容入口，并支持 `window.location.href` 形式的 JS 重定向嗅探。
 
 ## 技术栈
 

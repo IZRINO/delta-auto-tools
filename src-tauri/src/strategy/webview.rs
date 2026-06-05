@@ -1,23 +1,28 @@
-//! 攻略网站 Tauri Webview2 窗口实现。
+//! 攻略网站 Tauri WebView2 窗口实现。
 //!
-//! 提供一个 Tauri command：`strategy_open_window`，
-//! 由 Rust 端在主进程下新建一个 WebviewWindow 加载外部 URL。
-//! 这就是用户要求的"原本的 webview 模式"——一个平平淡淡的浏览器窗口。
-//!
-//! - top-level navigation，避开 X-Frame-Options / CSP frame-ancestors 限制
-//! - 同一 host 派生的 label 复用窗口（避免堆叠多个同站子窗口）
-//! - 不做代理 / 不做 CC check 嗅探 / 不做 JS 重定向跟随
+//! `strategy_open_browser` 打开固定攻略浏览器 shell，shell 内由前端创建外部 URL 子 WebView；
+//! `strategy_open_window` 保留旧的单站 top-level WebviewWindow 入口，供未来实验或兼容调用。
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
-use super::types::{StrategyOpenWindowRequest, StrategyOpenWindowResponse};
+use super::types::{
+    StrategyOpenBrowserRequest, StrategyOpenBrowserResponse, StrategyOpenWindowRequest,
+    StrategyOpenWindowResponse,
+};
 
-/// 默认窗口尺寸（足够阅读攻略页内容）。
+/// 默认单站窗口尺寸（足够阅读攻略页内容）。
 const DEFAULT_INNER_WIDTH: f64 = 1024.0;
 const DEFAULT_INNER_HEIGHT: f64 = 720.0;
-/// 最小窗口尺寸（防止用户把窗口拖得过小）。
+/// 最小单站窗口尺寸（防止用户把窗口拖得过小）。
 const MIN_INNER_WIDTH: f64 = 480.0;
 const MIN_INNER_HEIGHT: f64 = 360.0;
+
+/// 固定攻略浏览器窗口 label；窗口内再由前端创建真实站点子 WebView。
+const STRATEGY_BROWSER_LABEL: &str = "strategy-browser";
+const BROWSER_INNER_WIDTH: f64 = 1180.0;
+const BROWSER_INNER_HEIGHT: f64 = 780.0;
+const BROWSER_MIN_INNER_WIDTH: f64 = 640.0;
+const BROWSER_MIN_INNER_HEIGHT: f64 = 480.0;
 
 /// 校验并规范化目标 URL。
 fn normalize_url(raw: &str) -> Result<Url, String> {
@@ -47,6 +52,64 @@ fn derive_view_label(host: &str) -> String {
         }
     }
     format!("strategy-view-{sanitized}")
+}
+
+fn encode_query_component(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+/// 打开固定攻略浏览器窗口。
+///
+/// 该窗口加载本应用的 `?mode=strategy-browser` shell；真实攻略站点由 shell 内部的
+/// `@tauri-apps/api/webview::Webview` 子 WebView 直接导航加载。
+#[tauri::command]
+pub async fn strategy_open_browser(
+    app: AppHandle,
+    request: StrategyOpenBrowserRequest,
+) -> Result<StrategyOpenBrowserResponse, String> {
+    let parsed = normalize_url(&request.url)?;
+    let site_id = request.site_id.trim();
+    if site_id.is_empty() {
+        return Err("攻略站点 ID 不能为空".to_string());
+    }
+
+    let reused = if let Some(existing) = app.get_webview_window(STRATEGY_BROWSER_LABEL) {
+        existing
+            .close()
+            .map_err(|error| format!("关闭旧攻略浏览器窗口失败：{error}"))?;
+        true
+    } else {
+        false
+    };
+
+    let url = format!(
+        "index.html?mode=strategy-browser&site={}&url={}",
+        encode_query_component(site_id),
+        encode_query_component(parsed.as_str())
+    );
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("攻略浏览器 - {value}"))
+        .unwrap_or_else(|| "攻略浏览器".to_string());
+
+    WebviewWindowBuilder::new(&app, STRATEGY_BROWSER_LABEL, WebviewUrl::App(url.into()))
+        .title(title)
+        .inner_size(BROWSER_INNER_WIDTH, BROWSER_INNER_HEIGHT)
+        .min_inner_size(BROWSER_MIN_INNER_WIDTH, BROWSER_MIN_INNER_HEIGHT)
+        .resizable(true)
+        .decorations(true)
+        .focused(true)
+        .visible(true)
+        .build()
+        .map_err(|error| format!("创建攻略浏览器窗口失败：{error}"))?;
+
+    Ok(StrategyOpenBrowserResponse {
+        label: STRATEGY_BROWSER_LABEL.to_string(),
+        reused,
+    })
 }
 
 /// 应用内打开攻略网站：在 Tauri 主进程下新建一个 WebviewWindow 加载外部 URL。
@@ -139,5 +202,13 @@ mod tests {
         assert_eq!(derive_view_label("kkrb.net"), "strategy-view-kkrb-net");
         assert_eq!(derive_view_label("www.kkrb.net"), "strategy-view-www-kkrb-net");
         assert_eq!(derive_view_label("orzice.com"), "strategy-view-orzice-com");
+    }
+
+    #[test]
+    fn encode_query_component_escapes_url() {
+        assert_eq!(
+            encode_query_component("https://www.kkrb.net/?viewpage=view%2Foverview"),
+            "https%3A%2F%2Fwww.kkrb.net%2F%3Fviewpage%3Dview%252Foverview"
+        );
     }
 }

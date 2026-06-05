@@ -48,6 +48,23 @@ export type StrategyOpenWindowResponse = {
 };
 
 /**
+ * Tauri 端 `strategy_open_browser` 命令的请求。
+ */
+export type StrategyOpenBrowserRequest = {
+  siteId: StrategySiteId;
+  url: string;
+  title?: string;
+};
+
+/**
+ * Tauri 端 `strategy_open_browser` 命令的响应。
+ */
+export type StrategyOpenBrowserResponse = {
+  label: string;
+  reused: boolean;
+};
+
+/**
  * Tauri 端 `strategy_fetch_page` 命令的响应。
  */
 export type StrategyFetchResponse = {

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 fn default_true() -> bool {
     true
@@ -10,6 +10,10 @@ fn default_press_jitter_min_ms() -> u64 {
 
 fn default_press_jitter_max_ms() -> u64 {
     12
+}
+
+fn default_trigger_jitter_max_ms() -> u64 {
+    0
 }
 
 pub(crate) fn default_compensation_delay_min_ms() -> u64 {
@@ -25,7 +29,7 @@ pub(crate) fn default_min_press_spacing_ms() -> u64 {
 }
 
 /// 连发器卡片
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RapidfireCard {
     pub id: String,
@@ -34,14 +38,18 @@ pub struct RapidfireCard {
     pub trigger_key: String,
     /// 目标键（连发时触发）
     pub target_key: String,
-    /// 连发间隔（毫秒，最小 10）
+    /// 连发间隔（毫秒，最小 1）
     pub interval_ms: u64,
     /// 目标键按下保持时间抖动下限（毫秒）
-    #[serde(default = "default_press_jitter_min_ms")]
     pub press_jitter_min_ms: u64,
     /// 目标键按下保持时间抖动上限（毫秒）
-    #[serde(default = "default_press_jitter_max_ms")]
     pub press_jitter_max_ms: u64,
+    /// 当前卡片目标键最小触发间距（毫秒）
+    pub min_press_spacing_ms: u64,
+    /// 当前卡片按下触发键后的启动抖动延迟上限（毫秒）
+    pub trigger_jitter_max_ms: u64,
+    /// 当前卡片抖动期间松手是否立即触发一次并进入补齐判断
+    pub cancel_jitter_on_release: bool,
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// 开启后松开触发键时不执行奇数补齐，单数次数保持单数
@@ -49,8 +57,73 @@ pub struct RapidfireCard {
     pub skip_compensation: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RapidfireCardInput {
+    id: String,
+    name: String,
+    trigger_key: String,
+    target_key: String,
+    interval_ms: u64,
+    #[serde(default = "default_press_jitter_min_ms")]
+    press_jitter_min_ms: u64,
+    #[serde(default = "default_press_jitter_max_ms")]
+    press_jitter_max_ms: u64,
+    #[serde(default)]
+    min_press_spacing_ms: Option<u64>,
+    #[serde(default)]
+    trigger_jitter_max_ms: Option<u64>,
+    #[serde(default)]
+    cancel_jitter_on_release: Option<bool>,
+    #[serde(default = "default_true")]
+    enabled: bool,
+    #[serde(default)]
+    skip_compensation: bool,
+}
+
+impl RapidfireCardInput {
+    fn into_card_with_defaults(
+        self,
+        min_press_spacing_ms: u64,
+        trigger_jitter_max_ms: u64,
+        cancel_jitter_on_release: bool,
+    ) -> RapidfireCard {
+        RapidfireCard {
+            id: self.id,
+            name: self.name,
+            trigger_key: self.trigger_key,
+            target_key: self.target_key,
+            interval_ms: self.interval_ms,
+            press_jitter_min_ms: self.press_jitter_min_ms,
+            press_jitter_max_ms: self.press_jitter_max_ms,
+            min_press_spacing_ms: self.min_press_spacing_ms.unwrap_or(min_press_spacing_ms),
+            trigger_jitter_max_ms: self.trigger_jitter_max_ms.unwrap_or(trigger_jitter_max_ms),
+            cancel_jitter_on_release: self
+                .cancel_jitter_on_release
+                .unwrap_or(cancel_jitter_on_release),
+            enabled: self.enabled,
+            skip_compensation: self.skip_compensation,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RapidfireCard {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RapidfireCardInput::deserialize(deserializer).map(|input| {
+            input.into_card_with_defaults(
+                default_min_press_spacing_ms(),
+                default_trigger_jitter_max_ms(),
+                true,
+            )
+        })
+    }
+}
+
 /// 连发器设置
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RapidfireSettings {
     #[serde(default)]
@@ -73,17 +146,76 @@ pub struct RapidfireSettings {
     /// 松开触发键后补齐奇数次数前的随机等待上限（毫秒）
     #[serde(default = "default_compensation_delay_max_ms")]
     pub compensation_delay_max_ms: u64,
-    /// 所有连发会话共享的目标键最小触发间距（毫秒）
+    /// 旧配置兼容：旧全局目标键最小触发间距；新 UI 按卡片保存
     #[serde(default = "default_min_press_spacing_ms")]
     pub min_press_spacing_ms: u64,
-    /// 触发键按下后开始连发的抖动延迟上限（毫秒，0=关闭，最大 1000）
-    #[serde(default)]
+    /// 旧配置兼容：旧全局启动抖动延迟；新 UI 按卡片保存
+    #[serde(default = "default_trigger_jitter_max_ms")]
     pub trigger_jitter_max_ms: u64,
-    /// 触发键松开时无视抖动剩余时长立即松开的开关
+    /// 旧配置兼容：旧全局抖动松手策略；新 UI 按卡片保存
     #[serde(default = "default_true")]
     pub cancel_jitter_on_release: bool,
     #[serde(default)]
     pub cards: Vec<RapidfireCard>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RapidfireSettingsInput {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    rapidfire_enabled: bool,
+    #[serde(default)]
+    show_overlay: bool,
+    #[serde(default)]
+    overlay_position: Option<RapidfireRect>,
+    #[serde(default = "default_overlay_width")]
+    overlay_width: i32,
+    #[serde(default = "default_compensation_delay_min_ms")]
+    compensation_delay_min_ms: u64,
+    #[serde(default = "default_compensation_delay_max_ms")]
+    compensation_delay_max_ms: u64,
+    #[serde(default = "default_min_press_spacing_ms")]
+    min_press_spacing_ms: u64,
+    #[serde(default = "default_trigger_jitter_max_ms")]
+    trigger_jitter_max_ms: u64,
+    #[serde(default = "default_true")]
+    cancel_jitter_on_release: bool,
+    #[serde(default)]
+    cards: Vec<RapidfireCardInput>,
+}
+
+impl<'de> Deserialize<'de> for RapidfireSettings {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let input = RapidfireSettingsInput::deserialize(deserializer)?;
+        Ok(Self {
+            version: input.version,
+            rapidfire_enabled: input.rapidfire_enabled,
+            show_overlay: input.show_overlay,
+            overlay_position: input.overlay_position,
+            overlay_width: input.overlay_width,
+            compensation_delay_min_ms: input.compensation_delay_min_ms,
+            compensation_delay_max_ms: input.compensation_delay_max_ms,
+            min_press_spacing_ms: input.min_press_spacing_ms,
+            trigger_jitter_max_ms: input.trigger_jitter_max_ms,
+            cancel_jitter_on_release: input.cancel_jitter_on_release,
+            cards: input
+                .cards
+                .into_iter()
+                .map(|card| {
+                    card.into_card_with_defaults(
+                        input.min_press_spacing_ms,
+                        input.trigger_jitter_max_ms,
+                        input.cancel_jitter_on_release,
+                    )
+                })
+                .collect(),
+        })
+    }
 }
 
 fn default_overlay_width() -> i32 {
@@ -101,7 +233,7 @@ impl Default for RapidfireSettings {
             compensation_delay_min_ms: default_compensation_delay_min_ms(),
             compensation_delay_max_ms: default_compensation_delay_max_ms(),
             min_press_spacing_ms: default_min_press_spacing_ms(),
-            trigger_jitter_max_ms: 0,
+            trigger_jitter_max_ms: default_trigger_jitter_max_ms(),
             cancel_jitter_on_release: true,
             cards: vec![RapidfireCard {
                 id: format!("rapidfire-{}", crate::utils::now_ms()),
@@ -111,6 +243,9 @@ impl Default for RapidfireSettings {
                 interval_ms: 100,
                 press_jitter_min_ms: default_press_jitter_min_ms(),
                 press_jitter_max_ms: default_press_jitter_max_ms(),
+                min_press_spacing_ms: default_min_press_spacing_ms(),
+                trigger_jitter_max_ms: default_trigger_jitter_max_ms(),
+                cancel_jitter_on_release: true,
                 enabled: false,
                 skip_compensation: false,
             }],
@@ -139,7 +274,6 @@ pub enum RapidfireRunStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RapidfireRunState {
-    /// 关联的卡片 ID
     pub card_id: String,
     pub status: RapidfireRunStatus,
     pub count: u64,
@@ -192,6 +326,9 @@ mod tests {
         assert_eq!(settings.cards[0].interval_ms, 100);
         assert_eq!(settings.cards[0].press_jitter_min_ms, 8);
         assert_eq!(settings.cards[0].press_jitter_max_ms, 12);
+        assert_eq!(settings.cards[0].min_press_spacing_ms, 80);
+        assert_eq!(settings.cards[0].trigger_jitter_max_ms, 0);
+        assert!(settings.cards[0].cancel_jitter_on_release);
         assert!(!settings.cards[0].enabled);
         assert!(!settings.cards[0].skip_compensation);
     }
@@ -210,23 +347,65 @@ mod tests {
 
         assert_eq!(card.press_jitter_min_ms, 8);
         assert_eq!(card.press_jitter_max_ms, 12);
+        assert_eq!(card.min_press_spacing_ms, 80);
+        assert_eq!(card.trigger_jitter_max_ms, 0);
+        assert!(card.cancel_jitter_on_release);
         assert!(!card.skip_compensation);
     }
 
     #[test]
-    fn rapidfire_settings_deserializes_legacy_global_delay_defaults() {
+    fn rapidfire_settings_deserializes_legacy_global_values_into_cards() {
         let settings: RapidfireSettings = serde_json::from_value(serde_json::json!({
             "version": 1,
             "rapidfireEnabled": true,
             "showOverlay": true,
             "overlayPosition": null,
             "overlayWidth": 420,
-            "cards": []
+            "minPressSpacingMs": 120,
+            "triggerJitterMaxMs": 30,
+            "cancelJitterOnRelease": false,
+            "cards": [{
+                "id": "legacy",
+                "name": "旧配置",
+                "triggerKey": "F6",
+                "targetKey": "Space",
+                "intervalMs": 100,
+                "enabled": true
+            }]
         }))
-        .expect("旧连发器设置应补齐全局延迟默认值");
+        .expect("旧连发器设置应把全局值迁移到卡片");
 
         assert_eq!(settings.compensation_delay_min_ms, 100);
         assert_eq!(settings.compensation_delay_max_ms, 150);
-        assert_eq!(settings.min_press_spacing_ms, 80);
+        assert_eq!(settings.min_press_spacing_ms, 120);
+        assert_eq!(settings.cards[0].min_press_spacing_ms, 120);
+        assert_eq!(settings.cards[0].trigger_jitter_max_ms, 30);
+        assert!(!settings.cards[0].cancel_jitter_on_release);
+    }
+
+    #[test]
+    fn rapidfire_settings_preserves_card_level_values_over_legacy_globals() {
+        let settings: RapidfireSettings = serde_json::from_value(serde_json::json!({
+            "version": 1,
+            "minPressSpacingMs": 120,
+            "triggerJitterMaxMs": 30,
+            "cancelJitterOnRelease": false,
+            "cards": [{
+                "id": "card",
+                "name": "新配置",
+                "triggerKey": "F6",
+                "targetKey": "Space",
+                "intervalMs": 100,
+                "minPressSpacingMs": 0,
+                "triggerJitterMaxMs": 5,
+                "cancelJitterOnRelease": true,
+                "enabled": true
+            }]
+        }))
+        .expect("卡片级值优先于旧全局值");
+
+        assert_eq!(settings.cards[0].min_press_spacing_ms, 0);
+        assert_eq!(settings.cards[0].trigger_jitter_max_ms, 5);
+        assert!(settings.cards[0].cancel_jitter_on_release);
     }
 }

@@ -46,7 +46,6 @@ static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 pub struct RapidfireState {
     inner: Mutex<RapidfireStateInner>,
-    last_press_at: Arc<Mutex<Instant>>,
 }
 
 struct RapidfireStateInner {
@@ -56,10 +55,20 @@ struct RapidfireStateInner {
     hotkey_error: Option<String>,
 }
 
-#[derive(Default)]
 struct CardRuntime {
     sessions: HashMap<String, RapidfireSessionRuntime>,
     active_session_ids: Vec<String>,
+    last_press_at: Arc<Mutex<Instant>>,
+}
+
+impl Default for CardRuntime {
+    fn default() -> Self {
+        Self {
+            sessions: HashMap::new(),
+            active_session_ids: Vec::new(),
+            last_press_at: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
 }
 
 struct RapidfireSessionRuntime {
@@ -345,9 +354,20 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         .press_jitter_max_ms
         .max(RAPIDFIRE_PRESS_JITTER_MIN_MS)
         .min(RAPIDFIRE_PRESS_JITTER_MAX_MS);
+    if card.min_press_spacing_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
+        return Err(format!(
+            "{} 的按键最小间距不能大于 {}ms",
+            name, RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+        ));
+    }
+    if card.trigger_jitter_max_ms > 1000 {
+        return Err(format!("{} 的触发抖动延迟上限不能大于 1000ms", name));
+    }
+    let min_press_spacing_ms = card.min_press_spacing_ms;
+    let trigger_jitter_max_ms = card.trigger_jitter_max_ms;
 
     if press_jitter_min_ms > press_jitter_max_ms {
-        return Err(format!("{} 的触发抖动最小值不能大于最大值", name));
+        return Err(format!("{} 的目标键触发抖动最小值不能大于最大值", name));
     }
 
     Ok(RapidfireCard {
@@ -358,6 +378,9 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         interval_ms,
         press_jitter_min_ms,
         press_jitter_max_ms,
+        min_press_spacing_ms,
+        trigger_jitter_max_ms,
+        cancel_jitter_on_release: card.cancel_jitter_on_release,
         enabled: card.enabled,
         skip_compensation: card.skip_compensation,
     })
@@ -403,28 +426,22 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
     if settings_value.compensation_delay_min_ms > settings_value.compensation_delay_max_ms {
         return Err("补齐延迟最小值不能大于最大值".to_string());
     }
-    if settings_value.compensation_delay_max_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
-        return Err(format!(
-            "补齐延迟不能大于 {}ms",
-            RAPIDFIRE_GLOBAL_DELAY_MAX_MS
-        ));
-    }
     if settings_value.min_press_spacing_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
         return Err(format!(
             "按键最小间距不能大于 {}ms",
             RAPIDFIRE_GLOBAL_DELAY_MAX_MS
         ));
     }
-    settings_value.compensation_delay_min_ms = settings_value
-        .compensation_delay_min_ms
-        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
-    settings_value.compensation_delay_max_ms = settings_value
-        .compensation_delay_max_ms
-        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
+    if settings_value.compensation_delay_max_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
+        return Err(format!(
+            "补齐延迟不能大于 {}ms",
+            RAPIDFIRE_GLOBAL_DELAY_MAX_MS
+        ));
+    }
     settings_value.min_press_spacing_ms = settings_value
         .min_press_spacing_ms
-        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS);
-    // 触发抖动上限 0-1000ms
+        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS)
+        .min(RAPIDFIRE_GLOBAL_DELAY_MAX_MS);
     settings_value.trigger_jitter_max_ms = settings_value.trigger_jitter_max_ms.min(1000);
 
     let mut seen_ids = HashMap::new();
@@ -503,7 +520,6 @@ async fn handle_hold_event(
 
 async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
-    let last_press_at = state.last_press_at.clone();
     let sessions_to_spawn = {
         let mut inner = state
             .inner
@@ -516,9 +532,6 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 
         let compensation_delay_min_ms = inner.settings.compensation_delay_min_ms;
         let compensation_delay_max_ms = inner.settings.compensation_delay_max_ms;
-        let min_press_spacing_ms = inner.settings.min_press_spacing_ms;
-        let trigger_jitter_max_ms = inner.settings.trigger_jitter_max_ms;
-        let cancel_jitter_on_release = inner.settings.cancel_jitter_on_release;
         let mut sessions_to_spawn = Vec::new();
 
         for card_id in &card_ids {
@@ -536,13 +549,14 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                         c.interval_ms,
                         c.press_jitter_min_ms,
                         c.press_jitter_max_ms,
+                        c.min_press_spacing_ms,
+                        c.trigger_jitter_max_ms,
+                        c.cancel_jitter_on_release,
                         c.skip_compensation,
                     )
                 });
 
-            let Some((cid, trigger, target, interval, jitter_min, jitter_max, skip_compensation)) =
-                card_info
-            else {
+            let Some((cid, trigger, target, interval, jitter_min, jitter_max, min_press_spacing_ms, trigger_jitter_max_ms, cancel_jitter_on_release, skip_compensation)) = card_info else {
                 continue;
             };
 
@@ -550,6 +564,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             let (control_tx, control_rx) = mpsc::channel();
             let compensate_now = Arc::new(AtomicBool::new(false));
             let run = inner.runs.entry(cid.clone()).or_default();
+            let last_press_at = run.last_press_at.clone();
 
             for session in run.sessions.values_mut() {
                 session.compensate_now.store(true, Ordering::Relaxed);
@@ -582,7 +597,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 cancel_jitter_on_release,
                 control_rx,
                 compensate_now,
-                last_press_at: last_press_at.clone(),
+                last_press_at,
             });
         }
 
@@ -1110,7 +1125,6 @@ pub fn initialize(
             pending_position: None,
             hotkey_error: None,
         }),
-        last_press_at: Arc::new(Mutex::new(Instant::now())),
     };
 
     if settings.rapidfire_enabled {
@@ -1412,6 +1426,9 @@ mod tests {
             interval_ms: 100,
             press_jitter_min_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MIN_MS,
             press_jitter_max_ms: RAPIDFIRE_DEFAULT_PRESS_JITTER_MAX_MS,
+            min_press_spacing_ms: 80,
+            trigger_jitter_max_ms: 0,
+            cancel_jitter_on_release: true,
             enabled: true,
             skip_compensation: false,
         }

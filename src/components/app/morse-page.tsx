@@ -346,6 +346,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     try {
       const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
         slots,
+        target: "sampling",
       });
       await syncBootstrap("regions");
 
@@ -539,7 +540,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     return <RegionSelectionOverlay slots={overlaySlots} />;
   }
 
-  const controlsDisabled = isBusy || !isNativeShell;
+  const selectionControlsDisabled = loading || running || selectingSlot !== null || !isNativeShell;
 
   return (
     <AppPage>
@@ -567,7 +568,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           <SelectionPanel
             configuredCount={configuredCount}
             form={form}
-            isBusy={controlsDisabled}
+            isBusy={selectionControlsDisabled}
             isPreviewMode={!isNativeShell}
             isPrimary={!stepOneComplete}
             selectingSlot={selectingSlot}

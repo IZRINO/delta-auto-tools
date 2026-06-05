@@ -154,6 +154,7 @@ impl HotkeyManager {
                     registration.enabled
                         && registration.scope != scope
                         && registration.binding == *new_binding
+                        && !normal_hold_conflict_allowed(scope, registration.scope.as_str())
                 }) {
                     return Err(format!(
                         "快捷键 {} 与{}的触发键冲突",
@@ -180,6 +181,7 @@ impl HotkeyManager {
                 registration.enabled
                     && registration.scope != scope
                     && registration.binding == *new_binding
+                    && !normal_hold_conflict_allowed(registration.scope.as_str(), scope)
             }) {
                 return Err(format!(
                     "触发键 {} 与{}的快捷键冲突",
@@ -294,6 +296,10 @@ impl HotkeyManager {
         hold_regs.remove(scope);
         Ok(())
     }
+}
+
+fn normal_hold_conflict_allowed(normal_scope: &str, hold_scope: &str) -> bool {
+    normal_scope == "timer" && hold_scope == "rapidfire"
 }
 
 fn scope_name(scope: &str) -> &'static str {
@@ -712,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn replace_scope_rejects_existing_hold_binding_from_other_scope() {
+    fn replace_scope_rejects_morse_binding_when_existing_hold_binding_matches() {
         let manager = test_manager();
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         manager
@@ -721,8 +727,8 @@ mod tests {
 
         let action: HotkeyAction = Arc::new(|_| {});
         let error = manager
-            .replace_scope("timer", vec![("Shift+-".to_string(), action)])
-            .expect_err("相同组合键应被结构化冲突检测拒绝");
+            .replace_scope("morse", vec![("Shift+-".to_string(), action)])
+            .expect_err("摩斯快捷键不能复用连发器触发键");
 
         assert!(error.contains("与连发器的触发键冲突"));
     }
@@ -741,6 +747,34 @@ mod tests {
             .expect_err("连发器触发键不能复用其他工具快捷键");
 
         assert!(error.contains("与摩斯密码解析的快捷键冲突"));
+    }
+
+    #[test]
+    fn timer_scope_allows_existing_rapidfire_hold_binding() {
+        let manager = test_manager();
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        manager
+            .replace_hold_scope("rapidfire", vec![("F2".to_string(), callback)])
+            .expect("应注册连发器触发键");
+
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope("timer", vec![("F2".to_string(), action)])
+            .expect("计时器快捷键允许复用连发器触发键");
+    }
+
+    #[test]
+    fn rapidfire_hold_scope_allows_existing_timer_binding() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope("timer", vec![("F3".to_string(), action)])
+            .expect("应注册计时器快捷键");
+
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        manager
+            .replace_hold_scope("rapidfire", vec![("F3".to_string(), callback)])
+            .expect("连发器触发键允许复用计时器快捷键");
     }
 
     #[test]
@@ -790,6 +824,49 @@ mod tests {
                 KeyPress::Up(IsSystemKeyPress::Normal),
             ))
             .is_none());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn timer_and_rapidfire_same_key_dispatch_together() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let timer_action: HotkeyAction = Arc::new(|_| {});
+        let rapidfire_action: HoldActionCallback = Arc::new(|_, _| {});
+        let registrations = Arc::new(Mutex::new(vec![HotkeyRegistration {
+            scope: "timer".to_string(),
+            binding: HotkeyBinding::parse("F2").unwrap(),
+            enabled: true,
+            action: Arc::clone(&timer_action),
+        }]));
+        let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
+            "rapidfire".to_string(),
+            vec![HoldRegistration {
+                scope: "rapidfire".to_string(),
+                binding: HotkeyBinding::parse("F2").unwrap(),
+                enabled: true,
+                action: Arc::clone(&rapidfire_action),
+            }],
+        )])));
+        let mut active_hold_keys = HashMap::new();
+        let mut active_hold_modifiers = HashSet::new();
+        let event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
+
+        let hold_actions = hold_actions_for_event(
+            &hold_registrations,
+            event,
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        let mut matcher = HotkeyMatcher::new();
+        let key_state = matcher.handle_event(event).expect("计时器普通快捷键应触发");
+        let normal_actions = actions_for_key_state(&registrations, &key_state);
+
+        assert_eq!(hold_actions.len(), 1);
+        assert_eq!(hold_actions[0].1, HoldAction::Down);
+        assert!(Arc::ptr_eq(&hold_actions[0].0, &rapidfire_action));
+        assert_eq!(normal_actions.len(), 1);
+        assert!(Arc::ptr_eq(&normal_actions[0], &timer_action));
     }
 
     #[test]

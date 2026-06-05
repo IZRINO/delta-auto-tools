@@ -7,7 +7,7 @@
 - 当前产品由四部分原生能力组成：
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
   2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
-- 3. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、全局补齐延迟/按键间距、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按固定间隔持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
+  3. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、卡片级按键最小间距、卡片级启动抖动延迟/松手策略、全局补齐延迟、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按卡片配置的启动抖动和最小间距持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*`、`src-tauri/src/rapidfire/*`、`src-tauri/src/strategy/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
   4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQ安全中心/先遣服鉴权和游戏数据查询能力，前端已接入账号管理、游戏数据与工具箱页面。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-vega` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
@@ -75,9 +75,9 @@ src/
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
-│       ├── strategy-page.tsx  # 攻略网站工作台：内嵌 + 自动刷新 + 外部打开
-│       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、刷新档位、localStorage 读写）
-│       ├── strategy-utils.test.ts # 攻略网站前端测试
+│       ├── strategy-page.tsx  # 攻略网站工作台：网址集中管理 + 打开攻略浏览器
+│       ├── strategy-browser-page.tsx # 独立攻略浏览器窗口：站点切换 + WebView2 真实导航
+│       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、localStorage 读写）
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
 │       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
@@ -100,10 +100,10 @@ src/
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay 模式直接渲染对应透明窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` / `?mode=strategy-browser` 参数：overlay / display / position / strategy-browser 模式直接渲染对应独立窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page）**：通过 Tauri 后端 `strategy_fetch_page` 命令拉取目标页面（Rust 端使用 Chrome 135 User-Agent + 完整 `Sec-Ch-Ua` / `Sec-Fetch-*` / `Accept` / `Referer` 请求头，避开 WebView UA 引发的人机验证）。Rust 端在解析响应体后会嗅探 `document.cookie = '...'; location.href = '...'` 模式（典型：kkrb.net），将 cookie 写入 reqwest 的 cookie jar 并自动向跳转目标再发起一次请求，最多跟随 3 次，避免 iframe 重新以 WebView UA 抓取同源 URL 导致 cookie 丢失的循环。**对于纯客户端人机验证**（如 kkrb cdn-shield / CC check：检测 `navigator.webdriver` / `HeadlessChrome` UA / 零 viewport / `window._phantom` / `performance.navigation`），Rust 端在 `detect_cc_check` 嗅探到 `<title>CC check</title>` / `/cdn-shield/` / "安全验证" + "点击确认您是真人" / `verification-card` 时，不渲染 srcDoc，而是把 `challenge = { kind: "ccCheck", message }` 返回给前端。前端收到 challenge 后把"应用内打开"按钮（`strategy_open_in_view` Tauri 命令）升到主操作位：由 Tauri 在主进程下新建 `WebviewWindow(url: WebviewUrl::External(...))`（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制），由真正的 WebView2 Chromium 跑过验证；同一 host 派生 label（`strategy-view-kkrb-net` 等）复用窗口；窗口默认 1024×720 最小 640×480，确保 `window.innerWidth > 0` 通过 zero-viewport 检测。普通页面用 `<iframe srcDoc>` 渲染并自动注入 `<base href>` 让相对资源解析到绝对 URL。页面采用 `Tabs` 切换站点：内置 2 个不可删除（kkrb / orzice），用户可通过"新增攻略网站"对话框追加任意 URL（自动生成 `user_xxx` ID），通过 Tab 头部的"删除此网站"按钮移除自定义站点；用户新增站点通过 `localStorage`（前缀 `delta-auto-tools:strategy:user-sites`）持久化，损坏值/非 `user_` 前缀条目均被丢弃。每个 Tab 卡片支持自动刷新档位、立即刷新、应用内打开、浏览器打开与最近拉取时间显示；自动刷新档位通过 `localStorage`（前缀 `delta-auto-tools:strategy:<site>:refresh-seconds`）按站点独立持久化，损坏值回落到关闭态；命中 challenge 时自动刷新倒计时会被暂停以避免重复代理拉取。
+- **攻略网站工作台（strategy-page / strategy-browser-page）**：主窗口只负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），主操作调用 `strategy_open_browser` 打开固定 label `strategy-browser` 的 Tauri 窗口（`index.html?mode=strategy-browser&site=...&url=...`）。`StrategyBrowserPage` 在窗口顶部提供站点切换、刷新当前 WebView、重新读取站点、系统浏览器打开；下方使用 `@tauri-apps/api/webview` 创建 label `strategy-content` 的子 WebView 真实导航外部 URL，cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -225,8 +225,9 @@ src-tauri/src/
 
 | 命令 | 说明 |
 |------|------|
-| `strategy_fetch_page` | 拉取目标攻略页面：带完整 Chrome 135 头 + JS 重定向跟随 + CC check 嗅探；命中人机验证时 `challenge` 字段非空 |
-| `strategy_open_in_view` | 在 Tauri 内新建 WebView2 子窗口打开外部 URL（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制）；同一 host 复用窗口 |
+| `strategy_fetch_page` | 兼容/实验拉取目标攻略页面：带完整 Chrome 135 头 + JS 重定向跟随（含 `window.location.href`）+ CC check 嗅探；命中人机验证时 `challenge` 字段非空 |
+| `strategy_open_browser` | 打开固定 `strategy-browser` 应用窗口，前端在其中创建 `strategy-content` 子 WebView 真实导航当前站点 |
+| `strategy_open_window` | 兼容入口：按 host 新建 / 复用 WebView2 子窗口直接打开外部 URL |
 
 **账号与鉴权**：
 - `delta_list_accounts` / `delta_delete_account`
@@ -328,8 +329,8 @@ src-tauri/src/
 - `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、会话状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 worker 线程编排。
 - `src-tauri/src/rapidfire/types.rs` 定义所有连发器数据结构（`RapidfireSettings`、`RapidfireCard`、`RapidfireBootstrap`、`RapidfireRunState`、`RapidfireRunStatus`、`RapidfireRect` 等）。
 - `src-tauri/src/rapidfire/settings.rs` 的持久化文件是 `rapidfire_settings.json`。
-- `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段。
-- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session）、`pending_position`、`hotkey_error`。
+- `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段；每张卡片的 `CardRuntime` 自带 `last_press_at: Arc<Mutex<Instant>>`，同一卡多 session 共享按键间距，不同卡片互不拖慢。
+- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session 与卡片级 last_press_at）、`pending_position`、`hotkey_error`。
 - 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
 - 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键触发键按下时也会同时触发同主键的无修饰键绑定（例如 `Shift+1` 同时触发 `Shift+1` 和 `1`），松开修饰键只停止组合键 session 并保留无修饰键 session；先按主键再按修饰键只新增组合键 session，不重启已运行的无修饰键 session。
 - 触发键主键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
@@ -342,14 +343,15 @@ src-tauri/src/
 - 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
 - 连发间隔最小 1ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
 - `RapidfireSettings.compensation_delay_min_ms` / `compensation_delay_max_ms` 控制奇数次数补齐前的随机等待范围；默认 100-150ms，可由 UI 全局设置。
-- `RapidfireSettings.min_press_spacing_ms` 控制所有连发会话共享的目标键最小触发间距；默认 80ms，可由 UI 全局设置。
+- `RapidfireCard.min_press_spacing_ms` 控制当前卡片目标键最小触发间距；默认 80ms，范围 0-10000ms。旧 `RapidfireSettings.min_press_spacing_ms` 仅作为反序列化兼容默认值来源。
+- `RapidfireCard.trigger_jitter_max_ms` / `cancel_jitter_on_release` 控制当前卡片按下触发键后的启动抖动延迟和抖动期间松手策略；旧 `RapidfireSettings.trigger_jitter_max_ms` / `cancel_jitter_on_release` 仅作为反序列化兼容默认值来源。
 - 目标键通过 `enigo::Key` 模拟真实 `Press → 8-12ms 抖动等待 → Release`，不要使用 `Direction::Click` 作为连发主路径。
 - 修改连发器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 - 连发器卡片支持按 `moveRapidfireCard` 顺序拖拽排序（与计时器拖拽实现一致：pointerdown 启动 / pointerup 收尾 / pointerenter 即时重排），卡片头部新增 `↕` DragButton；保留上移/下移按钮作为可访问性兜底。
 
 ### 攻略网站端
 
-- `src-tauri/src/strategy/mod.rs` 暴露两个 Tauri command：`strategy_fetch_page` 与 `strategy_open_in_view`。`strategy_fetch_page` 由 Rust 端用完整 Chrome 135 浏览器头（User-Agent、Accept、Accept-Language、Sec-Ch-Ua、Sec-Fetch-*、Referer、Cache-Control、Upgrade-Insecure-Requests）拉取目标页面，返回 HTML 文本 + 最终 URL + 可选的 `challenge`。前端用 `<iframe srcDoc>` 渲染，并在 `srcDoc` 顶部注入 `<base href>` 让相对资源解析到绝对 URL，避开 X-Frame-Options / CSP frame-ancestors 限制。`fetch_with_js_redirect_following` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` 模式后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_JS_REDIRECTS = 3` 次；非 HTML 响应（>10 MB）则直接拒绝。`detect_cc_check` 在响应体内嗅探 `<title>CC check</title>` / `/cdn-shield/` / "安全验证" + "点击确认您是真人" / `verification-card` 等 cdn-shield 特征，命中时把 `challenge = { kind: "ccCheck", message }` 写进响应（payload 大于 64 KB 视为正常内容跳过嗅探）。`strategy_open_in_view` 在 Tauri 主进程下新建 `WebviewWindow(url: WebviewUrl::External(...))`（top-level navigation，不受 X-Frame-Options / CSP frame-ancestors 限制），由真正的 WebView2 Chromium 跑过客户端人机验证；同一 host 派生 label（`strategy-view-kkrb-net` 等）复用窗口；窗口默认 1024×720 最小 640×480，确保 `window.innerWidth > 0` 通过 zero-viewport 检测。`capabilities/default.json` 的 `windows` 列表需包含 `strategy-view-*` 通配以放行新窗口。
+- `src-tauri/src/strategy/mod.rs` 暴露 `strategy_open_browser`、`strategy_open_window` 与 `strategy_fetch_page`。默认 UI 路径不再用 iframe/srcDoc：`strategy_open_browser` 创建固定 label `strategy-browser` 的本应用窗口，前端 `StrategyBrowserPage` 再创建 label `strategy-content` 的 Tauri 子 WebView 真实导航外部 URL；切换站点时销毁并重建内容 WebView，窗口 resize 时同步调整其 bounds。`strategy_open_window` 保留旧 per-host top-level WebView2 外部 URL 窗口入口。`strategy_fetch_page` 保留兼容/实验用途：Rust 端用完整 Chrome 135 浏览器头拉取目标页面，`fetch_with_redirect` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` 后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_REDIRECT_DEPTH = 3` 次；命中 CC check 时返回 `challenge`，但主 UI 不再以代理 HTML 渲染作为默认路径。
 
 ### Delta 端
 - `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构
@@ -443,6 +445,7 @@ src-tauri/src/
 - Morse、计时器和连发器都必须通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 普通快捷键使用 `replace_scope`；连发器按住触发键使用 `replace_hold_scope` / `clear_hold_scope`，通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
 - `HotkeyManager` 在注册时基于解析后的 `HotkeyBinding` 做跨 scope 冲突检测；不要用显示字符串或主键 label 自行比较。
+- 冲突策略有一个显式例外：普通快捷键 scope `timer` 与 hold scope `rapidfire` 允许同键共存；运行时会先分发连发器 hold Down/Up，再分发计时器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝。
 - 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K`、`Shift+-`、单独 `Alt` 等格式，组合触发键能力属于连发器已完成特性，不得回退。
 - 录制 Morse 热键时通过 `morse_set_hotkey_recording` 暂停 Morse scope（`set_scope_enabled("morse", false)`），录制后恢复。
 - 非 Windows 平台直接返回错误，不做降级处理。

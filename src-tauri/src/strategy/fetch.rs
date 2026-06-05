@@ -123,13 +123,15 @@ fn detect_cc_challenge(html: &str) -> Option<ChallengeInfo> {
 // ---------------------------------------------------------------------------
 
 /// 从 HTML 中提取 JS 重定向信息：`document.cookie = '...'` +
-/// `location.href = '...'`（或 `location.replace('...')`）。
+/// `location.href = '...'` / `window.location.href = '...'`（或 replace 调用）。
 ///
 /// 返回 `(cookie_str, target_url)`。
 fn extract_js_redirect(html: &str) -> Option<(String, String)> {
     let cookie_re = Regex::new(r#"document\.cookie\s*=\s*['"]([^'"]+)['"]"#).ok()?;
-    let location_re =
-        Regex::new(r#"location\.(?:href|replace)\s*=\s*['"]([^'"]+)['"]"#).ok()?;
+    let location_re = Regex::new(
+        r#"(?:window\.)?location\.(?:href\s*=|replace\s*\()\s*['\"]([^'\"]+)['\"]"#,
+    )
+    .ok()?;
 
     let cookie = cookie_re.captures(html)?.get(1)?.as_str().to_string();
     let target = location_re.captures(html)?.get(1)?.as_str().to_string();
@@ -230,4 +232,25 @@ pub async fn strategy_fetch_page(url: String) -> Result<StrategyFetchResponse, S
         .map_err(|e| format!("构建 HTTP 客户端失败：{e}"))?;
 
     fetch_with_redirect(&client, &jar, &url, 0).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_js_redirect_supports_window_location_href() {
+        let html = r#"<script>document.cookie = 'shield=ok; path=/'; window.location.href = '/next';</script>"#;
+        let (cookie, target) = extract_js_redirect(html).unwrap();
+        assert_eq!(cookie, "shield=ok; path=/");
+        assert_eq!(target, "/next");
+    }
+
+    #[test]
+    fn extract_js_redirect_supports_location_replace_call() {
+        let html = r#"<script>document.cookie = "shield=ok"; location.replace("/next");</script>"#;
+        let (cookie, target) = extract_js_redirect(html).unwrap();
+        assert_eq!(cookie, "shield=ok");
+        assert_eq!(target, "/next");
+    }
 }

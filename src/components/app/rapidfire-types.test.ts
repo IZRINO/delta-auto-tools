@@ -33,6 +33,9 @@ function sampleSettings(): RapidfireSettings {
         intervalMs: 80,
         pressJitterMinMs: 8,
         pressJitterMaxMs: 12,
+        minPressSpacingMs: 80,
+        triggerJitterMaxMs: 0,
+        cancelJitterOnRelease: true,
         enabled: true,
         skipCompensation: false,
       },
@@ -131,6 +134,9 @@ describe("rapidfire-types", () => {
       intervalMs: "100",
       pressJitterMinMs: "10",
       pressJitterMaxMs: "18",
+      minPressSpacingMs: "90",
+      triggerJitterMaxMs: "20",
+      cancelJitterOnRelease: true,
       enabled: true,
       skipCompensation: false,
     });
@@ -152,17 +158,22 @@ describe("rapidfire-types", () => {
     expect(parsed.cards[0].pressJitterMaxMs).toBe(25);
   });
 
-  it("round trips global rapidfire delay parameters through form state", () => {
+  it("round trips global compensation and per-card rapidfire parameters", () => {
     const form = rapidfireSettingsToForm(sampleSettings());
     form.compensationDelayMinMs = "120";
     form.compensationDelayMaxMs = "180";
-    form.minPressSpacingMs = "90";
+    form.cards[0].minPressSpacingMs = "0";
+    form.cards[0].triggerJitterMaxMs = "90";
+    form.cards[0].cancelJitterOnRelease = false;
 
     const parsed = parseRapidfireSettingsForm(form);
 
     expect(parsed.compensationDelayMinMs).toBe(120);
     expect(parsed.compensationDelayMaxMs).toBe(180);
-    expect(parsed.minPressSpacingMs).toBe(90);
+    expect(parsed.minPressSpacingMs).toBe(80);
+    expect(parsed.cards[0].minPressSpacingMs).toBe(0);
+    expect(parsed.cards[0].triggerJitterMaxMs).toBe(90);
+    expect(parsed.cards[0].cancelJitterOnRelease).toBe(false);
   });
 
   it("rejects an inverted global compensation delay range", () => {

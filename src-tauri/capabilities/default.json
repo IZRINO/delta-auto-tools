@@ -11,10 +11,16 @@
     "counter-position",
     "rapidfire-display",
     "rapidfire-position",
-    "strategy-view-*"
+    "strategy-view-*",
+    "strategy-browser",
+    "strategy-content"
   ],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-webview-close",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size"
   ]
 }

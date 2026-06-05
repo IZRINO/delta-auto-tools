@@ -47,7 +47,6 @@ import {
   RAPIDFIRE_AUTOSAVE_DELAY_MS,
   RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
   RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS,
-  RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS,
   RAPIDFIRE_DISPLAY_MAX_WIDTH,
   RAPIDFIRE_DISPLAY_MIN_WIDTH,
   RAPIDFIRE_GLOBAL_DELAY_MAX_MS,
@@ -159,10 +158,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       overlayWidth: "400",
       compensationDelayMinMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
       compensationDelayMaxMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
-      minPressSpacingMs: String(RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS),
       overlayPosition: null,
-      triggerJitterMaxMs: "0",
-      cancelJitterOnRelease: true,
       cards: [createRapidfireCard(rapidfireCardId(), 0)],
     });
   }, [isNativeShell]);
@@ -508,7 +504,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
           eyebrow="Overlay & Hotkeys"
           icon={<RiPulseLine />}
           title="全局控制"
-          description="总开关、透明窗口、补齐延迟和按键间距会自动保存。"
+          description="总开关、透明窗口和补齐延迟会自动保存；按键间距与启动抖动在每张卡片内独立配置。"
         />
         <CardBody>
           <FieldGroup className="grid gap-3 md:grid-cols-3">
@@ -557,7 +553,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               </Field>
             </ControlTile>
           </FieldGroup>
-          <FieldGroup className="mt-3 grid gap-3 md:grid-cols-3">
+          <FieldGroup className="mt-3 grid gap-3 md:grid-cols-2">
             <ControlTile>
               <Field>
                 <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
@@ -595,54 +591,6 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 </div>
                 <FieldDescription>下限不能大于上限。</FieldDescription>
               </Field>
-            </ControlTile>
-            <ControlTile>
-              <Field>
-                <FieldLabel htmlFor="minPressSpacingMs">按键最小间距</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="minPressSpacingMs"
-                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                    type="number"
-                    min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                    max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                    value={form.minPressSpacingMs}
-                    disabled={controlsDisabled}
-                    onChange={(event) => updateForm("minPressSpacingMs", event.target.value)}
-                  />
-                  <FieldTitle>ms</FieldTitle>
-                </div>
-                <FieldDescription>所有会话共享的目标键间距。</FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="triggerJitterMaxMs">触发抖动延迟上限</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="triggerJitterMaxMs"
-                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                    type="number"
-                    min={0}
-                    max={1000}
-                    value={form.triggerJitterMaxMs}
-                    disabled={controlsDisabled}
-                    onChange={(event) => updateForm("triggerJitterMaxMs", event.target.value)}
-                  />
-                  <FieldTitle>ms（0=关闭）</FieldTitle>
-                </div>
-                <FieldDescription>按下触发键后延迟此毫秒数再开始连发，防止误触</FieldDescription>
-              </Field>
-              <ControlTile className="flex items-center gap-3 mt-2">
-                <Switch
-                  id="cancelJitterOnRelease"
-                  checked={form.cancelJitterOnRelease}
-                  disabled={controlsDisabled}
-                  onCheckedChange={(checked) => updateForm("cancelJitterOnRelease", checked)}
-                />
-                <div className="min-w-0">
-                  <label htmlFor="cancelJitterOnRelease" className="text-sm font-medium text-foreground cursor-pointer">抖动期间松手立即触发</label>
-                  <p className="mt-1 text-xs text-muted-foreground">若开启触发抖动延迟，抖动期间松开按键会立刻触发一次连发并追加补齐奇数次数</p>
-                </div>
-              </ControlTile>
             </ControlTile>
           </FieldGroup>
         </CardBody>
@@ -753,7 +701,7 @@ function RapidfireCardEditor({
         eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
         icon={<RiPulseLine />}
         title={card.name || `连发器 ${index + 1}`}
-        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 抖动 ${card.pressJitterMinMs || "--"}-${card.pressJitterMaxMs || "--"}ms · ${card.skipCompensation ? "不追加" : "自动补齐"}`}
+        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 卡片间距 ${card.minPressSpacingMs || "0"}ms · 启动抖动 ${card.triggerJitterMaxMs || "0"}ms · ${card.skipCompensation ? "不追加" : "自动补齐"}`}
         badge={
           <Badge variant={status.variant}>
             {status.label}
@@ -919,6 +867,58 @@ function RapidfireCardEditor({
                 <FieldTitle>ms</FieldTitle>
               </div>
               <FieldDescription>目标键按下保持时间。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field>
+              <FieldLabel htmlFor={`${card.id}-min-spacing`}>当前卡片按键最小间距</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
+                  id={`${card.id}-min-spacing`}
+                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  type="number"
+                  min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                  max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                  value={card.minPressSpacingMs}
+                  disabled={disabled}
+                  onChange={(event) => onUpdate(card.id, { minPressSpacingMs: event.target.value })}
+                />
+                <FieldTitle>ms</FieldTitle>
+              </div>
+              <FieldDescription>仅限制这张卡片的目标键触发间距，不拖慢其他卡片。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field>
+              <FieldLabel htmlFor={`${card.id}-trigger-jitter`}>当前卡片启动抖动上限</FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
+                  id={`${card.id}-trigger-jitter`}
+                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={card.triggerJitterMaxMs}
+                  disabled={disabled}
+                  onChange={(event) => onUpdate(card.id, { triggerJitterMaxMs: event.target.value })}
+                />
+                <FieldTitle>ms（0=关闭）</FieldTitle>
+              </div>
+              <FieldDescription>按下这张卡片的触发键后，最多等待此时长再开始连发。</FieldDescription>
+            </Field>
+          </ControlTile>
+          <ControlTile>
+            <Field orientation="horizontal">
+              <Switch
+                id={`${card.id}-cancel-jitter`}
+                checked={card.cancelJitterOnRelease}
+                disabled={disabled}
+                onCheckedChange={(checked) => onUpdate(card.id, { cancelJitterOnRelease: checked })}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor={`${card.id}-cancel-jitter`}>抖动期间松手立即触发</FieldLabel>
+                <FieldDescription>仅作用于这张卡片；松开后立即触发一次并进入奇数补齐判断。</FieldDescription>
+              </FieldContent>
             </Field>
           </ControlTile>
         </FieldGroup>
