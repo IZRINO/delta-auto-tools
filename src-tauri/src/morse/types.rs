@@ -30,6 +30,9 @@ pub struct MorseSettings {
     pub regions: [Option<RegionRect>; 3],
     pub binary_threshold: u8,
     pub auto_input_delay: u64,
+    /// 自动点击整组成功完成后按一次；None 表示不执行
+    #[serde(default)]
+    pub after_click_hotkey: Option<String>,
     /// 识别成功后自动点击已配置区域
     #[serde(default)]
     pub auto_click_enabled: bool,
@@ -45,6 +48,7 @@ impl Default for MorseSettings {
             regions: [None, None, None],
             binary_threshold: 127,
             auto_input_delay: 50,
+            after_click_hotkey: None,
             auto_click_enabled: false,
             click_regions: Vec::new(),
         }
@@ -134,6 +138,7 @@ mod tests {
         assert_eq!(settings.binary_threshold, 127);
         assert_eq!(settings.auto_input_delay, 50);
         assert_eq!(settings.regions, [None, None, None]);
+        assert_eq!(settings.after_click_hotkey, None);
         assert!(settings.click_regions.is_empty());
     }
 }

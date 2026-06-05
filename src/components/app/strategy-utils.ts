@@ -30,6 +30,17 @@ export type StrategySite = {
   builtin: boolean;
 };
 
+export type StrategyContentBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type StrategyContentRectLike = Pick<DOMRectReadOnly, "left" | "top" | "width" | "height"> | null | undefined;
+
+export type StrategyContentViewportLike = Pick<DOMRectReadOnly, "width" | "height"> | null | undefined;
+
 /**
  * Tauri 端 `strategy_open_window` 命令的请求。
  */
@@ -48,6 +59,8 @@ export type StrategyOpenWindowResponse = {
 };
 
 export const DEFAULT_STRATEGY_REFRESH_SECONDS = 0;
+export const STRATEGY_CONTENT_MIN_WIDTH = 320;
+export const STRATEGY_CONTENT_MIN_HEIGHT = 360;
 
 export const STRATEGY_REFRESH_OPTIONS = [
   { seconds: DEFAULT_STRATEGY_REFRESH_SECONDS, label: "关闭" },
@@ -330,6 +343,51 @@ export function mergeStrategySites(
   user: ReadonlyArray<StrategySite>,
 ): ReadonlyArray<StrategySite> {
   return [...builtin, ...user];
+}
+
+export function normalizeStrategyContentBounds(
+  rect: StrategyContentRectLike,
+  minimum: { width: number; height: number } = {
+    width: STRATEGY_CONTENT_MIN_WIDTH,
+    height: STRATEGY_CONTENT_MIN_HEIGHT,
+  },
+): StrategyContentBounds {
+  return {
+    x: Math.max(0, Math.round(rect?.left ?? 0)),
+    y: Math.max(0, Math.round(rect?.top ?? 0)),
+    width: Math.max(minimum.width, Math.round(rect?.width ?? minimum.width)),
+    height: Math.max(minimum.height, Math.round(rect?.height ?? minimum.height)),
+  };
+}
+
+export function normalizeVisibleStrategyContentBounds(
+  rect: StrategyContentRectLike,
+  viewport: StrategyContentViewportLike,
+): StrategyContentBounds | null {
+  if (!rect || !viewport) {
+    return null;
+  }
+  const viewportWidth = Math.max(0, Math.round(viewport.width));
+  const viewportHeight = Math.max(0, Math.round(viewport.height));
+  const left = rect.left;
+  const top = rect.top;
+  const right = left + rect.width;
+  const bottom = top + rect.height;
+  const clippedLeft = Math.max(0, left);
+  const clippedTop = Math.max(0, top);
+  const clippedRight = Math.min(viewportWidth, right);
+  const clippedBottom = Math.min(viewportHeight, bottom);
+  const width = Math.round(clippedRight - clippedLeft);
+  const height = Math.round(clippedBottom - clippedTop);
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+  return {
+    x: Math.round(clippedLeft),
+    y: Math.round(clippedTop),
+    width,
+    height,
+  };
 }
 
 function getDefaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {

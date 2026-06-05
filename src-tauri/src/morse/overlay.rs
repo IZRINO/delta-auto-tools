@@ -3,7 +3,10 @@ use tokio::sync::oneshot;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use super::{
-    types::{ClickRegion, RegionRect, RegionSelectionKind, RegionSelectionOutcome, RegionSelectionProgress},
+    types::{
+        ClickRegion, RegionRect, RegionSelectionKind, RegionSelectionOutcome,
+        RegionSelectionProgress,
+    },
     MorseState,
 };
 
@@ -118,7 +121,10 @@ fn prepare_selection_from_pending(
     let mut staged = pending.staged.clone();
     // 保留已有区域的 delay_ms，新区域默认 500ms
     let existing_delay = staged[slot].as_ref().map(|c| c.delay_ms).unwrap_or(500);
-    staged[slot] = Some(ClickRegion { rect, delay_ms: existing_delay });
+    staged[slot] = Some(ClickRegion {
+        rect,
+        delay_ms: existing_delay,
+    });
 
     let next_index = pending.current_index + 1;
     let is_complete = next_index >= pending.slots.len();
@@ -178,9 +184,17 @@ pub async fn begin_region_selection(
         let initial: Vec<Option<ClickRegion>> = if target == "click" {
             click_regions_to_staged(&inner.settings.click_regions)
         } else {
-            inner.settings.regions.iter().map(|r| {
-                r.as_ref().map(|rect| ClickRegion { rect: rect.clone(), delay_ms: 500 })
-            }).collect()
+            inner
+                .settings
+                .regions
+                .iter()
+                .map(|r| {
+                    r.as_ref().map(|rect| ClickRegion {
+                        rect: rect.clone(),
+                        delay_ms: 500,
+                    })
+                })
+                .collect()
         };
 
         inner.pending_selection = Some(PendingSelection {
@@ -196,7 +210,8 @@ pub async fn begin_region_selection(
 
     let overlay_url = WebviewUrl::App(
         format!(
-            "index.html?mode=overlay&slots={}",
+            "index.html?mode=overlay&target={}&slots={}",
+            target,
             slots
                 .iter()
                 .map(|slot| slot.to_string())
@@ -252,7 +267,10 @@ pub async fn begin_region_selection(
 
         if let Some(pending) = inner.pending_selection.as_ref() {
             let (regions, click_regions) = if pending.target == "click" {
-                ([None, None, None], Some(staged_to_click_regions(&pending.staged)))
+                (
+                    [None, None, None],
+                    Some(staged_to_click_regions(&pending.staged)),
+                )
             } else {
                 let mut arr = [None, None, None];
                 for (i, opt) in pending.staged.iter().enumerate().take(3) {
@@ -267,7 +285,12 @@ pub async fn begin_region_selection(
         }
     };
 
-    Ok(RegionSelectionOutcome { kind, regions, target, click_regions })
+    Ok(RegionSelectionOutcome {
+        kind,
+        regions,
+        target,
+        click_regions,
+    })
 }
 
 pub fn prepare_selection(
@@ -341,9 +364,17 @@ pub fn commit_selection(
                 }
                 pending.staged = new_staged;
             } else {
-                pending.staged = prepared.progress.regions.iter().map(|r| {
-                    r.as_ref().map(|rect| ClickRegion { rect: rect.clone(), delay_ms: 500 })
-                }).collect();
+                pending.staged = prepared
+                    .progress
+                    .regions
+                    .iter()
+                    .map(|r| {
+                        r.as_ref().map(|rect| ClickRegion {
+                            rect: rect.clone(),
+                            delay_ms: 500,
+                        })
+                    })
+                    .collect();
             }
             pending.current_index = prepared.progress.completed_slots.len();
         }
@@ -448,6 +479,17 @@ mod tests {
         }
     }
 
+    fn click_pending(slots: Vec<usize>, current_index: usize) -> PendingSelection {
+        let (sender, _receiver) = oneshot::channel();
+        PendingSelection {
+            target: "click".to_string(),
+            slots,
+            current_index,
+            staged: vec![None; 7],
+            sender,
+        }
+    }
+
     fn sample_rect() -> RegionRect {
         RegionRect {
             x: 10,
@@ -463,6 +505,7 @@ mod tests {
         assert!(parse_slots(&[], 3).is_err());
         assert!(parse_slots(&[3], 3).is_err());
         assert!(parse_slots(&[1, 1], 3).is_err());
+        assert_eq!(parse_slots(&[3, 6], 7).unwrap(), vec![3, 6]);
     }
 
     #[test]
@@ -497,7 +540,12 @@ mod tests {
     fn prepare_selection_advances_to_next_slot() {
         let mut pending = sample_pending(vec![0, 2], 0);
         pending.staged[1] = Some(ClickRegion {
-            rect: RegionRect { x: 1, y: 1, width: 2, height: 2 },
+            rect: RegionRect {
+                x: 1,
+                y: 1,
+                width: 2,
+                height: 2,
+            },
             delay_ms: 500,
         });
         let prepared = prepare_selection_from_pending(&pending, 0, sample_rect()).unwrap();
@@ -517,5 +565,21 @@ mod tests {
         assert_eq!(prepared.progress.current_slot, None);
         assert_eq!(prepared.progress.completed_slots, vec![2]);
         assert_eq!(prepared.progress.regions[2], Some(sample_rect()));
+    }
+
+    #[test]
+    fn prepare_click_selection_accepts_slot_three_and_preserves_target() {
+        let pending = click_pending(vec![3], 0);
+        let prepared = prepare_selection_from_pending(&pending, 3, sample_rect()).unwrap();
+
+        assert!(prepared.is_complete);
+        assert_eq!(prepared.progress.target, "click");
+        assert_eq!(prepared.progress.current_slot, None);
+        assert_eq!(prepared.progress.completed_slots, vec![3]);
+        assert_eq!(prepared.progress.regions, [None, None, None]);
+        assert_eq!(
+            prepared.progress.click_regions.unwrap()[0].rect,
+            sample_rect()
+        );
     }
 }

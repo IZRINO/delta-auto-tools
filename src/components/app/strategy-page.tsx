@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  RiAddLine,
-  RiDeleteBinLine,
   RiExternalLinkLine,
   RiRefreshLine,
   RiWindowLine,
 } from "@remixicon/react";
-import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
-import { Webview } from "@tauri-apps/api/webview";
+import { PhysicalPosition, PhysicalSize } from "@tauri-apps/api/dpi";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
@@ -15,23 +13,12 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -44,7 +31,6 @@ import {
   AppPage,
   CardBody,
   PageHero,
-  SectionHeader,
   SignalTile,
   TacticalCard,
 } from "@/components/app/app-ui";
@@ -52,43 +38,46 @@ import {
   BUILTIN_STRATEGY_SITES,
   DEFAULT_STRATEGY_REFRESH_SECONDS,
   STRATEGY_REFRESH_OPTIONS,
-  createStrategySite,
+  STRATEGY_CONTENT_MIN_HEIGHT,
+  STRATEGY_CONTENT_MIN_WIDTH,
   mergeStrategySites,
+  normalizeStrategyContentBounds,
+  normalizeVisibleStrategyContentBounds,
   readStoredUserSites,
   readStrategyRefreshSeconds,
-  writeStoredUserSites,
   writeStrategyRefreshSeconds,
+  type StrategyContentBounds,
   type StrategyRefreshSeconds,
   type StrategySite,
-  type UserStrategySite,
 } from "@/components/app/strategy-utils";
 import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 
 const CONTENT_WEBVIEW_LABEL = "strategy-content";
-const MIN_CONTENT_WIDTH = 320;
-const MIN_CONTENT_HEIGHT = 360;
+const STABLE_BOUNDS_ATTEMPTS = 30;
 
-type ContentBounds = {
+type StrategyContentWindowBounds = {
   x: number;
   y: number;
   width: number;
   height: number;
 };
 
-async function closeContentWebview(candidate: Webview | null): Promise<void> {
-  const webview = candidate ?? await Webview.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null);
-  if (!webview) {
+async function closeContentWindow(candidate: WebviewWindow | null): Promise<void> {
+  const contentWindow = candidate ?? (await WebviewWindow.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null));
+  if (!contentWindow) {
     return;
   }
-  await webview.close().catch(() => undefined);
+  await contentWindow.destroy().catch(() => undefined);
 }
 
 export function StrategyPage() {
   const isNativeShell = useNativeShell();
   const contentHostRef = useRef<HTMLDivElement | null>(null);
-  const webviewRef = useRef<Webview | null>(null);
-  const [userSites, setUserSites] = useState<StrategySite[]>(() => readStoredUserSites());
+  const contentWindowRef = useRef<WebviewWindow | null>(null);
+  const contentWindowReadyRef = useRef(false);
+  const latestBoundsRef = useRef<StrategyContentBounds | null>(null);
+  const [userSites] = useState<StrategySite[]>(() => readStoredUserSites());
   const allSites = useMemo(() => mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites), [userSites]);
   const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? "");
   const activeSite = useMemo(() => {
@@ -118,60 +107,154 @@ export function StrategyPage() {
     setRemainingSeconds(0);
   }, [activeSite?.id]);
 
-  const calculateContentBounds = useCallback((): ContentBounds => {
+  const calculateContentBounds = useCallback((): StrategyContentBounds => {
     const rect = contentHostRef.current?.getBoundingClientRect();
+    return normalizeStrategyContentBounds(rect);
+  }, []);
+
+  const calculateVisibleContentBounds = useCallback((): StrategyContentBounds | null => {
+    const rect = contentHostRef.current?.getBoundingClientRect();
+    return normalizeVisibleStrategyContentBounds(rect, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
+  }, []);
+
+  const hasUsefulContentBounds = useCallback((bounds: StrategyContentBounds) => {
+    return bounds.width > STRATEGY_CONTENT_MIN_WIDTH && bounds.height >= STRATEGY_CONTENT_MIN_HEIGHT;
+  }, []);
+
+  const waitForStableContentBounds = useCallback(async (): Promise<StrategyContentBounds> => {
+    let last = calculateContentBounds();
+    let lastUseful = hasUsefulContentBounds(last) ? last : null;
+    for (let attempt = 0; attempt < STABLE_BOUNDS_ATTEMPTS; attempt += 1) {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const next = calculateContentBounds();
+      if (hasUsefulContentBounds(next)) {
+        lastUseful = next;
+      }
+      const hostHasUsefulSize =
+        contentHostRef.current !== null &&
+        next.width > STRATEGY_CONTENT_MIN_WIDTH &&
+        next.height >= STRATEGY_CONTENT_MIN_HEIGHT;
+      const isStable =
+        hostHasUsefulSize &&
+        next.x === last.x &&
+        next.y === last.y &&
+        next.width === last.width &&
+        next.height === last.height;
+      if (isStable) {
+        return next;
+      }
+      last = next;
+    }
+    return lastUseful ?? calculateContentBounds();
+  }, [calculateContentBounds, hasUsefulContentBounds]);
+
+  const calculateContentWindowBounds = useCallback(async (bounds: StrategyContentBounds): Promise<StrategyContentWindowBounds> => {
+    const appWindow = getCurrentWindow();
+    const [innerPosition, scaleFactor] = await Promise.all([
+      appWindow.innerPosition(),
+      appWindow.scaleFactor(),
+    ]);
     return {
-      x: Math.max(0, Math.round(rect?.left ?? 0)),
-      y: Math.max(0, Math.round(rect?.top ?? 0)),
-      width: Math.max(MIN_CONTENT_WIDTH, Math.round(rect?.width ?? MIN_CONTENT_WIDTH)),
-      height: Math.max(MIN_CONTENT_HEIGHT, Math.round(rect?.height ?? MIN_CONTENT_HEIGHT)),
+      x: Math.round(innerPosition.x + bounds.x * scaleFactor),
+      y: Math.round(innerPosition.y + bounds.y * scaleFactor),
+      width: Math.max(1, Math.round(bounds.width * scaleFactor)),
+      height: Math.max(1, Math.round(bounds.height * scaleFactor)),
     };
   }, []);
+
+  const applyContentBounds = useCallback(async (contentWindow: WebviewWindow, bounds: StrategyContentBounds) => {
+    const windowBounds = await calculateContentWindowBounds(bounds);
+    await contentWindow.setPosition(new PhysicalPosition(windowBounds.x, windowBounds.y));
+    await contentWindow.setSize(new PhysicalSize(windowBounds.width, windowBounds.height));
+  }, [calculateContentWindowBounds]);
 
   const resizeContentWebview = useCallback(async () => {
     if (!isNativeShell) {
       return;
     }
-    const webview = webviewRef.current ?? await Webview.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null);
-    if (!webview) {
+    const bounds = calculateVisibleContentBounds();
+    latestBoundsRef.current = bounds;
+    const contentWindow = contentWindowRef.current;
+    if (!contentWindow || !contentWindowReadyRef.current) {
       return;
     }
-    const bounds = calculateContentBounds();
-    await webview.setPosition(new LogicalPosition(bounds.x, bounds.y));
-    await webview.setSize(new LogicalSize(bounds.width, bounds.height));
-  }, [calculateContentBounds, isNativeShell]);
+    if (!bounds) {
+      await contentWindow.hide();
+      return;
+    }
+    await applyContentBounds(contentWindow, bounds);
+    await contentWindow.show();
+  }, [applyContentBounds, calculateVisibleContentBounds, isNativeShell]);
 
   useEffect(() => {
     if (!isNativeShell || !activeUrl) {
-      setStatusMessage(isNativeShell ? "未选择攻略网站。" : "浏览器预览模式无法创建 Tauri 子 WebView。");
+      setStatusMessage(isNativeShell ? "未选择攻略网站。" : "浏览器预览模式无法创建 Tauri 内容窗口。");
       return;
     }
 
     let cancelled = false;
     const currentWindow = getCurrentWindow();
-    const bounds = calculateContentBounds();
+    contentWindowReadyRef.current = false;
     setStatusMessage(`正在加载 ${activeLabel}...`);
 
     async function mountWebview() {
-      const existing = await Webview.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null);
-      await closeContentWebview(existing);
+      const existing = await WebviewWindow.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null);
+      await closeContentWindow(existing);
       if (cancelled) {
         return;
       }
 
-      const webview = new Webview(currentWindow, CONTENT_WEBVIEW_LABEL, {
+      const hostBounds = await waitForStableContentBounds();
+      const visibleBounds = calculateVisibleContentBounds();
+      const initialBounds = visibleBounds ?? hostBounds;
+      latestBoundsRef.current = visibleBounds;
+      if (cancelled) {
+        return;
+      }
+
+      const contentWindow = new WebviewWindow(CONTENT_WEBVIEW_LABEL, {
         url: activeUrl,
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
+        width: initialBounds.width,
+        height: initialBounds.height,
+        decorations: false,
         focus: false,
+        parent: currentWindow,
+        resizable: false,
+        shadow: false,
+        skipTaskbar: true,
+        visible: false,
+        title: activeLabel,
       });
-      webviewRef.current = webview;
-      void webview.once("tauri://created", () => {
-        setStatusMessage(`已在主窗口内部加载：${activeLabel}`);
+      contentWindowRef.current = contentWindow;
+      void contentWindow.once("tauri://created", () => {
+        if (cancelled || contentWindowRef.current !== contentWindow) {
+          void closeContentWindow(contentWindow);
+          return;
+        }
+        contentWindowReadyRef.current = true;
+        const nextBounds = latestBoundsRef.current ?? calculateVisibleContentBounds();
+        if (!nextBounds) {
+          void contentWindow.hide();
+          setStatusMessage("网页区域当前不在可视范围内。");
+          return;
+        }
+        void applyContentBounds(contentWindow, nextBounds)
+          .then(() => contentWindow.show())
+          .then(() => {
+            setStatusMessage(`已在主窗口内部加载：${activeLabel}`);
+          })
+          .catch((error: unknown) => {
+            setStatusMessage(`调整网页视图位置失败：${getErrorMessage(error)}`);
+          });
       });
-      void webview.once("tauri://error", (event) => {
+      void contentWindow.once("tauri://error", (event) => {
+        if (contentWindowRef.current === contentWindow) {
+          contentWindowRef.current = null;
+        }
+        contentWindowReadyRef.current = false;
         setStatusMessage(`创建网页视图失败：${String(event.payload)}`);
       });
     }
@@ -182,17 +265,20 @@ export function StrategyPage() {
 
     return () => {
       cancelled = true;
-      const current = webviewRef.current;
-      webviewRef.current = null;
-      void closeContentWebview(current);
+      const current = contentWindowRef.current;
+      contentWindowRef.current = null;
+      contentWindowReadyRef.current = false;
+      void closeContentWindow(current);
     };
-  }, [activeLabel, activeUrl, calculateContentBounds, isNativeShell, reloadNonce]);
+  }, [activeLabel, activeUrl, applyContentBounds, calculateVisibleContentBounds, isNativeShell, reloadNonce, waitForStableContentBounds]);
 
   useEffect(() => {
     if (!isNativeShell) {
       return;
     }
     let frame = 0;
+    let disposed = false;
+    let windowUnlisteners: Array<() => void> = [];
     const scheduleResize = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
@@ -208,11 +294,29 @@ export function StrategyPage() {
     scheduleResize();
     window.addEventListener("resize", scheduleResize);
     window.addEventListener("scroll", scheduleResize, true);
+    async function setupWindowListeners() {
+      const appWindow = getCurrentWindow();
+      const unlisteners = await Promise.all([
+        appWindow.onMoved(scheduleResize),
+        appWindow.onResized(scheduleResize),
+        appWindow.onScaleChanged(scheduleResize),
+      ]);
+      if (disposed) {
+        unlisteners.forEach((unlisten) => unlisten());
+        return;
+      }
+      windowUnlisteners = unlisteners;
+    }
+    void setupWindowListeners().catch((error: unknown) => {
+      setStatusMessage(`监听主窗口位置失败：${getErrorMessage(error)}`);
+    });
     return () => {
+      disposed = true;
       window.cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener("resize", scheduleResize);
       window.removeEventListener("scroll", scheduleResize, true);
+      windowUnlisteners.forEach((unlisten) => unlisten());
     };
   }, [isNativeShell, resizeContentWebview]);
 
@@ -237,38 +341,6 @@ export function StrategyPage() {
       window.clearTimeout(timeout);
     };
   }, [activeUrl, isNativeShell, refreshSeconds, reloadNonce]);
-
-  const handleAddSite = useCallback((draft: UserStrategySite) => {
-    const created = createStrategySite(draft);
-    if (!created) {
-      toast.error("网址无效：检查简称、标签与 URL 格式（必须以 http:// 或 https:// 开头）");
-      return false;
-    }
-    setUserSites((current) => {
-      const next = [...current, created];
-      writeStoredUserSites(next);
-      return next;
-    });
-    setActiveId(created.id);
-    toast.success(`已新增攻略网站：${created.label}`);
-    return true;
-  }, []);
-
-  const handleDeleteActiveSite = useCallback(() => {
-    if (!activeSite || activeSite.builtin) {
-      return;
-    }
-    setUserSites((current) => {
-      const target = current.find((site) => site.id === activeSite.id);
-      if (!target) {
-        return current;
-      }
-      const next = current.filter((site) => site.id !== activeSite.id);
-      writeStoredUserSites(next);
-      toast.success(`已删除攻略网站：${target.label}`);
-      return next;
-    });
-  }, [activeSite]);
 
   const handleRefresh = useCallback(() => {
     if (!activeUrl) {
@@ -310,7 +382,7 @@ export function StrategyPage() {
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="在主软件内部嵌入 WebView2 真实网页区域，站点 cookie、JS 跳转、localStorage、同源接口和人机验证都由目标站点自身处理，不再额外弹出攻略浏览器窗口。"
+        description="在主软件内部贴合显示 WebView2 真实网页区域，站点 cookie、JS 跳转、localStorage、同源接口和人机验证都由目标站点自身处理，不再额外弹出攻略浏览器窗口。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
@@ -329,7 +401,7 @@ export function StrategyPage() {
               label="打开方式"
               value="软件内部"
               icon={<RiWindowLine />}
-              detail="当前页面的 strategy-content 子 WebView 承载真实导航。"
+              detail="当前页面的 strategy-content 内容窗口承载真实导航。"
             />
             <SignalTile
               label="自动刷新"
@@ -342,28 +414,7 @@ export function StrategyPage() {
       />
 
       <TacticalCard className="relative z-10 shrink-0">
-        <CardBody className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionHeader
-              eyebrow="Strategy Station"
-              icon={activeSite ? <img alt="" aria-hidden className="size-5 rounded-sm" src={activeSite.favicon} /> : <RiWindowLine />}
-              title={activeLabel}
-              description={activeSite?.description || "选择一个攻略站点后，下方网页区域会在主窗口内部真实加载。"}
-              badge={<Badge variant={isNativeShell ? "default" : "secondary"}>{isNativeShell ? "桌面 WebView2" : "预览不可用"}</Badge>}
-              actions={
-                <div className="flex flex-wrap items-center gap-2">
-                  <NewSiteDialog onSubmit={handleAddSite} />
-                  {activeSite && !activeSite.builtin ? (
-                    <Button type="button" variant="ghost" size="sm" onClick={handleDeleteActiveSite}>
-                      <RiDeleteBinLine data-icon="inline-start" />
-                      删除此网站
-                    </Button>
-                  ) : null}
-                </div>
-              }
-            />
-          </div>
-
+        <CardBody className="flex flex-col gap-3">
           <div className="flex flex-col gap-3">
             <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}>
               <TabsList variant="line" className="flex-wrap justify-start">
@@ -432,126 +483,12 @@ export function StrategyPage() {
             <p className="font-medium text-foreground">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
             <p className="mt-2 text-xs/relaxed">
               {isNativeShell
-                ? "网页内容会覆盖此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
-                : "浏览器预览模式无法创建 Tauri 子 WebView，请在桌面端使用。"}
+                ? "网页内容会贴合此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
+                : "浏览器预览模式无法创建 Tauri 内容窗口，请在桌面端使用。"}
             </p>
           </div>
         </div>
       </div>
     </AppPage>
-  );
-}
-
-type NewSiteDialogProps = {
-  onSubmit: (draft: UserStrategySite) => boolean;
-};
-
-function NewSiteDialog({ onSubmit }: NewSiteDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [shortLabel, setShortLabel] = useState("");
-  const [label, setLabel] = useState("");
-  const [url, setUrl] = useState("");
-  const [description, setDescription] = useState("");
-
-  const reset = () => {
-    setShortLabel("");
-    setLabel("");
-    setUrl("");
-    setDescription("");
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const accepted = onSubmit({ shortLabel, label, url, description });
-    if (accepted) {
-      reset();
-      setOpen(false);
-    }
-  };
-
-  return (
-    <Dialog onOpenChange={setOpen} open={open}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline">
-          <RiAddLine data-icon="inline-start" />
-          新增攻略网站
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>新增攻略网站</DialogTitle>
-          <DialogDescription>
-            填入简称、标签、URL 与简介。URL 必须以 http:// 或 https:// 开头。
-          </DialogDescription>
-        </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <FieldGroup className="grid gap-3 md:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="new-site-short">简称</FieldLabel>
-              <FieldContent>
-                <Input
-                  id="new-site-short"
-                  maxLength={6}
-                  onChange={(event) => setShortLabel(event.currentTarget.value)}
-                  placeholder="KK"
-                  required
-                  value={shortLabel}
-                />
-              </FieldContent>
-              <FieldDescription>2-6 个字符的简短标签。</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="new-site-label">完整标签</FieldLabel>
-              <FieldContent>
-                <Input
-                  id="new-site-label"
-                  onChange={(event) => setLabel(event.currentTarget.value)}
-                  placeholder="KK 日报攻略总览"
-                  required
-                  value={label}
-                />
-              </FieldContent>
-            </Field>
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="new-site-url">URL</FieldLabel>
-              <FieldContent>
-                <Input
-                  id="new-site-url"
-                  inputMode="url"
-                  onChange={(event) => setUrl(event.currentTarget.value)}
-                  placeholder="https://example.com/path"
-                  required
-                  type="url"
-                  value={url}
-                />
-              </FieldContent>
-              <FieldDescription>必须以 http:// 或 https:// 开头。</FieldDescription>
-            </Field>
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="new-site-description">简介</FieldLabel>
-              <FieldContent>
-                <Input
-                  id="new-site-description"
-                  onChange={(event) => setDescription(event.currentTarget.value)}
-                  placeholder="可选，简要描述站点内容"
-                  value={description}
-                />
-              </FieldContent>
-            </Field>
-          </FieldGroup>
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button type="button" variant="ghost">
-                取消
-              </Button>
-            </DialogClose>
-            <Button type="submit">
-              <RiAddLine data-icon="inline-start" />
-              添加到工作台
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

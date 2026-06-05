@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   EMPTY_REGIONS,
+  CLICK_REGION_LABELS,
   MIN_SELECTION_HEIGHT,
   MIN_SELECTION_WIDTH,
   REGION_LABELS,
@@ -12,15 +13,19 @@ import {
   type RegionSelectionProgress,
   type RegionTuple,
 } from "@/components/app/morse-types";
-import { getErrorMessage, getSelectionRect } from "@/components/app/morse-utils";
+import { getErrorMessage, getSelectionRect, parseOverlayTarget } from "@/components/app/morse-utils";
 
 export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
+  const target = useMemo(() => parseOverlayTarget(), []);
+  const labels = target === "click" ? CLICK_REGION_LABELS : REGION_LABELS;
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Point | null>(null);
   const [regions, setRegions] = useState<RegionTuple>(EMPTY_REGIONS);
   const [completedSlots, setCompletedSlots] = useState<number[]>([]);
   const [currentSlot, setCurrentSlot] = useState<number | null>(slots[0] ?? null);
-  const [statusMessage, setStatusMessage] = useState("拖拽框选区域，Enter 完成，Esc 取消");
+  const [statusMessage, setStatusMessage] = useState(
+    target === "click" ? "拖拽框选点击区域，Enter 保存已选，Esc 取消" : "拖拽框选区域，Enter 完成，Esc 取消",
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const currentRect = useMemo(() => {
@@ -88,7 +93,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
     const point = { x: event.clientX, y: event.clientY };
     setDragStart(point);
     setDragCurrent(point);
-    setStatusMessage(`正在框选 ${REGION_LABELS[currentSlot]}...`);
+    setStatusMessage(`正在框选 ${labels[currentSlot]}...`);
   };
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -129,11 +134,11 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
       setCurrentSlot(progress.currentSlot);
 
       if (progress.currentSlot === null) {
-        setStatusMessage("3 个区域已保存，正在返回主界面...");
+        setStatusMessage(target === "click" ? "点击区域已保存，正在返回主界面..." : "3 个区域已保存，正在返回主界面...");
         return;
       }
 
-      setStatusMessage(`${REGION_LABELS[currentSlot]} 已保存，请继续框选 ${REGION_LABELS[progress.currentSlot]}。`);
+      setStatusMessage(`${labels[currentSlot]} 已保存，请继续框选 ${labels[progress.currentSlot]}。`);
       setSubmitting(false);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
@@ -187,11 +192,11 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
       <div className="pointer-events-none absolute left-6 top-6 max-w-md rounded-2xl border border-white/30 bg-background/88 px-4 py-4 text-foreground backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Badge variant="outline">{`第 ${activeStep} / ${slots.length} 步`}</Badge>
-          {currentSlot !== null ? <Badge variant="secondary">{REGION_LABELS[currentSlot]}</Badge> : null}
+          {currentSlot !== null ? <Badge variant="secondary">{labels[currentSlot]}</Badge> : null}
           {completedSlots.length > 0 ? <Badge variant="outline">已完成 {completedSlots.length}</Badge> : null}
         </div>
         <h1 className="mt-3 text-lg font-semibold text-foreground">
-          {currentSlot === null ? "区域已完成" : `选择 ${REGION_LABELS[currentSlot]}`}
+          {currentSlot === null ? "区域已完成" : `选择 ${labels[currentSlot]}`}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">{statusMessage}</p>
         {currentRect ? (
@@ -206,7 +211,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
       <div className="absolute right-6 top-6 flex items-center gap-2 rounded-2xl border border-white/25 bg-background/80 px-3 py-3 backdrop-blur-md">
         {completedSlots.map((slot) => (
           <Badge key={slot} variant="secondary">
-            {REGION_LABELS[slot]}
+            {labels[slot]}
           </Badge>
         ))}
         <Button disabled={submitting || currentSlot === null} onClick={() => void cancelSelection()} type="button" variant="secondary">

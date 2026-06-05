@@ -52,6 +52,27 @@ fn default_counter_display() -> TimerDisplaySettings {
     }
 }
 
+pub const DEFAULT_TIMER_GROUP_ID: &str = "default-timer-group";
+pub const DEFAULT_COUNTER_GROUP_ID: &str = "default-counter-group";
+
+fn default_timer_group_id() -> String {
+    DEFAULT_TIMER_GROUP_ID.to_string()
+}
+
+fn default_counter_group_id() -> String {
+    DEFAULT_COUNTER_GROUP_ID.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimerGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub display: TimerDisplaySettings,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TimerDirection {
@@ -79,6 +100,8 @@ fn default_trigger_mode() -> TimerTriggerMode {
 #[serde(rename_all = "camelCase")]
 pub struct TimerItem {
     pub id: String,
+    #[serde(default = "default_timer_group_id")]
+    pub group_id: String,
     pub name: String,
     pub duration_seconds: u64,
     pub hotkey: String,
@@ -98,6 +121,8 @@ pub struct TimerItem {
 #[serde(rename_all = "camelCase")]
 pub struct CounterItem {
     pub id: String,
+    #[serde(default = "default_counter_group_id")]
+    pub group_id: String,
     pub name: String,
     pub start_value: i64,
     pub hotkey: String,
@@ -117,6 +142,10 @@ pub struct TimerSettings {
     pub display: TimerDisplaySettings,
     #[serde(default = "default_counter_display")]
     pub counter_display: TimerDisplaySettings,
+    #[serde(default)]
+    pub timer_groups: Vec<TimerGroup>,
+    #[serde(default)]
+    pub counter_groups: Vec<TimerGroup>,
     pub timers: Vec<TimerItem>,
     #[serde(default)]
     pub counters: Vec<CounterItem>,
@@ -130,8 +159,21 @@ impl Default for TimerSettings {
             counter_enabled: false,
             display: TimerDisplaySettings::default(),
             counter_display: default_counter_display(),
+            timer_groups: vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+            counter_groups: vec![TimerGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: default_counter_display(),
+            }],
             timers: vec![TimerItem {
                 id: "timer-1".to_string(),
+                group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
                 name: "计时器 1".to_string(),
                 duration_seconds: 30,
                 hotkey: "F2".to_string(),
@@ -143,6 +185,7 @@ impl Default for TimerSettings {
             }],
             counters: vec![CounterItem {
                 id: "counter-1".to_string(),
+                group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
                 name: "计数器 1".to_string(),
                 start_value: 0,
                 hotkey: "F3".to_string(),
@@ -206,6 +249,8 @@ pub struct TimerSelectionOutcome {
     pub kind: TimerSelectionKind,
     pub rect: TimerRect,
     pub target: TimerDisplayTarget,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -236,16 +281,51 @@ mod tests {
         assert!(!settings.counter_enabled);
         assert_eq!(settings.display.rect.width, 320);
         assert_eq!(settings.counter_display.rect.x, 420);
+        assert_eq!(settings.timer_groups.len(), 1);
+        assert_eq!(settings.counter_groups.len(), 1);
+        assert_eq!(settings.timer_groups[0].id, DEFAULT_TIMER_GROUP_ID);
+        assert_eq!(settings.counter_groups[0].id, DEFAULT_COUNTER_GROUP_ID);
         assert_eq!(settings.timers.len(), 1);
         assert_eq!(settings.counters.len(), 1);
         assert_eq!(settings.timers[0].duration_seconds, 30);
         assert_eq!(settings.timers[0].hotkey, "F2");
+        assert_eq!(settings.timers[0].group_id, DEFAULT_TIMER_GROUP_ID);
         assert_eq!(settings.timers[0].direction, TimerDirection::Countdown);
         assert!(settings.timers[0].enabled);
         assert!(settings.timers[0].ignore_running);
         assert_eq!(settings.timers[0].segment_count, None);
         assert_eq!(settings.counters[0].start_value, 0);
         assert_eq!(settings.counters[0].hotkey, "F3");
+        assert_eq!(settings.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);
         assert!(settings.counters[0].enabled);
+    }
+
+    #[test]
+    fn timer_settings_deserializes_legacy_without_groups() {
+        let settings: TimerSettings = serde_json::from_value(serde_json::json!({
+            "enabled": true,
+            "timerEnabled": true,
+            "counterEnabled": true,
+            "display": { "rect": { "x": 1, "y": 2, "width": 480, "height": 96 }, "fontOpacity": 0.8 },
+            "counterDisplay": { "rect": { "x": 3, "y": 4, "width": 520, "height": 96 }, "fontOpacity": 0.7 },
+            "timers": [{
+                "id": "timer-a",
+                "name": "旧计时器",
+                "durationSeconds": 30,
+                "hotkey": "F2"
+            }],
+            "counters": [{
+                "id": "counter-a",
+                "name": "旧计数器",
+                "startValue": 0,
+                "hotkey": "F3"
+            }]
+        }))
+        .expect("旧计时器配置应反序列化");
+
+        assert!(settings.timer_groups.is_empty());
+        assert!(settings.counter_groups.is_empty());
+        assert_eq!(settings.timers[0].group_id, DEFAULT_TIMER_GROUP_ID);
+        assert_eq!(settings.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);
     }
 }

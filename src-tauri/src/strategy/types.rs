@@ -30,7 +30,6 @@ pub struct StrategyOpenWindowResponse {
     pub reused: bool,
 }
 
-
 /// `strategy_fetch_page` 命令的响应。
 ///
 /// - `html`：最终页面的 HTML 内容

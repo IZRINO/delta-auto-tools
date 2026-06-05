@@ -31,7 +31,9 @@ pub fn save_settings(app: &AppHandle, settings_value: &RapidfireSettings) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rapidfire::types::{RapidfireCard, RapidfireRect};
+    use crate::rapidfire::types::{
+        RapidfireCard, RapidfireGroup, RapidfireRect, DEFAULT_RAPIDFIRE_GROUP_ID,
+    };
 
     fn sample_settings() -> RapidfireSettings {
         RapidfireSettings {
@@ -45,8 +47,17 @@ mod tests {
             min_press_spacing_ms: 90,
             trigger_jitter_max_ms: 0,
             cancel_jitter_on_release: true,
+            groups: vec![RapidfireGroup {
+                id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                show_overlay: true,
+                overlay_position: Some(RapidfireRect { x: 100, y: 200 }),
+                overlay_width: 500,
+            }],
             cards: vec![RapidfireCard {
                 id: "rf-test".to_string(),
+                group_id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
                 name: "测试连发器".to_string(),
                 trigger_key: "F1".to_string(),
                 target_key: "1".to_string(),

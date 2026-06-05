@@ -19,7 +19,8 @@ pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<
 mod tests {
     use super::*;
     use crate::timer::types::{
-        CounterItem, TimerDirection, TimerDisplaySettings, TimerItem, TimerRect, TimerTriggerMode,
+        CounterItem, TimerDirection, TimerDisplaySettings, TimerGroup, TimerItem, TimerRect,
+        TimerTriggerMode, DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID,
     };
 
     fn sample_settings() -> TimerSettings {
@@ -45,8 +46,37 @@ mod tests {
                 },
                 font_opacity: 0.8,
             },
+            timer_groups: vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings {
+                    rect: TimerRect {
+                        x: 10,
+                        y: 20,
+                        width: 320,
+                        height: 120,
+                    },
+                    font_opacity: 0.75,
+                },
+            }],
+            counter_groups: vec![TimerGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings {
+                    rect: TimerRect {
+                        x: 330,
+                        y: 20,
+                        width: 320,
+                        height: 120,
+                    },
+                    font_opacity: 0.8,
+                },
+            }],
             timers: vec![TimerItem {
                 id: "alpha".to_string(),
+                group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
                 name: "测试计时器".to_string(),
                 duration_seconds: 300,
                 hotkey: "Ctrl+F2".to_string(),
@@ -58,6 +88,7 @@ mod tests {
             }],
             counters: vec![CounterItem {
                 id: "counter-alpha".to_string(),
+                group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
                 name: "测试计数器".to_string(),
                 start_value: 5,
                 hotkey: "Ctrl+F3".to_string(),

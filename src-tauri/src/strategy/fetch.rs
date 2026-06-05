@@ -128,10 +128,9 @@ fn detect_cc_challenge(html: &str) -> Option<ChallengeInfo> {
 /// 返回 `(cookie_str, target_url)`。
 fn extract_js_redirect(html: &str) -> Option<(String, String)> {
     let cookie_re = Regex::new(r#"document\.cookie\s*=\s*['"]([^'"]+)['"]"#).ok()?;
-    let location_re = Regex::new(
-        r#"(?:window\.)?location\.(?:href\s*=|replace\s*\()\s*['\"]([^'\"]+)['\"]"#,
-    )
-    .ok()?;
+    let location_re =
+        Regex::new(r#"(?:window\.)?location\.(?:href\s*=|replace\s*\()\s*['\"]([^'\"]+)['\"]"#)
+            .ok()?;
 
     let cookie = cookie_re.captures(html)?.get(1)?.as_str().to_string();
     let target = location_re.captures(html)?.get(1)?.as_str().to_string();

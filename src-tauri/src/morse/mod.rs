@@ -12,6 +12,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::hotkey_types;
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
 use crate::utils::now_ms;
 
@@ -117,6 +118,27 @@ fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
     Ok(inner.settings.clone())
 }
 
+fn normalize_settings(mut settings_value: MorseSettings) -> Result<MorseSettings, String> {
+    settings_value.hotkey = settings_value.hotkey.trim().to_string();
+    if settings_value.hotkey.is_empty() {
+        return Err("热键不能为空".to_string());
+    }
+
+    settings_value.after_click_hotkey = settings_value
+        .after_click_hotkey
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(hotkey_types::hotkey_to_string)
+        .transpose()?;
+
+    if settings_value.click_regions.len() > 7 {
+        settings_value.click_regions.truncate(7);
+    }
+
+    Ok(settings_value)
+}
+
 fn finish_run(app: &AppHandle) {
     let state = app.state::<MorseState>();
     if let Ok(mut inner) = state.inner.lock() {
@@ -165,13 +187,18 @@ async fn run_recognition_flow(
         }
 
         // 自动点击：识别成功 + auto_click_enabled 开启 + 有配置点击区域
-        if settings_snapshot.auto_click_enabled && result.value.is_some() && !result.error.is_some() {
-            if let Err(error) = input::click_regions(
-                &settings_snapshot.click_regions,
-            )
-            .await
-            {
+        if settings_snapshot.auto_click_enabled
+            && result.value.is_some()
+            && result.error.is_none()
+            && !settings_snapshot.click_regions.is_empty()
+        {
+            if let Err(error) = input::click_regions(&settings_snapshot.click_regions).await {
                 result.error = Some(error);
+            } else if let Some(after_click_hotkey) = settings_snapshot.after_click_hotkey.as_deref()
+            {
+                if let Err(error) = input::press_hotkey_once(after_click_hotkey).await {
+                    result.error = Some(error);
+                }
             }
         }
         Ok::<MorseRunResult, String>(result)
@@ -187,7 +214,7 @@ async fn run_recognition_flow(
 }
 
 pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<MorseState, String> {
-    let settings = settings::load_settings(app)?;
+    let settings = normalize_settings(settings::load_settings(app)?)?;
     let state = MorseState {
         inner: Mutex::new(MorseStateInner {
             settings: settings.clone(),
@@ -226,6 +253,7 @@ pub fn morse_save_settings(
     state: State<'_, MorseState>,
     hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<MorseBootstrap, String> {
+    let settings_value = normalize_settings(settings_value)?;
     let previous_settings = {
         let inner = state
             .inner
@@ -387,5 +415,38 @@ mod tests {
         assert_eq!(history.len(), 1000);
         assert_eq!(history.front().unwrap().id, 1004);
         assert_eq!(history.back().unwrap().id, 5);
+    }
+
+    #[test]
+    fn normalize_settings_truncates_click_regions_to_seven() {
+        let mut settings = MorseSettings::default();
+        settings.click_regions = (0..8)
+            .map(|index| super::types::ClickRegion {
+                rect: RegionRect {
+                    x: index,
+                    y: 0,
+                    width: 10,
+                    height: 10,
+                },
+                delay_ms: 500,
+            })
+            .collect();
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(normalized.click_regions.len(), 7);
+    }
+
+    #[test]
+    fn normalize_settings_normalizes_after_click_hotkey() {
+        let mut settings = MorseSettings::default();
+        settings.after_click_hotkey = Some(" shift+ctrl+- ".to_string());
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(
+            normalized.after_click_hotkey.as_deref(),
+            Some("Ctrl+Shift+-")
+        );
     }
 }

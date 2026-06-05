@@ -18,8 +18,9 @@ mod settings;
 mod types;
 
 pub use self::types::{
-    RapidfireBootstrap, RapidfireCard, RapidfireRect, RapidfireRunState, RapidfireRunStatus,
-    RapidfireSelectionKind, RapidfireSelectionOutcome, RapidfireSettings,
+    RapidfireBootstrap, RapidfireCard, RapidfireGroup, RapidfireRect, RapidfireRunState,
+    RapidfireRunStatus, RapidfireSelectionKind, RapidfireSelectionOutcome, RapidfireSettings,
+    DEFAULT_RAPIDFIRE_GROUP_ID,
 };
 
 use crate::{
@@ -91,6 +92,7 @@ enum SessionControl {
 }
 
 struct PendingRapidfirePosition {
+    group_id: String,
     original_position: RapidfireRect,
     staged_position: RapidfireRect,
     sender: oneshot::Sender<RapidfireSelectionKind>,
@@ -372,6 +374,7 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
 
     Ok(RapidfireCard {
         id: card.id.trim().to_string(),
+        group_id: card.group_id.trim().to_string(),
         name: name.to_string(),
         trigger_key,
         target_key,
@@ -393,6 +396,80 @@ fn normalize_trigger_key(raw: &str) -> Result<String, String> {
     }
 
     hotkey_types::hotkey_to_string(trimmed).map_err(|_| format!("不支持: {trimmed}"))
+}
+
+fn default_rapidfire_group(settings_value: &RapidfireSettings) -> RapidfireGroup {
+    RapidfireGroup {
+        id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
+        name: "默认分组".to_string(),
+        enabled: true,
+        show_overlay: settings_value.show_overlay,
+        overlay_position: settings_value.overlay_position.clone(),
+        overlay_width: settings_value.overlay_width,
+    }
+}
+
+fn normalize_groups(settings_value: &RapidfireSettings) -> Result<Vec<RapidfireGroup>, String> {
+    let mut groups = if settings_value.groups.is_empty() {
+        vec![default_rapidfire_group(settings_value)]
+    } else {
+        settings_value.groups.clone()
+    };
+
+    if !groups
+        .iter()
+        .any(|group| group.id == DEFAULT_RAPIDFIRE_GROUP_ID)
+    {
+        groups.insert(0, default_rapidfire_group(settings_value));
+    }
+
+    let mut seen = HashMap::new();
+    let mut normalized = Vec::with_capacity(groups.len());
+    for mut group in groups {
+        group.id = group.id.trim().to_string();
+        if group.id.is_empty() {
+            group.id = DEFAULT_RAPIDFIRE_GROUP_ID.to_string();
+        }
+        group.name = group.name.trim().to_string();
+        if group.name.is_empty() {
+            return Err("连发器分组名称不能为空".to_string());
+        }
+        if seen.insert(group.id.clone(), true).is_some() {
+            return Err(format!("连发器分组 ID 重复: {}", group.id));
+        }
+        if group.id == DEFAULT_RAPIDFIRE_GROUP_ID {
+            group.show_overlay = settings_value.show_overlay;
+            group.overlay_position = settings_value.overlay_position.clone();
+            group.overlay_width = settings_value.overlay_width;
+        }
+        group.overlay_width = group
+            .overlay_width
+            .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
+            .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
+        normalized.push(group);
+    }
+
+    Ok(normalized)
+}
+
+fn group_enabled(groups: &[RapidfireGroup], group_id: &str) -> bool {
+    groups
+        .iter()
+        .find(|group| group.id == group_id)
+        .map(|group| group.enabled)
+        .unwrap_or(false)
+}
+
+fn group_id_set(groups: &[RapidfireGroup]) -> HashMap<String, bool> {
+    let mut map = HashMap::new();
+    map.insert(DEFAULT_RAPIDFIRE_GROUP_ID.to_string(), true);
+    for group in groups {
+        let id = group.id.trim();
+        if !id.is_empty() {
+            map.insert(id.to_string(), true);
+        }
+    }
+    map
 }
 
 fn normalize_single_key(raw: &str) -> Result<String, String> {
@@ -423,6 +500,8 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
         .overlay_width
         .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
         .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
+    let groups = normalize_groups(&settings_value)?;
+    let group_ids = group_id_set(&groups);
     if settings_value.compensation_delay_min_ms > settings_value.compensation_delay_max_ms {
         return Err("补齐延迟最小值不能大于最大值".to_string());
     }
@@ -447,11 +526,24 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
     let mut seen_ids = HashMap::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());
     for card in &settings_value.cards {
-        let normalized = normalize_card(card)?;
+        let mut normalized = normalize_card(card)?;
+        if !group_ids.contains_key(&normalized.group_id) {
+            normalized.group_id = DEFAULT_RAPIDFIRE_GROUP_ID.to_string();
+        }
         if seen_ids.insert(normalized.id.clone(), true).is_some() {
             return Err(format!("连发器卡片 ID 重复: {}", normalized.id));
         }
         cards.push(normalized);
+    }
+    settings_value.groups = groups;
+    if let Some(default_group) = settings_value
+        .groups
+        .iter()
+        .find(|group| group.id == DEFAULT_RAPIDFIRE_GROUP_ID)
+    {
+        settings_value.show_overlay = default_group.show_overlay;
+        settings_value.overlay_position = default_group.overlay_position.clone();
+        settings_value.overlay_width = default_group.overlay_width;
     }
     settings_value.cards = cards;
     Ok(settings_value)
@@ -470,7 +562,7 @@ fn restart_hotkey_listeners(
 
     let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
     for card in &settings_value.cards {
-        if !card.enabled {
+        if !card.enabled || !group_enabled(&settings_value.groups, &card.group_id) {
             continue;
         }
         by_key
@@ -540,7 +632,11 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 .settings
                 .cards
                 .iter()
-                .find(|c| c.id == cid_owned && c.enabled)
+                .find(|c| {
+                    c.id == cid_owned
+                        && c.enabled
+                        && group_enabled(&inner.settings.groups, &c.group_id)
+                })
                 .map(|c| {
                     (
                         c.id.clone(),
@@ -556,7 +652,19 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                     )
                 });
 
-            let Some((cid, trigger, target, interval, jitter_min, jitter_max, min_press_spacing_ms, trigger_jitter_max_ms, cancel_jitter_on_release, skip_compensation)) = card_info else {
+            let Some((
+                cid,
+                trigger,
+                target,
+                interval,
+                jitter_min,
+                jitter_max,
+                min_press_spacing_ms,
+                trigger_jitter_max_ms,
+                cancel_jitter_on_release,
+                skip_compensation,
+            )) = card_info
+            else {
                 continue;
             };
 
@@ -811,7 +919,12 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
                     ) {
                         Ok(()) => {
                             count += 1;
-                            if !update_session_count(&app, &worker.card_id, &worker.session_id, count) {
+                            if !update_session_count(
+                                &app,
+                                &worker.card_id,
+                                &worker.session_id,
+                                count,
+                            ) {
                                 return;
                             }
                         }
@@ -1018,11 +1131,13 @@ fn emit_hotkey_error(app: &AppHandle, error: String) {
 
 fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
     let _ = app.emit_to("main", "rapidfire://state-changed", bootstrap.clone());
-    let _ = app.emit_to(
-        RAPIDFIRE_DISPLAY_LABEL,
-        "rapidfire://state-changed",
-        bootstrap,
-    );
+    for group in &bootstrap.settings.groups {
+        let _ = app.emit_to(
+            display_label_for_group(&group.id),
+            "rapidfire://state-changed",
+            bootstrap.clone(),
+        );
+    }
 }
 
 // ---- Window management ----
@@ -1035,21 +1150,41 @@ fn ensure_overlay_window(
     app: &AppHandle,
     settings_value: &RapidfireSettings,
 ) -> Result<(), String> {
-    if !settings_value.show_overlay || !settings_value.rapidfire_enabled {
-        hide_window(app, RAPIDFIRE_DISPLAY_LABEL);
+    let mut active_labels = std::collections::HashSet::new();
+    for group in &settings_value.groups {
+        let label = display_label_for_group(&group.id);
+        active_labels.insert(label.clone());
+        ensure_overlay_window_for_group(app, settings_value, group, &label)?;
+    }
+    destroy_stale_windows(app, RAPIDFIRE_DISPLAY_LABEL, &active_labels);
+    Ok(())
+}
+
+fn ensure_overlay_window_for_group(
+    app: &AppHandle,
+    settings_value: &RapidfireSettings,
+    group: &RapidfireGroup,
+    label: &str,
+) -> Result<(), String> {
+    if !group.show_overlay || !group.enabled || !settings_value.rapidfire_enabled {
+        hide_window(app, label);
         return Ok(());
     }
 
-    let enabled_count = settings_value.cards.iter().filter(|c| c.enabled).count();
+    let enabled_count = settings_value
+        .cards
+        .iter()
+        .filter(|c| c.enabled && c.group_id == group.id)
+        .count();
     let height = display_height(enabled_count);
-    let width = settings_value.overlay_width;
-    let pos = settings_value
+    let width = group.overlay_width;
+    let pos = group
         .overlay_position
         .as_ref()
         .map(|p| (p.x, p.y))
         .unwrap_or((100, 100));
 
-    if let Some(window) = app.get_webview_window(RAPIDFIRE_DISPLAY_LABEL) {
+    if let Some(window) = app.get_webview_window(label) {
         let _ = window.set_size(PhysicalSize::new(width as u32, height as u32));
         let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
         let _ = window.set_always_on_top(true);
@@ -1058,12 +1193,15 @@ fn ensure_overlay_window(
         return Ok(());
     }
 
+    let group_query_id = encoded_query_value(&group.id);
     let window = WebviewWindowBuilder::new(
         app,
-        RAPIDFIRE_DISPLAY_LABEL,
-        WebviewUrl::App("index.html?mode=rapidfire-display".into()),
+        label,
+        WebviewUrl::App(
+            format!("index.html?mode=rapidfire-display&groupId={group_query_id}").into(),
+        ),
     )
-    .title("连发器透明窗口")
+    .title(format!("连发器透明窗口 - {}", group.name))
     .decorations(false)
     .transparent(true)
     .shadow(false)
@@ -1081,6 +1219,65 @@ fn ensure_overlay_window(
     Ok(())
 }
 
+fn safe_label_component(raw: &str) -> String {
+    raw.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn display_label_for_group(group_id: &str) -> String {
+    if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
+        RAPIDFIRE_DISPLAY_LABEL.to_string()
+    } else {
+        format!(
+            "{}-{}",
+            RAPIDFIRE_DISPLAY_LABEL,
+            safe_label_component(group_id)
+        )
+    }
+}
+
+fn encoded_query_value(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+fn position_label_for_group(group_id: &str) -> String {
+    if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
+        RAPIDFIRE_POSITION_LABEL.to_string()
+    } else {
+        format!(
+            "{}-{}",
+            RAPIDFIRE_POSITION_LABEL,
+            safe_label_component(group_id)
+        )
+    }
+}
+
+fn destroy_stale_windows(
+    app: &AppHandle,
+    base_label: &str,
+    active_labels: &std::collections::HashSet<String>,
+) {
+    let prefix = format!("{base_label}-");
+    let labels = app
+        .webview_windows()
+        .keys()
+        .filter(|label| {
+            (*label == base_label || label.starts_with(&prefix)) && !active_labels.contains(*label)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    for label in labels {
+        destroy_window(app, &label);
+    }
+}
+
 fn hide_window(app: &AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
         let _ = window.hide();
@@ -1094,11 +1291,24 @@ fn destroy_window(app: &AppHandle, label: &str) {
 }
 
 fn destroy_display_windows(app: &AppHandle) {
-    destroy_window(app, RAPIDFIRE_DISPLAY_LABEL);
+    destroy_windows_with_prefix(app, RAPIDFIRE_DISPLAY_LABEL);
 }
 
 fn destroy_position_windows(app: &AppHandle) {
-    destroy_window(app, RAPIDFIRE_POSITION_LABEL);
+    destroy_windows_with_prefix(app, RAPIDFIRE_POSITION_LABEL);
+}
+
+fn destroy_windows_with_prefix(app: &AppHandle, base_label: &str) {
+    let prefix = format!("{base_label}-");
+    let labels = app
+        .webview_windows()
+        .keys()
+        .filter(|label| *label == base_label || label.starts_with(&prefix))
+        .cloned()
+        .collect::<Vec<_>>();
+    for label in labels {
+        destroy_window(app, &label);
+    }
 }
 
 // ---- Initialize / Shutdown ----
@@ -1192,7 +1402,7 @@ pub fn rapidfire_save_settings(
         let active_card_ids: Vec<String> = settings_value
             .cards
             .iter()
-            .filter(|c| c.enabled)
+            .filter(|c| c.enabled && group_enabled(&settings_value.groups, &c.group_id))
             .map(|c| c.id.clone())
             .collect();
         stop_removed_or_disabled_sessions(&mut inner.runs, &active_card_ids);
@@ -1230,10 +1440,14 @@ pub fn rapidfire_stop(
 
 #[tauri::command]
 pub async fn rapidfire_begin_position_selection(
+    group_id: Option<String>,
     app: AppHandle,
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireSelectionOutcome, String> {
     let (sender, receiver) = oneshot::channel();
+    let group_id = group_id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_RAPIDFIRE_GROUP_ID.to_string());
     let position = {
         let mut inner = state
             .inner
@@ -1246,11 +1460,15 @@ pub async fn rapidfire_begin_position_selection(
 
         let pos = inner
             .settings
-            .overlay_position
-            .clone()
+            .groups
+            .iter()
+            .find(|group| group.id == group_id)
+            .and_then(|group| group.overlay_position.clone())
+            .or_else(|| inner.settings.overlay_position.clone())
             .unwrap_or(RapidfireRect { x: 100, y: 100 });
 
         inner.pending_position = Some(PendingRapidfirePosition {
+            group_id: group_id.clone(),
             original_position: pos.clone(),
             staged_position: pos.clone(),
             sender,
@@ -1258,27 +1476,44 @@ pub async fn rapidfire_begin_position_selection(
         pos
     };
 
-    destroy_window(&app, RAPIDFIRE_POSITION_LABEL);
+    let position_label = position_label_for_group(&group_id);
+    destroy_window(&app, &position_label);
 
     let display_width = {
         let inner = state
             .inner
             .lock()
             .map_err(|_| "连发器状态已损坏".to_string())?;
-        inner.settings.overlay_width
+        inner
+            .settings
+            .groups
+            .iter()
+            .find(|group| group.id == group_id)
+            .map(|group| group.overlay_width)
+            .unwrap_or(inner.settings.overlay_width)
     };
     let display_height = {
         let inner = state
             .inner
             .lock()
             .map_err(|_| "连发器状态已损坏".to_string())?;
-        display_height(inner.settings.cards.iter().filter(|c| c.enabled).count())
+        display_height(
+            inner
+                .settings
+                .cards
+                .iter()
+                .filter(|c| c.enabled && c.group_id == group_id)
+                .count(),
+        )
     };
 
+    let group_query_id = encoded_query_value(&group_id);
     let window = WebviewWindowBuilder::new(
         &app,
-        RAPIDFIRE_POSITION_LABEL,
-        WebviewUrl::App("index.html?mode=rapidfire-position".into()),
+        &position_label,
+        WebviewUrl::App(
+            format!("index.html?mode=rapidfire-position&groupId={group_query_id}").into(),
+        ),
     )
     .title("设置连发器位置")
     .decorations(false)
@@ -1315,7 +1550,7 @@ pub async fn rapidfire_begin_position_selection(
         Ok(kind) => kind,
         Err(_) => RapidfireSelectionKind::Closed,
     };
-    destroy_window(&app, RAPIDFIRE_POSITION_LABEL);
+    destroy_window(&app, &position_label);
 
     let position = {
         let inner = state
@@ -1324,12 +1559,19 @@ pub async fn rapidfire_begin_position_selection(
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         inner
             .settings
-            .overlay_position
-            .clone()
+            .groups
+            .iter()
+            .find(|group| group.id == group_id)
+            .and_then(|group| group.overlay_position.clone())
+            .or_else(|| inner.settings.overlay_position.clone())
             .unwrap_or(RapidfireRect { x: 100, y: 100 })
     };
 
-    Ok(RapidfireSelectionOutcome { kind, position })
+    Ok(RapidfireSelectionOutcome {
+        kind,
+        position,
+        group_id: Some(group_id),
+    })
 }
 
 #[tauri::command]
@@ -1337,7 +1579,7 @@ pub fn rapidfire_position_commit(
     app: AppHandle,
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, String> {
-    let (sender, bootstrap) = {
+    let (sender, group_id, bootstrap) = {
         let mut inner = state
             .inner
             .lock()
@@ -1346,13 +1588,24 @@ pub fn rapidfire_position_commit(
             return Err("当前没有等待中的位置设置流程".to_string());
         };
 
-        inner.settings.overlay_position = Some(pending.staged_position.clone());
+        let group_id = pending.group_id.clone();
+        if let Some(group) = inner
+            .settings
+            .groups
+            .iter_mut()
+            .find(|group| group.id == group_id)
+        {
+            group.overlay_position = Some(pending.staged_position.clone());
+        }
+        if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
+            inner.settings.overlay_position = Some(pending.staged_position.clone());
+        }
         settings::save_settings(&app, &inner.settings)?;
-        (pending.sender, inner.bootstrap())
+        (pending.sender, group_id, inner.bootstrap())
     };
 
     let _ = sender.send(RapidfireSelectionKind::Selected);
-    destroy_window(&app, RAPIDFIRE_POSITION_LABEL);
+    destroy_window(&app, &position_label_for_group(&group_id));
     ensure_overlay_window(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
     Ok(bootstrap)
@@ -1363,7 +1616,7 @@ pub fn rapidfire_position_cancel(
     app: AppHandle,
     state: State<'_, RapidfireState>,
 ) -> Result<(), String> {
-    let (sender, _original_position) = {
+    let (sender, group_id, _original_position) = {
         let mut inner = state
             .inner
             .lock()
@@ -1373,12 +1626,23 @@ pub fn rapidfire_position_cancel(
         };
 
         let original = pending.original_position.clone();
-        inner.settings.overlay_position = Some(original.clone());
-        (pending.sender, original)
+        let group_id = pending.group_id.clone();
+        if let Some(group) = inner
+            .settings
+            .groups
+            .iter_mut()
+            .find(|group| group.id == group_id)
+        {
+            group.overlay_position = Some(original.clone());
+        }
+        if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
+            inner.settings.overlay_position = Some(original.clone());
+        }
+        (pending.sender, group_id, original)
     };
 
     let _ = sender.send(RapidfireSelectionKind::Cancelled);
-    destroy_window(&app, RAPIDFIRE_POSITION_LABEL);
+    destroy_window(&app, &position_label_for_group(&group_id));
     Ok(())
 }
 
@@ -1389,7 +1653,7 @@ pub fn rapidfire_position_moved(
     app: AppHandle,
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireRect, String> {
-    let rect = {
+    let (rect, group_id) = {
         let mut inner = state
             .inner
             .lock()
@@ -1400,10 +1664,10 @@ pub fn rapidfire_position_moved(
 
         pending.staged_position.x = x;
         pending.staged_position.y = y;
-        pending.staged_position.clone()
+        (pending.staged_position.clone(), pending.group_id.clone())
     };
 
-    if let Some(window) = app.get_webview_window(RAPIDFIRE_POSITION_LABEL) {
+    if let Some(window) = app.get_webview_window(&position_label_for_group(&group_id)) {
         let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
     }
 
@@ -1420,6 +1684,7 @@ mod tests {
     fn sample_card(id: &str, trigger: &str) -> RapidfireCard {
         RapidfireCard {
             id: id.to_string(),
+            group_id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
             name: id.to_string(),
             trigger_key: trigger.to_string(),
             target_key: "1".to_string(),
@@ -1792,6 +2057,28 @@ mod tests {
         settings.cards.clear();
         let normalized = normalize_settings(settings).unwrap();
         assert_eq!(normalized.cards.len(), 1);
+    }
+
+    #[test]
+    fn normalize_settings_migrates_legacy_group() {
+        let mut settings = RapidfireSettings::default();
+        settings.groups.clear();
+        settings.show_overlay = true;
+        settings.overlay_width = 420;
+        settings.overlay_position = Some(RapidfireRect { x: 11, y: 22 });
+        settings.cards = vec![sample_card("a", "F1")];
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(normalized.groups.len(), 1);
+        assert_eq!(normalized.groups[0].id, DEFAULT_RAPIDFIRE_GROUP_ID);
+        assert!(normalized.groups[0].show_overlay);
+        assert_eq!(normalized.groups[0].overlay_width, 420);
+        assert_eq!(
+            normalized.groups[0].overlay_position,
+            Some(RapidfireRect { x: 11, y: 22 })
+        );
+        assert_eq!(normalized.cards[0].group_id, DEFAULT_RAPIDFIRE_GROUP_ID);
     }
 
     #[test]

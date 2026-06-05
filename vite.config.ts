@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   test: {
-    exclude: [...configDefaults.exclude, "**/.worktrees/**", "**/worktrees/**"],
+    exclude: [...configDefaults.exclude, "**/.omp/**", "**/.worktrees/**", "**/worktrees/**"],
     globals: true,
     environment: "node",
     coverage: {

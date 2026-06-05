@@ -28,11 +28,33 @@ pub(crate) fn default_min_press_spacing_ms() -> u64 {
     80
 }
 
+pub const DEFAULT_RAPIDFIRE_GROUP_ID: &str = "default-rapidfire-group";
+
+fn default_rapidfire_group_id() -> String {
+    DEFAULT_RAPIDFIRE_GROUP_ID.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidfireGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub show_overlay: bool,
+    #[serde(default)]
+    pub overlay_position: Option<RapidfireRect>,
+    #[serde(default = "default_overlay_width")]
+    pub overlay_width: i32,
+}
+
 /// 连发器卡片
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RapidfireCard {
     pub id: String,
+    pub group_id: String,
     pub name: String,
     /// 触发键（单键或组合键，如 F1、Shift+-）
     pub trigger_key: String,
@@ -61,6 +83,8 @@ pub struct RapidfireCard {
 #[serde(rename_all = "camelCase")]
 struct RapidfireCardInput {
     id: String,
+    #[serde(default)]
+    group_id: Option<String>,
     name: String,
     trigger_key: String,
     target_key: String,
@@ -90,6 +114,7 @@ impl RapidfireCardInput {
     ) -> RapidfireCard {
         RapidfireCard {
             id: self.id,
+            group_id: self.group_id.unwrap_or_else(default_rapidfire_group_id),
             name: self.name,
             trigger_key: self.trigger_key,
             target_key: self.target_key,
@@ -156,6 +181,8 @@ pub struct RapidfireSettings {
     #[serde(default = "default_true")]
     pub cancel_jitter_on_release: bool,
     #[serde(default)]
+    pub groups: Vec<RapidfireGroup>,
+    #[serde(default)]
     pub cards: Vec<RapidfireCard>,
 }
 
@@ -183,6 +210,8 @@ struct RapidfireSettingsInput {
     #[serde(default = "default_true")]
     cancel_jitter_on_release: bool,
     #[serde(default)]
+    groups: Vec<RapidfireGroup>,
+    #[serde(default)]
     cards: Vec<RapidfireCardInput>,
 }
 
@@ -203,6 +232,7 @@ impl<'de> Deserialize<'de> for RapidfireSettings {
             min_press_spacing_ms: input.min_press_spacing_ms,
             trigger_jitter_max_ms: input.trigger_jitter_max_ms,
             cancel_jitter_on_release: input.cancel_jitter_on_release,
+            groups: input.groups,
             cards: input
                 .cards
                 .into_iter()
@@ -235,8 +265,17 @@ impl Default for RapidfireSettings {
             min_press_spacing_ms: default_min_press_spacing_ms(),
             trigger_jitter_max_ms: default_trigger_jitter_max_ms(),
             cancel_jitter_on_release: true,
+            groups: vec![RapidfireGroup {
+                id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                show_overlay: false,
+                overlay_position: None,
+                overlay_width: 400,
+            }],
             cards: vec![RapidfireCard {
                 id: format!("rapidfire-{}", crate::utils::now_ms()),
+                group_id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
                 name: "连发器 1".to_string(),
                 trigger_key: "F6".to_string(),
                 target_key: "Space".to_string(),
@@ -294,6 +333,8 @@ pub struct RapidfireBootstrap {
 pub struct RapidfireSelectionOutcome {
     pub kind: RapidfireSelectionKind,
     pub position: RapidfireRect,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -320,7 +361,10 @@ mod tests {
         assert_eq!(settings.compensation_delay_min_ms, 100);
         assert_eq!(settings.compensation_delay_max_ms, 150);
         assert_eq!(settings.min_press_spacing_ms, 80);
+        assert_eq!(settings.groups.len(), 1);
+        assert_eq!(settings.groups[0].id, DEFAULT_RAPIDFIRE_GROUP_ID);
         assert_eq!(settings.cards.len(), 1);
+        assert_eq!(settings.cards[0].group_id, DEFAULT_RAPIDFIRE_GROUP_ID);
         assert_eq!(settings.cards[0].trigger_key, "F6");
         assert_eq!(settings.cards[0].target_key, "Space");
         assert_eq!(settings.cards[0].interval_ms, 100);
@@ -347,6 +391,7 @@ mod tests {
 
         assert_eq!(card.press_jitter_min_ms, 8);
         assert_eq!(card.press_jitter_max_ms, 12);
+        assert_eq!(card.group_id, DEFAULT_RAPIDFIRE_GROUP_ID);
         assert_eq!(card.min_press_spacing_ms, 80);
         assert_eq!(card.trigger_jitter_max_ms, 0);
         assert!(card.cancel_jitter_on_release);
@@ -378,7 +423,9 @@ mod tests {
         assert_eq!(settings.compensation_delay_min_ms, 100);
         assert_eq!(settings.compensation_delay_max_ms, 150);
         assert_eq!(settings.min_press_spacing_ms, 120);
+        assert!(settings.groups.is_empty());
         assert_eq!(settings.cards[0].min_press_spacing_ms, 120);
+        assert_eq!(settings.cards[0].group_id, DEFAULT_RAPIDFIRE_GROUP_ID);
         assert_eq!(settings.cards[0].trigger_jitter_max_ms, 30);
         assert!(!settings.cards[0].cancel_jitter_on_release);
     }

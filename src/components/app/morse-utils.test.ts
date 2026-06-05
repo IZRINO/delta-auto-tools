@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MorseRunResult, MorseSettingsForm } from "@/components/app/morse-types";
 import {
+  clickRegionRows,
   formatRecordedHotkey,
   formatRegion,
   formatTimestamp,
@@ -9,6 +10,7 @@ import {
   normalizeHotkeyPrimaryKey,
   normalizeRunDetails,
   parseOverlaySlots,
+  parseOverlayTarget,
   parseSettingsForm,
   settingsToForm,
 } from "@/components/app/morse-utils";
@@ -20,6 +22,7 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: 120,
       autoInputDelay: 80,
+      afterClickHotkey: "Ctrl+F4",
       autoClickEnabled: false,
       clickRegions: [],
     });
@@ -29,6 +32,7 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: "120",
       autoInputDelay: "80",
+      afterClickHotkey: "Ctrl+F4",
       autoClickEnabled: false,
       clickRegions: new Array(7).fill(null).map(() => ({ rect: null, delayMs: "500" })),
     });
@@ -40,6 +44,7 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: "127",
       autoInputDelay: "50",
+      afterClickHotkey: "  ",
       autoClickEnabled: false,
       clickRegions: [],
     };
@@ -49,6 +54,7 @@ describe("morse-utils", () => {
       regions: [null, null, null],
       binaryThreshold: 127,
       autoInputDelay: 50,
+      afterClickHotkey: null,
       autoClickEnabled: false,
       clickRegions: [],
     });
@@ -61,21 +67,26 @@ describe("morse-utils", () => {
         regions: [null, null, null],
         binaryThreshold: "127",
         autoInputDelay: "50",
+        afterClickHotkey: "",
         autoClickEnabled: false,
         clickRegions: [],
       } as MorseSettingsForm),
     ).toThrow("热键不能为空");
   });
+
+  it("rejects an invalid binary threshold", () => {
     expect(() =>
       parseSettingsForm({
         hotkey: "F1",
         regions: [null, null, null],
         binaryThreshold: "300",
         autoInputDelay: "50",
+        afterClickHotkey: "",
         autoClickEnabled: false,
         clickRegions: [],
       } as MorseSettingsForm),
     ).toThrow("二值化阈值必须是 0 到 255 之间的整数");
+  });
 
   it("rejects an invalid auto input delay", () => {
     expect(() =>
@@ -84,6 +95,7 @@ describe("morse-utils", () => {
         regions: [null, null, null],
         binaryThreshold: "127",
         autoInputDelay: "-1",
+        afterClickHotkey: "",
         autoClickEnabled: false,
         clickRegions: [],
       } as MorseSettingsForm),
@@ -124,9 +136,28 @@ describe("morse-utils", () => {
     expect(parseOverlaySlots("?mode=overlay&slots=0,2,2,5")).toEqual([0, 2]);
   });
 
+  it("parses click overlay slots up to seven regions", () => {
+    expect(parseOverlayTarget("?mode=overlay&target=click&slots=3")).toBe("click");
+    expect(parseOverlaySlots("?mode=overlay&target=click&slots=3")).toEqual([3]);
+    expect(parseOverlaySlots("?mode=overlay&target=click&slots=6,7")).toEqual([6]);
+  });
+
   it("parses overlay slots from slot query and falls back to defaults", () => {
     expect(parseOverlaySlots("?mode=overlay&slot=1")).toEqual([1]);
     expect(parseOverlaySlots("?mode=overlay&slot=9")).toEqual([0, 1, 2]);
+    expect(parseOverlaySlots("?mode=overlay&target=click&slot=9")).toEqual([0]);
+  });
+
+  it("keeps real click region slot indexes after filtering empty slots", () => {
+    const rows = clickRegionRows([
+      { rect: null, delayMs: "500" },
+      { rect: { x: 1, y: 2, width: 3, height: 4 }, delayMs: "600" },
+      { rect: null, delayMs: "500" },
+      { rect: { x: 5, y: 6, width: 7, height: 8 }, delayMs: "700" },
+    ]);
+
+    expect(rows.map((row) => row.slotIndex)).toEqual([1, 3]);
+    expect(rows.map((row) => row.delayMs)).toEqual(["600", "700"]);
   });
 
   it("normalizes dragged rectangles", () => {

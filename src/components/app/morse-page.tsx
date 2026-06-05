@@ -598,6 +598,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
             clickRegions={form?.clickRegions ?? []}
             isBusy={isBusy}
             onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
+            onAfterClickHotkeyChange={(value) => updateForm("afterClickHotkey", value)}
             onUpdateClickRegionDelay={handleUpdateClickRegionDelay}
             onAddClickRegion={() => void handleAddClickRegion()}
             onRemoveClickRegion={handleRemoveClickRegion}

@@ -8,7 +8,7 @@ import type {
   Point,
   RegionRect,
 } from "@/components/app/morse-types";
-import { HOTKEY_MODIFIER_KEYS, REGION_LABELS } from "@/components/app/morse-types";
+import { CLICK_REGION_LABELS, HOTKEY_MODIFIER_KEYS, REGION_LABELS } from "@/components/app/morse-types";
 
 export { getErrorMessage } from "@/lib/error-utils";
 
@@ -18,6 +18,7 @@ export function settingsToForm(settings: MorseSettings): MorseSettingsForm {
     regions: settings.regions,
     binaryThreshold: String(settings.binaryThreshold),
     autoInputDelay: String(settings.autoInputDelay),
+    afterClickHotkey: settings.afterClickHotkey ?? "",
     autoClickEnabled: settings.autoClickEnabled ?? false,
     clickRegions: (() => {
       const regions: { rect: RegionRect | null; delayMs: string }[] = (settings.clickRegions ?? []).map((r) => ({
@@ -49,11 +50,14 @@ export function parseSettingsForm(form: MorseSettingsForm): MorseSettings {
     throw new Error("输入延迟必须是大于等于 0 的整数毫秒值。");
   }
 
+  const afterClickHotkey = form.afterClickHotkey.trim();
+
   return {
     hotkey,
     regions: form.regions,
     binaryThreshold,
     autoInputDelay,
+    afterClickHotkey: afterClickHotkey ? afterClickHotkey : null,
     autoClickEnabled: form.autoClickEnabled,
     clickRegions: (form.clickRegions ?? [])
       .filter((r) => r.rect !== null)
@@ -122,6 +126,8 @@ export function parseOverlaySlots(search?: string): number[] {
   );
   const slotsParam = params.get("slots");
   const singleSlotParam = params.get("slot");
+  const target = parseOverlayTarget(search);
+  const maxSlots = target === "click" ? CLICK_REGION_LABELS.length : REGION_LABELS.length;
 
   const rawValues = slotsParam
     ? slotsParam.split(",")
@@ -131,9 +137,23 @@ export function parseOverlaySlots(search?: string): number[] {
 
   const parsed = rawValues
     .map((value) => Number.parseInt(value, 10))
-    .filter((value, index, values) => Number.isInteger(value) && value >= 0 && value < REGION_LABELS.length && values.indexOf(value) === index);
+    .filter((value, index, values) => Number.isInteger(value) && value >= 0 && value < maxSlots && values.indexOf(value) === index);
 
-  return parsed.length > 0 ? parsed : [0, 1, 2];
+  return parsed.length > 0 ? parsed : target === "click" ? [0] : [0, 1, 2];
+}
+
+export function parseOverlayTarget(search?: string): "sampling" | "click" {
+  const params = new URLSearchParams(
+    search ?? (typeof window === "undefined" ? "" : window.location.search),
+  );
+  return params.get("target") === "click" ? "click" : "sampling";
+}
+
+export function clickRegionRows(clickRegions: MorseSettingsForm["clickRegions"]) {
+  return clickRegions
+    .map((region, slotIndex) => ({ ...region, slotIndex }))
+    .filter((region) => region.rect !== null)
+    .slice(0, CLICK_REGION_LABELS.length);
 }
 
 export function normalizeHotkeyPrimaryKey(key: string): string | null {

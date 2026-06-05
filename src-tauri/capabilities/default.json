@@ -6,11 +6,17 @@
     "main",
     "morse-overlay",
     "timer-display",
+    "timer-display-*",
     "timer-position",
+    "timer-position-*",
     "counter-display",
+    "counter-display-*",
     "counter-position",
+    "counter-position-*",
     "rapidfire-display",
+    "rapidfire-display-*",
     "rapidfire-position",
+    "rapidfire-position-*",
     "strategy-view-*",
     "strategy-content"
   ],
@@ -18,8 +24,14 @@
     "core:default",
     "opener:default",
     "core:webview:allow-create-webview",
+    "core:webview:allow-create-webview-window",
     "core:webview:allow-webview-close",
     "core:webview:allow-set-webview-position",
-    "core:webview:allow-set-webview-size"
+    "core:webview:allow-set-webview-size",
+    "core:window:allow-destroy",
+    "core:window:allow-hide",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-show"
   ]
 }

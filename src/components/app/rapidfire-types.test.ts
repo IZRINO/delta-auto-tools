@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { RapidfireSettings } from "@/components/app/rapidfire-types";
 import {
+  DEFAULT_RAPIDFIRE_GROUP_ID,
   formatTriggerHotkey,
   formatTriggerKey,
   isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
+  rapidfireEffectiveCardsByGroup,
   rapidfireCardError,
   rapidfireCardStatus,
   rapidfireSettingsToForm,
@@ -19,6 +21,16 @@ function sampleSettings(): RapidfireSettings {
     showOverlay: true,
     overlayPosition: { x: 100, y: 200 },
     overlayWidth: 420,
+    groups: [
+      {
+        id: DEFAULT_RAPIDFIRE_GROUP_ID,
+        name: "默认分组",
+        enabled: true,
+        showOverlay: true,
+        overlayPosition: { x: 100, y: 200 },
+        overlayWidth: 420,
+      },
+    ],
     compensationDelayMinMs: 100,
     compensationDelayMaxMs: 150,
     minPressSpacingMs: 80,
@@ -27,6 +39,7 @@ function sampleSettings(): RapidfireSettings {
     cards: [
       {
         id: "rf-a",
+        groupId: DEFAULT_RAPIDFIRE_GROUP_ID,
         name: "测试连发器",
         triggerKey: "F6",
         targetKey: "Space",
@@ -49,6 +62,42 @@ describe("rapidfire-types", () => {
     const parsed = parseRapidfireSettingsForm(rapidfireSettingsToForm(settings));
 
     expect(parsed).toEqual(settings);
+  });
+
+  it("migrates legacy settings into the default rapidfire group", () => {
+    const legacy = sampleSettings();
+    delete legacy.groups;
+    legacy.cards = legacy.cards.map(({ groupId: _groupId, ...card }) => card);
+
+    const form = rapidfireSettingsToForm(legacy);
+    const parsed = parseRapidfireSettingsForm(form);
+
+    expect(form.groups.map((group) => group.id)).toEqual([DEFAULT_RAPIDFIRE_GROUP_ID]);
+    expect(parsed.cards[0].groupId).toBe(DEFAULT_RAPIDFIRE_GROUP_ID);
+    expect(parsed.groups?.[0].overlayWidth).toBe(420);
+  });
+
+  it("filters effective rapidfire cards by master, group, and card switches", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.groups.push({
+      id: "rapidfire-group-b",
+      name: "B",
+      enabled: false,
+      showOverlay: true,
+      overlayPosition: null,
+      overlayWidth: "420",
+    });
+    form.cards.push({
+      ...form.cards[0],
+      id: "rf-b",
+      groupId: "rapidfire-group-b",
+      triggerKey: "F7",
+    });
+
+    expect(rapidfireEffectiveCardsByGroup(form, DEFAULT_RAPIDFIRE_GROUP_ID).map((card) => card.id)).toEqual(["rf-a"]);
+    expect(rapidfireEffectiveCardsByGroup(form, "rapidfire-group-b")).toEqual([]);
+    form.rapidfireEnabled = false;
+    expect(rapidfireEffectiveCardsByGroup(form, DEFAULT_RAPIDFIRE_GROUP_ID)).toEqual([]);
   });
 
   it("round trips per-card no-append compensation switch", () => {
@@ -128,6 +177,7 @@ describe("rapidfire-types", () => {
     const form = rapidfireSettingsToForm(sampleSettings());
     form.cards.push({
       id: "rf-b",
+      groupId: DEFAULT_RAPIDFIRE_GROUP_ID,
       name: "备用连发器",
       triggerKey: "f6",
       targetKey: "1",

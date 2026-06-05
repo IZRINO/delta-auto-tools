@@ -25,7 +25,7 @@ import type {
   VerificationStatus,
 } from "@/components/app/morse-types";
 import { REGION_LABELS } from "@/components/app/morse-types";
-import { formatRegion, formatTimestamp } from "@/components/app/morse-utils";
+import { clickRegionRows, formatRegion, formatTimestamp } from "@/components/app/morse-utils";
 
 type SelectionPanelProps = {
   configuredCount: number;
@@ -136,6 +136,7 @@ type WorkbenchControlPanelProps = {
   clickRegions: { rect: RegionRect | null; delayMs: string }[];
   onAutoClickEnabledChange: (value: boolean) => void;
   onAutoInputDelayChange: (value: string) => void;
+  onAfterClickHotkeyChange: (value: string) => void;
   onBeginHotkeyRecording: () => void;
   onBinaryThresholdChange: (value: string) => void;
   onHotkeyRecorderBlur: () => void;
@@ -160,6 +161,7 @@ export function WorkbenchControlPanel({
   clickRegions,
   onAutoClickEnabledChange,
   onAutoInputDelayChange,
+  onAfterClickHotkeyChange,
   onBeginHotkeyRecording,
   onBinaryThresholdChange,
   onHotkeyRecorderBlur,
@@ -260,13 +262,24 @@ export function WorkbenchControlPanel({
                 {autoClickEnabled && (
                   <>
                     <Field className="xl:min-h-0">
+                      <FieldLabel htmlFor="after-click-hotkey">点击完成后按键</FieldLabel>
+                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
+                        <Input
+                          id="after-click-hotkey"
+                          placeholder="留空不执行，例如 F4 或 Ctrl+F4"
+                          value={form.afterClickHotkey}
+                          onChange={(event) => onAfterClickHotkeyChange(event.currentTarget.value)}
+                        />
+                      </FieldContent>
+                    </Field>
+                    <Field className="xl:min-h-0">
                       <FieldLabel>点击区域（最多 7 个）</FieldLabel>
                       <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
                         <div className="flex flex-col gap-2">
-                          {clickRegions.filter((cr) => cr?.rect).slice(0, 7).map((cr, index) => (
-                            <ControlTile key={index} className="flex items-center gap-3">
+                          {clickRegionRows(clickRegions).map((cr) => (
+                            <ControlTile key={cr.slotIndex} className="flex items-center gap-3">
                               <Badge variant={cr.rect ? "default" : "outline"} className="shrink-0">
-                                {index + 1}
+                                {cr.slotIndex + 1}
                               </Badge>
                               <span className="flex-1 font-mono text-xs text-muted-foreground">
                                 {formatRegion(cr.rect)}
@@ -276,13 +289,13 @@ export function WorkbenchControlPanel({
                                 inputMode="numeric"
                                 min="0"
                                 value={cr.delayMs}
-                                onChange={(e) => onUpdateClickRegionDelay(index, e.currentTarget.value)}
+                                onChange={(e) => onUpdateClickRegionDelay(cr.slotIndex, e.currentTarget.value)}
                               />
                               <span className="text-xs text-muted-foreground">ms</span>
                               <Button
                                 className="h-7 w-7 shrink-0 p-0"
                                 disabled={isBusy}
-                                onClick={() => onRemoveClickRegion(index)}
+                                onClick={() => onRemoveClickRegion(cr.slotIndex)}
                                 type="button"
                                 variant="ghost"
                               >

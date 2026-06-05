@@ -1,7 +1,7 @@
 import type React from "react";
 
-import type { CounterItem, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerItem, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
-import { TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
+import type { CounterItem, CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerGroup, TimerGroupForm, TimerItem, TimerItemForm, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
+import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
 import { formatRecordedHotkey } from "@/components/app/morse-utils";
 
 function displaySettingsToForm(display: TimerDisplaySettings) {
@@ -9,6 +9,57 @@ function displaySettingsToForm(display: TimerDisplaySettings) {
     rect: display.rect,
     fontOpacity: String(display.fontOpacity),
   };
+}
+
+function defaultTimerGroup(display: TimerDisplaySettings): TimerGroup {
+  return {
+    id: DEFAULT_TIMER_GROUP_ID,
+    name: "默认分组",
+    enabled: true,
+    display,
+  };
+}
+
+function defaultCounterGroup(display: TimerDisplaySettings): TimerGroup {
+  return {
+    id: DEFAULT_COUNTER_GROUP_ID,
+    name: "默认分组",
+    enabled: true,
+    display,
+  };
+}
+
+function groupsToForm(groups: TimerGroup[]): TimerGroupForm[] {
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    enabled: group.enabled,
+    display: displaySettingsToForm(group.display),
+  }));
+}
+
+function normalizeGroups(
+  groups: TimerGroup[] | undefined,
+  legacyDisplay: TimerDisplaySettings,
+  defaultGroupId: string,
+): TimerGroup[] {
+  const normalized = (groups && groups.length > 0 ? groups : [defaultGroupId === DEFAULT_TIMER_GROUP_ID ? defaultTimerGroup(legacyDisplay) : defaultCounterGroup(legacyDisplay)])
+    .map((group) => ({
+      id: group.id.trim() || defaultGroupId,
+      name: group.name.trim() || "未命名分组",
+      enabled: group.enabled ?? true,
+      display: group.display ?? legacyDisplay,
+    }));
+
+  if (!normalized.some((group) => group.id === defaultGroupId)) {
+    normalized.unshift(defaultGroupId === DEFAULT_TIMER_GROUP_ID ? defaultTimerGroup(legacyDisplay) : defaultCounterGroup(legacyDisplay));
+  }
+
+  return normalized;
+}
+
+function normalizeGroupId(groupId: string | undefined, groupIds: Set<string>, defaultGroupId: string): string {
+  return groupId && groupIds.has(groupId) ? groupId : defaultGroupId;
 }
 
 function parseFontOpacity(value: string): number {
@@ -21,14 +72,21 @@ function parseFontOpacity(value: string): number {
 
 export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm {
   const legacyEnabled = Boolean(settings.enabled);
+  const timerGroups = normalizeGroups(settings.timerGroups, settings.display, DEFAULT_TIMER_GROUP_ID);
+  const counterGroups = normalizeGroups(settings.counterGroups, settings.counterDisplay, DEFAULT_COUNTER_GROUP_ID);
+  const timerGroupIds = new Set(timerGroups.map((group) => group.id));
+  const counterGroupIds = new Set(counterGroups.map((group) => group.id));
 
   return {
     timerEnabled: settings.timerEnabled ?? legacyEnabled,
     counterEnabled: settings.counterEnabled ?? legacyEnabled,
     display: displaySettingsToForm(settings.display),
     counterDisplay: displaySettingsToForm(settings.counterDisplay),
+    timerGroups: groupsToForm(timerGroups),
+    counterGroups: groupsToForm(counterGroups),
     timers: settings.timers.map((timer) => ({
       id: timer.id,
+      groupId: normalizeGroupId(timer.groupId, timerGroupIds, DEFAULT_TIMER_GROUP_ID),
       name: timer.name,
       durationSeconds: String(timer.durationSeconds),
       hotkey: timer.hotkey,
@@ -40,6 +98,7 @@ export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm 
     })),
     counters: settings.counters.map((counter) => ({
       id: counter.id,
+      groupId: normalizeGroupId(counter.groupId, counterGroupIds, DEFAULT_COUNTER_GROUP_ID),
       name: counter.name,
       startValue: String(counter.startValue),
       hotkey: counter.hotkey,
@@ -70,6 +129,19 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     throw new Error("至少需要保留一个计数器。");
   }
 
+  const timerGroups = parseGroups(
+    mirrorDefaultGroupDisplay(form.timerGroups, DEFAULT_TIMER_GROUP_ID, form.display),
+    DEFAULT_TIMER_GROUP_ID,
+    "计时器分组",
+  );
+  const counterGroups = parseGroups(
+    mirrorDefaultGroupDisplay(form.counterGroups, DEFAULT_COUNTER_GROUP_ID, form.counterDisplay),
+    DEFAULT_COUNTER_GROUP_ID,
+    "计数器分组",
+  );
+  const timerGroupIds = new Set(timerGroups.map((group) => group.id));
+  const counterGroupIds = new Set(counterGroups.map((group) => group.id));
+
   const timers = form.timers.map((timer): TimerItem => {
     const name = timer.name.trim();
     if (!name) {
@@ -88,6 +160,7 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
 
     return {
       id: timer.id,
+      groupId: normalizeGroupId(timer.groupId, timerGroupIds, DEFAULT_TIMER_GROUP_ID),
       name,
       durationSeconds,
       hotkey,
@@ -117,6 +190,7 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
 
     return {
       id: counter.id,
+      groupId: normalizeGroupId(counter.groupId, counterGroupIds, DEFAULT_COUNTER_GROUP_ID),
       name,
       startValue,
       hotkey,
@@ -124,23 +198,119 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     };
   });
 
+  const timerCountsByGroup = enabledCountByGroup(timers);
+  const counterCountsByGroup = enabledCountByGroup(counters);
+  const normalizedTimerGroups = timerGroups.map((group) => ({
+    ...group,
+    display: parseDisplaySettings(displaySettingsToForm(group.display), timerCountsByGroup.get(group.id) ?? 0),
+  }));
+  const normalizedCounterGroups = counterGroups.map((group) => ({
+    ...group,
+    display: parseDisplaySettings(displaySettingsToForm(group.display), counterCountsByGroup.get(group.id) ?? 0),
+  }));
+  const legacyTimerDisplay = normalizedTimerGroups.find((group) => group.id === DEFAULT_TIMER_GROUP_ID)?.display ?? normalizedTimerGroups[0].display;
+  const legacyCounterDisplay = normalizedCounterGroups.find((group) => group.id === DEFAULT_COUNTER_GROUP_ID)?.display ?? normalizedCounterGroups[0].display;
+
   return {
     enabled: form.timerEnabled || form.counterEnabled,
     timerEnabled: form.timerEnabled,
     counterEnabled: form.counterEnabled,
-    display: parseDisplaySettings(form.display, timers.filter((t) => t.enabled).length),
-    counterDisplay: parseDisplaySettings(form.counterDisplay, counters.filter((c) => c.enabled).length),
+    display: legacyTimerDisplay,
+    counterDisplay: legacyCounterDisplay,
+    timerGroups: normalizedTimerGroups,
+    counterGroups: normalizedCounterGroups,
     timers,
     counters,
   };
 }
 
-export function createTimerItem(existingCount: number): TimerItem {
+function parseGroups(groups: TimerGroupForm[], defaultGroupId: string, label: string): TimerGroup[] {
+  if (groups.length === 0) {
+    throw new Error(`至少需要保留一个${label}。`);
+  }
+
+  const seen = new Set<string>();
+  return groups.map((group) => {
+    const id = group.id.trim() || defaultGroupId;
+    if (seen.has(id)) {
+      throw new Error(`${label} ID 重复：${id}`);
+    }
+    seen.add(id);
+
+    const name = group.name.trim();
+    if (!name) {
+      throw new Error(`${label}名称不能为空。`);
+    }
+
+    return {
+      id,
+      name,
+      enabled: group.enabled,
+      display: parseDisplaySettings(group.display, 0),
+    };
+  });
+}
+
+function mirrorDefaultGroupDisplay(
+  groups: TimerGroupForm[],
+  defaultGroupId: string,
+  display: TimerGroupForm["display"],
+): TimerGroupForm[] {
+  return groups.map((group) => (group.id === defaultGroupId ? { ...group, display } : group));
+}
+
+function enabledCountByGroup(items: Array<{ groupId?: string; enabled: boolean }>): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const item of items) {
+    if (!item.enabled || !item.groupId) {
+      continue;
+    }
+    map.set(item.groupId, (map.get(item.groupId) ?? 0) + 1);
+  }
+  return map;
+}
+
+export function createTimerGroup(existingCount: number): TimerGroupForm {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: `timer-group-${suffix}`,
+    name: `计时分组 ${existingCount + 1}`,
+    enabled: true,
+    display: displaySettingsToForm(timerDefaultDisplay()),
+  };
+}
+
+export function createCounterGroup(existingCount: number): TimerGroupForm {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: `counter-group-${suffix}`,
+    name: `计数分组 ${existingCount + 1}`,
+    enabled: true,
+    display: displaySettingsToForm(counterDefaultDisplay()),
+  };
+}
+
+function timerDefaultDisplay(): TimerDisplaySettings {
+  return {
+    rect: { x: 80, y: 80, width: TIMER_DISPLAY_WIDTH, height: TIMER_DISPLAY_MIN_HEIGHT },
+    fontOpacity: 0.92,
+  };
+}
+
+function counterDefaultDisplay(): TimerDisplaySettings {
+  return {
+    rect: { x: 420, y: 80, width: TIMER_DISPLAY_WIDTH, height: TIMER_DISPLAY_MIN_HEIGHT },
+    fontOpacity: 0.92,
+  };
+}
+
+export function createTimerItem(existingCount: number, groupId = DEFAULT_TIMER_GROUP_ID): TimerItem {
   const nextIndex = existingCount + 1;
   const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   return {
     id: `timer-${suffix}`,
+    groupId,
     name: `计时器 ${nextIndex}`,
     durationSeconds: 30,
     hotkey: "F2",
@@ -152,17 +322,40 @@ export function createTimerItem(existingCount: number): TimerItem {
   };
 }
 
-export function createCounterItem(existingCount: number): CounterItem {
+export function createCounterItem(existingCount: number, groupId = DEFAULT_COUNTER_GROUP_ID): CounterItem {
   const nextIndex = existingCount + 1;
   const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
   return {
     id: `counter-${suffix}`,
+    groupId,
     name: `计数器 ${nextIndex}`,
     startValue: 0,
     hotkey: "F3",
     enabled: true,
   };
+}
+
+export function timerEffectiveTimersByGroup(form: TimerSettingsForm | null, groupId: string): TimerItemForm[] {
+  if (!form?.timerEnabled) {
+    return [];
+  }
+  const group = form.timerGroups.find((item) => item.id === groupId);
+  if (!group?.enabled) {
+    return [];
+  }
+  return form.timers.filter((timer) => timer.groupId === groupId && timer.enabled);
+}
+
+export function timerEffectiveCountersByGroup(form: TimerSettingsForm | null, groupId: string): CounterItemForm[] {
+  if (!form?.counterEnabled) {
+    return [];
+  }
+  const group = form.counterGroups.find((item) => item.id === groupId);
+  if (!group?.enabled) {
+    return [];
+  }
+  return form.counters.filter((counter) => counter.groupId === groupId && counter.enabled);
 }
 
 export function moveTimerItem<T extends { id: string }>(items: T[], activeId: string, overId: string): T[] {

@@ -22,6 +22,8 @@ export type MorseSettings = {
   regions: RegionTuple;
   binaryThreshold: number;
   autoInputDelay: number;
+  /** 自动点击整组成功完成后按一次；空值表示不执行 */
+  afterClickHotkey?: string | null;
   /** 识别成功后自动点击已配置区域 */
   autoClickEnabled: boolean;
   /** 点击区域（最多 7 个），每个区域独立延迟 */
@@ -33,6 +35,8 @@ export type MorseSettingsForm = {
   regions: RegionTuple;
   binaryThreshold: string;
   autoInputDelay: string;
+  /** 自动点击整组成功完成后按一次；空字符串表示不执行 */
+  afterClickHotkey: string;
   /** 识别成功后自动点击已配置区域 */
   autoClickEnabled: boolean;
   /** 点击区域（最多 7 个），每个区域独立延迟字符串 */
@@ -80,6 +84,8 @@ export type RegionSelectionProgress = {
   currentSlot: number | null;
   regions: RegionTuple;
   completedSlots: number[];
+  target: "sampling" | "click" | string;
+  clickRegions?: ClickRegion[] | null;
 };
 
 export type RegionSelectionKind = "selected" | "cancelled" | "closed";
@@ -98,6 +104,7 @@ export type Point = {
 };
 
 export const REGION_LABELS = ["位置 1", "位置 2", "位置 3"] as const;
+export const CLICK_REGION_LABELS = ["点击区域 1", "点击区域 2", "点击区域 3", "点击区域 4", "点击区域 5", "点击区域 6", "点击区域 7"] as const;
 export const MIN_SELECTION_WIDTH = 10;
 export const MIN_SELECTION_HEIGHT = 5;
 export const EMPTY_REGIONS: RegionTuple = [null, null, null];

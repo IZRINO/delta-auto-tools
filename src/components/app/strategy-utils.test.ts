@@ -6,6 +6,8 @@ import {
   createStrategySite,
   createUserStrategySiteId,
   mergeStrategySites,
+  normalizeStrategyContentBounds,
+  normalizeVisibleStrategyContentBounds,
   readStoredUserSites,
   readStrategyRefreshSeconds,
   writeStoredUserSites,
@@ -146,6 +148,67 @@ describe("strategy-utils", () => {
       const stub = makeStub();
       stub.setItem("delta-auto-tools:strategy:bad:refresh-seconds", "60");
       expect(readStrategyRefreshSeconds("bad", stub)).toBe(DEFAULT_STRATEGY_REFRESH_SECONDS);
+    });
+  });
+
+  describe("content bounds", () => {
+    it("normalizes non-zero host rects for WebView placement", () => {
+      expect(normalizeStrategyContentBounds({ left: 10.4, top: 20.6, width: 801.2, height: 560.8 })).toEqual({
+        x: 10,
+        y: 21,
+        width: 801,
+        height: 561,
+      });
+    });
+
+    it("keeps a usable minimum while the host is still laying out", () => {
+      expect(normalizeStrategyContentBounds({ left: 0, top: 0, width: 0, height: 0 })).toEqual({
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 360,
+      });
+      expect(normalizeStrategyContentBounds(null)).toEqual({
+        x: 0,
+        y: 0,
+        width: 320,
+        height: 360,
+      });
+    });
+
+    it("clips host rects to the visible viewport for detached WebView windows", () => {
+      expect(
+        normalizeVisibleStrategyContentBounds(
+          { left: 240, top: 520, width: 860, height: 560 },
+          { width: 1280, height: 800 },
+        ),
+      ).toEqual({
+        x: 240,
+        y: 520,
+        width: 860,
+        height: 280,
+      });
+      expect(
+        normalizeVisibleStrategyContentBounds(
+          { left: 240, top: -120, width: 860, height: 560 },
+          { width: 1280, height: 800 },
+        ),
+      ).toEqual({
+        x: 240,
+        y: 0,
+        width: 860,
+        height: 440,
+      });
+    });
+
+    it("returns null when the content host is outside the visible viewport", () => {
+      expect(
+        normalizeVisibleStrategyContentBounds(
+          { left: 240, top: 820, width: 860, height: 560 },
+          { width: 1280, height: 800 },
+        ),
+      ).toBeNull();
+      expect(normalizeVisibleStrategyContentBounds(null, { width: 1280, height: 800 })).toBeNull();
     });
   });
 });

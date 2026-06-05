@@ -3,8 +3,18 @@ export type RapidfireRect = {
   y: number;
 };
 
+export type RapidfireGroup = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  showOverlay: boolean;
+  overlayPosition: RapidfireRect | null;
+  overlayWidth: number;
+};
+
 export type RapidfireCard = {
   id: string;
+  groupId?: string;
   name: string;
   triggerKey: string;
   targetKey: string;
@@ -32,6 +42,7 @@ export type RapidfireSettings = {
   triggerJitterMaxMs?: number;
   /** 旧配置兼容：旧全局抖动期间松手策略；新 UI 按卡片保存 */
   cancelJitterOnRelease?: boolean;
+  groups?: RapidfireGroup[];
   cards: RapidfireCard[];
 };
 
@@ -52,12 +63,14 @@ export type RapidfireBootstrap = {
 export type RapidfireSelectionOutcome = {
   kind: "selected" | "cancelled" | "closed";
   position: RapidfireRect;
+  groupId?: string | null;
 };
 
 // ---- 表单类型 ----
 
 export type RapidfireCardForm = {
   id: string;
+  groupId: string;
   name: string;
   triggerKey: string;
   targetKey: string;
@@ -71,6 +84,15 @@ export type RapidfireCardForm = {
   skipCompensation: boolean;
 };
 
+export type RapidfireGroupForm = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  showOverlay: boolean;
+  overlayPosition: RapidfireRect | null;
+  overlayWidth: string;
+};
+
 export type RapidfireSettingsForm = {
   rapidfireEnabled: boolean;
   showOverlay: boolean;
@@ -79,6 +101,7 @@ export type RapidfireSettingsForm = {
   compensationDelayMaxMs: string;
   /** 旧配置兼容字段不在表单中展示；解析时写回默认值给 Rust 兼容层 */
   overlayPosition: RapidfireRect | null;
+  groups: RapidfireGroupForm[];
   cards: RapidfireCardForm[];
 };
 
@@ -98,19 +121,63 @@ export const RAPIDFIRE_GLOBAL_DELAY_MAX_MS = 10000;
 export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS = 100;
 export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS = 150;
 export const RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS = 80;
+export const DEFAULT_RAPIDFIRE_GROUP_ID = "default-rapidfire-group";
 
 // ---- 转换函数 ----
 
+function defaultRapidfireGroup(settings: Pick<RapidfireSettings, "showOverlay" | "overlayPosition" | "overlayWidth">): RapidfireGroup {
+  return {
+    id: DEFAULT_RAPIDFIRE_GROUP_ID,
+    name: "默认分组",
+    enabled: true,
+    showOverlay: settings.showOverlay,
+    overlayPosition: settings.overlayPosition,
+    overlayWidth: settings.overlayWidth,
+  };
+}
+
+function normalizeRapidfireGroups(settings: RapidfireSettings): RapidfireGroup[] {
+  const groups = settings.groups && settings.groups.length > 0 ? settings.groups : [defaultRapidfireGroup(settings)];
+  const normalized = groups.map((group) => ({
+    id: group.id.trim() || DEFAULT_RAPIDFIRE_GROUP_ID,
+    name: group.name.trim() || "未命名分组",
+    enabled: group.enabled ?? true,
+    showOverlay: group.showOverlay ?? settings.showOverlay,
+    overlayPosition: group.overlayPosition ?? null,
+    overlayWidth: Math.max(RAPIDFIRE_DISPLAY_MIN_WIDTH, Math.min(RAPIDFIRE_DISPLAY_MAX_WIDTH, group.overlayWidth ?? settings.overlayWidth)),
+  }));
+  if (!normalized.some((group) => group.id === DEFAULT_RAPIDFIRE_GROUP_ID)) {
+    normalized.unshift(defaultRapidfireGroup(settings));
+  }
+  return normalized;
+}
+
+function normalizeRapidfireGroupId(groupId: string | undefined, groupIds: Set<string>): string {
+  return groupId && groupIds.has(groupId) ? groupId : DEFAULT_RAPIDFIRE_GROUP_ID;
+}
+
 export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireSettingsForm {
+  const groups = normalizeRapidfireGroups(settings);
+  const groupIds = new Set(groups.map((group) => group.id));
+  const defaultGroup = groups.find((group) => group.id === DEFAULT_RAPIDFIRE_GROUP_ID) ?? groups[0];
   return {
     rapidfireEnabled: settings.rapidfireEnabled,
-    showOverlay: settings.showOverlay,
-    overlayWidth: String(settings.overlayWidth),
+    showOverlay: defaultGroup.showOverlay,
+    overlayWidth: String(defaultGroup.overlayWidth),
     compensationDelayMinMs: String(settings.compensationDelayMinMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
     compensationDelayMaxMs: String(settings.compensationDelayMaxMs ?? RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
-    overlayPosition: settings.overlayPosition,
+    overlayPosition: defaultGroup.overlayPosition,
+    groups: groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      enabled: group.enabled,
+      showOverlay: group.showOverlay,
+      overlayPosition: group.overlayPosition,
+      overlayWidth: String(group.overlayWidth),
+    })),
     cards: settings.cards.map((card) => ({
       id: card.id,
+      groupId: normalizeRapidfireGroupId(card.groupId, groupIds),
       name: card.name,
       triggerKey: card.triggerKey,
       targetKey: card.targetKey,
@@ -375,6 +442,9 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     throw new Error("至少需要保留一个连发器卡片。");
   }
 
+  const groups = parseRapidfireGroups(mirrorDefaultRapidfireGroup(form.groups, form));
+  const groupIds = new Set(groups.map((group) => group.id));
+
   const cards = form.cards.map((card) => {
     const name = card.name.trim();
     if (!name) {
@@ -410,6 +480,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
 
     return {
       id: card.id,
+      groupId: normalizeRapidfireGroupId(card.groupId, groupIds),
       name,
       triggerKey,
       targetKey,
@@ -433,6 +504,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
     RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
   );
   const legacyMinPressSpacingMs = RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS;
+  const defaultGroup = groups.find((group) => group.id === DEFAULT_RAPIDFIRE_GROUP_ID) ?? groups[0];
 
   if (
     compensationDelayMinMs < RAPIDFIRE_GLOBAL_DELAY_MIN_MS ||
@@ -448,23 +520,82 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
   return {
     version: 1,
     rapidfireEnabled: form.rapidfireEnabled,
-    showOverlay: form.showOverlay,
-    overlayPosition: form.overlayPosition,
-    overlayWidth: clampOverlayWidth(form.overlayWidth),
+    showOverlay: defaultGroup.showOverlay,
+    overlayPosition: defaultGroup.overlayPosition,
+    overlayWidth: defaultGroup.overlayWidth,
     compensationDelayMinMs,
     compensationDelayMaxMs,
     minPressSpacingMs: legacyMinPressSpacingMs,
     triggerJitterMaxMs: 0,
     cancelJitterOnRelease: true,
+    groups,
     cards,
   };
 }
 
-export function createRapidfireCard(id: string, existingCount = 0): RapidfireCardForm {
+function parseRapidfireGroups(groups: RapidfireGroupForm[]): RapidfireGroup[] {
+  if (groups.length === 0) {
+    throw new Error("至少需要保留一个连发器分组。");
+  }
+
+  const seen = new Set<string>();
+  return groups.map((group) => {
+    const id = group.id.trim() || DEFAULT_RAPIDFIRE_GROUP_ID;
+    if (seen.has(id)) {
+      throw new Error(`连发器分组 ID 重复：${id}`);
+    }
+    seen.add(id);
+
+    const name = group.name.trim();
+    if (!name) {
+      throw new Error("连发器分组名称不能为空。");
+    }
+
+    return {
+      id,
+      name,
+      enabled: group.enabled,
+      showOverlay: group.showOverlay,
+      overlayPosition: group.overlayPosition,
+      overlayWidth: clampOverlayWidth(group.overlayWidth),
+    };
+  });
+}
+
+function mirrorDefaultRapidfireGroup(
+  groups: RapidfireGroupForm[],
+  form: Pick<RapidfireSettingsForm, "showOverlay" | "overlayPosition" | "overlayWidth">,
+): RapidfireGroupForm[] {
+  return groups.map((group) =>
+    group.id === DEFAULT_RAPIDFIRE_GROUP_ID
+      ? {
+          ...group,
+          showOverlay: form.showOverlay,
+          overlayPosition: form.overlayPosition,
+          overlayWidth: form.overlayWidth,
+        }
+      : group,
+  );
+}
+
+export function createRapidfireGroup(existingCount: number): RapidfireGroupForm {
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: `rapidfire-group-${suffix}`,
+    name: `连发分组 ${existingCount + 1}`,
+    enabled: true,
+    showOverlay: true,
+    overlayPosition: null,
+    overlayWidth: String(RAPIDFIRE_DISPLAY_MIN_WIDTH),
+  };
+}
+
+export function createRapidfireCard(id: string, existingCount = 0, groupId = DEFAULT_RAPIDFIRE_GROUP_ID): RapidfireCardForm {
   const triggerKey = `F${Math.min(12, 6 + existingCount)}`;
 
   return {
     id,
+    groupId,
     name: `连发器 ${existingCount + 1}`,
     triggerKey,
     targetKey: "Space",
@@ -648,7 +779,29 @@ export function moveRapidfireCard<T extends { id: string }>(items: T[], activeId
 }
 
 export function rapidfireEnabledCards(settings: RapidfireSettingsForm | RapidfireSettings | null): number {
-  return settings?.cards.filter((card) => card.enabled).length ?? 0;
+  if (!settings?.rapidfireEnabled) {
+    return 0;
+  }
+  const groups = "groups" in settings && settings.groups ? settings.groups : [];
+  if (groups.length === 0) {
+    return settings.cards.filter((card) => card.enabled).length;
+  }
+  const enabledGroupIds = new Set(groups.filter((group) => group.enabled).map((group) => group.id));
+  return settings.cards.filter((card) => card.enabled && enabledGroupIds.has(card.groupId ?? DEFAULT_RAPIDFIRE_GROUP_ID)).length;
+}
+
+export function rapidfireEffectiveCardsByGroup(
+  settings: RapidfireSettingsForm | null,
+  groupId: string,
+): RapidfireCardForm[] {
+  if (!settings?.rapidfireEnabled) {
+    return [];
+  }
+  const group = settings.groups.find((item) => item.id === groupId);
+  if (!group?.enabled) {
+    return [];
+  }
+  return settings.cards.filter((card) => card.groupId === groupId && card.enabled);
 }
 
 // ---- 支持的目标键列表 ----

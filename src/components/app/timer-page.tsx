@@ -22,6 +22,7 @@ import { CardHeader } from "@/components/ui/card";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,21 +37,25 @@ import {
   SignalTile,
   TacticalCard,
 } from "@/components/app/app-ui";
-import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode, TimerDisplayTarget, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
-import { TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
+import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode, TimerDisplayTarget, TimerGroupForm, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
+import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
 import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
 import { cn } from "@/lib/utils";
 import {
   counterRunsById,
+  createCounterGroup,
   createCounterItem,
+  createTimerGroup,
   createTimerItem,
   formatTimerHotkey,
   isTimerDirty,
   isTimerRunActive,
   moveTimerItem,
   parseTimerSettingsForm,
+  timerEffectiveCountersByGroup,
+  timerEffectiveTimersByGroup,
   timerProgressPercent,
   timerRunsById,
   timerSettingsToForm,
@@ -71,13 +76,14 @@ type TimerPageProps = {
 
 export function TimerPage({ overlayMode, highlightCardId }: TimerPageProps) {
   const isNativeShell = useNativeShell();
+  const overlayGroupId = new URLSearchParams(window.location.search).get("groupId");
 
   if (overlayMode === "display") {
-    return <TimerDisplayOverlay isNativeShell={isNativeShell} />;
+    return <TimerDisplayOverlay groupId={overlayGroupId ?? DEFAULT_TIMER_GROUP_ID} isNativeShell={isNativeShell} />;
   }
 
   if (overlayMode === "counter-display") {
-    return <CounterDisplayOverlay isNativeShell={isNativeShell} />;
+    return <CounterDisplayOverlay groupId={overlayGroupId ?? DEFAULT_COUNTER_GROUP_ID} isNativeShell={isNativeShell} />;
   }
 
   if (overlayMode === "position") {
@@ -238,32 +244,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     setForm((current) => (current ? { ...current, [key]: value } : current));
   }, []);
 
-  const updateDisplay = useCallback((target: TimerDisplayTarget, value: Partial<TimerSettingsForm["display"]>) => {
-    setForm((current) => current ? {
-      ...current,
-      [target === "timer" ? "display" : "counterDisplay"]: {
-        ...(target === "timer" ? current.display : current.counterDisplay),
-        ...value,
-      },
-    } : current);
-  }, []);
-
-  const updateDisplayRect = useCallback((target: TimerDisplayTarget, value: Partial<TimerSettingsForm["display"]["rect"]>) => {
-    setForm((current) => {
-      if (!current) {
-        return current;
-      }
-      const key = target === "timer" ? "display" : "counterDisplay";
-      return {
-        ...current,
-        [key]: {
-          ...current[key],
-          rect: { ...current[key].rect, ...value },
-        },
-      };
-    });
-  }, []);
-
   const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
     setForm((current) => {
       if (!current) { return current; }
@@ -278,6 +258,52 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     setForm((current) => current ? {
       ...current,
       counters: current.counters.map((counter) => counter.id === id ? { ...counter, ...value } : counter),
+    } : current);
+  }, []);
+
+  const updateTimerGroup = useCallback((id: string, value: Partial<TimerGroupForm>) => {
+    setForm((current) => current ? {
+      ...current,
+      timerGroups: current.timerGroups.map((group) => group.id === id ? { ...group, ...value } : group),
+    } : current);
+  }, []);
+
+  const updateCounterGroup = useCallback((id: string, value: Partial<TimerGroupForm>) => {
+    setForm((current) => current ? {
+      ...current,
+      counterGroups: current.counterGroups.map((group) => group.id === id ? { ...group, ...value } : group),
+    } : current);
+  }, []);
+
+  const updateTimerGroupDisplay = useCallback((id: string, value: Partial<TimerGroupForm["display"]>) => {
+    setForm((current) => current ? {
+      ...current,
+      timerGroups: current.timerGroups.map((group) => group.id === id ? { ...group, display: { ...group.display, ...value } } : group),
+      display: id === DEFAULT_TIMER_GROUP_ID ? { ...current.display, ...value } : current.display,
+    } : current);
+  }, []);
+
+  const updateCounterGroupDisplay = useCallback((id: string, value: Partial<TimerGroupForm["display"]>) => {
+    setForm((current) => current ? {
+      ...current,
+      counterGroups: current.counterGroups.map((group) => group.id === id ? { ...group, display: { ...group.display, ...value } } : group),
+      counterDisplay: id === DEFAULT_COUNTER_GROUP_ID ? { ...current.counterDisplay, ...value } : current.counterDisplay,
+    } : current);
+  }, []);
+
+  const updateTimerGroupDisplayRect = useCallback((id: string, value: Partial<TimerGroupForm["display"]["rect"]>) => {
+    setForm((current) => current ? {
+      ...current,
+      timerGroups: current.timerGroups.map((group) => group.id === id ? { ...group, display: { ...group.display, rect: { ...group.display.rect, ...value } } } : group),
+      display: id === DEFAULT_TIMER_GROUP_ID ? { ...current.display, rect: { ...current.display.rect, ...value } } : current.display,
+    } : current);
+  }, []);
+
+  const updateCounterGroupDisplayRect = useCallback((id: string, value: Partial<TimerGroupForm["display"]["rect"]>) => {
+    setForm((current) => current ? {
+      ...current,
+      counterGroups: current.counterGroups.map((group) => group.id === id ? { ...group, display: { ...group.display, rect: { ...group.display.rect, ...value } } } : group),
+      counterDisplay: id === DEFAULT_COUNTER_GROUP_ID ? { ...current.counterDisplay, rect: { ...current.counterDisplay.rect, ...value } } : current.counterDisplay,
     } : current);
   }, []);
 
@@ -392,15 +418,71 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   const addTimer = useCallback(() => {
     setForm((current) => current ? {
       ...current,
-      timers: [...current.timers, { ...createTimerItem(current.timers.length), durationSeconds: "30", segmentCount: "" }],
+      timers: [...current.timers, (() => {
+        const groupId = current.timerGroups[0]?.id ?? DEFAULT_TIMER_GROUP_ID;
+        return { ...createTimerItem(current.timers.length, groupId), groupId, durationSeconds: "30", segmentCount: "" };
+      })()],
     } : current);
   }, []);
 
   const addCounter = useCallback(() => {
     setForm((current) => current ? {
       ...current,
-      counters: [...current.counters, { ...createCounterItem(current.counters.length), startValue: "0" }],
+      counters: [...current.counters, (() => {
+        const groupId = current.counterGroups[0]?.id ?? DEFAULT_COUNTER_GROUP_ID;
+        return { ...createCounterItem(current.counters.length, groupId), groupId, startValue: "0" };
+      })()],
     } : current);
+  }, []);
+
+  const addTimerGroup = useCallback(() => {
+    setForm((current) => current ? {
+      ...current,
+      timerGroups: [...current.timerGroups, createTimerGroup(current.timerGroups.length)],
+    } : current);
+  }, []);
+
+  const addCounterGroup = useCallback(() => {
+    setForm((current) => current ? {
+      ...current,
+      counterGroups: [...current.counterGroups, createCounterGroup(current.counterGroups.length)],
+    } : current);
+  }, []);
+
+  const removeTimerGroup = useCallback((groupId: string) => {
+    setForm((current) => {
+      if (!current) return current;
+      if (current.timerGroups.length <= 1) {
+        toast.info("至少保留一个计时器分组。");
+        return current;
+      }
+      if (current.timers.some((timer) => timer.groupId === groupId)) {
+        toast.info("请先把此分组内的计时器移动到其他分组。");
+        return current;
+      }
+      return {
+        ...current,
+        timerGroups: current.timerGroups.filter((group) => group.id !== groupId),
+      };
+    });
+  }, []);
+
+  const removeCounterGroup = useCallback((groupId: string) => {
+    setForm((current) => {
+      if (!current) return current;
+      if (current.counterGroups.length <= 1) {
+        toast.info("至少保留一个计数器分组。");
+        return current;
+      }
+      if (current.counters.some((counter) => counter.groupId === groupId)) {
+        toast.info("请先把此分组内的计数器移动到其他分组。");
+        return current;
+      }
+      return {
+        ...current,
+        counterGroups: current.counterGroups.filter((group) => group.id !== groupId),
+      };
+    });
   }, []);
 
   const removeTimer = useCallback((id: string) => {
@@ -479,7 +561,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     moveCounter(activeId, overId);
   }, [moveCounter]);
 
-  const beginPositionSelection = useCallback(async (target: TimerDisplayTarget) => {
+  const beginPositionSelection = useCallback(async (target: TimerDisplayTarget, groupId?: string) => {
     if (!isNativeShell) {
       setStatusMessage("浏览器预览模式下不可设置透明窗口位置，请在桌面端使用。");
       return;
@@ -488,7 +570,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     setStatusMessage("请在透明位置框中拖动窗口，按 Enter 保存，按 Esc 退出修改。透明窗口宽度可在上方调整。");
 
     try {
-      const outcome = await invoke<TimerSelectionOutcome>("timer_begin_position_selection", { target });
+      const outcome = await invoke<TimerSelectionOutcome>("timer_begin_position_selection", { target, groupId });
       await syncBootstrap(true);
       const label = target === "timer" ? "计时器" : "计数器";
       if (outcome.kind === "selected") {
@@ -599,17 +681,30 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           {pageError ? <FieldError>{pageError}</FieldError> : null}
 
           <TabsContent value="timers" className="flex flex-col gap-5">
-            <DisplaySettingsCard
-              controlsDisabled={controlsDisabled || !form?.timerEnabled}
-              description="宽度可调，每个计时器一行；倒计时进度条会作为文本背景随剩余时间减少。"
-              display={form?.display}
-              statusMessage={statusMessage}
-              target="timer"
-              title="计时器透明窗口"
-              onPositionSelection={() => void beginPositionSelection("timer")}
-              onUpdate={(value) => updateDisplay("timer", value)}
-              onUpdateRect={(value) => updateDisplayRect("timer", value)}
-            />
+            <div className="flex flex-col gap-4">
+              {form?.timerGroups.map((group) => (
+                <DisplaySettingsCard
+                  key={group.id}
+                  controlsDisabled={controlsDisabled || !form?.timerEnabled || !group.enabled}
+                  description="宽度可调，每个计时器一行；倒计时进度条会作为文本背景随剩余时间减少。"
+                  display={group.display}
+                  group={group}
+                  canDelete={Boolean(form && form.timerGroups.length > 1 && !form.timers.some((timer) => timer.groupId === group.id))}
+                  statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveTimersByGroup(form, group.id).length} 张有效卡片`}
+                  target="timer"
+                  title={`计时器透明窗口 · ${group.name}`}
+                  onGroupUpdate={(value) => updateTimerGroup(group.id, value)}
+                  onGroupDelete={() => removeTimerGroup(group.id)}
+                  onPositionSelection={() => void beginPositionSelection("timer", group.id)}
+                  onUpdate={(value) => updateTimerGroupDisplay(group.id, value)}
+                  onUpdateRect={(value) => updateTimerGroupDisplayRect(group.id, value)}
+                />
+              ))}
+              <Button className="self-start" disabled={controlsDisabled || !form} onClick={addTimerGroup} type="button" variant="outline">
+                <RiAddLine data-icon="inline-start" />
+                新增计时分组
+              </Button>
+            </div>
 
             <div className="grid gap-4 xl:grid-cols-3">
               {form?.timers.map((timer, index) => (
@@ -621,6 +716,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                   isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "timer" && highlightCardId.cardId === timer.id)}
                   isRecording={recordingTarget?.type === "timer" && recordingTarget.id === timer.id}
                   isDragging={draggingTimerId === timer.id}
+                  groupOptions={form.timerGroups}
                   run={runsById.get(timer.id)}
                   timer={timer}
                   onDragOver={() => moveDraggingTimerOver(timer.id)}
@@ -637,17 +733,30 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
             </div>
           </TabsContent>
           <TabsContent value="counters" className="flex flex-col gap-5">
-            <DisplaySettingsCard
-              controlsDisabled={controlsDisabled || !form?.counterEnabled}
-              description="计数器拥有独立透明窗口；按快捷键累加，重置会回到设置的起始数。"
-              display={form?.counterDisplay}
-              statusMessage={statusMessage}
-              target="counter"
-              title="计数器透明窗口"
-              onPositionSelection={() => void beginPositionSelection("counter")}
-              onUpdate={(value) => updateDisplay("counter", value)}
-              onUpdateRect={(value) => updateDisplayRect("counter", value)}
-            />
+            <div className="flex flex-col gap-4">
+              {form?.counterGroups.map((group) => (
+                <DisplaySettingsCard
+                  key={group.id}
+                  controlsDisabled={controlsDisabled || !form?.counterEnabled || !group.enabled}
+                  description="计数器拥有独立透明窗口；按快捷键累加，重置会回到设置的起始数。"
+                  display={group.display}
+                  group={group}
+                  canDelete={Boolean(form && form.counterGroups.length > 1 && !form.counters.some((counter) => counter.groupId === group.id))}
+                  statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveCountersByGroup(form, group.id).length} 张有效卡片`}
+                  target="counter"
+                  title={`计数器透明窗口 · ${group.name}`}
+                  onGroupUpdate={(value) => updateCounterGroup(group.id, value)}
+                  onGroupDelete={() => removeCounterGroup(group.id)}
+                  onPositionSelection={() => void beginPositionSelection("counter", group.id)}
+                  onUpdate={(value) => updateCounterGroupDisplay(group.id, value)}
+                  onUpdateRect={(value) => updateCounterGroupDisplayRect(group.id, value)}
+                />
+              ))}
+              <Button className="self-start" disabled={controlsDisabled || !form} onClick={addCounterGroup} type="button" variant="outline">
+                <RiAddLine data-icon="inline-start" />
+                新增计数分组
+              </Button>
+            </div>
 
             <div className="grid gap-4 xl:grid-cols-3">
               {form?.counters.map((counter, index) => (
@@ -660,6 +769,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                   isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "counter" && highlightCardId.cardId === counter.id)}
                   isDragging={draggingCounterId === counter.id}
                   isRecording={recordingTarget?.type === "counter" && recordingTarget.id === counter.id}
+                  groupOptions={form.counterGroups}
                   run={counterRunsByIdMap.get(counter.id)}
                   onAdjust={(delta) => void adjustCounter(counter.id, delta)}
                   onBeginHotkeyRecording={() => beginCounterHotkeyRecording(counter)}
@@ -684,18 +794,22 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 }
 
 type DisplaySettingsCardProps = {
+  canDelete: boolean;
   controlsDisabled: boolean;
   description: string;
   display: TimerSettingsForm["display"] | undefined;
+  group: TimerGroupForm;
   statusMessage: string;
   target: TimerDisplayTarget;
   title: string;
+  onGroupDelete: () => void;
+  onGroupUpdate: (value: Partial<TimerGroupForm>) => void;
   onPositionSelection: () => void;
   onUpdate: (value: Partial<TimerSettingsForm["display"]>) => void;
   onUpdateRect: (value: Partial<TimerSettingsForm["display"]["rect"]>) => void;
 };
 
-function DisplaySettingsCard({ controlsDisabled, description, display, statusMessage, target, title, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsCardProps) {
+function DisplaySettingsCard({ canDelete, controlsDisabled, description, display, group, statusMessage, target, title, onGroupDelete, onGroupUpdate, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsCardProps) {
   return (
     <TacticalCard>
       <SectionHeader
@@ -706,6 +820,25 @@ function DisplaySettingsCard({ controlsDisabled, description, display, statusMes
       />
       <CardBody className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <FieldGroup className="gap-4">
+          <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-end">
+            <ControlTile className="flex items-center gap-3">
+              <Switch checked={group.enabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">分组开关</p>
+                <p className="mt-1 text-xs text-muted-foreground">关闭后隐藏本组窗口并解绑本组快捷键。</p>
+              </div>
+            </ControlTile>
+            <Field>
+              <FieldLabel>分组名称</FieldLabel>
+              <FieldContent>
+                <Input disabled={controlsDisabled && !group.enabled} value={group.name} onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })} />
+              </FieldContent>
+            </Field>
+            <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost">
+              <RiDeleteBinLine data-icon="inline-start" />
+              删除空分组
+            </Button>
+          </div>
           <Field>
             <FieldLabel>字体透明度</FieldLabel>
             <FieldContent>
@@ -734,6 +867,7 @@ function DisplaySettingsCard({ controlsDisabled, description, display, statusMes
 
 type TimerCardProps = {
   controlsDisabled: boolean;
+  groupOptions: TimerGroupForm[];
   index: number;
   isFavorite: boolean;
   isHighlighted: boolean;
@@ -750,7 +884,7 @@ type TimerCardProps = {
   onUpdate: (value: Partial<TimerItemForm>) => void;
 };
 
-function TimerCard({ controlsDisabled, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onToggleFavorite, onUpdate, run, timer }: TimerCardProps) {
+function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onToggleFavorite, onUpdate, run, timer }: TimerCardProps) {
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
@@ -795,6 +929,23 @@ function TimerCard({ controlsDisabled, index, isDragging, isFavorite, isHighligh
             <FieldLabel htmlFor={`${timer.id}-name`}>名称</FieldLabel>
             <FieldContent>
               <Input id={`${timer.id}-name`} disabled={controlsDisabled} value={timer.name} onChange={(event) => onUpdate({ name: event.currentTarget.value })} />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>所属分组</FieldLabel>
+            <FieldContent>
+              <Select disabled={controlsDisabled} value={timer.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择分组" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groupOptions.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FieldContent>
           </Field>
           <Field>
@@ -857,6 +1008,7 @@ function TimerCard({ controlsDisabled, index, isDragging, isFavorite, isHighligh
 type CounterCardProps = {
   controlsDisabled: boolean;
   counter: CounterItemForm;
+  groupOptions: TimerGroupForm[];
   index: number;
   isFavorite: boolean;
   isHighlighted: boolean;
@@ -875,7 +1027,7 @@ type CounterCardProps = {
   onUpdate: (value: Partial<CounterItemForm>) => void;
 };
 
-function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
+function CounterCard({ controlsDisabled, counter, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
@@ -918,6 +1070,23 @@ function CounterCard({ controlsDisabled, counter, index, isDragging, isFavorite,
             <FieldLabel htmlFor={`${counter.id}-name`}>名称</FieldLabel>
             <FieldContent>
               <Input id={`${counter.id}-name`} disabled={controlsDisabled} value={counter.name} onChange={(event) => onUpdate({ name: event.currentTarget.value })} />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>所属分组</FieldLabel>
+            <FieldContent>
+              <Select disabled={controlsDisabled} value={counter.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择分组" />
+                </SelectTrigger>
+                <SelectContent>
+                  {groupOptions.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FieldContent>
           </Field>
           <Field>
@@ -1004,7 +1173,7 @@ function AddCard({ controlsDisabled, description, onClick, title }: { controlsDi
   );
 }
 
-function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
+function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
   const [now, setNow] = useState(Date.now);
 
@@ -1021,7 +1190,8 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   }, []);
 
   const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
-  const opacity = bootstrap?.settings.display.fontOpacity ?? 0.92;
+  const group = bootstrap?.settings.timerGroups?.find((item) => item.id === groupId);
+  const opacity = group?.display.fontOpacity ?? bootstrap?.settings.display.fontOpacity ?? 0.92;
 
   function smoothProgress(run: TimerRunState | undefined): number {
     if (!run || !run.startedAtMs || run.status === "finished") {
@@ -1080,7 +1250,7 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
       <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
-        {bootstrap?.settings.timers.filter((t) => t.enabled).map((timer) => {
+        {bootstrap?.settings.timers.filter((t) => t.enabled && t.groupId === groupId && (group?.enabled ?? true)).map((timer) => {
           const run = runsById.get(timer.id);
           const finished = run?.status === "finished";
           const isActive = isTimerRunActive(run);
@@ -1119,18 +1289,19 @@ function TimerDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
   );
 }
 
-function CounterDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
+function CounterDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
 
   useOverlayBootstrap(isNativeShell, setBootstrap);
 
   const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
-  const opacity = bootstrap?.settings.counterDisplay.fontOpacity ?? 0.92;
+  const group = bootstrap?.settings.counterGroups?.find((item) => item.id === groupId);
+  const opacity = group?.display.fontOpacity ?? bootstrap?.settings.counterDisplay.fontOpacity ?? 0.92;
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
       <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
-        {bootstrap?.settings.counters.filter((c) => c.enabled).map((counter) => {
+        {bootstrap?.settings.counters.filter((c) => c.enabled && c.groupId === groupId && (group?.enabled ?? true)).map((counter) => {
           const run = counterRunsByIdMap.get(counter.id);
           return (
             <div key={counter.id} className="flex min-w-0 items-center justify-between gap-3 py-0.5 text-base font-semibold tracking-wide">

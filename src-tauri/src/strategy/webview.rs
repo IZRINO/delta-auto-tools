@@ -13,7 +13,6 @@ const DEFAULT_INNER_HEIGHT: f64 = 720.0;
 const MIN_INNER_WIDTH: f64 = 480.0;
 const MIN_INNER_HEIGHT: f64 = 360.0;
 
-
 /// 校验并规范化目标 URL。
 fn normalize_url(raw: &str) -> Result<Url, String> {
     let trimmed = raw.trim();
@@ -43,7 +42,6 @@ fn derive_view_label(host: &str) -> String {
     }
     format!("strategy-view-{sanitized}")
 }
-
 
 /// 应用内打开攻略网站：在 Tauri 主进程下新建一个 WebviewWindow 加载外部 URL。
 ///
@@ -133,8 +131,10 @@ mod tests {
     #[test]
     fn derive_view_label_normalizes_host() {
         assert_eq!(derive_view_label("kkrb.net"), "strategy-view-kkrb-net");
-        assert_eq!(derive_view_label("www.kkrb.net"), "strategy-view-www-kkrb-net");
+        assert_eq!(
+            derive_view_label("www.kkrb.net"),
+            "strategy-view-www-kkrb-net"
+        );
         assert_eq!(derive_view_label("orzice.com"), "strategy-view-orzice-com");
     }
-
 }

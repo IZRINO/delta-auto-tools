@@ -24,6 +24,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   AppPage,
@@ -38,6 +39,7 @@ import {
 import type {
   RapidfireBootstrap,
   RapidfireCardForm,
+  RapidfireGroupForm,
   RapidfireRunState,
   RapidfireSettings,
   RapidfireSelectionOutcome,
@@ -55,11 +57,14 @@ import {
   RAPIDFIRE_PRESS_JITTER_MAX_MS,
   RAPIDFIRE_PRESS_JITTER_MIN_MS,
   createRapidfireCard,
+  createRapidfireGroup,
+  DEFAULT_RAPIDFIRE_GROUP_ID,
   formatTriggerKey,
   formatTriggerHotkey,
   isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
+  rapidfireEffectiveCardsByGroup,
   rapidfireCardError,
   rapidfireCardStatus,
   rapidfireEnabledCards,
@@ -95,9 +100,10 @@ type RapidfirePageProps = {
 
 export function RapidfirePage({ highlightCardId, overlayMode }: RapidfirePageProps) {
   const isNativeShell = useNativeShell();
+  const overlayGroupId = new URLSearchParams(window.location.search).get("groupId") ?? DEFAULT_RAPIDFIRE_GROUP_ID;
 
   if (overlayMode === "display") {
-    return <RapidfireDisplayOverlay isNativeShell={isNativeShell} />;
+    return <RapidfireDisplayOverlay groupId={overlayGroupId} isNativeShell={isNativeShell} />;
   }
 
   if (overlayMode === "position") {
@@ -159,7 +165,17 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       compensationDelayMinMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS),
       compensationDelayMaxMs: String(RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS),
       overlayPosition: null,
-      cards: [createRapidfireCard(rapidfireCardId(), 0)],
+      groups: [
+        {
+          id: DEFAULT_RAPIDFIRE_GROUP_ID,
+          name: "默认分组",
+          enabled: true,
+          showOverlay: true,
+          overlayPosition: null,
+          overlayWidth: "400",
+        },
+      ],
+      cards: [createRapidfireCard(rapidfireCardId(), 0, DEFAULT_RAPIDFIRE_GROUP_ID)],
     });
   }, [isNativeShell]);
 
@@ -264,6 +280,21 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     );
   }, [clearStaleConfigError]);
 
+  const updateGroup = useCallback((id: string, value: Partial<RapidfireGroupForm>) => {
+    clearStaleConfigError();
+    setForm((current) =>
+      current
+        ? {
+            ...current,
+            groups: current.groups.map((group) => (group.id === id ? { ...group, ...value } : group)),
+            showOverlay: id === DEFAULT_RAPIDFIRE_GROUP_ID && typeof value.showOverlay === "boolean" ? value.showOverlay : current.showOverlay,
+            overlayPosition: id === DEFAULT_RAPIDFIRE_GROUP_ID && "overlayPosition" in value ? value.overlayPosition ?? null : current.overlayPosition,
+            overlayWidth: id === DEFAULT_RAPIDFIRE_GROUP_ID && typeof value.overlayWidth === "string" ? value.overlayWidth : current.overlayWidth,
+          }
+        : current,
+    );
+  }, [clearStaleConfigError]);
+
   const saveSettings = useCallback(async (settingsValue: RapidfireSettings, pendingVersion?: number) => {
     const isStaleSave = () => typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current;
 
@@ -359,10 +390,37 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       current
         ? {
             ...current,
-            cards: [...current.cards, createRapidfireCard(rapidfireCardId(), current.cards.length)],
+            cards: [...current.cards, createRapidfireCard(rapidfireCardId(), current.cards.length, current.groups[0]?.id ?? DEFAULT_RAPIDFIRE_GROUP_ID)],
           }
         : current,
     );
+  }, [clearStaleConfigError]);
+
+  const addGroup = useCallback(() => {
+    clearStaleConfigError();
+    setForm((current) => current ? {
+      ...current,
+      groups: [...current.groups, createRapidfireGroup(current.groups.length)],
+    } : current);
+  }, [clearStaleConfigError]);
+
+  const removeGroup = useCallback((groupId: string) => {
+    clearStaleConfigError();
+    setForm((current) => {
+      if (!current) return current;
+      if (current.groups.length <= 1) {
+        toast.info("至少保留一个连发器分组。");
+        return current;
+      }
+      if (current.cards.some((card) => card.groupId === groupId)) {
+        toast.info("请先把此分组内的连发器移动到其他分组。");
+        return current;
+      }
+      return {
+        ...current,
+        groups: current.groups.filter((group) => group.id !== groupId),
+      };
+    });
   }, [clearStaleConfigError]);
 
   const removeCard = useCallback((id: string) => {
@@ -423,11 +481,11 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     }
   }, [isNativeShell]);
 
-  const beginPositionSelection = useCallback(async () => {
+  const beginPositionSelection = useCallback(async (groupId?: string) => {
     if (!isNativeShell) return;
     try {
       setStatusMessage("正在打开连发器透明窗口位置设置...");
-      const outcome = await invoke<RapidfireSelectionOutcome>("rapidfire_begin_position_selection");
+      const outcome = await invoke<RapidfireSelectionOutcome>("rapidfire_begin_position_selection", { groupId });
       await syncBootstrap(true);
       if (outcome.kind === "selected") {
         setStatusMessage("连发器透明窗口位置已保存。");
@@ -480,7 +538,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         }
         actions={
           <>
-            <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={beginPositionSelection}>
+            <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
               <RiMapPinLine data-icon="inline-start" />
               设置位置
             </Button>
@@ -596,6 +654,74 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         </CardBody>
       </TacticalCard>
 
+      <TacticalCard>
+        <SectionHeader
+          eyebrow="Rapidfire Groups"
+          icon={<RiPulseLine />}
+          title="连发分组"
+          description="每个分组拥有独立透明窗口；总开关、分组开关、卡片开关同时开启才会响应触发键。"
+          actions={
+            <Button type="button" variant="outline" size="sm" disabled={controlsDisabled} onClick={addGroup}>
+              <RiAddLine data-icon="inline-start" />
+              新增分组
+            </Button>
+          }
+        />
+        <CardBody className="grid gap-3 lg:grid-cols-2">
+          {form.groups.map((group) => (
+            <ControlTile key={group.id} className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{group.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片
+                  </p>
+                </div>
+                <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => updateGroup(group.id, { enabled: checked })} />
+              </div>
+              <FieldGroup className="grid gap-3 md:grid-cols-2">
+                <Field>
+                  <FieldLabel>分组名称</FieldLabel>
+                  <Input disabled={controlsDisabled} value={group.name} onChange={(event) => updateGroup(group.id, { name: event.currentTarget.value })} />
+                </Field>
+                <Field>
+                  <FieldLabel>透明窗口宽度</FieldLabel>
+                  <Input
+                    className="font-mono"
+                    disabled={controlsDisabled || !group.enabled}
+                    max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
+                    min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
+                    onChange={(event) => updateGroup(group.id, { overlayWidth: event.currentTarget.value })}
+                    type="number"
+                    value={group.overlayWidth}
+                  />
+                </Field>
+              </FieldGroup>
+              <div className="flex flex-wrap items-center gap-2">
+                <ControlTile className="flex items-center gap-2 px-2 py-1.5">
+                  <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled} onCheckedChange={(checked) => updateGroup(group.id, { showOverlay: checked })} />
+                  <span className="text-xs text-muted-foreground">透明窗口</span>
+                </ControlTile>
+                <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !group.enabled} onClick={() => void beginPositionSelection(group.id)}>
+                  <RiMapPinLine data-icon="inline-start" />
+                  设置位置
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={controlsDisabled || form.groups.length <= 1 || form.cards.some((card) => card.groupId === group.id)}
+                  onClick={() => removeGroup(group.id)}
+                >
+                  <RiDeleteBinLine data-icon="inline-start" />
+                  删除空分组
+                </Button>
+              </div>
+            </ControlTile>
+          ))}
+        </CardBody>
+      </TacticalCard>
+
       <section className="grid min-h-0 gap-4 xl:grid-cols-2">
         {form.cards.map((card, index) => {
           const run = runsById.get(card.id);
@@ -612,6 +738,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               run={run}
               cardError={cardError}
               disabled={controlsDisabled}
+              groupOptions={form.groups}
               isFavorite={favorites.isFavorite("rapidfire", card.id)}
               isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "rapidfire" && highlightCardId.cardId === card.id)}
               isRecording={isRecording}
@@ -643,6 +770,7 @@ interface RapidfireCardEditorProps {
   run: RapidfireRunState | undefined;
   cardError: string | null;
   disabled: boolean;
+  groupOptions: RapidfireGroupForm[];
   isFavorite: boolean;
   isHighlighted: boolean;
   isRecording: boolean;
@@ -667,6 +795,7 @@ function RapidfireCardEditor({
   run,
   cardError,
   disabled,
+  groupOptions,
   isFavorite,
   isHighlighted,
   isRecording,
@@ -718,6 +847,18 @@ function RapidfireCardEditor({
               value={card.name}
               onChange={(event) => onUpdate(card.id, { name: event.target.value })}
             />
+            <Select disabled={disabled} value={card.groupId} onValueChange={(value) => onUpdate(card.id, { groupId: value })}>
+              <SelectTrigger className="max-w-44">
+                <SelectValue placeholder="选择分组" />
+              </SelectTrigger>
+              <SelectContent>
+                {groupOptions.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="flex shrink-0 items-center gap-1.5">
               <RapidfireCardDragHandle disabled={disabled} onDragStart={onDragStart} />
               <Badge variant="outline" className="px-1.5 py-0.5 text-[0.6875rem] font-mono">
@@ -979,13 +1120,14 @@ function RapidfireAddCard({ controlsDisabled, onClick }: { controlsDisabled: boo
   );
 }
 
-function RapidfireDisplayOverlay({ isNativeShell }: { isNativeShell: boolean }) {
+function RapidfireDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<RapidfireBootstrap | null>(null);
 
   useRapidfireOverlayBootstrap(isNativeShell, setBootstrap);
 
   const runsById = useMemo(() => rapidfireRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
-  const enabledCards = bootstrap?.settings.cards.filter((card) => card.enabled) ?? [];
+  const group = bootstrap?.settings.groups?.find((item) => item.id === groupId);
+  const enabledCards = bootstrap?.settings.cards.filter((card) => card.enabled && card.groupId === groupId && (group?.enabled ?? true)) ?? [];
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-1 font-mono text-white">
