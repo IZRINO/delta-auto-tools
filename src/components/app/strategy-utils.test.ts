@@ -2,26 +2,29 @@ import { describe, expect, it } from "vitest";
 
 import {
   BUILTIN_STRATEGY_SITES,
+  DEFAULT_STRATEGY_REFRESH_SECONDS,
   createStrategySite,
   createUserStrategySiteId,
   mergeStrategySites,
   readStoredUserSites,
+  readStrategyRefreshSeconds,
   writeStoredUserSites,
+  writeStrategyRefreshSeconds,
 } from "@/components/app/strategy-utils";
 
 describe("strategy-utils", () => {
-  describe("user site CRUD", () => {
-    function makeStub() {
-      const data = new Map<string, string>();
-      return {
-        data,
-        getItem: (k: string) => (data.has(k) ? data.get(k)! : null),
-        setItem: (k: string, v: string) => {
-          data.set(k, v);
-        },
-      };
-    }
+  function makeStub() {
+    const data = new Map<string, string>();
+    return {
+      data,
+      getItem: (k: string) => (data.has(k) ? data.get(k)! : null),
+      setItem: (k: string, v: string) => {
+        data.set(k, v);
+      },
+    };
+  }
 
+  describe("user site CRUD", () => {
     it("createUserStrategySiteId yields a user_ prefix and non-empty suffix", () => {
       const id = createUserStrategySiteId();
       expect(id.startsWith("user_")).toBe(true);
@@ -107,6 +110,42 @@ describe("strategy-utils", () => {
       const merged = mergeStrategySites(BUILTIN_STRATEGY_SITES, [user!]);
       expect(merged.length).toBe(BUILTIN_STRATEGY_SITES.length + 1);
       expect(merged[merged.length - 1]?.id).toBe(user?.id);
+    });
+  });
+
+  describe("refresh persistence", () => {
+    it("writeStrategyRefreshSeconds + readStrategyRefreshSeconds roundtrip", () => {
+      const stub = makeStub();
+      writeStrategyRefreshSeconds("kkrb", 60, stub);
+      expect(readStrategyRefreshSeconds("kkrb", stub)).toBe(60);
+      expect(stub.data.get("delta-auto-tools:strategy:kkrb:refresh-seconds")).toBe("60");
+    });
+
+    it("readStrategyRefreshSeconds falls back on corrupted storage", () => {
+      const stub = makeStub();
+      stub.setItem("delta-auto-tools:strategy:kkrb:refresh-seconds", "not-number");
+      expect(readStrategyRefreshSeconds("kkrb", stub)).toBe(DEFAULT_STRATEGY_REFRESH_SECONDS);
+    });
+
+    it("writeStrategyRefreshSeconds normalizes illegal seconds", () => {
+      const stub = makeStub();
+      writeStrategyRefreshSeconds("kkrb", 45, stub);
+      expect(readStrategyRefreshSeconds("kkrb", stub)).toBe(DEFAULT_STRATEGY_REFRESH_SECONDS);
+      expect(stub.data.get("delta-auto-tools:strategy:kkrb:refresh-seconds")).toBe("0");
+    });
+
+    it("readStrategyRefreshSeconds isolates different site keys", () => {
+      const stub = makeStub();
+      writeStrategyRefreshSeconds("kkrb", 30, stub);
+      writeStrategyRefreshSeconds("orzice", 300, stub);
+      expect(readStrategyRefreshSeconds("kkrb", stub)).toBe(30);
+      expect(readStrategyRefreshSeconds("orzice", stub)).toBe(300);
+    });
+
+    it("readStrategyRefreshSeconds ignores illegal site id", () => {
+      const stub = makeStub();
+      stub.setItem("delta-auto-tools:strategy:bad:refresh-seconds", "60");
+      expect(readStrategyRefreshSeconds("bad", stub)).toBe(DEFAULT_STRATEGY_REFRESH_SECONDS);
     });
   });
 });

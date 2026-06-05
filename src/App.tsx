@@ -66,9 +66,6 @@ const DeltaToolboxPage = lazy(() =>
 const StrategyPage = lazy(() =>
   import("@/components/app/strategy-page").then((module) => ({ default: module.StrategyPage })),
 );
-const StrategyBrowserPage = lazy(() =>
-  import("@/components/app/strategy-browser-page").then((module) => ({ default: module.StrategyBrowserPage })),
-);
 const FavoritesPage = lazy(() =>
   import("@/components/app/favorites-page").then((module) => ({ default: module.FavoritesPage })),
 );
@@ -294,13 +291,6 @@ function AppShell() {
     );
   }
 
-  if (overlayMode === "strategy-browser") {
-    return (
-      <ToolPageSuspense fallback={null}>
-        <StrategyBrowserPage />
-      </ToolPageSuspense>
-    );
-  }
 
   return (
     <DeltaAccountsProvider>

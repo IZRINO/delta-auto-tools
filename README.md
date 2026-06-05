@@ -10,7 +10,7 @@
 - **计时\计数器工作台**：支持多计时器、多计数器、独立总开关、快捷键触发，以及置顶透明显示窗口。
 - **连发器工作台**：支持多组连发配置、组合触发键、按住连发、卡片级不追加补齐、卡片级按键最小间距 / 启动抖动策略，以及透明状态窗口。
 - **Delta 工具接口**：支持 QQ、微信、QQ 安全中心、Wegame 与先遣服相关登录流程、本地账号管理和游戏数据查询；账号凭据仅在 Rust 侧持有，本地敏感字段使用系统凭据加密保存。
-- **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，主窗口负责内置 / 自定义网址集中管理；点击“打开攻略浏览器”后进入固定 `strategy-browser` Tauri 窗口，窗口内用 WebView2 子 WebView 对当前站点进行真实导航，cookie、JS 跳转、localStorage、同源 API 和人机验证均由目标站点自身处理，不再默认使用 iframe/srcDoc 代理渲染。保留 `strategy_fetch_page` 作为后端实验 / 兼容入口，并支持 `window.location.href` 形式的 JS 重定向嗅探。
+- **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，主窗口集中管理内置 / 自定义网址，并在攻略网站页面内部创建 `strategy-content` WebView2 子视图真实导航当前站点；cookie、JS 跳转、localStorage、同源 API 和人机验证均由目标站点自身处理，不再额外弹出独立攻略浏览器窗口，也不再默认使用 iframe/srcDoc 代理渲染。支持手动刷新、按站点持久化的自动刷新档位和系统浏览器打开兜底；`strategy_fetch_page` / `strategy_open_window` 保留为后端实验 / 兼容入口。
 
 ## 技术栈
 

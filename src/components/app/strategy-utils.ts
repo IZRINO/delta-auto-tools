@@ -47,22 +47,31 @@ export type StrategyOpenWindowResponse = {
   reused: boolean;
 };
 
-/**
- * Tauri 端 `strategy_open_browser` 命令的请求。
- */
-export type StrategyOpenBrowserRequest = {
-  siteId: StrategySiteId;
-  url: string;
-  title?: string;
+export const DEFAULT_STRATEGY_REFRESH_SECONDS = 0;
+
+export const STRATEGY_REFRESH_OPTIONS = [
+  { seconds: DEFAULT_STRATEGY_REFRESH_SECONDS, label: "关闭" },
+  { seconds: 30, label: "30 秒" },
+  { seconds: 60, label: "1 分钟" },
+  { seconds: 120, label: "2 分钟" },
+  { seconds: 300, label: "5 分钟" },
+  { seconds: 600, label: "10 分钟" },
+] as const;
+
+export type StrategyRefreshSeconds = (typeof STRATEGY_REFRESH_OPTIONS)[number]["seconds"];
+
+const STRATEGY_REFRESH_SECONDS_ALLOWED: Record<StrategyRefreshSeconds, true> = {
+  0: true,
+  30: true,
+  60: true,
+  120: true,
+  300: true,
+  600: true,
 };
 
-/**
- * Tauri 端 `strategy_open_browser` 命令的响应。
- */
-export type StrategyOpenBrowserResponse = {
-  label: string;
-  reused: boolean;
-};
+function isStrategyRefreshSeconds(value: number): value is StrategyRefreshSeconds {
+  return Number.isInteger(value) && STRATEGY_REFRESH_SECONDS_ALLOWED[value as StrategyRefreshSeconds] === true;
+}
 
 /**
  * Tauri 端 `strategy_fetch_page` 命令的响应。
@@ -175,6 +184,50 @@ function storageKey(suffix: string): string {
 }
 
 const SITES_STORAGE_KEY = "user-sites";
+
+function isStrategySiteStorageId(siteId: string): siteId is StrategySiteId {
+  return siteId === "kkrb" || siteId === "orzice" || siteId.startsWith("user_");
+}
+
+function refreshStorageKey(siteId: StrategySiteId): string {
+  return storageKey(`${siteId}:refresh-seconds`);
+}
+
+export function readStrategyRefreshSeconds(
+  siteId: string,
+  storage: Pick<Storage, "getItem"> | null = getDefaultStorage(),
+): StrategyRefreshSeconds {
+  if (storage === null || !isStrategySiteStorageId(siteId)) {
+    return DEFAULT_STRATEGY_REFRESH_SECONDS;
+  }
+  let raw: string | null;
+  try {
+    raw = storage.getItem(refreshStorageKey(siteId));
+  } catch {
+    return DEFAULT_STRATEGY_REFRESH_SECONDS;
+  }
+  if (raw === null || raw.length === 0) {
+    return DEFAULT_STRATEGY_REFRESH_SECONDS;
+  }
+  const parsed = Number(raw);
+  return isStrategyRefreshSeconds(parsed) ? parsed : DEFAULT_STRATEGY_REFRESH_SECONDS;
+}
+
+export function writeStrategyRefreshSeconds(
+  siteId: string,
+  seconds: number,
+  storage: Pick<Storage, "setItem"> | null = getDefaultStorage(),
+): void {
+  if (storage === null || !isStrategySiteStorageId(siteId)) {
+    return;
+  }
+  const normalized = isStrategyRefreshSeconds(seconds) ? seconds : DEFAULT_STRATEGY_REFRESH_SECONDS;
+  try {
+    storage.setItem(refreshStorageKey(siteId), String(normalized));
+  } catch {
+    // 隐私模式 / 配额限制下会抛错；保持主流程不被破坏。
+  }
+}
 
 /**
  * 反序列化用户新增的站点列表。损坏 / 解析失败时回落到空数组。

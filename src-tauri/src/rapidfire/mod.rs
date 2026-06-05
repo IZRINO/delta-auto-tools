@@ -35,7 +35,7 @@ const RAPIDFIRE_DISPLAY_MAX_WIDTH: i32 = 800;
 const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 1;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
 const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
-const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 200;
+const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 2000;
 const RAPIDFIRE_GLOBAL_DELAY_MIN_MS: u64 = 0;
 const RAPIDFIRE_GLOBAL_DELAY_MAX_MS: u64 = 10_000;
 
@@ -1454,7 +1454,7 @@ mod tests {
     fn normalize_card_clamps_press_jitter_to_supported_range() {
         let mut card = sample_card("a", "F1");
         card.press_jitter_min_ms = 0;
-        card.press_jitter_max_ms = 500;
+        card.press_jitter_max_ms = 2500;
 
         let normalized = normalize_card(&card).unwrap();
 
@@ -1466,6 +1466,18 @@ mod tests {
             normalized.press_jitter_max_ms,
             RAPIDFIRE_PRESS_JITTER_MAX_MS
         );
+    }
+
+    #[test]
+    fn normalize_card_preserves_press_jitter_at_new_upper_bound() {
+        let mut card = sample_card("a", "F1");
+        card.press_jitter_min_ms = 1990;
+        card.press_jitter_max_ms = 2000;
+
+        let normalized = normalize_card(&card).unwrap();
+
+        assert_eq!(normalized.press_jitter_min_ms, 1990);
+        assert_eq!(normalized.press_jitter_max_ms, 2000);
     }
 
     #[test]

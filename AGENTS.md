@@ -75,9 +75,8 @@ src/
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
-│       ├── strategy-page.tsx  # 攻略网站工作台：网址集中管理 + 打开攻略浏览器
-│       ├── strategy-browser-page.tsx # 独立攻略浏览器窗口：站点切换 + WebView2 真实导航
-│       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、localStorage 读写）
+│       ├── strategy-page.tsx  # 攻略网站工作台：主窗口内嵌 WebView2 + 站点 Tab + 刷新档位
+│       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、刷新档位、localStorage 读写）
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
 │       ├── delta-accounts-page.tsx  # 账号管理页：账号 CRUD + 令牌生命周期 + 登录 Dialog
@@ -100,10 +99,10 @@ src/
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` / `?mode=strategy-browser` 参数：overlay / display / position / strategy-browser 模式直接渲染对应独立窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page / strategy-browser-page）**：主窗口只负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），主操作调用 `strategy_open_browser` 打开固定 label `strategy-browser` 的 Tauri 窗口（`index.html?mode=strategy-browser&site=...&url=...`）。`StrategyBrowserPage` 在窗口顶部提供站点切换、刷新当前 WebView、重新读取站点、系统浏览器打开；下方使用 `@tauri-apps/api/webview` 创建 label `strategy-content` 的子 WebView 真实导航外部 URL，cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
+- **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），并在页面下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -226,8 +225,7 @@ src-tauri/src/
 | 命令 | 说明 |
 |------|------|
 | `strategy_fetch_page` | 兼容/实验拉取目标攻略页面：带完整 Chrome 135 头 + JS 重定向跟随（含 `window.location.href`）+ CC check 嗅探；命中人机验证时 `challenge` 字段非空 |
-| `strategy_open_browser` | 打开固定 `strategy-browser` 应用窗口，前端在其中创建 `strategy-content` 子 WebView 真实导航当前站点 |
-| `strategy_open_window` | 兼容入口：按 host 新建 / 复用 WebView2 子窗口直接打开外部 URL |
+| `strategy_open_window` | 兼容入口：按 host 新建 / 复用 WebView2 子窗口直接打开外部 URL；主 UI 不依赖该命令 |
 
 **账号与鉴权**：
 - `delta_list_accounts` / `delta_delete_account`
@@ -351,7 +349,7 @@ src-tauri/src/
 
 ### 攻略网站端
 
-- `src-tauri/src/strategy/mod.rs` 暴露 `strategy_open_browser`、`strategy_open_window` 与 `strategy_fetch_page`。默认 UI 路径不再用 iframe/srcDoc：`strategy_open_browser` 创建固定 label `strategy-browser` 的本应用窗口，前端 `StrategyBrowserPage` 再创建 label `strategy-content` 的 Tauri 子 WebView 真实导航外部 URL；切换站点时销毁并重建内容 WebView，窗口 resize 时同步调整其 bounds。`strategy_open_window` 保留旧 per-host top-level WebView2 外部 URL 窗口入口。`strategy_fetch_page` 保留兼容/实验用途：Rust 端用完整 Chrome 135 浏览器头拉取目标页面，`fetch_with_redirect` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` 后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_REDIRECT_DEPTH = 3` 次；命中 CC check 时返回 `challenge`，但主 UI 不再以代理 HTML 渲染作为默认路径。
+- `src-tauri/src/strategy/mod.rs` 暴露 `strategy_open_window` 与 `strategy_fetch_page`。默认 UI 路径不再用 iframe/srcDoc，也不再创建 `strategy-browser` 独立窗口：前端 `StrategyPage` 直接在主应用窗口内创建 label `strategy-content` 的 Tauri 子 WebView 真实导航外部 URL；切换站点 / 手动刷新 / 自动刷新时销毁并重建内容 WebView，窗口 resize、主页面布局变化和滚动时同步调整 bounds，组件卸载时关闭该子 WebView。`strategy_open_window` 保留旧 per-host top-level WebView2 外部 URL 窗口入口。`strategy_fetch_page` 保留兼容/实验用途：Rust 端用完整 Chrome 135 浏览器头拉取目标页面，`fetch_with_redirect` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` 后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随 `MAX_REDIRECT_DEPTH = 3` 次；命中 CC check 时返回 `challenge`，但主 UI 不再以代理 HTML 渲染作为默认路径。
 
 ### Delta 端
 - `src-tauri/src/delta/services/` 下按领域拆分 QQ / WeChat / QQ安全中心 / Wegame / Pioneer / Game 逻辑，不要额外引入与仓库现状不一致的 `models/handlers` 架构

@@ -114,7 +114,6 @@ pub fn run() {
             rapidfire::rapidfire_position_commit,
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
-            strategy::webview::strategy_open_browser,
             strategy::webview::strategy_open_window,
             strategy::fetch::strategy_fetch_page,
         ])

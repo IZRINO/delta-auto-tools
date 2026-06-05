@@ -149,13 +149,20 @@ describe("rapidfire-types", () => {
 
   it("round trips custom press jitter through form state", () => {
     const form = rapidfireSettingsToForm(sampleSettings());
-    form.cards[0].pressJitterMinMs = "15";
-    form.cards[0].pressJitterMaxMs = "25";
+    form.cards[0].pressJitterMinMs = "1990";
+    form.cards[0].pressJitterMaxMs = "2000";
 
     const parsed = parseRapidfireSettingsForm(form);
 
-    expect(parsed.cards[0].pressJitterMinMs).toBe(15);
-    expect(parsed.cards[0].pressJitterMaxMs).toBe(25);
+    expect(parsed.cards[0].pressJitterMinMs).toBe(1990);
+    expect(parsed.cards[0].pressJitterMaxMs).toBe(2000);
+  });
+
+  it("rejects press jitter above 2000ms", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].pressJitterMaxMs = "2001";
+
+    expect(() => parseRapidfireSettingsForm(form)).toThrow("触发抖动必须在 1-2000ms 之间");
   });
 
   it("round trips global compensation and per-card rapidfire parameters", () => {

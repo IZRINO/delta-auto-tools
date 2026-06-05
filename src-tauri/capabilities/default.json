@@ -12,7 +12,6 @@
     "rapidfire-display",
     "rapidfire-position",
     "strategy-view-*",
-    "strategy-browser",
     "strategy-content"
   ],
   "permissions": [
