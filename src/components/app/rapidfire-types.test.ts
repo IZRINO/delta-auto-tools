@@ -129,6 +129,7 @@ describe("rapidfire-types", () => {
     expect(formatTriggerKey("escape")).toBe("Esc");
     expect(formatTriggerKey("ArrowUp")).toBe("Up");
     expect(formatTriggerKey("f6")).toBe("F6");
+    expect(formatTriggerHotkey({ key: "Escape", code: "Escape", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false })).toBe("Esc");
   });
 
   it("allows modifier combinations for trigger keys", () => {

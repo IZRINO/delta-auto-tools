@@ -352,7 +352,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
   const beginRecording = useCallback((card: RapidfireCardForm, field: "triggerKey" | "targetKey") => {
     keyDraftRef.current = field === "triggerKey" ? card.triggerKey : card.targetKey;
     setRecordingTarget({ cardId: card.id, field });
-    setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按 Esc 取消。触发键可按住 Ctrl/Alt/Shift/Win 录制组合键。`);
+    setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按下主键会保存；失焦会取消。触发键可按住 Ctrl/Alt/Shift/Win 录制组合键。`);
   }, []);
 
   const handleRecorderKeyDown = useCallback(
@@ -363,12 +363,6 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       event.preventDefault();
       event.stopPropagation();
 
-      if (event.key === "Escape") {
-        updateCard(recordingTarget.cardId, { [recordingTarget.field]: keyDraftRef.current });
-        setRecordingTarget(null);
-        setStatusMessage("已取消按键录制。");
-        return;
-      }
 
       const nextKey = recordingTarget.field === "triggerKey" ? formatTriggerHotkey(event) : formatTriggerKey(event.key);
       const modifierOnly = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
@@ -383,6 +377,14 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     },
     [recordingTarget, updateCard],
   );
+
+  const handleRecorderBlur = useCallback(() => {
+    if (!recordingTarget) return;
+    const target = recordingTarget;
+    setRecordingTarget(null);
+    updateCard(target.cardId, { [target.field]: keyDraftRef.current });
+    setStatusMessage("已取消按键录制。");
+  }, [recordingTarget, updateCard]);
 
   const addCard = useCallback(() => {
     clearStaleConfigError();
@@ -747,6 +749,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               onUpdate={updateCard}
               onRecord={beginRecording}
               onRecorderKeyDown={handleRecorderKeyDown}
+              onRecorderBlur={handleRecorderBlur}
               onMove={moveCard}
               onDragStart={() => beginCardDrag(card.id)}
               onDragOver={() => moveDraggingCardOver(card.id)}
@@ -779,6 +782,7 @@ interface RapidfireCardEditorProps {
   onUpdate: (id: string, value: Partial<RapidfireCardForm>) => void;
   onRecord: (card: RapidfireCardForm, field: "triggerKey" | "targetKey") => void;
   onRecorderKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onRecorderBlur: () => void;
   onMove: (activeId: string, overId: string) => void;
   onDragStart: () => void;
   onDragOver: () => void;
@@ -804,6 +808,7 @@ function RapidfireCardEditor({
   onUpdate,
   onRecord,
   onRecorderKeyDown,
+  onRecorderBlur,
   onMove,
   onDragStart,
   onDragOver,
@@ -929,6 +934,7 @@ function RapidfireCardEditor({
                 disabled={disabled}
                 onClick={() => onRecord(card, "triggerKey")}
                 onKeyDown={onRecorderKeyDown}
+                onBlur={onRecorderBlur}
               />
               <FieldDescription>按住此键开始连发；支持 Shift+- 这类组合键。</FieldDescription>
             </Field>
@@ -942,6 +948,7 @@ function RapidfireCardEditor({
                 disabled={disabled}
                 onClick={() => onRecord(card, "targetKey")}
                 onKeyDown={onRecorderKeyDown}
+                onBlur={onRecorderBlur}
               />
               <FieldDescription>连发时触发此键。</FieldDescription>
             </Field>
@@ -1074,12 +1081,14 @@ function KeyRecorderButton({
   disabled,
   onClick,
   onKeyDown,
+  onBlur,
 }: {
   value: string;
   active: boolean;
   disabled: boolean;
   onClick: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onBlur: () => void;
 }) {
   return (
     <Button
@@ -1089,6 +1098,7 @@ function KeyRecorderButton({
       disabled={disabled}
       className="w-full justify-start font-mono"
       onClick={onClick}
+      onBlur={onBlur}
       onKeyDown={onKeyDown}
     >
       <RiKeyboardLine data-icon="inline-start" />

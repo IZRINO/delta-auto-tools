@@ -492,7 +492,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
 
     hotkeyDraftRef.current = form.hotkey;
     setIsRecordingHotkey(true);
-    setStatusMessage("正在录制热键，按下组合键后会自动更新。");
+    setStatusMessage("正在录制热键，按下组合键后会自动更新；失焦会取消录制。");
   }, [form]);
 
   const handleHotkeyRecorderKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -507,12 +507,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     event.preventDefault();
     event.stopPropagation();
 
-    if (event.key === "Escape") {
-      updateForm("hotkey", hotkeyDraftRef.current);
-      setIsRecordingHotkey(false);
-      setStatusMessage("已取消热键录制。");
-      return;
-    }
 
     const nextHotkey = formatRecordedHotkey(event);
     if (!nextHotkey) {
@@ -533,7 +527,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
 
     updateForm("hotkey", hotkeyDraftRef.current);
     setIsRecordingHotkey(false);
-    setStatusMessage("热键录制已结束。");
+    setStatusMessage("已取消热键录制。");
   }, [isRecordingHotkey, updateForm]);
 
   if (overlayMode) {

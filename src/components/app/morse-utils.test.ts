@@ -123,6 +123,16 @@ describe("morse-utils", () => {
 
     expect(
       formatRecordedHotkey({
+        key: "Escape",
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false,
+        metaKey: false,
+      } as React.KeyboardEvent<HTMLButtonElement>),
+    ).toBe("Esc");
+
+    expect(
+      formatRecordedHotkey({
         key: "Meta",
         ctrlKey: false,
         altKey: false,

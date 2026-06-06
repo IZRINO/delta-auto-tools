@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  RiAddLine,
+  RiDeleteBinLine,
   RiExternalLinkLine,
   RiRefreshLine,
   RiWindowLine,
@@ -13,12 +15,22 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AppPage,
   CardBody,
@@ -36,6 +49,7 @@ import {
 } from "@/components/app/app-ui";
 import {
   BUILTIN_STRATEGY_SITES,
+  createStrategySite,
   DEFAULT_STRATEGY_REFRESH_SECONDS,
   STRATEGY_REFRESH_OPTIONS,
   STRATEGY_CONTENT_MIN_HEIGHT,
@@ -45,6 +59,7 @@ import {
   normalizeVisibleStrategyContentBounds,
   readStoredUserSites,
   readStrategyRefreshSeconds,
+  writeStoredUserSites,
   writeStrategyRefreshSeconds,
   type StrategyContentBounds,
   type StrategyRefreshSeconds,
@@ -55,6 +70,13 @@ import { useNativeShell } from "@/hooks/use-native-shell";
 
 const CONTENT_WEBVIEW_LABEL = "strategy-content";
 const STABLE_BOUNDS_ATTEMPTS = 30;
+const EMPTY_USER_SITE_FORM = {
+  shortLabel: "",
+  label: "",
+  url: "",
+  description: "",
+};
+
 
 type StrategyContentWindowBounds = {
   x: number;
@@ -77,7 +99,7 @@ export function StrategyPage() {
   const contentWindowRef = useRef<WebviewWindow | null>(null);
   const contentWindowReadyRef = useRef(false);
   const latestBoundsRef = useRef<StrategyContentBounds | null>(null);
-  const [userSites] = useState<StrategySite[]>(() => readStoredUserSites());
+  const [userSites, setUserSites] = useState<StrategySite[]>(() => readStoredUserSites());
   const allSites = useMemo(() => mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites), [userSites]);
   const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? "");
   const activeSite = useMemo(() => {
@@ -92,6 +114,9 @@ export function StrategyPage() {
     readStrategyRefreshSeconds(BUILTIN_STRATEGY_SITES[0]?.id ?? ""),
   );
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [siteForm, setSiteForm] = useState(EMPTY_USER_SITE_FORM);
+  const [siteFormError, setSiteFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (allSites.length === 0) {
@@ -375,6 +400,34 @@ export function StrategyPage() {
     window.open(activeUrl, "_blank", "noopener,noreferrer");
   }, [activeUrl, isNativeShell]);
 
+
+  const handleCreateSite = useCallback(() => {
+    const nextSite = createStrategySite(siteForm);
+    if (!nextSite) {
+      setSiteFormError("请填写简称、完整名称和 http:// 或 https:// 开头的 URL。");
+      return;
+    }
+    const nextUserSites = [...userSites, nextSite];
+    setUserSites(nextUserSites);
+    writeStoredUserSites(nextUserSites);
+    setActiveId(nextSite.id);
+    setSiteForm(EMPTY_USER_SITE_FORM);
+    setSiteFormError(null);
+    setCreateDialogOpen(false);
+    toast.success(`已新增攻略网站：${nextSite.label}`);
+  }, [siteForm, userSites]);
+
+  const handleDeleteActiveSite = useCallback(() => {
+    if (!activeSite || activeSite.builtin) {
+      return;
+    }
+    const nextUserSites = userSites.filter((site) => site.id !== activeSite.id);
+    const nextAllSites = mergeStrategySites(BUILTIN_STRATEGY_SITES, nextUserSites);
+    setUserSites(nextUserSites);
+    writeStoredUserSites(nextUserSites);
+    setActiveId(nextAllSites[0]?.id ?? "");
+    toast.success(`已删除自定义攻略网站：${activeSite.label}`);
+  }, [activeSite, userSites]);
   const activeRefreshOption = STRATEGY_REFRESH_OPTIONS.find((option) => option.seconds === refreshSeconds) ?? STRATEGY_REFRESH_OPTIONS[0];
 
   return (
@@ -382,7 +435,7 @@ export function StrategyPage() {
       <PageHero
         eyebrow="Big-Category Utility"
         title="攻略网站工作台"
-        description="在主软件内部贴合显示 WebView2 真实网页区域，站点 cookie、JS 跳转、localStorage、同源接口和人机验证都由目标站点自身处理，不再额外弹出攻略浏览器窗口。"
+        description="在主窗口内嵌 WebView2 真实网页区域，站点 cookie、JS 跳转和人机验证都由目标站点自身处理。"
         badges={
           <>
             <Badge variant="secondary">大类工具</Badge>
@@ -398,25 +451,21 @@ export function StrategyPage() {
               detail={`${BUILTIN_STRATEGY_SITES.length} 个内置 + ${userSites.length} 个自定义`}
             />
             <SignalTile
-              label="打开方式"
-              value="软件内部"
-              icon={<RiWindowLine />}
-              detail="当前页面的 strategy-content 内容窗口承载真实导航。"
-            />
-            <SignalTile
               label="自动刷新"
               value={activeRefreshOption.label}
               icon={<RiRefreshLine />}
-              detail={refreshSeconds > 0 ? `${remainingSeconds || refreshSeconds} 秒后刷新当前站点。` : "关闭时只响应手动刷新。"}
+              detail={refreshSeconds > 0 ? `${remainingSeconds || refreshSeconds} 秒后刷新。` : "关闭"}
             />
+            
           </>
         }
       />
 
       <TacticalCard className="relative z-10 shrink-0">
-        <CardBody className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3">
-            <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}>
+        <CardBody className="flex flex-col gap-2.5 py-3">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}>
               <TabsList variant="line" className="flex-wrap justify-start">
                 {allSites.map((site) => (
                   <TabsTrigger key={site.id} value={site.id}>
@@ -425,9 +474,57 @@ export function StrategyPage() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-            </Tabs>
+              </Tabs>
+              <div className="flex flex-wrap items-center gap-2">
+                <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) setSiteFormError(null); }}>
+                  <DialogTrigger asChild>
+                    <Button type="button" size="sm" variant="outline">
+                      <RiAddLine data-icon="inline-start" />
+                      新增攻略网站
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>新增攻略网站</DialogTitle>
+                      <DialogDescription>添加后会保存到本机 localStorage，并立即切换到新站点。</DialogDescription>
+                    </DialogHeader>
+                    <FieldGroup className="gap-3">
+                      <Field>
+                        <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
+                        <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="例如 攻略站" />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
+                        <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="例如 自定义攻略站" />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
+                        <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
+                        <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
+                      </Field>
+                      {siteFormError ? <FieldDescription className="text-destructive">{siteFormError}</FieldDescription> : null}
+                    </FieldGroup>
+                    <DialogFooter>
+                      <Button type="button" onClick={handleCreateSite}>
+                        <RiAddLine data-icon="inline-start" />
+                        创建站点
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                {activeSite && !activeSite.builtin ? (
+                  <Button type="button" size="sm" variant="ghost" onClick={handleDeleteActiveSite}>
+                    <RiDeleteBinLine data-icon="inline-start" />
+                    删除当前站点
+                  </Button>
+                ) : null}
+              </div>
+            </div>
 
-            <FieldGroup className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-end">
+            <FieldGroup className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto_auto] xl:items-end">
               <Field>
                 <FieldLabel>当前 URL</FieldLabel>
                 <FieldContent>
@@ -435,7 +532,7 @@ export function StrategyPage() {
                     {activeUrl || "未选择站点"}
                   </div>
                   <FieldDescription>
-                    网页直接导航到目标 URL；如果站点需要真人确认，请在下方网页区域内完成。
+                    {activeSite?.description || "网页直接导航到目标 URL；需要真人确认时在下方网页区域内完成。"}
                   </FieldDescription>
                 </FieldContent>
               </Field>
@@ -456,7 +553,7 @@ export function StrategyPage() {
                     </SelectContent>
                   </Select>
                   <FieldDescription>
-                    {refreshSeconds > 0 ? `剩余 ${remainingSeconds || refreshSeconds} 秒刷新当前站点。` : "关闭自动刷新。"}
+                    {refreshSeconds > 0 ? `剩余 ${remainingSeconds || refreshSeconds} 秒刷新。` : "关闭自动刷新。"}
                   </FieldDescription>
                 </FieldContent>
               </Field>
@@ -476,7 +573,7 @@ export function StrategyPage() {
 
       <div
         ref={contentHostRef}
-        className="relative z-0 min-h-[560px] flex-1 overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_28%,transparent))]"
+        className="relative z-0 min-h-[620px] flex-1 overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_28%,transparent))]"
       >
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
           <div className="max-w-md rounded-lg border border-[var(--surface-border)] bg-background/82 px-5 py-4 shadow-sm backdrop-blur">

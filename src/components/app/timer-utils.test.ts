@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TimerSettings } from "@/components/app/timer-types";
 import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID } from "@/components/app/timer-types";
-import { formatTimerRemaining, isTimerRunActive, moveTimerItem, parseTimerSettingsForm, timerEffectiveCountersByGroup, timerEffectiveTimersByGroup, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
+import { formatTimerHotkey, formatTimerRemaining, isTimerRunActive, moveTimerItem, parseTimerSettingsForm, timerEffectiveCountersByGroup, timerEffectiveTimersByGroup, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
 
 function sampleSettings(): TimerSettings {
   return {
@@ -92,6 +92,10 @@ describe("timer-utils", () => {
     const parsed = parseTimerSettingsForm(timerSettingsToForm(settings));
 
     expect(parsed).toEqual(settings);
+  });
+
+  it("formats Esc as a valid timer hotkey", () => {
+    expect(formatTimerHotkey({ key: "Escape", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false } as React.KeyboardEvent<HTMLButtonElement>)).toBe("Esc");
   });
 
   it("migrates legacy settings into default groups", () => {

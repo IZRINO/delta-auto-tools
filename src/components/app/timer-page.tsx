@@ -364,13 +364,13 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   const beginTimerHotkeyRecording = useCallback((timer: TimerItemForm) => {
     hotkeyDraftRef.current = timer.hotkey;
     setRecordingTarget({ type: "timer", id: timer.id });
-    setStatusMessage(`正在录制 ${timer.name || "计时器"} 的快捷键，按 Esc 取消。`);
+    setStatusMessage(`正在录制 ${timer.name || "计时器"} 的快捷键，按下主键会保存；失焦会取消。`);
   }, []);
 
   const beginCounterHotkeyRecording = useCallback((counter: CounterItemForm) => {
     hotkeyDraftRef.current = counter.hotkey;
     setRecordingTarget({ type: "counter", id: counter.id });
-    setStatusMessage(`正在录制 ${counter.name || "计数器"} 的快捷键，按 Esc 取消。`);
+    setStatusMessage(`正在录制 ${counter.name || "计数器"} 的快捷键，按下主键会保存；失焦会取消。`);
   }, []);
 
   const handleTimerHotkeyRecorderKeyDown = useCallback((timer: TimerItemForm, event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -378,7 +378,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
       return;
     }
 
-    handleHotkeyRecorderKeyDown(event, () => updateTimer(timer.id, { hotkey: hotkeyDraftRef.current }), (hotkey) => updateTimer(timer.id, { hotkey }));
+    handleHotkeyRecorderKeyDown(event, (hotkey) => updateTimer(timer.id, { hotkey }));
   }, [recordingTarget, updateTimer]);
 
   const handleCounterHotkeyRecorderKeyDown = useCallback((counter: CounterItemForm, event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -386,10 +386,10 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
       return;
     }
 
-    handleHotkeyRecorderKeyDown(event, () => updateCounter(counter.id, { hotkey: hotkeyDraftRef.current }), (hotkey) => updateCounter(counter.id, { hotkey }));
+    handleHotkeyRecorderKeyDown(event, (hotkey) => updateCounter(counter.id, { hotkey }));
   }, [recordingTarget, updateCounter]);
 
-  const handleHotkeyRecorderKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, cancel: () => void, commit: (hotkey: string) => void) => {
+  const handleHotkeyRecorderKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, commit: (hotkey: string) => void) => {
     if (event.key === "Tab") {
       return;
     }
@@ -397,12 +397,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     event.preventDefault();
     event.stopPropagation();
 
-    if (event.key === "Escape") {
-      cancel();
-      setRecordingTarget(null);
-      setStatusMessage("已取消快捷键录制。");
-      return;
-    }
 
     const nextHotkey = formatTimerHotkey(event);
     if (!nextHotkey) {
@@ -414,6 +408,30 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     setRecordingTarget(null);
     setStatusMessage(`新的快捷键已录制：${nextHotkey}`);
   }, []);
+
+  const handleHotkeyRecorderBlur = useCallback(() => {
+    if (!recordingTarget) {
+      return;
+    }
+    const target = recordingTarget;
+    setRecordingTarget(null);
+    setForm((current) => {
+      if (!current) {
+        return current;
+      }
+      if (target.type === "timer") {
+        return {
+          ...current,
+          timers: current.timers.map((timer) => timer.id === target.id ? { ...timer, hotkey: hotkeyDraftRef.current } : timer),
+        };
+      }
+      return {
+        ...current,
+        counters: current.counters.map((counter) => counter.id === target.id ? { ...counter, hotkey: hotkeyDraftRef.current } : counter),
+      };
+    });
+    setStatusMessage("已取消快捷键录制。");
+  }, [recordingTarget]);
 
   const addTimer = useCallback(() => {
     setForm((current) => current ? {
@@ -723,6 +741,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                   onDragStart={() => beginTimerDrag(timer.id)}
                   onBeginHotkeyRecording={() => beginTimerHotkeyRecording(timer)}
                   onHotkeyKeyDown={(event) => handleTimerHotkeyRecorderKeyDown(timer, event)}
+                  onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
                   onRemove={() => removeTimer(timer.id)}
                   onToggleFavorite={() => favorites.toggleFavorite("timer", timer.id)}
                   onUpdate={(value) => updateTimer(timer.id, value)}
@@ -776,6 +795,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                   onDragOver={() => moveDraggingCounterOver(counter.id)}
                   onDragStart={() => beginCounterDrag(counter.id)}
                   onHotkeyKeyDown={(event) => handleCounterHotkeyRecorderKeyDown(counter, event)}
+                  onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
                   onRemove={() => removeCounter(counter.id)}
                   onReset={() => void resetCounter(counter.id)}
                   resetDisabled={controlsDisabled || !form?.counterEnabled}
@@ -879,12 +899,13 @@ type TimerCardProps = {
   onDragOver: () => void;
   onDragStart: () => void;
   onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onHotkeyRecorderBlur: () => void;
   onRemove: () => void;
   onToggleFavorite: () => void;
   onUpdate: (value: Partial<TimerItemForm>) => void;
 };
 
-function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onToggleFavorite, onUpdate, run, timer }: TimerCardProps) {
+function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onHotkeyRecorderBlur, onRemove, onToggleFavorite, onUpdate, run, timer }: TimerCardProps) {
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
@@ -992,7 +1013,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
               <p className="mt-1 text-xs text-muted-foreground">开启后运行时快捷键无效；关闭后运行时触发会重置计时器。</p>
             </div>
           </ControlTile>
-          <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} />
+          <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
           <ControlTile>
             <div className="flex items-center gap-2 text-sm text-foreground">
               <RiKeyboardLine className="text-muted-foreground" />
@@ -1020,6 +1041,7 @@ type CounterCardProps = {
   onDragOver: () => void;
   onDragStart: () => void;
   onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onHotkeyRecorderBlur: () => void;
   onRemove: () => void;
   onReset: () => void;
   resetDisabled: boolean;
@@ -1027,7 +1049,7 @@ type CounterCardProps = {
   onUpdate: (value: Partial<CounterItemForm>) => void;
 };
 
-function CounterCard({ controlsDisabled, counter, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
+function CounterCard({ controlsDisabled, counter, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onHotkeyRecorderBlur, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
@@ -1095,7 +1117,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
               <Input id={`${counter.id}-start`} disabled={controlsDisabled} inputMode="numeric" value={counter.startValue} onChange={(event) => onUpdate({ startValue: event.currentTarget.value })} />
             </FieldContent>
           </Field>
-          <HotkeyField controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`} isRecording={isRecording} hotkey={counter.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} />
+          <HotkeyField controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`} isRecording={isRecording} hotkey={counter.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
           <div className="flex gap-2">
             <Button
               className="flex-1"
@@ -1142,14 +1164,14 @@ function DragButton({ controlsDisabled, onDragStart }: { controlsDisabled: boole
   );
 }
 
-function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyRecording, onHotkeyKeyDown }: { controlsDisabled: boolean; hotkey: string; id: string; isRecording: boolean; onBeginHotkeyRecording: () => void; onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void }) {
+function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyRecording, onHotkeyKeyDown, onHotkeyRecorderBlur }: { controlsDisabled: boolean; hotkey: string; id: string; isRecording: boolean; onBeginHotkeyRecording: () => void; onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void; onHotkeyRecorderBlur: () => void }) {
   return (
     <Field>
       <FieldLabel htmlFor={id}>快捷键</FieldLabel>
       <FieldContent>
-        <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown} type="button" variant="outline">
+        <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id} onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown} type="button" variant="outline">
           <span>{isRecording ? "正在录制，按下快捷键..." : hotkey || "点击录制快捷键"}</span>
-          <span className="text-[0.6875rem] text-muted-foreground">{isRecording ? "Esc 取消" : "点击录制"}</span>
+          <span className="text-[0.6875rem] text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
         </Button>
       </FieldContent>
     </Field>

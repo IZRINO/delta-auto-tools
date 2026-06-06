@@ -215,7 +215,7 @@ export function WorkbenchControlPanel({
                       variant="outline"
                     >
                       <span>{isRecordingHotkey ? "正在录制，按下快捷键..." : form.hotkey || "点击录制热键"}</span>
-                      <span className="text-[0.6875rem] text-muted-foreground">{isRecordingHotkey ? "Esc 取消" : "点击录制"}</span>
+                      <span className="text-[0.6875rem] text-muted-foreground">{isRecordingHotkey ? "失焦取消" : "点击录制"}</span>
                      </Button>
                      <FieldError>{hotkeyError}</FieldError>
                   </FieldContent>
