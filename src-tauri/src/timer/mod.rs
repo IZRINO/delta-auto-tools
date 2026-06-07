@@ -877,6 +877,45 @@ fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
     changed
 }
 
+fn multisegment_pool_ms(runtime: Option<&TimerRuntime>, now: u64, total_duration: u64) -> u64 {
+    let total_ms = total_duration.saturating_mul(1000);
+    runtime
+        .and_then(|r| {
+            if r.segment_count <= 1 {
+                None
+            } else if r.status == TimerRunStatus::Finished {
+                Some(total_ms)
+            } else {
+                let elapsed_ms = now.saturating_sub(r.started_at_ms);
+                Some(
+                    r.recovery_start_pool
+                        .saturating_mul(1000)
+                        .saturating_add(elapsed_ms)
+                        .min(total_ms),
+                )
+            }
+        })
+        .unwrap_or(total_ms)
+}
+
+fn deduct_multisegment_pool(
+    runtime: Option<&TimerRuntime>,
+    now: u64,
+    total_duration: u64,
+    segment_duration: u64,
+) -> Option<(u64, u64)> {
+    let exact_pool_ms = multisegment_pool_ms(runtime, now, total_duration);
+    let duration_ms = segment_duration.saturating_mul(1000);
+    if exact_pool_ms < duration_ms {
+        return None;
+    }
+
+    let new_exact_pool_ms = exact_pool_ms - duration_ms;
+    let new_pool = new_exact_pool_ms / 1000;
+    let new_started_at_ms = now.saturating_sub(new_exact_pool_ms % 1000);
+    Some((new_pool, new_started_at_ms))
+}
+
 fn tick(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TimerState>();
     let bootstrap = {
@@ -950,31 +989,22 @@ fn trigger_hotkey_targets(
                     if seg_count < 2 {
                         continue;
                     }
-                    let total_duration = seg_count as u64 * duration_seconds;
+                    let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
 
-                    // 读取当前 pool（首次触发或旧普通计时器残留时为 total_duration）
-                    let pool = inner
-                        .runs
-                        .get(&timer_id)
-                        .and_then(|r| {
-                            // 如果旧 runtime 是普通计时器（segment_count <= 1），
-                            // 而当前配置为多段（seg_count >= 2），视为过期条目
-                            if r.segment_count <= 1 && seg_count >= 2 {
-                                None
-                            } else {
-                                Some(r.remaining_seconds)
-                            }
-                        })
-                        .unwrap_or(total_duration);
-                    if pool < duration_seconds {
-                        continue; // not enough pool to deduct
-                    }
+                    // 精确到毫秒扣除，避免触发落在 250ms tick 间隙时读取陈旧秒级 pool
+                    let Some((new_pool, new_started_at_ms)) = deduct_multisegment_pool(
+                        inner.runs.get(&timer_id),
+                        now,
+                        total_duration,
+                        duration_seconds,
+                    ) else {
+                        continue;
+                    };
 
-                    let new_pool = pool - duration_seconds;
                     inner.runs.insert(
                         timer_id,
                         TimerRuntime {
-                            started_at_ms: now,
+                            started_at_ms: new_started_at_ms,
                             ends_at_ms: None,
                             current_seconds: new_pool,
                             remaining_seconds: new_pool,
@@ -1707,5 +1737,75 @@ mod tests {
         assert_eq!(runtime.remaining_seconds, 3);
         assert_eq!(runtime.status, TimerRunStatus::Running);
         assert_eq!(runtime.ends_at_ms, Some(5_000));
+    }
+
+    #[test]
+    fn deduct_multisegment_pool_accepts_trigger_between_backend_ticks() {
+        let runtime = TimerRuntime {
+            started_at_ms: 0,
+            ends_at_ms: None,
+            current_seconds: 59,
+            remaining_seconds: 59,
+            duration_seconds: 300,
+            direction: TimerDirection::Countup,
+            status: TimerRunStatus::Running,
+            segment_count: 5,
+            segment_duration: 60,
+            recovery_start_pool: 0,
+        };
+
+        let deduction = deduct_multisegment_pool(Some(&runtime), 60_000, 300, 60);
+
+        assert_eq!(deduction, Some((0, 60_000)));
+    }
+
+    #[test]
+    fn deduct_multisegment_pool_preserves_fractional_recovery() {
+        let runtime = TimerRuntime {
+            started_at_ms: 0,
+            ends_at_ms: None,
+            current_seconds: 120,
+            remaining_seconds: 120,
+            duration_seconds: 300,
+            direction: TimerDirection::Countup,
+            status: TimerRunStatus::Running,
+            segment_count: 5,
+            segment_duration: 60,
+            recovery_start_pool: 60,
+        };
+
+        let deduction = deduct_multisegment_pool(Some(&runtime), 60_999, 300, 60);
+
+        assert_eq!(deduction, Some((60, 60_000)));
+        let (pool, started_at_ms) = deduction.unwrap();
+        let next_runtime = TimerRuntime {
+            recovery_start_pool: pool,
+            started_at_ms,
+            ..runtime
+        };
+        assert_eq!(
+            multisegment_pool_ms(Some(&next_runtime), 60_999, 300),
+            60_999
+        );
+    }
+
+    #[test]
+    fn deduct_multisegment_pool_treats_finished_runtime_as_full_pool() {
+        let runtime = TimerRuntime {
+            started_at_ms: 1_000,
+            ends_at_ms: None,
+            current_seconds: 120,
+            remaining_seconds: 120,
+            duration_seconds: 300,
+            direction: TimerDirection::Countdown,
+            status: TimerRunStatus::Finished,
+            segment_count: 5,
+            segment_duration: 60,
+            recovery_start_pool: 120,
+        };
+
+        let deduction = deduct_multisegment_pool(Some(&runtime), 123_456, 300, 60);
+
+        assert_eq!(deduction, Some((240, 123_456)));
     }
 }
