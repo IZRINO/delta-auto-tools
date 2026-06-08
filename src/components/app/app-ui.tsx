@@ -31,7 +31,7 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-xl border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_32%,transparent))] px-5 py-5 backdrop-blur-xl",
+        "relative overflow-hidden rounded-xl border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_32%,transparent))] px-5 py-5 shadow-[var(--shadow-card)] backdrop-blur-xl",
         "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_0_0,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_28rem),radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_42%,transparent)_0.7px,transparent_0.95px)] before:bg-[length:100%_100%,22px_22px] before:opacity-[0.18]",
         "after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-[linear-gradient(90deg,transparent,var(--surface-highlight),transparent)]",
         className,
@@ -45,10 +45,10 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
             </p>
             {badges}
           </div>
-          <h1 className="mt-3 text-2xl font-semibold tracking-[-0.045em] text-foreground xl:text-3xl">
+          <h1 className="mt-3 text-balance font-heading text-2xl font-semibold tracking-[-0.045em] text-foreground xl:text-3xl">
             {title}
           </h1>
-          <p className="mt-2 max-w-3xl text-sm/relaxed text-muted-foreground">{description}</p>
+          <p className="mt-2 max-w-[65ch] text-sm/relaxed text-muted-foreground">{description}</p>
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
@@ -69,7 +69,7 @@ export function SignalTile({ className, detail, icon, label, value }: SignalTile
   return (
     <div
       className={cn(
-        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_62%,transparent))] px-4 py-3 backdrop-blur-sm",
+        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_62%,transparent))] px-4 py-3 shadow-[var(--shadow-tile)] backdrop-blur-sm",
         className,
       )}
     >
@@ -96,8 +96,8 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     <Card
       size={size}
       className={cn(
-        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_28%,transparent))] backdrop-blur-md transition-[border-color,background-color,opacity]",
-        "hover:border-primary/30",
+        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_28%,transparent))] shadow-[var(--shadow-card)] backdrop-blur-md transition-[border-color,background-color,box-shadow,opacity]",
+        "hover:border-primary/30 hover:shadow-[var(--shadow-shell)]",
         active && "border-primary/45 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--primary)_9%,var(--surface-card-strong)),color-mix(in_oklch,var(--surface-card)_78%,transparent))] ring-1 ring-primary/18",
         className,
       )}
@@ -161,7 +161,7 @@ export function ControlTile({ children, className }: ControlTileProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_44%,transparent))] p-3 backdrop-blur-sm",
+        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_44%,transparent))] p-3 shadow-[var(--shadow-tile)] backdrop-blur-sm",
         className,
       )}
     >

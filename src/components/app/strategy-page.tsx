@@ -425,7 +425,7 @@ export function StrategyPage() {
   const refreshLabel = refreshSeconds > 0 ? `${activeRefreshOption.label} · ${remainingSeconds || refreshSeconds}s` : activeRefreshOption.label;
 
   return (
-    <AppPage className="min-h-[calc(100svh-4rem)] flex-1 gap-3 overflow-hidden">
+    <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 gap-3 overflow-hidden">
       <div className="relative z-10 shrink-0 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_24%,transparent))] px-3 py-2 shadow-sm backdrop-blur-md">
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-2">

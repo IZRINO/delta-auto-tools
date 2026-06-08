@@ -1,15 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  font-family: "Inter Variable", Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-family: "Bahnschrift", "DIN Alternate", "Inter Variable", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   font-size: 15px;
-  line-height: 1.4;
+  line-height: 1.45;
   font-weight: 400;
   color-scheme: light;
   font-synthesis: none;
@@ -60,16 +59,17 @@
   --surface-hover: color-mix(in oklch, var(--accent) 34%, transparent);
   --surface-highlight: color-mix(in oklch, white 58%, var(--accent) 10%);
   --surface-dot: color-mix(in oklch, var(--primary) 30%, var(--border));
-  --shadow-shell: none;
-  --shadow-card: none;
-  --shadow-subtle: none;
-  --shadow-focus: none;
-  --shadow-tile: none;
+  --surface-muted: color-mix(in oklch, var(--secondary) 42%, transparent);
+  --shadow-shell: 0 18px 48px color-mix(in oklch, var(--primary) 9%, transparent);
+  --shadow-card: 0 14px 34px color-mix(in oklch, var(--primary) 7%, transparent);
+  --shadow-subtle: 0 8px 20px color-mix(in oklch, var(--primary) 6%, transparent);
+  --shadow-focus: 0 0 0 3px color-mix(in oklch, var(--ring) 18%, transparent);
+  --shadow-tile: inset 0 1px 0 color-mix(in oklch, white 42%, transparent);
 }
 
 @theme inline {
-  --font-heading: var(--font-mono);
-  --font-sans: "Inter Variable", Inter, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-heading: "Bahnschrift", "DIN Alternate", "Inter Variable", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-sans: "Bahnschrift", "DIN Alternate", "Inter Variable", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -149,11 +149,13 @@
   html,
   body,
   #root {
-    min-height: 100svh;
-    height: 100svh;
+    min-height: 100dvh;
+    height: 100dvh;
   }
 
   body {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
     @apply bg-background text-foreground;
     background-image:
       radial-gradient(circle at 14% 8%, color-mix(in oklch, var(--primary) 16%, transparent) 0, transparent 28rem),
@@ -179,7 +181,7 @@
     @apply border-border outline-ring/50;
   }
   html {
-    @apply font-mono;
+    scroll-behavior: smooth;
   }
 }
 

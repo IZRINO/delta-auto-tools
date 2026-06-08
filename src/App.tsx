@@ -293,129 +293,133 @@ function AppShell() {
 
 
   return (
-    <DeltaAccountsProvider>
-      <SidebarProvider className="h-svh min-h-0 overflow-hidden bg-transparent" defaultOpen style={appShellStyle}>
-        <Sidebar
-          className="min-h-0 overflow-hidden border-r border-sidebar-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--sidebar)_64%,transparent))] backdrop-blur-2xl"
-          collapsible="none"
-          variant="sidebar"
-        >
-          <SidebarHeader className="p-4 pb-3">
-            <div className="relative overflow-hidden rounded-xl border border-sidebar-border/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--background)_58%,transparent))] px-4 py-4 backdrop-blur-xl">
-              <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_38%,transparent)_0.7px,transparent_0.95px)] bg-[length:20px_20px] opacity-20" />
-              <div className="flex items-center gap-3">
-                <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <RiCrosshair2Line />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
-                  <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Delta Ops Console</p>
-                </div>
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden bg-transparent" defaultOpen style={appShellStyle}>
+      <a
+        className="sr-only fixed left-4 top-4 z-50 rounded-lg border border-[var(--surface-border)] bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-[var(--shadow-card)] focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring/50"
+        href="#app-content"
+      >
+        跳到主内容
+      </a>
+      <Sidebar
+        className="min-h-0 overflow-hidden border-r border-sidebar-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--sidebar)_64%,transparent))] shadow-[var(--shadow-shell)] backdrop-blur-2xl"
+        collapsible="none"
+        variant="sidebar"
+      >
+        <SidebarHeader className="p-4 pb-3">
+          <div className="relative overflow-hidden rounded-xl border border-sidebar-border/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--background)_58%,transparent))] px-4 py-4 shadow-[var(--shadow-subtle)] backdrop-blur-xl">
+            <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_38%,transparent)_0.7px,transparent_0.95px)] bg-[length:20px_20px] opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[var(--shadow-tile)]">
+                <RiCrosshair2Line />
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                  <p className="font-mono text-sm font-semibold text-foreground">07</p>
-                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
-                </div>
-                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                  <p className="font-mono text-sm font-semibold text-foreground">07</p>
-                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
-                </div>
-                <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 backdrop-blur-md">
-                  <p className="font-mono text-sm font-semibold text-foreground">2.0</p>
-                  <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
-                </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
+                <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Delta Ops Console</p>
               </div>
             </div>
-          </SidebarHeader>
-
-          <SidebarSeparator className="mx-4 mt-1" />
-
-          <SidebarContent className="min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <FavoritesSidebarGroup active={activeTool === "favorites"} count={favorites.items.length} onClick={() => setActiveTool("favorites")} />
-
-            <SidebarSeparator className="mx-1 my-1" />
-
-            <SidebarGroup className="px-0 py-2">
-              <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-2">
-                  {tools.map((tool, index) => {
-                    const Icon = tool.icon;
-                    const active = activeTool === tool.id;
-                    return (
-                      <SidebarMenuItem key={tool.id}>
-                        <SidebarMenuButton
-                          className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
-                          isActive={active}
-                          onClick={() => setActiveTool(tool.id)}
-                          tooltip={tool.label}
-                          type="button"
-                        >
-                          <Icon />
-                          <span className="flex min-w-0 flex-1 flex-col items-start">
-                            <span className="truncate text-sm">{tool.label}</span>
-                            <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
-                              0{index + 1} / {tool.short}
-                            </span>
-                          </span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarSeparator className="mx-1 my-1" />
-
-            <SidebarGroup className="px-0 py-2">
-              <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">三角洲行动 API</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-2">
-                  {deltaTools.map((tool, index) => {
-                    const Icon = tool.icon;
-                    const active = activeTool === tool.id;
-                    return (
-                      <SidebarMenuItem key={tool.id}>
-                        <SidebarMenuButton
-                          className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
-                          isActive={active}
-                          onClick={() => setActiveTool(tool.id)}
-                          tooltip={tool.label}
-                          type="button"
-                        >
-                          <Icon />
-                          <span className="flex min-w-0 flex-1 flex-col items-start">
-                            <span className="truncate text-sm">{tool.label}</span>
-                            <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
-                              D{index + 1} / {tool.short}
-                            </span>
-                          </span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
-        </Sidebar>
-
-        <SidebarInset className="h-full min-h-0 overflow-hidden bg-transparent">
-          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <div className="flex min-h-full flex-col">
-                <div className="flex min-h-full flex-col p-4 xl:p-5">
-                  <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
-                </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+                <p className="font-mono text-sm font-semibold text-foreground">07</p>
+                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
+              </div>
+              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+                <p className="font-mono text-sm font-semibold text-foreground">07</p>
+                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
+              </div>
+              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+                <p className="font-mono text-sm font-semibold text-foreground">2.0</p>
+                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
               </div>
             </div>
           </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </DeltaAccountsProvider>
+        </SidebarHeader>
+
+        <SidebarSeparator className="mx-4 mt-1" />
+
+        <SidebarContent className="min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-3 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <FavoritesSidebarGroup active={activeTool === "favorites"} count={favorites.items.length} onClick={() => setActiveTool("favorites")} />
+
+          <SidebarSeparator className="mx-1 my-1" />
+
+          <SidebarGroup className="px-0 py-2">
+            <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-2">
+                {tools.map((tool, index) => {
+                  const Icon = tool.icon;
+                  const active = activeTool === tool.id;
+                  return (
+                    <SidebarMenuItem key={tool.id}>
+                      <SidebarMenuButton
+                        className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:-translate-y-0.5 hover:border-sidebar-border/55 hover:bg-background/42 active:translate-y-px data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62 data-[active=true]:shadow-[var(--shadow-tile)]"
+                        isActive={active}
+                        onClick={() => setActiveTool(tool.id)}
+                        tooltip={tool.label}
+                        type="button"
+                      >
+                        <Icon />
+                        <span className="flex min-w-0 flex-1 flex-col items-start">
+                          <span className="truncate text-sm">{tool.label}</span>
+                          <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
+                            0{index + 1} / {tool.short}
+                          </span>
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator className="mx-1 my-1" />
+
+          <SidebarGroup className="px-0 py-2">
+            <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">三角洲行动 API</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-2">
+                {deltaTools.map((tool, index) => {
+                  const Icon = tool.icon;
+                  const active = activeTool === tool.id;
+                  return (
+                    <SidebarMenuItem key={tool.id}>
+                      <SidebarMenuButton
+                        className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:-translate-y-0.5 hover:border-sidebar-border/55 hover:bg-background/42 active:translate-y-px data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62 data-[active=true]:shadow-[var(--shadow-tile)]"
+                        isActive={active}
+                        onClick={() => setActiveTool(tool.id)}
+                        tooltip={tool.label}
+                        type="button"
+                      >
+                        <Icon />
+                        <span className="flex min-w-0 flex-1 flex-col items-start">
+                          <span className="truncate text-sm">{tool.label}</span>
+                          <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
+                            D{index + 1} / {tool.short}
+                          </span>
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+
+      <SidebarInset id="app-content" tabIndex={-1} className="h-full min-h-0 overflow-hidden bg-transparent focus:outline-none">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col">
+              <div className="flex min-h-full flex-col p-4 xl:p-5">
+                <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
