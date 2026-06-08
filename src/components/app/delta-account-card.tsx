@@ -19,25 +19,38 @@ export function DeltaAccountCard({ account, selected, onSelect }: DeltaAccountCa
   return (
     <TacticalCard
       active={selected}
-      className="cursor-pointer transition-all"
+      className="cursor-pointer p-0 transition-colors"
       onClick={() => onSelect(account.id)}
     >
-      <div className="flex flex-col gap-2 p-4">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="shrink-0 font-mono text-[0.62rem]">
-            {ACCOUNT_KIND_LABELS[account.kind]}
-          </Badge>
-          <span className="truncate text-sm font-medium text-foreground">
-            {getAccountDisplayName(account)}
-          </span>
+      <div className="grid gap-px bg-[var(--ink)]">
+        <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-[9rem_minmax(0,1fr)]">
+          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--paper)] uppercase">
+            账号档案 {String(account.id).padStart(2, "0")}
+          </div>
+          <div className="bg-[var(--paper)] px-3 py-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge variant="outline" className="shrink-0 font-mono text-[0.62rem]">
+                {ACCOUNT_KIND_LABELS[account.kind]}
+              </Badge>
+              <span className="min-w-0 truncate text-sm font-black uppercase text-[var(--ink)]">
+                {getAccountDisplayName(account)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <TokenBadge status={tokenStatus} label={tokenLabel} />
-          {capabilities.map((cap) => (
-            <Badge key={cap} variant="secondary" className="text-[0.58rem]">
-              {CAPABILITY_LABELS[cap]}
-            </Badge>
-          ))}
+
+        <div className="bg-[var(--bone)] px-3 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <TokenBadge status={tokenStatus} label={tokenLabel} />
+            {capabilities.map((cap) => (
+              <Badge key={cap} variant="secondary" className="text-[0.58rem]">
+                {CAPABILITY_LABELS[cap]}
+              </Badge>
+            ))}
+          </div>
+          <p className="mt-3 font-mono text-[0.62rem] font-black tracking-[0.12em] text-[var(--steel)] uppercase">
+            {selected ? "当前路由已锁定此账号" : "点击载入此账号，右键查看更多命令"}
+          </p>
         </div>
       </div>
     </TacticalCard>

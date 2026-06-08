@@ -6,11 +6,11 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto border-2 border-[var(--ink)]"
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-xs", className)}
+        className={cn("w-full caption-bottom border-collapse font-mono text-xs font-bold tracking-[0.04em]", className)}
         {...props}
       />
     </div>
@@ -21,7 +21,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("bg-[var(--ink)] text-[var(--paper)] [&_tr]:border-b-2 [&_tr]:border-[var(--ink)]", className)}
       {...props}
     />
   )
@@ -42,7 +42,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        "border-t-2 border-[var(--ink)] bg-[var(--bone)] font-black [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -55,7 +55,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        "border-b border-[var(--ink)] transition-colors hover:bg-[var(--bone)] has-aria-expanded:bg-[var(--bone)] data-[state=selected]:bg-[var(--bone)]",
         className
       )}
       {...props}
@@ -68,7 +68,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-start align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pe-0",
+        "h-10 border-r border-[var(--paper)] px-2 text-start align-middle font-black whitespace-nowrap uppercase last:border-r-0 [&:has([role=checkbox])]:pe-0",
         className
       )}
       {...props}
@@ -81,7 +81,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pe-0",
+        "border-r border-[var(--ink)] p-2 align-middle whitespace-nowrap last:border-r-0 [&:has([role=checkbox])]:pe-0",
         className
       )}
       {...props}
@@ -96,7 +96,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("mt-4 text-xs text-muted-foreground", className)}
+      className={cn("mt-4 font-mono text-xs font-bold text-[var(--steel)] uppercase", className)}
       {...props}
     />
   )

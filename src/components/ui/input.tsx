@@ -8,7 +8,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       type={type}
       data-slot="input"
       className={cn(
-        "h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm transition-[color,box-shadow,border-color] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "h-9 w-full min-w-0 border-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 font-mono text-sm font-bold tracking-[0.04em] text-[var(--ink)] transition-colors outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-black file:text-[var(--ink)] placeholder:text-[var(--ash)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[var(--bone)] disabled:opacity-55 aria-invalid:border-[var(--alert-red)] aria-invalid:outline-2 aria-invalid:outline-[var(--alert-red)]",
         className
       )}
       {...props}

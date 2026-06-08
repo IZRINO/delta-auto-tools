@@ -147,7 +147,7 @@ export function DeltaGamePage() {
           title="游戏数据"
           description="查看游戏内角色数据与资产信息"
         />
-        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="需要桌面环境" description="需要桌面环境才能使用游戏数据功能。" />
+        <TacticalEmptyState className="col-span-12" icon={<RiBarChartBoxLine />} title="需要桌面环境" description="需要桌面环境才能使用游戏数据功能。" />
       </AppPage>
     );
   }
@@ -169,38 +169,47 @@ export function DeltaGamePage() {
         }
       />
 
-      <DeltaAccountSelector
-        filterKinds={GAME_AUTH_KINDS}
-        emptyText="请先在账号管理中添加 QQ 或微信账号"
-      />
-
-      {!selectedAccount && (
-        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="选择账号查看数据" description="在上方选择一个 QQ 或微信账号，即可查看游戏数据。" />
-      )}
-
-      {selectedAccount && !hasCapability && (
-        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法查询游戏数据，请选择 QQ 或微信账号。`} />
-      )}
-
-      {hasCapability && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <DeltaDataCard eyebrow="玩家信息" title="角色信息" icon={<RiUserLine />} loading={player.loading} error={player.error} onRetry={player.reload} data={player.data} />
-
-          <DeltaDataCard eyebrow="战绩记录" title="战绩记录" icon={<RiSwordLine />} loading={record.loading} error={record.error} onRetry={record.reload} data={record.data} />
-
-          <DeltaDataCard eyebrow="资产概览" title="资产概览" icon={<RiTrophyLine />} loading={assets.loading} error={assets.error} onRetry={assets.reload} data={assets.data} />
-
-          <DeltaDataCard eyebrow="近期对局" title="近期对局" icon={<RiSwordLine />} loading={recent.loading} error={recent.error} onRetry={recent.reload} data={recent.data} />
-
-          <DeltaDataCard eyebrow="成就进度" title="成就进度" icon={<RiTrophyLine />} loading={achievement.loading} error={achievement.error} onRetry={achievement.reload} data={achievement.data} />
-
-          <DeltaDataCard eyebrow="地图密码" title="地图密码" icon={<RiKey2Line />} loading={password.loading} error={password.error} onRetry={password.reload} data={password.data} />
-
-          <DeltaDataCard eyebrow="角色绑定" title="角色绑定" icon={<RiShieldLine />} loading={bind.loading} error={bind.error} onRetry={bind.reload} data={bind.data} />
-
-          <DeltaQueryWorkbench accountId={selectedAccount.id} />
+      <div className="col-span-12 grid gap-3">
+        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+            账号路由
+          </div>
+          <div className="bg-[var(--paper)] px-3 py-3">
+            <DeltaAccountSelector
+              filterKinds={GAME_AUTH_KINDS}
+              emptyText="请先在账号管理中添加 QQ 或微信账号"
+            />
+          </div>
         </div>
-      )}
+
+        {!selectedAccount && (
+          <TacticalEmptyState className="col-span-12" icon={<RiBarChartBoxLine />} title="选择账号查看数据" description="在上方选择一个 QQ 或微信账号，即可查看游戏数据。" />
+        )}
+
+        {selectedAccount && !hasCapability && (
+          <TacticalEmptyState className="col-span-12" icon={<RiBarChartBoxLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法查询游戏数据，请选择 QQ 或微信账号。`} />
+        )}
+
+        {hasCapability && (
+          <div className="grid gap-3 xl:grid-cols-12">
+            <DeltaDataCard className="xl:col-span-4" eyebrow="玩家信息" title="角色信息" icon={<RiUserLine />} loading={player.loading} error={player.error} onRetry={player.reload} data={player.data} />
+
+            <DeltaDataCard className="xl:col-span-4" eyebrow="战绩记录" title="战绩记录" icon={<RiSwordLine />} loading={record.loading} error={record.error} onRetry={record.reload} data={record.data} />
+
+            <DeltaDataCard className="xl:col-span-4" eyebrow="资产概览" title="资产概览" icon={<RiTrophyLine />} loading={assets.loading} error={assets.error} onRetry={assets.reload} data={assets.data} />
+
+            <DeltaDataCard className="xl:col-span-6" eyebrow="近期对局" title="近期对局" icon={<RiSwordLine />} loading={recent.loading} error={recent.error} onRetry={recent.reload} data={recent.data} />
+
+            <DeltaDataCard className="xl:col-span-6" eyebrow="成就进度" title="成就进度" icon={<RiTrophyLine />} loading={achievement.loading} error={achievement.error} onRetry={achievement.reload} data={achievement.data} />
+
+            <DeltaDataCard className="xl:col-span-6" eyebrow="地图密码" title="地图密码" icon={<RiKey2Line />} loading={password.loading} error={password.error} onRetry={password.reload} data={password.data} />
+
+            <DeltaDataCard className="xl:col-span-6" eyebrow="角色绑定" title="角色绑定" icon={<RiShieldLine />} loading={bind.loading} error={bind.error} onRetry={bind.reload} data={bind.data} />
+
+            <DeltaQueryWorkbench className="xl:col-span-12" accountId={selectedAccount.id} />
+          </div>
+        )}
+      </div>
     </AppPage>
   );
 }

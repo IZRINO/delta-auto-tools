@@ -320,29 +320,36 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
             <SignalTile label="连发器" value={summary.rapidfireCount} detail="已收藏的连发器数量" />
           </>
         }
-
       />
 
-      <ControlTile className="flex flex-wrap items-center gap-4">
-        <Field orientation="horizontal" className="gap-2">
-          <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
-          <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer">显示快捷键</FieldLabel>
-        </Field>
-        <Field orientation="horizontal" className="gap-2">
-          <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
-          <FieldLabel htmlFor="fav-compact" className="cursor-pointer">紧凑模式</FieldLabel>
-        </Field>
-        <Field orientation="horizontal" className="gap-2">
-          <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
-          <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer">显示计时器进度</FieldLabel>
-        </Field>
-        <Field orientation="horizontal" className="gap-2">
-          <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
-          <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer">显示计数器当前值</FieldLabel>
-        </Field>
+      <ControlTile className="col-span-12 grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] p-0 xl:grid-cols-4">
+        <div className="bg-[var(--paper)] px-3 py-3">
+          <Field orientation="horizontal" className="justify-between gap-3">
+            <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示快捷键</FieldLabel>
+            <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
+          </Field>
+        </div>
+        <div className="bg-[var(--bone)] px-3 py-3">
+          <Field orientation="horizontal" className="justify-between gap-3">
+            <FieldLabel htmlFor="fav-compact" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">紧凑模式</FieldLabel>
+            <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
+          </Field>
+        </div>
+        <div className="bg-[var(--paper)] px-3 py-3">
+          <Field orientation="horizontal" className="justify-between gap-3">
+            <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示计时器进度</FieldLabel>
+            <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
+          </Field>
+        </div>
+        <div className="bg-[var(--bone)] px-3 py-3">
+          <Field orientation="horizontal" className="justify-between gap-3">
+            <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示计数器当前值</FieldLabel>
+            <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
+          </Field>
+        </div>
       </ControlTile>
 
-      <section className="grid gap-3 xl:grid-cols-2">
+      <section className="col-span-12 grid gap-3 xl:grid-cols-12">
         {details.map(({ item, detail }, index) => (
           <FavoriteCard
             key={favoriteKey(item.kind, item.cardId)}
@@ -375,21 +382,23 @@ type FavoriteCardProps = {
 };
 
 function FavoriteCard({ detail, index, item, onMoveDown, onMoveUp, onNavigate, onRemove, total, view }: FavoriteCardProps) {
+  const columnClassName = view.compactMode ? "xl:col-span-4" : "xl:col-span-6";
+
   if (!detail) {
     return (
-      <TacticalCard className="opacity-60">
-        <CardBody className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
+      <TacticalCard className={cn("col-span-12 p-0 opacity-60", columnClassName)}>
+        <CardBody className="space-y-3 bg-[var(--bone)]">
+          <div className="flex items-center justify-between gap-3 border-b-2 border-[var(--ink)] pb-3">
             <div className="flex items-center gap-2">
-              <RiStarLine className="text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">已失效的收藏</span>
+              <RiStarLine className="text-[var(--alert-red)]" />
+              <span className="text-sm font-black uppercase text-[var(--ink)]">已失效的收藏</span>
               <Badge variant="outline">{kindLabel(item.kind)}</Badge>
             </div>
             <Button size="icon-sm" variant="ghost" onClick={onRemove} aria-label="移除收藏">
               <RiDeleteBinLine />
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">该卡片已被删除。点击移除清理此条目。</p>
+          <p className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">该卡片已被删除。点击移除清理此条目。</p>
         </CardBody>
       </TacticalCard>
     );
@@ -397,36 +406,41 @@ function FavoriteCard({ detail, index, item, onMoveDown, onMoveUp, onNavigate, o
 
   return (
     <button
-      className="group flex flex-col rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] p-0 text-left shadow-[var(--shadow-tile)] transition-[border-color,box-shadow,transform] hover:border-primary/45 hover:shadow-[var(--shadow-subtle)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className={cn(
+        "group col-span-12 border-2 border-[var(--ink)] bg-[var(--paper)] p-0 text-left transition-colors hover:bg-[var(--bone)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--alert-red)]",
+        columnClassName,
+      )}
       onClick={onNavigate}
       type="button"
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)] p-4 pb-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            {detail.kind === "rapidfire" ? <RiSpeedUpLine /> : <RiTimerLine />}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">{detail.card.name || defaultName(detail)}</p>
-            <p className="mt-0.5 font-mono text-[0.62rem] tracking-[0.18em] text-muted-foreground uppercase">
-              {kindLabel(detail.kind)} · {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-            </p>
+      <CardHeader className="border-b-2 border-[var(--ink)] bg-[var(--ink)] p-4 pb-3 text-[var(--paper)]">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center border border-[var(--paper)] bg-[var(--alert-red)] text-[var(--paper)]">
+              {detail.kind === "rapidfire" ? <RiSpeedUpLine /> : <RiTimerLine />}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black uppercase text-[var(--paper)]">{detail.card.name || defaultName(detail)}</p>
+              <p className="mt-0.5 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--bone)] uppercase">
+                {kindLabel(detail.kind)} · {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button aria-label="上移" disabled={index === 0} onClick={(event) => { event.stopPropagation(); onMoveUp(); }} size="icon-sm" type="button" variant="ghost">
+              <RiArrowUpLine />
+            </Button>
+            <Button aria-label="下移" disabled={index >= total - 1} onClick={(event) => { event.stopPropagation(); onMoveDown(); }} size="icon-sm" type="button" variant="ghost">
+              <RiArrowDownLine />
+            </Button>
+            <Button aria-label="移除收藏" onClick={(event) => { event.stopPropagation(); onRemove(); }} size="icon-sm" type="button" variant="ghost">
+              <RiDeleteBinLine />
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Button aria-label="上移" disabled={index === 0} onClick={(event) => { event.stopPropagation(); onMoveUp(); }} size="icon-sm" type="button" variant="ghost">
-            <RiArrowUpLine />
-          </Button>
-          <Button aria-label="下移" disabled={index >= total - 1} onClick={(event) => { event.stopPropagation(); onMoveDown(); }} size="icon-sm" type="button" variant="ghost">
-            <RiArrowDownLine />
-          </Button>
-          <Button aria-label="移除收藏" onClick={(event) => { event.stopPropagation(); onRemove(); }} size="icon-sm" type="button" variant="ghost">
-            <RiDeleteBinLine />
-          </Button>
-        </div>
       </CardHeader>
-      <CardBody className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+      <CardBody className="space-y-3 bg-[var(--paper)]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ink)] pb-3">
           {detail.kind === "timer" ? (
             <TimerSummary detail={detail} showProgress={view.showProgress} showHotkey={view.showHotkey} />
           ) : null}
@@ -436,11 +450,12 @@ function FavoriteCard({ detail, index, item, onMoveDown, onMoveUp, onNavigate, o
           {detail.kind === "rapidfire" ? (
             <RapidfireSummary detail={detail} showHotkey={view.showHotkey} />
           ) : null}
-          <span className="ml-auto opacity-0 transition-opacity group-hover:opacity-100">
-            <Badge variant="secondary">
-              <RiStarFill className="mr-1" />
-              点击跳转
-            </Badge>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <Badge variant="secondary">已收藏</Badge>
+          <span className="flex items-center gap-1 font-mono text-[0.62rem] font-black tracking-[0.12em] text-[var(--steel)] uppercase">
+            <RiStarFill className="size-3.5 text-[var(--alert-red)]" />
+            点击跳转
           </span>
         </div>
       </CardBody>
@@ -456,17 +471,17 @@ function TimerSummary({ detail, showProgress, showHotkey }: { detail: TimerFavor
   const progressPercent = run ? computeProgressPercent(card, run) : 0;
   const directionLabel = card.direction === "countup" ? "正计时" : "倒计时";
   return (
-    <div className="flex w-full flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">
         <Badge variant="secondary">{directionLabel}</Badge>
-        <span className="font-mono">{totalSeconds} 秒</span>
-        {showHotkey ? <span className="font-mono">快捷键 · {card.hotkey || "未设置"}</span> : null}
-        <span className="ml-auto text-foreground">{run ? formatTimerCurrentValue(card, run) : "未运行"}</span>
+        <span>{totalSeconds} 秒</span>
+        {showHotkey ? <span>快捷键 · {card.hotkey || "未设置"}</span> : null}
+        <span className="ml-auto text-[var(--ink)]">{run ? formatTimerCurrentValue(card, run) : "未运行"}</span>
       </div>
       {showProgress && run ? (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-border)]">
+        <div className="h-2 w-full border border-[var(--ink)] bg-[var(--bone)]">
           <div
-            className={cn("h-full rounded-full bg-primary transition-[width]", progressPercent > 0 ? "" : "opacity-0")}
+            className={cn("h-full bg-[var(--alert-red)] transition-[width]", progressPercent > 0 ? "" : "opacity-0")}
             style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }}
           />
         </div>
@@ -478,7 +493,7 @@ function TimerSummary({ detail, showProgress, showHotkey }: { detail: TimerFavor
 function CounterSummary({ detail, showCounter, showHotkey }: { detail: CounterFavoriteDetail; showCounter: boolean; showHotkey: boolean }) {
   const { card, run } = detail;
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex w-full flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">
       {showCounter ? (
         <Badge variant="secondary">
           当前 {run?.value ?? card.startValue} · 起点 {card.startValue}
@@ -486,8 +501,8 @@ function CounterSummary({ detail, showCounter, showHotkey }: { detail: CounterFa
       ) : (
         <Badge variant="secondary">起点 {card.startValue}</Badge>
       )}
-      {showHotkey ? <span className="font-mono">快捷键 · {card.hotkey || "未设置"}</span> : null}
-      <span className="ml-auto text-foreground">{card.enabled ? "启用" : "禁用"}</span>
+      {showHotkey ? <span>快捷键 · {card.hotkey || "未设置"}</span> : null}
+      <span className="ml-auto text-[var(--ink)]">{card.enabled ? "启用" : "禁用"}</span>
     </div>
   );
 }
@@ -496,14 +511,14 @@ function RapidfireSummary({ detail, showHotkey }: { detail: RapidfireFavoriteDet
   const { card } = detail;
   const interval = card.intervalMs ? Number.parseInt(card.intervalMs, 10) : null;
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <span className="font-mono">{card.triggerKey || "--"} → {card.targetKey || "--"}</span>
+    <div className="flex w-full flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">
+      <span>{card.triggerKey || "--"} → {card.targetKey || "--"}</span>
       {interval ? <Badge variant="secondary">{interval} ms</Badge> : null}
       <Badge variant={card.skipCompensation ? "outline" : "secondary"}>
         {card.skipCompensation ? "不追加" : "自动补齐"}
       </Badge>
-      {showHotkey ? <span className="font-mono">触发 · {card.triggerKey || "未设置"}</span> : null}
-      <span className="ml-auto text-foreground">{card.enabled ? "启用" : "禁用"}</span>
+      {showHotkey ? <span>触发 · {card.triggerKey || "未设置"}</span> : null}
+      <span className="ml-auto text-[var(--ink)]">{card.enabled ? "启用" : "禁用"}</span>
     </div>
   );
 }

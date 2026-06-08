@@ -14,7 +14,7 @@ type AppPageProps = {
 
 export function AppPage({ children, className }: AppPageProps) {
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col gap-4 font-sans", className)}>
+    <div className={cn("grid min-h-0 flex-1 grid-cols-12 gap-3 font-sans", className)}>
       {children}
     </div>
   );
@@ -34,28 +34,41 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-md border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_38%,transparent))] px-5 py-5 shadow-[var(--shadow-card)]",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(color-mix(in_srgb,var(--surface-dot)_24%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--surface-dot)_24%,transparent)_1px,transparent_1px)] before:bg-[length:20px_20px] before:opacity-55",
-        "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-1 after:bg-primary",
+        "relative col-span-12 overflow-hidden border-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]",
+        "before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(color-mix(in_srgb,var(--line)_70%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--line)_70%,transparent)_1px,transparent_1px)] before:bg-[length:18px_18px] before:opacity-70",
         className,
       )}
     >
-      <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="min-w-0">
+      <div className="relative grid gap-px bg-[var(--ink)] md:grid-cols-[minmax(0,1fr)_minmax(18rem,32%)]">
+        <div className="bg-[var(--paper)] p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-mono text-[0.64rem] font-semibold tracking-[0.26em] text-muted-foreground uppercase">
-              {eyebrow}
+            <p className="font-mono text-[0.62rem] font-black tracking-[0.28em] text-[var(--alert-red)] uppercase">
+              [ {eyebrow} ]
             </p>
             {badges}
           </div>
-          <h1 className="mt-3 text-balance font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground xl:text-3xl">
+          <h1 className="mt-4 max-w-5xl text-balance font-heading text-[clamp(2.8rem,7vw,7.5rem)] font-black leading-[0.82] tracking-[-0.07em] text-[var(--ink)] uppercase">
             {title}
           </h1>
-          <p className="mt-2 max-w-[65ch] text-sm/relaxed text-muted-foreground">{description}</p>
+          <p className="mt-4 max-w-[78ch] border-l-4 border-[var(--alert-red)] pl-3 font-mono text-[0.74rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">
+            {description}
+          </p>
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+        <aside className="grid bg-[var(--paper)]">
+          <div className="border-b-2 border-[var(--ink)] bg-[var(--ink)] px-3 py-2 font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--paper)] uppercase">
+            MODULE MANIFEST
+          </div>
+          <div className="grid content-between gap-4 p-4">
+            <div className="font-mono text-[0.66rem] font-black leading-relaxed tracking-[0.18em] text-[var(--steel)] uppercase">
+              <div>UNIT / ACTIVE</div>
+              <div>BOARD / INDUSTRIAL</div>
+              <div>ACCENT / #E11919</div>
+            </div>
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
+        </aside>
       </div>
-      {stats ? <div className="relative mt-5 grid gap-3 md:grid-cols-3">{stats}</div> : null}
+      {stats ? <div className="relative grid gap-px border-t-2 border-[var(--ink)] bg-[var(--ink)] md:grid-cols-3">{stats}</div> : null}
     </section>
   );
 }
@@ -70,22 +83,15 @@ type SignalTileProps = {
 
 export function SignalTile({ className, detail, icon, label, value }: SignalTileProps) {
   return (
-    <div
-      className={cn(
-        "relative rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_68%,transparent))] px-4 py-3 shadow-[var(--shadow-tile)] before:pointer-events-none before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-primary/60",
-        className,
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-            {label}
-          </p>
-          <div className="mt-1 truncate font-mono text-lg font-semibold tracking-[-0.02em] text-foreground tabular-nums">{value}</div>
-        </div>
-        {icon ? <div className="text-primary">{icon}</div> : null}
+    <div className={cn("grid min-h-24 grid-rows-[auto_1fr_auto] bg-[var(--paper)] p-3 text-[var(--ink)]", className)}>
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--ink)] pb-2">
+        <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--steel)] uppercase">{label}</p>
+        {icon ? <div className="text-[var(--alert-red)]">{icon}</div> : null}
       </div>
-      {detail ? <div className="mt-2 text-xs/relaxed text-muted-foreground">{detail}</div> : null}
+      <div className="flex items-end pt-3 font-mono text-2xl font-black leading-none tracking-[-0.04em] text-[var(--ink)] tabular-nums">
+        {value}
+      </div>
+      {detail ? <div className="mt-2 font-mono text-[0.62rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">{detail}</div> : null}
     </div>
   );
 }
@@ -99,9 +105,8 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     <Card
       size={size}
       className={cn(
-        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_32%,transparent))] shadow-[var(--shadow-card)] transition-[border-color,background-color,box-shadow,opacity,transform]",
-        "hover:border-[var(--surface-border-strong)] hover:shadow-[var(--shadow-subtle)]",
-        active && "border-primary/70 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--primary)_10%,var(--surface-card-strong)),color-mix(in_srgb,var(--surface-card)_82%,transparent))] ring-2 ring-primary/28",
+        "border-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)] shadow-none transition-[background-color,outline-color]",
+        active && "bg-[var(--bone)] outline-4 outline-[var(--alert-red)]",
         className,
       )}
       {...props}
@@ -123,27 +128,18 @@ type SectionHeaderProps = {
 
 export function SectionHeader({ actions, badge, className, description, eyebrow, icon, title }: SectionHeaderProps) {
   return (
-    <CardHeader
-      className={cn(
-        "border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)]",
-        className,
-      )}
-    >
+    <CardHeader className={cn("border-b-2 border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]", className)}>
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_58%,transparent))] text-primary shadow-[var(--shadow-tile)]">
+            <div className="flex size-9 shrink-0 items-center justify-center border border-[var(--paper)] bg-[var(--alert-red)] text-[var(--paper)]">
               {icon}
             </div>
           ) : null}
           <div className="min-w-0">
-            {eyebrow ? (
-              <p className="font-mono text-[0.6rem] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
-                {eyebrow}
-              </p>
-            ) : null}
-            <CardTitle className="mt-0.5">{title}</CardTitle>
-            {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
+            {eyebrow ? <p className="font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--bone)] uppercase">[ {eyebrow} ]</p> : null}
+            <CardTitle className="mt-0.5 text-[var(--paper)] uppercase">{title}</CardTitle>
+            {description ? <CardDescription className="mt-1 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--bone)] uppercase">{description}</CardDescription> : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -161,16 +157,7 @@ type ControlTileProps = {
 };
 
 export function ControlTile({ children, className }: ControlTileProps) {
-  return (
-    <div
-      className={cn(
-        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_54%,transparent))] p-3 shadow-[var(--shadow-tile)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("border-2 border-[var(--ink)] bg-[var(--bone)] p-3", className)}>{children}</div>;
 }
 
 export function SaveStateBadge({ dirty, saving }: { dirty: boolean; saving: boolean }) {
@@ -195,7 +182,7 @@ export function TacticalEmptyState({ children, className, description, icon, tit
   return (
     <TacticalCard className={cn("min-h-48", className)}>
       <CardBody className="flex h-full items-center justify-center">
-        <Empty className="min-h-40 rounded-md border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-4 py-8 text-center shadow-[var(--shadow-tile)]">
+        <Empty className="min-h-40 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
           {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
           <EmptyHeader>
             <EmptyTitle>{title}</EmptyTitle>
@@ -220,18 +207,18 @@ export function AddCardButton({ className, description, disabled, onClick, title
   return (
     <button
       className={cn(
-        "group flex min-h-64 flex-col items-center justify-center rounded-md border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_48%,transparent))] p-6 text-center transition-[border-color,background-color,transform,opacity] hover:border-primary/55 hover:bg-[var(--surface-hover)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50",
+        "group flex min-h-64 flex-col items-center justify-center border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] p-6 text-center transition-colors hover:bg-[var(--paper)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] active:bg-[var(--ink)] active:text-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <span className="mb-4 flex size-11 items-center justify-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/55 group-hover:bg-primary/10">
+      <span className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--ink)] bg-[var(--alert-red)] text-[var(--paper)]">
         <RiAddLine />
       </span>
-      <span className="text-sm font-semibold text-foreground">{title}</span>
-      <span className="mt-1 max-w-56 text-xs/relaxed text-muted-foreground">{description}</span>
+      <span className="text-sm font-black uppercase text-[var(--ink)] group-active:text-[var(--paper)]">{title}</span>
+      <span className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase group-active:text-[var(--bone)]">{description}</span>
     </button>
   );
 }
@@ -247,7 +234,7 @@ export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" 
     <pre
       className={cn(
         maxHeightClassName,
-        "overflow-auto rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_52%,transparent))] p-3 font-mono text-xs text-muted-foreground shadow-[var(--shadow-tile)]",
+        "overflow-auto border-2 border-[var(--ink)] bg-[var(--data-well)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--paper)]",
         className,
       )}
     >
@@ -264,7 +251,7 @@ type InlineNoticeProps = {
 
 export function InlineNotice({ children, className, title }: InlineNoticeProps) {
   return (
-    <Alert variant="destructive" className={cn("rounded-md border-destructive/55 bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)]", className)}>
+    <Alert variant="destructive" className={cn("border-2 border-[var(--alert-red)] bg-[var(--paper)] text-[var(--ink)]", className)}>
       {title ? <AlertTitle>{title}</AlertTitle> : null}
       <AlertDescription>{children}</AlertDescription>
     </Alert>
@@ -272,16 +259,7 @@ export function InlineNotice({ children, className, title }: InlineNoticeProps) 
 }
 
 export function InlineControl({ children, className }: ControlTileProps) {
-  return (
-    <div
-      className={cn(
-        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_64%,transparent),var(--surface-tile))] p-3 shadow-[var(--shadow-tile)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("border border-[var(--ink)] bg-[var(--paper)] p-3", className)}>{children}</div>;
 }
 
 type CardToolbarProps = {
@@ -290,16 +268,7 @@ type CardToolbarProps = {
 };
 
 export function CardToolbar({ children, className }: CardToolbarProps) {
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-2 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-panel),color-mix(in_srgb,var(--card)_48%,transparent))] p-2 shadow-[var(--shadow-tile)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--ink)] bg-[var(--bone)] p-2", className)}>{children}</div>;
 }
 
 type SurfaceToggleGroupProps = {
@@ -308,14 +277,5 @@ type SurfaceToggleGroupProps = {
 };
 
 export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
-  return (
-    <div
-      className={cn(
-        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-panel),color-mix(in_srgb,var(--card)_42%,transparent))] p-1 shadow-[var(--shadow-tile)]",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
+  return <div className={cn("border-2 border-[var(--ink)] bg-[var(--ink)] p-px", className)}>{children}</div>;
 }

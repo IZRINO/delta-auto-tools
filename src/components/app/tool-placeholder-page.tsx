@@ -26,7 +26,7 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
   return (
     <AppPage>
       <PageHero
-        eyebrow="Utility Module"
+        eyebrow="占位模块"
         title={title}
         description={description}
         badges={
@@ -37,10 +37,10 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
         }
       />
 
-      <div className="grid flex-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_320px]">
-        <TacticalCard className="min-h-72">
-          <CardBody className="flex h-full items-center justify-center">
-            <Empty className="rounded-md border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_44%,transparent))] shadow-[var(--shadow-tile)]">
+      <div className="col-span-12 grid gap-3 xl:grid-cols-12">
+        <TacticalCard className="xl:col-span-8 p-0">
+          <CardBody className="flex min-h-72 items-center justify-center">
+            <Empty className="min-h-52 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-6 py-8 text-center">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <RiAlertLine />
@@ -52,17 +52,17 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
           </CardBody>
         </TacticalCard>
 
-        <TacticalCard>
+        <TacticalCard className="xl:col-span-4 p-0">
           <SectionHeader
-            eyebrow="Roadmap"
+            eyebrow="准备清单"
             icon={<RiRoadMapLine />}
             title="准备项"
             description="保持桌面工具壳层，等待模块补全。"
           />
           <CardBody>
-            <ul className="grid gap-2 text-xs/relaxed text-muted-foreground">
+            <ul className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)]">
               {pendingItems.map((item) => (
-                <li key={item} className="rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_48%,transparent))] px-3 py-2.5 shadow-[var(--shadow-tile)]">
+                <li key={item} className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--ink)] uppercase">
                   {item}
                 </li>
               ))}

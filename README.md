@@ -18,7 +18,7 @@
 - 原生能力：Rust
 - 前端：React 19、TypeScript、Vite
 - 包管理与脚本：Bun
-- UI：Tailwind CSS v4、shadcn/ui、Remix Icon；视觉语言为“Delta 战术工业白图纸控制台”（浅色工业战术、硬边网格、单一战术橙强调色）
+- UI：Tailwind CSS v4、shadcn/ui、Remix Icon；视觉语言为 `DESIGN.md` 定义的 Swiss Industrial Print × Declassified Tactical Control Board（工业纸面、粗黑结构线、12 列工作网格、单一航空红 `#E11919` 焦点）
 - 本地存储：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
 
 ## 本地开发

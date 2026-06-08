@@ -4,7 +4,7 @@ import { RiAccountPinCircleLine, RiAddLine, RiDeleteBinLine, RiRefreshLine } fro
 import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { DeltaAccountRecord } from "@/components/app/delta-types";
 import { canRefreshToken } from "@/components/app/delta-utils";
-import { AppPage, PageHero, SignalTile, TacticalCard, SectionHeader, CardBody, InlineControl, TacticalEmptyState } from "@/components/app/app-ui";
+import { AppPage, PageHero, SignalTile, TacticalCard, SectionHeader, CardBody, TacticalEmptyState } from "@/components/app/app-ui";
 import { DeltaAccountCard } from "@/components/app/delta-account-card";
 import { DeltaLoginDialog } from "@/components/app/delta-login-dialog";
 import { Button } from "@/components/ui/button";
@@ -76,7 +76,7 @@ export function DeltaAccountsPage() {
           title="账号管理"
           description="管理游戏账号登录状态与访问令牌"
         />
-        <TacticalEmptyState icon={<RiAccountPinCircleLine />} title="需要桌面环境" description="需要桌面环境才能使用账号管理功能。" />
+        <TacticalEmptyState className="col-span-12" icon={<RiAccountPinCircleLine />} title="需要桌面环境" description="需要桌面环境才能使用账号管理功能。" />
       </AppPage>
     );
   }
@@ -102,56 +102,80 @@ export function DeltaAccountsPage() {
         }
       />
 
-      <TacticalCard>
-        <SectionHeader
-          eyebrow="账号列表"
-          icon={<RiAccountPinCircleLine />}
-          title="账号列表"
-          description="点击选中账号，右键查看更多操作"
-          badge={accounts.length > 0 ? <Badge variant="secondary">{accounts.length}</Badge> : undefined}
-        />
-        <CardBody>
-          {accounts.length === 0 ? (
-            <InlineControl className="border-dashed px-4 py-8 text-center">
-              <RiAccountPinCircleLine className="mx-auto mb-2 text-muted-foreground" />
-              <p className="text-sm font-medium text-muted-foreground">暂无账号</p>
-              <p className="mt-1 text-xs text-muted-foreground">点击上方“添加账号”按钮，扫描二维码登录游戏账号。</p>
-            </InlineControl>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {accounts.map((account) => (
-                <ContextMenu key={account.id}>
-                  <ContextMenuTrigger>
-                    <DeltaAccountCard
-                      account={account}
-                      selected={selectedAccountId === account.id}
-                      onSelect={selectAccount}
-                    />
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    {canRefreshToken(account.kind) && account.hasAccessToken && (
-                      <ContextMenuItem
-                        onClick={() => handleRefreshToken(account)}
-                        disabled={refreshingId === account.id}
-                      >
-                        <RiRefreshLine data-icon="inline-start" />
-                        {refreshingId === account.id ? "刷新中..." : "刷新令牌"}
-                      </ContextMenuItem>
-                    )}
-                    <ContextMenuItem
-                      onClick={() => handleDelete(account.id)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <RiDeleteBinLine data-icon="inline-start" />
-                      删除账号
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              ))}
+      <div className="col-span-12 grid gap-3">
+        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+            账号路由
+          </div>
+          <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3">
+            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+              <div>当前选中</div>
+              <div className="mt-2 text-sm text-[var(--ink)]">{selectedAccountId ?? "未选择"}</div>
             </div>
-          )}
-        </CardBody>
-      </TacticalCard>
+            <div className="bg-[var(--bone)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+              <div>有效令牌</div>
+              <div className="mt-2 text-sm text-[var(--ink)]">{stats.valid} / {stats.total}</div>
+            </div>
+            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+              <div>风险提示</div>
+              <div className="mt-2 text-sm text-[var(--ink)]">{stats.expiring > 0 ? "存在即将过期" : "暂无"}</div>
+            </div>
+          </div>
+        </div>
+
+        <TacticalCard className="p-0">
+          <SectionHeader
+            eyebrow="账号列表"
+            icon={<RiAccountPinCircleLine />}
+            title="账号档案矩阵"
+            description="单击载入账号；右键执行刷新令牌或删除。"
+            badge={accounts.length > 0 ? <Badge variant="secondary">{accounts.length}</Badge> : undefined}
+          />
+          <CardBody>
+            {accounts.length === 0 ? (
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
+                <RiAccountPinCircleLine className="size-5 text-[var(--alert-red)]" />
+                <p className="text-sm font-black uppercase text-[var(--ink)]">暂无账号</p>
+                <p className="max-w-xl font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">点击上方“添加账号”按钮，扫描二维码登录游戏账号。</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 xl:grid-cols-12">
+                {accounts.map((account) => (
+                  <div key={account.id} className="col-span-12 xl:col-span-4">
+                    <ContextMenu>
+                      <ContextMenuTrigger>
+                        <DeltaAccountCard
+                          account={account}
+                          selected={selectedAccountId === account.id}
+                          onSelect={selectAccount}
+                        />
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        {canRefreshToken(account.kind) && account.hasAccessToken && (
+                          <ContextMenuItem
+                            onClick={() => handleRefreshToken(account)}
+                            disabled={refreshingId === account.id}
+                          >
+                            <RiRefreshLine data-icon="inline-start" />
+                            {refreshingId === account.id ? "刷新中..." : "刷新令牌"}
+                          </ContextMenuItem>
+                        )}
+                        <ContextMenuItem
+                          onClick={() => handleDelete(account.id)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <RiDeleteBinLine data-icon="inline-start" />
+                          删除账号
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </TacticalCard>
+      </div>
 
       <DeltaLoginDialog
         open={loginOpen}

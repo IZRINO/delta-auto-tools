@@ -50,8 +50,8 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ```
 src/
-├── App.tsx                     # 应用根组件：Sidebar 壳层 + MorsePage/TimerPage
-├── App.css                     # 主题 token（@theme）与 overlay 样式
+├── App.tsx                     # 应用根组件：Top Manifest Bar + Left Index Rail + Main Work Grid；overlay/display/position 模式 early return
+├── App.css                     # 工业粗粝 token（@theme）、纸面网格、噪声与 overlay 透明例外
 ├── main.tsx                    # React 入口，mount <App />，含 TooltipProvider
 ├── main.tsx                    # 提供 TooltipProvider
 ├── hooks/
@@ -99,8 +99,8 @@ src/
 ### 前端核心模式
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
-- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
-- 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
+- `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染自定义三段式工业壳层（48px Top Manifest Bar、240px Left Index Rail、Main Work Grid）。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
+- 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站）和 Delta 三页，Left Index Rail 在“当前工具 / 三角洲行动 API / PINNED”下切换；当前项黑底反白并使用 Alert Red 标识。
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），页面顶部使用紧凑浏览器工具条承载站点横向 Tab、新增 / 删除自定义站点、自动刷新档位、手动刷新和系统浏览器打开；当前 URL 只在工具条中紧凑展示 / tooltip 展示，不再保留 PageHero 或大块说明卡。工具条下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL，并使用 `min-h-0 flex-1 overflow-hidden` 吃满主应用剩余高度；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
@@ -270,12 +270,12 @@ src-tauri/src/
 
 ## UI and Styling Rules
 
-- **整体视觉方向**：当前 UI 是“Delta 战术工业白图纸控制台”，不是营销页、模板首页、普通后台卡片堆叠或全黑 CRT 终端。后续新增页面必须延续浅色工业战术控制台：Canvas `#E8E4D8`、Surface `#F4F1E6`、碳黑文字、硬边 1px/2px 网格、等宽小字、高密度装备清单式信息块、清晰状态徽章和单一 Delta Hazard Orange `#C65A1E` 强调色；边界保持低圆角、硬朗仪表感，避免大面积胶囊化。
-- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**。禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类；桌面页面样式通过 shadcn/ui、Tailwind 工具类和 `src/App.css` 主题 token 实现。详细设计规范见 `docs/DESIGN.md`，重构边界见 `docs/ui-industrial-brutalist-refactor.md`。
-- `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、背景底纹和 overlay 基础样式；全局圆角以工业硬边低圆角为准，不要在业务组件里堆叠 `rounded-3xl` / `rounded-[2rem]` 形成过度圆润界面，也不要硬编码大面积 raw color（例如 `bg-blue-500`）替代 token。
-- 桌面主界面优先复用 `src/components/app/app-ui.tsx` 的共享视觉积木：`AppPage`、`PageHero`、`SignalTile`、`TacticalCard`、`SectionHeader`、`ControlTile`、`InlineControl`、`CardToolbar`、`SurfaceToggleGroup`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
-- 工作台页面应采用“PageHero + 信号指标 + TacticalCard 内容区”的结构：顶部说明当前工具目的与状态，中部放开关/透明窗口/校准等关键控制，下部放可编辑卡片或历史记录。
-- 攻略网站页是例外：为最大化网页占比，该页使用贴顶工业浏览器工具条 + `strategy-content` 内容宿主，不使用 PageHero / 大说明卡；不得隐藏主应用 Sidebar，也不得新增独立浏览器窗口替代主窗口内嵌 WebView。
+- **整体视觉方向**：当前 UI 是 `DESIGN.md` 定义的 **Swiss Industrial Print × Declassified Tactical Control Board**，不是营销页、模板首页、普通后台卡片堆叠、旧 Sidebar + 圆角 Card + Hero，也不是全黑 CRT。主基底为工业纸面 Paper `#F1EFE8` / Bone `#DDD8CC`，Ink `#080808` 粗黑结构线，单一航空红 Alert Red `#E11919` 只用于当前选择、危险动作、运行态和关键焦点；Warning Amber `#A36A00` 与 Valid Green `#3F6B2A` 只用于语义状态。
+- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**。禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类；桌面页面样式通过 shadcn/ui、Tailwind 工具类和 `src/App.css` 主题 token 实现。详细设计规范见仓库根目录 `DESIGN.md`，重构边界见 `docs/ui-industrial-brutalist-refactor.md`。
+- `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、工程纸网格、纸面噪声和 overlay 基础样式；全局 `--radius: 0`，主窗口默认 90 度直角，不要堆叠 `rounded-*`、柔和阴影、玻璃态或大面积 raw color（例如 `bg-blue-500`）替代 token。
+- 桌面主界面复用 `src/components/app/app-ui.tsx` 的共享工业语义层：`AppPage`（12 列 Work Grid）、`PageHero`（Macro Module Header）、`SignalTile`（Status Matrix Cell）、`TacticalCard`（FIELD UNIT）、`SectionHeader`（黑色机器标签条）、`ControlTile` / `InlineControl`（配置格）、`CardToolbar`、`SurfaceToggleGroup`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
+- 工作台页面采用“Macro Module Header + Status Matrix + FIELD UNIT / Command Unit / Data Well”的结构：顶部说明模块目的与状态，中部放开关/透明窗口/校准等关键控制，下部放可编辑配置行或日志历史；页面必须有巨大结构元素、高密度数据区和红色操作焦点。
+- 攻略网站页是例外：为最大化网页占比，该页使用贴顶工业浏览器工具条 + `strategy-content` 内容宿主，不使用 PageHero / 大说明卡；不得隐藏主应用 Left Index Rail，也不得新增独立浏览器窗口替代主窗口内嵌 WebView。
 - 表单仍使用 `FieldGroup` + `Field` + `FieldLabel` + `FieldContent`；开关设置放在 `ControlTile` 中；提示与异常优先用 `Alert` / `FieldError` / `Badge`，不要手写自定义 callout。
 - 图标继续使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `data-icon="inline-end"`；不要引入 lucide 或混用其他图标库。
 - 透明窗口和位置设置窗口属于游戏叠加层，可以保留深色半透明 overlay 风格；不要套用主界面的白色卡片背景，也不要破坏无边框、透明、置顶、点击穿透约束。

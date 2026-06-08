@@ -328,105 +328,116 @@ export function DeltaLoginDialog({ open, onOpenChange, onLoginSuccess }: DeltaLo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>添加账号</DialogTitle>
-          <DialogDescription>选择账号类型并扫描二维码登录</DialogDescription>
+      <DialogContent className="max-w-xl border-2 border-[var(--ink)] bg-[var(--paper)] p-0">
+        <DialogHeader className="border-b-2 border-[var(--ink)] bg-[var(--ink)] px-4 py-3 text-[var(--paper)]">
+          <DialogTitle className="uppercase">添加账号</DialogTitle>
+          <DialogDescription className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--bone)] uppercase">选择账号类型并扫描二维码登录</DialogDescription>
         </DialogHeader>
 
-        {step === "select_type" && (
-          <div className="grid grid-cols-2 gap-2">
-            {LOGIN_FLOW_KINDS.map((kind) => (
-              <Button
-                key={kind}
-                variant="outline"
-                className="h-auto flex-col gap-1 py-3"
-                onClick={() => handleSelectKind(kind)}
-              >
-                <span className="text-sm font-medium">{LOGIN_FLOW_KIND_LABELS[kind]}</span>
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {step === "loading_qr" && (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-            <Spinner className="size-4" />
-            <span>正在获取二维码...</span>
-          </div>
-        )}
-
-        {step === "qr_code" && flowKind && (
-          <div className="flex flex-col items-center gap-4">
-            <Badge variant="outline">{LOGIN_FLOW_KIND_LABELS[flowKind]}</Badge>
-
-            {qrImageData && (
-              <img
-                src={`data:image/png;base64,${qrImageData}`}
-                alt="登录二维码"
-                className="size-52 rounded-lg border border-[var(--surface-border)]"
-              />
-            )}
-
-            {qrCodeUrl && !qrImageData && (
-              <img
-                src={qrCodeUrl}
-                alt="微信登录二维码"
-                className="size-52 rounded-lg border border-[var(--surface-border)] bg-muted p-3"
-              />
-            )}
-
-            <div className="flex items-center gap-2 text-sm">
-              {isTerminalPollStatus(pollStatus) ? (
-                <>
-                  <span className="text-destructive">{pollStatus}</span>
-                  <Button variant="outline" size="sm" onClick={handleRefreshQr}>
-                    刷新二维码
-                  </Button>
-                </>
-              ) : (
-                <>
-                  {pollStatus && <span className="text-muted-foreground">{pollStatus}</span>}
-                  {!pollStatus && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Spinner className="size-3" />
-                      <span>等待扫描...</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {step === "fetching_token" && (
-          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-            <Spinner className="size-4" />
-            <span>正在获取访问令牌...</span>
-          </div>
-        )}
-
-        {step === "success" && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            账号添加成功
-          </div>
-        )}
-
-        {step === "error" && (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <span className="text-sm text-destructive">{errorMessage}</span>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { resetState(); }}>
-                重新选择
-              </Button>
-              {flowKind && (
-                <Button variant="default" size="sm" onClick={handleRefreshQr}>
-                  重新扫码
+        <div className="space-y-4 p-4">
+          {step === "select_type" && (
+            <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] sm:grid-cols-2">
+              {LOGIN_FLOW_KINDS.map((kind) => (
+                <Button
+                  key={kind}
+                  variant="outline"
+                  className="h-auto min-h-24 flex-col items-start gap-2 border-0 bg-[var(--paper)] px-4 py-4 text-left"
+                  onClick={() => handleSelectKind(kind)}
+                >
+                  <span className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">登录流程</span>
+                  <span className="text-sm font-black uppercase">{LOGIN_FLOW_KIND_LABELS[kind]}</span>
                 </Button>
-              )}
+              ))}
             </div>
-          </div>
-        )}
+          )}
+
+          {step === "loading_qr" && (
+            <div className="flex min-h-56 items-center justify-center gap-2 border-2 border-[var(--ink)] bg-[var(--data-well)] px-4 py-8 font-mono text-xs font-bold tracking-[0.08em] text-[var(--paper)] uppercase">
+              <Spinner className="size-4" />
+              <span>正在获取二维码...</span>
+            </div>
+          )}
+
+          {step === "qr_code" && flowKind && (
+            <div className="grid gap-4 xl:grid-cols-[14rem_minmax(0,1fr)]">
+              <div className="border-2 border-[var(--ink)] bg-[var(--ink)] px-4 py-4 text-[var(--paper)]">
+                <Badge variant="outline">{LOGIN_FLOW_KIND_LABELS[flowKind]}</Badge>
+                <p className="mt-4 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--bone)] uppercase">扫码状态</p>
+                <div className="mt-3 text-sm font-black uppercase">
+                  {pollStatus || "等待扫描..."}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-4 border-2 border-[var(--ink)] bg-[var(--bone)] px-4 py-4">
+                {qrImageData && (
+                  <img
+                    src={`data:image/png;base64,${qrImageData}`}
+                    alt="登录二维码"
+                    className="size-52 border-2 border-[var(--ink)] bg-[var(--paper)] p-2"
+                  />
+                )}
+
+                {qrCodeUrl && !qrImageData && (
+                  <img
+                    src={qrCodeUrl}
+                    alt="微信登录二维码"
+                    className="size-52 border-2 border-[var(--ink)] bg-[var(--paper)] p-2"
+                  />
+                )}
+
+                <div className="flex min-h-10 items-center gap-2 font-mono text-[0.68rem] font-bold tracking-[0.08em] uppercase">
+                  {isTerminalPollStatus(pollStatus) ? (
+                    <>
+                      <span className="text-destructive">{pollStatus}</span>
+                      <Button variant="outline" size="sm" onClick={handleRefreshQr}>
+                        刷新二维码
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {pollStatus ? <span className="text-[var(--steel)]">{pollStatus}</span> : null}
+                      {!pollStatus && (
+                        <div className="flex items-center gap-2 text-[var(--steel)]">
+                          <Spinner className="size-3" />
+                          <span>等待扫描...</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === "fetching_token" && (
+            <div className="flex min-h-56 items-center justify-center gap-2 border-2 border-[var(--ink)] bg-[var(--data-well)] px-4 py-8 font-mono text-xs font-bold tracking-[0.08em] text-[var(--paper)] uppercase">
+              <Spinner className="size-4" />
+              <span>正在获取访问令牌...</span>
+            </div>
+          )}
+
+          {step === "success" && (
+            <div className="flex min-h-40 items-center justify-center border-2 border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center text-sm font-black uppercase text-[var(--ink)]">
+              账号添加成功
+            </div>
+          )}
+
+          {step === "error" && (
+            <div className="space-y-4 border-2 border-[var(--alert-red)] bg-[var(--bone)] px-4 py-4">
+              <p className="font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--alert-red)] uppercase">{errorMessage}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => { resetState(); }}>
+                  重新选择
+                </Button>
+                {flowKind && (
+                  <Button variant="default" size="sm" onClick={handleRefreshQr}>
+                    重新扫码
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

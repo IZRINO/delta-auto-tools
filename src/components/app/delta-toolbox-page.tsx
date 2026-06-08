@@ -5,7 +5,7 @@ import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { AccountKind, ApiResponse } from "@/components/app/delta-types";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
 import { getCapabilities } from "@/components/app/delta-utils";
-import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody, InlineNotice, JsonPreBlock, TacticalEmptyState, InlineControl, SurfaceToggleGroup } from "@/components/app/app-ui";
+import { AppPage, CardBody, InlineNotice, JsonPreBlock, PageHero, SectionHeader, SurfaceToggleGroup, TacticalCard, TacticalEmptyState } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,7 +159,7 @@ export function DeltaToolboxPage() {
           title="工具箱"
           description="Wegame 运营、安全查询与先遣服测试"
         />
-        <TacticalEmptyState icon={<RiGiftLine />} title="需要桌面环境" description="需要桌面环境才能使用工具箱功能。" />
+        <TacticalEmptyState className="col-span-12" icon={<RiGiftLine />} title="需要桌面环境" description="需要桌面环境才能使用工具箱功能。" />
       </AppPage>
     );
   }
@@ -172,141 +172,153 @@ export function DeltaToolboxPage() {
         description="Wegame 运营、安全查询与先遣服测试"
       />
 
-      <DeltaAccountSelector
-        filterKinds={ALL_TOOLBOX_KINDS}
-        emptyText="请先在账号管理中添加 Wegame、QQ安全中心或先遣服账号"
-      />
+      <div className="col-span-12 grid gap-3">
+        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+            工具路由
+          </div>
+          <div className="bg-[var(--paper)] px-3 py-3">
+            <DeltaAccountSelector
+              filterKinds={ALL_TOOLBOX_KINDS}
+              emptyText="请先在账号管理中添加 Wegame、QQ 安全中心或先遣服账号"
+            />
+          </div>
+        </div>
 
-      {!selectedAccount && (
-        <TacticalEmptyState icon={<RiGiftLine />} title="选择账号以查看工具" description="选择 Wegame、QQ安全中心或先遣服账号后，会显示可用工具。" />
-      )}
+        {!selectedAccount && (
+          <TacticalEmptyState className="col-span-12" icon={<RiGiftLine />} title="选择账号以查看工具" description="选择 Wegame、QQ 安全中心或先遣服账号后，会显示可用工具。" />
+        )}
 
-      {selectedAccount && !hasWegame && !hasQqSafe && !hasPioneer && (
-        <TacticalEmptyState icon={<RiGiftLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQ安全中心或先遣服账号。`} />
-      )}
+        {selectedAccount && !hasWegame && !hasQqSafe && !hasPioneer && (
+          <TacticalEmptyState className="col-span-12" icon={<RiGiftLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQ 安全中心或先遣服账号。`} />
+        )}
 
-      {hasWegame && (
-        <TacticalCard>
-          <SectionHeader
-            eyebrow="Wegame"
-            icon={<RiGiftLine />}
-            title="Wegame 运营"
-            description="领取保险箱礼包与每日抽卡"
-          />
-          <CardBody>
-            <div className="flex flex-wrap gap-3">
-              <Button size="sm" disabled={giftLoading} onClick={handleOpenGift}>
-                {giftLoading && <Spinner className="mr-1.5 size-3.5" />}
-                领取保险箱礼包
-              </Button>
-              <Button size="sm" disabled={cardLoading} onClick={handleDrawCard}>
-                {cardLoading && <Spinner className="mr-1.5 size-3.5" />}
-                每日抽卡
-              </Button>
-            </div>
-
-            {giftError && <InlineNotice className="mt-3">{giftError}</InlineNotice>}
-            {giftResult !== null && <JsonPreBlock className="mt-3" maxHeightClassName="max-h-48" data={giftResult} />}
-
-            {cardError && <InlineNotice className="mt-3">{cardError}</InlineNotice>}
-            {cardResult !== null && <JsonPreBlock className="mt-3" maxHeightClassName="max-h-48" data={cardResult} />}
-          </CardBody>
-        </TacticalCard>
-      )}
-
-      {hasQqSafe && (
-        <TacticalCard>
-          <SectionHeader
-            eyebrow="QQ安全中心"
-            icon={<RiShieldLine />}
-            title="QQ安全中心查询"
-            description="查询封禁记录与游戏报告"
-          />
-          <CardBody className="space-y-4">
-            {/* 封禁记录 */}
-            <div>
-              <div className="flex items-center gap-3">
-                <Button size="sm" disabled={bannedLoading} onClick={handleLoadBanned}>
-                  {bannedLoading && <Spinner className="mr-1.5 size-3.5" />}
-                  查询封禁记录
-                </Button>
-              </div>
-              {bannedError && <InlineNotice className="mt-2">{bannedError}</InlineNotice>}
-              {bannedResult !== null && <JsonPreBlock className="mt-2" maxHeightClassName="max-h-48" data={bannedResult} />}
-            </div>
-
-            {/* 举报折叠区 */}
-            <InlineControl className="p-0">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground"
-                onClick={() => setReportExpanded(!reportExpanded)}
-              >
-                <span className="flex items-center gap-2">
-                  游戏报告
-                  <Badge variant="outline" className="text-[0.58rem]">已弃用</Badge>
-                </span>
-                <RiArrowDownSLine className={`size-4 transition-transform ${reportExpanded ? "rotate-180" : ""}`} />
-              </button>
-              {reportExpanded && (
-                <div className="border-t border-[var(--surface-border)] px-3 py-3 space-y-3">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">用户 QQ 号</label>
-                    <Input
-                      placeholder="输入 QQ 号"
-                      value={reportUserId}
-                      onChange={(e) => setReportUserId(e.target.value.replace(/\D/g, ""))}
-                    />
+        {(hasWegame || hasQqSafe || hasPioneer) && (
+          <div className="grid gap-3 xl:grid-cols-12">
+            {hasWegame && (
+              <TacticalCard className="xl:col-span-6 p-0">
+                <SectionHeader
+                  eyebrow="运营命令"
+                  icon={<RiGiftLine />}
+                  title="Wegame 操作单元"
+                  description="领取保险箱礼包与每日抽卡"
+                />
+                <CardBody className="space-y-3">
+                  <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] sm:grid-cols-2">
+                    <Button size="sm" disabled={giftLoading} onClick={handleOpenGift} className="justify-start">
+                      {giftLoading && <Spinner className="mr-1.5 size-3.5" />}
+                      领取保险箱礼包
+                    </Button>
+                    <Button size="sm" disabled={cardLoading} onClick={handleDrawCard} className="justify-start">
+                      {cardLoading && <Spinner className="mr-1.5 size-3.5" />}
+                      每日抽卡
+                    </Button>
                   </div>
-                  <Button size="sm" disabled={reportLoading || !reportUserId} onClick={handleReport}>
-                    {reportLoading && <Spinner className="mr-1.5 size-3.5" />}
-                    查询
-                  </Button>
-                  {reportError && <InlineNotice className="mt-2">{reportError}</InlineNotice>}
-                  {reportResult !== null && <JsonPreBlock className="mt-2" maxHeightClassName="max-h-48" data={reportResult} />}
-                </div>
-              )}
-            </InlineControl>
-          </CardBody>
-        </TacticalCard>
-      )}
 
-      {hasPioneer && (
-        <TacticalCard>
-          <SectionHeader
-            eyebrow="Pioneer"
-            icon={<RiRocketLine />}
-            title="先遣服测试"
-            description="查看先遣服测试游戏列表"
-          />
-          <CardBody className="space-y-3">
-            <div className="flex items-center gap-3">
-              <SurfaceToggleGroup className="flex overflow-hidden p-0">
-                <button
-                  type="button"
-                  className={`px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "pc" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/45"}`}
-                  onClick={() => setPioneerListType("pc")}
-                >
-                  PC
-                </button>
-                <button
-                  type="button"
-                  className={`border-l border-[var(--surface-border)] px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "mobile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/45"}`}
-                  onClick={() => setPioneerListType("mobile")}
-                >
-                  手机
-                </button>
-              </SurfaceToggleGroup>
-              <Button size="sm" disabled={pioneerLoading} onClick={handleLoadPioneer}>
-                {pioneerLoading && <Spinner className="mr-1.5 size-3.5" />}
-                查询测试列表
-              </Button>
-            </div>
-            {pioneerError && <InlineNotice>{pioneerError}</InlineNotice>}
-            {pioneerResult !== null && <JsonPreBlock data={pioneerResult} />}
-          </CardBody>
-        </TacticalCard>
-      )}
+                  {giftError && <InlineNotice title="礼包命令失败">{giftError}</InlineNotice>}
+                  {giftResult !== null && <JsonPreBlock className="min-h-40" maxHeightClassName="max-h-56" data={giftResult} />}
+
+                  {cardError && <InlineNotice title="抽卡命令失败">{cardError}</InlineNotice>}
+                  {cardResult !== null && <JsonPreBlock className="min-h-40" maxHeightClassName="max-h-56" data={cardResult} />}
+                </CardBody>
+              </TacticalCard>
+            )}
+
+            {hasQqSafe && (
+              <TacticalCard className="xl:col-span-6 p-0">
+                <SectionHeader
+                  eyebrow="安全查询"
+                  icon={<RiShieldLine />}
+                  title="QQ 安全中心单元"
+                  description="查询封禁记录与游戏报告"
+                />
+                <CardBody className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
+                    <Button size="sm" disabled={bannedLoading} onClick={handleLoadBanned}>
+                      {bannedLoading && <Spinner className="mr-1.5 size-3.5" />}
+                      查询封禁记录
+                    </Button>
+                    <span className="font-mono text-[0.66rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">结果写入下方数据井</span>
+                  </div>
+
+                  {bannedError && <InlineNotice title="封禁查询失败">{bannedError}</InlineNotice>}
+                  {bannedResult !== null && <JsonPreBlock className="min-h-40" maxHeightClassName="max-h-56" data={bannedResult} />}
+
+                  <div className="border-2 border-[var(--ink)] bg-[var(--paper)]">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between bg-[var(--bone)] px-3 py-3 text-left"
+                      onClick={() => setReportExpanded(!reportExpanded)}
+                    >
+                      <span className="flex items-center gap-2 font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">
+                        游戏报告
+                        <Badge variant="outline" className="text-[0.58rem]">已弃用</Badge>
+                      </span>
+                      <RiArrowDownSLine className={`size-4 transition-transform ${reportExpanded ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {reportExpanded && (
+                      <div className="grid gap-3 border-t-2 border-[var(--ink)] p-3">
+                        <div>
+                          <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">用户 QQ 号</label>
+                          <Input
+                            placeholder="输入 QQ 号"
+                            value={reportUserId}
+                            onChange={(e) => setReportUserId(e.target.value.replace(/\D/g, ""))}
+                          />
+                        </div>
+                        <Button size="sm" disabled={reportLoading || !reportUserId} onClick={handleReport}>
+                          {reportLoading && <Spinner className="mr-1.5 size-3.5" />}
+                          查询游戏报告
+                        </Button>
+                        {reportError && <InlineNotice title="报告查询失败">{reportError}</InlineNotice>}
+                        {reportResult !== null && <JsonPreBlock className="min-h-40" maxHeightClassName="max-h-56" data={reportResult} />}
+                      </div>
+                    )}
+                  </div>
+                </CardBody>
+              </TacticalCard>
+            )}
+
+            {hasPioneer && (
+              <TacticalCard className="xl:col-span-12 p-0">
+                <SectionHeader
+                  eyebrow="测试列表"
+                  icon={<RiRocketLine />}
+                  title="先遣服测试单元"
+                  description="查看先遣服测试游戏列表"
+                />
+                <CardBody className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
+                    <SurfaceToggleGroup className="flex overflow-hidden p-0">
+                      <button
+                        type="button"
+                        className={`px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "pc" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        onClick={() => setPioneerListType("pc")}
+                      >
+                        电脑
+                      </button>
+                      <button
+                        type="button"
+                        className={`border-l border-[var(--ink)] px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "mobile" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        onClick={() => setPioneerListType("mobile")}
+                      >
+                        手机
+                      </button>
+                    </SurfaceToggleGroup>
+                    <Button size="sm" disabled={pioneerLoading} onClick={handleLoadPioneer}>
+                      {pioneerLoading && <Spinner className="mr-1.5 size-3.5" />}
+                      查询测试列表
+                    </Button>
+                  </div>
+                  {pioneerError && <InlineNotice title="列表查询失败">{pioneerError}</InlineNotice>}
+                  {pioneerResult !== null && <JsonPreBlock className="min-h-48" maxHeightClassName="max-h-[30rem]" data={pioneerResult} />}
+                </CardBody>
+              </TacticalCard>
+            )}
+          </div>
+        )}
+      </div>
     </AppPage>
   );
 }

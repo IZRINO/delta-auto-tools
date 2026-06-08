@@ -537,85 +537,89 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const selectionControlsDisabled = loading || running || selectingSlot !== null || !isNativeShell;
 
   return (
-    <AppPage>
+    <AppPage className="auto-rows-max gap-4">
       <PageHero
-        eyebrow="Morse Recognition"
-        title="摩斯密码解析"
-        description="把区域框选、识别参数、验证输入和历史结果串成一条清晰流程，适合战局中快速校准。"
+        eyebrow="MX-01 / 信号破译单元"
+        title="MX-01 摩斯信号破译台"
+        description="把采样窗位、阈值校准、单次验证与识别回溯串成一条硬线路，供战局内快速复核三码信号。"
         badges={
           <>
-            <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "可执行" : "等待区域配置"}</Badge>
+            <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "三区就绪" : "等待窗位标定"}</Badge>
             <SaveStateBadge dirty={isDirty} saving={saving} />
-            <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "处理中" : "空闲"}</Badge>
+            <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "链路占用" : "链路待命"}</Badge>
           </>
         }
         stats={
           <>
-            <SignalTile label="区域配置" value={`${configuredCount}/3`} detail="三段采样区域连续框选" />
-            <SignalTile label="最近结果" value={latestResultValue ?? "---"} detail={latestRunErrorOrFallback(latestRun?.error)} />
-            <SignalTile label="最近时间" value={formatTimestamp(latestResultTime)} detail="自动输入与热键触发同步记录" />
+            <SignalTile label="采样阵列" value={`${configuredCount}/3`} detail="三段信号窗位完成标定" />
+            <SignalTile label="最新报码" value={latestResultValue ?? "---"} detail={latestRunErrorOrFallback(latestRun?.error)} />
+            <SignalTile label="最近触发" value={formatTimestamp(latestResultTime)} detail="自动输入与热键触发统一归档" />
           </>
         }
       />
 
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
-          <SelectionPanel
-            configuredCount={configuredCount}
-            form={form}
-            isBusy={selectionControlsDisabled}
-            isPreviewMode={!isNativeShell}
-            isPrimary={!stepOneComplete}
-            selectingSlot={selectingSlot}
-            onSelectAll={() => void performSelectionSession([0, 1, 2])}
-            onSelectOne={(slot) => void performSelectionSession([slot])}
-          />
+      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-4">
+        <SelectionPanel
+          configuredCount={configuredCount}
+          form={form}
+          isBusy={selectionControlsDisabled}
+          isPreviewMode={!isNativeShell}
+          isPrimary={!stepOneComplete}
+          selectingSlot={selectingSlot}
+          onSelectAll={() => void performSelectionSession([0, 1, 2])}
+          onSelectOne={(slot) => void performSelectionSession([slot])}
+        />
+      </div>
 
-          <WorkbenchControlPanel
-            form={form}
-            hotkeyButtonRef={hotkeyButtonRef}
-            hotkeyError={bootstrap?.hotkeyError}
-            isPrimary={stepTwoActive}
-            isRecordingHotkey={isRecordingHotkey}
-            isVerifying={verificationStatus === "running"}
-            onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
-            onBeginHotkeyRecording={beginHotkeyRecording}
-            onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
-            onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
-            onHotkeyRecorderKeyDown={handleHotkeyRecorderKeyDown}
-            onVerificationChange={setVerificationValue}
-            onVerificationFocus={() => void handleVerificationRun()}
-            onVerificationRetry={() => void handleVerificationRun()}
-            verificationMessage={verificationMessage}
-            verificationStatus={verificationStatus}
-            verificationValue={verificationValue}
-            autoClickEnabled={form?.autoClickEnabled ?? false}
-            clickRegions={form?.clickRegions ?? []}
-            isBusy={isBusy}
-            onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
-            onAfterClickHotkeyChange={(value) => updateForm("afterClickHotkey", value)}
-            onUpdateClickRegionDelay={handleUpdateClickRegionDelay}
-            onAddClickRegion={() => void handleAddClickRegion()}
-            onRemoveClickRegion={handleRemoveClickRegion}
-          />
+      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-8">
+        <WorkbenchControlPanel
+          form={form}
+          hotkeyButtonRef={hotkeyButtonRef}
+          hotkeyError={bootstrap?.hotkeyError}
+          isPrimary={stepTwoActive}
+          isRecordingHotkey={isRecordingHotkey}
+          isVerifying={verificationStatus === "running"}
+          onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
+          onBeginHotkeyRecording={beginHotkeyRecording}
+          onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
+          onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+          onHotkeyRecorderKeyDown={handleHotkeyRecorderKeyDown}
+          onVerificationChange={setVerificationValue}
+          onVerificationFocus={() => void handleVerificationRun()}
+          onVerificationRetry={() => void handleVerificationRun()}
+          verificationMessage={verificationMessage}
+          verificationStatus={verificationStatus}
+          verificationValue={verificationValue}
+          autoClickEnabled={form?.autoClickEnabled ?? false}
+          clickRegions={form?.clickRegions ?? []}
+          isBusy={isBusy}
+          onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
+          onAfterClickHotkeyChange={(value) => updateForm("afterClickHotkey", value)}
+          onUpdateClickRegionDelay={handleUpdateClickRegionDelay}
+          onAddClickRegion={() => void handleAddClickRegion()}
+          onRemoveClickRegion={handleRemoveClickRegion}
+        />
+      </div>
 
-          <ResultPanel
-            hasResult={hasLatestResult}
-            isPrimary={stepThreeActive}
-            latestAutoTyped={Boolean(latestRun?.autoTyped)}
-            latestRunError={latestRun?.error}
-            latestRunValue={latestRun?.value}
-            latestTriggeredBy={latestRun?.triggeredBy}
-            runDetails={runDetails}
-          />
+      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-7">
+        <ResultPanel
+          hasResult={hasLatestResult}
+          isPrimary={stepThreeActive}
+          latestAutoTyped={Boolean(latestRun?.autoTyped)}
+          latestRunError={latestRun?.error}
+          latestRunValue={latestRun?.value}
+          latestTriggeredBy={latestRun?.triggeredBy}
+          runDetails={runDetails}
+        />
+      </div>
 
-          <div className="pt-2">
-            <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
-          </div>
+      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-5">
+        <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
       </div>
     </AppPage>
   );
 }
 
 function latestRunErrorOrFallback(error: string | null | undefined): string {
-  return error ? "最近一次识别失败" : "最新三位结果会在这里放大显示";
+  return error ? "最近一次识别失败，需回查三码链路" : "最新三码会在报码窗中放大显示";
 }

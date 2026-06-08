@@ -166,7 +166,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
         return (
           <div
             key={index}
-            className={isCurrent ? "pointer-events-none absolute rounded-md border-2 border-primary bg-primary/12" : "pointer-events-none absolute rounded-md border border-white/85 bg-white/10"}
+            className={isCurrent ? "pointer-events-none absolute border-2 border-primary bg-primary/12" : "pointer-events-none absolute border border-white/85 bg-white/10"}
             style={{
               left: region.x,
               top: region.y,
@@ -179,7 +179,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
 
       {currentRect ? (
         <div
-          className="pointer-events-none absolute rounded-md border-2 border-primary bg-primary/16"
+          className="pointer-events-none absolute border-2 border-primary bg-primary/16"
           style={{
             left: currentRect.x,
             top: currentRect.y,
@@ -189,7 +189,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
         />
       ) : null}
 
-      <div className="pointer-events-none absolute left-6 top-6 max-w-md rounded-2xl border border-white/30 bg-background/88 px-4 py-4 text-foreground backdrop-blur-md">
+      <div className="pointer-events-none absolute left-6 top-6 max-w-md border-2 border-white/40 bg-background/88 px-4 py-4 text-foreground backdrop-blur-md">
         <div className="flex items-center gap-2">
           <Badge variant="outline">{`第 ${activeStep} / ${slots.length} 步`}</Badge>
           {currentSlot !== null ? <Badge variant="secondary">{labels[currentSlot]}</Badge> : null}
@@ -200,7 +200,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">{statusMessage}</p>
         {currentRect ? (
-          <p className="mt-3 rounded-lg border border-border/70 bg-background/80 px-3 py-2 font-mono text-xs text-muted-foreground">
+          <p className="mt-3 border border-border/70 bg-background/80 px-3 py-2 font-mono text-xs text-muted-foreground">
             {`X ${currentRect.x} · Y ${currentRect.y} · W ${currentRect.width} · H ${currentRect.height}`}
           </p>
         ) : (
@@ -208,7 +208,7 @@ export function RegionSelectionOverlay({ slots }: { slots: number[] }) {
         )}
       </div>
 
-      <div className="absolute right-6 top-6 flex items-center gap-2 rounded-2xl border border-white/25 bg-background/80 px-3 py-3 backdrop-blur-md">
+      <div className="absolute right-6 top-6 flex items-center gap-2 border-2 border-white/30 bg-background/80 px-3 py-3 backdrop-blur-md">
         {completedSlots.map((slot) => (
           <Badge key={slot} variant="secondary">
             {labels[slot]}

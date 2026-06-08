@@ -7,7 +7,7 @@ function Empty({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty"
       className={cn(
-        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-xl border-dashed p-6 text-center text-balance",
+        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 border-2 border-dashed border-[var(--ink)] p-6 text-center text-balance",
         className
       )}
       {...props}
@@ -31,7 +31,7 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground [&_svg:not([class*='size-'])]:size-4",
+        icon: "flex size-8 shrink-0 items-center justify-center border-2 border-[var(--ink)] bg-[var(--bone)] text-[var(--ink)] [&_svg:not([class*='size-'])]:size-4",
       },
     },
     defaultVariants: {
@@ -60,7 +60,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-title"
       className={cn(
-        "font-heading text-sm font-medium tracking-tight",
+        "font-heading text-sm font-black tracking-[-0.03em] uppercase",
         className
       )}
       {...props}
@@ -73,7 +73,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
     <div
       data-slot="empty-description"
       className={cn(
-        "text-xs/relaxed text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+        "font-mono text-xs/relaxed font-bold tracking-[0.06em] text-[var(--steel)] uppercase [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-[var(--alert-red)]",
         className
       )}
       {...props}
@@ -86,7 +86,7 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-content"
       className={cn(
-        "flex w-full max-w-sm min-w-0 flex-col items-center gap-2 text-xs/relaxed text-balance",
+        "flex w-full max-w-sm min-w-0 flex-col items-center gap-2 font-mono text-xs/relaxed font-bold text-balance",
         className
       )}
       {...props}
