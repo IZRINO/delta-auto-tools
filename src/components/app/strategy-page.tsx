@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { AppPage, SurfaceToggleGroup } from "@/components/app/app-ui";
+import { AppPage } from "@/components/app/app-ui";
 import {
   BUILTIN_STRATEGY_SITES,
   createStrategySite,
@@ -425,120 +425,123 @@ export function StrategyPage() {
   const refreshLabel = refreshSeconds > 0 ? `${activeRefreshOption.label} · ${remainingSeconds || refreshSeconds}s` : activeRefreshOption.label;
 
   return (
-    <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 gap-3 overflow-hidden">
-      <div className="relative z-10 shrink-0 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_32%,transparent))] px-3 py-2 shadow-[var(--shadow-card)]">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">攻略</Badge>
-            <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId} className="min-w-0 flex-1">
-              <div className="overflow-x-auto overflow-y-hidden pb-1">
-                <SurfaceToggleGroup className="min-w-max">
-                  <TabsList variant="line" className="min-w-max justify-start bg-transparent p-0">
-                    {allSites.map((site) => (
-                      <TabsTrigger key={site.id} value={site.id} className="max-w-36 shrink-0 font-mono text-[0.72rem] tracking-[0.08em]">
-                        <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
-                        <span className="truncate">{site.shortLabel || site.label}</span>
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </SurfaceToggleGroup>
+    <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 overflow-hidden">
+      <div className="col-span-12 grid shrink-0 gap-px overflow-hidden border-2 border-[var(--ink)] bg-[var(--ink)] lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0 bg-[var(--paper)] px-2 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="hidden shrink-0 border-r-2 border-[var(--ink)] pr-2 sm:block">
+              <Badge variant="secondary" className="h-6 px-2">攻略</Badge>
+              <p className="mt-1 font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">strategy-content</p>
+            </div>
+
+            <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId} className="min-w-0 flex-1 gap-0">
+              <div className="min-w-0 overflow-x-auto overflow-y-hidden">
+                <TabsList variant="line" className="h-8 min-w-max justify-start border-0 bg-transparent p-0 group-data-horizontal/tabs:h-8">
+                  {allSites.map((site) => (
+                    <TabsTrigger key={site.id} value={site.id} className="h-8 max-w-32 flex-none px-2 py-0 font-mono text-[0.66rem] tracking-[0.06em]">
+                      <img alt="" aria-hidden className="size-3.5 border border-[var(--ink)] bg-[var(--paper)] object-contain" src={site.favicon} />
+                      <span className="truncate">{site.shortLabel || site.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
               </div>
             </Tabs>
-          </div>
 
-          <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="min-w-0 max-w-full flex-1 truncate rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_48%,transparent))] px-3 py-2 font-mono text-[0.68rem] text-muted-foreground shadow-[var(--shadow-tile)] xl:max-w-80 xl:flex-none">
+                <div className="hidden min-w-0 max-w-[24rem] truncate border-2 border-[var(--ink)] bg-[var(--bone)] px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.06em] text-[var(--ink)] xl:block">
                   {activeUrl || "未选择站点"}
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" align="start" className="max-w-md">
-                <p className="font-mono text-xs break-all">{activeUrl || "未选择站点"}</p>
+              <TooltipContent side="bottom" align="end" className="max-w-md">
+                <p className="break-all font-mono text-xs">{activeUrl || "未选择站点"}</p>
                 {activeSite?.description ? <p className="mt-1 text-xs text-muted-foreground">{activeSite.description}</p> : null}
               </TooltipContent>
             </Tooltip>
-
-            <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) setSiteFormError(null); }}>
-              <DialogTrigger asChild>
-                <Button type="button" size="sm" variant="outline">
-                  <RiAddLine data-icon="inline-start" />
-                  新增
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>新增攻略网站</DialogTitle>
-                  <DialogDescription>添加后会保存到本机 localStorage，并立即切换到新站点。</DialogDescription>
-                </DialogHeader>
-                <FieldGroup className="gap-3">
-                  <Field>
-                    <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
-                    <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="例如 攻略站" />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
-                    <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="例如 自定义攻略站" />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
-                    <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
-                    <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
-                  </Field>
-                  {siteFormError ? <FieldDescription className="text-destructive">{siteFormError}</FieldDescription> : null}
-                </FieldGroup>
-                <DialogFooter>
-                  <Button type="button" onClick={handleCreateSite}>
-                    <RiAddLine data-icon="inline-start" />
-                    创建站点
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            {activeSite && !activeSite.builtin ? (
-              <Button type="button" size="sm" variant="ghost" onClick={handleDeleteActiveSite}>
-                <RiDeleteBinLine data-icon="inline-start" />
-                删除
-              </Button>
-            ) : null}
-
-            <Select value={String(refreshSeconds)} onValueChange={handleRefreshSecondsChange} disabled={!activeSite}>
-              <SelectTrigger size="sm" className="w-36">
-                <SelectValue placeholder="自动刷新">{refreshLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {STRATEGY_REFRESH_OPTIONS.map((option) => (
-                  <SelectItem key={option.seconds} value={String(option.seconds)}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button type="button" size="sm" variant="default" onClick={handleRefresh} disabled={!isNativeShell || !activeUrl}>
-              <RiRefreshLine data-icon="inline-start" />
-              刷新
-            </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={handleOpenExternal} disabled={!activeUrl}>
-              <RiExternalLinkLine data-icon="inline-start" />
-              系统浏览器
-            </Button>
           </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 bg-[var(--bone)] px-2 py-2">
+          <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) setSiteFormError(null); }}>
+            <DialogTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="h-8 px-2.5">
+                <RiAddLine data-icon="inline-start" />
+                新增
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>新增攻略网站</DialogTitle>
+                <DialogDescription>添加后会保存到本机 localStorage，并立即切换到新站点。</DialogDescription>
+              </DialogHeader>
+              <FieldGroup className="gap-3">
+                <Field>
+                  <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
+                  <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="例如 攻略站" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
+                  <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="例如 自定义攻略站" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
+                  <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
+                  <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
+                </Field>
+                {siteFormError ? <FieldDescription className="text-destructive">{siteFormError}</FieldDescription> : null}
+              </FieldGroup>
+              <DialogFooter>
+                <Button type="button" onClick={handleCreateSite}>
+                  <RiAddLine data-icon="inline-start" />
+                  创建站点
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {activeSite && !activeSite.builtin ? (
+            <Button type="button" size="sm" variant="ghost" className="h-8 px-2.5" onClick={handleDeleteActiveSite}>
+              <RiDeleteBinLine data-icon="inline-start" />
+              删除
+            </Button>
+          ) : null}
+
+          <Select value={String(refreshSeconds)} onValueChange={handleRefreshSecondsChange} disabled={!activeSite}>
+            <SelectTrigger size="sm" className="h-8 w-[8.5rem] px-2">
+              <SelectValue placeholder="自动刷新">{refreshLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {STRATEGY_REFRESH_OPTIONS.map((option) => (
+                <SelectItem key={option.seconds} value={String(option.seconds)}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button type="button" size="sm" variant="default" className="h-8 px-2.5" onClick={handleRefresh} disabled={!isNativeShell || !activeUrl}>
+            <RiRefreshLine data-icon="inline-start" />
+            刷新
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="h-8 px-2.5" onClick={handleOpenExternal} disabled={!activeUrl}>
+            <RiExternalLinkLine data-icon="inline-start" />
+            浏览器
+          </Button>
         </div>
       </div>
 
       <div
         ref={contentHostRef}
-        className="relative z-0 min-h-0 flex-1 overflow-hidden rounded-md border border-[var(--surface-border-strong)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_38%,transparent))] shadow-[var(--shadow-card)]"
+        className="col-span-12 relative z-0 min-h-0 overflow-hidden border-2 border-[var(--ink)] bg-[var(--paper)]"
       >
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          <div className="max-w-md rounded-md border border-[var(--surface-border)] bg-background/90 px-5 py-4 shadow-[var(--shadow-tile)]">
-            <p className="font-medium text-foreground">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
-            <p className="mt-2 text-xs/relaxed">
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[var(--paper)] px-6 text-center">
+          <div className="max-w-xl border-2 border-[var(--ink)] bg-[var(--bone)] px-5 py-4">
+            <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--alert-red)] uppercase">当前内容窗口宿主区</p>
+            <p className="mt-3 text-sm font-black uppercase text-[var(--ink)]">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
+            <p className="mt-2 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">
               {isNativeShell
                 ? "网页内容会贴合此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
                 : "浏览器预览模式无法创建 Tauri 内容窗口，请在桌面端使用。"}
