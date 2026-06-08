@@ -4,18 +4,11 @@ import { RiAccountPinCircleLine, RiAddLine, RiDeleteBinLine, RiRefreshLine } fro
 import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { DeltaAccountRecord } from "@/components/app/delta-types";
 import { canRefreshToken } from "@/components/app/delta-utils";
-import { AppPage, PageHero, SignalTile, TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
+import { AppPage, PageHero, SignalTile, TacticalCard, SectionHeader, CardBody, InlineControl, TacticalEmptyState } from "@/components/app/app-ui";
 import { DeltaAccountCard } from "@/components/app/delta-account-card";
 import { DeltaLoginDialog } from "@/components/app/delta-login-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -79,15 +72,11 @@ export function DeltaAccountsPage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="三角洲行动"
+          eyebrow="账号与凭据"
           title="账号管理"
           description="管理游戏账号登录状态与访问令牌"
         />
-        <TacticalCard className="min-h-72">
-          <CardBody className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">需要桌面环境才能使用账号管理功能</p>
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiAccountPinCircleLine />} title="需要桌面环境" description="需要桌面环境才能使用账号管理功能。" />
       </AppPage>
     );
   }
@@ -95,7 +84,7 @@ export function DeltaAccountsPage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="三角洲行动"
+        eyebrow="账号与凭据"
         title="账号管理"
         description="管理游戏账号登录状态与访问令牌"
         actions={
@@ -115,7 +104,7 @@ export function DeltaAccountsPage() {
 
       <TacticalCard>
         <SectionHeader
-          eyebrow="Accounts"
+          eyebrow="账号列表"
           icon={<RiAccountPinCircleLine />}
           title="账号列表"
           description="点击选中账号，右键查看更多操作"
@@ -123,15 +112,11 @@ export function DeltaAccountsPage() {
         />
         <CardBody>
           {accounts.length === 0 ? (
-            <Empty className="border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <RiAccountPinCircleLine />
-                </EmptyMedia>
-                <EmptyTitle>暂无账号</EmptyTitle>
-                <EmptyDescription>点击上方"添加账号"按钮，扫描二维码登录游戏账号。</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <InlineControl className="border-dashed px-4 py-8 text-center">
+              <RiAccountPinCircleLine className="mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm font-medium text-muted-foreground">暂无账号</p>
+              <p className="mt-1 text-xs text-muted-foreground">点击上方“添加账号”按钮，扫描二维码登录游戏账号。</p>
+            </InlineControl>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {accounts.map((account) => (

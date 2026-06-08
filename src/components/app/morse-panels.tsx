@@ -11,11 +11,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CardBody, ControlTile, SectionHeader, TacticalCard } from "@/components/app/app-ui";
+import { CardBody, ControlTile, InlineControl, SectionHeader, TacticalCard } from "@/components/app/app-ui";
 
 import type {
   HistoryEntry,
@@ -42,7 +42,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
   return (
     <TacticalCard active={isPrimary}>
       <SectionHeader
-        eyebrow="Step 01"
+        eyebrow="采样区域"
         icon={<RiLayoutGridLine />}
         title="配置采样区域"
         description="先完成 3 个区域配置，再执行识别。"
@@ -50,11 +50,11 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
       />
       <CardBody className="flex flex-col gap-4 xl:gap-5">
         {isPreviewMode ? (
-          <div className="rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
+          <InlineControl className="border-dashed px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">预览模式</p>
             <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以配置采样区域</p>
-          </div>
+          </InlineControl>
         ) : (
           <>
             <ControlTile className="flex flex-wrap items-center justify-between gap-3">
@@ -96,7 +96,7 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                     </div>
 
                     <div className="rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_48%,transparent),var(--surface-tile))] px-3 py-3">
-                      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
+                      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground">区域摘要</p>
                       <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                     </div>
 
@@ -179,7 +179,7 @@ export function WorkbenchControlPanel({
   return (
     <TacticalCard active={isPrimary}>
       <SectionHeader
-        eyebrow="Step 02"
+        eyebrow="识别参数"
         icon={<RiSettings3Line />}
         title="调整设置并验证"
         description="区域准备完成后，在这里微调参数并验证识别效果。"
@@ -260,64 +260,74 @@ export function WorkbenchControlPanel({
                   </div>
                 </ControlTile>
                 {autoClickEnabled && (
-                  <>
-                    <Field className="xl:min-h-0">
-                      <FieldLabel htmlFor="after-click-hotkey">点击完成后按键</FieldLabel>
-                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
-                        <Input
-                          id="after-click-hotkey"
-                          placeholder="留空不执行，例如 F4 或 Ctrl+F4"
-                          value={form.afterClickHotkey}
-                          onChange={(event) => onAfterClickHotkeyChange(event.currentTarget.value)}
-                        />
-                      </FieldContent>
-                    </Field>
-                    <Field className="xl:min-h-0">
-                      <FieldLabel>点击区域（最多 7 个）</FieldLabel>
-                      <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
-                        <div className="flex flex-col gap-2">
-                          {clickRegionRows(clickRegions).map((cr) => (
-                            <ControlTile key={cr.slotIndex} className="flex items-center gap-3">
-                              <Badge variant={cr.rect ? "default" : "outline"} className="shrink-0">
-                                {cr.slotIndex + 1}
-                              </Badge>
-                              <span className="flex-1 font-mono text-xs text-muted-foreground">
-                                {formatRegion(cr.rect)}
-                              </span>
-                              <Input
-                                className="w-20"
-                                inputMode="numeric"
-                                min="0"
-                                value={cr.delayMs}
-                                onChange={(e) => onUpdateClickRegionDelay(cr.slotIndex, e.currentTarget.value)}
-                              />
-                              <span className="text-xs text-muted-foreground">ms</span>
-                              <Button
-                                className="h-7 w-7 shrink-0 p-0"
-                                disabled={isBusy}
-                                onClick={() => onRemoveClickRegion(cr.slotIndex)}
-                                type="button"
-                                variant="ghost"
-                              >
-                                ×
-                              </Button>
-                            </ControlTile>
-                          ))}
-                          {clickRegions.filter((r) => r.rect).length < 7 && (
-                            <Button
-                              disabled={isBusy}
-                              onClick={onAddClickRegion}
-                              type="button"
-                              variant="outline"
-                            >
-                              <RiLayoutGridLine data-icon="inline-start" />
-                              添加点击区域
-                            </Button>
-                          )}
-                        </div>
-                      </FieldContent>
-                    </Field>
-                  </>
+                  <Collapsible defaultOpen={false} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_54%,transparent),var(--surface-tile))]">
+                    <CollapsibleTrigger asChild>
+                      <Button className="w-full justify-between px-3" type="button" variant="ghost">
+                        点击区域配置
+                        <Badge variant="outline">{clickRegions.filter((r) => r.rect).length}/7</Badge>
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="border-t border-[var(--surface-border)] px-3 py-3">
+                      <FieldGroup className="gap-3">
+                        <Field className="xl:min-h-0">
+                          <FieldLabel htmlFor="after-click-hotkey">点击完成后按键</FieldLabel>
+                          <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
+                            <Input
+                              id="after-click-hotkey"
+                              placeholder="留空不执行，例如 F4 或 Ctrl+F4"
+                              value={form.afterClickHotkey}
+                              onChange={(event) => onAfterClickHotkeyChange(event.currentTarget.value)}
+                            />
+                          </FieldContent>
+                        </Field>
+                        <Field className="xl:min-h-0">
+                          <FieldLabel>点击区域（最多 7 个）</FieldLabel>
+                          <FieldContent className="xl:flex xl:flex-col xl:gap-2.2 xl:min-h-0">
+                            <div className="flex flex-col gap-2">
+                              {clickRegionRows(clickRegions).map((cr) => (
+                                <InlineControl key={cr.slotIndex} className="flex items-center gap-3">
+                                  <Badge variant={cr.rect ? "default" : "outline"} className="shrink-0">
+                                    {cr.slotIndex + 1}
+                                  </Badge>
+                                  <span className="flex-1 font-mono text-xs text-muted-foreground">
+                                    {formatRegion(cr.rect)}
+                                  </span>
+                                  <Input
+                                    className="w-20"
+                                    inputMode="numeric"
+                                    min="0"
+                                    value={cr.delayMs}
+                                    onChange={(e) => onUpdateClickRegionDelay(cr.slotIndex, e.currentTarget.value)}
+                                  />
+                                  <span className="text-xs text-muted-foreground">ms</span>
+                                  <Button
+                                    className="h-7 w-7 shrink-0 p-0"
+                                    disabled={isBusy}
+                                    onClick={() => onRemoveClickRegion(cr.slotIndex)}
+                                    type="button"
+                                    variant="ghost"
+                                  >
+                                    ×
+                                  </Button>
+                                </InlineControl>
+                              ))}
+                              {clickRegions.filter((r) => r.rect).length < 7 && (
+                                <Button
+                                  disabled={isBusy}
+                                  onClick={onAddClickRegion}
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  <RiLayoutGridLine data-icon="inline-start" />
+                                  添加点击区域
+                                </Button>
+                              )}
+                            </div>
+                          </FieldContent>
+                        </Field>
+                      </FieldGroup>
+                    </CollapsibleContent>
+                  </Collapsible>
                 )}
               </FieldGroup>
             ) : (
@@ -392,7 +402,7 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
   return (
     <TacticalCard active={isPrimary}>
       <SectionHeader
-        eyebrow="Step 03"
+        eyebrow="识别结果"
         icon={<RiCheckboxCircleLine />}
         title="查看结果"
         description="完成前两步后，这里会显示最新识别结果。"
@@ -400,11 +410,11 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
       />
       <CardBody className="flex min-h-0 flex-col gap-4">
         {!hasResult ? (
-          <div className="rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
+          <InlineControl className="border-dashed px-4 py-8 text-center">
             <RiCheckboxCircleLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">等待执行</p>
             <p className="mt-1 text-xs text-muted-foreground">完成前两步后，结果会显示在这里。</p>
-          </div>
+          </InlineControl>
         ) : (
           <>
             <div className="rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_55%,transparent))] px-5 py-5">
@@ -421,27 +431,16 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
               <p className="mt-3 text-xs text-muted-foreground">{latestRunError ?? "执行识别后会在这里显示最新三位结果。"}</p>
             </div>
 
-            <div className="grid gap-3 xl:grid-cols-3">
+            <div className="grid gap-2 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_40%,transparent))] p-3">
               {runDetails.map((detail) => (
-                <div key={detail.slot} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_40%,transparent))] p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
-                    <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
-                      {detail.error ? "失败" : detail.digit ? detail.digit : "待机"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
-                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
-                      <p className="font-mono text-foreground/80">{detail.morse ?? "--"}</p>
-                    </div>
-                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
-                      <p className="text-foreground/80">{detail.thresholdMode}</p>
-                    </div>
-                    <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_52%,transparent),var(--surface-tile))] px-3 py-2">
-                      <p className="text-foreground/80">{detail.contourCount}</p>
-                    </div>
-                  </div>
-                  {detail.error ? <p className="mt-3 text-xs text-destructive">识别失败</p> : null}
+                <div key={detail.slot} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="min-w-16 font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</span>
+                  <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
+                    {detail.error ? "失败" : detail.digit ? detail.digit : "待机"}
+                  </Badge>
+                  <span className="font-mono text-foreground/80">{detail.morse ?? "--"}</span>
+                  <span>{detail.thresholdMode}</span>
+                  <span>轮廓 {detail.contourCount}</span>
                 </div>
               ))}
             </div>
@@ -461,32 +460,28 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
   return (
     <TacticalCard>
       <SectionHeader
-        eyebrow="Archive"
+        eyebrow="历史记录"
         icon={<RiHistoryLine />}
         title="历史记录"
         description="最近的识别记录。"
       />
       <CardBody>
         {isPreviewMode ? (
-          <div className="rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-8 text-center">
+          <InlineControl className="border-dashed px-4 py-8 text-center">
             <RiEyeLine className="mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm font-medium text-muted-foreground">预览模式</p>
             <p className="mt-1 text-xs text-muted-foreground">启动桌面程序以查看历史记录</p>
-          </div>
+          </InlineControl>
         ) : (
           <>
             <ScrollArea className="h-72">
               <div className="flex flex-col gap-3 pe-4">
                 {history.length === 0 ? (
-                  <Empty className="border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <RiHistoryLine />
-                      </EmptyMedia>
-                      <EmptyTitle>暂无记录</EmptyTitle>
-                      <EmptyDescription>执行一次识别后会显示在这里。</EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
+                  <InlineControl className="border-dashed px-4 py-8 text-center">
+                    <RiHistoryLine className="mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium text-muted-foreground">暂无记录</p>
+                    <p className="mt-1 text-xs text-muted-foreground">执行一次识别后会显示在这里。</p>
+                  </InlineControl>
                 ) : (
                   history.map((entry) => (
                     <div key={entry.id} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_45%,transparent))] p-4">

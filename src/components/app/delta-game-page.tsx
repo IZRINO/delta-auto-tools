@@ -23,17 +23,10 @@ import type {
   GameDataLoadResult,
   GameDataState,
 } from "@/components/app/delta-game-data-loader";
-import { AppPage, PageHero, SignalTile, TacticalCard, CardBody } from "@/components/app/app-ui";
+import { AppPage, PageHero, SignalTile, TacticalEmptyState } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { DeltaDataCard } from "@/components/app/delta-data-card";
 import { DeltaQueryWorkbench } from "@/components/app/delta-query-workbench";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 
 const GAME_AUTH_KINDS: AccountKind[] = ["qq", "wechat"];
 
@@ -137,13 +130,7 @@ function useGamePageData(account: DeltaAccountRecord | null): GamePageDataState 
   }, [loadSingleKey, state]);
 }
 
-function JsonBlock({ data }: { data: unknown }) {
-  return (
-    <pre className="max-h-64 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-}
+
 
 export function DeltaGamePage() {
   const { selectedAccount, isNativeShell } = useDeltaAccounts();
@@ -156,15 +143,11 @@ export function DeltaGamePage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="三角洲行动"
+          eyebrow="游戏数据"
           title="游戏数据"
           description="查看游戏内角色数据与资产信息"
         />
-        <TacticalCard className="min-h-72">
-          <CardBody className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">需要桌面环境才能使用游戏数据功能</p>
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="需要桌面环境" description="需要桌面环境才能使用游戏数据功能。" />
       </AppPage>
     );
   }
@@ -172,7 +155,7 @@ export function DeltaGamePage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="三角洲行动"
+        eyebrow="游戏数据"
         title="游戏数据"
         description="查看游戏内角色数据与资产信息"
         stats={
@@ -192,110 +175,28 @@ export function DeltaGamePage() {
       />
 
       {!selectedAccount && (
-        <TacticalCard className="min-h-48">
-          <CardBody className="flex h-full items-center justify-center">
-            <Empty className="border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <RiBarChartBoxLine />
-                </EmptyMedia>
-                <EmptyTitle>选择账号查看数据</EmptyTitle>
-                <EmptyDescription>在上方选择一个 QQ 或微信账号，即可查看游戏数据。</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="选择账号查看数据" description="在上方选择一个 QQ 或微信账号，即可查看游戏数据。" />
       )}
 
       {selectedAccount && !hasCapability && (
-        <TacticalCard className="min-h-48">
-          <CardBody className="flex h-full items-center justify-center">
-            <div className="text-center text-sm text-muted-foreground">
-              <p>当前账号为 {ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型</p>
-              <p className="mt-1">无法查询游戏数据，请选择 QQ 或微信账号</p>
-            </div>
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiBarChartBoxLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法查询游戏数据，请选择 QQ 或微信账号。`} />
       )}
 
       {hasCapability && (
         <div className="grid gap-5 lg:grid-cols-2">
-          <DeltaDataCard
-            eyebrow="Player"
-            title="角色信息"
-            icon={<RiUserLine />}
-            loading={player.loading}
-            error={player.error}
-            onRetry={player.reload}
-          >
-            {player.data ? <JsonBlock data={player.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="玩家信息" title="角色信息" icon={<RiUserLine />} loading={player.loading} error={player.error} onRetry={player.reload} data={player.data} />
 
-          <DeltaDataCard
-            eyebrow="Record"
-            title="战绩记录"
-            icon={<RiSwordLine />}
-            loading={record.loading}
-            error={record.error}
-            onRetry={record.reload}
-          >
-            {record.data ? <JsonBlock data={record.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="战绩记录" title="战绩记录" icon={<RiSwordLine />} loading={record.loading} error={record.error} onRetry={record.reload} data={record.data} />
 
-          <DeltaDataCard
-            eyebrow="Assets"
-            title="资产概览"
-            icon={<RiTrophyLine />}
-            loading={assets.loading}
-            error={assets.error}
-            onRetry={assets.reload}
-          >
-            {assets.data ? <JsonBlock data={assets.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="资产概览" title="资产概览" icon={<RiTrophyLine />} loading={assets.loading} error={assets.error} onRetry={assets.reload} data={assets.data} />
 
-          <DeltaDataCard
-            eyebrow="Recent"
-            title="近期对局"
-            icon={<RiSwordLine />}
-            loading={recent.loading}
-            error={recent.error}
-            onRetry={recent.reload}
-          >
-            {recent.data ? <JsonBlock data={recent.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="近期对局" title="近期对局" icon={<RiSwordLine />} loading={recent.loading} error={recent.error} onRetry={recent.reload} data={recent.data} />
 
-          <DeltaDataCard
-            eyebrow="Achievement"
-            title="成就进度"
-            icon={<RiTrophyLine />}
-            loading={achievement.loading}
-            error={achievement.error}
-            onRetry={achievement.reload}
-          >
-            {achievement.data ? <JsonBlock data={achievement.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="成就进度" title="成就进度" icon={<RiTrophyLine />} loading={achievement.loading} error={achievement.error} onRetry={achievement.reload} data={achievement.data} />
 
-          <DeltaDataCard
-            eyebrow="Password"
-            title="地图密码"
-            icon={<RiKey2Line />}
-            loading={password.loading}
-            error={password.error}
-            onRetry={password.reload}
-          >
-            {password.data ? <JsonBlock data={password.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="地图密码" title="地图密码" icon={<RiKey2Line />} loading={password.loading} error={password.error} onRetry={password.reload} data={password.data} />
 
-          <DeltaDataCard
-            eyebrow="Bind"
-            title="角色绑定"
-            icon={<RiShieldLine />}
-            loading={bind.loading}
-            error={bind.error}
-            onRetry={bind.reload}
-          >
-            {bind.data ? <JsonBlock data={bind.data} /> : <p className="py-4 text-sm text-muted-foreground">暂无数据</p>}
-          </DeltaDataCard>
+          <DeltaDataCard eyebrow="角色绑定" title="角色绑定" icon={<RiShieldLine />} loading={bind.loading} error={bind.error} onRetry={bind.reload} data={bind.data} />
 
           <DeltaQueryWorkbench accountId={selectedAccount.id} />
         </div>

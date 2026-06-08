@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { QueryWorkbenchKind, ApiResponse } from "@/components/app/delta-types";
 import { QUERY_WORKBENCH_LABELS, QUERY_WORKBENCH_KINDS } from "@/components/app/delta-types";
-import { TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
+import { TacticalCard, SectionHeader, CardBody, InlineNotice, JsonPreBlock } from "@/components/app/app-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -124,7 +124,7 @@ export function DeltaQueryWorkbench({ accountId }: DeltaQueryWorkbenchProps) {
   return (
     <TacticalCard className="lg:col-span-2">
       <SectionHeader
-        eyebrow="Query"
+        eyebrow="参数查询"
         icon={<RiSearchLine />}
         title="查询工作台"
         description="参数化查询游戏物品、物价、枪械等数据"
@@ -225,17 +225,9 @@ export function DeltaQueryWorkbench({ accountId }: DeltaQueryWorkbenchProps) {
           )}
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <InlineNotice>{error}</InlineNotice>}
 
-        {result !== null && (
-          <pre className="max-h-96 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        )}
+        {result !== null && <JsonPreBlock maxHeightClassName="max-h-96" data={result} />}
       </CardBody>
     </TacticalCard>
   );

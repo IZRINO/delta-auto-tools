@@ -1,7 +1,10 @@
 import type { ComponentProps, ReactNode } from "react";
+import { RiAddLine } from "@remixicon/react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { cn } from "@/lib/utils";
 
 type AppPageProps = {
@@ -178,4 +181,105 @@ export function SaveStateBadge({ dirty, saving }: { dirty: boolean; saving: bool
 
 export function CardBody({ children, className }: { children: ReactNode; className?: string }) {
   return <CardContent className={cn("pt-4", className)}>{children}</CardContent>;
+}
+
+type TacticalEmptyStateProps = {
+  icon?: ReactNode;
+  title: string;
+  description: ReactNode;
+  className?: string;
+  children?: ReactNode;
+};
+
+export function TacticalEmptyState({ children, className, description, icon, title }: TacticalEmptyStateProps) {
+  return (
+    <TacticalCard className={cn("min-h-48", className)}>
+      <CardBody className="flex h-full items-center justify-center">
+        <Empty className="min-h-40 rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-4 py-8 text-center backdrop-blur-md">
+          {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
+          <EmptyHeader>
+            <EmptyTitle>{title}</EmptyTitle>
+            <EmptyDescription>{description}</EmptyDescription>
+          </EmptyHeader>
+          {children}
+        </Empty>
+      </CardBody>
+    </TacticalCard>
+  );
+}
+
+type AddCardButtonProps = {
+  disabled?: boolean;
+  title: string;
+  description: ReactNode;
+  className?: string;
+  onClick: () => void;
+};
+
+export function AddCardButton({ className, description, disabled, onClick, title }: AddCardButtonProps) {
+  return (
+    <button
+      className={cn(
+        "group flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] p-6 text-center transition-all hover:border-primary/35 hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="mb-4 flex size-11 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/35 group-hover:bg-primary/5">
+        <RiAddLine />
+      </span>
+      <span className="text-sm font-semibold text-foreground">{title}</span>
+      <span className="mt-1 max-w-56 text-xs/relaxed text-muted-foreground">{description}</span>
+    </button>
+  );
+}
+
+type JsonPreBlockProps = {
+  data: unknown;
+  className?: string;
+  maxHeightClassName?: string;
+};
+
+export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" }: JsonPreBlockProps) {
+  return (
+    <pre
+      className={cn(
+        maxHeightClassName,
+        "overflow-auto rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))] p-3 font-mono text-xs text-muted-foreground",
+        className,
+      )}
+    >
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  );
+}
+
+type InlineNoticeProps = {
+  title?: string;
+  children: ReactNode;
+  className?: string;
+};
+
+export function InlineNotice({ children, className, title }: InlineNoticeProps) {
+  return (
+    <Alert variant="destructive" className={cn("border-destructive/45 bg-[color-mix(in_oklch,var(--destructive)_8%,transparent)]", className)}>
+      {title ? <AlertTitle>{title}</AlertTitle> : null}
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
+  );
+}
+
+export function InlineControl({ children, className }: ControlTileProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_54%,transparent),var(--surface-tile))] p-3 backdrop-blur-sm",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }

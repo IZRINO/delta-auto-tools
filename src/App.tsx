@@ -69,7 +69,7 @@ const StrategyPage = lazy(() =>
 const FavoritesPage = lazy(() =>
   import("@/components/app/favorites-page").then((module) => ({ default: module.FavoritesPage })),
 );
- const tools = [
+const tools = [
   {
     id: "morse" as const,
     icon: RiRadarLine,
@@ -320,15 +320,15 @@ function AppShell() {
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">07</p>
+                <p className="font-mono text-sm font-semibold text-foreground">{tools.length + deltaTools.length}</p>
                 <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
               </div>
               <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">07</p>
+                <p className="font-mono text-sm font-semibold text-foreground">{overlayWindowModes.size}</p>
                 <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
               </div>
               <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
-                <p className="font-mono text-sm font-semibold text-foreground">2.0</p>
+                <p className="font-mono text-sm font-semibold text-foreground">本机</p>
                 <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
               </div>
             </div>

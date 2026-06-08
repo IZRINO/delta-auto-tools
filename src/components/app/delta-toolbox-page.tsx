@@ -5,7 +5,7 @@ import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { AccountKind, ApiResponse } from "@/components/app/delta-types";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
 import { getCapabilities } from "@/components/app/delta-utils";
-import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
+import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody, InlineNotice, JsonPreBlock, TacticalEmptyState } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -155,15 +155,11 @@ export function DeltaToolboxPage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="三角洲行动"
+          eyebrow="工具能力"
           title="工具箱"
           description="Wegame 运营、安全查询与先遣服测试"
         />
-        <TacticalCard className="min-h-72">
-          <CardBody className="flex h-full items-center justify-center">
-            <p className="text-sm text-muted-foreground">需要桌面环境才能使用工具箱功能</p>
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiGiftLine />} title="需要桌面环境" description="需要桌面环境才能使用工具箱功能。" />
       </AppPage>
     );
   }
@@ -171,7 +167,7 @@ export function DeltaToolboxPage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="三角洲行动"
+        eyebrow="工具能力"
         title="工具箱"
         description="Wegame 运营、安全查询与先遣服测试"
       />
@@ -182,19 +178,11 @@ export function DeltaToolboxPage() {
       />
 
       {!selectedAccount && (
-        <TacticalCard className="min-h-48">
-          <CardBody className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            选择一个账号以查看可用工具
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiGiftLine />} title="选择账号以查看工具" description="选择 Wegame、QQ安全中心或先遣服账号后，会显示可用工具。" />
       )}
 
       {selectedAccount && !hasWegame && !hasQqSafe && !hasPioneer && (
-        <TacticalCard className="min-h-48">
-          <CardBody className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            当前账号为 {ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQ安全中心或先遣服账号。
-          </CardBody>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiGiftLine />} title="账号类型不支持" description={`当前账号为 ${ACCOUNT_KIND_LABELS[selectedAccount.kind]} 类型，无法使用工具箱功能。请选择 Wegame、QQ安全中心或先遣服账号。`} />
       )}
 
       {hasWegame && (
@@ -217,19 +205,11 @@ export function DeltaToolboxPage() {
               </Button>
             </div>
 
-            {giftError && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{giftError}</div>}
-            {giftResult !== null && (
-              <pre className="mt-3 max-h-48 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-                {JSON.stringify(giftResult, null, 2)}
-              </pre>
-            )}
+            {giftError && <InlineNotice className="mt-3">{giftError}</InlineNotice>}
+            {giftResult !== null && <JsonPreBlock className="mt-3" maxHeightClassName="max-h-48" data={giftResult} />}
 
-            {cardError && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{cardError}</div>}
-            {cardResult !== null && (
-              <pre className="mt-3 max-h-48 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-                {JSON.stringify(cardResult, null, 2)}
-              </pre>
-            )}
+            {cardError && <InlineNotice className="mt-3">{cardError}</InlineNotice>}
+            {cardResult !== null && <JsonPreBlock className="mt-3" maxHeightClassName="max-h-48" data={cardResult} />}
           </CardBody>
         </TacticalCard>
       )}
@@ -251,12 +231,8 @@ export function DeltaToolboxPage() {
                   查询封禁记录
                 </Button>
               </div>
-              {bannedError && <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{bannedError}</div>}
-              {bannedResult !== null && (
-                <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-                  {JSON.stringify(bannedResult, null, 2)}
-                </pre>
-              )}
+              {bannedError && <InlineNotice className="mt-2">{bannedError}</InlineNotice>}
+              {bannedResult !== null && <JsonPreBlock className="mt-2" maxHeightClassName="max-h-48" data={bannedResult} />}
             </div>
 
             {/* 举报折叠区 */}
@@ -286,12 +262,8 @@ export function DeltaToolboxPage() {
                     {reportLoading && <Spinner className="mr-1.5 size-3.5" />}
                     查询
                   </Button>
-                  {reportError && <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{reportError}</div>}
-                  {reportResult !== null && (
-                    <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-                      {JSON.stringify(reportResult, null, 2)}
-                    </pre>
-                  )}
+                  {reportError && <InlineNotice className="mt-2">{reportError}</InlineNotice>}
+                  {reportResult !== null && <JsonPreBlock className="mt-2" maxHeightClassName="max-h-48" data={reportResult} />}
                 </div>
               )}
             </div>
@@ -330,12 +302,8 @@ export function DeltaToolboxPage() {
                 查询测试列表
               </Button>
             </div>
-            {pioneerError && <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{pioneerError}</div>}
-            {pioneerResult !== null && (
-              <pre className="max-h-64 overflow-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-tile)] p-3 text-xs text-muted-foreground">
-                {JSON.stringify(pioneerResult, null, 2)}
-              </pre>
-            )}
+            {pioneerError && <InlineNotice>{pioneerError}</InlineNotice>}
+            {pioneerResult !== null && <JsonPreBlock data={pioneerResult} />}
           </CardBody>
         </TacticalCard>
       )}

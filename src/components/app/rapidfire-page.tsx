@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   RiAddLine,
-  RiArrowDownLine,
+  RiArrowDownSLine,
   RiArrowUpLine,
   RiDeleteBinLine,
   RiKeyboardLine,
@@ -16,20 +16,21 @@ import {
 } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardHeader } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
+  AddCardButton,
   AppPage,
   CardBody,
   ControlTile,
+  InlineNotice,
   PageHero,
   SaveStateBadge,
   SectionHeader,
@@ -505,30 +506,26 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
 
   if (!form) {
     return (
-      <Empty className="min-h-[360px] rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] backdrop-blur-md">
-        <EmptyMedia variant="icon">
-          <RiPulseLine />
-        </EmptyMedia>
-        <EmptyHeader>
-          <EmptyTitle>连发器准备中</EmptyTitle>
-          <EmptyDescription>{statusMessage}</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <AddCardButton
+        className="min-h-[360px]"
+        disabled
+        title="连发器准备中"
+        description={statusMessage}
+        onClick={() => undefined}
+      />
     );
   }
 
   return (
     <AppPage>
       {pageError && (
-        <Alert variant="destructive">
-          <RiPulseLine />
-          <AlertTitle>连发器配置未生效</AlertTitle>
-          <AlertDescription>{pageError}</AlertDescription>
-        </Alert>
+        <InlineNotice title="连发器配置未生效">
+          {pageError}
+        </InlineNotice>
       )}
 
       <PageHero
-        eyebrow="Rapidfire Control"
+        eyebrow="连发控制"
         title="连发器控制台"
         description="按住触发键持续触发目标键；松开后默认补齐奇数次数，也可为单张卡片开启不追加。"
         badges={
@@ -561,7 +558,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
 
       <TacticalCard>
         <SectionHeader
-          eyebrow="Overlay & Hotkeys"
+          eyebrow="快捷键与叠加层"
           icon={<RiPulseLine />}
           title="全局控制"
           description="总开关、透明窗口和补齐延迟会自动保存；按键间距与启动抖动在每张卡片内独立配置。"
@@ -658,7 +655,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
 
       <TacticalCard>
         <SectionHeader
-          eyebrow="Rapidfire Groups"
+          eyebrow="连发分组"
           icon={<RiPulseLine />}
           title="连发分组"
           description="每个分组拥有独立透明窗口；总开关、分组开关、卡片开关同时开启才会响应触发键。"
@@ -758,7 +755,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
             />
           );
         })}
-        <RapidfireAddCard controlsDisabled={controlsDisabled} onClick={addCard} />
+        <AddCardButton className="min-h-72" disabled={controlsDisabled} title="添加连发器" description="创建新的触发键、目标键和间隔配置。" onClick={addCard} />
       </section>
     </AppPage>
   );
@@ -832,14 +829,12 @@ function RapidfireCardEditor({
       )}
     >
       <SectionHeader
-        eyebrow={`Rapid ${String(index + 1).padStart(2, "0")}`}
+        eyebrow="连发卡片"
         icon={<RiPulseLine />}
         title={card.name || `连发器 ${index + 1}`}
-        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · 卡片间距 ${card.minPressSpacingMs || "0"}ms · 启动抖动 ${card.triggerJitterMaxMs || "0"}ms · ${card.skipCompensation ? "不追加" : "自动补齐"}`}
+        description={`${card.triggerKey || "--"} → ${card.targetKey || "--"} · 间隔 ${card.intervalMs || "--"}ms · ${card.skipCompensation ? "不追加" : "自动补齐"}`}
         badge={
-          <Badge variant={status.variant}>
-            {status.label}
-          </Badge>
+          <><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={status.variant}>{status.label}</Badge></>
         }
         className={cn(status.error && "border-destructive/30 bg-destructive/10")}
       />
@@ -866,9 +861,7 @@ function RapidfireCardEditor({
             </Select>
             <div className="flex shrink-0 items-center gap-1.5">
               <RapidfireCardDragHandle disabled={disabled} onDragStart={onDragStart} />
-              <Badge variant="outline" className="px-1.5 py-0.5 text-[0.6875rem] font-mono">
-                拖动 ↕ 排序
-              </Badge>
+
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -885,7 +878,7 @@ function RapidfireCardEditor({
                 aria-label="下移卡片"
                 onClick={() => nextId && onMove(card.id, nextId)}
               >
-                <RiArrowDownLine />
+                <RiArrowDownSLine />
               </Button>
               <Switch
                 checked={card.enabled}
@@ -915,14 +908,9 @@ function RapidfireCardEditor({
       </CardHeader>
       <CardBody>
         {cardError ? (
-          <Alert
-            variant="destructive"
-            className="mb-3 border-destructive/45 bg-[color-mix(in_oklch,var(--destructive)_8%,transparent)]"
-          >
-            <RiPulseLine />
-            <AlertTitle>这张卡片的配置未生效</AlertTitle>
-            <AlertDescription>{cardError}</AlertDescription>
-          </Alert>
+          <InlineNotice className="mb-3" title="这张卡片的配置未生效">
+            {cardError}
+          </InlineNotice>
         ) : null}
         <FieldGroup className="grid gap-3 md:grid-cols-2">
           <ControlTile>
@@ -985,90 +973,104 @@ function RapidfireCardEditor({
               <FieldDescription>最小 {RAPIDFIRE_MIN_INTERVAL_MS}ms。</FieldDescription>
             </Field>
           </ControlTile>
-          <ControlTile>
-            <Field>
-              <FieldLabel>触发抖动</FieldLabel>
-              <div className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
-                <Input
-                  id={`${card.id}-jitter-min`}
-                  className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                  type="number"
-                  min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
-                  max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
-                  value={card.pressJitterMinMs}
-                  disabled={disabled}
-                  aria-label="触发抖动最小值"
-                  onChange={(event) => onUpdate(card.id, { pressJitterMinMs: event.target.value })}
-                />
-                <span className="text-xs text-muted-foreground">至</span>
-                <Input
-                  id={`${card.id}-jitter-max`}
-                  className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                  type="number"
-                  min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
-                  max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
-                  value={card.pressJitterMaxMs}
-                  disabled={disabled}
-                  aria-label="触发抖动最大值"
-                  onChange={(event) => onUpdate(card.id, { pressJitterMaxMs: event.target.value })}
-                />
-                <FieldTitle>ms</FieldTitle>
-              </div>
-              <FieldDescription>目标键按下保持时间。</FieldDescription>
-            </Field>
-          </ControlTile>
-          <ControlTile>
-            <Field>
-              <FieldLabel htmlFor={`${card.id}-min-spacing`}>当前卡片按键最小间距</FieldLabel>
-              <div className="flex items-center gap-2">
-                <Input
-                  id={`${card.id}-min-spacing`}
-                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                  type="number"
-                  min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                  max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                  value={card.minPressSpacingMs}
-                  disabled={disabled}
-                  onChange={(event) => onUpdate(card.id, { minPressSpacingMs: event.target.value })}
-                />
-                <FieldTitle>ms</FieldTitle>
-              </div>
-              <FieldDescription>仅限制这张卡片的目标键触发间距，不拖慢其他卡片。</FieldDescription>
-            </Field>
-          </ControlTile>
-          <ControlTile>
-            <Field>
-              <FieldLabel htmlFor={`${card.id}-trigger-jitter`}>当前卡片启动抖动上限</FieldLabel>
-              <div className="flex items-center gap-2">
-                <Input
-                  id={`${card.id}-trigger-jitter`}
-                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
-                  type="number"
-                  min={0}
-                  max={1000}
-                  value={card.triggerJitterMaxMs}
-                  disabled={disabled}
-                  onChange={(event) => onUpdate(card.id, { triggerJitterMaxMs: event.target.value })}
-                />
-                <FieldTitle>ms（0=关闭）</FieldTitle>
-              </div>
-              <FieldDescription>按下这张卡片的触发键后，最多等待此时长再开始连发。</FieldDescription>
-            </Field>
-          </ControlTile>
-          <ControlTile>
-            <Field orientation="horizontal">
-              <Switch
-                id={`${card.id}-cancel-jitter`}
-                checked={card.cancelJitterOnRelease}
-                disabled={disabled}
-                onCheckedChange={(checked) => onUpdate(card.id, { cancelJitterOnRelease: checked })}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor={`${card.id}-cancel-jitter`}>抖动期间松手立即触发</FieldLabel>
-                <FieldDescription>仅作用于这张卡片；松开后立即触发一次并进入奇数补齐判断。</FieldDescription>
-              </FieldContent>
-            </Field>
-          </ControlTile>
+          <Collapsible defaultOpen={Boolean(cardError)} className="md:col-span-2">
+            <ControlTile className="p-0">
+              <CollapsibleTrigger asChild>
+                <Button className="w-full justify-between px-3" type="button" variant="ghost">
+                  高级参数
+                  <RiArrowDownSLine className="size-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="border-t border-[var(--surface-border)] px-3 py-3">
+                <FieldGroup className="grid gap-3 md:grid-cols-2">
+                  <ControlTile>
+                    <Field>
+                      <FieldLabel>触发抖动</FieldLabel>
+                      <div className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
+                        <Input
+                          id={`${card.id}-jitter-min`}
+                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          type="number"
+                          min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                          max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                          value={card.pressJitterMinMs}
+                          disabled={disabled}
+                          aria-label="触发抖动最小值"
+                          onChange={(event) => onUpdate(card.id, { pressJitterMinMs: event.target.value })}
+                        />
+                        <span className="text-xs text-muted-foreground">至</span>
+                        <Input
+                          id={`${card.id}-jitter-max`}
+                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          type="number"
+                          min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                          max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                          value={card.pressJitterMaxMs}
+                          disabled={disabled}
+                          aria-label="触发抖动最大值"
+                          onChange={(event) => onUpdate(card.id, { pressJitterMaxMs: event.target.value })}
+                        />
+                        <FieldTitle>ms</FieldTitle>
+                      </div>
+                      <FieldDescription>目标键按下保持时间。</FieldDescription>
+                    </Field>
+                  </ControlTile>
+                  <ControlTile>
+                    <Field>
+                      <FieldLabel htmlFor={`${card.id}-min-spacing`}>当前卡片按键最小间距</FieldLabel>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`${card.id}-min-spacing`}
+                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          type="number"
+                          min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                          max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                          value={card.minPressSpacingMs}
+                          disabled={disabled}
+                          onChange={(event) => onUpdate(card.id, { minPressSpacingMs: event.target.value })}
+                        />
+                        <FieldTitle>ms</FieldTitle>
+                      </div>
+                      <FieldDescription>仅限制这张卡片的目标键触发间距，不拖慢其他卡片。</FieldDescription>
+                    </Field>
+                  </ControlTile>
+                  <ControlTile>
+                    <Field>
+                      <FieldLabel htmlFor={`${card.id}-trigger-jitter`}>当前卡片启动抖动上限</FieldLabel>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`${card.id}-trigger-jitter`}
+                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          type="number"
+                          min={0}
+                          max={1000}
+                          value={card.triggerJitterMaxMs}
+                          disabled={disabled}
+                          onChange={(event) => onUpdate(card.id, { triggerJitterMaxMs: event.target.value })}
+                        />
+                        <FieldTitle>ms（0=关闭）</FieldTitle>
+                      </div>
+                      <FieldDescription>按下这张卡片的触发键后，最多等待此时长再开始连发。</FieldDescription>
+                    </Field>
+                  </ControlTile>
+                  <ControlTile>
+                    <Field orientation="horizontal">
+                      <Switch
+                        id={`${card.id}-cancel-jitter`}
+                        checked={card.cancelJitterOnRelease}
+                        disabled={disabled}
+                        onCheckedChange={(checked) => onUpdate(card.id, { cancelJitterOnRelease: checked })}
+                      />
+                      <FieldContent>
+                        <FieldLabel htmlFor={`${card.id}-cancel-jitter`}>抖动期间松手立即触发</FieldLabel>
+                        <FieldDescription>仅作用于这张卡片；松开后立即触发一次并进入奇数补齐判断。</FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </ControlTile>
+                </FieldGroup>
+              </CollapsibleContent>
+            </ControlTile>
+          </Collapsible>
         </FieldGroup>
       </CardBody>
     </TacticalCard>
@@ -1107,28 +1109,7 @@ function KeyRecorderButton({
   );
 }
 
-function RapidfireAddCard({ controlsDisabled, onClick }: { controlsDisabled: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      disabled={controlsDisabled}
-      onClick={onClick}
-      className={cn(
-        "group flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] p-6 text-center transition-all",
-        "hover:border-primary/35 hover:bg-[var(--surface-hover)]",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-      )}
-    >
-      <span className="mb-4 flex size-11 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/35 group-hover:bg-primary/5">
-        <RiAddLine />
-      </span>
-      <span className="text-sm font-semibold text-foreground">添加连发器</span>
-      <span className="mt-1 max-w-52 text-xs/relaxed text-muted-foreground">
-        创建新的触发键、目标键和间隔配置。
-      </span>
-    </button>
-  );
-}
+
 
 function RapidfireDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<RapidfireBootstrap | null>(null);

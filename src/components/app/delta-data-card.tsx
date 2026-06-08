@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
-import { TacticalCard, SectionHeader, CardBody } from "@/components/app/app-ui";
-import { Spinner } from "@/components/ui/spinner";
+import { RiDatabase2Line } from "@remixicon/react";
 
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { CardBody, InlineNotice, JsonPreBlock, SectionHeader, TacticalCard, TacticalEmptyState } from "@/components/app/app-ui";
 type DeltaDataCardProps = {
   eyebrow?: string;
   title: string;
@@ -9,11 +11,13 @@ type DeltaDataCardProps = {
   badge?: ReactNode;
   loading?: boolean;
   error?: string | null;
+  emptyText?: string;
+  data?: unknown;
   onRetry?: () => void;
   children?: ReactNode;
 };
 
-export function DeltaDataCard({ eyebrow, title, icon, badge, loading, error, onRetry, children }: DeltaDataCardProps) {
+export function DeltaDataCard({ badge, children, data, emptyText = "暂无数据", error, eyebrow, icon, loading, onRetry, title }: DeltaDataCardProps) {
   return (
     <TacticalCard>
       <SectionHeader
@@ -30,20 +34,20 @@ export function DeltaDataCard({ eyebrow, title, icon, badge, loading, error, onR
           </div>
         )}
         {!loading && error && (
-          <div className="flex flex-col items-center gap-2 py-6 text-sm">
-            <span className="text-destructive">{error}</span>
-            {onRetry && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="text-xs text-primary underline underline-offset-2 hover:text-primary/80"
-              >
+          <div className="space-y-3">
+            <InlineNotice>{error}</InlineNotice>
+            {onRetry ? (
+              <Button type="button" variant="outline" size="sm" onClick={onRetry}>
                 重试
-              </button>
-            )}
+              </Button>
+            ) : null}
           </div>
         )}
-        {!loading && !error && children}
+        {!loading && !error && data !== undefined ? <JsonPreBlock data={data} /> : null}
+        {!loading && !error && data === undefined && children}
+        {!loading && !error && data === undefined && !children ? (
+          <TacticalEmptyState className="min-h-36" icon={<RiDatabase2Line />} title="暂无数据" description={emptyText} />
+        ) : null}
       </CardBody>
     </TacticalCard>
   );

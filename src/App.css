@@ -185,6 +185,22 @@
   }
 }
 
+[data-token-status="valid"] {
+  background-color: color-mix(in oklch, var(--primary) 86%, white 8%);
+}
+
+[data-token-status="expiring_soon"] {
+  background-color: color-mix(in oklch, var(--chart-3) 82%, white 8%);
+}
+
+[data-token-status="expired"] {
+  background-color: var(--destructive);
+}
+
+[data-token-status="none"] {
+  background-color: color-mix(in oklch, var(--muted-foreground) 68%, transparent);
+}
+
 @keyframes favorite-highlight-pulse {
   0% {
     box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 55%, transparent);

@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardHeader } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -25,6 +24,7 @@ import {
   PageHero,
   SignalTile,
   TacticalCard,
+  TacticalEmptyState,
 } from "@/components/app/app-ui";
 import type { RapidfireBootstrap, RapidfireCardForm } from "@/components/app/rapidfire-types";
 import { rapidfireSettingsToForm } from "@/components/app/rapidfire-types";
@@ -278,7 +278,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
     return (
       <AppPage>
         <PageHero
-          eyebrow="Cross-Tool Collection"
+          eyebrow="战术收藏"
           title="收藏"
           description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
           badges={
@@ -295,17 +295,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
             </>
           }
         />
-        <TacticalCard>
-          <Empty className="min-h-[320px] rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] backdrop-blur-md">
-            <EmptyMedia variant="icon">
-              <RiStarLine />
-            </EmptyMedia>
-            <EmptyHeader>
-              <EmptyTitle>还没有收藏</EmptyTitle>
-              <EmptyDescription>去计时\计数器或连发器工具里，点击卡片头部的星标即可加入收藏。</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        </TacticalCard>
+        <TacticalEmptyState icon={<RiStarLine />} title="还没有收藏" description="去计时\\计数器或连发器工具里，点击卡片头部的星标即可加入收藏。" />
       </AppPage>
     );
   }
@@ -313,7 +303,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   return (
     <AppPage>
       <PageHero
-        eyebrow="Cross-Tool Collection"
+        eyebrow="战术收藏"
         title="收藏"
         description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
         badges={
@@ -330,55 +320,27 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
             <SignalTile label="连发器" value={summary.rapidfireCount} detail="已收藏的连发器数量" />
           </>
         }
-        actions={
-          <Field orientation="horizontal" className="flex flex-wrap items-center gap-3">
-            <Switch
-              id="fav-show-hotkey"
-              checked={view.showHotkey}
-              onCheckedChange={(checked) => updateView({ showHotkey: checked })}
-            />
-            <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer">显示快捷键</FieldLabel>
-            <Switch
-              id="fav-compact"
-              checked={view.compactMode}
-              onCheckedChange={(checked) => updateView({ compactMode: checked })}
-            />
-            <FieldLabel htmlFor="fav-compact" className="cursor-pointer">紧凑模式</FieldLabel>
-          </Field>
-        }
+
       />
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <ControlTile className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="fav-show-progress"
-              checked={view.showProgress}
-              onCheckedChange={(checked) => updateView({ showProgress: checked })}
-            />
-            <span className="text-sm font-medium text-foreground">显示计时器进度</span>
-          </div>
-          <p className="text-xs text-muted-foreground">开启后计时器收藏卡片会显示当前进度条与剩余秒数。</p>
-        </ControlTile>
-        <ControlTile className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="fav-show-counter"
-              checked={view.showCounter}
-              onCheckedChange={(checked) => updateView({ showCounter: checked })}
-            />
-            <span className="text-sm font-medium text-foreground">显示计数器当前值</span>
-          </div>
-          <p className="text-xs text-muted-foreground">开启后计数器收藏卡片会显示当前值与起始数。</p>
-        </ControlTile>
-        <ControlTile className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">跨工具</Badge>
-            <span className="text-sm font-medium text-foreground">{summary.total} 项已收藏</span>
-          </div>
-          <p className="text-xs text-muted-foreground">点击卡片跳转回对应工具页面并高亮该卡片。</p>
-        </ControlTile>
-      </div>
+      <ControlTile className="flex flex-wrap items-center gap-4">
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
+          <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer">显示快捷键</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
+          <FieldLabel htmlFor="fav-compact" className="cursor-pointer">紧凑模式</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
+          <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer">显示计时器进度</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
+          <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer">显示计数器当前值</FieldLabel>
+        </Field>
+      </ControlTile>
 
       <section className="grid gap-3 xl:grid-cols-2">
         {details.map(({ item, detail }, index) => (

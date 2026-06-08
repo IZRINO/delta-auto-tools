@@ -5,7 +5,7 @@ import {
   RiAddLine,
   RiDeleteBinLine,
   RiEyeLine,
-  RiKeyboardLine,
+  RiArrowDownSLine,
   RiMapPinLine,
   RiResetLeftLine,
   RiSpeedUpLine,
@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardHeader } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -28,9 +29,11 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  AddCardButton,
   AppPage,
   CardBody,
   ControlTile,
+  InlineControl,
   PageHero,
   SaveStateBadge,
   SectionHeader,
@@ -643,7 +646,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     <Tabs defaultValue="timers" className="min-h-0">
       <AppPage>
         <PageHero
-          eyebrow="Timer Matrix"
+          eyebrow="计时与计数"
           title="计时\\计数器"
           description="计时器负责阶段节奏，计数器负责战局累加；两套透明窗口和快捷键各自独立。"
           badges={
@@ -654,22 +657,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
             </>
           }
-          actions={
-            <TabsList className="h-11 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-card-strong),var(--surface-tile))] p-1 backdrop-blur-sm">
-              <TabsTrigger
-                className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
-                value="timers"
-              >
-                计时器
-              </TabsTrigger>
-              <TabsTrigger
-                className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
-                value="counters"
-              >
-                计数器
-              </TabsTrigger>
-            </TabsList>
-          }
           stats={
             <>
               <SignalTile label="计时卡片" value={form?.timers.length ?? 0} detail={`${bootstrap?.runs.filter((run) => run.status === "running").length ?? 0} 个运行中`} />
@@ -678,6 +665,21 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
             </>
           }
         />
+
+        <TabsList className="h-11 w-fit rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-card-strong),var(--surface-tile))] p-1 backdrop-blur-sm">
+          <TabsTrigger
+            className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
+            value="timers"
+          >
+            计时器
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
+            value="counters"
+          >
+            计数器
+          </TabsTrigger>
+        </TabsList>
 
         <div className="grid gap-3 lg:grid-cols-2">
           <ControlTile className="flex items-center gap-3">
@@ -748,7 +750,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                 />
               ))}
 
-              <AddCard controlsDisabled={controlsDisabled || !form} title="添加计时器" description="名称、秒数、计时方向、快捷键均可自定义。" onClick={addTimer} />
+              <AddCardButton disabled={controlsDisabled || !form} title="添加计时器" description="名称、秒数、计时方向、快捷键均可自定义。" onClick={addTimer} />
             </div>
           </TabsContent>
           <TabsContent value="counters" className="flex flex-col gap-5">
@@ -804,7 +806,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
                 />
               ))}
 
-              <AddCard controlsDisabled={controlsDisabled || !form} title="添加计数器" description="名称、起始数、快捷键均可自定义。" onClick={addCounter} />
+              <AddCardButton disabled={controlsDisabled || !form} title="添加计数器" description="名称、起始数、快捷键均可自定义。" onClick={addCounter} />
             </div>
           </TabsContent>
         </div>
@@ -833,7 +835,7 @@ function DisplaySettingsCard({ canDelete, controlsDisabled, description, display
   return (
     <TacticalCard>
       <SectionHeader
-        eyebrow={target === "timer" ? "Timer Overlay" : "Counter Overlay"}
+        eyebrow={target === "timer" ? "计时透明窗口" : "计数透明窗口"}
         icon={<RiEyeLine />}
         title={title}
         description={description}
@@ -859,22 +861,36 @@ function DisplaySettingsCard({ canDelete, controlsDisabled, description, display
               删除空分组
             </Button>
           </div>
-          <Field>
-            <FieldLabel>字体透明度</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center gap-4">
-                <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
-                <span className="w-12 text-right font-mono text-sm text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
-              </div>
-            </FieldContent>
-          </Field>
-          <Field>
-            <FieldLabel>{target === "timer" ? "计时器" : "计数器"}透明窗口显示宽度</FieldLabel>
-            <FieldContent>
-              <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
-            </FieldContent>
-          </Field>
-          <ControlTile className="text-xs/relaxed text-muted-foreground">{statusMessage}</ControlTile>
+          <Collapsible defaultOpen={false}>
+            <InlineControl className="p-0">
+              <CollapsibleTrigger asChild>
+                <Button className="w-full justify-between px-3" type="button" variant="ghost">
+                  显示参数
+                  <RiArrowDownSLine className="size-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="border-t border-[var(--surface-border)] px-3 py-3">
+                <FieldGroup className="gap-4">
+                  <Field>
+                    <FieldLabel>字体透明度</FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-4">
+                        <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
+                        <span className="w-12 text-right font-mono text-sm text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
+                      </div>
+                    </FieldContent>
+                  </Field>
+                  <Field>
+                    <FieldLabel>{target === "timer" ? "计时器" : "计数器"}透明窗口显示宽度</FieldLabel>
+                    <FieldContent>
+                      <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
+                    </FieldContent>
+                  </Field>
+                </FieldGroup>
+              </CollapsibleContent>
+            </InlineControl>
+          </Collapsible>
+          <InlineControl className="text-xs/relaxed text-muted-foreground">{statusMessage}</InlineControl>
         </FieldGroup>
         <Button className="self-start lg:self-center" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline">
           <RiMapPinLine data-icon="inline-start" />
@@ -911,11 +927,11 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   return (
     <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow={`Timer ${String(index + 1).padStart(2, "0")}`}
+        eyebrow="计时卡片"
         icon={<RiTimerLine />}
         title={timer.name || `计时器 ${index + 1}`}
         description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
-        badge={<Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge>}
+        badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge></>}
       />
       <CardHeader className="border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)] pt-0">
         <div className="flex items-center justify-between gap-3">
@@ -1014,12 +1030,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
             </div>
           </ControlTile>
           <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
-          <ControlTile>
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <RiKeyboardLine className="text-muted-foreground" />
-              <span>{timer.hotkey || "未设置快捷键"}</span>
-            </div>
-          </ControlTile>
+
         </FieldGroup>
       </CardBody>
     </TacticalCard>
@@ -1053,11 +1064,11 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "ring-2 ring-primary/70" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow={`Counter ${String(index + 1).padStart(2, "0")}`}
+        eyebrow="计数卡片"
         icon={<RiSpeedUpLine />}
         title={counter.name || `计数器 ${index + 1}`}
         description={`当前计数 · ${run?.value ?? counter.startValue}`}
-        badge={<Badge variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge>}
+        badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge></>}
       />
       <CardHeader className="border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)] pt-0">
         <div className="flex items-center justify-between gap-3">
@@ -1144,12 +1155,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
             <RiResetLeftLine data-icon="inline-start" />
             重置为起始数
           </Button>
-          <ControlTile>
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <RiKeyboardLine className="text-muted-foreground" />
-              <span>{counter.hotkey || "未设置快捷键"}</span>
-            </div>
-          </ControlTile>
+
         </FieldGroup>
       </CardBody>
     </TacticalCard>
@@ -1178,22 +1184,7 @@ function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyR
   );
 }
 
-function AddCard({ controlsDisabled, description, onClick, title }: { controlsDisabled: boolean; description: string; onClick: () => void; title: string }) {
-  return (
-    <button
-      className="group flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] p-6 text-center transition-all hover:border-primary/35 hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-      disabled={controlsDisabled}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="mb-4 flex size-11 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/35 group-hover:bg-primary/5">
-        <RiAddLine />
-      </span>
-      <span className="text-sm font-semibold text-foreground">{title}</span>
-      <span className="mt-1 max-w-56 text-xs/relaxed text-muted-foreground">{description}</span>
-    </button>
-  );
-}
+
 
 function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
