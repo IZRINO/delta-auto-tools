@@ -48,10 +48,10 @@ export function DeltaDataCard({ badge, children, className, data, emptyText = "�
           </div>
         )}
 
-        {!loading && !error && data !== undefined ? <JsonPreBlock className="min-h-48" maxHeightClassName="max-h-[28rem]" data={data} /> : null}
-        {!loading && !error && data === undefined && children ? children : null}
+        {!loading && !error && data != null ? <JsonPreBlock className="min-h-48" maxHeightClassName="max-h-[28rem]" data={data} /> : null}
+        {!loading && !error && data == null && children ? children : null}
 
-        {!loading && !error && data === undefined && !children ? (
+        {!loading && !error && data == null && !children ? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
             <RiDatabase2Line className="size-5 text-[var(--alert-red)]" />
             <p className="text-sm font-black uppercase text-[var(--ink)]">暂无数据</p>
