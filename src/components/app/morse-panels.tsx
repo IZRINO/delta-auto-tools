@@ -95,10 +95,10 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
                       </Badge>
                     </div>
 
-                    <div className="rounded-lg border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_48%,transparent),var(--surface-tile))] px-3 py-3">
-                      <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground">区域摘要</p>
+                    <InlineControl className="border-dashed px-3 py-3">
+                      <p className="font-mono text-[0.68rem] font-semibold tracking-[0.18em] text-muted-foreground uppercase">区域摘要</p>
                       <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
-                    </div>
+                    </InlineControl>
 
                     <div className="flex gap-2">
                       <Button
@@ -188,7 +188,7 @@ export function WorkbenchControlPanel({
 
       <CardBody className="xl:min-h-88">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
-          <section className="min-h-0 rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_48%,transparent))] px-4 py-4">
+          <section className="min-h-0 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_58%,transparent))] px-4 py-4 shadow-[var(--shadow-tile)]">
 
             <div className="mb-4 flex items-center gap-2">
 
@@ -260,7 +260,7 @@ export function WorkbenchControlPanel({
                   </div>
                 </ControlTile>
                 {autoClickEnabled && (
-                  <Collapsible defaultOpen={false} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_54%,transparent),var(--surface-tile))]">
+                  <Collapsible defaultOpen={false} className="rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_64%,transparent),var(--surface-tile))] shadow-[var(--shadow-tile)]">
                     <CollapsibleTrigger asChild>
                       <Button className="w-full justify-between px-3" type="button" variant="ghost">
                         点击区域配置
@@ -334,7 +334,7 @@ export function WorkbenchControlPanel({
               <div className="text-xs text-muted-foreground">正在加载设置...</div>
             )}
           </section>
-          <section className="min-h-0 rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_48%,transparent))] px-4 py-4">
+          <section className="min-h-0 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_58%,transparent))] px-4 py-4 shadow-[var(--shadow-tile)]">
 
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -359,9 +359,9 @@ export function WorkbenchControlPanel({
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_56%,transparent),var(--surface-tile))] p-4">
+            <InlineControl className="mt-4 p-4">
               <Input
-                className="h-12 rounded-lg px-4 font-mono text-base tracking-[0.22em]"
+                className="h-12 rounded-md px-4 font-mono text-base tracking-[0.22em]"
                 id="verification-input"
                 onChange={(event) => onVerificationChange(event.currentTarget.value)}
                 onFocus={onVerificationFocus}
@@ -369,13 +369,13 @@ export function WorkbenchControlPanel({
                 value={verificationValue}
               />
               <p className="mt-3 text-xs text-muted-foreground">{verificationMessage}</p>
-            </div>
+            </InlineControl>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_50%,transparent),var(--surface-tile))] px-3 py-3">
+              <InlineControl className="px-3 py-3">
                 <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">验证模式</p>
                 <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框即可重新验证"}</p>
-              </div>
+              </InlineControl>
               <Button disabled={isVerifying} onClick={onVerificationRetry} type="button" variant="outline">
                 <RiRefreshLine data-icon="inline-start" />
                 重新验证
@@ -417,7 +417,7 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
           </InlineControl>
         ) : (
           <>
-            <div className="rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_55%,transparent))] px-5 py-5">
+            <InlineControl className="px-5 py-5">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
                   {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
@@ -429,9 +429,9 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
                 {latestRunValue ?? "---"}
               </p>
               <p className="mt-3 text-xs text-muted-foreground">{latestRunError ?? "执行识别后会在这里显示最新三位结果。"}</p>
-            </div>
+            </InlineControl>
 
-            <div className="grid gap-2 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_40%,transparent))] p-3">
+            <InlineControl className="grid gap-2 p-3">
               {runDetails.map((detail) => (
                 <div key={detail.slot} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="min-w-16 font-medium text-foreground">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</span>
@@ -443,7 +443,7 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
                   <span>轮廓 {detail.contourCount}</span>
                 </div>
               ))}
-            </div>
+            </InlineControl>
           </>
         )}
       </CardBody>
@@ -484,7 +484,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
                   </InlineControl>
                 ) : (
                   history.map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--surface-tile)_45%,transparent))] p-4">
+                    <InlineControl key={entry.id} className="p-4"> 
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs font-medium text-foreground">{entry.result ? `识别结果 ${entry.result}` : "识别失败"}</p>
@@ -495,7 +495,7 @@ export function HistoryPanel({ history, isPreviewMode }: HistoryPanelProps) {
                         <span className="text-xs text-muted-foreground">{formatTimestamp(entry.occurredAtMs)}</span>
                       </div>
                       <p className="mt-2 text-xs/relaxed text-muted-foreground">{entry.error ? "识别失败" : "识别流程已完成。"}</p>
-                    </div>
+                    </InlineControl>
                   ))
                 )}
               </div>

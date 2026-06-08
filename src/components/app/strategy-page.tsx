@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { AppPage } from "@/components/app/app-ui";
+import { AppPage, SurfaceToggleGroup } from "@/components/app/app-ui";
 import {
   BUILTIN_STRATEGY_SITES,
   createStrategySite,
@@ -426,20 +426,22 @@ export function StrategyPage() {
 
   return (
     <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 gap-3 overflow-hidden">
-      <div className="relative z-10 shrink-0 rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_24%,transparent))] px-3 py-2 shadow-sm backdrop-blur-md">
+      <div className="relative z-10 shrink-0 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_32%,transparent))] px-3 py-2 shadow-[var(--shadow-card)]">
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">攻略</Badge>
             <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId} className="min-w-0 flex-1">
               <div className="overflow-x-auto overflow-y-hidden pb-1">
-                <TabsList variant="line" className="min-w-max justify-start">
-                  {allSites.map((site) => (
-                    <TabsTrigger key={site.id} value={site.id} className="max-w-36 shrink-0">
-                      <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
-                      <span className="truncate">{site.shortLabel || site.label}</span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
+                <SurfaceToggleGroup className="min-w-max">
+                  <TabsList variant="line" className="min-w-max justify-start bg-transparent p-0">
+                    {allSites.map((site) => (
+                      <TabsTrigger key={site.id} value={site.id} className="max-w-36 shrink-0 font-mono text-[0.72rem] tracking-[0.08em]">
+                        <img alt="" aria-hidden className="size-4 rounded-sm" src={site.favicon} />
+                        <span className="truncate">{site.shortLabel || site.label}</span>
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </SurfaceToggleGroup>
               </div>
             </Tabs>
           </div>
@@ -447,7 +449,7 @@ export function StrategyPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="min-w-0 max-w-full flex-1 truncate rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] px-3 py-2 font-mono text-[0.68rem] text-muted-foreground xl:max-w-80 xl:flex-none">
+                <div className="min-w-0 max-w-full flex-1 truncate rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_48%,transparent))] px-3 py-2 font-mono text-[0.68rem] text-muted-foreground shadow-[var(--shadow-tile)] xl:max-w-80 xl:flex-none">
                   {activeUrl || "未选择站点"}
                 </div>
               </TooltipTrigger>
@@ -531,10 +533,10 @@ export function StrategyPage() {
 
       <div
         ref={contentHostRef}
-        className="relative z-0 min-h-0 flex-1 overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_28%,transparent))]"
+        className="relative z-0 min-h-0 flex-1 overflow-hidden rounded-md border border-[var(--surface-border-strong)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_38%,transparent))] shadow-[var(--shadow-card)]"
       >
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground">
-          <div className="max-w-md rounded-lg border border-[var(--surface-border)] bg-background/82 px-5 py-4 shadow-sm backdrop-blur">
+          <div className="max-w-md rounded-md border border-[var(--surface-border)] bg-background/90 px-5 py-4 shadow-[var(--shadow-tile)]">
             <p className="font-medium text-foreground">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
             <p className="mt-2 text-xs/relaxed">
               {isNativeShell

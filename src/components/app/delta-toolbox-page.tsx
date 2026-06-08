@@ -5,7 +5,7 @@ import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { AccountKind, ApiResponse } from "@/components/app/delta-types";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
 import { getCapabilities } from "@/components/app/delta-utils";
-import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody, InlineNotice, JsonPreBlock, TacticalEmptyState } from "@/components/app/app-ui";
+import { AppPage, PageHero, TacticalCard, SectionHeader, CardBody, InlineNotice, JsonPreBlock, TacticalEmptyState, InlineControl, SurfaceToggleGroup } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -236,7 +236,7 @@ export function DeltaToolboxPage() {
             </div>
 
             {/* 举报折叠区 */}
-            <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))]">
+            <InlineControl className="p-0">
               <button
                 type="button"
                 className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-foreground"
@@ -266,7 +266,7 @@ export function DeltaToolboxPage() {
                   {reportResult !== null && <JsonPreBlock className="mt-2" maxHeightClassName="max-h-48" data={reportResult} />}
                 </div>
               )}
-            </div>
+            </InlineControl>
           </CardBody>
         </TacticalCard>
       )}
@@ -281,22 +281,22 @@ export function DeltaToolboxPage() {
           />
           <CardBody className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="flex rounded-lg border border-[var(--surface-border)] overflow-hidden">
+              <SurfaceToggleGroup className="flex overflow-hidden p-0">
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${pioneerListType === "pc" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/42"}`}
+                  className={`px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "pc" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/45"}`}
                   onClick={() => setPioneerListType("pc")}
                 >
                   PC
                 </button>
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${pioneerListType === "mobile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/42"}`}
+                  className={`border-l border-[var(--surface-border)] px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "mobile" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background/45"}`}
                   onClick={() => setPioneerListType("mobile")}
                 >
                   手机
                 </button>
-              </div>
+              </SurfaceToggleGroup>
               <Button size="sm" disabled={pioneerLoading} onClick={handleLoadPioneer}>
                 {pioneerLoading && <Spinner className="mr-1.5 size-3.5" />}
                 查询测试列表

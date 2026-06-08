@@ -18,7 +18,7 @@
 - 原生能力：Rust
 - 前端：React 19、TypeScript、Vite
 - 包管理与脚本：Bun
-- UI：Tailwind CSS v4、shadcn/ui、Remix Icon
+- UI：Tailwind CSS v4、shadcn/ui、Remix Icon；视觉语言为“Delta 战术工业白图纸控制台”（浅色工业战术、硬边网格、单一战术橙强调色）
 - 本地存储：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
 
 ## 本地开发
@@ -76,5 +76,5 @@ src-tauri/src/morse/     # 摩斯识别流程
 src-tauri/src/timer/     # 计时器与计数器
 src-tauri/src/rapidfire/ # 连发器
 src-tauri/src/delta/     # Delta 登录、账号与游戏数据接口
-docs/                    # 架构决策与开发记录
+docs/                    # 架构决策、开发记录与 UI 设计规范
 ```

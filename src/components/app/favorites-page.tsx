@@ -397,13 +397,13 @@ function FavoriteCard({ detail, index, item, onMoveDown, onMoveUp, onNavigate, o
 
   return (
     <button
-      className="group flex flex-col rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] p-0 text-left transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group flex flex-col rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] p-0 text-left shadow-[var(--shadow-tile)] transition-[border-color,box-shadow,transform] hover:border-primary/45 hover:shadow-[var(--shadow-subtle)] active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
       onClick={onNavigate}
       type="button"
     >
       <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-muted),transparent)] p-4 pb-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
             {detail.kind === "rapidfire" ? <RiSpeedUpLine /> : <RiTimerLine />}
           </span>
           <div className="min-w-0">

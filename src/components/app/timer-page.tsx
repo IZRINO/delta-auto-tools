@@ -39,6 +39,7 @@ import {
   SectionHeader,
   SignalTile,
   TacticalCard,
+  SurfaceToggleGroup,
 } from "@/components/app/app-ui";
 import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode, TimerDisplayTarget, TimerGroupForm, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
@@ -666,20 +667,22 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           }
         />
 
-        <TabsList className="h-11 w-fit rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(180deg,var(--surface-card-strong),var(--surface-tile))] p-1 backdrop-blur-sm">
-          <TabsTrigger
-            className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
-            value="timers"
-          >
-            计时器
-          </TabsTrigger>
-          <TabsTrigger
-            className="rounded-md px-5 py-2 text-sm font-semibold text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/20 data-active:bg-primary data-active:text-primary-foreground"
-            value="counters"
-          >
-            计数器
-          </TabsTrigger>
-        </TabsList>
+        <SurfaceToggleGroup className="w-fit">
+          <TabsList className="h-11 min-w-max bg-transparent p-0">
+            <TabsTrigger
+              className="rounded-md px-5 py-2 font-mono text-sm font-semibold tracking-[0.08em] text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/30 data-active:bg-primary data-active:text-primary-foreground"
+              value="timers"
+            >
+              计时器
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-md px-5 py-2 font-mono text-sm font-semibold tracking-[0.08em] text-muted-foreground transition-[background-color,color,border-color] hover:text-foreground data-active:border-primary/30 data-active:bg-primary data-active:text-primary-foreground"
+              value="counters"
+            >
+              计数器
+            </TabsTrigger>
+          </TabsList>
+        </SurfaceToggleGroup>
 
         <div className="grid gap-3 lg:grid-cols-2">
           <ControlTile className="flex items-center gap-3">
@@ -943,7 +946,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
             <Button
               aria-label={isFavorite ? "取消收藏" : "加入收藏"}
               aria-pressed={isFavorite}
-              className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+              className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
               data-icon="inline-start"
               disabled={controlsDisabled}
               onClick={onToggleFavorite}
@@ -994,19 +997,23 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
           <Field>
             <FieldLabel>计时方向</FieldLabel>
             <FieldContent>
-              <ToggleGroup className="w-full rounded-lg bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))]" disabled={controlsDisabled} type="single" value={timer.direction} variant="outline" onValueChange={(value) => value ? onUpdate({ direction: value as TimerItemForm["direction"] }) : undefined}>
-                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countup">正</ToggleGroupItem>
-                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countdown">反</ToggleGroupItem>
-              </ToggleGroup>
+              <SurfaceToggleGroup>
+                <ToggleGroup className="w-full" disabled={controlsDisabled} type="single" value={timer.direction} variant="outline" onValueChange={(value) => value ? onUpdate({ direction: value as TimerItemForm["direction"] }) : undefined}>
+                  <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] font-mono text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countup">正</ToggleGroupItem>
+                  <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] font-mono text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="countdown">反</ToggleGroupItem>
+                </ToggleGroup>
+              </SurfaceToggleGroup>
             </FieldContent>
           </Field>
           <Field>
             <FieldLabel>触发模式</FieldLabel>
             <FieldContent>
-              <ToggleGroup className="w-full rounded-lg bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))]" disabled={controlsDisabled} type="single" value={timer.triggerMode} variant="outline" onValueChange={(value) => value ? onUpdate({ triggerMode: value as TimerItemForm["triggerMode"] }) : undefined}>
-                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="press">按下</ToggleGroupItem>
-                <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="release">释放</ToggleGroupItem>
-              </ToggleGroup>
+              <SurfaceToggleGroup>
+                <ToggleGroup className="w-full" disabled={controlsDisabled} type="single" value={timer.triggerMode} variant="outline" onValueChange={(value) => value ? onUpdate({ triggerMode: value as TimerItemForm["triggerMode"] }) : undefined}>
+                  <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] font-mono text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="press">按下</ToggleGroupItem>
+                  <ToggleGroupItem className="min-w-24 flex-1 border-[var(--surface-border)] font-mono text-sm font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground" value="release">释放</ToggleGroupItem>
+                </ToggleGroup>
+              </SurfaceToggleGroup>
             </FieldContent>
           </Field>
           <Field>
@@ -1080,7 +1087,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
             <Button
               aria-label={isFavorite ? "取消收藏" : "加入收藏"}
               aria-pressed={isFavorite}
-              className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+              className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
               data-icon="inline-start"
               disabled={controlsDisabled}
               onClick={onToggleFavorite}
@@ -1262,7 +1269,7 @@ function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNa
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
-      <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
+      <div className="h-full w-full overflow-hidden rounded-md border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
         {bootstrap?.settings.timers.filter((t) => t.enabled && t.groupId === groupId && (group?.enabled ?? true)).map((timer) => {
           const run = runsById.get(timer.id);
           const finished = run?.status === "finished";
@@ -1313,7 +1320,7 @@ function CounterDisplayOverlay({ groupId, isNativeShell }: { groupId: string; is
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white" style={{ opacity }}>
-      <div className="h-full w-full overflow-hidden rounded-xl border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
+      <div className="h-full w-full overflow-hidden rounded-md border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
         {bootstrap?.settings.counters.filter((c) => c.enabled && c.groupId === groupId && (group?.enabled ?? true)).map((counter) => {
           const run = counterRunsByIdMap.get(counter.id);
           return (
@@ -1432,7 +1439,7 @@ function TimerPositionOverlay({ isNativeShell, target }: { isNativeShell: boolea
 
   return (
     <div
-      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-xl border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
+      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-md border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
       onMouseDown={(event) => {
         if (event.button !== 0) {
           return;

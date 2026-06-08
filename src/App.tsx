@@ -121,7 +121,7 @@ type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] |
 
 function ToolPageFallback() {
   return (
-    <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-6 text-center text-sm font-medium text-muted-foreground">
+    <div className="flex min-h-[360px] items-center justify-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-6 text-center font-mono text-sm font-semibold tracking-[0.08em] text-muted-foreground uppercase shadow-[var(--shadow-tile)]">
       正在装载工具面板...
     </div>
   );
@@ -169,18 +169,18 @@ function renderToolPage(
 function FavoritesSidebarGroup({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
   return (
     <SidebarGroup className="px-0 py-2">
-      <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">收藏</SidebarGroupLabel>
+      <SidebarGroupLabel className="font-mono text-[0.62rem] tracking-[0.22em] text-sidebar-foreground/65 uppercase">收藏</SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu className="gap-2">
+        <SidebarMenu className="gap-1.5">
           <SidebarMenuItem>
             <SidebarMenuButton
-              className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:border-sidebar-border/55 hover:bg-background/42 data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62"
+              className="relative h-auto rounded-md border border-transparent bg-transparent px-3 py-3 transition-[border-color,background-color,transform] hover:border-sidebar-border hover:bg-background/45 active:translate-y-px data-[active=true]:border-sidebar-primary/55 data-[active=true]:bg-background/70 data-[active=true]:before:absolute data-[active=true]:before:inset-y-2 data-[active=true]:before:left-0 data-[active=true]:before:w-1 data-[active=true]:before:bg-sidebar-primary"
               isActive={active}
               onClick={onClick}
               tooltip="收藏的计时器、计数器与连发器"
               type="button"
             >
-              <RiStarFill className={active ? "text-amber-500" : "text-muted-foreground"} />
+              <RiStarFill className={active ? "text-primary" : "text-muted-foreground"} />
               <span className="flex min-w-0 flex-1 flex-col items-start">
                 <span className="truncate text-sm">收藏夹</span>
                 <span className="font-mono text-[0.62rem] tracking-[0.16em] text-muted-foreground uppercase">
@@ -295,41 +295,41 @@ function AppShell() {
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden bg-transparent" defaultOpen style={appShellStyle}>
       <a
-        className="sr-only fixed left-4 top-4 z-50 rounded-lg border border-[var(--surface-border)] bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-[var(--shadow-card)] focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring/50"
+        className="sr-only fixed left-4 top-4 z-50 rounded-md border border-[var(--surface-border)] bg-card px-3 py-2 font-mono text-sm font-semibold tracking-[0.08em] text-foreground uppercase shadow-[var(--shadow-card)] focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-ring/50"
         href="#app-content"
       >
         跳到主内容
       </a>
       <Sidebar
-        className="min-h-0 overflow-hidden border-r border-sidebar-border/60 bg-[linear-gradient(180deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--sidebar)_64%,transparent))] shadow-[var(--shadow-shell)] backdrop-blur-2xl"
+        className="min-h-0 overflow-hidden border-r-2 border-sidebar-border bg-[linear-gradient(180deg,var(--sidebar),color-mix(in_srgb,var(--sidebar)_78%,var(--background)_22%))] shadow-[var(--shadow-shell)]"
         collapsible="none"
         variant="sidebar"
       >
         <SidebarHeader className="p-4 pb-3">
-          <div className="relative overflow-hidden rounded-xl border border-sidebar-border/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--sidebar)_82%,transparent),color-mix(in_oklch,var(--background)_58%,transparent))] px-4 py-4 shadow-[var(--shadow-subtle)] backdrop-blur-xl">
-            <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--primary),transparent)]" />
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_38%,transparent)_0.7px,transparent_0.95px)] bg-[length:20px_20px] opacity-20" />
-            <div className="flex items-center gap-3">
-              <div className="relative flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-[var(--shadow-tile)]">
+          <div className="relative overflow-hidden rounded-md border border-sidebar-border bg-[linear-gradient(145deg,color-mix(in_srgb,var(--sidebar)_86%,transparent),color-mix(in_srgb,var(--background)_48%,transparent))] px-4 py-4 shadow-[var(--shadow-subtle)]">
+            <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(color-mix(in_srgb,var(--surface-dot)_22%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--surface-dot)_22%,transparent)_1px,transparent_1px)] bg-[length:18px_18px] opacity-60" />
+            <div className="relative flex items-center gap-3">
+              <div className="relative flex size-11 shrink-0 items-center justify-center rounded-md border border-sidebar-primary/45 bg-primary text-primary-foreground shadow-[var(--shadow-tile)]">
                 <RiCrosshair2Line />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold tracking-tight text-foreground">三角洲行动工具</p>
-                <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.2em] text-muted-foreground uppercase">Delta Ops Console</p>
+                <p className="text-sm font-semibold tracking-[-0.01em] text-foreground">三角洲行动工具</p>
+                <p className="mt-1 truncate font-mono text-[0.62rem] tracking-[0.22em] text-muted-foreground uppercase">Delta Ops Console</p>
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+            <div className="relative mt-4 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-md border border-sidebar-border bg-background/56 px-2 py-2 shadow-[var(--shadow-tile)]">
                 <p className="font-mono text-sm font-semibold text-foreground">{tools.length + deltaTools.length}</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">工具</p>
+                <p className="mt-0.5 font-mono text-[0.6rem] tracking-[0.12em] text-muted-foreground uppercase">工具</p>
               </div>
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+              <div className="rounded-md border border-sidebar-border bg-background/56 px-2 py-2 shadow-[var(--shadow-tile)]">
                 <p className="font-mono text-sm font-semibold text-foreground">{overlayWindowModes.size}</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">窗口</p>
+                <p className="mt-0.5 font-mono text-[0.6rem] tracking-[0.12em] text-muted-foreground uppercase">窗口</p>
               </div>
-              <div className="rounded-lg border border-sidebar-border/60 bg-background/48 px-2 py-2 shadow-[var(--shadow-tile)] backdrop-blur-md">
+              <div className="rounded-md border border-sidebar-border bg-background/56 px-2 py-2 shadow-[var(--shadow-tile)]">
                 <p className="font-mono text-sm font-semibold text-foreground">本机</p>
-                <p className="mt-0.5 text-[0.62rem] text-muted-foreground">Tauri</p>
+                <p className="mt-0.5 font-mono text-[0.6rem] tracking-[0.12em] text-muted-foreground uppercase">Tauri</p>
               </div>
             </div>
           </div>
@@ -343,16 +343,16 @@ function AppShell() {
           <SidebarSeparator className="mx-1 my-1" />
 
           <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">当前工具</SidebarGroupLabel>
+            <SidebarGroupLabel className="font-mono text-[0.62rem] tracking-[0.22em] text-sidebar-foreground/65 uppercase">当前工具</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-2">
+              <SidebarMenu className="gap-1.5">
                 {tools.map((tool, index) => {
                   const Icon = tool.icon;
                   const active = activeTool === tool.id;
                   return (
                     <SidebarMenuItem key={tool.id}>
                       <SidebarMenuButton
-                        className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:-translate-y-0.5 hover:border-sidebar-border/55 hover:bg-background/42 active:translate-y-px data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62 data-[active=true]:shadow-[var(--shadow-tile)]"
+                        className="relative h-auto rounded-md border border-transparent bg-transparent px-3 py-3 transition-[border-color,background-color,transform] hover:border-sidebar-border hover:bg-background/45 active:translate-y-px data-[active=true]:border-sidebar-primary/55 data-[active=true]:bg-background/70 data-[active=true]:shadow-[var(--shadow-tile)] data-[active=true]:before:absolute data-[active=true]:before:inset-y-2 data-[active=true]:before:left-0 data-[active=true]:before:w-1 data-[active=true]:before:bg-sidebar-primary"
                         isActive={active}
                         onClick={() => setActiveTool(tool.id)}
                         tooltip={tool.label}
@@ -376,16 +376,16 @@ function AppShell() {
           <SidebarSeparator className="mx-1 my-1" />
 
           <SidebarGroup className="px-0 py-2">
-            <SidebarGroupLabel className="font-mono tracking-[0.18em] uppercase">三角洲行动 API</SidebarGroupLabel>
+            <SidebarGroupLabel className="font-mono text-[0.62rem] tracking-[0.22em] text-sidebar-foreground/65 uppercase">三角洲行动 API</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="gap-2">
+              <SidebarMenu className="gap-1.5">
                 {deltaTools.map((tool, index) => {
                   const Icon = tool.icon;
                   const active = activeTool === tool.id;
                   return (
                     <SidebarMenuItem key={tool.id}>
                       <SidebarMenuButton
-                        className="h-auto rounded-lg border border-transparent bg-transparent px-3 py-3 transition-all hover:-translate-y-0.5 hover:border-sidebar-border/55 hover:bg-background/42 active:translate-y-px data-[active=true]:border-sidebar-border/70 data-[active=true]:bg-background/62 data-[active=true]:shadow-[var(--shadow-tile)]"
+                        className="relative h-auto rounded-md border border-transparent bg-transparent px-3 py-3 transition-[border-color,background-color,transform] hover:border-sidebar-border hover:bg-background/45 active:translate-y-px data-[active=true]:border-sidebar-primary/55 data-[active=true]:bg-background/70 data-[active=true]:shadow-[var(--shadow-tile)] data-[active=true]:before:absolute data-[active=true]:before:inset-y-2 data-[active=true]:before:left-0 data-[active=true]:before:w-1 data-[active=true]:before:bg-sidebar-primary"
                         isActive={active}
                         onClick={() => setActiveTool(tool.id)}
                         tooltip={tool.label}
@@ -410,9 +410,9 @@ function AppShell() {
 
       <SidebarInset id="app-content" tabIndex={-1} className="h-full min-h-0 overflow-hidden bg-transparent focus:outline-none">
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 xl:px-6 xl:py-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 xl:px-5 xl:py-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col">
-              <div className="flex min-h-full flex-col p-4 xl:p-5">
+              <div className="flex min-h-full flex-col p-3 xl:p-4">
                 <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
               </div>
             </div>

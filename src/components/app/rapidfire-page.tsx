@@ -617,7 +617,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 <div className="flex items-center gap-2">
                   <Input
                     id="compensationDelayMinMs"
-                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                     type="number"
                     min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                     max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -636,7 +636,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 <div className="flex items-center gap-2">
                   <Input
                     id="compensationDelayMaxMs"
-                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                    className="w-28 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                     type="number"
                     min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                     max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -823,7 +823,7 @@ function RapidfireCardEditor({
       onPointerEnter={onDragOver}
       className={cn(
         !card.enabled && !status.error && "opacity-80",
-        status.error && "border-destructive/65 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--destructive)_9%,var(--surface-card-strong)),var(--surface-card-strong))] ring-1 ring-destructive/25 hover:border-destructive/75",
+        status.error && "border-destructive/65 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--destructive)_9%,var(--surface-card-strong)),var(--surface-card-strong))] ring-1 ring-destructive/25 hover:border-destructive/75",
         isDragging && "ring-2 ring-primary/55",
         isHighlighted && "ring-2 ring-primary/70",
       )}
@@ -842,7 +842,7 @@ function RapidfireCardEditor({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <Input
-              className="max-w-80 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-medium"
+              className="max-w-80 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-medium"
               placeholder="卡片名称"
               value={card.name}
               onChange={(event) => onUpdate(card.id, { name: event.target.value })}
@@ -889,7 +889,7 @@ function RapidfireCardEditor({
               <Button
                 aria-label={isFavorite ? "取消收藏" : "加入收藏"}
                 aria-pressed={isFavorite}
-                className={cn(isFavorite ? "text-amber-500" : "text-muted-foreground")}
+                className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
                 data-icon="inline-start"
                 disabled={disabled}
                 onClick={onToggleFavorite}
@@ -961,7 +961,7 @@ function RapidfireCardEditor({
               <div className="flex items-center gap-2">
                 <Input
                   id={`${card.id}-interval`}
-                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                  className="w-28 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                   type="number"
                   min={RAPIDFIRE_MIN_INTERVAL_MS}
                   value={card.intervalMs}
@@ -989,7 +989,7 @@ function RapidfireCardEditor({
                       <div className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
                         <Input
                           id={`${card.id}-jitter-min`}
-                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                           type="number"
                           min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
                           max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
@@ -1001,7 +1001,7 @@ function RapidfireCardEditor({
                         <span className="text-xs text-muted-foreground">至</span>
                         <Input
                           id={`${card.id}-jitter-max`}
-                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          className="min-w-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                           type="number"
                           min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
                           max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
@@ -1021,7 +1021,7 @@ function RapidfireCardEditor({
                       <div className="flex items-center gap-2">
                         <Input
                           id={`${card.id}-min-spacing`}
-                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                           type="number"
                           min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                           max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -1040,7 +1040,7 @@ function RapidfireCardEditor({
                       <div className="flex items-center gap-2">
                         <Input
                           id={`${card.id}-trigger-jitter`}
-                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_58%,transparent),var(--surface-tile))] font-mono"
+                          className="w-28 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_68%,transparent),var(--surface-tile))] font-mono"
                           type="number"
                           min={0}
                           max={1000}
@@ -1122,7 +1122,7 @@ function RapidfireDisplayOverlay({ groupId, isNativeShell }: { groupId: string; 
 
   return (
     <div className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-1 font-mono text-white">
-      <div className="h-full w-full overflow-hidden rounded-lg border border-white/15 bg-black/20 px-2.5 py-1.5 backdrop-blur-[1px]">
+      <div className="h-full w-full overflow-hidden rounded-md border border-white/15 bg-black/20 px-2.5 py-1.5 backdrop-blur-[1px]">
         {enabledCards.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs font-semibold text-white/60">连发器未启用</div>
         ) : (
@@ -1220,7 +1220,7 @@ function RapidfirePositionOverlay({ isNativeShell }: { isNativeShell: boolean })
 
   return (
     <div
-      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-xl border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
+      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-md border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         setDragStart({ mouseX: event.screenX, mouseY: event.screenY, x: position.x, y: position.y });

@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { InlineControl } from "@/components/app/app-ui";
 
 type DeltaAccountSelectorProps = {
   filterKinds: AccountKind[];
@@ -37,9 +38,9 @@ export function DeltaAccountSelector({ filterKinds, emptyText }: DeltaAccountSel
 
   if (filtered.length === 0) {
     return (
-      <div className="rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_34%,transparent))] px-4 py-3 text-sm text-muted-foreground">
+      <InlineControl className="px-4 py-3 text-sm text-muted-foreground">
         {emptyText}
-      </div>
+      </InlineControl>
     );
   }
 

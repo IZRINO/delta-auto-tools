@@ -14,7 +14,7 @@ type AppPageProps = {
 
 export function AppPage({ children, className }: AppPageProps) {
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col gap-5", className)}>
+    <div className={cn("flex min-h-0 flex-1 flex-col gap-4 font-sans", className)}>
       {children}
     </div>
   );
@@ -34,21 +34,21 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-xl border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_32%,transparent))] px-5 py-5 shadow-[var(--shadow-card)] backdrop-blur-xl",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_0_0,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_28rem),radial-gradient(circle,color-mix(in_oklch,var(--surface-dot)_42%,transparent)_0.7px,transparent_0.95px)] before:bg-[length:100%_100%,22px_22px] before:opacity-[0.18]",
-        "after:pointer-events-none after:absolute after:inset-x-0 after:top-0 after:h-px after:bg-[linear-gradient(90deg,transparent,var(--surface-highlight),transparent)]",
+        "relative overflow-hidden rounded-md border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_38%,transparent))] px-5 py-5 shadow-[var(--shadow-card)]",
+        "before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(color-mix(in_srgb,var(--surface-dot)_24%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--surface-dot)_24%,transparent)_1px,transparent_1px)] before:bg-[length:20px_20px] before:opacity-55",
+        "after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-1 after:bg-primary",
         className,
       )}
     >
       <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-mono text-[0.68rem] font-semibold tracking-[0.24em] text-muted-foreground uppercase">
+            <p className="font-mono text-[0.64rem] font-semibold tracking-[0.26em] text-muted-foreground uppercase">
               {eyebrow}
             </p>
             {badges}
           </div>
-          <h1 className="mt-3 text-balance font-heading text-2xl font-semibold tracking-[-0.045em] text-foreground xl:text-3xl">
+          <h1 className="mt-3 text-balance font-heading text-2xl font-semibold tracking-[-0.035em] text-foreground xl:text-3xl">
             {title}
           </h1>
           <p className="mt-2 max-w-[65ch] text-sm/relaxed text-muted-foreground">{description}</p>
@@ -72,18 +72,18 @@ export function SignalTile({ className, detail, icon, label, value }: SignalTile
   return (
     <div
       className={cn(
-        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_62%,transparent))] px-4 py-3 shadow-[var(--shadow-tile)] backdrop-blur-sm",
+        "relative rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_68%,transparent))] px-4 py-3 shadow-[var(--shadow-tile)] before:pointer-events-none before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-primary/60",
         className,
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-mono text-[0.65rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <p className="font-mono text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
             {label}
           </p>
-          <div className="mt-1 truncate text-lg font-semibold tracking-tight text-foreground">{value}</div>
+          <div className="mt-1 truncate font-mono text-lg font-semibold tracking-[-0.02em] text-foreground tabular-nums">{value}</div>
         </div>
-        {icon ? <div className="text-primary/80">{icon}</div> : null}
+        {icon ? <div className="text-primary">{icon}</div> : null}
       </div>
       {detail ? <div className="mt-2 text-xs/relaxed text-muted-foreground">{detail}</div> : null}
     </div>
@@ -99,9 +99,9 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     <Card
       size={size}
       className={cn(
-        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_oklch,var(--secondary)_28%,transparent))] shadow-[var(--shadow-card)] backdrop-blur-md transition-[border-color,background-color,box-shadow,opacity]",
-        "hover:border-primary/30 hover:shadow-[var(--shadow-shell)]",
-        active && "border-primary/45 bg-[linear-gradient(145deg,color-mix(in_oklch,var(--primary)_9%,var(--surface-card-strong)),color-mix(in_oklch,var(--surface-card)_78%,transparent))] ring-1 ring-primary/18",
+        "border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),color-mix(in_srgb,var(--secondary)_32%,transparent))] shadow-[var(--shadow-card)] transition-[border-color,background-color,box-shadow,opacity,transform]",
+        "hover:border-[var(--surface-border-strong)] hover:shadow-[var(--shadow-subtle)]",
+        active && "border-primary/70 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--primary)_10%,var(--surface-card-strong)),color-mix(in_srgb,var(--surface-card)_82%,transparent))] ring-2 ring-primary/28",
         className,
       )}
       {...props}
@@ -132,13 +132,13 @@ export function SectionHeader({ actions, badge, className, description, eyebrow,
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_46%,transparent))] text-primary backdrop-blur-sm">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_58%,transparent))] text-primary shadow-[var(--shadow-tile)]">
               {icon}
             </div>
           ) : null}
           <div className="min-w-0">
             {eyebrow ? (
-              <p className="font-mono text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+              <p className="font-mono text-[0.6rem] font-semibold tracking-[0.22em] text-muted-foreground uppercase">
                 {eyebrow}
               </p>
             ) : null}
@@ -164,7 +164,7 @@ export function ControlTile({ children, className }: ControlTileProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_44%,transparent))] p-3 shadow-[var(--shadow-tile)] backdrop-blur-sm",
+        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_54%,transparent))] p-3 shadow-[var(--shadow-tile)]",
         className,
       )}
     >
@@ -195,7 +195,7 @@ export function TacticalEmptyState({ children, className, description, icon, tit
   return (
     <TacticalCard className={cn("min-h-48", className)}>
       <CardBody className="flex h-full items-center justify-center">
-        <Empty className="min-h-40 rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-4 py-8 text-center backdrop-blur-md">
+        <Empty className="min-h-40 rounded-md border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] px-4 py-8 text-center shadow-[var(--shadow-tile)]">
           {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
           <EmptyHeader>
             <EmptyTitle>{title}</EmptyTitle>
@@ -220,14 +220,14 @@ export function AddCardButton({ className, description, disabled, onClick, title
   return (
     <button
       className={cn(
-        "group flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_38%,transparent))] p-6 text-center transition-all hover:border-primary/35 hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-50",
+        "group flex min-h-64 flex-col items-center justify-center rounded-md border border-dashed border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_48%,transparent))] p-6 text-center transition-[border-color,background-color,transform,opacity] hover:border-primary/55 hover:bg-[var(--surface-hover)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <span className="mb-4 flex size-11 items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/35 group-hover:bg-primary/5">
+      <span className="mb-4 flex size-11 items-center justify-center rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-card-strong),var(--surface-tile))] text-primary transition-colors group-hover:border-primary/55 group-hover:bg-primary/10">
         <RiAddLine />
       </span>
       <span className="text-sm font-semibold text-foreground">{title}</span>
@@ -247,7 +247,7 @@ export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" 
     <pre
       className={cn(
         maxHeightClassName,
-        "overflow-auto rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_oklch,var(--card)_42%,transparent))] p-3 font-mono text-xs text-muted-foreground",
+        "overflow-auto rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-tile),color-mix(in_srgb,var(--card)_52%,transparent))] p-3 font-mono text-xs text-muted-foreground shadow-[var(--shadow-tile)]",
         className,
       )}
     >
@@ -264,7 +264,7 @@ type InlineNoticeProps = {
 
 export function InlineNotice({ children, className, title }: InlineNoticeProps) {
   return (
-    <Alert variant="destructive" className={cn("border-destructive/45 bg-[color-mix(in_oklch,var(--destructive)_8%,transparent)]", className)}>
+    <Alert variant="destructive" className={cn("rounded-md border-destructive/55 bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)]", className)}>
       {title ? <AlertTitle>{title}</AlertTitle> : null}
       <AlertDescription>{children}</AlertDescription>
     </Alert>
@@ -275,7 +275,43 @@ export function InlineControl({ children, className }: ControlTileProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_oklch,var(--card)_54%,transparent),var(--surface-tile))] p-3 backdrop-blur-sm",
+        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--card)_64%,transparent),var(--surface-tile))] p-3 shadow-[var(--shadow-tile)]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+type CardToolbarProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+export function CardToolbar({ children, className }: CardToolbarProps) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-panel),color-mix(in_srgb,var(--card)_48%,transparent))] p-2 shadow-[var(--shadow-tile)]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+type SurfaceToggleGroupProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border border-[var(--surface-border)] bg-[linear-gradient(145deg,var(--surface-panel),color-mix(in_srgb,var(--card)_42%,transparent))] p-1 shadow-[var(--shadow-tile)]",
         className,
       )}
     >

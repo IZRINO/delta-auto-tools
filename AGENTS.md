@@ -270,12 +270,12 @@ src-tauri/src/
 
 ## UI and Styling Rules
 
-- **整体视觉方向**：当前 UI 是“战术白色操作台”（Tactical White Console），不是营销页、模板首页或普通后台卡片堆叠。后续新增页面必须延续轻量军规仪表感：暖白背景、橄榄绿色主色、细网格底纹、模块化信号块、清晰状态徽章和高密度但不拥挤的工具布局；边界保持低圆角、硬朗仪表感，避免大面积胶囊化。
-- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**。禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类；桌面页面样式通过 shadcn/ui、Tailwind 工具类和 `src/App.css` 主题 token 实现。
-- `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、背景底纹和 overlay 基础样式；全局圆角以 vega 的紧凑硬朗半径为准，不要在业务组件里堆叠 `rounded-3xl` / `rounded-[2rem]` 形成过度圆润界面，也不要硬编码大面积 raw color（例如 `bg-blue-500`）替代 token。
-- 桌面主界面优先复用 `src/components/app/app-ui.tsx` 的共享视觉积木：`AppPage`、`PageHero`、`SignalTile`、`TacticalCard`、`SectionHeader`、`ControlTile`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
+- **整体视觉方向**：当前 UI 是“Delta 战术工业白图纸控制台”，不是营销页、模板首页、普通后台卡片堆叠或全黑 CRT 终端。后续新增页面必须延续浅色工业战术控制台：Canvas `#E8E4D8`、Surface `#F4F1E6`、碳黑文字、硬边 1px/2px 网格、等宽小字、高密度装备清单式信息块、清晰状态徽章和单一 Delta Hazard Orange `#C65A1E` 强调色；边界保持低圆角、硬朗仪表感，避免大面积胶囊化。
+- **仅使用 shadcn/ui 组件和 Tailwind CSS 进行样式设计**。禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类；桌面页面样式通过 shadcn/ui、Tailwind 工具类和 `src/App.css` 主题 token 实现。详细设计规范见 `docs/DESIGN.md`，重构边界见 `docs/ui-industrial-brutalist-refactor.md`。
+- `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、背景底纹和 overlay 基础样式；全局圆角以工业硬边低圆角为准，不要在业务组件里堆叠 `rounded-3xl` / `rounded-[2rem]` 形成过度圆润界面，也不要硬编码大面积 raw color（例如 `bg-blue-500`）替代 token。
+- 桌面主界面优先复用 `src/components/app/app-ui.tsx` 的共享视觉积木：`AppPage`、`PageHero`、`SignalTile`、`TacticalCard`、`SectionHeader`、`ControlTile`、`InlineControl`、`CardToolbar`、`SurfaceToggleGroup`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
 - 工作台页面应采用“PageHero + 信号指标 + TacticalCard 内容区”的结构：顶部说明当前工具目的与状态，中部放开关/透明窗口/校准等关键控制，下部放可编辑卡片或历史记录。
-- 攻略网站页是例外：为最大化网页占比，该页使用贴顶浏览器工具条 + `strategy-content` 内容宿主，不使用 PageHero / 大说明卡；不得隐藏主应用 Sidebar，也不得新增独立浏览器窗口替代主窗口内嵌 WebView。
+- 攻略网站页是例外：为最大化网页占比，该页使用贴顶工业浏览器工具条 + `strategy-content` 内容宿主，不使用 PageHero / 大说明卡；不得隐藏主应用 Sidebar，也不得新增独立浏览器窗口替代主窗口内嵌 WebView。
 - 表单仍使用 `FieldGroup` + `Field` + `FieldLabel` + `FieldContent`；开关设置放在 `ControlTile` 中；提示与异常优先用 `Alert` / `FieldError` / `Badge`，不要手写自定义 callout。
 - 图标继续使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `data-icon="inline-end"`；不要引入 lucide 或混用其他图标库。
 - 透明窗口和位置设置窗口属于游戏叠加层，可以保留深色半透明 overlay 风格；不要套用主界面的白色卡片背景，也不要破坏无边框、透明、置顶、点击穿透约束。
