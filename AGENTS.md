@@ -75,7 +75,7 @@ src/
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
-│       ├── strategy-page.tsx  # 攻略网站工作台：主窗口内嵌 WebView2 + 站点 Tab + 刷新档位
+│       ├── strategy-page.tsx  # 攻略网站工作台：贴顶浏览器工具条 + 主窗口内嵌 WebView2 + 站点 Tab + 刷新档位
 │       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、刷新档位、localStorage 读写）
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
 │       ├── tool-placeholder-page.tsx  # 未开放工具占位组件
@@ -102,7 +102,7 @@ src/
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染 `SidebarProvider` + 侧边栏 + 当前工具壳层。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
 - 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站），侧边栏在“当前工具”下切换
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
-- **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），并在页面下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
+- **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），页面顶部使用紧凑浏览器工具条承载站点横向 Tab、新增 / 删除自定义站点、自动刷新档位、手动刷新和系统浏览器打开；当前 URL 只在工具条中紧凑展示 / tooltip 展示，不再保留 PageHero 或大块说明卡。工具条下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL，并使用 `min-h-0 flex-1 overflow-hidden` 吃满主应用剩余高度；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
 - **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
 - **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
@@ -275,6 +275,7 @@ src-tauri/src/
 - `src/App.css` 中的 `:root` 与 `@theme inline` 是全局视觉 token 来源。允许维护颜色、字体、半径、背景底纹和 overlay 基础样式；全局圆角以 vega 的紧凑硬朗半径为准，不要在业务组件里堆叠 `rounded-3xl` / `rounded-[2rem]` 形成过度圆润界面，也不要硬编码大面积 raw color（例如 `bg-blue-500`）替代 token。
 - 桌面主界面优先复用 `src/components/app/app-ui.tsx` 的共享视觉积木：`AppPage`、`PageHero`、`SignalTile`、`TacticalCard`、`SectionHeader`、`ControlTile`、`SaveStateBadge`、`CardBody`。不要在每个页面重复手写一套 hero、统计卡、保存状态和 section header。
 - 工作台页面应采用“PageHero + 信号指标 + TacticalCard 内容区”的结构：顶部说明当前工具目的与状态，中部放开关/透明窗口/校准等关键控制，下部放可编辑卡片或历史记录。
+- 攻略网站页是例外：为最大化网页占比，该页使用贴顶浏览器工具条 + `strategy-content` 内容宿主，不使用 PageHero / 大说明卡；不得隐藏主应用 Sidebar，也不得新增独立浏览器窗口替代主窗口内嵌 WebView。
 - 表单仍使用 `FieldGroup` + `Field` + `FieldLabel` + `FieldContent`；开关设置放在 `ControlTile` 中；提示与异常优先用 `Alert` / `FieldError` / `Badge`，不要手写自定义 callout。
 - 图标继续使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `data-icon="inline-end"`；不要引入 lucide 或混用其他图标库。
 - 透明窗口和位置设置窗口属于游戏叠加层，可以保留深色半透明 overlay 风格；不要套用主界面的白色卡片背景，也不要破坏无边框、透明、置顶、点击穿透约束。

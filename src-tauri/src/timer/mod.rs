@@ -916,6 +916,35 @@ fn deduct_multisegment_pool(
     Some((new_pool, new_started_at_ms))
 }
 
+fn trigger_multisegment_runtime(
+    runtime: Option<&mut TimerRuntime>,
+    now: u64,
+    total_duration: u64,
+    segment_duration: u64,
+    direction: TimerDirection,
+    segment_count: u32,
+) -> Option<TimerRuntime> {
+    let runtime = runtime.map(|runtime| {
+        update_timer_runtime(runtime, now);
+        &*runtime
+    });
+    let (new_pool, new_started_at_ms) =
+        deduct_multisegment_pool(runtime, now, total_duration, segment_duration)?;
+
+    Some(TimerRuntime {
+        started_at_ms: new_started_at_ms,
+        ends_at_ms: None,
+        current_seconds: new_pool,
+        remaining_seconds: new_pool,
+        duration_seconds: total_duration,
+        direction,
+        status: TimerRunStatus::Running,
+        segment_count,
+        segment_duration,
+        recovery_start_pool: new_pool,
+    })
+}
+
 fn tick(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TimerState>();
     let bootstrap = {
@@ -991,31 +1020,21 @@ fn trigger_hotkey_targets(
                     }
                     let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
 
-                    // 精确到毫秒扣除，避免触发落在 250ms tick 间隙时读取陈旧秒级 pool
-                    let Some((new_pool, new_started_at_ms)) = deduct_multisegment_pool(
-                        inner.runs.get(&timer_id),
+                    // 触发前先按 tick 同源逻辑归一化 runtime，再用毫秒级 pool 扣段。
+                    // 这样按键落在 250ms tick 间隙、Finished 满池或 999ms 余量时，
+                    // 后续显示状态和扣除起点保持一致。
+                    let Some(next_runtime) = trigger_multisegment_runtime(
+                        inner.runs.get_mut(&timer_id),
                         now,
                         total_duration,
                         duration_seconds,
+                        direction,
+                        seg_count,
                     ) else {
                         continue;
                     };
 
-                    inner.runs.insert(
-                        timer_id,
-                        TimerRuntime {
-                            started_at_ms: new_started_at_ms,
-                            ends_at_ms: None,
-                            current_seconds: new_pool,
-                            remaining_seconds: new_pool,
-                            duration_seconds: total_duration,
-                            direction: direction.clone(),
-                            status: TimerRunStatus::Running,
-                            segment_count: seg_count,
-                            segment_duration: duration_seconds,
-                            recovery_start_pool: new_pool,
-                        },
-                    );
+                    inner.runs.insert(timer_id, next_runtime);
                     continue;
                 }
 
@@ -1807,5 +1826,102 @@ mod tests {
         let deduction = deduct_multisegment_pool(Some(&runtime), 123_456, 300, 60);
 
         assert_eq!(deduction, Some((240, 123_456)));
+    }
+
+    fn trigger_multisegment_at(
+        runtime: Option<TimerRuntime>,
+        now: u64,
+        direction: TimerDirection,
+    ) -> Option<TimerRuntime> {
+        let mut runtime = runtime;
+        trigger_multisegment_runtime(runtime.as_mut(), now, 300, 60, direction, 5)
+    }
+
+    fn running_multisegment(
+        pool: u64,
+        started_at_ms: u64,
+        direction: TimerDirection,
+    ) -> TimerRuntime {
+        TimerRuntime {
+            started_at_ms,
+            ends_at_ms: None,
+            current_seconds: pool,
+            remaining_seconds: pool,
+            duration_seconds: 300,
+            direction,
+            status: TimerRunStatus::Running,
+            segment_count: 5,
+            segment_duration: 60,
+            recovery_start_pool: pool,
+        }
+    }
+
+    #[test]
+    fn multisegment_trigger_normalizes_recovered_pool_before_deducting_countup() {
+        let direction = TimerDirection::Countup;
+        let first = trigger_multisegment_at(None, 0, direction.clone()).unwrap();
+        assert_eq!(first.current_seconds, 240);
+        assert_eq!(first.recovery_start_pool, 240);
+
+        let second = trigger_multisegment_at(Some(first), 0, direction.clone()).unwrap();
+        assert_eq!(second.current_seconds, 180);
+
+        let third = trigger_multisegment_at(Some(second), 0, direction.clone()).unwrap();
+        assert_eq!(third.current_seconds, 120);
+
+        let fourth = trigger_multisegment_at(Some(third), 120_000, direction).unwrap();
+        assert_eq!(fourth.current_seconds, 180);
+        assert_eq!(fourth.remaining_seconds, 180);
+        assert_eq!(fourth.recovery_start_pool, 180);
+        assert_eq!(fourth.started_at_ms, 120_000);
+        assert_eq!(fourth.status, TimerRunStatus::Running);
+    }
+
+    #[test]
+    fn multisegment_trigger_normalizes_recovered_pool_before_deducting_countdown() {
+        let direction = TimerDirection::Countdown;
+        let first = trigger_multisegment_at(None, 0, direction.clone()).unwrap();
+        let second = trigger_multisegment_at(Some(first), 0, direction.clone()).unwrap();
+        let third = trigger_multisegment_at(Some(second), 0, direction.clone()).unwrap();
+
+        let fourth = trigger_multisegment_at(Some(third), 120_000, direction).unwrap();
+
+        assert_eq!(fourth.current_seconds, 180);
+        assert_eq!(fourth.remaining_seconds, 180);
+        assert_eq!(fourth.recovery_start_pool, 180);
+        assert_eq!(fourth.started_at_ms, 120_000);
+        assert_eq!(fourth.status, TimerRunStatus::Running);
+    }
+
+    #[test]
+    fn multisegment_trigger_treats_finished_runtime_as_full_pool() {
+        let runtime = TimerRuntime {
+            status: TimerRunStatus::Finished,
+            current_seconds: 300,
+            remaining_seconds: 300,
+            recovery_start_pool: 300,
+            ..running_multisegment(120, 1_000, TimerDirection::Countdown)
+        };
+
+        let next =
+            trigger_multisegment_at(Some(runtime), 123_456, TimerDirection::Countdown).unwrap();
+
+        assert_eq!(next.current_seconds, 240);
+        assert_eq!(next.remaining_seconds, 240);
+        assert_eq!(next.recovery_start_pool, 240);
+        assert_eq!(next.started_at_ms, 123_456);
+    }
+
+    #[test]
+    fn multisegment_trigger_preserves_999ms_recovery_remainder() {
+        let runtime = running_multisegment(120, 0, TimerDirection::Countup);
+
+        let next = trigger_multisegment_at(Some(runtime), 60_999, TimerDirection::Countup).unwrap();
+
+        assert_eq!(next.current_seconds, 120);
+        assert_eq!(next.remaining_seconds, 120);
+        assert_eq!(next.recovery_start_pool, 120);
+        assert_eq!(next.started_at_ms, 60_000);
+        assert_eq!(multisegment_pool_ms(Some(&next), 60_999, 300), 120_999);
     }
 }
