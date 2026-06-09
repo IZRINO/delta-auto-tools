@@ -164,21 +164,19 @@ function IndexRailItem({
 }) {
   return (
     <button
-      className="group relative grid w-full grid-cols-[3.25rem_1fr_1.75rem] items-stretch border-b border-[var(--ink)] bg-[var(--paper)] text-left transition-colors hover:bg-[var(--bone)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] data-[active=true]:bg-[var(--ink)] data-[active=true]:text-[var(--paper)]"
+      className="group relative grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch border-b border-[var(--ink)] bg-[var(--paper)] text-left transition-colors hover:bg-[var(--bone)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] data-[active=true]:bg-[var(--ink)] data-[active=true]:text-[var(--paper)]"
       data-active={active}
       onClick={onClick}
       type="button"
     >
-      <span className="flex items-center justify-center border-r border-[var(--ink)] font-mono text-[0.72rem] font-black tracking-[0.14em] text-[var(--alert-red)] group-data-[active=true]:bg-[var(--alert-red)] group-data-[active=true]:text-[var(--paper)]">
-        {code}
-      </span>
+      <span className="bg-transparent group-data-[active=true]:bg-[var(--alert-red)]" aria-hidden="true" />
       <span className="min-w-0 px-3 py-3">
         <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">{label}</span>
-        <span className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.18em] text-[var(--steel)] uppercase group-data-[active=true]:text-[var(--bone)]">
-          {meta}
+        <span className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--steel)] uppercase group-data-[active=true]:text-[var(--bone)]">
+          {code} / {meta}
         </span>
       </span>
-      <span className="flex items-center justify-center border-l border-[var(--ink)]">
+      <span className="flex items-center justify-center border-l border-[var(--ink)] text-[var(--alert-red)] group-data-[active=true]:text-[var(--paper)]">
         <Icon className="size-4" aria-hidden="true" />
       </span>
     </button>
@@ -316,44 +314,36 @@ function AppShell() {
         跳到主内容
       </a>
 
-      <header className="grid min-h-0 grid-cols-[240px_1fr_auto] border-b-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]">
+      <header className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] border-b-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]">
         <div className="flex items-center gap-3 border-r-2 border-[var(--ink)] px-3">
           <div className="flex size-8 items-center justify-center border-2 border-[var(--ink)] bg-[var(--alert-red)] text-[var(--paper)]">
             <RiCrosshair2Line className="size-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 leading-none">
             <p className="truncate text-sm font-black tracking-[-0.03em] uppercase">三角洲行动工具</p>
-            <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.22em] text-[var(--steel)] uppercase">Delta Ops Console</p>
+            <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.18em] text-[var(--steel)] uppercase">Delta Auto Tools</p>
           </div>
         </div>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center">
-          <div className="min-w-0 px-4">
-            <p className="truncate font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--steel)] uppercase">
-              Swiss Industrial Print × Declassified Tactical Control Board
+        <div className="flex min-w-0 items-center justify-between gap-3 px-4">
+          <div className="min-w-0">
+            <p className="truncate font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">
+              当前工作台
             </p>
-            <p className="mt-0.5 truncate text-xs font-black tracking-[0.18em] uppercase text-[var(--alert-red)]">
-              ACTIVE / {activeMeta?.short ?? "Favorites"} / {activeMeta?.label ?? "收藏夹"}
+            <p className="mt-0.5 truncate text-xs font-black tracking-[0.12em] uppercase text-[var(--alert-red)]">
+              {activeMeta?.label ?? "收藏夹"} / {activeMeta?.short ?? "Pinned"}
             </p>
           </div>
-          <div className="hidden h-full grid-cols-3 border-l-2 border-[var(--ink)] font-mono text-[0.58rem] font-black tracking-[0.16em] uppercase lg:grid">
-            <div className="flex items-center border-r border-[var(--ink)] px-3">TOOLS / {tools.length + deltaTools.length}</div>
-            <div className="flex items-center border-r border-[var(--ink)] px-3">WINDOWS / {overlayWindowModes.size}</div>
-            <div className="flex items-center px-3 text-[var(--alert-red)]">ENGINE / TAURI</div>
+          <div className="hidden items-center border-2 border-[var(--ink)] bg-[var(--ink)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--paper)] uppercase sm:flex">
+            <span className="bg-[var(--paper)] px-3 py-2 text-[var(--ink)]">DESKTOP</span>
+            <span className="px-3 py-2 text-[var(--paper)]">Tauri</span>
           </div>
-        </div>
-        <div className="flex items-center border-l-2 border-[var(--ink)] bg-[var(--ink)] px-4 font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--paper)] uppercase">
-          REV / INDUSTRIAL
         </div>
       </header>
 
       <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden">
         <aside className="min-h-0 overflow-y-auto border-r-2 border-[var(--ink)] bg-[var(--bone)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="border-b-2 border-[var(--ink)] bg-[var(--paper)] p-3">
-            <div className="grid grid-cols-3 border-2 border-[var(--ink)] bg-[var(--ink)] gap-px font-mono text-[0.58rem] font-black uppercase tracking-[0.14em]">
-              <div className="bg-[var(--paper)] px-2 py-2 text-center text-[var(--ink)]">OPS</div>
-              <div className="bg-[var(--paper)] px-2 py-2 text-center text-[var(--ink)]">{favorites.items.length}</div>
-              <div className="bg-[var(--alert-red)] px-2 py-2 text-center text-[var(--paper)]">LIVE</div>
-            </div>
+          <div className="border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+            工具索引 / 收藏 {favorites.items.length}
           </div>
 
           <FavoritesIndexRailItem active={activeTool === "favorites"} count={favorites.items.length} onClick={() => setActiveTool("favorites")} />
@@ -392,7 +382,7 @@ function AppShell() {
           tabIndex={-1}
           className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <div className="mx-auto min-h-full w-full max-w-[1480px] px-4 py-4 xl:px-5 xl:py-5">
+          <div className="mx-auto min-h-full w-full max-w-[1680px] px-3 py-3 xl:px-4 xl:py-4">
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
           </div>
         </main>

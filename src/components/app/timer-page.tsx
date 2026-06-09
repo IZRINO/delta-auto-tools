@@ -786,7 +786,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               ))}
 
               <AddCardButton
-                className="col-span-12 min-h-[22rem] 2xl:col-span-6"
+                className="col-span-12 min-h-36 2xl:col-span-6"
                 disabled={controlsDisabled || !form}
                 title="添加计时器"
                 description="名称、秒数、计时方向、快捷键均可自定义。"
@@ -852,7 +852,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               ))}
 
               <AddCardButton
-                className="col-span-12 min-h-[22rem] 2xl:col-span-6"
+                className="col-span-12 min-h-36 2xl:col-span-6"
                 disabled={controlsDisabled || !form}
                 title="添加计数器"
                 description="名称、起始数、快捷键均可自定义。"

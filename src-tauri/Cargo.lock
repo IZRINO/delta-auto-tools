@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "delta-auto-tools"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "base64 0.22.1",
  "encoding_rs",

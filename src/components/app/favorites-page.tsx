@@ -322,31 +322,23 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
         }
       />
 
-      <ControlTile className="col-span-12 grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] p-0 xl:grid-cols-4">
-        <div className="bg-[var(--paper)] px-3 py-3">
-          <Field orientation="horizontal" className="justify-between gap-3">
-            <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示快捷键</FieldLabel>
-            <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
-          </Field>
-        </div>
-        <div className="bg-[var(--bone)] px-3 py-3">
-          <Field orientation="horizontal" className="justify-between gap-3">
-            <FieldLabel htmlFor="fav-compact" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">紧凑模式</FieldLabel>
-            <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
-          </Field>
-        </div>
-        <div className="bg-[var(--paper)] px-3 py-3">
-          <Field orientation="horizontal" className="justify-between gap-3">
-            <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示计时器进度</FieldLabel>
-            <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
-          </Field>
-        </div>
-        <div className="bg-[var(--bone)] px-3 py-3">
-          <Field orientation="horizontal" className="justify-between gap-3">
-            <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">显示计数器当前值</FieldLabel>
-            <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
-          </Field>
-        </div>
+      <ControlTile className="col-span-12 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2">
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
+          <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">快捷键</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
+          <FieldLabel htmlFor="fav-compact" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">紧凑</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
+          <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">计时进度</FieldLabel>
+        </Field>
+        <Field orientation="horizontal" className="gap-2">
+          <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
+          <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">计数值</FieldLabel>
+        </Field>
       </ControlTile>
 
       <section className="col-span-12 grid gap-3 xl:grid-cols-12">

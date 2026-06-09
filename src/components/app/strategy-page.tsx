@@ -12,31 +12,13 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Field,
   FieldDescription,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AppPage } from "@/components/app/app-ui";
@@ -107,7 +89,8 @@ export function StrategyPage() {
     readStrategyRefreshSeconds(BUILTIN_STRATEGY_SITES[0]?.id ?? ""),
   );
   const [remainingSeconds, setRemainingSeconds] = useState(0);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  const [refreshPanelOpen, setRefreshPanelOpen] = useState(false);
   const [siteForm, setSiteForm] = useState(EMPTY_USER_SITE_FORM);
   const [siteFormError, setSiteFormError] = useState<string | null>(null);
 
@@ -406,7 +389,7 @@ export function StrategyPage() {
     setActiveId(nextSite.id);
     setSiteForm(EMPTY_USER_SITE_FORM);
     setSiteFormError(null);
-    setCreateDialogOpen(false);
+    setCreatePanelOpen(false);
     toast.success(`已新增攻略网站：${nextSite.label}`);
   }, [siteForm, userSites]);
 
@@ -421,6 +404,22 @@ export function StrategyPage() {
     setActiveId(nextAllSites[0]?.id ?? "");
     toast.success(`已删除自定义攻略网站：${activeSite.label}`);
   }, [activeSite, userSites]);
+  const handleCreatePanelToggle = useCallback(() => {
+    setCreatePanelOpen((current) => {
+      const next = !current;
+      if (!next) {
+        setSiteFormError(null);
+      }
+      return next;
+    });
+    setRefreshPanelOpen(false);
+  }, []);
+
+  const handleRefreshPanelToggle = useCallback(() => {
+    setRefreshPanelOpen((current) => !current);
+    setCreatePanelOpen(false);
+  }, []);
+
   const activeRefreshOption = STRATEGY_REFRESH_OPTIONS.find((option) => option.seconds === refreshSeconds) ?? STRATEGY_REFRESH_OPTIONS[0];
   const refreshLabel = refreshSeconds > 0 ? `${activeRefreshOption.label} · ${remainingSeconds || refreshSeconds}s` : activeRefreshOption.label;
 
@@ -447,60 +446,20 @@ export function StrategyPage() {
               </div>
             </Tabs>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="hidden min-w-0 max-w-[24rem] truncate border-2 border-[var(--ink)] bg-[var(--bone)] px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.06em] text-[var(--ink)] xl:block">
-                  {activeUrl || "未选择站点"}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="end" className="max-w-md">
-                <p className="break-all font-mono text-xs">{activeUrl || "未选择站点"}</p>
-                {activeSite?.description ? <p className="mt-1 text-xs text-muted-foreground">{activeSite.description}</p> : null}
-              </TooltipContent>
-            </Tooltip>
+            <div
+              className="hidden min-w-0 max-w-[24rem] truncate border-2 border-[var(--ink)] bg-[var(--bone)] px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.06em] text-[var(--ink)] xl:block"
+              title={activeSite?.description ? `${activeUrl}\n${activeSite.description}` : activeUrl}
+            >
+              {activeUrl || "未选择站点"}
+            </div>
           </div>
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 bg-[var(--bone)] px-2 py-2">
-          <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) setSiteFormError(null); }}>
-            <DialogTrigger asChild>
-              <Button type="button" size="sm" variant="outline" className="h-8 px-2.5">
-                <RiAddLine data-icon="inline-start" />
-                新增
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>新增攻略网站</DialogTitle>
-                <DialogDescription>添加后会保存到本机 localStorage，并立即切换到新站点。</DialogDescription>
-              </DialogHeader>
-              <FieldGroup className="gap-3">
-                <Field>
-                  <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
-                  <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="例如 攻略站" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
-                  <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="例如 自定义攻略站" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
-                  <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
-                  <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
-                </Field>
-                {siteFormError ? <FieldDescription className="text-destructive">{siteFormError}</FieldDescription> : null}
-              </FieldGroup>
-              <DialogFooter>
-                <Button type="button" onClick={handleCreateSite}>
-                  <RiAddLine data-icon="inline-start" />
-                  创建站点
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button type="button" size="sm" variant={createPanelOpen ? "default" : "outline"} className="h-8 px-2.5" onClick={handleCreatePanelToggle}>
+            <RiAddLine data-icon="inline-start" />
+            新增
+          </Button>
 
           {activeSite && !activeSite.builtin ? (
             <Button type="button" size="sm" variant="ghost" className="h-8 px-2.5" onClick={handleDeleteActiveSite}>
@@ -509,18 +468,9 @@ export function StrategyPage() {
             </Button>
           ) : null}
 
-          <Select value={String(refreshSeconds)} onValueChange={handleRefreshSecondsChange} disabled={!activeSite}>
-            <SelectTrigger size="sm" className="h-8 w-[8.5rem] px-2">
-              <SelectValue placeholder="自动刷新">{refreshLabel}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {STRATEGY_REFRESH_OPTIONS.map((option) => (
-                <SelectItem key={option.seconds} value={String(option.seconds)}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Button type="button" size="sm" variant={refreshPanelOpen ? "default" : "outline"} className="h-8 px-2.5" onClick={handleRefreshPanelToggle} disabled={!activeSite}>
+            自动刷新：{refreshLabel}
+          </Button>
 
           <Button type="button" size="sm" variant="default" className="h-8 px-2.5" onClick={handleRefresh} disabled={!isNativeShell || !activeUrl}>
             <RiRefreshLine data-icon="inline-start" />
@@ -531,6 +481,58 @@ export function StrategyPage() {
             浏览器
           </Button>
         </div>
+
+        {createPanelOpen ? (
+          <div className="col-span-full border-t-2 border-[var(--ink)] bg-[var(--paper)] p-3">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_auto]">
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
+                <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="攻略站" />
+              </Field>
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
+                <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="自定义攻略站" />
+              </Field>
+              <Field className="gap-1.5">
+                <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
+                <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
+              </Field>
+              <div className="flex items-end gap-2">
+                <Button type="button" className="h-9" onClick={handleCreateSite}>
+                  <RiAddLine data-icon="inline-start" />
+                  创建
+                </Button>
+                <Button type="button" variant="ghost" className="h-9" onClick={handleCreatePanelToggle}>收起</Button>
+              </div>
+            </div>
+            <Field className="mt-3 gap-1.5">
+              <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
+              <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
+            </Field>
+            {siteFormError ? <FieldDescription className="mt-2 text-destructive">{siteFormError}</FieldDescription> : null}
+          </div>
+        ) : null}
+
+        {refreshPanelOpen ? (
+          <div className="col-span-full border-t-2 border-[var(--ink)] bg-[var(--paper)] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 font-mono text-[0.62rem] font-black tracking-[0.16em] text-[var(--steel)] uppercase">自动刷新档位</span>
+              {STRATEGY_REFRESH_OPTIONS.map((option) => (
+                <Button
+                  key={option.seconds}
+                  type="button"
+                  size="sm"
+                  variant={refreshSeconds === option.seconds ? "default" : "outline"}
+                  className="h-8 px-2.5"
+                  onClick={() => handleRefreshSecondsChange(String(option.seconds))}
+                >
+                  {option.label}
+                </Button>
+              ))}
+              <Button type="button" size="sm" variant="ghost" className="h-8 px-2.5" onClick={handleRefreshPanelToggle}>收起</Button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div

@@ -186,7 +186,7 @@ export function WorkbenchControlPanel({
         badge={<Badge variant={verificationStatus === "success" ? "default" : "outline"}>{verificationStatus === "running" ? "验证中" : "校准台"}</Badge>}
       />
 
-      <CardBody className="xl:min-h-88">
+      <CardBody>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
           <section className="min-h-0 border-2 border-[var(--ink)] bg-[var(--bone)]">
             <div className="border-b-2 border-[var(--ink)] bg-[var(--ink)] px-3 py-2 text-[var(--paper)]">

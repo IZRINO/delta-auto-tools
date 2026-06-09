@@ -35,40 +35,33 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
     <section
       className={cn(
         "relative col-span-12 overflow-hidden border-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]",
-        "before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(color-mix(in_srgb,var(--line)_70%,transparent)_1px,transparent_1px),linear-gradient(90deg,color-mix(in_srgb,var(--line)_70%,transparent)_1px,transparent_1px)] before:bg-[length:18px_18px] before:opacity-70",
         className,
       )}
     >
-      <div className="relative grid gap-px bg-[var(--ink)] md:grid-cols-[minmax(0,1fr)_minmax(18rem,32%)]">
-        <div className="bg-[var(--paper)] p-4 sm:p-5">
+      <div className="relative grid gap-px bg-[var(--ink)] lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0 bg-[var(--paper)] px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-mono text-[0.62rem] font-black tracking-[0.28em] text-[var(--alert-red)] uppercase">
+            <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--alert-red)] uppercase">
               [ {eyebrow} ]
             </p>
             {badges}
           </div>
-          <h1 className="mt-4 max-w-5xl text-balance font-heading text-[clamp(2.8rem,7vw,7.5rem)] font-black leading-[0.82] tracking-[-0.07em] text-[var(--ink)] uppercase">
-            {title}
-          </h1>
-          <p className="mt-4 max-w-[78ch] border-l-4 border-[var(--alert-red)] pl-3 font-mono text-[0.74rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">
-            {description}
-          </p>
+          <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
+            <h1 className="max-w-4xl text-balance font-heading text-[clamp(1.75rem,3.5vw,3.4rem)] font-black leading-[0.9] tracking-[-0.055em] text-[var(--ink)] uppercase">
+              {title}
+            </h1>
+            <p className="max-w-[64ch] border-l-4 border-[var(--alert-red)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--steel)] uppercase">
+              {description}
+            </p>
+          </div>
         </div>
-        <aside className="grid bg-[var(--paper)]">
-          <div className="border-b-2 border-[var(--ink)] bg-[var(--ink)] px-3 py-2 font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--paper)] uppercase">
-            MODULE MANIFEST
-          </div>
-          <div className="grid content-between gap-4 p-4">
-            <div className="font-mono text-[0.66rem] font-black leading-relaxed tracking-[0.18em] text-[var(--steel)] uppercase">
-              <div>UNIT / ACTIVE</div>
-              <div>BOARD / INDUSTRIAL</div>
-              <div>ACCENT / #E11919</div>
-            </div>
-            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-          </div>
-        </aside>
+        {(actions || stats) ? (
+          <aside className="grid min-w-0 bg-[var(--paper)] lg:min-w-80 lg:max-w-[28rem]">
+            {actions ? <div className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--ink)] px-3 py-2">{actions}</div> : null}
+            {stats ? <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3 lg:grid-cols-1">{stats}</div> : null}
+          </aside>
+        ) : null}
       </div>
-      {stats ? <div className="relative grid gap-px border-t-2 border-[var(--ink)] bg-[var(--ink)] md:grid-cols-3">{stats}</div> : null}
     </section>
   );
 }
@@ -83,15 +76,15 @@ type SignalTileProps = {
 
 export function SignalTile({ className, detail, icon, label, value }: SignalTileProps) {
   return (
-    <div className={cn("grid min-h-24 grid-rows-[auto_1fr_auto] bg-[var(--paper)] p-3 text-[var(--ink)]", className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--ink)] pb-2">
-        <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--steel)] uppercase">{label}</p>
-        {icon ? <div className="text-[var(--alert-red)]">{icon}</div> : null}
+    <div className={cn("flex min-h-12 items-center justify-between gap-3 bg-[var(--paper)] px-3 py-2 text-[var(--ink)]", className)}>
+      <div className="min-w-0">
+        <p className="truncate font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">{label}</p>
+        {detail ? <div className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.06em] text-[var(--steel)] uppercase">{detail}</div> : null}
       </div>
-      <div className="flex items-end pt-3 font-mono text-2xl font-black leading-none tracking-[-0.04em] text-[var(--ink)] tabular-nums">
+      <div className="flex shrink-0 items-center gap-2 font-mono text-lg font-black leading-none tracking-[-0.04em] text-[var(--ink)] tabular-nums">
+        {icon ? <div className="text-[var(--alert-red)]">{icon}</div> : null}
         {value}
       </div>
-      {detail ? <div className="mt-2 font-mono text-[0.62rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">{detail}</div> : null}
     </div>
   );
 }
@@ -207,7 +200,7 @@ export function AddCardButton({ className, description, disabled, onClick, title
   return (
     <button
       className={cn(
-        "group flex min-h-64 flex-col items-center justify-center border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] p-6 text-center transition-colors hover:bg-[var(--paper)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] active:bg-[var(--ink)] active:text-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50",
+        "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] p-4 text-center transition-colors hover:bg-[var(--paper)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] active:bg-[var(--ink)] active:text-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       disabled={disabled}

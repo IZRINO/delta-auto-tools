@@ -507,7 +507,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
   if (!form) {
     return (
       <AddCardButton
-        className="min-h-[360px]"
+        className="min-h-36"
         disabled
         title="连发器准备中"
         description={statusMessage}
@@ -758,7 +758,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
             />
           );
         })}
-        <AddCardButton className="min-h-72" disabled={controlsDisabled} title="新增通道单元" description="建立新的触发键、目标键与节奏配置。" onClick={addCard} />
+        <AddCardButton className="min-h-36" disabled={controlsDisabled} title="新增通道单元" description="建立新的触发键、目标键与节奏配置。" onClick={addCard} />
       </section>
     </AppPage>
   );
