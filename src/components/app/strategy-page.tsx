@@ -74,7 +74,16 @@ export function StrategyPage() {
   const contentWindowRef = useRef<WebviewWindow | null>(null);
   const contentWindowReadyRef = useRef(false);
   const latestBoundsRef = useRef<StrategyContentBounds | null>(null);
-  const [userSites, setUserSites] = useState<StrategySite[]>(() => readStoredUserSites());
+  const [userSites, setUserSites] = useState<StrategySite[]>(() => {
+    const stored = readStoredUserSites();
+    // 首次启动：localStorage 为空，把内置预置站点写入 localStorage
+    if (stored.length === 0) {
+      const initial = [...BUILTIN_STRATEGY_SITES];
+      writeStoredUserSites(initial);
+      return initial;
+    }
+    return stored;
+  });
   const allSites = useMemo(() => mergeStrategySites(BUILTIN_STRATEGY_SITES, userSites), [userSites]);
   const [activeId, setActiveId] = useState<string>(() => BUILTIN_STRATEGY_SITES[0]?.id ?? "");
   const activeSite = useMemo(() => {
@@ -394,7 +403,7 @@ export function StrategyPage() {
   }, [siteForm, userSites]);
 
   const handleDeleteActiveSite = useCallback(() => {
-    if (!activeSite || activeSite.builtin) {
+    if (!activeSite) {
       return;
     }
     const nextUserSites = userSites.filter((site) => site.id !== activeSite.id);
@@ -402,7 +411,7 @@ export function StrategyPage() {
     setUserSites(nextUserSites);
     writeStoredUserSites(nextUserSites);
     setActiveId(nextAllSites[0]?.id ?? "");
-    toast.success(`已删除自定义攻略网站：${activeSite.label}`);
+    toast.success(`已删除攻略网站：${activeSite.label}`);
   }, [activeSite, userSites]);
   const handleCreatePanelToggle = useCallback(() => {
     setCreatePanelOpen((current) => {
@@ -463,7 +472,7 @@ export function StrategyPage() {
             新增
           </Button>
 
-          {activeSite && !activeSite.builtin ? (
+          {activeSite ? (
             <Button type="button" size="sm" variant="ghost" className="h-8 px-2.5" onClick={handleDeleteActiveSite}>
               <RiDeleteBinLine data-icon="inline-start" />
               删除

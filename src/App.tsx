@@ -52,12 +52,6 @@ const FavoritesPage = lazy(() =>
 );
 const tools = [
   {
-    id: "morse" as const,
-    icon: RiRadarLine,
-    label: "摩斯密码解析",
-    short: "Morse",
-  },
-  {
     id: "timer" as const,
     icon: RiTimerLine,
     label: "计时\\计数器",
@@ -79,6 +73,15 @@ const tools = [
 
 const deltaTools = [
   {
+    id: "morse" as const,
+    icon: RiRadarLine,
+    label: "摩斯密码解析",
+    short: "Morse",
+  },
+];
+
+const deltaApiTools = [
+  {
     id: "delta-accounts" as const,
     icon: RiAccountPinCircleLine,
     label: "账号管理",
@@ -98,7 +101,7 @@ const deltaTools = [
   },
 ];
 
-type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | "favorites";
+type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | (typeof deltaApiTools)[number]["id"] | "favorites";
 
 function ToolPageFallback() {
   return (
@@ -303,7 +306,7 @@ function AppShell() {
   }
 
 
-  const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool);
+  const activeMeta = [...tools, ...deltaTools, ...deltaApiTools].find((tool) => tool.id === activeTool);
 
   return (
     <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-transparent">
@@ -327,7 +330,7 @@ function AppShell() {
         <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "morse" ? "01" : activeTool === "timer" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "delta-accounts" ? "D1" : activeTool === "delta-game" ? "D2" : "D3"}
+              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : activeTool === "morse" ? "D1" : activeTool === "delta-accounts" ? "A1" : activeTool === "delta-game" ? "A2" : "A3"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">
@@ -353,7 +356,7 @@ function AppShell() {
 
           <FavoritesIndexRailItem active={activeTool === "favorites"} count={favorites.items.length} onClick={() => setActiveTool("favorites")} />
 
-          <IndexRailSection title="当前工具">
+          <IndexRailSection title="通用工具">
             {tools.map((tool, index) => (
               <IndexRailItem
                 active={activeTool === tool.id}
@@ -367,11 +370,25 @@ function AppShell() {
             ))}
           </IndexRailSection>
 
-          <IndexRailSection title="三角洲行动 API">
+          <IndexRailSection title="三角洲工具">
             {deltaTools.map((tool, index) => (
               <IndexRailItem
                 active={activeTool === tool.id}
                 code={`D${index + 1}`}
+                icon={tool.icon}
+                key={tool.id}
+                label={tool.label}
+                meta={tool.short}
+                onClick={() => setActiveTool(tool.id)}
+              />
+            ))}
+          </IndexRailSection>
+
+          <IndexRailSection title="三角洲行动 API">
+            {deltaApiTools.map((tool, index) => (
+              <IndexRailItem
+                active={activeTool === tool.id}
+                code={`A${index + 1}`}
                 icon={tool.icon}
                 key={tool.id}
                 label={tool.label}

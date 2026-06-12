@@ -81,15 +81,17 @@ describe("strategy-utils", () => {
       expect(restored[0]?.builtin).toBe(false);
     });
 
-    it("readStoredUserSites drops entries with non-user_ ids", () => {
+    it("readStoredUserSites accepts preset kkrb/orzice and user_ ids", () => {
       const stub = makeStub();
       stub.setItem("delta-auto-tools:strategy:user-sites", JSON.stringify([
         { id: "kkrb", shortLabel: "k", label: "k", url: "https://k", description: "" },
         { id: "user_abc", shortLabel: "u", label: "u", url: "https://u", description: "" },
+        { id: "invalid_id", shortLabel: "i", label: "i", url: "https://i", description: "" },
       ]));
       const restored = readStoredUserSites(stub);
-      expect(restored).toHaveLength(1);
-      expect(restored[0]?.id).toBe("user_abc");
+      expect(restored).toHaveLength(2);
+      expect(restored[0]?.id).toBe("kkrb");
+      expect(restored[1]?.id).toBe("user_abc");
     });
 
     it("readStoredUserSites returns [] on corrupted storage", () => {

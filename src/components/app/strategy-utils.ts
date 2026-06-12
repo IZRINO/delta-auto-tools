@@ -109,7 +109,7 @@ export const BUILTIN_STRATEGY_SITES: ReadonlyArray<StrategySite> = [
     url: "https://www.kkrb.net/?viewpage=view%2Foverview",
     favicon: "https://www.kkrb.net/favicon.ico",
     description: "覆盖地图任务、藏宝、跑刀路线的高频更新攻略总览。",
-    builtin: true,
+    builtin: false,
   },
   {
     id: "orzice",
@@ -118,7 +118,7 @@ export const BUILTIN_STRATEGY_SITES: ReadonlyArray<StrategySite> = [
     url: "https://orzice.com/v/rb",
     favicon: "https://orzice.com/favicon.ico",
     description: "跑刀与战备推荐专题，适合赛季初对照参考。",
-    builtin: true,
+    builtin: false,
   },
 ];
 
@@ -199,7 +199,7 @@ function storageKey(suffix: string): string {
 const SITES_STORAGE_KEY = "user-sites";
 
 function isStrategySiteStorageId(siteId: string): siteId is StrategySiteId {
-  return siteId === "kkrb" || siteId === "orzice" || siteId.startsWith("user_");
+  return siteId === "kkrb" || siteId === "orzice" || siteId.startsWith("user_") || siteId.startsWith("preset_");
 }
 
 function refreshStorageKey(siteId: StrategySiteId): string {
@@ -291,7 +291,7 @@ export function readStoredUserSites(
     if (!id || !shortLabel || !label || !url) {
       continue;
     }
-    if (!id.startsWith("user_") || seen.has(id)) {
+    if ((!id.startsWith("user_") && id !== "kkrb" && id !== "orzice") || seen.has(id)) {
       continue;
     }
     seen.add(id);
@@ -336,13 +336,17 @@ export function writeStoredUserSites(
 }
 
 /**
- * 合并内置站点 + 用户新增站点；用户站点始终追加在末尾。
+ * 合并内置站点 + 用户新增站点。
+ * 内置站点 builtin=false 时可被用户删除，已删除的不会重新出现。
  */
 export function mergeStrategySites(
   builtin: ReadonlyArray<StrategySite>,
   user: ReadonlyArray<StrategySite>,
 ): ReadonlyArray<StrategySite> {
-  return [...builtin, ...user];
+  // 已存在于用户站点中的不再重复追加
+  const userIds = new Set(user.map((site) => site.id));
+  const builtinNotInUser = builtin.filter((site) => !userIds.has(site.id));
+  return [...builtinNotInUser, ...user];
 }
 
 export function normalizeStrategyContentBounds(
