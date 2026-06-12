@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import { useNativeShell } from "@/hooks/use-native-shell";
-import { useSyncedRef } from "@/hooks/use-synced-ref";
-import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
+import { useAutosave } from "@/hooks/use-autosave";
+import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 
 import { Badge } from "@/components/ui/badge";
 import { AppPage, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
@@ -35,23 +35,49 @@ import {
 export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const overlaySlots = useMemo(() => (overlayMode ? parseOverlaySlots() : []), [overlayMode]);
   const isNativeShell = useNativeShell();
-  const [bootstrap, setBootstrap] = useState<MorseBootstrap | null>(null);
-  const [form, setForm] = useState<MorseSettingsForm | null>(null);
-  const formRef = useSyncedRef(form);
   const hotkeyButtonRef = useRef<HTMLButtonElement | null>(null);
   const hotkeyDraftRef = useRef<string>("");
-  const [loading, setLoading] = useState(!overlayMode);
-  const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [selectingSlot, setSelectingSlot] = useState<number | null>(null);
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
-  const [_statusMessage, setStatusMessage] = useState("正在加载摩斯工具...");
-  const [_pageError, setPageError] = useState<string | null>(null);
   const [verificationValue, setVerificationValue] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("idle");
   const [verificationMessage, setVerificationMessage] = useState("点击验证输入框即可执行一次仅识别流程，结果会直接回填到这里。");
-  const saveTimeoutRef = useTimeoutCleanup();
-  const autosaveVersionRef = useRef(0);
+
+  const bf = useBootstrapForm<MorseBootstrap, MorseSettings, MorseSettingsForm>({
+    spec: {
+      getBootstrapCommand: "morse_get_bootstrap",
+      saveSettingsCommand: "morse_save_settings",
+      settingsToForm,
+      parseSettingsForm,
+    },
+    isNativeShell,
+    skipInitialLoad: overlayMode,
+    loadStatusMessage: "正在加载摩斯工具...",
+    readyStatusMessage: "就绪，可开始框选区域或执行识别。",
+    previewStatusMessage: "浏览器预览模式：当前仅验证布局与滚动，原生命令请在桌面端运行。",
+    saveSuccessMessage: "设置已保存。新的热键与识别参数已生效。",
+    saveInProgressMessage: "正在保存设置...",
+    useStartTransition: true,
+  });
+
+  const { bootstrap, setBootstrap, form, setForm, isDirty, updateForm, saveSettings, syncBootstrap, loading, saving, pageError: _pageError, setPageError, statusMessage: _statusMessage, setStatusMessage, autosaveVersionRef: autosaveRef } = bf;
+
+  useAutosave<MorseSettingsForm>({
+    form,
+    isDirty,
+    disabled: overlayMode || !isNativeShell || loading || !bootstrap || !form || isRecordingHotkey || selectingSlot !== null,
+    onSave: (formSnapshot, nextVersion) => {
+      const settingsValue = parseSettingsForm(formSnapshot);
+      return saveSettings(settingsValue, nextVersion);
+    },
+    onError: (message) => {
+      setPageError(message);
+      setStatusMessage(`保存失败：${message}`);
+    },
+    delay: AUTOSAVE_DELAY_MS,
+    autosaveVersionRef: autosaveRef,
+  });
 
   useEffect(() => {
     if (isRecordingHotkey) {
@@ -90,73 +116,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     };
   }, [overlayMode]);
 
-  const syncBootstrap = useCallback(async (syncMode: "full" | "regions" | "none" = "none") => {
-    const next = await invoke<MorseBootstrap>("morse_get_bootstrap");
-
-    startTransition(() => {
-      setBootstrap(next);
-      setPageError(null);
-
-      if (syncMode === "full" || formRef.current === null) {
-        setForm(settingsToForm(next.settings));
-        return;
-      }
-
-      if (syncMode === "regions") {
-        setForm((current) =>
-          current
-            ? {
-                ...current,
-                regions: next.settings.regions,
-              }
-            : settingsToForm(next.settings),
-        );
-      }
-    });
-
-    return next;
-  }, []);
-
-  useEffect(() => {
-    if (overlayMode) {
-      return;
-    }
-
-    if (!isNativeShell) {
-      setLoading(false);
-      setPageError(null);
-      setStatusMessage("浏览器预览模式：当前仅验证布局与滚动，原生命令请在桌面端运行。");
-      return;
-    }
-
-    let disposed = false;
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        await syncBootstrap("full");
-        if (!disposed) {
-          setStatusMessage("就绪，可开始框选区域或执行识别。");
-        }
-      } catch (error) {
-        if (!disposed) {
-          setPageError(getErrorMessage(error));
-          setStatusMessage("加载失败，请确认桌面端 Tauri 进程已正常运行。");
-        }
-      } finally {
-        if (!disposed) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      disposed = true;
-    };
-  }, [isNativeShell, overlayMode, syncBootstrap]);
-
   useEffect(() => {
     if (overlayMode || !isNativeShell) {
       return;
@@ -179,7 +138,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       });
 
       try {
-        await syncBootstrap("none");
+        await syncBootstrap({ syncMode: "none" });
       } catch (error) {
         if (!isDisposed) {
           setPageError(getErrorMessage(error));
@@ -253,79 +212,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const stepTwoActive = stepOneComplete && !hasLatestResult;
   const stepThreeActive = hasLatestResult;
 
-  const isDirty = useMemo(() => {
-    if (!bootstrap || !form) {
-      return false;
-    }
-
-    return JSON.stringify(settingsToForm(bootstrap.settings)) !== JSON.stringify(form);
-  }, [bootstrap, form]);
-
-  const updateForm = useCallback(<K extends keyof MorseSettingsForm>(key: K, value: MorseSettingsForm[K]) => {
-    setForm((current) => (current ? { ...current, [key]: value } : current));
-  }, []);
-
-  const saveSettings = useCallback(async (settingsValue: MorseSettings, pendingVersion?: number) => {
-    try {
-      setSaving(true);
-      setStatusMessage("正在保存设置...");
-      const next = await invoke<MorseBootstrap>("morse_save_settings", { settingsValue });
-
-      if (typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current) {
-        return;
-      }
-
-      startTransition(() => {
-        setBootstrap(next);
-        setForm(settingsToForm(next.settings));
-        setPageError(null);
-        setStatusMessage("设置已保存。新的热键与识别参数已生效。");
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setPageError(message);
-      setStatusMessage(message);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (overlayMode || !isNativeShell || loading || !bootstrap || !form || isRecordingHotkey || selectingSlot !== null) {
-      return;
-    }
-
-    if (!isDirty) {
-      return;
-    }
-
-    const nextVersion = autosaveVersionRef.current + 1;
-    autosaveVersionRef.current = nextVersion;
-    const formSnapshot = form;
-
-    saveTimeoutRef.current = window.setTimeout(() => {
-      try {
-        const settingsValue = parseSettingsForm(formSnapshot);
-        void saveSettings(settingsValue, nextVersion);
-      } catch (error) {
-        if (nextVersion !== autosaveVersionRef.current) {
-          return;
-        }
-
-        const message = getErrorMessage(error);
-        setPageError(message);
-        setStatusMessage(`保存失败：${message}`);
-      }
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => {
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-    };
-  }, [bootstrap, form, isDirty, isNativeShell, isRecordingHotkey, loading, overlayMode, saveSettings, selectingSlot]);
-
   const performSelectionSession = useCallback(async (slots: number[]) => {
     if (slots.length === 0) {
       return false;
@@ -348,7 +234,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         slots,
         target: "sampling",
       });
-      await syncBootstrap("regions");
+      await syncBootstrap({ syncMode: "regions" });
 
       if (outcome.kind === "selected") {
         setStatusMessage(slots.length === REGION_LABELS.length ? "3 个区域已全部更新。" : `${REGION_LABELS[slots[0]]} 已更新。`);
@@ -404,7 +290,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         slots: [emptyIndex],
         target: "click",
       });
-      await syncBootstrap("full");
+      await syncBootstrap({ syncMode: "full" });
 
       if (outcome.kind === "selected") {
         setStatusMessage(`点击区域 ${emptyIndex + 1} 已添加。`);
@@ -478,7 +364,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     } finally {
       setRunning(false);
       try {
-        await syncBootstrap("none");
+        await syncBootstrap({ syncMode: "none" });
       } catch (error) {
         setPageError(getErrorMessage(error));
       }

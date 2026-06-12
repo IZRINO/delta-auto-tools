@@ -43,7 +43,8 @@ import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode
 import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
 import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
-import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
+import { useAutosave } from "@/hooks/use-autosave";
+import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 import { cn } from "@/lib/utils";
 import {
   counterRunsById,
@@ -52,7 +53,6 @@ import {
   createTimerGroup,
   createTimerItem,
   formatTimerHotkey,
-  isTimerDirty,
   isTimerRunActive,
   moveTimerItem,
   parseTimerSettingsForm,
@@ -100,20 +100,30 @@ export function TimerPage({ overlayMode, highlightCardId }: TimerPageProps) {
 }
 
 function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: TimerHighlightTarget | null; isNativeShell: boolean }) {
-  const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
-  const [form, setForm] = useState<TimerSettingsForm | null>(null);
-  const [loading, setLoading] = useState(isNativeShell);
-  const [saving, setSaving] = useState(false);
+  const bf = useBootstrapForm<TimerBootstrap, TimerSettings, TimerSettingsForm>({
+    spec: {
+      getBootstrapCommand: "timer_get_bootstrap",
+      saveSettingsCommand: "timer_save_settings",
+      settingsToForm: timerSettingsToForm,
+      parseSettingsForm: parseTimerSettingsForm,
+    },
+    isNativeShell,
+    loadStatusMessage: "正在加载计时/计数器...",
+    readyStatusMessage: "计时/计数器已就绪。两个总开关分别控制对应透明窗口与快捷键，配置会持续保留。",
+    previewStatusMessage: "浏览器预览模式：当前仅验证布局，原生命令请在桌面端运行。",
+    saveSuccessMessage: (next) => next.settings.timerEnabled || next.settings.counterEnabled
+      ? "计时/计数器设置已保存，已开启模块的快捷键已生效。"
+      : "计时器和计数器均已关闭：透明窗口隐藏，快捷键已解绑，配置已保留。",
+  });
+
+  const { bootstrap, setBootstrap, form, setForm, isDirty, updateForm, saveSettings, syncBootstrap, loading, saving, pageError, setPageError, statusMessage, setStatusMessage, autosaveVersionRef } = bf;
+
   const [recordingTarget, setRecordingTarget] = useState<{ type: "timer" | "counter"; id: string } | null>(null);
   const draggingTimerIdRef = useRef<string | null>(null);
   const draggingCounterIdRef = useRef<string | null>(null);
   const [draggingTimerId, setDraggingTimerId] = useState<string | null>(null);
   const [draggingCounterId, setDraggingCounterId] = useState<string | null>(null);
   const hotkeyDraftRef = useRef("");
-  const [statusMessage, setStatusMessage] = useState(isNativeShell ? "正在加载计时/计数器..." : "浏览器预览模式：当前仅验证布局，原生命令请在桌面端运行。");
-  const [pageError, setPageError] = useState<string | null>(null);
-  const saveTimeoutRef = useTimeoutCleanup();
-  const autosaveVersionRef = useRef(0);
   const favorites = useFavorites();
 
   // 高亮跳转：从收藏页跳过来时滚动到目标卡片并加 1.5s 高亮动画
@@ -149,49 +159,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     window.addEventListener("pointerup", handlePointerUp);
     return () => window.removeEventListener("pointerup", handlePointerUp);
   }, []);
-
-  const syncBootstrap = useCallback(async (syncForm = false) => {
-    const next = await invoke<TimerBootstrap>("timer_get_bootstrap");
-    setBootstrap(next);
-    setForm((current) => (syncForm || current === null ? timerSettingsToForm(next.settings) : current));
-    setPageError(null);
-    return next;
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell) {
-      return;
-    }
-
-    let disposed = false;
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        const next = await syncBootstrap(true);
-        if (!disposed) {
-          setForm(timerSettingsToForm(next.settings));
-          setStatusMessage("计时/计数器已就绪。两个总开关分别控制对应透明窗口与快捷键，配置会持续保留。");
-        }
-      } catch (error) {
-        if (!disposed) {
-          const message = getErrorMessage(error);
-          setPageError(message);
-          setStatusMessage(message);
-        }
-      } finally {
-        if (!disposed) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      disposed = true;
-    };
-  }, [isNativeShell, syncBootstrap]);
 
   useEffect(() => {
     if (!isNativeShell) {
@@ -238,13 +205,9 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     };
   }, [isNativeShell]);
 
-  const dirty = useMemo(() => isTimerDirty(bootstrap, form), [bootstrap, form]);
   const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
   const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
   const controlsDisabled = loading || !isNativeShell;
-  const updateForm = useCallback(<K extends keyof TimerSettingsForm>(key: K, value: TimerSettingsForm[K]) => {
-    setForm((current) => (current ? { ...current, [key]: value } : current));
-  }, []);
 
   const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
     setForm((current) => {
@@ -309,59 +272,18 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     } : current);
   }, []);
 
-  const saveSettings = useCallback(async (settingsValue: TimerSettings, pendingVersion?: number) => {
-    try {
-      setSaving(true);
-      const next = await invoke<TimerBootstrap>("timer_save_settings", { settingsValue });
-      if (typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current) {
-        return;
-      }
-      setBootstrap(next);
-      setForm(timerSettingsToForm(next.settings));
-      setPageError(null);
-      setStatusMessage(next.settings.timerEnabled || next.settings.counterEnabled ? "计时/计数器设置已保存，已开启模块的快捷键已生效。" : "计时器和计数器均已关闭：透明窗口隐藏，快捷键已解绑，配置已保留。");
-    } catch (error) {
-      const message = getErrorMessage(error);
+  useAutosave<TimerSettingsForm>({
+    form,
+    isDirty,
+    disabled: !isNativeShell || loading || !bootstrap || !form || !!recordingTarget,
+    onSave: (formSnapshot, nextVersion) => saveSettings(parseTimerSettingsForm(formSnapshot), nextVersion),
+    onError: (message) => {
       setPageError(message);
-      setStatusMessage(message);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell || loading || !bootstrap || !form || recordingTarget) {
-      return;
-    }
-
-    if (!dirty) {
-      return;
-    }
-
-    const nextVersion = autosaveVersionRef.current + 1;
-    autosaveVersionRef.current = nextVersion;
-    const formSnapshot = form;
-
-    saveTimeoutRef.current = window.setTimeout(() => {
-      try {
-        void saveSettings(parseTimerSettingsForm(formSnapshot), nextVersion);
-      } catch (error) {
-        if (nextVersion !== autosaveVersionRef.current) {
-          return;
-        }
-        const message = getErrorMessage(error);
-        setPageError(message);
-        setStatusMessage(`保存失败：${message}`);
-      }
-    }, TIMER_AUTOSAVE_DELAY_MS);
-
-    return () => {
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-    };
-  }, [bootstrap, dirty, form, isNativeShell, loading, recordingTarget, saveSettings]);
+      setStatusMessage(`保存失败：${message}`);
+    },
+    delay: TIMER_AUTOSAVE_DELAY_MS,
+    autosaveVersionRef,
+  });
 
   const beginTimerHotkeyRecording = useCallback((timer: TimerItemForm) => {
     hotkeyDraftRef.current = timer.hotkey;
@@ -591,7 +513,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 
     try {
       const outcome = await invoke<TimerSelectionOutcome>("timer_begin_position_selection", { target, groupId });
-      await syncBootstrap(true);
+      await syncBootstrap({ syncForm: true });
       const label = target === "timer" ? "计时器" : "计数器";
       if (outcome.kind === "selected") {
         setStatusMessage(`${label}透明窗口位置已保存。`);
@@ -651,7 +573,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
             <>
               <Badge variant={form?.timerEnabled ? "default" : "secondary"}>计时通道{form?.timerEnabled ? "开启" : "关闭"}</Badge>
               <Badge variant={form?.counterEnabled ? "default" : "secondary"}>计数通道{form?.counterEnabled ? "开启" : "关闭"}</Badge>
-              <SaveStateBadge dirty={dirty} saving={saving} />
+              <SaveStateBadge dirty={isDirty} saving={saving} />
               {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
             </>
           }
@@ -669,7 +591,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               />
               <SignalTile
                 label="保存信号"
-                value={saving ? "保存中" : dirty ? "待保存" : "已保存"}
+                value={saving ? "保存中" : isDirty ? "待保存" : "已保存"}
                 detail={statusMessage}
               />
             </>

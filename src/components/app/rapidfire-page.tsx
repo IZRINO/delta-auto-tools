@@ -62,7 +62,6 @@ import {
   DEFAULT_RAPIDFIRE_GROUP_ID,
   formatTriggerKey,
   formatTriggerHotkey,
-  isRapidfireDirty,
   moveRapidfireCard,
   parseRapidfireSettingsForm,
   rapidfireEffectiveCardsByGroup,
@@ -76,7 +75,8 @@ import {
 import { getErrorMessage } from "@/lib/error-utils";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useNativeShell } from "@/hooks/use-native-shell";
-import { useTimeoutCleanup } from "@/hooks/use-timeout-cleanup";
+import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
+import { useAutosave } from "@/hooks/use-autosave";
 import { cn } from "@/lib/utils";
 
 type RapidfireDisplayMode = "display" | "position";
@@ -115,20 +115,10 @@ export function RapidfirePage({ highlightCardId, overlayMode }: RapidfirePagePro
 }
 
 function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: RapidfireHighlightTarget | null; isNativeShell: boolean }) {
-  const [bootstrap, setBootstrap] = useState<RapidfireBootstrap | null>(null);
-  const [form, setForm] = useState<RapidfireSettingsForm | null>(null);
-  const [loading, setLoading] = useState(isNativeShell);
-  const [saving, setSaving] = useState(false);
   const [recordingTarget, setRecordingTarget] = useState<RecordingTarget>(null);
   const keyDraftRef = useRef("");
   const draggingCardIdRef = useRef<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState(
-    isNativeShell ? "正在加载连发器..." : "浏览器预览模式：只显示界面，原生命令请在桌面端运行。",
-  );
-  const [pageError, setPageError] = useState<string | null>(null);
-  const saveTimeoutRef = useTimeoutCleanup();
-  const autosaveVersionRef = useRef(0);
   const favorites = useFavorites();
 
   useEffect(() => {
@@ -157,6 +147,35 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     return () => window.removeEventListener("pointerup", handlePointerUp);
   }, [isNativeShell]);
 
+  const beforeUpdateFormRef = useRef<() => void>(() => {});
+
+  const bf = useBootstrapForm<RapidfireBootstrap, RapidfireSettings, RapidfireSettingsForm>({
+    spec: {
+      getBootstrapCommand: "rapidfire_get_bootstrap",
+      saveSettingsCommand: "rapidfire_save_settings",
+      settingsToForm: rapidfireSettingsToForm,
+      parseSettingsForm: parseRapidfireSettingsForm,
+    },
+    isNativeShell,
+    loadStatusMessage: "正在加载连发器...",
+    readyStatusMessage: "连发器已就绪。按住触发键开始；未开启不追加的卡片会在松开后自动补齐奇数次数。",
+    previewStatusMessage: "浏览器预览模式：只显示界面，原生命令请在桌面端运行。",
+    saveSuccessMessage: (next) => next.settings.rapidfireEnabled
+      ? "连发器设置已保存，触发键已生效。"
+      : "连发器已关闭：触发键已解绑，透明窗口已隐藏，配置已保留。",
+    beforeUpdateForm: () => beforeUpdateFormRef.current(),
+  });
+
+  const { bootstrap, setBootstrap, form, setForm, isDirty, updateForm, saveSettings, syncBootstrap, loading, saving, pageError, setPageError, statusMessage, setStatusMessage, autosaveVersionRef } = bf;
+
+  const clearStaleConfigError = useCallback(() => {
+    if (!pageError) return;
+    setPageError(null);
+    setStatusMessage("配置已更新，等待自动保存...");
+  }, [pageError]);
+
+  beforeUpdateFormRef.current = clearStaleConfigError;
+
   useEffect(() => {
     if (isNativeShell) return;
     setForm({
@@ -179,42 +198,6 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       cards: [createRapidfireCard(rapidfireCardId(), 0, DEFAULT_RAPIDFIRE_GROUP_ID)],
     });
   }, [isNativeShell]);
-
-  const syncBootstrap = useCallback(async (syncForm = false) => {
-    const next = await invoke<RapidfireBootstrap>("rapidfire_get_bootstrap");
-    setBootstrap(next);
-    setForm((current) => (syncForm || current === null ? rapidfireSettingsToForm(next.settings) : current));
-    setPageError(null);
-    return next;
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell) return;
-
-    let disposed = false;
-    const load = async () => {
-      try {
-        setLoading(true);
-        const next = await syncBootstrap(true);
-        if (!disposed) {
-          setForm(rapidfireSettingsToForm(next.settings));
-          setStatusMessage("连发器已就绪。按住触发键开始；未开启不追加的卡片会在松开后自动补齐奇数次数。");
-        }
-      } catch (error) {
-        if (!disposed) {
-          const message = getErrorMessage(error);
-          setPageError(message);
-          setStatusMessage(message);
-        }
-      } finally {
-        if (!disposed) setLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      disposed = true;
-    };
-  }, [isNativeShell, syncBootstrap]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -245,7 +228,6 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     };
   }, [isNativeShell]);
 
-  const dirty = useMemo(() => isRapidfireDirty(bootstrap, form), [bootstrap, form]);
   const runsById = useMemo(() => rapidfireRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
   const controlsDisabled = loading || !isNativeShell;
   const activeRunCount = useMemo(
@@ -257,17 +239,6 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     () => (bootstrap?.runs ?? []).reduce((total, run) => total + run.count, 0),
     [bootstrap?.runs],
   );
-
-  const clearStaleConfigError = useCallback(() => {
-    if (!pageError) return;
-    setPageError(null);
-    setStatusMessage("配置已更新，等待自动保存...");
-  }, [pageError]);
-
-  const updateForm = useCallback(<K extends keyof RapidfireSettingsForm>(key: K, value: RapidfireSettingsForm[K]) => {
-    clearStaleConfigError();
-    setForm((current) => (current ? { ...current, [key]: value } : current));
-  }, [clearStaleConfigError]);
 
   const updateCard = useCallback((id: string, value: Partial<RapidfireCardForm>) => {
     clearStaleConfigError();
@@ -296,59 +267,21 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     );
   }, [clearStaleConfigError]);
 
-  const saveSettings = useCallback(async (settingsValue: RapidfireSettings, pendingVersion?: number) => {
-    const isStaleSave = () => typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current;
-
-    try {
-      setSaving(true);
-      const next = await invoke<RapidfireBootstrap>("rapidfire_save_settings", { settingsValue });
-      if (isStaleSave()) return;
-
-      setBootstrap(next);
-      setForm(rapidfireSettingsToForm(next.settings));
-      setPageError(null);
-      setStatusMessage(
-        next.settings.rapidfireEnabled
-          ? "连发器设置已保存，触发键已生效。"
-          : "连发器已关闭：触发键已解绑，透明窗口已隐藏，配置已保留。",
-      );
-    } catch (error) {
-      if (isStaleSave()) return;
-      const message = getErrorMessage(error);
+  useAutosave<RapidfireSettingsForm>({
+    form,
+    isDirty,
+    disabled: !isNativeShell || loading || !bootstrap || !form || !!recordingTarget,
+    onSave: (formSnapshot, nextVersion) => {
+      const settingsValue = parseRapidfireSettingsForm(formSnapshot);
+      return saveSettings(settingsValue, nextVersion);
+    },
+    onError: (message) => {
       setPageError(message);
-      setStatusMessage(message);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell || loading || !bootstrap || !form || recordingTarget) return;
-    if (!dirty) return;
-
-    const nextVersion = autosaveVersionRef.current + 1;
-    autosaveVersionRef.current = nextVersion;
-    const formSnapshot = form;
-
-    saveTimeoutRef.current = window.setTimeout(() => {
-      try {
-        const settingsValue = parseRapidfireSettingsForm(formSnapshot);
-        void saveSettings(settingsValue, nextVersion);
-      } catch (error) {
-        if (nextVersion !== autosaveVersionRef.current) return;
-        const message = getErrorMessage(error);
-        setPageError(message);
-        setStatusMessage(`保存失败：${message}`);
-      }
-    }, RAPIDFIRE_AUTOSAVE_DELAY_MS);
-
-    return () => {
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-    };
-  }, [bootstrap, dirty, form, isNativeShell, loading, recordingTarget, saveSettings]);
+      setStatusMessage(`保存失败：${message}`);
+    },
+    delay: RAPIDFIRE_AUTOSAVE_DELAY_MS,
+    autosaveVersionRef,
+  });
 
   const beginRecording = useCallback((card: RapidfireCardForm, field: "triggerKey" | "targetKey") => {
     keyDraftRef.current = field === "triggerKey" ? card.triggerKey : card.targetKey;
@@ -489,7 +422,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     try {
       setStatusMessage("正在打开连发器透明窗口位置设置...");
       const outcome = await invoke<RapidfireSelectionOutcome>("rapidfire_begin_position_selection", { groupId });
-      await syncBootstrap(true);
+      await syncBootstrap({ syncForm: true });
       if (outcome.kind === "selected") {
         setStatusMessage("连发器透明窗口位置已保存。");
       } else if (outcome.kind === "cancelled") {
@@ -539,7 +472,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
           <>
             <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "总线接通" : "总线断开"}</Badge>
             <Badge variant="secondary">{enabledCount} 条通道待命</Badge>
-            <SaveStateBadge dirty={dirty} saving={saving} />
+            <SaveStateBadge dirty={isDirty} saving={saving} />
           </>
         }
         actions={
