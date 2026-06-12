@@ -29,11 +29,12 @@ export function DeltaDataCard({ badge, children, className, data, emptyText = "�
         icon={icon}
         badge={badge}
       />
+      <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ FIELD UNIT ]</div>
       <CardBody className="space-y-3">
-        {loading && (
+      {loading && (
           <div className="flex min-h-48 items-center justify-center gap-2 border-2 border-[var(--ink)] bg-[var(--data-well)] px-4 py-6 font-mono text-xs font-bold tracking-[0.08em] text-[var(--paper)] uppercase">
             <Spinner className="size-4" />
-            <span>数据载入中...</span>
+            <span>FETCHING // IDE GATEWAY</span>
           </div>
         )}
 

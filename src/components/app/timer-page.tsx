@@ -26,7 +26,6 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AddCardButton,
@@ -644,10 +643,9 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   }, [isNativeShell]);
 
   return (
-    <Tabs defaultValue="timers" className="min-h-0">
       <AppPage className="auto-rows-max">
         <PageHero
-          eyebrow="任务时序"
+          eyebrow="02 / TIMER"
           title="任务时序板"
           description="计时器负责阶段节奏，计数器负责战局累加；透明窗口、定位窗口与快捷键保持双通道隔离。"
           badges={
@@ -685,23 +683,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           </div>
         ) : null}
 
-        <TacticalCard className="col-span-12 xl:col-span-4">
-          <SectionHeader
-            eyebrow="工作通道"
-            icon={<RiTimerLine />}
-            title="面板切换"
-            description="当前通道决定下方显示的配置分组与卡片矩阵。"
-          />
-          <CardBody className="grid gap-3">
-            <TabsList variant="line" className="h-10 w-full">
-              <TabsTrigger value="timers">计时器</TabsTrigger>
-              <TabsTrigger value="counters">计数器</TabsTrigger>
-            </TabsList>
-            <InlineControl className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">
-              先切换通道，再编辑分组窗口、卡片字段与快捷键。
-            </InlineControl>
-          </CardBody>
-        </TacticalCard>
 
         <TacticalCard className="col-span-12 xl:col-span-8">
           <SectionHeader
@@ -733,7 +714,15 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           </CardBody>
         </TacticalCard>
 
-        <TabsContent value="timers" className="col-span-12">
+        {/* ── CHANNEL 01：计时器系统 ── */}
+        <SectionHeader
+          className="col-span-12"
+          eyebrow="CHANNEL 01"
+          icon={<RiTimerLine />}
+          title="计时器系统"
+          description="计时器负责阶段节奏。每张卡片配置独立计时方向、触发模式与快捷键。"
+        />
+        <div className="col-span-12">
           <div className="grid grid-cols-12 gap-3">
             <div className="col-span-12 flex flex-col gap-3 xl:col-span-4">
               {form?.timerGroups.map((group) => (
@@ -762,7 +751,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 
             <div className="col-span-12 grid grid-cols-12 gap-3 xl:col-span-8">
               {form?.timers.map((timer, index) => (
-                <div key={timer.id} className="col-span-12 2xl:col-span-6">
+                <div key={timer.id} data-timer-card={timer.id} className="col-span-12 2xl:col-span-6">
                   <TimerCard
                     controlsDisabled={controlsDisabled}
                     index={index}
@@ -794,9 +783,17 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               />
             </div>
           </div>
-        </TabsContent>
+        </div>
 
-        <TabsContent value="counters" className="col-span-12">
+        {/* ── CHANNEL 02：计数器系统 ── */}
+        <SectionHeader
+          className="col-span-12"
+          eyebrow="CHANNEL 02"
+          icon={<RiSpeedUpLine />}
+          title="计数器系统"
+          description="计数器负责战局累加。每张卡片有独立计数状态与快捷键。"
+        />
+        <div className="col-span-12">
           <div className="grid grid-cols-12 gap-3">
             <div className="col-span-12 flex flex-col gap-3 xl:col-span-4">
               {form?.counterGroups.map((group) => (
@@ -825,7 +822,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 
             <div className="col-span-12 grid grid-cols-12 gap-3 xl:col-span-8">
               {form?.counters.map((counter, index) => (
-                <div key={counter.id} className="col-span-12 2xl:col-span-6">
+                <div key={counter.id} data-counter-card={counter.id} className="col-span-12 2xl:col-span-6">
                   <CounterCard
                     controlsDisabled={controlsDisabled}
                     counter={counter}
@@ -860,9 +857,8 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               />
             </div>
           </div>
-        </TabsContent>
+        </div>
       </AppPage>
-    </Tabs>
   );
 }
 
@@ -886,7 +882,7 @@ function DisplaySettingsCard({ canDelete, controlsDisabled, description, display
   return (
     <TacticalCard>
       <SectionHeader
-        eyebrow={target === "timer" ? "计时透明窗口" : "计数透明窗口"}
+        eyebrow={`[ FIELD UNIT ${target === "timer" ? "01" : "02"} ]`}
         icon={<RiEyeLine />}
         title={title}
         description={description}
@@ -978,7 +974,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   return (
     <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow="计时卡片"
+        eyebrow={`T-${String(index + 1).padStart(2, "0")}`}
         icon={<RiTimerLine />}
         title={timer.name || `计时器 ${index + 1}`}
         description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
@@ -1119,7 +1115,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow="计数卡片"
+        eyebrow={`C-${String(index + 1).padStart(2, "0")}`}
         icon={<RiSpeedUpLine />}
         title={counter.name || `计数器 ${index + 1}`}
         description={`当前计数 · ${run?.value ?? counter.startValue}`}

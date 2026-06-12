@@ -72,7 +72,7 @@ export function DeltaAccountsPage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="账号与凭据"
+          eyebrow="D1 / CREDENTIALS"
           title="账号管理"
           description="管理游戏账号登录状态与访问令牌"
         />
@@ -84,7 +84,7 @@ export function DeltaAccountsPage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="账号与凭据"
+        eyebrow="D1 / CREDENTIALS"
         title="账号管理"
         description="管理游戏账号登录状态与访问令牌"
         actions={
@@ -124,6 +124,7 @@ export function DeltaAccountsPage() {
         </div>
 
         <TacticalCard className="p-0">
+          <div className="bg-[var(--ink)] px-3 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.22em] text-[var(--paper)]/60 uppercase text-center">[ UNIT 01 ] — 身份凭据档案柜</div>
           <SectionHeader
             eyebrow="账号列表"
             icon={<RiAccountPinCircleLine />}

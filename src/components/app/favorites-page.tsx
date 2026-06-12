@@ -278,7 +278,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
     return (
       <AppPage>
         <PageHero
-          eyebrow="战术收藏"
+          eyebrow="PIN / FAVORITES"
           title="收藏"
           description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
           badges={
@@ -303,7 +303,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   return (
     <AppPage>
       <PageHero
-        eyebrow="战术收藏"
+        eyebrow="PIN / FAVORITES"
         title="收藏"
         description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
         badges={

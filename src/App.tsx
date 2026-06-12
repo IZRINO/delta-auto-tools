@@ -324,14 +324,19 @@ function AppShell() {
             <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.18em] text-[var(--steel)] uppercase">Delta Auto Tools</p>
           </div>
         </div>
-        <div className="flex min-w-0 items-center justify-between gap-3 px-4">
-          <div className="min-w-0">
-            <p className="truncate font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">
-              当前工作台
-            </p>
-            <p className="mt-0.5 truncate text-xs font-black tracking-[0.12em] uppercase text-[var(--alert-red)]">
-              {activeMeta?.label ?? "收藏夹"} / {activeMeta?.short ?? "Pinned"}
-            </p>
+        <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--ink)] px-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="shrink-0 border-2 border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--alert-red)] uppercase">
+              {activeTool === "favorites" ? "PIN" : activeTool === "morse" ? "01" : activeTool === "timer" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "delta-accounts" ? "D1" : activeTool === "delta-game" ? "D2" : "D3"}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">
+                {activeMeta?.label ?? "收藏夹"}
+              </p>
+              <p className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.14em] text-[var(--steel)] uppercase">
+                {activeMeta?.short ?? "Pinned"} / ACTIVE
+              </p>
+            </div>
           </div>
           <div className="hidden items-center border-2 border-[var(--ink)] bg-[var(--ink)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--paper)] uppercase sm:flex">
             <span className="bg-[var(--paper)] px-3 py-2 text-[var(--ink)]">DESKTOP</span>
@@ -382,7 +387,7 @@ function AppShell() {
           tabIndex={-1}
           className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <div className="mx-auto min-h-full w-full max-w-[1680px] px-3 py-3 xl:px-4 xl:py-4">
+          <div className="min-h-full w-full px-2 py-2 xl:px-3 xl:py-3">
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
           </div>
         </main>

@@ -14,7 +14,7 @@ type AppPageProps = {
 
 export function AppPage({ children, className }: AppPageProps) {
   return (
-    <div className={cn("grid min-h-0 flex-1 grid-cols-12 gap-3 font-sans", className)}>
+    <div className={cn("grid min-h-0 flex-1 grid-cols-12 gap-2 font-sans", className)}>
       {children}
     </div>
   );
@@ -38,7 +38,12 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
         className,
       )}
     >
-      <div className="relative grid gap-px bg-[var(--ink)] lg:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="relative grid gap-px bg-[var(--ink)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="hidden shrink-0 border-r-2 border-[var(--ink)] bg-[var(--ink)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
+          <span className="font-heading text-[clamp(2.5rem,5vw,7rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--paper)] uppercase [writing-mode:vertical-rl]">
+            {eyebrow.replace(/^\s*(\S+).*/, "$1")}
+          </span>
+        </div>
         <div className="min-w-0 bg-[var(--paper)] px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--alert-red)] uppercase">
@@ -47,7 +52,7 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
             {badges}
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
-            <h1 className="max-w-4xl text-balance font-heading text-[clamp(1.75rem,3.5vw,3.4rem)] font-black leading-[0.9] tracking-[-0.055em] text-[var(--ink)] uppercase">
+            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2.5rem,7vw,7rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--ink)] uppercase">
               {title}
             </h1>
             <p className="max-w-[64ch] border-l-4 border-[var(--alert-red)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--steel)] uppercase">
@@ -56,7 +61,7 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
           </div>
         </div>
         {(actions || stats) ? (
-          <aside className="grid min-w-0 bg-[var(--paper)] lg:min-w-80 lg:max-w-[28rem]">
+          <aside className="grid min-w-0 bg-[var(--paper)] lg:min-w-72 lg:max-w-[26rem]">
             {actions ? <div className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--ink)] px-3 py-2">{actions}</div> : null}
             {stats ? <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3 lg:grid-cols-1">{stats}</div> : null}
           </aside>
@@ -131,8 +136,8 @@ export function SectionHeader({ actions, badge, className, description, eyebrow,
           ) : null}
           <div className="min-w-0">
             {eyebrow ? <p className="font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--bone)] uppercase">[ {eyebrow} ]</p> : null}
-            <CardTitle className="mt-0.5 text-[var(--paper)] uppercase">{title}</CardTitle>
-            {description ? <CardDescription className="mt-1 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--bone)] uppercase">{description}</CardDescription> : null}
+            <CardTitle className="mt-0.5 truncate text-[var(--paper)] uppercase">{title}</CardTitle>
+            {description ? <CardDescription className="mt-1 truncate font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--bone)] uppercase">{description}</CardDescription> : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

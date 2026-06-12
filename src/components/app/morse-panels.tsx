@@ -57,20 +57,20 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
           </InlineControl>
         ) : (
           <>
-            <ControlTile className="flex flex-wrap items-center justify-between gap-3">
+            <ControlTile className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="grid grid-cols-3 gap-1">
                   <div className="size-3 border border-[var(--ink)] bg-[var(--alert-red)]" style={{ opacity: configuredCount >= 1 ? 1 : 0.18 }} />
                   <div className="size-3 border border-[var(--ink)] bg-[var(--alert-red)]" style={{ opacity: configuredCount >= 2 ? 1 : 0.18 }} />
                   <div className="size-3 border border-[var(--ink)] bg-[var(--alert-red)]" style={{ opacity: configuredCount >= 3 ? 1 : 0.18 }} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="font-mono text-[0.68rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">采样主控</p>
                   <p className="mt-1 text-sm font-medium text-foreground">已锁定 {configuredCount}/3 个窗位</p>
-                  <p className="mt-1 text-xs text-muted-foreground">推荐在同一轮完成三段框选，避免后续校准链路漂移。</p>
+                  <p className="mt-1 hidden text-xs text-muted-foreground sm:block">推荐在同一轮完成三段框选，避免后续校准链路漂移。</p>
                 </div>
               </div>
-              <Button className="min-w-40 rounded-none" disabled={isBusy} onClick={onSelectAll} type="button" size="lg">
+              <Button className="w-full sm:w-auto sm:flex-none" disabled={isBusy} onClick={onSelectAll} type="button" size="lg">
                 <RiRefreshLine data-icon="inline-start" />
                 一次框选三段窗位
               </Button>
@@ -84,15 +84,15 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
 
                 return (
                   <ControlTile key={label} className="flex min-h-full flex-col gap-3">
-                    <div className="flex items-start justify-between gap-3 border-b border-[var(--ink)] pb-3">
+                    <div className="flex items-start justify-between gap-2 border-b border-[var(--ink)] pb-3">
                       <div className="min-w-0">
                         <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">{`窗位 0${index + 1}`}</p>
-                        <p className="mt-1 text-sm font-medium text-foreground">{label}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">{label}</p>
+                        <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
                           {isSelecting ? "当前轮次正在等待框选。" : isConfigured ? "坐标已写入，可直接放行识别。" : "尚未写入坐标，需先完成框选。"}
                         </p>
                       </div>
-                      <Badge variant={isSelecting ? "secondary" : isConfigured ? "default" : "outline"}>
+                      <Badge className="shrink-0" variant={isSelecting ? "secondary" : isConfigured ? "default" : "outline"}>
                         {isSelecting ? "框选中" : isConfigured ? "已锁定" : "待锁定"}
                       </Badge>
                     </div>
@@ -187,7 +187,7 @@ export function WorkbenchControlPanel({
       />
 
       <CardBody>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.88fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.88fr)]">
           <section className="min-h-0 border-2 border-[var(--ink)] bg-[var(--bone)]">
             <div className="border-b-2 border-[var(--ink)] bg-[var(--ink)] px-3 py-2 text-[var(--paper)]">
               <div className="flex items-start gap-2">
@@ -202,8 +202,8 @@ export function WorkbenchControlPanel({
             <div className="p-4">
               {form ? (
                 <FieldGroup className="flex flex-1 flex-col gap-4 xl:min-h-full">
-                  <Field className="xl:min-h-0">
-                    <FieldLabel htmlFor="hotkey-recorder">热键</FieldLabel>
+                  <Field className="xl:min-h-0 xl:flex-row xl:items-start">
+                    <FieldLabel htmlFor="hotkey-recorder" className="xl:w-44 xl:shrink-0 xl:pt-1.5">热键</FieldLabel>
                     <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                       <Button
                         ref={hotkeyButtonRef}
@@ -222,8 +222,8 @@ export function WorkbenchControlPanel({
                     </FieldContent>
                   </Field>
 
-                  <Field className="xl:min-h-0">
-                    <FieldLabel htmlFor="binary-threshold">二值化阈值</FieldLabel>
+                  <Field className="xl:min-h-0 xl:flex-row xl:items-start">
+                    <FieldLabel htmlFor="binary-threshold" className="xl:w-44 xl:shrink-0 xl:pt-1.5">二值化阈值</FieldLabel>
                     <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                       <Input
                         className="rounded-none border-2 border-[var(--ink)] bg-[var(--paper)] font-mono"
@@ -237,8 +237,8 @@ export function WorkbenchControlPanel({
                     </FieldContent>
                   </Field>
 
-                  <Field className="xl:min-h-0">
-                    <FieldLabel htmlFor="auto-input-delay">自动输入延迟（毫秒）</FieldLabel>
+                  <Field className="xl:min-h-0 xl:flex-row xl:items-start">
+                    <FieldLabel htmlFor="auto-input-delay" className="xl:w-44 xl:shrink-0 xl:pt-1.5">自动输入延迟（毫秒）</FieldLabel>
                     <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                       <Input
                         className="rounded-none border-2 border-[var(--ink)] bg-[var(--paper)] font-mono"
@@ -270,8 +270,8 @@ export function WorkbenchControlPanel({
                       </CollapsibleTrigger>
                       <CollapsibleContent className="border-t-2 border-[var(--ink)] px-3 py-3">
                         <FieldGroup className="gap-3">
-                          <Field className="xl:min-h-0">
-                            <FieldLabel htmlFor="after-click-hotkey">点击完成后按键</FieldLabel>
+                          <Field className="xl:min-h-0 xl:flex-row xl:items-start">
+                            <FieldLabel htmlFor="after-click-hotkey" className="xl:w-44 xl:shrink-0 xl:pt-1.5">点击完成后按键</FieldLabel>
                             <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                               <Input
                                 className="rounded-none border-2 border-[var(--ink)] bg-[var(--paper)] font-mono"
@@ -282,8 +282,8 @@ export function WorkbenchControlPanel({
                               />
                             </FieldContent>
                           </Field>
-                          <Field className="xl:min-h-0">
-                            <FieldLabel>点击区域（最多 7 个）</FieldLabel>
+                          <Field className="xl:min-h-0 xl:flex-row xl:items-start">
+                            <FieldLabel className="xl:w-44 xl:shrink-0 xl:pt-1.5">点击区域（最多 7 个）</FieldLabel>
                             <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                               <div className="flex flex-col gap-2">
                                 {clickRegionRows(clickRegions).map((cr) => (
@@ -431,9 +431,10 @@ export function ResultPanel({ hasResult = false, isPrimary = false, latestAutoTy
                 {latestAutoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
               </div>
               <p className="mt-4 font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--bone)] uppercase">最新三码输出</p>
-              <p className="mt-4 break-all font-mono text-4xl font-semibold tracking-[0.24em] text-[var(--paper)] sm:text-5xl sm:tracking-[0.36em]">
+              <p className="mt-4 break-all font-mono text-4xl font-semibold tracking-[0.24em] text-[var(--alert-red)] sm:text-5xl sm:tracking-[0.36em]">
                 {latestRunValue ?? "---"}
               </p>
+              <div className="mt-2 h-0.5 w-full bg-[var(--alert-red)]" aria-hidden="true" />
               <p className="mt-3 text-xs text-[var(--bone)]">{latestRunError ?? "执行识别后会在这里显示最新三码输出。"}</p>
             </InlineControl>
 

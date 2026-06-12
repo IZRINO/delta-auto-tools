@@ -428,16 +428,18 @@ export function StrategyPage() {
       <div className="col-span-12 grid shrink-0 gap-px overflow-hidden border-2 border-[var(--ink)] bg-[var(--ink)] lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0 bg-[var(--paper)] px-2 py-2">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="hidden shrink-0 border-r-2 border-[var(--ink)] pr-2 sm:block">
+            <div className="hidden shrink-0 items-center gap-1.5 border-r-2 border-[var(--ink)] pr-2 sm:flex">
+              <span className="border-2 border-[var(--ink)] bg-[var(--ink)] px-1.5 py-0.5 font-heading text-sm font-black tracking-[-0.04em] text-[var(--alert-red)] uppercase">04</span>
               <Badge variant="secondary" className="h-6 px-2">攻略</Badge>
-              <p className="mt-1 font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">strategy-content</p>
+              <p className="font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">INTEL</p>
             </div>
 
             <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId} className="min-w-0 flex-1 gap-0">
               <div className="min-w-0 overflow-x-auto overflow-y-hidden">
                 <TabsList variant="line" className="h-8 min-w-max justify-start border-0 bg-transparent p-0 group-data-horizontal/tabs:h-8">
-                  {allSites.map((site) => (
-                    <TabsTrigger key={site.id} value={site.id} className="h-8 max-w-32 flex-none px-2 py-0 font-mono text-[0.66rem] tracking-[0.06em]">
+                  {allSites.map((site, siteIndex) => (
+                    <TabsTrigger key={site.id} value={site.id} className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-[0.66rem] font-black tracking-[0.08em]">
+                      <span className="text-[0.55rem] text-[var(--steel)] data-[state=active]:text-[var(--alert-red)]">{String(siteIndex + 1).padStart(2, "0")}</span>
                       <img alt="" aria-hidden className="size-3.5 border border-[var(--ink)] bg-[var(--paper)] object-contain" src={site.favicon} />
                       <span className="truncate">{site.shortLabel || site.label}</span>
                     </TabsTrigger>

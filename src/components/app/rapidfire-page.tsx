@@ -525,7 +525,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       )}
 
       <PageHero
-        eyebrow="火控总线"
+        eyebrow="03 / RAPIDFIRE"
         title="连发火控矩阵"
         description="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
         badges={
@@ -573,6 +573,14 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                   disabled={controlsDisabled}
                   onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
                 />
+                <span
+                  className={cn(
+                    "font-mono text-[0.65rem] font-black tracking-[0.12em] uppercase",
+                    form.rapidfireEnabled ? "text-[var(--alert-red)]" : "text-[var(--steel)]",
+                  )}
+                >
+                  {form.rapidfireEnabled ? "ARMED" : "DISARMED"}
+                </span>
                 <FieldContent>
                   <FieldLabel htmlFor="rapidfireEnabled">连发器总开关</FieldLabel>
                   <FieldDescription>断开后立即解绑触发键，并同步关闭透明窗口。</FieldDescription>
@@ -833,20 +841,27 @@ function RapidfireCardEditor({
       )}
     >
       <SectionHeader
-        eyebrow="通道单元"
-        icon={<RiPulseLine />}
-        title={`第 ${String(index + 1).padStart(2, "0")} 通道`}
+        eyebrow={`UNIT ${String(index + 1).padStart(2, "0")}`}
+        title="FIRE CONTROL"
         description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / 间隔 ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "补齐断开" : "补齐接通"}`}
         badge={
-          <>
-            <Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge>
-            <Badge variant={status.variant}>{status.label}</Badge>
-          </>
+          <Badge variant={status.variant}>{status.label}</Badge>
         }
         className={cn(status.error && "bg-[var(--alert-red)]")}
       />
+      {isRunning || isPending ? (
+        <div className="flex items-center gap-2 border-b-2 border-[var(--ink)] bg-[var(--alert-red)] px-3 py-1 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--paper)] uppercase">
+          <span className="inline-block size-1.5 bg-[var(--paper)]" />
+          {isRunning ? "FIRING" : "ARMED"}
+        </div>
+      ) : null}
       <CardHeader className="border-b-2 border-[var(--ink)] bg-[var(--bone)] pt-0">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <div className="hidden items-center justify-center border-r-2 border-[var(--ink)] pr-3 xl:flex">
+            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--ink)]">
+              RF-{String(index + 1).padStart(2, "0")}
+            </span>
+          </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
             <div className="min-w-0">
               <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">通道名称</p>
@@ -1291,7 +1306,7 @@ function RapidfireCardDragHandle({ disabled, onDragStart }: { disabled: boolean;
   return (
     <Button
       aria-label="拖动排序"
-      className="cursor-grab active:cursor-grabbing"
+      className="cursor-grab active:cursor-grabbing border-l-[3px] border-[var(--ink)] pl-1"
       disabled={disabled}
       onPointerDown={(event) => {
         event.preventDefault();
@@ -1301,7 +1316,7 @@ function RapidfireCardDragHandle({ disabled, onDragStart }: { disabled: boolean;
       type="button"
       variant="ghost"
     >
-      <span aria-hidden className="font-mono text-xs font-bold leading-none">↕</span>
+      <span aria-hidden className="font-mono text-sm font-black leading-none text-[var(--ink)]">≡</span>
     </Button>
   );
 }

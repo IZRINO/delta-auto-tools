@@ -143,7 +143,7 @@ export function DeltaGamePage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="游戏数据"
+          eyebrow="D2 / ASSETS"
           title="游戏数据"
           description="查看游戏内角色数据与资产信息"
         />
@@ -155,7 +155,7 @@ export function DeltaGamePage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="游戏数据"
+        eyebrow="D2 / ASSETS"
         title="游戏数据"
         description="查看游戏内角色数据与资产信息"
         stats={

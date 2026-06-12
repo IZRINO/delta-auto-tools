@@ -3,6 +3,7 @@ import { ACCOUNT_KIND_LABELS, CAPABILITY_LABELS } from "@/components/app/delta-t
 import { getCapabilities, getAccountDisplayName, getTokenStatus, getTokenStatusLabel } from "@/components/app/delta-utils";
 import { Badge } from "@/components/ui/badge";
 import { TacticalCard } from "@/components/app/app-ui";
+import { cn } from "@/lib/utils";
 import { TokenBadge } from "@/components/app/delta-token-badge";
 
 type DeltaAccountCardProps = {
@@ -15,13 +16,23 @@ export function DeltaAccountCard({ account, selected, onSelect }: DeltaAccountCa
   const tokenStatus = getTokenStatus(account);
   const tokenLabel = getTokenStatusLabel(tokenStatus, account.expiresAt);
   const capabilities = getCapabilities(account.kind);
+  const isExpired = tokenStatus === "expired";
+
 
   return (
     <TacticalCard
       active={selected}
-      className="cursor-pointer p-0 transition-colors"
+      className={cn(
+        "relative cursor-pointer p-0 transition-colors",
+        isExpired && "border-[var(--alert-red)]",
+      )}
       onClick={() => onSelect(account.id)}
     >
+      {isExpired && (
+        <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-12 select-none">
+          <span className="block border-2 border-[var(--alert-red)] px-2 py-0.5 font-mono text-[0.7rem] font-black tracking-[0.15em] text-[var(--alert-red)] uppercase opacity-80">已过期</span>
+        </div>
+      )}
       <div className="grid gap-px bg-[var(--ink)]">
         <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-[9rem_minmax(0,1fr)]">
           <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--paper)] uppercase">

@@ -155,7 +155,7 @@ export function DeltaToolboxPage() {
     return (
       <AppPage>
         <PageHero
-          eyebrow="工具能力"
+          eyebrow="D3 / COMMANDS"
           title="工具箱"
           description="Wegame 运营、安全查询与先遣服测试"
         />
@@ -167,7 +167,7 @@ export function DeltaToolboxPage() {
   return (
     <AppPage>
       <PageHero
-        eyebrow="工具能力"
+        eyebrow="D3 / COMMANDS"
         title="工具箱"
         description="Wegame 运营、安全查询与先遣服测试"
       />
@@ -198,11 +198,12 @@ export function DeltaToolboxPage() {
             {hasWegame && (
               <TacticalCard className="xl:col-span-6 p-0">
                 <SectionHeader
-                  eyebrow="运营命令"
+                  eyebrow="CMD-01 运营命令"
                   icon={<RiGiftLine />}
                   title="Wegame 操作单元"
                   description="领取保险箱礼包与每日抽卡"
                 />
+                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
                   <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] sm:grid-cols-2">
                     <Button size="sm" disabled={giftLoading} onClick={handleOpenGift} className="justify-start">
@@ -227,11 +228,12 @@ export function DeltaToolboxPage() {
             {hasQqSafe && (
               <TacticalCard className="xl:col-span-6 p-0">
                 <SectionHeader
-                  eyebrow="安全查询"
+                  eyebrow="CMD-02 安全查询"
                   icon={<RiShieldLine />}
                   title="QQ 安全中心单元"
                   description="查询封禁记录与游戏报告"
                 />
+                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
                     <Button size="sm" disabled={bannedLoading} onClick={handleLoadBanned}>
@@ -283,29 +285,33 @@ export function DeltaToolboxPage() {
             {hasPioneer && (
               <TacticalCard className="xl:col-span-12 p-0">
                 <SectionHeader
-                  eyebrow="测试列表"
+                  eyebrow="CMD-03 测试列表"
                   icon={<RiRocketLine />}
                   title="先遣服测试单元"
                   description="查看先遣服测试游戏列表"
                 />
+                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
                     <SurfaceToggleGroup className="flex overflow-hidden p-0">
                       <button
                         type="button"
-                        className={`px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "pc" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        className={`relative px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "pc" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
                         onClick={() => setPioneerListType("pc")}
                       >
+                        {pioneerListType === "pc" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--valid-green)]" />}
                         电脑
                       </button>
                       <button
                         type="button"
-                        className={`border-l border-[var(--ink)] px-3 py-1.5 font-mono text-xs font-semibold tracking-[0.08em] transition-colors ${pioneerListType === "mobile" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        className={`relative border-l border-[var(--ink)] px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "mobile" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
                         onClick={() => setPioneerListType("mobile")}
                       >
+                        {pioneerListType === "mobile" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--valid-green)]" />}
                         手机
                       </button>
                     </SurfaceToggleGroup>
+                    <span className="font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">SWITCH // {pioneerListType === "pc" ? "PC" : "MOBILE"}</span>
                     <Button size="sm" disabled={pioneerLoading} onClick={handleLoadPioneer}>
                       {pioneerLoading && <Spinner className="mr-1.5 size-3.5" />}
                       查询测试列表
