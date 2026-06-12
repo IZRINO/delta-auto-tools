@@ -173,11 +173,11 @@ export function DeltaToolboxPage() {
       />
 
       <div className="col-span-12 grid gap-3">
-        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
-          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+        <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--chalk)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--carbon)] uppercase">
             工具路由
           </div>
-          <div className="bg-[var(--paper)] px-3 py-3">
+          <div className="bg-[var(--carbon)] px-3 py-3">
             <DeltaAccountSelector
               filterKinds={ALL_TOOLBOX_KINDS}
               emptyText="请先在账号管理中添加 Wegame、QQ 安全中心或先遣服账号"
@@ -203,9 +203,9 @@ export function DeltaToolboxPage() {
                   title="Wegame 操作单元"
                   description="领取保险箱礼包与每日抽卡"
                 />
-                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
+                  <div className="border-b border-[var(--chalk)] bg-[var(--slate)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--zinc)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
-                  <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] sm:grid-cols-2">
+                  <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] sm:grid-cols-2">
                     <Button size="sm" disabled={giftLoading} onClick={handleOpenGift} className="justify-start">
                       {giftLoading && <Spinner className="mr-1.5 size-3.5" />}
                       领取保险箱礼包
@@ -233,26 +233,26 @@ export function DeltaToolboxPage() {
                   title="QQ 安全中心单元"
                   description="查询封禁记录与游戏报告"
                 />
-                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
+                  <div className="border-b border-[var(--chalk)] bg-[var(--slate)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--zinc)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)] px-3 py-3">
                     <Button size="sm" disabled={bannedLoading} onClick={handleLoadBanned}>
                       {bannedLoading && <Spinner className="mr-1.5 size-3.5" />}
                       查询封禁记录
                     </Button>
-                    <span className="font-mono text-[0.66rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">结果写入下方数据井</span>
+                    <span className="font-mono text-[0.66rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">结果写入下方数据井</span>
                   </div>
 
                   {bannedError && <InlineNotice title="封禁查询失败">{bannedError}</InlineNotice>}
                   {bannedResult !== null && <JsonPreBlock className="min-h-40" maxHeightClassName="max-h-56" data={bannedResult} />}
 
-                  <div className="border-2 border-[var(--ink)] bg-[var(--paper)]">
+                  <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)]">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between bg-[var(--bone)] px-3 py-3 text-left"
+                      className="flex w-full items-center justify-between bg-[var(--slate)] px-3 py-3 text-left"
                       onClick={() => setReportExpanded(!reportExpanded)}
                     >
-                      <span className="flex items-center gap-2 font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--ink)] uppercase">
+                      <span className="flex items-center gap-2 font-mono text-[0.68rem] font-black tracking-[0.08em] text-[var(--chalk)] uppercase">
                         游戏报告
                         <Badge variant="outline" className="text-[0.58rem]">已弃用</Badge>
                       </span>
@@ -260,9 +260,9 @@ export function DeltaToolboxPage() {
                     </button>
 
                     {reportExpanded && (
-                      <div className="grid gap-3 border-t-2 border-[var(--ink)] p-3">
+                      <div className="grid gap-3 border-t-2 border-[var(--chalk)] p-3">
                         <div>
-                          <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">用户 QQ 号</label>
+                          <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">用户 QQ 号</label>
                           <Input
                             placeholder="输入 QQ 号"
                             value={reportUserId}
@@ -290,28 +290,28 @@ export function DeltaToolboxPage() {
                   title="先遣服测试单元"
                   description="查看先遣服测试游戏列表"
                 />
-                  <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ COMMAND UNIT ]</div>
+                  <div className="border-b border-[var(--chalk)] bg-[var(--slate)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--zinc)] uppercase">[ COMMAND UNIT ]</div>
                 <CardBody className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)] px-3 py-3">
                     <SurfaceToggleGroup className="flex overflow-hidden p-0">
                       <button
                         type="button"
-                        className={`relative px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "pc" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        className={`relative px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "pc" ? "bg-[var(--chalk)] text-[var(--carbon)]" : "text-[var(--zinc)] hover:bg-[var(--carbon)]"}`}
                         onClick={() => setPioneerListType("pc")}
                       >
-                        {pioneerListType === "pc" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--valid-green)]" />}
+                        {pioneerListType === "pc" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--moss)]" />}
                         电脑
                       </button>
                       <button
                         type="button"
-                        className={`relative border-l border-[var(--ink)] px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "mobile" ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--steel)] hover:bg-[var(--paper)]"}`}
+                        className={`relative border-l border-[var(--chalk)] px-4 py-2 font-mono text-xs font-black tracking-[0.12em] transition-colors ${pioneerListType === "mobile" ? "bg-[var(--chalk)] text-[var(--carbon)]" : "text-[var(--zinc)] hover:bg-[var(--carbon)]"}`}
                         onClick={() => setPioneerListType("mobile")}
                       >
-                        {pioneerListType === "mobile" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--valid-green)]" />}
+                        {pioneerListType === "mobile" && <span className="absolute left-1 top-1 size-1.5 bg-[var(--moss)]" />}
                         手机
                       </button>
                     </SurfaceToggleGroup>
-                    <span className="font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">SWITCH // {pioneerListType === "pc" ? "PC" : "MOBILE"}</span>
+                    <span className="font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">SWITCH // {pioneerListType === "pc" ? "PC" : "MOBILE"}</span>
                     <Button size="sm" disabled={pioneerLoading} onClick={handleLoadPioneer}>
                       {pioneerLoading && <Spinner className="mr-1.5 size-3.5" />}
                       查询测试列表

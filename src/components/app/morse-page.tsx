@@ -411,7 +411,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       />
 
       {/* 结构分隔线 */}
-      <div className="col-span-12 h-0.5 bg-[var(--ink)]" />
+      <div className="col-span-12 h-0.5 bg-[var(--chalk)]" />
 
       <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-4">
         <SelectionPanel
@@ -456,7 +456,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         />
       </div>
 
-      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--ink)] p-3 xl:col-span-7">
+      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--chalk)] p-3 xl:col-span-7">
         <ResultPanel
           hasResult={hasLatestResult}
           isPrimary={stepThreeActive}
@@ -468,7 +468,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         />
       </div>
 
-      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--ink)] p-3 xl:col-span-5">
+      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--chalk)] p-3 xl:col-span-5">
         <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
       </div>
     </AppPage>

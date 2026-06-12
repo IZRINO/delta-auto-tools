@@ -34,36 +34,36 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
   return (
     <section
       className={cn(
-        "relative col-span-12 overflow-hidden border-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]",
+        "relative col-span-12 overflow-hidden border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]",
         className,
       )}
     >
-      <div className="relative grid gap-px bg-[var(--ink)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-        <div className="hidden shrink-0 border-r-2 border-[var(--ink)] bg-[var(--ink)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
-          <span className="font-heading text-[clamp(2.5rem,5vw,7rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--paper)] uppercase [writing-mode:vertical-rl]">
+      <div className="relative grid gap-px bg-[var(--chalk)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="hidden shrink-0 border-r-2 border-[var(--chalk)] bg-[var(--chalk)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
+          <span className="font-heading text-[clamp(2.5rem,5vw,7rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
             {eyebrow.replace(/^\s*(\S+).*/, "$1")}
           </span>
         </div>
-        <div className="min-w-0 bg-[var(--paper)] px-3 py-3 sm:px-4">
+        <div className="min-w-0 bg-[var(--carbon)] px-3 py-3 sm:px-4">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--alert-red)] uppercase">
+            <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--amber)] uppercase">
               [ {eyebrow} ]
             </p>
             {badges}
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
-            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2.5rem,7vw,7rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--ink)] uppercase">
+            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2.5rem,7vw,7rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
               {title}
             </h1>
-            <p className="max-w-[64ch] border-l-4 border-[var(--alert-red)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--steel)] uppercase">
+            <p className="max-w-[64ch] border-l-4 border-[var(--amber)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--zinc)] uppercase">
               {description}
             </p>
           </div>
         </div>
         {(actions || stats) ? (
-          <aside className="grid min-w-0 bg-[var(--paper)] lg:min-w-72 lg:max-w-[26rem]">
-            {actions ? <div className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--ink)] px-3 py-2">{actions}</div> : null}
-            {stats ? <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3 lg:grid-cols-1">{stats}</div> : null}
+          <aside className="grid min-w-0 bg-[var(--carbon)] lg:min-w-72 lg:max-w-[26rem]">
+            {actions ? <div className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--chalk)] px-3 py-2">{actions}</div> : null}
+            {stats ? <div className="grid gap-px bg-[var(--chalk)] sm:grid-cols-3 lg:grid-cols-1">{stats}</div> : null}
           </aside>
         ) : null}
       </div>
@@ -81,13 +81,13 @@ type SignalTileProps = {
 
 export function SignalTile({ className, detail, icon, label, value }: SignalTileProps) {
   return (
-    <div className={cn("flex min-h-12 items-center justify-between gap-3 bg-[var(--paper)] px-3 py-2 text-[var(--ink)]", className)}>
+    <div className={cn("flex min-h-12 items-center justify-between gap-3 bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]", className)}>
       <div className="min-w-0">
-        <p className="truncate font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">{label}</p>
-        {detail ? <div className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.06em] text-[var(--steel)] uppercase">{detail}</div> : null}
+        <p className="truncate font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{label}</p>
+        {detail ? <div className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">{detail}</div> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2 font-mono text-lg font-black leading-none tracking-[-0.04em] text-[var(--ink)] tabular-nums">
-        {icon ? <div className="text-[var(--alert-red)]">{icon}</div> : null}
+      <div className="flex shrink-0 items-center gap-2 font-mono text-lg font-black leading-none tracking-[-0.04em] text-[var(--chalk)] tabular-nums">
+        {icon ? <div className="text-[var(--amber)]">{icon}</div> : null}
         {value}
       </div>
     </div>
@@ -103,8 +103,8 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     <Card
       size={size}
       className={cn(
-        "border-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)] shadow-none transition-[background-color,outline-color]",
-        active && "bg-[var(--bone)] outline-4 outline-[var(--alert-red)]",
+        "border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)] shadow-none transition-[background-color,outline-color]",
+        active && "bg-[var(--slate)] outline-4 outline-[var(--amber)]",
         className,
       )}
       {...props}
@@ -126,18 +126,18 @@ type SectionHeaderProps = {
 
 export function SectionHeader({ actions, badge, className, description, eyebrow, icon, title }: SectionHeaderProps) {
   return (
-    <CardHeader className={cn("border-b-2 border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]", className)}>
+    <CardHeader className={cn("border-b-2 border-[var(--chalk)] bg-[var(--chalk)] text-[var(--carbon)]", className)}>
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
-            <div className="flex size-9 shrink-0 items-center justify-center border border-[var(--paper)] bg-[var(--alert-red)] text-[var(--paper)]">
+            <div className="flex size-9 shrink-0 items-center justify-center border border-[var(--carbon)] bg-[var(--amber)] text-[var(--carbon)]">
               {icon}
             </div>
           ) : null}
           <div className="min-w-0">
-            {eyebrow ? <p className="font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--bone)] uppercase">[ {eyebrow} ]</p> : null}
-            <CardTitle className="mt-0.5 truncate text-[var(--paper)] uppercase">{title}</CardTitle>
-            {description ? <CardDescription className="mt-1 truncate font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--bone)] uppercase">{description}</CardDescription> : null}
+            {eyebrow ? <p className="font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--slate)] uppercase">[ {eyebrow} ]</p> : null}
+            <CardTitle className="mt-0.5 truncate text-[var(--carbon)] uppercase">{title}</CardTitle>
+            {description ? <CardDescription className="mt-1 truncate font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--slate)] uppercase">{description}</CardDescription> : null}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -155,7 +155,7 @@ type ControlTileProps = {
 };
 
 export function ControlTile({ children, className }: ControlTileProps) {
-  return <div className={cn("border-2 border-[var(--ink)] bg-[var(--bone)] p-3", className)}>{children}</div>;
+  return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--slate)] p-3", className)}>{children}</div>;
 }
 
 export function SaveStateBadge({ dirty, saving }: { dirty: boolean; saving: boolean }) {
@@ -180,7 +180,7 @@ export function TacticalEmptyState({ children, className, description, icon, tit
   return (
     <TacticalCard className={cn("min-h-48", className)}>
       <CardBody className="flex h-full items-center justify-center">
-        <Empty className="min-h-40 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
+        <Empty className="min-h-40 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
           {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
           <EmptyHeader>
             <EmptyTitle>{title}</EmptyTitle>
@@ -205,18 +205,18 @@ export function AddCardButton({ className, description, disabled, onClick, title
   return (
     <button
       className={cn(
-        "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] p-4 text-center transition-colors hover:bg-[var(--paper)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] active:bg-[var(--ink)] active:text-[var(--paper)] disabled:cursor-not-allowed disabled:opacity-50",
+        "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] p-4 text-center transition-colors hover:bg-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] active:bg-[var(--chalk)] active:text-[var(--carbon)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <span className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--ink)] bg-[var(--alert-red)] text-[var(--paper)]">
+      <span className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
         <RiAddLine />
       </span>
-      <span className="text-sm font-black uppercase text-[var(--ink)] group-active:text-[var(--paper)]">{title}</span>
-      <span className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase group-active:text-[var(--bone)]">{description}</span>
+      <span className="text-sm font-black uppercase text-[var(--chalk)] group-active:text-[var(--carbon)]">{title}</span>
+      <span className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase group-active:text-[var(--slate)]">{description}</span>
     </button>
   );
 }
@@ -232,7 +232,7 @@ export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" 
     <pre
       className={cn(
         maxHeightClassName,
-        "overflow-auto border-2 border-[var(--ink)] bg-[var(--data-well)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--paper)]",
+        "overflow-auto border-2 border-[var(--chalk)] bg-[var(--void)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--carbon)]",
         className,
       )}
     >
@@ -249,7 +249,7 @@ type InlineNoticeProps = {
 
 export function InlineNotice({ children, className, title }: InlineNoticeProps) {
   return (
-    <Alert variant="destructive" className={cn("border-2 border-[var(--alert-red)] bg-[var(--paper)] text-[var(--ink)]", className)}>
+    <Alert variant="destructive" className={cn("border-2 border-[var(--amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}>
       {title ? <AlertTitle>{title}</AlertTitle> : null}
       <AlertDescription>{children}</AlertDescription>
     </Alert>
@@ -257,7 +257,7 @@ export function InlineNotice({ children, className, title }: InlineNoticeProps) 
 }
 
 export function InlineControl({ children, className }: ControlTileProps) {
-  return <div className={cn("border border-[var(--ink)] bg-[var(--paper)] p-3", className)}>{children}</div>;
+  return <div className={cn("border border-[var(--chalk)] bg-[var(--carbon)] p-3", className)}>{children}</div>;
 }
 
 type CardToolbarProps = {
@@ -266,7 +266,7 @@ type CardToolbarProps = {
 };
 
 export function CardToolbar({ children, className }: CardToolbarProps) {
-  return <div className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--ink)] bg-[var(--bone)] p-2", className)}>{children}</div>;
+  return <div className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2", className)}>{children}</div>;
 }
 
 type SurfaceToggleGroupProps = {
@@ -275,5 +275,5 @@ type SurfaceToggleGroupProps = {
 };
 
 export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
-  return <div className={cn("border-2 border-[var(--ink)] bg-[var(--ink)] p-px", className)}>{children}</div>;
+  return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--chalk)] p-px", className)}>{children}</div>;
 }

@@ -102,7 +102,7 @@ type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] |
 
 function ToolPageFallback() {
   return (
-    <div className="flex min-h-[360px] items-center justify-center border-2 border-[var(--ink)] bg-[var(--bone)] px-6 text-center font-mono text-xs font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+    <div className="flex min-h-[360px] items-center justify-center border-2 border-[var(--chalk)] bg-[var(--slate)] px-6 text-center font-mono text-xs font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
       [ 正在装载工具面板 ]
     </div>
   );
@@ -164,19 +164,19 @@ function IndexRailItem({
 }) {
   return (
     <button
-      className="group relative grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch border-b border-[var(--ink)] bg-[var(--paper)] text-left transition-colors hover:bg-[var(--bone)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] data-[active=true]:bg-[var(--ink)] data-[active=true]:text-[var(--paper)]"
+      className="group relative grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch border-b border-[var(--chalk)] bg-[var(--carbon)] text-left transition-colors hover:bg-[var(--slate)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] data-[active=true]:bg-[var(--chalk)] data-[active=true]:text-[var(--carbon)]"
       data-active={active}
       onClick={onClick}
       type="button"
     >
-      <span className="bg-transparent group-data-[active=true]:bg-[var(--alert-red)]" aria-hidden="true" />
+      <span className="bg-transparent group-data-[active=true]:bg-[var(--amber)]" aria-hidden="true" />
       <span className="min-w-0 px-3 py-3">
         <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">{label}</span>
-        <span className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--steel)] uppercase group-data-[active=true]:text-[var(--bone)]">
+        <span className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase group-data-[active=true]:text-[var(--slate)]">
           {code} / {meta}
         </span>
       </span>
-      <span className="flex items-center justify-center border-l border-[var(--ink)] text-[var(--alert-red)] group-data-[active=true]:text-[var(--paper)]">
+      <span className="flex items-center justify-center border-l border-[var(--chalk)] text-[var(--amber)] group-data-[active=true]:text-[var(--carbon)]">
         <Icon className="size-4" aria-hidden="true" />
       </span>
     </button>
@@ -185,8 +185,8 @@ function IndexRailItem({
 
 function IndexRailSection({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <section className="border-t-2 border-[var(--ink)]">
-      <div className="flex h-8 items-center border-b border-[var(--ink)] bg-[var(--ink)] px-3 font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--paper)] uppercase">
+    <section className="border-t-2 border-[var(--chalk)]">
+      <div className="flex h-8 items-center border-b border-[var(--chalk)] bg-[var(--chalk)] px-3 font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--carbon)] uppercase">
         [ {title} ]
       </div>
       <div>{children}</div>
@@ -308,46 +308,46 @@ function AppShell() {
   return (
     <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-transparent">
       <a
-        className="sr-only fixed left-4 top-4 z-50 border-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 font-mono text-sm font-black tracking-[0.16em] text-[var(--ink)] uppercase focus:not-sr-only focus:outline-2 focus:outline-[var(--alert-red)]"
+        className="sr-only fixed left-4 top-4 z-50 border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-sm font-black tracking-[0.16em] text-[var(--chalk)] uppercase focus:not-sr-only focus:outline-2 focus:outline-[var(--amber)]"
         href="#app-content"
       >
         跳到主内容
       </a>
 
-      <header className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] border-b-2 border-[var(--ink)] bg-[var(--paper)] text-[var(--ink)]">
-        <div className="flex items-center gap-3 border-r-2 border-[var(--ink)] px-3">
-          <div className="flex size-8 items-center justify-center border-2 border-[var(--ink)] bg-[var(--alert-red)] text-[var(--paper)]">
+      <header className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] border-b-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]">
+        <div className="flex items-center gap-3 border-r-2 border-[var(--chalk)] px-3">
+          <div className="flex size-8 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
             <RiCrosshair2Line className="size-5" aria-hidden="true" />
           </div>
           <div className="min-w-0 leading-none">
             <p className="truncate text-sm font-black tracking-[-0.03em] uppercase">三角洲行动工具</p>
-            <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.18em] text-[var(--steel)] uppercase">Delta Auto Tools</p>
+            <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.18em] text-[var(--zinc)] uppercase">Delta Auto Tools</p>
           </div>
         </div>
-        <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--ink)] px-3">
+        <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="shrink-0 border-2 border-[var(--ink)] bg-[var(--ink)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--alert-red)] uppercase">
+            <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
               {activeTool === "favorites" ? "PIN" : activeTool === "morse" ? "01" : activeTool === "timer" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "delta-accounts" ? "D1" : activeTool === "delta-game" ? "D2" : "D3"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">
                 {activeMeta?.label ?? "收藏夹"}
               </p>
-              <p className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.14em] text-[var(--steel)] uppercase">
+              <p className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase">
                 {activeMeta?.short ?? "Pinned"} / ACTIVE
               </p>
             </div>
           </div>
-          <div className="hidden items-center border-2 border-[var(--ink)] bg-[var(--ink)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--paper)] uppercase sm:flex">
-            <span className="bg-[var(--paper)] px-3 py-2 text-[var(--ink)]">DESKTOP</span>
-            <span className="px-3 py-2 text-[var(--paper)]">Tauri</span>
+          <div className="hidden items-center border-2 border-[var(--chalk)] bg-[var(--chalk)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--carbon)] uppercase sm:flex">
+            <span className="bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]">DESKTOP</span>
+            <span className="px-3 py-2 text-[var(--carbon)]">Tauri</span>
           </div>
         </div>
       </header>
 
       <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden">
-        <aside className="min-h-0 overflow-y-auto border-r-2 border-[var(--ink)] bg-[var(--bone)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="border-b-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+        <aside className="min-h-0 overflow-y-auto border-r-2 border-[var(--chalk)] bg-[var(--slate)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="border-b-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
             工具索引 / 收藏 {favorites.items.length}
           </div>
 

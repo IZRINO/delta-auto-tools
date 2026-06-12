@@ -80,7 +80,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 视觉方向
 
-**Swiss Industrial Print × Declassified Tactical Control Board**（详见 `DESIGN.md`）。主基底 Paper `#F1EFE8` / Bone `#DDD8CC`，Ink `#080808` 粗黑结构线，Alert Red `#E11919` 仅占 3–8% 画面。90 度直角，禁止圆角卡片、柔和阴影、玻璃态、渐变。
+**Swiss Industrial Print × Declassified Tactical Control Board**（详见 `DESIGN.md`）。主基底 Carbon `#0C0C0B` / Slate `#171715`，Chalk `#D8D4CC` 粗粉笔结构线，Amber `#E8A000` 仅占 3–8% 画面。90 度直角，禁止圆角卡片、柔和阴影、玻璃态、渐变。暗色唯一模式，无 light/dark 切换。
 
 ### 组件层
 
@@ -94,7 +94,7 @@ CSS-first 方案，**不存在** `tailwind.config.js`。主题 token 在 `src/Ap
 
 ### CSS 变量（设计 token）
 
-Paper `#F1EFE8`、Bone `#DDD8CC`、Ink `#080808`、Steel `#3B3B36`、Ash `#8A867B`、Line `#B9B2A4`、Alert Red `#E11919`、Warning Amber `#A36A00`、Valid Green `#3F6B2A`、Data Well `#141414`。
+Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#807C74`、Dust `#545250`、Seam `#2A2926`、Amber `#E8A000`、Rust `#C85400`、Moss `#3F8A30`、Void `#050504`。
 
 ## Key Conventions
 

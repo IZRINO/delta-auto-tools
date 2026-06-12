@@ -29,8 +29,8 @@ function DropdownMenuTrigger({
   )
 }
 
-const menuContentClass = "z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto border-2 border-[var(--ink)] bg-[var(--paper)] p-1 font-mono text-xs font-bold tracking-[0.06em] text-[var(--ink)] shadow-none duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
-const menuItemClass = "relative flex min-h-8 cursor-default items-center gap-2 border border-transparent px-2 py-1 text-xs/relaxed outline-hidden select-none uppercase focus:border-[var(--ink)] focus:bg-[var(--ink)] focus:text-[var(--paper)] data-inset:ps-7.5 data-[variant=destructive]:text-[var(--alert-red)] data-[variant=destructive]:focus:bg-[var(--alert-red)] data-[variant=destructive]:focus:text-[var(--paper)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5"
+const menuContentClass = "z-50 max-h-(--radix-dropdown-menu-content-available-height) w-(--radix-dropdown-menu-trigger-width) min-w-32 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto border-2 border-[var(--chalk)] bg-[var(--carbon)] p-1 font-mono text-xs font-bold tracking-[0.06em] text-[var(--chalk)] shadow-none duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+const menuItemClass = "relative flex min-h-8 cursor-default items-center gap-2 border border-transparent px-2 py-1 text-xs/relaxed outline-hidden select-none uppercase focus:border-[var(--chalk)] focus:bg-[var(--chalk)] focus:text-[var(--carbon)] data-inset:ps-7.5 data-[variant=destructive]:text-[var(--amber)] data-[variant=destructive]:focus:bg-[var(--amber)] data-[variant=destructive]:focus:text-[var(--carbon)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5"
 
 function DropdownMenuContent({
   className,
@@ -160,7 +160,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-2 py-1.5 text-xs font-black tracking-[0.14em] text-[var(--steel)] uppercase data-inset:ps-7.5",
+        "px-2 py-1.5 text-xs font-black tracking-[0.14em] text-[var(--zinc)] uppercase data-inset:ps-7.5",
         className
       )}
       {...props}
@@ -175,7 +175,7 @@ function DropdownMenuSeparator({
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("-mx-1 my-1 h-px bg-[var(--ink)]", className)}
+      className={cn("-mx-1 my-1 h-px bg-[var(--chalk)]", className)}
       {...props}
     />
   )
@@ -189,7 +189,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "text-[0.62rem] tracking-[0.18em] text-[var(--steel)] uppercase ms-auto",
+        "text-[0.62rem] tracking-[0.18em] text-[var(--zinc)] uppercase ms-auto",
         className
       )}
       {...props}
@@ -215,7 +215,7 @@ function DropdownMenuSubTrigger({
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
-      className={cn(menuItemClass, "data-open:border-[var(--ink)] data-open:bg-[var(--ink)] data-open:text-[var(--paper)]", className)}
+      className={cn(menuItemClass, "data-open:border-[var(--chalk)] data-open:bg-[var(--chalk)] data-open:text-[var(--carbon)]", className)}
       {...props}
     >
       {children}

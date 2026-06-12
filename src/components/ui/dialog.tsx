@@ -61,7 +61,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 start-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-4 border-2 border-[var(--ink)] bg-[var(--paper)] p-4 font-mono text-xs/relaxed font-bold text-[var(--ink)] shadow-none duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 start-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 gap-4 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-4 font-mono text-xs/relaxed font-bold text-[var(--chalk)] shadow-none duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -88,7 +88,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-1 border-b-2 border-[var(--ink)] pb-3", className)}
+      className={cn("flex flex-col gap-1 border-b-2 border-[var(--chalk)] pb-3", className)}
       {...props}
     />
   )
@@ -106,7 +106,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 border-t-2 border-[var(--ink)] pt-3 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 border-t-2 border-[var(--chalk)] pt-3 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -142,7 +142,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "font-mono text-xs/relaxed font-bold tracking-[0.06em] text-[var(--steel)] uppercase *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-[var(--ink)]",
+        "font-mono text-xs/relaxed font-bold tracking-[0.06em] text-[var(--zinc)] uppercase *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-[var(--chalk)]",
         className
       )}
       {...props}

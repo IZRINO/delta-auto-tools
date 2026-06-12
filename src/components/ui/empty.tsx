@@ -7,7 +7,7 @@ function Empty({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty"
       className={cn(
-        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 border-2 border-dashed border-[var(--ink)] p-6 text-center text-balance",
+        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 border-2 border-dashed border-[var(--chalk)] p-6 text-center text-balance",
         className
       )}
       {...props}
@@ -31,7 +31,7 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "flex size-8 shrink-0 items-center justify-center border-2 border-[var(--ink)] bg-[var(--bone)] text-[var(--ink)] [&_svg:not([class*='size-'])]:size-4",
+        icon: "flex size-8 shrink-0 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--slate)] text-[var(--chalk)] [&_svg:not([class*='size-'])]:size-4",
       },
     },
     defaultVariants: {
@@ -73,7 +73,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
     <div
       data-slot="empty-description"
       className={cn(
-        "font-mono text-xs/relaxed font-bold tracking-[0.06em] text-[var(--steel)] uppercase [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-[var(--alert-red)]",
+        "font-mono text-xs/relaxed font-bold tracking-[0.06em] text-[var(--zinc)] uppercase [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-[var(--amber)]",
         className
       )}
       {...props}

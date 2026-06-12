@@ -29,10 +29,10 @@ export function DeltaDataCard({ badge, children, className, data, emptyText = "�
         icon={icon}
         badge={badge}
       />
-      <div className="border-b border-[var(--ink)] bg-[var(--bone)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--steel)] uppercase">[ FIELD UNIT ]</div>
+      <div className="border-b border-[var(--chalk)] bg-[var(--slate)] px-3 py-1 font-mono text-[0.55rem] font-black tracking-[0.25em] text-[var(--zinc)] uppercase">[ FIELD UNIT ]</div>
       <CardBody className="space-y-3">
       {loading && (
-          <div className="flex min-h-48 items-center justify-center gap-2 border-2 border-[var(--ink)] bg-[var(--data-well)] px-4 py-6 font-mono text-xs font-bold tracking-[0.08em] text-[var(--paper)] uppercase">
+          <div className="flex min-h-48 items-center justify-center gap-2 border-2 border-[var(--chalk)] bg-[var(--void)] px-4 py-6 font-mono text-xs font-bold tracking-[0.08em] text-[var(--carbon)] uppercase">
             <Spinner className="size-4" />
             <span>FETCHING // IDE GATEWAY</span>
           </div>
@@ -53,10 +53,10 @@ export function DeltaDataCard({ badge, children, className, data, emptyText = "�
         {!loading && !error && data == null && children ? children : null}
 
         {!loading && !error && data == null && !children ? (
-          <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
-            <RiDatabase2Line className="size-5 text-[var(--alert-red)]" />
-            <p className="text-sm font-black uppercase text-[var(--ink)]">暂无数据</p>
-            <p className="max-w-xl font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">{emptyText}</p>
+          <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+            <RiDatabase2Line className="size-5 text-[var(--amber)]" />
+            <p className="text-sm font-black uppercase text-[var(--chalk)]">暂无数据</p>
+            <p className="max-w-xl font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase">{emptyText}</p>
           </div>
         ) : null}
       </CardBody>

@@ -24,7 +24,7 @@ function RadioGroupItem({
     <RadioGroupPrimitive.Item
       data-slot="radio-group-item"
       className={cn(
-        "group/radio-group-item peer relative flex aspect-square size-4 shrink-0 border-2 border-[var(--ink)] bg-[var(--paper)] outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--alert-red)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--alert-red)] data-checked:bg-[var(--ink)] data-checked:text-[var(--paper)]",
+        "group/radio-group-item peer relative flex aspect-square size-4 shrink-0 border-2 border-[var(--chalk)] bg-[var(--carbon)] outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--amber)] data-checked:bg-[var(--chalk)] data-checked:text-[var(--carbon)]",
         className
       )}
       {...props}
@@ -33,7 +33,7 @@ function RadioGroupItem({
         data-slot="radio-group-indicator"
         className="flex size-4 items-center justify-center"
       >
-        <span className="absolute top-1/2 start-1/2 size-2 -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 bg-[var(--paper)]" />
+        <span className="absolute top-1/2 start-1/2 size-2 -translate-x-1/2 rtl:translate-x-1/2 -translate-y-1/2 bg-[var(--carbon)]" />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   )

@@ -40,7 +40,7 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
       <div className="col-span-12 grid gap-3 xl:grid-cols-12">
         <TacticalCard className="xl:col-span-8 p-0">
           <CardBody className="flex min-h-72 items-center justify-center">
-            <Empty className="min-h-52 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-6 py-8 text-center">
+            <Empty className="min-h-52 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-6 py-8 text-center">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <RiAlertLine />
@@ -60,9 +60,9 @@ export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlac
             description="保持桌面工具壳层，等待模块补全。"
           />
           <CardBody>
-            <ul className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)]">
+            <ul className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)]">
               {pendingItems.map((item) => (
-                <li key={item} className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--ink)] uppercase">
+                <li key={item} className="bg-[var(--carbon)] px-3 py-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--chalk)] uppercase">
                   {item}
                 </li>
               ))}

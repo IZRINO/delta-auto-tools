@@ -28,7 +28,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 border-2 border-[var(--ink)] bg-[var(--paper)] p-2.5 font-mono text-xs font-bold text-[var(--ink)] shadow-none outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-2.5 font-mono text-xs font-bold text-[var(--chalk)] shadow-none outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -47,7 +47,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="popover-header"
-      className={cn("flex flex-col gap-1 border-b border-[var(--ink)] pb-2 text-xs", className)}
+      className={cn("flex flex-col gap-1 border-b border-[var(--chalk)] pb-2 text-xs", className)}
       {...props}
     />
   )
@@ -70,7 +70,7 @@ function PopoverDescription({
   return (
     <p
       data-slot="popover-description"
-      className={cn("text-[var(--steel)] uppercase", className)}
+      className={cn("text-[var(--zinc)] uppercase", className)}
       {...props}
     />
   )

@@ -519,7 +519,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         />
         <CardBody className="grid gap-3">
           <FieldGroup className="grid gap-3 md:grid-cols-3">
-            <ControlTile className="bg-[var(--paper)]">
+            <ControlTile className="bg-[var(--carbon)]">
               <Field orientation="horizontal">
                 <Switch
                   id="rapidfireEnabled"
@@ -530,7 +530,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 <span
                   className={cn(
                     "font-mono text-[0.65rem] font-black tracking-[0.12em] uppercase",
-                    form.rapidfireEnabled ? "text-[var(--alert-red)]" : "text-[var(--steel)]",
+                    form.rapidfireEnabled ? "text-[var(--amber)]" : "text-[var(--zinc)]",
                   )}
                 >
                   {form.rapidfireEnabled ? "ARMED" : "DISARMED"}
@@ -541,7 +541,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 </FieldContent>
               </Field>
             </ControlTile>
-            <ControlTile className="bg-[var(--paper)]">
+            <ControlTile className="bg-[var(--carbon)]">
               <Field orientation="horizontal">
                 <Switch
                   id="showOverlay"
@@ -555,12 +555,12 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 </FieldContent>
               </Field>
             </ControlTile>
-            <ControlTile className="bg-[var(--paper)]">
+            <ControlTile className="bg-[var(--carbon)]">
               <Field>
                 <FieldLabel htmlFor="overlayWidth">透明窗口宽度</FieldLabel>
                 <Input
                   id="overlayWidth"
-                  className="max-w-32 bg-[var(--paper)] font-mono"
+                  className="max-w-32 bg-[var(--carbon)] font-mono"
                   type="number"
                   min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
                   max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
@@ -573,13 +573,13 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
             </ControlTile>
           </FieldGroup>
           <FieldGroup className="grid gap-3 md:grid-cols-2">
-            <ControlTile className="bg-[var(--paper)]">
+            <ControlTile className="bg-[var(--carbon)]">
               <Field>
                 <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
                 <div className="flex items-center gap-2">
                   <Input
                     id="compensationDelayMinMs"
-                    className="w-28 bg-[var(--paper)] font-mono"
+                    className="w-28 bg-[var(--carbon)] font-mono"
                     type="number"
                     min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                     max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -592,13 +592,13 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 <FieldDescription>执行奇数补齐前的随机等待下限。</FieldDescription>
               </Field>
             </ControlTile>
-            <ControlTile className="bg-[var(--paper)]">
+            <ControlTile className="bg-[var(--carbon)]">
               <Field>
                 <FieldLabel htmlFor="compensationDelayMaxMs">补齐延迟上限</FieldLabel>
                 <div className="flex items-center gap-2">
                   <Input
                     id="compensationDelayMaxMs"
-                    className="w-28 bg-[var(--paper)] font-mono"
+                    className="w-28 bg-[var(--carbon)] font-mono"
                     type="number"
                     min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                     max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -630,10 +630,10 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         />
         <CardBody className="grid gap-3">
           {form.groups.map((group, index) => (
-            <ControlTile key={group.id} className="flex flex-col gap-4 bg-[var(--paper)]">
-              <div className="flex items-start justify-between gap-3 border-b-2 border-[var(--ink)] pb-3">
+            <ControlTile key={group.id} className="flex flex-col gap-4 bg-[var(--carbon)]">
+              <div className="flex items-start justify-between gap-3 border-b-2 border-[var(--chalk)] pb-3">
                 <div className="min-w-0">
-                  <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--alert-red)] uppercase">
+                  <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--amber)] uppercase">
                     第 {String(index + 1).padStart(2, "0")} 组
                   </p>
                   <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
@@ -646,12 +646,12 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               <FieldGroup className="grid gap-3 md:grid-cols-2">
                 <Field>
                   <FieldLabel>分组名称</FieldLabel>
-                  <Input className="bg-[var(--paper)]" disabled={controlsDisabled} value={group.name} onChange={(event) => updateGroup(group.id, { name: event.currentTarget.value })} />
+                  <Input className="bg-[var(--carbon)]" disabled={controlsDisabled} value={group.name} onChange={(event) => updateGroup(group.id, { name: event.currentTarget.value })} />
                 </Field>
                 <Field>
                   <FieldLabel>透明窗口宽度</FieldLabel>
                   <Input
-                    className="bg-[var(--paper)] font-mono"
+                    className="bg-[var(--carbon)] font-mono"
                     disabled={controlsDisabled || !group.enabled}
                     max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
                     min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
@@ -661,8 +661,8 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                   />
                 </Field>
               </FieldGroup>
-              <div className="flex flex-wrap items-center gap-2 border-t-2 border-[var(--ink)] pt-3">
-                <ControlTile className="flex items-center gap-2 bg-[var(--bone)] px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 border-t-2 border-[var(--chalk)] pt-3">
+                <ControlTile className="flex items-center gap-2 bg-[var(--slate)] px-3 py-2">
                   <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled} onCheckedChange={(checked) => updateGroup(group.id, { showOverlay: checked })} />
                   <span className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-muted-foreground uppercase">透明窗口</span>
                 </ControlTile>
@@ -787,11 +787,11 @@ function RapidfireCardEditor({
       data-favorite-card={`rapidfire:${card.id}`}
       onPointerEnter={onDragOver}
       className={cn(
-        "bg-[var(--paper)]",
+        "bg-[var(--carbon)]",
         !card.enabled && !status.error && "opacity-80",
-        status.error && "border-[var(--alert-red)] bg-[var(--bone)] outline-2 outline-[var(--alert-red)]",
-        isDragging && "outline-4 outline-[var(--alert-red)]",
-        isHighlighted && "outline-4 outline-[var(--alert-red)]",
+        status.error && "border-[var(--amber)] bg-[var(--slate)] outline-2 outline-[var(--amber)]",
+        isDragging && "outline-4 outline-[var(--amber)]",
+        isHighlighted && "outline-4 outline-[var(--amber)]",
       )}
     >
       <SectionHeader
@@ -801,35 +801,35 @@ function RapidfireCardEditor({
         badge={
           <Badge variant={status.variant}>{status.label}</Badge>
         }
-        className={cn(status.error && "bg-[var(--alert-red)]")}
+        className={cn(status.error && "bg-[var(--amber)]")}
       />
       {isRunning || isPending ? (
-        <div className="flex items-center gap-2 border-b-2 border-[var(--ink)] bg-[var(--alert-red)] px-3 py-1 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--paper)] uppercase">
-          <span className="inline-block size-1.5 bg-[var(--paper)]" />
+        <div className="flex items-center gap-2 border-b-2 border-[var(--chalk)] bg-[var(--amber)] px-3 py-1 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--carbon)] uppercase">
+          <span className="inline-block size-1.5 bg-[var(--carbon)]" />
           {isRunning ? "FIRING" : "ARMED"}
         </div>
       ) : null}
-      <CardHeader className="border-b-2 border-[var(--ink)] bg-[var(--bone)] pt-0">
+      <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
         <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="hidden items-center justify-center border-r-2 border-[var(--ink)] pr-3 xl:flex">
-            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--ink)]">
+          <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
+            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
               RF-{String(index + 1).padStart(2, "0")}
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
             <div className="min-w-0">
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">通道名称</p>
+              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">通道名称</p>
               <Input
-                className="mt-2 max-w-full bg-[var(--paper)] font-medium"
+                className="mt-2 max-w-full bg-[var(--carbon)] font-medium"
                 placeholder="输入卡片名称"
                 value={card.name}
                 onChange={(event) => onUpdate(card.id, { name: event.target.value })}
               />
             </div>
             <div>
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--steel)] uppercase">所属分组</p>
+              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">所属分组</p>
               <Select disabled={disabled} value={card.groupId} onValueChange={(value) => onUpdate(card.id, { groupId: value })}>
-                <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--paper)]">
+                <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
                   <SelectValue placeholder="选择分组" />
                 </SelectTrigger>
                 <SelectContent>
@@ -842,7 +842,7 @@ function RapidfireCardEditor({
               </Select>
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-[var(--ink)] pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
+          <div className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-[var(--chalk)] pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
             <RapidfireCardDragHandle disabled={disabled} onDragStart={onDragStart} />
 
             <Button
@@ -872,7 +872,7 @@ function RapidfireCardEditor({
             <Button
               aria-label={isFavorite ? "取消收藏" : "加入收藏"}
               aria-pressed={isFavorite}
-              className={cn(isFavorite ? "text-[var(--alert-red)]" : "text-muted-foreground")}
+              className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")}
               data-icon="inline-start"
               disabled={disabled}
               onClick={onToggleFavorite}
@@ -895,7 +895,7 @@ function RapidfireCardEditor({
           </InlineNotice>
         ) : null}
         <FieldGroup className="grid gap-3 md:grid-cols-2">
-          <ControlTile className="bg-[var(--paper)]">
+          <ControlTile className="bg-[var(--carbon)]">
             <Field>
               <FieldLabel>触发键</FieldLabel>
               <KeyRecorderButton
@@ -909,7 +909,7 @@ function RapidfireCardEditor({
               <FieldDescription>按住此键即启动连续发射；支持 Shift+- 这类组合热键。</FieldDescription>
             </Field>
           </ControlTile>
-          <ControlTile className="bg-[var(--paper)]">
+          <ControlTile className="bg-[var(--carbon)]">
             <Field>
               <FieldLabel>目标键</FieldLabel>
               <KeyRecorderButton
@@ -923,7 +923,7 @@ function RapidfireCardEditor({
               <FieldDescription>矩阵运行时将重复压发此键。</FieldDescription>
             </Field>
           </ControlTile>
-          <ControlTile className="bg-[var(--paper)]">
+          <ControlTile className="bg-[var(--carbon)]">
             <Field orientation="horizontal">
               <Switch
                 id={`${card.id}-skip-compensation`}
@@ -937,13 +937,13 @@ function RapidfireCardEditor({
               </FieldContent>
             </Field>
           </ControlTile>
-          <ControlTile className="bg-[var(--paper)]">
+          <ControlTile className="bg-[var(--carbon)]">
             <Field>
               <FieldLabel htmlFor={`${card.id}-interval`}>连发间隔</FieldLabel>
               <div className="flex items-center gap-2">
                 <Input
                   id={`${card.id}-interval`}
-                  className="w-28 bg-[var(--paper)] font-mono"
+                  className="w-28 bg-[var(--carbon)] font-mono"
                   type="number"
                   min={RAPIDFIRE_MIN_INTERVAL_MS}
                   value={card.intervalMs}
@@ -956,22 +956,22 @@ function RapidfireCardEditor({
             </Field>
           </ControlTile>
           <Collapsible defaultOpen={Boolean(cardError)} className="md:col-span-2">
-            <ControlTile className="overflow-hidden bg-[var(--paper)] p-0">
+            <ControlTile className="overflow-hidden bg-[var(--carbon)] p-0">
               <CollapsibleTrigger asChild>
-                <Button className="w-full justify-between bg-[var(--bone)] px-3 py-3 font-mono text-[0.72rem] font-black tracking-[0.08em] uppercase" type="button" variant="ghost">
+                <Button className="w-full justify-between bg-[var(--slate)] px-3 py-3 font-mono text-[0.72rem] font-black tracking-[0.08em] uppercase" type="button" variant="ghost">
                   高级校准面板
                   <RiArrowDownSLine className="size-4" />
                 </Button>
               </CollapsibleTrigger>
-              <CollapsibleContent className="border-t-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-3">
+              <CollapsibleContent className="border-t-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-3">
                 <FieldGroup className="grid gap-3 md:grid-cols-2">
-                  <ControlTile className="bg-[var(--bone)]">
+                  <ControlTile className="bg-[var(--slate)]">
                     <Field>
                       <FieldLabel>触发抖动</FieldLabel>
                       <div className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
                         <Input
                           id={`${card.id}-jitter-min`}
-                          className="min-w-0 bg-[var(--paper)] font-mono"
+                          className="min-w-0 bg-[var(--carbon)] font-mono"
                           type="number"
                           min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
                           max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
@@ -983,7 +983,7 @@ function RapidfireCardEditor({
                         <span className="text-xs text-muted-foreground">至</span>
                         <Input
                           id={`${card.id}-jitter-max`}
-                          className="min-w-0 bg-[var(--paper)] font-mono"
+                          className="min-w-0 bg-[var(--carbon)] font-mono"
                           type="number"
                           min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
                           max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
@@ -997,13 +997,13 @@ function RapidfireCardEditor({
                       <FieldDescription>目标键按下保持时间范围。</FieldDescription>
                     </Field>
                   </ControlTile>
-                  <ControlTile className="bg-[var(--bone)]">
+                  <ControlTile className="bg-[var(--slate)]">
                     <Field>
                       <FieldLabel htmlFor={`${card.id}-min-spacing`}>当前卡片按键最小间距</FieldLabel>
                       <div className="flex items-center gap-2">
                         <Input
                           id={`${card.id}-min-spacing`}
-                          className="w-28 bg-[var(--paper)] font-mono"
+                          className="w-28 bg-[var(--carbon)] font-mono"
                           type="number"
                           min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
                           max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
@@ -1016,13 +1016,13 @@ function RapidfireCardEditor({
                       <FieldDescription>仅限制本通道目标键的触发间距，不拖慢其他通道。</FieldDescription>
                     </Field>
                   </ControlTile>
-                  <ControlTile className="bg-[var(--bone)]">
+                  <ControlTile className="bg-[var(--slate)]">
                     <Field>
                       <FieldLabel htmlFor={`${card.id}-trigger-jitter`}>当前卡片启动抖动上限</FieldLabel>
                       <div className="flex items-center gap-2">
                         <Input
                           id={`${card.id}-trigger-jitter`}
-                          className="w-28 bg-[var(--paper)] font-mono"
+                          className="w-28 bg-[var(--carbon)] font-mono"
                           type="number"
                           min={0}
                           max={1000}
@@ -1035,7 +1035,7 @@ function RapidfireCardEditor({
                       <FieldDescription>按下触发键后，最久等待此时长再开始连发。</FieldDescription>
                     </Field>
                   </ControlTile>
-                  <ControlTile className="bg-[var(--bone)]">
+                  <ControlTile className="bg-[var(--slate)]">
                     <Field orientation="horizontal">
                       <Switch
                         id={`${card.id}-cancel-jitter`}
@@ -1081,8 +1081,8 @@ function KeyRecorderButton({
       size="default"
       disabled={disabled}
       className={cn(
-        "w-full justify-between bg-[var(--paper)] font-mono text-[0.72rem] font-black tracking-[0.08em] uppercase",
-        active && "bg-[var(--ink)] text-[var(--paper)] outline-2 outline-[var(--alert-red)]",
+        "w-full justify-between bg-[var(--carbon)] font-mono text-[0.72rem] font-black tracking-[0.08em] uppercase",
+        active && "bg-[var(--chalk)] text-[var(--carbon)] outline-2 outline-[var(--amber)]",
       )}
       onClick={onClick}
       onBlur={onBlur}
@@ -1192,7 +1192,7 @@ function RapidfireCardDragHandle({ disabled, onDragStart }: { disabled: boolean;
   return (
     <Button
       aria-label="拖动排序"
-      className="cursor-grab active:cursor-grabbing border-l-[3px] border-[var(--ink)] pl-1"
+      className="cursor-grab active:cursor-grabbing border-l-[3px] border-[var(--chalk)] pl-1"
       disabled={disabled}
       onPointerDown={(event) => {
         event.preventDefault();
@@ -1202,7 +1202,7 @@ function RapidfireCardDragHandle({ disabled, onDragStart }: { disabled: boolean;
       type="button"
       variant="ghost"
     >
-      <span aria-hidden className="font-mono text-sm font-black leading-none text-[var(--ink)]">≡</span>
+      <span aria-hidden className="font-mono text-sm font-black leading-none text-[var(--chalk)]">≡</span>
     </Button>
   );
 }

@@ -132,9 +132,9 @@ export function DeltaQueryWorkbench({ accountId, className }: DeltaQueryWorkbenc
         description="参数化查询游戏物品、物价、枪械与日志数据"
       />
       <CardBody className="space-y-3">
-        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-          <div className="bg-[var(--paper)] p-3">
-            <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">查询类型</label>
+        <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+          <div className="bg-[var(--carbon)] p-3">
+            <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">查询类型</label>
             <Select value={kind} onValueChange={handleKindChange}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -148,18 +148,18 @@ export function DeltaQueryWorkbench({ accountId, className }: DeltaQueryWorkbenc
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3">
-            <div className="bg-[var(--bone)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
-              <div className="text-[var(--ink)]">授权状态</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{needsAuth ? (canQuery ? "已接入账号" : "需要登录") : "公共查询"}</div>
+          <div className="grid gap-px bg-[var(--chalk)] sm:grid-cols-3">
+            <div className="bg-[var(--slate)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
+              <div className="text-[var(--chalk)]">授权状态</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{needsAuth ? (canQuery ? "已接入账号" : "需要登录") : "公共查询"}</div>
             </div>
-            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+            <div className="bg-[var(--carbon)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
               <div>账号编号</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{accountId > 0 ? accountId : "未接入"}</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{accountId > 0 ? accountId : "未接入"}</div>
             </div>
-            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+            <div className="bg-[var(--carbon)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
               <div>执行状态</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{loading ? "查询中" : error ? "执行失败" : result !== null ? "已返回" : "待命"}</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{loading ? "查询中" : error ? "执行失败" : result !== null ? "已返回" : "待命"}</div>
             </div>
           </div>
         </div>
@@ -167,16 +167,16 @@ export function DeltaQueryWorkbench({ accountId, className }: DeltaQueryWorkbenc
         <div className="grid gap-3 xl:grid-cols-12">
           {kind === "items" && (
             <>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">类型 ID</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">类型 ID</label>
                 <Input type="number" min="0" placeholder="0" value={typeId} onChange={(e) => setTypeId(e.target.value)} />
               </div>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">子类型</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">子类型</label>
                 <Input type="number" min="0" placeholder="0" value={subType} onChange={(e) => setSubType(e.target.value)} />
               </div>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">物品 ID（可选）</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">物品 ID（可选）</label>
                 <Input placeholder="留空查询全部" value={itemId} onChange={(e) => setItemId(e.target.value)} />
               </div>
             </>
@@ -184,32 +184,32 @@ export function DeltaQueryWorkbench({ accountId, className }: DeltaQueryWorkbenc
 
           {kind === "price" && (
             <>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-8">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">物品 ID 列表（逗号分隔）</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-8">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">物品 ID 列表（逗号分隔）</label>
                 <Input placeholder="1,2,3" value={priceArgs} onChange={(e) => setPriceArgs(e.target.value)} />
               </div>
-              <div className="flex items-center gap-2 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3 xl:col-span-4">
+              <div className="flex items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--slate)] px-3 py-3 xl:col-span-4">
                 <Checkbox id="withRecent" checked={withRecent} onCheckedChange={(v) => setWithRecent(v === true)} />
-                <label htmlFor="withRecent" className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--ink)] uppercase">包含近期价格</label>
+                <label htmlFor="withRecent" className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--chalk)] uppercase">包含近期价格</label>
               </div>
             </>
           )}
 
           {kind === "guns" && (
-            <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-              <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">枪械 ID</label>
+            <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+              <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">枪械 ID</label>
               <Input placeholder="输入枪械 ID" value={gunId} onChange={(e) => setGunId(e.target.value)} />
             </div>
           )}
 
           {kind === "logs" && (
             <>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">日志类型</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">日志类型</label>
                 <Input type="number" min="0" placeholder="0" value={logType} onChange={(e) => setLogType(e.target.value)} />
               </div>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">页码</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">页码</label>
                 <Input type="number" min="1" placeholder="1" value={logPage} onChange={(e) => setLogPage(e.target.value)} />
               </div>
             </>
@@ -217,34 +217,34 @@ export function DeltaQueryWorkbench({ accountId, className }: DeltaQueryWorkbenc
 
           {kind === "firearm_mod_list" && (
             <>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">页码</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">页码</label>
                 <Input type="number" min="1" placeholder="1" value={fmPage} onChange={(e) => setFmPage(e.target.value)} />
               </div>
-              <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">每页数量</label>
+              <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+                <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">每页数量</label>
                 <Input type="number" min="1" placeholder="20" value={fmPageSize} onChange={(e) => setFmPageSize(e.target.value)} />
               </div>
             </>
           )}
 
           {kind === "recommendation" && (
-            <div className="border-2 border-[var(--ink)] bg-[var(--paper)] p-3 xl:col-span-4">
-              <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">地图名称</label>
+            <div className="border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3 xl:col-span-4">
+              <label className="mb-2 block font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">地图名称</label>
               <Input placeholder="输入地图名称" value={place} onChange={(e) => setPlace(e.target.value)} />
             </div>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--ink)] bg-[var(--bone)] px-3 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)] px-3 py-3">
           <Button size="sm" disabled={loading || !canQuery} onClick={handleQuery}>
             {loading ? <Spinner className="mr-1.5 size-3.5" /> : <RiSearchLine data-icon="inline-start" className="mr-1.5 size-3.5" />}
             执行查询
           </Button>
           {needsAuth && !canQuery ? (
-            <span className="font-mono text-[0.66rem] font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">此查询需要登录账号</span>
+            <span className="font-mono text-[0.66rem] font-black tracking-[0.12em] text-[var(--amber)] uppercase">此查询需要登录账号</span>
           ) : (
-            <span className="font-mono text-[0.66rem] font-bold tracking-[0.08em] text-[var(--steel)] uppercase">结果将写入下方数据井</span>
+            <span className="font-mono text-[0.66rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">结果将写入下方数据井</span>
           )}
         </div>
 

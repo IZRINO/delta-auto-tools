@@ -103,28 +103,28 @@ export function DeltaAccountsPage() {
       />
 
       <div className="col-span-12 grid gap-3">
-        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
-          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+        <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--chalk)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--carbon)] uppercase">
             账号路由
           </div>
-          <div className="grid gap-px bg-[var(--ink)] sm:grid-cols-3">
-            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+          <div className="grid gap-px bg-[var(--chalk)] sm:grid-cols-3">
+            <div className="bg-[var(--carbon)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
               <div>当前选中</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{selectedAccountId ?? "未选择"}</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{selectedAccountId ?? "未选择"}</div>
             </div>
-            <div className="bg-[var(--bone)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+            <div className="bg-[var(--slate)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
               <div>有效令牌</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{stats.valid} / {stats.total}</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{stats.valid} / {stats.total}</div>
             </div>
-            <div className="bg-[var(--paper)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">
+            <div className="bg-[var(--carbon)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
               <div>风险提示</div>
-              <div className="mt-2 text-sm text-[var(--ink)]">{stats.expiring > 0 ? "存在即将过期" : "暂无"}</div>
+              <div className="mt-2 text-sm text-[var(--chalk)]">{stats.expiring > 0 ? "存在即将过期" : "暂无"}</div>
             </div>
           </div>
         </div>
 
         <TacticalCard className="p-0">
-          <div className="bg-[var(--ink)] px-3 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.22em] text-[var(--paper)]/60 uppercase text-center">[ UNIT 01 ] — 身份凭据档案柜</div>
+          <div className="bg-[var(--chalk)] px-3 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.22em] text-[var(--carbon)]/60 uppercase text-center">[ UNIT 01 ] — 身份凭据档案柜</div>
           <SectionHeader
             eyebrow="账号列表"
             icon={<RiAccountPinCircleLine />}
@@ -134,10 +134,10 @@ export function DeltaAccountsPage() {
           />
           <CardBody>
             {accounts.length === 0 ? (
-              <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--ink)] bg-[var(--bone)] px-4 py-8 text-center">
-                <RiAccountPinCircleLine className="size-5 text-[var(--alert-red)]" />
-                <p className="text-sm font-black uppercase text-[var(--ink)]">暂无账号</p>
-                <p className="max-w-xl font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--steel)] uppercase">点击上方“添加账号”按钮，扫描二维码登录游戏账号。</p>
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                <RiAccountPinCircleLine className="size-5 text-[var(--amber)]" />
+                <p className="text-sm font-black uppercase text-[var(--chalk)]">暂无账号</p>
+                <p className="max-w-xl font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase">点击上方“添加账号”按钮，扫描二维码登录游戏账号。</p>
               </div>
             ) : (
               <div className="grid gap-3 xl:grid-cols-12">

@@ -3,76 +3,78 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/jetbrains-mono";
 
-@custom-variant dark (&:is(.dark *));
-
 :root {
   font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.38;
   font-weight: 500;
-  color-scheme: light;
+  color-scheme: dark;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --background: #f1efe8;
-  --foreground: #080808;
-  --card: #f1efe8;
-  --card-foreground: #080808;
-  --popover: #ddd8cc;
-  --popover-foreground: #080808;
-  --primary: #e11919;
-  --primary-foreground: #f1efe8;
-  --secondary: #ddd8cc;
-  --secondary-foreground: #080808;
-  --muted: #ddd8cc;
-  --muted-foreground: #3b3b36;
-  --accent: #e11919;
-  --accent-foreground: #f1efe8;
-  --destructive: #e11919;
-  --border: #080808;
-  --input: #080808;
-  --ring: #e11919;
-  --chart-1: #e11919;
-  --chart-2: #3f6b2a;
-  --chart-3: #a36a00;
-  --chart-4: #3b3b36;
-  --chart-5: #8a867b;
+  --background: #0c0c0b;
+  --foreground: #d8d4cc;
+  --card: #0c0c0b;
+  --card-foreground: #d8d4cc;
+  --popover: #171715;
+  --popover-foreground: #d8d4cc;
+  --primary: #e8a000;
+  --primary-foreground: #0c0c0b;
+  --secondary: #171715;
+  --secondary-foreground: #d8d4cc;
+  --muted: #171715;
+  --muted-foreground: #807c74;
+  --accent: #e8a000;
+  --accent-foreground: #0c0c0b;
+  --destructive: #c85400;
+  --border: #d8d4cc;
+  --input: #d8d4cc;
+  --ring: #e8a000;
+  --chart-1: #e8a000;
+  --chart-2: #3f8a30;
+  --chart-3: #c85400;
+  --chart-4: #807c74;
+  --chart-5: #545250;
   --radius: 0;
-  --sidebar: #ddd8cc;
-  --sidebar-foreground: #080808;
-  --sidebar-primary: #e11919;
-  --sidebar-primary-foreground: #f1efe8;
-  --sidebar-accent: #f1efe8;
-  --sidebar-accent-foreground: #080808;
-  --sidebar-border: #080808;
-  --sidebar-ring: #e11919;
-  --paper: #f1efe8;
-  --bone: #ddd8cc;
-  --ink: #080808;
-  --steel: #3b3b36;
-  --ash: #8a867b;
-  --line: #b9b2a4;
-  --alert-red: #e11919;
-  --warning-amber: #a36a00;
-  --valid-green: #3f6b2a;
-  --data-well: #141414;
-  --surface-shell: #f1efe8;
-  --surface-panel: #ddd8cc;
-  --surface-card: #f1efe8;
-  --surface-card-strong: #f1efe8;
-  --surface-tile: #ddd8cc;
-  --surface-border: #080808;
-  --surface-border-strong: #080808;
-  --surface-hover: #ddd8cc;
-  --surface-highlight: #e11919;
-  --surface-dot: #b9b2a4;
+  --sidebar: #171715;
+  --sidebar-foreground: #d8d4cc;
+  --sidebar-primary: #e8a000;
+  --sidebar-primary-foreground: #0c0c0b;
+  --sidebar-accent: #0c0c0b;
+  --sidebar-accent-foreground: #d8d4cc;
+  --sidebar-border: #d8d4cc;
+  --sidebar-ring: #e8a000;
+
+  --carbon: #0c0c0b;
+  --slate: #171715;
+  --iron: #232320;
+  --chalk: #d8d4cc;
+  --zinc: #807c74;
+  --dust: #545250;
+  --seam: #2a2926;
+  --amber: #e8a000;
+  --rust: #c85400;
+  --moss: #3f8a30;
+  --void: #050504;
+
+  --surface-shell: #0c0c0b;
+  --surface-panel: #171715;
+  --surface-card: #0c0c0b;
+  --surface-card-strong: #171715;
+  --surface-tile: #171715;
+  --surface-border: #807c74;
+  --surface-border-strong: #d8d4cc;
+  --surface-hover: #171715;
+  --surface-highlight: #e8a000;
+  --surface-dot: #2a2926;
+
   --shadow-shell: none;
   --shadow-card: none;
   --shadow-subtle: none;
-  --shadow-focus: 0 0 0 2px #e11919;
+  --shadow-focus: 0 0 0 2px #e8a000;
   --shadow-tile: none;
 }
 
@@ -110,6 +112,17 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-carbon: var(--carbon);
+  --color-slate: var(--slate);
+  --color-iron: var(--iron);
+  --color-chalk: var(--chalk);
+  --color-zinc: var(--zinc);
+  --color-dust: var(--dust);
+  --color-seam: var(--seam);
+  --color-amber: var(--amber);
+  --color-rust: var(--rust);
+  --color-moss: var(--moss);
+  --color-void: var(--void);
   --radius-sm: 0;
   --radius-md: 0;
   --radius-lg: 0;
@@ -118,40 +131,6 @@
   --radius-3xl: 0;
   --radius-4xl: 0;
   --font-mono: 'JetBrains Mono Variable', 'Consolas', monospace;
-}
-
-.dark {
-  --background: #f1efe8;
-  --foreground: #080808;
-  --card: #f1efe8;
-  --card-foreground: #080808;
-  --popover: #ddd8cc;
-  --popover-foreground: #080808;
-  --primary: #e11919;
-  --primary-foreground: #f1efe8;
-  --secondary: #ddd8cc;
-  --secondary-foreground: #080808;
-  --muted: #ddd8cc;
-  --muted-foreground: #3b3b36;
-  --accent: #e11919;
-  --accent-foreground: #f1efe8;
-  --destructive: #e11919;
-  --border: #080808;
-  --input: #080808;
-  --ring: #e11919;
-  --chart-1: #e11919;
-  --chart-2: #3f6b2a;
-  --chart-3: #a36a00;
-  --chart-4: #3b3b36;
-  --chart-5: #8a867b;
-  --sidebar: #ddd8cc;
-  --sidebar-foreground: #080808;
-  --sidebar-primary: #e11919;
-  --sidebar-primary-foreground: #f1efe8;
-  --sidebar-accent: #f1efe8;
-  --sidebar-accent-foreground: #080808;
-  --sidebar-border: #080808;
-  --sidebar-ring: #e11919;
 }
 
 @layer base {
@@ -167,14 +146,14 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
     @apply bg-background text-foreground;
-    background-color: var(--paper);
+    background-color: var(--carbon);
     background-image:
-      linear-gradient(color-mix(in srgb, var(--line) 48%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--line) 48%, transparent) 1px, transparent 1px),
-      linear-gradient(color-mix(in srgb, var(--ink) 12%, transparent) 2px, transparent 2px),
-      linear-gradient(90deg, color-mix(in srgb, var(--ink) 12%, transparent) 2px, transparent 2px),
-      radial-gradient(circle at 18% 24%, color-mix(in srgb, var(--alert-red) 8%, transparent) 0, transparent 26rem),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
+      linear-gradient(color-mix(in srgb, var(--seam) 30%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--seam) 30%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in srgb, var(--zinc) 8%, transparent) 2px, transparent 2px),
+      linear-gradient(90deg, color-mix(in srgb, var(--zinc) 8%, transparent) 2px, transparent 2px),
+      radial-gradient(circle at 18% 24%, color-mix(in srgb, var(--amber) 6%, transparent) 0, transparent 26rem),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.10'/%3E%3C/svg%3E");
     background-position: 0 0, 0 0, 0 0, 0 0, center, 0 0;
     background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px, auto, 180px 180px;
   }
@@ -199,11 +178,11 @@
 }
 
 [data-token-status="valid"] {
-  background-color: var(--valid-green);
+  background-color: var(--moss);
 }
 
 [data-token-status="expiring_soon"] {
-  background-color: var(--warning-amber);
+  background-color: var(--rust);
 }
 
 [data-token-status="expired"] {
@@ -211,20 +190,20 @@
 }
 
 [data-token-status="none"] {
-  background-color: var(--steel);
+  background-color: var(--zinc);
 }
 
 @keyframes favorite-highlight-pulse {
   0% {
-    outline: 0 solid color-mix(in srgb, var(--alert-red) 0%, transparent);
+    outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
     transform: translateZ(0);
   }
   35% {
-    outline: 4px solid color-mix(in srgb, var(--alert-red) 84%, transparent);
+    outline: 4px solid color-mix(in srgb, var(--amber) 84%, transparent);
     transform: translateZ(0);
   }
   100% {
-    outline: 0 solid color-mix(in srgb, var(--alert-red) 0%, transparent);
+    outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
     transform: translateZ(0);
   }
 }

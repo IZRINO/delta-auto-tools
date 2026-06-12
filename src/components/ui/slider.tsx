@@ -38,18 +38,18 @@ function Slider({
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
-        className="relative grow overflow-hidden border border-[var(--ink)] bg-[var(--paper)] data-horizontal:h-2 data-horizontal:w-full data-vertical:h-full data-vertical:w-2"
+        className="relative grow overflow-hidden border border-[var(--chalk)] bg-[var(--carbon)] data-horizontal:h-2 data-horizontal:w-full data-vertical:h-full data-vertical:w-2"
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="absolute bg-[var(--alert-red)] select-none data-horizontal:h-full data-vertical:w-full"
+          className="absolute bg-[var(--amber)] select-none data-horizontal:h-full data-vertical:w-full"
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="relative block size-4 shrink-0 border-2 border-[var(--ink)] bg-[var(--paper)] transition-colors select-none after:absolute after:-inset-2 hover:bg-[var(--bone)] focus-visible:outline-2 focus-visible:outline-[var(--alert-red)] active:bg-[var(--alert-red)] disabled:pointer-events-none disabled:opacity-50"
+          className="relative block size-4 shrink-0 border-2 border-[var(--chalk)] bg-[var(--carbon)] transition-colors select-none after:absolute after:-inset-2 hover:bg-[var(--slate)] focus-visible:outline-2 focus-visible:outline-[var(--amber)] active:bg-[var(--amber)] disabled:pointer-events-none disabled:opacity-50"
         />
       ))}
     </SliderPrimitive.Root>

@@ -170,11 +170,11 @@ export function DeltaGamePage() {
       />
 
       <div className="col-span-12 grid gap-3">
-        <div className="grid gap-px border-2 border-[var(--ink)] bg-[var(--ink)] xl:grid-cols-[14rem_minmax(0,1fr)]">
-          <div className="bg-[var(--ink)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--paper)] uppercase">
+        <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">
+          <div className="bg-[var(--chalk)] px-3 py-3 font-mono text-[0.62rem] font-black tracking-[0.22em] text-[var(--carbon)] uppercase">
             账号路由
           </div>
-          <div className="bg-[var(--paper)] px-3 py-3">
+          <div className="bg-[var(--carbon)] px-3 py-3">
             <DeltaAccountSelector
               filterKinds={GAME_AUTH_KINDS}
               emptyText="请先在账号管理中添加 QQ 或微信账号"
