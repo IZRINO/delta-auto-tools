@@ -1,11 +1,53 @@
 {
   "version": 1,
   "skills": {
+    "agent-browser": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "agent-browser/SKILL.md",
+      "computedHash": "2baa6d34a5d23e253a945f64ae9063a363387f5601d131cdc5cb129af6ba0b3e"
+    },
+    "ast-grep": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "ast-grep/SKILL.md",
+      "computedHash": "74e1f29217c771ff5321e10e89fd64db144a4116f15df7af6c01a994ef062458"
+    },
+    "brandkit": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/brandkit/SKILL.md",
+      "computedHash": "735007879f5110aeae1e981a53fe74a12afde70347f9773dacd50e4697a091bf"
+    },
     "caveman": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "caveman/SKILL.md",
+      "computedHash": "536908fcfcb232600a5875aa85f1fd50fd13305e9d67379bcd95f07c8c916f3f"
+    },
+    "codex-dynamic-workflows": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "codex-dynamic-workflows/SKILL.md",
+      "computedHash": "9424c31b911c4ee0246153aab5c18127b717ac5765b6d70b982d2221d6f114f5"
+    },
+    "darwin-skill": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "darwin-skill/SKILL.md",
+      "computedHash": "9105bdb2492f0467dd1ff0dec30e9c167977b9989cd483fbe08b7dd7d5b6885a"
+    },
+    "design-an-interface": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/productivity/caveman/SKILL.md",
-      "computedHash": "536908fcfcb232600a5875aa85f1fd50fd13305e9d67379bcd95f07c8c916f3f"
+      "skillPath": "skills/deprecated/design-an-interface/SKILL.md",
+      "computedHash": "f3f225914515407b8224e8ec6187db337c5e65bad0703936a0acb3f802947a7d"
+    },
+    "design-md": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-utilities/skills/design-md/SKILL.md",
+      "computedHash": "44af3e6e89a42a765d9cebf943f1e2ff3cdf43d1958341eb43fb7b74116f6691"
     },
     "design-taste-frontend": {
       "source": "Leonxlnx/taste-skill",
@@ -13,17 +55,59 @@
       "skillPath": "skills/taste-skill/SKILL.md",
       "computedHash": "899b84384f74f540ea5284d9b2e9234e050998b42eacc805410b518d4226c0b3"
     },
+    "design-taste-frontend-v1": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill-v1/SKILL.md",
+      "computedHash": "8d59c96751feacf88f341a43151eae6f4fd748978884c4552293b8841573d776"
+    },
     "diagnose": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "diagnose/SKILL.md",
+      "computedHash": "1c3c85517ac42116fe5f2bfb5150f7b3e38ad23808e40b33fbb01f1afb611983"
+    },
+    "edit-article": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/diagnose/SKILL.md",
-      "computedHash": "1c3c85517ac42116fe5f2bfb5150f7b3e38ad23808e40b33fbb01f1afb611983"
+      "skillPath": "skills/personal/edit-article/SKILL.md",
+      "computedHash": "e0c50de6d64f528cb4ea32b142e2ec499e291efbc6996369ac4a1eea76d4870c"
+    },
+    "enhance-prompt": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-utilities/skills/enhance-prompt/SKILL.md",
+      "computedHash": "28c47bcbc0e8d81f48fbbbe41d227efe4018a32c5d4674b0d052a70d215072d3"
+    },
+    "find-skills": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "find-skills/SKILL.md",
+      "computedHash": "645b891da1edbae76ab79c7b088d4e73397464f8396edaf773c0e01971ce75d6"
+    },
+    "full-output-enforcement": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/output-skill/SKILL.md",
+      "computedHash": "524f7c7950c3fde726101613f630140411c7d080e63be718687f4b38f919be81"
+    },
+    "git-guardrails-claude-code": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/misc/git-guardrails-claude-code/SKILL.md",
+      "computedHash": "a04bf71be9abc44ca3b00e2f1740b37d2e471abadd20d43a31bccff7135baedf"
     },
     "github-cli": {
       "source": "oldwinter/skills",
       "sourceType": "github",
       "skillPath": "devops-skills/github-cli/SKILL.md",
       "computedHash": "a060b9d4235e067193e9e75f8203c524d8850489a9e0e38d36fcc0d53863a952"
+    },
+    "go-live": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "go-live/SKILL.md",
+      "computedHash": "36ffef90a12c82f2826cb17e42cee37eda123c5fa70b75ed637265771d5e1aa4"
     },
     "gpt-taste": {
       "source": "Leonxlnx/taste-skill",
@@ -32,21 +116,21 @@
       "computedHash": "7bd1bfdda0e51016ca222693401a65fc0dd9bf9487e0bd5b1740ba510f6f963a"
     },
     "grill-me": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/productivity/grill-me/SKILL.md",
+      "skillPath": "grill-me/SKILL.md",
       "computedHash": "daf64ca15f4fa081a6747766db538e2dbd1131725ed4fcdd3d538dc62c7035ba"
     },
     "grill-with-docs": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
-      "computedHash": "59849672f8fce76b73055f6c9270236212e444c9aa63d02481bdf3cf788edb9f"
+      "skillPath": "grill-with-docs/SKILL.md",
+      "computedHash": "7c212cee6a823b956aaec7dff2a846814fe9986caa2e62313734010c7bd3db70"
     },
     "handoff": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/productivity/handoff/SKILL.md",
+      "skillPath": "handoff/SKILL.md",
       "computedHash": "3fdffd9dce6fc3e9f9f756ba79d694c5f162e11c7e7fbc72a0958f204312e0b1"
     },
     "high-end-visual-design": {
@@ -55,10 +139,34 @@
       "skillPath": "skills/soft-skill/SKILL.md",
       "computedHash": "f730e4132775f13eea19e3dc39afc6bb453cfc0498872b127ad8f0d47cfd802d"
     },
-    "improve-codebase-architecture": {
-      "source": "mattpocock/skills",
+    "huashu-nuwa": {
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "skillPath": "huashu-nuwa/SKILL.md",
+      "computedHash": "2eb3fa4e66ed9f3b8667fc2c85a00dd283c25e7eea2c8c2da80ae0eeffdd7f87"
+    },
+    "image-to-code": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/image-to-code-skill/SKILL.md",
+      "computedHash": "3d2ac14d956fdafc5500d2108b90895e134d847f9f199e7f1d18bf1f814cf7c8"
+    },
+    "imagegen-frontend-mobile": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-mobile/SKILL.md",
+      "computedHash": "7c1d1dc59cd0df4063b8621af543bf5dea1d576b261507e17b0323c69680b048"
+    },
+    "imagegen-frontend-web": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/imagegen-frontend-web/SKILL.md",
+      "computedHash": "27255c7c50181e58add156b2aa2bd5325285b85f04027e4c8b73742d98d7be0a"
+    },
+    "improve-codebase-architecture": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "improve-codebase-architecture/SKILL.md",
       "computedHash": "5d9444ffe5c240f2d20081c42c547112e1b8c372375a14e4c98df4d94bde11e1"
     },
     "industrial-brutalist-ui": {
@@ -67,11 +175,53 @@
       "skillPath": "skills/brutalist-skill/SKILL.md",
       "computedHash": "e66e5a2a8b73cef79ab6546459c665e8b983645689c5f3772f7eed8b9f1e8e0e"
     },
-    "prototype": {
+    "loop": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "loop/SKILL.md",
+      "computedHash": "5d950d1e651b15bfe05c5b962d1a0e0d9ebe555232822dfc28d8da211b8e1de5"
+    },
+    "migrate-to-shoehorn": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/prototype/SKILL.md",
+      "skillPath": "skills/misc/migrate-to-shoehorn/SKILL.md",
+      "computedHash": "67fdd18f8f4f7c89b3003eb944220679272738c1deb680719fd2e282495d87f4"
+    },
+    "minimalist-ui": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/minimalist-skill/SKILL.md",
+      "computedHash": "7e88897e0371184e97a82b8d9ef080323c13f21eb067b58ef71eb05173a08ac2"
+    },
+    "obsidian-vault": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/personal/obsidian-vault/SKILL.md",
+      "computedHash": "a5dd44e7af2bfeb2cb2e3f421fdccef62dd334038ad06e18767b0ddcf0e75c13"
+    },
+    "planning-with-files-zh": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "planning-with-files-zh/SKILL.md",
+      "computedHash": "a6976866202b3015e055393218bc59812bc7f93df806f6f5a24b74883fe12f55"
+    },
+    "prototype": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "prototype/SKILL.md",
       "computedHash": "f52c019c3e0af2ad1807332d553b9ee7282a28c162d78cdeddd89dc8456b73ff"
+    },
+    "qa": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/deprecated/qa/SKILL.md",
+      "computedHash": "a608d889794ef7f21a5dd31d96ca502b5e6f27b466ada759a3bf9846a2e6b236"
+    },
+    "react:components": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-build/skills/react-components/SKILL.md",
+      "computedHash": "ddb6007b09a408e387250d82ad5a6cd2ca22b87b703aac2d2bcb706200653425"
     },
     "redesign-existing-projects": {
       "source": "Leonxlnx/taste-skill",
@@ -79,64 +229,190 @@
       "skillPath": "skills/redesign-skill/SKILL.md",
       "computedHash": "47eced3e960a2c961d3cbee11fa1216264f589344b586a5cbd03967cd6b9c54b"
     },
-    "setup-matt-pocock-skills": {
+    "remotion": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-build/skills/remotion/SKILL.md",
+      "computedHash": "e117a6fd18d8bef4774034300c1d0b3db71e39c94d935227b03793f8ee1f6e49"
+    },
+    "request-refactor-plan": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "skillPath": "skills/deprecated/request-refactor-plan/SKILL.md",
+      "computedHash": "6811250488d1dafcb111e7ef0dc1124211369c5f6f47ce820b7527c255489178"
+    },
+    "review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/review/SKILL.md",
+      "computedHash": "fc4ca8a9495e93692282bebeb3bc99a6d46e27e2fccf4730001df98451b72f80"
+    },
+    "scaffold-exercises": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/misc/scaffold-exercises/SKILL.md",
+      "computedHash": "1127f69a77b48cb855067db4c9c42e7638e6672f1cb3fafb0ffd61a1ecdfae70"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "setup-matt-pocock-skills/SKILL.md",
       "computedHash": "f686b246e95afeaeeb3ff21b0f9f2c1ab29b02958468170cc9802fb477508488"
+    },
+    "setup-pre-commit": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/misc/setup-pre-commit/SKILL.md",
+      "computedHash": "f2ce8663857d919cf7e4146cd716b0aee1757b85123b758e6e7d98fcbaf14054"
     },
     "shadcn": {
       "source": "shadcn/ui",
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
-      "computedHash": "f0fdd03f4755cbb3b57e20fe6fd4a97c00d34e6780187b6559316986e8d848db"
+      "computedHash": "0dc0edeeaec2ae491ae506806517866a3f9bd48d04e0458feb37e0252862891f"
     },
     "shadcn-ui": {
       "source": "google-labs-code/stitch-skills",
       "sourceType": "github",
-      "skillPath": "skills/shadcn-ui/SKILL.md",
+      "skillPath": "plugins/stitch-build/skills/shadcn-ui/SKILL.md",
       "computedHash": "119a14a004bd30fa99d386df599bd0db8d057cca146f7ee08349daed48b2ea55"
+    },
+    "skill-creator": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "skill-creator/SKILL.md",
+      "computedHash": "3893f9b73632f3099e81f5d5d4b3b59a813d06a8da1f08ebb6624a5a70578232"
     },
     "stitch-design-taste": {
       "source": "Leonxlnx/taste-skill",
       "sourceType": "github",
       "skillPath": "skills/stitch-skill/SKILL.md",
-      "computedHash": "acf2921a7e50c06e637f072ba52e36a994cbb44ecbe6e31435bc113b894f5499"
+      "computedHash": "c96b580192b34167efa01f460bbc669ff4315cf97f3cf6ff85ded8029aa720b8"
+    },
+    "stitch-loop": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-utilities/skills/stitch-loop/SKILL.md",
+      "computedHash": "cf47da05045ce0c11f1a8b21dc4ef9bbfed0122d68548a48786cb1608257d574"
+    },
+    "stitch::code-to-design": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/code-to-design/SKILL.md",
+      "computedHash": "11efe5e52248bb1f623e2a797fd8561b05ef2b2457ebd8cd1c664f7c20340d18"
+    },
+    "stitch::extract-design-md": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/extract-design-md/SKILL.md",
+      "computedHash": "1c53df54291fb64eb19477110defb369565a408d4ea7a5477e1130168ec90af8"
+    },
+    "stitch::extract-static-html": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/extract-static-html/SKILL.md",
+      "computedHash": "6ddd90a8d1360d765a228749c3b4001b0c9631190cb8571fa6678707ae847454"
+    },
+    "stitch::generate-design": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/generate-design/SKILL.md",
+      "computedHash": "b854eb1747fbd02220bb7323590030fa644b8de126f8f6311749905ea09d7ae9"
+    },
+    "stitch::manage-design-system": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/manage-design-system/SKILL.md",
+      "computedHash": "ea8544bc8c150e4979334246ffbe8daa5acebb7cc2966937cd4064d90186c3c4"
+    },
+    "stitch::react-native": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-build/skills/react-native/SKILL.md",
+      "computedHash": "067609acd3702efe0869b3d561b22901d4bd93bec8510ac91538bda37546f205"
+    },
+    "stitch::upload-to-stitch": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-design/skills/upload-to-stitch/SKILL.md",
+      "computedHash": "48cccbf989aa624632bb3007e46415ef628f5c511a7047deeb0b217454847f83"
+    },
+    "supergoal": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "supergoal/SKILL.md",
+      "computedHash": "4ee28622b62554cf4e4484f9479a96c60757486ecc4c32c4dbb0c7f001bd245e"
+    },
+    "taste-design": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/stitch-utilities/skills/taste-design/SKILL.md",
+      "computedHash": "3772ea408777070865890e10d693118baa1e1de14ee5bacdf6ab46fdea7359bb"
     },
     "tdd": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/tdd/SKILL.md",
+      "skillPath": "tdd/SKILL.md",
       "computedHash": "78b31b2120c5fe7aced1cebfd4c7c94acb0037fd4f89c83c67584414aa4173bd"
     },
-    "to-issues": {
+    "teach": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/to-issues/SKILL.md",
+      "skillPath": "skills/productivity/teach/SKILL.md",
+      "computedHash": "d1c64f5747de3da32afd390096ecc9a116245e3b4a17c587b5de345e8235522a"
+    },
+    "to-issues": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "to-issues/SKILL.md",
       "computedHash": "41915d1686991b0d3796eb0b52f3aa8e9021abc5f268d14e6dc62e95dbf8e044"
     },
     "to-prd": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/to-prd/SKILL.md",
-      "computedHash": "a80acb8760af6521a37ea4f079e617712fcaa800f8a766e247f815c5dabb20d2"
+      "skillPath": "to-prd/SKILL.md",
+      "computedHash": "1f5f7a475757eb4030155130f4fd7f161a20e5731c4b39edd4abe2df9cc72901"
     },
     "triage": {
-      "source": "mattpocock/skills",
+      "source": "oldwinter/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/triage/SKILL.md",
+      "skillPath": "triage/SKILL.md",
       "computedHash": "56ff15b41bbebfa4cb329d96150d9b297c1d919ce30784d883b8755b4bfd8e7e"
     },
-    "write-a-skill": {
+    "ubiquitous-language": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/productivity/write-a-skill/SKILL.md",
+      "skillPath": "skills/deprecated/ubiquitous-language/SKILL.md",
+      "computedHash": "4828c4957014e7d9c1fd62d65e92264d6d46808089953e14d1bbba5a92dfff4d"
+    },
+    "write-a-skill": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "write-a-skill/SKILL.md",
       "computedHash": "3b58a16bde08f84ed490cd449ecdc40289216d660e070c485f53bc2d1ed2b843"
     },
-    "zoom-out": {
+    "writing-beats": {
       "source": "mattpocock/skills",
       "sourceType": "github",
-      "skillPath": "skills/engineering/zoom-out/SKILL.md",
+      "skillPath": "skills/in-progress/writing-beats/SKILL.md",
+      "computedHash": "b416f5b8d349d40c604ca2fd1d1664e8672c236e188fa524ae4e8db5a8174580"
+    },
+    "writing-fragments": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/writing-fragments/SKILL.md",
+      "computedHash": "248bdd9334033ab044dfe29458866f9b2353a8006416e00d1058a3914981ae6e"
+    },
+    "writing-shape": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/writing-shape/SKILL.md",
+      "computedHash": "db0659096afcae5bfe7d913e46c1dc1f49357d7b362791613fe5f62fcc00daf7"
+    },
+    "zoom-out": {
+      "source": "oldwinter/skills",
+      "sourceType": "github",
+      "skillPath": "zoom-out/SKILL.md",
       "computedHash": "a8b8ed45609fdfa9f184d0c9f69326e43822a42eebea14db2792d777373de562"
     }
   }
