@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { PositionOverlay } from "@/components/ui/position-overlay";
 import {
   AddCardButton,
   AppPage,
@@ -1143,84 +1144,16 @@ function RapidfireDisplayOverlay({ groupId, isNativeShell }: { groupId: string; 
 }
 
 function RapidfirePositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {
-  const [statusMessage, setStatusMessage] = useState("拖动此固定大小框到目标位置，按 Enter 保存，按 Esc 退出修改。");
-  const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; x: number; y: number } | null>(null);
-  const [position, setPosition] = useState({ x: window.screenX, y: window.screenY, width: window.innerWidth });
-
-  useEffect(() => {
-    document.body.dataset.overlayMode = "true";
-    return () => {
-      delete document.body.dataset.overlayMode;
-    };
-  }, []);
-
-  const commit = useCallback(async () => {
-    if (!isNativeShell) return;
-    setStatusMessage("正在保存连发器透明窗口位置...");
-    try {
-      await invoke("rapidfire_position_commit");
-    } catch (error) {
-      setStatusMessage(getErrorMessage(error));
-    }
-  }, [isNativeShell]);
-
-  const cancel = useCallback(async () => {
-    if (!isNativeShell) return;
-    setStatusMessage("正在退出连发器透明窗口位置设置...");
-    try {
-      await invoke("rapidfire_position_cancel");
-    } catch (error) {
-      setStatusMessage(getErrorMessage(error));
-    }
-  }, [isNativeShell]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void commit();
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        void cancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cancel, commit]);
-
-  const moveTo = useCallback(
-    async (x: number, y: number) => {
-      setPosition((current) => ({ ...current, x, y }));
-      if (!isNativeShell) return;
-      try {
-        await invoke("rapidfire_position_moved", { x, y });
-      } catch (error) {
-        setStatusMessage(getErrorMessage(error));
-      }
-    },
-    [isNativeShell],
-  );
-
   return (
-    <div
-      className="flex h-screen w-screen cursor-move select-none items-center justify-center rounded-md border-2 border-primary bg-background/82 px-4 py-4 text-foreground backdrop-blur-md"
-      onMouseDown={(event) => {
-        if (event.button !== 0) return;
-        setDragStart({ mouseX: event.screenX, mouseY: event.screenY, x: position.x, y: position.y });
+    <PositionOverlay
+      isNativeShell={isNativeShell}
+      label="连发器"
+      commands={{
+        commit: "rapidfire_position_commit",
+        cancel: "rapidfire_position_cancel",
+        moved: "rapidfire_position_moved",
       }}
-      onMouseMove={(event) => {
-        if (!dragStart) return;
-        void moveTo(dragStart.x + event.screenX - dragStart.mouseX, dragStart.y + event.screenY - dragStart.mouseY);
-      }}
-      onMouseUp={() => setDragStart(null)}
-    >
-      <div className="text-center">
-        <Badge variant="secondary">连发器透明窗口位置</Badge>
-        <p className="mt-3 text-sm font-medium">{statusMessage}</p>
-        <p className="mt-2 font-mono text-xs text-muted-foreground">X {position.x} · Y {position.y} · W {position.width}</p>
-      </div>
-    </div>
+    />
   );
 }
 

@@ -26,6 +26,7 @@ pub use self::types::{
 use crate::{
     hotkey_types,
     hotkeys::{HoldAction, HoldActionCallback, HotkeyManager},
+    overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
 };
 
 const RAPIDFIRE_DISPLAY_LABEL: &str = "rapidfire-display";
@@ -1219,18 +1220,6 @@ fn ensure_overlay_window_for_group(
     Ok(())
 }
 
-fn safe_label_component(raw: &str) -> String {
-    raw.chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect()
-}
-
 fn display_label_for_group(group_id: &str) -> String {
     if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
         RAPIDFIRE_DISPLAY_LABEL.to_string()
@@ -1241,10 +1230,6 @@ fn display_label_for_group(group_id: &str) -> String {
             safe_label_component(group_id)
         )
     }
-}
-
-fn encoded_query_value(value: &str) -> String {
-    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
 fn position_label_for_group(group_id: &str) -> String {
@@ -1259,56 +1244,12 @@ fn position_label_for_group(group_id: &str) -> String {
     }
 }
 
-fn destroy_stale_windows(
-    app: &AppHandle,
-    base_label: &str,
-    active_labels: &std::collections::HashSet<String>,
-) {
-    let prefix = format!("{base_label}-");
-    let labels = app
-        .webview_windows()
-        .keys()
-        .filter(|label| {
-            (*label == base_label || label.starts_with(&prefix)) && !active_labels.contains(*label)
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    for label in labels {
-        destroy_window(app, &label);
-    }
-}
-
-fn hide_window(app: &AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.hide();
-    }
-}
-
-fn destroy_window(app: &AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.destroy();
-    }
-}
-
 fn destroy_display_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, RAPIDFIRE_DISPLAY_LABEL);
 }
 
 fn destroy_position_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, RAPIDFIRE_POSITION_LABEL);
-}
-
-fn destroy_windows_with_prefix(app: &AppHandle, base_label: &str) {
-    let prefix = format!("{base_label}-");
-    let labels = app
-        .webview_windows()
-        .keys()
-        .filter(|label| *label == base_label || label.starts_with(&prefix))
-        .cloned()
-        .collect::<Vec<_>>();
-    for label in labels {
-        destroy_window(app, &label);
-    }
 }
 
 // ---- Initialize / Shutdown ----

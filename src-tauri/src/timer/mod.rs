@@ -16,6 +16,7 @@ mod counter_state;
 mod settings;
 mod types;
 use crate::hotkeys::{HoldAction, HoldActionCallback, HotkeyAction, HotkeyManager};
+use crate::overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component};
 use crate::utils::now_ms;
 
 use self::counter_state::CounterState;
@@ -708,18 +709,6 @@ fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Re
     Ok(())
 }
 
-fn safe_label_component(raw: &str) -> String {
-    raw.chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
-                '-'
-            }
-        })
-        .collect()
-}
-
 fn display_label_for_group(target: &TimerDisplayTarget, group_id: &str) -> String {
     match target {
         TimerDisplayTarget::Timer if group_id == DEFAULT_TIMER_GROUP_ID => {
@@ -753,31 +742,6 @@ fn display_query_for_group(target: &TimerDisplayTarget, group_id: &str) -> Strin
     }
 }
 
-fn encoded_query_value(value: &str) -> String {
-    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
-}
-
-fn destroy_stale_windows(app: &AppHandle, base_label: &str, active_labels: &HashSet<String>) {
-    let prefix = format!("{base_label}-");
-    for label in app.webview_windows().keys() {
-        if (label == base_label || label.starts_with(&prefix)) && !active_labels.contains(label) {
-            destroy_window(app, label);
-        }
-    }
-}
-
-fn hide_window(app: &AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.hide();
-    }
-}
-
-fn destroy_window(app: &AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        let _ = window.destroy();
-    }
-}
-
 fn destroy_display_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, TIMER_DISPLAY_LABEL);
     destroy_windows_with_prefix(app, COUNTER_DISPLAY_LABEL);
@@ -788,18 +752,6 @@ fn destroy_position_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, COUNTER_POSITION_LABEL);
 }
 
-fn destroy_windows_with_prefix(app: &AppHandle, base_label: &str) {
-    let prefix = format!("{base_label}-");
-    let labels = app
-        .webview_windows()
-        .keys()
-        .filter(|label| *label == base_label || label.starts_with(&prefix))
-        .cloned()
-        .collect::<Vec<_>>();
-    for label in labels {
-        destroy_window(app, &label);
-    }
-}
 
 pub fn is_main_window_close(label: &str) -> bool {
     label == "main"

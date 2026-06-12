@@ -2,6 +2,7 @@ mod delta;
 mod hotkey_types;
 mod hotkeys;
 mod morse;
+mod overlay_utils;
 mod rapidfire;
 mod settings;
 mod strategy;
