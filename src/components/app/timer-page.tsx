@@ -45,6 +45,7 @@ import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
+import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 import { cn } from "@/lib/utils";
 import {
   counterRunsById,
@@ -123,8 +124,9 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   const draggingCounterIdRef = useRef<string | null>(null);
   const [draggingTimerId, setDraggingTimerId] = useState<string | null>(null);
   const [draggingCounterId, setDraggingCounterId] = useState<string | null>(null);
-  const hotkeyDraftRef = useRef("");
   const favorites = useFavorites();
+  const recordingTargetRef = useRef<{} | null>(null);
+  recordingTargetRef.current = recordingTarget;
 
   // 高亮跳转：从收藏页跳过来时滚动到目标卡片并加 1.5s 高亮动画
   useEffect(() => {
@@ -272,6 +274,35 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
     } : current);
   }, []);
 
+  const recorder = useHotkeyRecorder({
+    formatKey: formatTimerHotkey,
+    onCommit: (key) => {
+      const target = recordingTargetRef.current as { type: "timer" | "counter"; id: string } | null;
+      if (!target) return;
+      setRecordingTarget(null);
+      if (target.type === "timer") {
+        updateTimer(target.id, { hotkey: key });
+      } else {
+        updateCounter(target.id, { hotkey: key });
+      }
+    },
+    onCancel: (draft) => {
+      const target = recordingTargetRef.current as { type: "timer" | "counter"; id: string } | null;
+      if (!target) return;
+      setRecordingTarget(null);
+      setForm((current) => {
+        if (!current) return current;
+        if (target.type === "timer") {
+          return { ...current, timers: current.timers.map((timer) => timer.id === target.id ? { ...timer, hotkey: draft } : timer) };
+        }
+        return { ...current, counters: current.counters.map((counter) => counter.id === target.id ? { ...counter, hotkey: draft } : counter) };
+      });
+    },
+    onStatusMessage: setStatusMessage,
+    keyRecordedMessage: (key) => `新的快捷键已录制：${key}`,
+    recordingCancelledMessage: "已取消快捷键录制。",
+  });
+
   useAutosave<TimerSettingsForm>({
     form,
     isDirty,
@@ -286,76 +317,30 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   });
 
   const beginTimerHotkeyRecording = useCallback((timer: TimerItemForm) => {
-    hotkeyDraftRef.current = timer.hotkey;
     setRecordingTarget({ type: "timer", id: timer.id });
+    recorder.beginRecording(timer.hotkey);
     setStatusMessage(`正在录制 ${timer.name || "计时器"} 的快捷键，按下主键会保存；失焦会取消。`);
-  }, []);
+  }, [recorder]);
 
   const beginCounterHotkeyRecording = useCallback((counter: CounterItemForm) => {
-    hotkeyDraftRef.current = counter.hotkey;
     setRecordingTarget({ type: "counter", id: counter.id });
+    recorder.beginRecording(counter.hotkey);
     setStatusMessage(`正在录制 ${counter.name || "计数器"} 的快捷键，按下主键会保存；失焦会取消。`);
-  }, []);
+  }, [recorder]);
 
   const handleTimerHotkeyRecorderKeyDown = useCallback((timer: TimerItemForm, event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (recordingTarget?.type !== "timer" || recordingTarget.id !== timer.id) {
       return;
     }
-
-    handleHotkeyRecorderKeyDown(event, (hotkey) => updateTimer(timer.id, { hotkey }));
-  }, [recordingTarget, updateTimer]);
+    recorder.handleKeyDown(event);
+  }, [recordingTarget, recorder]);
 
   const handleCounterHotkeyRecorderKeyDown = useCallback((counter: CounterItemForm, event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (recordingTarget?.type !== "counter" || recordingTarget.id !== counter.id) {
       return;
     }
-
-    handleHotkeyRecorderKeyDown(event, (hotkey) => updateCounter(counter.id, { hotkey }));
-  }, [recordingTarget, updateCounter]);
-
-  const handleHotkeyRecorderKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, commit: (hotkey: string) => void) => {
-    if (event.key === "Tab") {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-
-    const nextHotkey = formatTimerHotkey(event);
-    if (!nextHotkey) {
-      setStatusMessage("请按下一个可识别的主键，支持字母、数字、功能键与常用导航键。");
-      return;
-    }
-
-    commit(nextHotkey);
-    setRecordingTarget(null);
-    setStatusMessage(`新的快捷键已录制：${nextHotkey}`);
-  }, []);
-
-  const handleHotkeyRecorderBlur = useCallback(() => {
-    if (!recordingTarget) {
-      return;
-    }
-    const target = recordingTarget;
-    setRecordingTarget(null);
-    setForm((current) => {
-      if (!current) {
-        return current;
-      }
-      if (target.type === "timer") {
-        return {
-          ...current,
-          timers: current.timers.map((timer) => timer.id === target.id ? { ...timer, hotkey: hotkeyDraftRef.current } : timer),
-        };
-      }
-      return {
-        ...current,
-        counters: current.counters.map((counter) => counter.id === target.id ? { ...counter, hotkey: hotkeyDraftRef.current } : counter),
-      };
-    });
-    setStatusMessage("已取消快捷键录制。");
-  }, [recordingTarget]);
+    recorder.handleKeyDown(event);
+  }, [recordingTarget, recorder]);
 
   const addTimer = useCallback(() => {
     setForm((current) => current ? {
@@ -687,7 +672,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               onDragStart={() => beginTimerDrag(timer.id)}
               onBeginHotkeyRecording={() => beginTimerHotkeyRecording(timer)}
               onHotkeyKeyDown={(event) => handleTimerHotkeyRecorderKeyDown(timer, event)}
-              onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+              onHotkeyRecorderBlur={recorder.handleBlur}
               onRemove={() => removeTimer(timer.id)}
               onToggleFavorite={() => favorites.toggleFavorite("timer", timer.id)}
               onUpdate={(value) => updateTimer(timer.id, value)}
@@ -756,7 +741,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               onDragOver={() => moveDraggingCounterOver(counter.id)}
               onDragStart={() => beginCounterDrag(counter.id)}
               onHotkeyKeyDown={(event) => handleCounterHotkeyRecorderKeyDown(counter, event)}
-              onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+              onHotkeyRecorderBlur={recorder.handleBlur}
               onRemove={() => removeCounter(counter.id)}
               onReset={() => void resetCounter(counter.id)}
               resetDisabled={controlsDisabled || !form?.counterEnabled}

@@ -77,6 +77,7 @@ import { useFavorites } from "@/hooks/use-favorites";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 import { cn } from "@/lib/utils";
 
 type RapidfireDisplayMode = "display" | "position";
@@ -116,7 +117,6 @@ export function RapidfirePage({ highlightCardId, overlayMode }: RapidfirePagePro
 
 function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: RapidfireHighlightTarget | null; isNativeShell: boolean }) {
   const [recordingTarget, setRecordingTarget] = useState<RecordingTarget>(null);
-  const keyDraftRef = useRef("");
   const draggingCardIdRef = useRef<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const favorites = useFavorites();
@@ -252,6 +252,50 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     );
   }, [clearStaleConfigError]);
 
+  const recordingTargetRef = useRef<RecordingTarget>(null);
+  recordingTargetRef.current = recordingTarget;
+
+  const recorder = useHotkeyRecorder({
+    formatKey: (event) => {
+      const target = recordingTargetRef.current;
+      if (!target) return null;
+      if (target.field === "triggerKey") {
+        const result = formatTriggerHotkey(event);
+        return result || null;
+      }
+      return formatTriggerKey(event.key) || null;
+    },
+    validate: (key, event) => {
+      const target = recordingTargetRef.current;
+      if (!target || !key) return false;
+      const modifierOnly = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
+      if (modifierOnly) {
+        setStatusMessage(target.field === "triggerKey" ? "请按下组合键的主键。" : "目标键必须是单键。");
+        return false;
+      }
+      if (target.field === "targetKey" && key.includes("+")) {
+        setStatusMessage("目标键必须是单键。");
+        return false;
+      }
+      return true;
+    },
+    onCommit: (key) => {
+      const target = recordingTargetRef.current;
+      if (!target) return;
+      setRecordingTarget(null);
+      updateCard(target.cardId, { [target.field]: key });
+    },
+    onCancel: (draft) => {
+      const target = recordingTargetRef.current;
+      if (!target) return;
+      setRecordingTarget(null);
+      updateCard(target.cardId, { [target.field]: draft });
+    },
+    onStatusMessage: setStatusMessage,
+    keyRecordedMessage: (key) => `新的按键已录制：${key}`,
+    recordingCancelledMessage: "已取消按键录制。",
+  });
+
   const updateGroup = useCallback((id: string, value: Partial<RapidfireGroupForm>) => {
     clearStaleConfigError();
     setForm((current) =>
@@ -284,41 +328,10 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
   });
 
   const beginRecording = useCallback((card: RapidfireCardForm, field: "triggerKey" | "targetKey") => {
-    keyDraftRef.current = field === "triggerKey" ? card.triggerKey : card.targetKey;
     setRecordingTarget({ cardId: card.id, field });
+    recorder.beginRecording(field === "triggerKey" ? card.triggerKey : card.targetKey);
     setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按下主键会保存；失焦会取消。触发键可按住 Ctrl/Alt/Shift/Win 录制组合键。`);
-  }, []);
-
-  const handleRecorderKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (!recordingTarget) return;
-      if (event.key === "Tab") return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-
-      const nextKey = recordingTarget.field === "triggerKey" ? formatTriggerHotkey(event) : formatTriggerKey(event.key);
-      const modifierOnly = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
-      if (!nextKey || modifierOnly || (recordingTarget.field === "targetKey" && nextKey.includes("+"))) {
-        setStatusMessage(recordingTarget.field === "triggerKey" ? "请按下组合键的主键。" : "目标键必须是单键。");
-        return;
-      }
-
-      updateCard(recordingTarget.cardId, { [recordingTarget.field]: nextKey });
-      setRecordingTarget(null);
-      setStatusMessage(`新的按键已录制：${nextKey}`);
-    },
-    [recordingTarget, updateCard],
-  );
-
-  const handleRecorderBlur = useCallback(() => {
-    if (!recordingTarget) return;
-    const target = recordingTarget;
-    setRecordingTarget(null);
-    updateCard(target.cardId, { [target.field]: keyDraftRef.current });
-    setStatusMessage("已取消按键录制。");
-  }, [recordingTarget, updateCard]);
+  }, [recorder]);
 
   const addCard = useCallback(() => {
     clearStaleConfigError();
@@ -696,8 +709,8 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               recordingField={recordingTarget?.field}
               onUpdate={updateCard}
               onRecord={beginRecording}
-              onRecorderKeyDown={handleRecorderKeyDown}
-              onRecorderBlur={handleRecorderBlur}
+              onRecorderKeyDown={recorder.handleKeyDown}
+              onRecorderBlur={recorder.handleBlur}
               onMove={moveCard}
               onDragStart={() => beginCardDrag(card.id)}
               onDragOver={() => moveDraggingCardOver(card.id)}

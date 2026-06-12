@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
+import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 
 import { Badge } from "@/components/ui/badge";
 import { AppPage, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
@@ -36,10 +37,8 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const overlaySlots = useMemo(() => (overlayMode ? parseOverlaySlots() : []), [overlayMode]);
   const isNativeShell = useNativeShell();
   const hotkeyButtonRef = useRef<HTMLButtonElement | null>(null);
-  const hotkeyDraftRef = useRef<string>("");
   const [running, setRunning] = useState(false);
   const [selectingSlot, setSelectingSlot] = useState<number | null>(null);
-  const [isRecordingHotkey, setIsRecordingHotkey] = useState(false);
   const [verificationValue, setVerificationValue] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("idle");
   const [verificationMessage, setVerificationMessage] = useState("点击验证输入框即可执行一次仅识别流程，结果会直接回填到这里。");
@@ -63,10 +62,22 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
 
   const { bootstrap, setBootstrap, form, setForm, isDirty, updateForm, saveSettings, syncBootstrap, loading, saving, pageError: _pageError, setPageError, statusMessage: _statusMessage, setStatusMessage, autosaveVersionRef: autosaveRef } = bf;
 
+  const recorder = useHotkeyRecorder({
+    formatKey: formatRecordedHotkey,
+    onCommit: (key) => {
+      updateForm("hotkey", key);
+      setPageError(null);
+    },
+    onCancel: (draft) => updateForm("hotkey", draft),
+    onStatusMessage: setStatusMessage,
+    keyRecordedMessage: (key) => `新的热键已录制：${key}`,
+    recordingCancelledMessage: "已取消热键录制。",
+  });
+
   useAutosave<MorseSettingsForm>({
     form,
     isDirty,
-    disabled: overlayMode || !isNativeShell || loading || !bootstrap || !form || isRecordingHotkey || selectingSlot !== null,
+    disabled: overlayMode || !isNativeShell || loading || !bootstrap || !form || recorder.isRecording || selectingSlot !== null,
     onSave: (formSnapshot, nextVersion) => {
       const settingsValue = parseSettingsForm(formSnapshot);
       return saveSettings(settingsValue, nextVersion);
@@ -80,10 +91,10 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   });
 
   useEffect(() => {
-    if (isRecordingHotkey) {
+    if (recorder.isRecording) {
       hotkeyButtonRef.current?.focus();
     }
-  }, [isRecordingHotkey]);
+  }, [recorder.isRecording]);
 
   useEffect(() => {
     if (overlayMode || !isNativeShell) {
@@ -92,7 +103,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
 
     let disposed = false;
 
-    void invoke("morse_set_hotkey_recording", { recording: isRecordingHotkey }).catch((error) => {
+    void invoke("morse_set_hotkey_recording", { recording: recorder.isRecording }).catch((error) => {
       if (!disposed) {
         const message = getErrorMessage(error);
         setPageError(message);
@@ -103,7 +114,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     return () => {
       disposed = true;
     };
-  }, [isNativeShell, isRecordingHotkey, overlayMode]);
+  }, [isNativeShell, recorder.isRecording, overlayMode]);
 
   useEffect(() => {
     if (!overlayMode) {
@@ -371,51 +382,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     }
   }, [isNativeShell, syncBootstrap]);
 
-  const beginHotkeyRecording = useCallback(() => {
-    if (!form) {
-      return;
-    }
-
-    hotkeyDraftRef.current = form.hotkey;
-    setIsRecordingHotkey(true);
-    setStatusMessage("正在录制热键，按下组合键后会自动更新；失焦会取消录制。");
-  }, [form]);
-
-  const handleHotkeyRecorderKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (!form || !isRecordingHotkey) {
-      return;
-    }
-
-    if (event.key === "Tab") {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-
-    const nextHotkey = formatRecordedHotkey(event);
-    if (!nextHotkey) {
-      setStatusMessage("请按下一个可识别的主键，支持字母、数字、功能键与常用导航键。");
-      return;
-    }
-
-    updateForm("hotkey", nextHotkey);
-    setIsRecordingHotkey(false);
-    setPageError(null);
-    setStatusMessage(`新的热键已录制：${nextHotkey}`);
-  }, [form, isRecordingHotkey, updateForm]);
-
-  const handleHotkeyRecorderBlur = useCallback(() => {
-    if (!isRecordingHotkey) {
-      return;
-    }
-
-    updateForm("hotkey", hotkeyDraftRef.current);
-    setIsRecordingHotkey(false);
-    setStatusMessage("已取消热键录制。");
-  }, [isRecordingHotkey, updateForm]);
-
   if (overlayMode) {
     return <RegionSelectionOverlay slots={overlaySlots} />;
   }
@@ -466,13 +432,13 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           hotkeyButtonRef={hotkeyButtonRef}
           hotkeyError={bootstrap?.hotkeyError}
           isPrimary={stepTwoActive}
-          isRecordingHotkey={isRecordingHotkey}
+          isRecordingHotkey={recorder.isRecording}
           isVerifying={verificationStatus === "running"}
           onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
-          onBeginHotkeyRecording={beginHotkeyRecording}
+          onBeginHotkeyRecording={() => form && recorder.beginRecording(form.hotkey)}
           onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
-          onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
-          onHotkeyRecorderKeyDown={handleHotkeyRecorderKeyDown}
+          onHotkeyRecorderBlur={recorder.handleBlur}
+          onHotkeyRecorderKeyDown={recorder.handleKeyDown}
           onVerificationChange={setVerificationValue}
           onVerificationFocus={() => void handleVerificationRun()}
           onVerificationRetry={() => void handleVerificationRun()}
