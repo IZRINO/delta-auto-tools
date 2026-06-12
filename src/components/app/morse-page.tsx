@@ -8,7 +8,7 @@ import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 
 import { Badge } from "@/components/ui/badge";
-import { AppPage, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
+import { AppPage, InlineNotice, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
 import { RegionSelectionOverlay } from "@/components/app/morse-overlay";
 import { HistoryPanel, ResultPanel, SelectionPanel, WorkbenchControlPanel } from "@/components/app/morse-panels";
 import {
@@ -409,6 +409,14 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           </>
         }
       />
+
+      {!isNativeShell ? (
+        <div className="col-span-12">
+          <InlineNotice title="浏览器预览模式">
+            当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code className="font-mono text-[var(--amber)]">bun run tauri dev</code> 或使用安装后的桌面应用。
+          </InlineNotice>
+        </div>
+      ) : null}
 
       {/* 结构分隔线 */}
       <div className="col-span-12 h-0.5 bg-[var(--chalk)]" />

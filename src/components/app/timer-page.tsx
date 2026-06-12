@@ -33,6 +33,7 @@ import {
   CardBody,
   ControlTile,
   InlineControl,
+  InlineNotice,
   PageHero,
   SaveStateBadge,
   SectionHeader,
@@ -587,6 +588,14 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
         {pageError ? (
           <div className="col-span-12">
             <FieldError>{pageError}</FieldError>
+          </div>
+        ) : null}
+
+        {!isNativeShell ? (
+          <div className="col-span-12">
+            <InlineNotice title="浏览器预览模式">
+              当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code className="font-mono text-[var(--amber)]">bun run tauri dev</code> 或使用安装后的桌面应用。
+            </InlineNotice>
           </div>
         ) : null}
 

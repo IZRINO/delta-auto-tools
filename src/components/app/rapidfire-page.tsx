@@ -478,6 +478,14 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         </InlineNotice>
       )}
 
+      {!isNativeShell ? (
+        <div className="col-span-12">
+          <InlineNotice title="浏览器预览模式">
+            当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code className="font-mono text-[var(--amber)]">bun run tauri dev</code> 或使用安装后的桌面应用。
+          </InlineNotice>
+        </div>
+      ) : null}
+
       <PageHero
         eyebrow="03 / RAPIDFIRE"
         title="连发火控矩阵"
@@ -823,6 +831,7 @@ function RapidfireCardEditor({
                 className="mt-2 max-w-full bg-[var(--carbon)] font-medium"
                 placeholder="输入卡片名称"
                 value={card.name}
+                disabled={disabled}
                 onChange={(event) => onUpdate(card.id, { name: event.target.value })}
               />
             </div>
