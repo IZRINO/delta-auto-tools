@@ -1,23 +1,21 @@
 use std::sync::Arc;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use reqwest::{cookie::Jar, header::LOCATION, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::delta::{
-    client::http::{build_client, HttpOptions},
+    client::http::HttpOptions,
     constants::{
         PIONEER_3RD_AID, PIONEER_APP_ID, PIONEER_CALLBACK, PIONEER_DAID, PIONEER_FEEDBACK_LINK,
         PIONEER_OAUTH_APP_ID, PIONEER_REDIRECT_URI,
     },
     error::DeltaError,
     response::ApiResponse,
+    services::qq_qr_pipeline::{QrAuthConfig, QrLoginResult, QrStatusRequest, QqQrAuthPipeline},
     utils::{
         cookies::{dump_cookie_json, insert_cookie, must_cookie, restore_cookie_json},
-        hashes::get_qr_token,
         html::extract_query_param,
-        jsonp::extract_jsonp_args,
         time::current_millis,
     },
 };
@@ -32,6 +30,18 @@ pub struct PioneerLoginQr {
     pub cookie: String,
 }
 
+impl From<QrLoginResult> for PioneerLoginQr {
+    fn from(r: QrLoginResult) -> Self {
+        Self {
+            qr_sig: r.qr_sig,
+            image: r.image,
+            token: r.token,
+            login_sig: r.login_sig,
+            cookie: r.cookie,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PioneerStatusRequest {
@@ -41,131 +51,96 @@ pub struct PioneerStatusRequest {
     pub cookie: String,
 }
 
+impl From<PioneerStatusRequest> for QrStatusRequest {
+    fn from(r: PioneerStatusRequest) -> Self {
+        Self {
+            qr_token: r.qr_token,
+            qr_sig: r.qr_sig,
+            login_sig: r.login_sig,
+            cookie: r.cookie,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PioneerAccessToken {
     pub key: String,
 }
 
+fn pioneer_auth_config() -> QrAuthConfig {
+    QrAuthConfig {
+    appid: PIONEER_APP_ID,
+    daid: PIONEER_DAID,
+    jump_url: PIONEER_CALLBACK,
+    third_aid: Some(PIONEER_3RD_AID),
+    style: "33",
+    poll_url: "https://xui.ptlogin2.qq.com/ssl/ptqrlogin",
+    cookie_restore_domain: "https://xui.ptlogin2.qq.com/",
+    js_ver: "25040111",
+    o1v_id: "378b06c889d9113b39e814ca627809e3",
+    pt_js_version: "530c3f68",
+    xlogin_extra: vec![
+        ("login_text", "\u{767b}\u{5f55}"),
+        ("hide_title_bar", "1"),
+        ("pt_feedback_link", PIONEER_FEEDBACK_LINK),
+        ("theme", "2"),
+        ("verify_theme", ""),
+    ],
+    poll_referer: None,
+    waiting_msg: "等待扫码",
+    scanned_msg: "已扫码,待确认",
+    unknown_msg: "未知错误信息",
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PioneerAuthService {
-    client: Client,
-    jar: Arc<Jar>,
+    pipeline: QqQrAuthPipeline,
 }
 
 impl PioneerAuthService {
     pub fn new(options: HttpOptions) -> Result<Self, DeltaError> {
-        let (client, jar) = build_client(options)?;
-        Ok(Self { client, jar })
+        let pipeline = QqQrAuthPipeline::new(options, pioneer_auth_config())?;
+        Ok(Self { pipeline })
+    }
+
+    #[allow(dead_code)]
+    pub fn client(&self) -> &Client {
+        &self.pipeline.client
+    }
+
+    #[allow(dead_code)]
+    pub fn jar(&self) -> &Arc<Jar> {
+        &self.pipeline.jar
     }
 
     pub async fn get_login_qr(&self) -> Result<PioneerLoginQr, DeltaError> {
-        self.client
-            .get("https://xui.ptlogin2.qq.com/cgi-bin/xlogin")
-            .query(&[
-                ("appid", PIONEER_APP_ID),
-                ("daid", PIONEER_DAID),
-                ("style", "33"),
-                ("login_text", "\u{767b}\u{5f55}"),
-                ("hide_title_bar", "1"),
-                ("hide_border", "1"),
-                ("target", "self"),
-                ("s_url", PIONEER_CALLBACK),
-                ("pt_3rd_aid", PIONEER_3RD_AID),
-                ("pt_feedback_link", PIONEER_FEEDBACK_LINK),
-                ("theme", "2"),
-                ("verify_theme", ""),
-            ])
-            .send()
-            .await?
-            .error_for_status()?;
-
-        let image = self
-            .client
-            .get("https://xui.ptlogin2.qq.com/ssl/ptqrshow")
-            .query(&[
-                ("appid", PIONEER_APP_ID),
-                ("e", "2"),
-                ("l", "M"),
-                ("s", "3"),
-                ("d", "72"),
-                ("v", "4"),
-                ("t", "0.6142752744667854"),
-                ("daid", PIONEER_DAID),
-                ("pt_3rd_aid", PIONEER_3RD_AID),
-                ("u1", PIONEER_CALLBACK),
-            ])
-            .send()
-            .await?
-            .bytes()
-            .await?;
-
-        let qr_sig = must_cookie(&self.jar, "https://xui.ptlogin2.qq.com/", "qrsig")?;
-        let login_sig = must_cookie(&self.jar, "https://xui.ptlogin2.qq.com/", "pt_login_sig")?;
-
-        Ok(PioneerLoginQr {
-            qr_sig: qr_sig.clone(),
-            image: STANDARD.encode(image),
-            token: get_qr_token(&qr_sig),
-            login_sig,
-            cookie: dump_cookie_json(&self.jar, "https://xui.ptlogin2.qq.com/")?,
-        })
+        let result = self.pipeline.get_login_qr().await?;
+        Ok(result.into())
     }
 
     pub async fn poll_login_status(
         &self,
         req: PioneerStatusRequest,
     ) -> Result<ApiResponse<Value>, DeltaError> {
-        restore_cookie_json(&self.jar, "https://xui.ptlogin2.qq.com/", &req.cookie)?;
-        insert_cookie(
-            &self.jar,
-            "https://xui.ptlogin2.qq.com/",
-            "qrsig",
-            &req.qr_sig,
-        )?;
-
-        let body = self
-            .client
-            .get("https://xui.ptlogin2.qq.com/ssl/ptqrlogin")
-            .query(&[
-                ("u1", PIONEER_CALLBACK),
-                ("ptqrtoken", req.qr_token.as_str()),
-                ("ptredirect", "0"),
-                ("h", "1"),
-                ("t", "1"),
-                ("g", "1"),
-                ("from_ui", "1"),
-                ("ptlang", "2052"),
-                ("action", &format!("0-0-{}", current_millis())),
-                ("js_ver", "25040111"),
-                ("js_type", "1"),
-                ("login_sig", req.login_sig.as_str()),
-                ("pt_uistyle", "40"),
-                ("aid", PIONEER_APP_ID),
-                ("daid", PIONEER_DAID),
-                ("pt_3rd_aid", PIONEER_3RD_AID),
-                ("o1vId", "378b06c889d9113b39e814ca627809e3"),
-                ("pt_js_version", "530c3f68"),
-            ])
-            .send()
-            .await?
-            .text()
-            .await?;
-
-        Self::map_poll_body(&body, async |redirect_url| {
-            let _ = self.client.get(&redirect_url).send().await?;
-            let cookie = dump_cookie_json(&self.jar, "https://graph.qq.com/")?;
-            Ok(json!({ "cookie": cookie, "uin": extract_query_param(&redirect_url, "uin").ok() }))
-        })
-        .await
+        let jar = self.pipeline.jar.clone();
+        let client = self.pipeline.client.clone();
+        self.pipeline
+            .poll_login_status(req.into(), async |redirect_url| {
+                let _ = client.get(&redirect_url).send().await?;
+                let cookie = dump_cookie_json(&jar, "https://graph.qq.com/")?;
+                Ok(json!({ "cookie": cookie, "uin": extract_query_param(&redirect_url, "uin").ok() }))
+            })
+            .await
     }
 
     pub async fn get_access_token(
         &self,
         cookie_json: &str,
     ) -> Result<PioneerAccessToken, DeltaError> {
-        restore_cookie_json(&self.jar, "https://graph.qq.com/", cookie_json)?;
-        let p_skey = must_cookie(&self.jar, "https://graph.qq.com/", "p_skey")?;
+        restore_cookie_json(&self.pipeline.jar, "https://graph.qq.com/", cookie_json)?;
+        let p_skey = must_cookie(&self.pipeline.jar, "https://graph.qq.com/", "p_skey")?;
         let gtk = crate::delta::utils::hashes::get_gtk(&p_skey).to_string();
 
         let auth_time = std::time::SystemTime::now()
@@ -175,6 +150,7 @@ impl PioneerAuthService {
             .to_string();
 
         let resp = self
+            .pipeline
             .client
             .post("https://graph.qq.com/oauth2.0/authorize")
             .form(&[
@@ -204,9 +180,10 @@ impl PioneerAuthService {
             .to_string();
         let code = extract_query_param(&location, "code")?;
 
-        let _ = self.client.get(&location).send().await?;
+        let _ = self.pipeline.client.get(&location).send().await?;
 
         let callback_resp = self
+            .pipeline
             .client
             .get("https://gamer.qq.com/v2/passport/qq/callback")
             .query(&[("code", code.as_str()), ("state", "gamer.qq.com")])
@@ -226,9 +203,9 @@ impl PioneerAuthService {
             .map_err(|error| DeltaError::Parse(error.to_string()))?
             .to_string();
 
-        let _ = self.client.get(&redirect_location).send().await?;
+        let _ = self.pipeline.client.get(&redirect_location).send().await?;
 
-        let key = must_cookie(&self.jar, "https://gamer.qq.com/", "key")?;
+        let key = must_cookie(&self.pipeline.jar, "https://gamer.qq.com/", "key")?;
         Ok(PioneerAccessToken { key })
     }
 
@@ -240,11 +217,12 @@ impl PioneerAuthService {
         cookie_json: Option<&str>,
     ) -> Result<bool, DeltaError> {
         if let Some(cookie_json) = cookie_json {
-            restore_cookie_json(&self.jar, "https://ssl.ptlogin2.qq.com/", cookie_json)?;
+            restore_cookie_json(&self.pipeline.jar, "https://ssl.ptlogin2.qq.com/", cookie_json)?;
         }
 
         let now = current_millis().to_string();
         let body = self
+            .pipeline
             .client
             .post("https://ams.game.qq.com/ams/userLoginSvr")
             .query(&[
@@ -270,7 +248,7 @@ impl PioneerAuthService {
         key: &str,
         list_type: &str,
     ) -> Result<Value, DeltaError> {
-        insert_cookie(&self.jar, "https://gamer.qq.com/", "key", key)?;
+        insert_cookie(&self.pipeline.jar, "https://gamer.qq.com/", "key", key)?;
 
         let sub_type = match list_type {
             "mobile" => 22i64,
@@ -278,6 +256,7 @@ impl PioneerAuthService {
         };
 
         let value: Value = self
+            .pipeline
             .client
             .post("https://m.gamer.qq.com/graph/wxmini/GetCollList")
             .json(&json!({ "subType": sub_type }))
@@ -323,9 +302,10 @@ impl PioneerAuthService {
     }
 
     async fn get_game_detail(&self, key: &str, id: &str) -> Result<Value, DeltaError> {
-        insert_cookie(&self.jar, "https://gamer.qq.com/", "key", key)?;
+        insert_cookie(&self.pipeline.jar, "https://gamer.qq.com/", "key", key)?;
 
         let value: Value = self
+            .pipeline
             .client
             .get("https://gamer.qq.com/task/misc/gettask2")
             .query(&[("iTaskID", id)])
@@ -339,48 +319,6 @@ impl PioneerAuthService {
             return Ok(json!(null));
         }
         Ok(value["result"].clone())
-    }
-
-    pub async fn map_poll_body<F, Fut>(
-        body: &str,
-        on_success: F,
-    ) -> Result<ApiResponse<Value>, DeltaError>
-    where
-        F: FnOnce(String) -> Fut,
-        Fut: std::future::Future<Output = Result<Value, DeltaError>>,
-    {
-        let args = extract_jsonp_args(body, "ptuiCB")?;
-        match args.first().map(String::as_str) {
-            Some("0") => {
-                let redirect_url = args.get(2).cloned().unwrap_or_default();
-                Ok(ApiResponse::ok("登录成功", on_success(redirect_url).await?))
-            }
-            Some("66") => Ok(ApiResponse {
-                code: 1,
-                msg: "等待扫码".to_string(),
-                data: json!([]),
-            }),
-            Some("67") => Ok(ApiResponse {
-                code: 2,
-                msg: "已扫码,待确认".to_string(),
-                data: json!([]),
-            }),
-            Some("65") => Ok(ApiResponse {
-                code: -2,
-                msg: "二维码失效".to_string(),
-                data: json!([]),
-            }),
-            Some("86") => Ok(ApiResponse {
-                code: -3,
-                msg: "登录被拒绝".to_string(),
-                data: json!([]),
-            }),
-            _ => Ok(ApiResponse {
-                code: -4,
-                msg: "未知错误信息".to_string(),
-                data: json!([]),
-            }),
-        }
     }
 }
 
