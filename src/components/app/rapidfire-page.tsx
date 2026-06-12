@@ -506,13 +506,20 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
 
   if (!form) {
     return (
-      <AddCardButton
-        className="min-h-36"
-        disabled
-        title="连发器准备中"
-        description={statusMessage}
-        onClick={() => undefined}
-      />
+      <AppPage className="auto-rows-max">
+        <PageHero
+          eyebrow="03 / RAPIDFIRE"
+          title="连发火控矩阵"
+          description="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
+        />
+        {pageError ? (
+          <div className="col-span-12">
+            <InlineNotice title="连发器加载失败">{pageError}</InlineNotice>
+          </div>
+        ) : (
+          <AddCardButton className="col-span-12 min-h-36" disabled title="连发器准备中" description={statusMessage} onClick={() => undefined} />
+        )}
+      </AppPage>
     );
   }
 

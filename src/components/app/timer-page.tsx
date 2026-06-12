@@ -889,24 +889,26 @@ function DisplaySettingsCard({ canDelete, controlsDisabled, description, display
       />
       <CardBody className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <FieldGroup className="gap-4">
-          <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-end">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <ControlTile className="flex items-center gap-3">
               <Switch checked={group.enabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">分组开关</p>
+                <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--ink)] uppercase">分组开关</p>
                 <p className="mt-1 text-xs text-muted-foreground">关闭后隐藏本组窗口并解绑本组快捷键。</p>
               </div>
             </ControlTile>
-            <Field>
-              <FieldLabel>分组名称</FieldLabel>
-              <FieldContent>
-                <Input disabled={controlsDisabled && !group.enabled} value={group.name} onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })} />
-              </FieldContent>
-            </Field>
-            <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost">
-              <RiDeleteBinLine data-icon="inline-start" />
-              删除空分组
-            </Button>
+            <div className="flex items-end gap-3">
+              <Field className="min-w-0 flex-1">
+                <FieldLabel>分组名称</FieldLabel>
+                <FieldContent>
+                  <Input disabled={controlsDisabled && !group.enabled} value={group.name} onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })} />
+                </FieldContent>
+              </Field>
+              <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0">
+                <RiDeleteBinLine data-icon="inline-start" />
+                删除
+              </Button>
+            </div>
           </div>
           <Collapsible defaultOpen={false}>
             <InlineControl className="p-0">
