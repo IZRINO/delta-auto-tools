@@ -24,6 +24,7 @@ pub use self::types::{
 };
 
 use crate::{
+    app_error::AppError,
     hotkey_types,
     hotkeys::{HoldAction, HoldActionCallback, HotkeyManager},
     overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
@@ -1295,7 +1296,7 @@ pub fn initialize(
 #[tauri::command]
 pub fn rapidfire_get_bootstrap(
     state: State<'_, RapidfireState>,
-) -> Result<RapidfireBootstrap, String> {
+) -> Result<RapidfireBootstrap, AppError> {
     let inner = state
         .inner
         .lock()
@@ -1309,7 +1310,7 @@ pub fn rapidfire_save_settings(
     app: AppHandle,
     state: State<'_, RapidfireState>,
     hotkey_manager: State<'_, HotkeyManager>,
-) -> Result<RapidfireBootstrap, String> {
+) -> Result<RapidfireBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
     let previous_settings = {
         let inner = state
@@ -1329,7 +1330,7 @@ pub fn rapidfire_save_settings(
             .lock()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());
-        return Err(error);
+        return Err(AppError::from(error));
     }
 
     let bootstrap = {
@@ -1365,7 +1366,7 @@ pub fn rapidfire_save_settings(
 pub fn rapidfire_stop(
     app: AppHandle,
     state: State<'_, RapidfireState>,
-) -> Result<RapidfireBootstrap, String> {
+) -> Result<RapidfireBootstrap, AppError> {
     let bootstrap = {
         let mut inner = state
             .inner
@@ -1384,7 +1385,7 @@ pub async fn rapidfire_begin_position_selection(
     group_id: Option<String>,
     app: AppHandle,
     state: State<'_, RapidfireState>,
-) -> Result<RapidfireSelectionOutcome, String> {
+) -> Result<RapidfireSelectionOutcome, AppError> {
     let (sender, receiver) = oneshot::channel();
     let group_id = group_id
         .filter(|value| !value.trim().is_empty())
@@ -1396,7 +1397,7 @@ pub async fn rapidfire_begin_position_selection(
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
 
         if inner.pending_position.is_some() {
-            return Err("当前已有一个位置设置流程在进行中".to_string());
+            return Err(AppError::Message("当前已有一个位置设置流程在进行中".to_string()));
         }
 
         let pos = inner
@@ -1519,14 +1520,14 @@ pub async fn rapidfire_begin_position_selection(
 pub fn rapidfire_position_commit(
     app: AppHandle,
     state: State<'_, RapidfireState>,
-) -> Result<RapidfireBootstrap, String> {
+) -> Result<RapidfireBootstrap, AppError> {
     let (sender, group_id, bootstrap) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.take() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         let group_id = pending.group_id.clone();
@@ -1556,14 +1557,14 @@ pub fn rapidfire_position_commit(
 pub fn rapidfire_position_cancel(
     app: AppHandle,
     state: State<'_, RapidfireState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let (sender, group_id, _original_position) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.take() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         let original = pending.original_position.clone();
@@ -1593,14 +1594,14 @@ pub fn rapidfire_position_moved(
     y: i32,
     app: AppHandle,
     state: State<'_, RapidfireState>,
-) -> Result<RapidfireRect, String> {
+) -> Result<RapidfireRect, AppError> {
     let (rect, group_id) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.as_mut() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         pending.staged_position.x = x;

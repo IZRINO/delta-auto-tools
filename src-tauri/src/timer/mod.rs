@@ -15,6 +15,7 @@ use tokio::{
 mod counter_state;
 mod settings;
 mod types;
+use crate::app_error::AppError;
 use crate::hotkeys::{HoldAction, HoldActionCallback, HotkeyAction, HotkeyManager};
 use crate::overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component};
 use crate::utils::now_ms;
@@ -1207,7 +1208,7 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Tim
 }
 
 #[tauri::command]
-pub fn timer_get_bootstrap(state: State<'_, TimerState>) -> Result<TimerBootstrap, String> {
+pub fn timer_get_bootstrap(state: State<'_, TimerState>) -> Result<TimerBootstrap, AppError> {
     let inner = state
         .inner
         .lock()
@@ -1222,7 +1223,7 @@ pub fn timer_save_settings(
     app: AppHandle,
     state: State<'_, TimerState>,
     hotkey_manager: State<'_, HotkeyManager>,
-) -> Result<TimerBootstrap, String> {
+) -> Result<TimerBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
     settings::save_settings(&app, &settings_value)?;
 
@@ -1232,7 +1233,7 @@ pub fn timer_save_settings(
             .lock()
             .map_err(|_| "计时器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());
-        return Err(error);
+        return Err(AppError::from(error));
     }
 
     let bootstrap = {
@@ -1284,7 +1285,7 @@ pub fn timer_save_settings(
 }
 
 #[tauri::command]
-pub fn timer_trigger(timer_ids: Vec<String>, app: AppHandle) -> Result<TimerBootstrap, String> {
+pub fn timer_trigger(timer_ids: Vec<String>, app: AppHandle) -> Result<TimerBootstrap, AppError> {
     trigger_hotkey_targets(
         &app,
         HotkeyTriggerTargets {
@@ -1292,13 +1293,14 @@ pub fn timer_trigger(timer_ids: Vec<String>, app: AppHandle) -> Result<TimerBoot
             counter_ids: Vec::new(),
         },
     )
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub fn timer_counter_trigger(
     counter_ids: Vec<String>,
     app: AppHandle,
-) -> Result<TimerBootstrap, String> {
+) -> Result<TimerBootstrap, AppError> {
     trigger_hotkey_targets(
         &app,
         HotkeyTriggerTargets {
@@ -1306,10 +1308,11 @@ pub fn timer_counter_trigger(
             counter_ids,
         },
     )
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBootstrap, String> {
+pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBootstrap, AppError> {
     let state = app.state::<TimerState>();
     let bootstrap = {
         let mut inner = state
@@ -1323,7 +1326,7 @@ pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBo
             .find(|counter| counter.id == counter_id)
             .map(|counter| (counter.id.clone(), counter.start_value))
         else {
-            return Err("未找到计数器".to_string());
+            return Err(AppError::Message("未找到计数器".to_string()));
         };
         inner.counter_runs.insert(id, start_value);
         persist_counter_runs(&app, &inner);
@@ -1341,7 +1344,7 @@ pub fn timer_counter_adjust(
     delta: i32,
     app: AppHandle,
     state: State<'_, TimerState>,
-) -> Result<TimerBootstrap, String> {
+) -> Result<TimerBootstrap, AppError> {
     let bootstrap = {
         let mut inner = state
             .inner
@@ -1355,7 +1358,7 @@ pub fn timer_counter_adjust(
             .iter()
             .any(|c| c.id == counter_id && c.enabled);
         if !exists {
-            return Err("计数器不存在或未启用".to_string());
+            return Err(AppError::Message("计数器不存在或未启用".to_string()));
         }
 
         let start_value = inner
@@ -1387,7 +1390,7 @@ pub async fn timer_begin_position_selection(
     group_id: Option<String>,
     app: AppHandle,
     state: State<'_, TimerState>,
-) -> Result<TimerSelectionOutcome, String> {
+) -> Result<TimerSelectionOutcome, AppError> {
     let (sender, receiver) = oneshot::channel();
     let group_id = group_id
         .filter(|value| !value.trim().is_empty())
@@ -1399,7 +1402,7 @@ pub async fn timer_begin_position_selection(
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
 
         if inner.pending_position.is_some() {
-            return Err("当前已有一个位置设置流程在进行中".to_string());
+            return Err(AppError::Message("当前已有一个位置设置流程在进行中".to_string()));
         }
 
         let rect = rect_for_target(&inner.settings, &target, &group_id);
@@ -1482,14 +1485,14 @@ pub async fn timer_begin_position_selection(
 pub fn timer_position_commit(
     app: AppHandle,
     state: State<'_, TimerState>,
-) -> Result<TimerBootstrap, String> {
+) -> Result<TimerBootstrap, AppError> {
     let (sender, target, group_id, bootstrap) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.take() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         let target = pending.target.clone();
@@ -1512,14 +1515,14 @@ pub fn timer_position_commit(
 }
 
 #[tauri::command]
-pub fn timer_position_cancel(app: AppHandle, state: State<'_, TimerState>) -> Result<(), String> {
+pub fn timer_position_cancel(app: AppHandle, state: State<'_, TimerState>) -> Result<(), AppError> {
     let (sender, target, group_id) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.take() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         let target = pending.target.clone();
@@ -1544,14 +1547,14 @@ pub fn timer_position_moved(
     y: i32,
     app: AppHandle,
     state: State<'_, TimerState>,
-) -> Result<TimerRect, String> {
+) -> Result<TimerRect, AppError> {
     let (rect, target, group_id) = {
         let mut inner = state
             .inner
             .lock()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.pending_position.as_mut() else {
-            return Err("当前没有等待中的位置设置流程".to_string());
+            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
         pending.staged_rect.x = x;

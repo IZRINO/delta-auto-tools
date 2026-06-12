@@ -8,8 +8,9 @@ pub mod state;
 pub mod storage;
 pub mod utils;
 
+use crate::app_error::AppError;
 use tauri::AppHandle;
 
-pub fn initialize(app: &AppHandle) -> Result<state::DeltaState, String> {
-    state::DeltaState::initialize(app).map_err(|error| error.to_string())
+pub fn initialize(app: &AppHandle) -> Result<state::DeltaState, AppError> {
+    state::DeltaState::initialize(app).map_err(AppError::from)
 }

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use regex::Regex;
 use reqwest::header;
 
+use crate::app_error::AppError;
 use super::types::{ChallengeInfo, StrategyFetchResponse};
 
 /// JS 重定向最大跟随层数。
@@ -220,7 +221,7 @@ fn resolve_url(current: &str, target: &str) -> Result<String, String> {
 /// 如果命中 CC check，`challenge` 字段会包含验证信息，
 /// 前端可回退到 `strategy_open_window` 让用户手动完成验证。
 #[tauri::command]
-pub async fn strategy_fetch_page(url: String) -> Result<StrategyFetchResponse, String> {
+pub async fn strategy_fetch_page(url: String) -> Result<StrategyFetchResponse, AppError> {
     let headers = default_headers();
     let jar = Arc::new(reqwest::cookie::Jar::default());
 
@@ -230,7 +231,7 @@ pub async fn strategy_fetch_page(url: String) -> Result<StrategyFetchResponse, S
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败：{e}"))?;
 
-    fetch_with_redirect(&client, &jar, &url, 0).await
+    fetch_with_redirect(&client, &jar, &url, 0).await.map_err(AppError::from)
 }
 
 #[cfg(test)]

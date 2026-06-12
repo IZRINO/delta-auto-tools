@@ -12,6 +12,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::app_error::AppError;
 use crate::hotkey_types;
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
 use crate::utils::now_ms;
@@ -237,7 +238,7 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Mor
 }
 
 #[tauri::command]
-pub fn morse_get_bootstrap(state: State<'_, MorseState>) -> Result<MorseBootstrap, String> {
+pub fn morse_get_bootstrap(state: State<'_, MorseState>) -> Result<MorseBootstrap, AppError> {
     let inner = state
         .inner
         .lock()
@@ -252,7 +253,7 @@ pub fn morse_save_settings(
     app: AppHandle,
     state: State<'_, MorseState>,
     hotkey_manager: State<'_, HotkeyManager>,
-) -> Result<MorseBootstrap, String> {
+) -> Result<MorseBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
     let previous_settings = {
         let inner = state
@@ -265,7 +266,7 @@ pub fn morse_save_settings(
     let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
 
     if let Err(error) = settings::save_settings(&app, &settings_value) {
-        return Err(error);
+        return Err(AppError::from(error));
     }
 
     if hotkey_changed {
@@ -273,7 +274,7 @@ pub fn morse_save_settings(
             restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
         {
             let _ = settings::save_settings(&app, &previous_settings);
-            return Err(error);
+            return Err(AppError::from(error));
         }
     }
 
@@ -290,8 +291,8 @@ pub fn morse_save_settings(
 pub fn morse_set_hotkey_recording(
     recording: bool,
     hotkey_manager: State<'_, HotkeyManager>,
-) -> Result<(), String> {
-    set_hotkey_listener_paused(&hotkey_manager, recording)
+) -> Result<(), AppError> {
+    set_hotkey_listener_paused(&hotkey_manager, recording).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -300,8 +301,8 @@ pub async fn morse_begin_region_selection(
     target: String,
     app: AppHandle,
     state: State<'_, MorseState>,
-) -> Result<RegionSelectionOutcome, String> {
-    overlay::begin_region_selection(&app, slots, target, state).await
+) -> Result<RegionSelectionOutcome, AppError> {
+    overlay::begin_region_selection(&app, slots, target, state).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -310,7 +311,7 @@ pub fn morse_overlay_submit_selection(
     rect: RegionRect,
     app: AppHandle,
     state: State<'_, MorseState>,
-) -> Result<RegionSelectionProgress, String> {
+) -> Result<RegionSelectionProgress, AppError> {
     let prepared = overlay::prepare_selection(slot, rect, &state)?;
     let progress = prepared.progress.clone();
     let is_complete = prepared.is_complete;
@@ -338,8 +339,8 @@ pub fn morse_overlay_cancel_selection(
     slot: usize,
     app: AppHandle,
     state: State<'_, MorseState>,
-) -> Result<(), String> {
-    overlay::cancel_selection(&app, slot, &state)
+) -> Result<(), AppError> {
+    overlay::cancel_selection(&app, slot, &state).map_err(AppError::from)
 }
 
 /// 提前结束点击区域选择（Enter 键触发），保存当前已选区域。
@@ -347,7 +348,7 @@ pub fn morse_overlay_cancel_selection(
 pub fn morse_overlay_finish_early(
     app: AppHandle,
     state: State<'_, MorseState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     overlay::finish_early(&app, &state)?;
     let settings_snapshot = {
         let inner = state
@@ -364,8 +365,8 @@ pub fn morse_overlay_finish_early(
 pub async fn morse_run_recognition(
     auto_type: Option<bool>,
     app: AppHandle,
-) -> Result<MorseRunResult, String> {
-    run_recognition_flow(&app, "manual", auto_type.unwrap_or(true)).await
+) -> Result<MorseRunResult, AppError> {
+    run_recognition_flow(&app, "manual", auto_type.unwrap_or(true)).await.map_err(AppError::from)
 }
 
 fn persist_run_result(app: &AppHandle, result: MorseRunResult) {

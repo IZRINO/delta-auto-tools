@@ -1,3 +1,4 @@
+mod app_error;
 mod delta;
 mod hotkey_types;
 mod hotkeys;

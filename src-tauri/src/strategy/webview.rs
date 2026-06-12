@@ -4,6 +4,7 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
+use crate::app_error::AppError;
 use super::types::{StrategyOpenWindowRequest, StrategyOpenWindowResponse};
 
 /// 默认单站窗口尺寸（足够阅读攻略页内容）。
@@ -51,7 +52,7 @@ fn derive_view_label(host: &str) -> String {
 pub async fn strategy_open_window(
     app: AppHandle,
     request: StrategyOpenWindowRequest,
-) -> Result<StrategyOpenWindowResponse, String> {
+) -> Result<StrategyOpenWindowResponse, AppError> {
     let parsed = normalize_url(&request.url)?;
 
     let host = parsed
@@ -78,7 +79,7 @@ pub async fn strategy_open_window(
     // 同一 host 复用窗口：若已存在则关闭并重建，避免堆叠。
     let reused = if let Some(existing) = app.get_webview_window(&label) {
         if let Err(error) = existing.close() {
-            return Err(format!("关闭旧窗口失败：{error}"));
+            return Err(AppError::from(format!("关闭旧窗口失败：{error}")));
         }
         true
     } else {
@@ -97,7 +98,7 @@ pub async fn strategy_open_window(
 
     builder
         .build()
-        .map_err(|error| format!("创建应用内浏览器窗口失败：{error}"))?;
+        .map_err(|error| AppError::from(format!("创建应用内浏览器窗口失败：{error}")))?;
 
     Ok(StrategyOpenWindowResponse { label, reused })
 }
