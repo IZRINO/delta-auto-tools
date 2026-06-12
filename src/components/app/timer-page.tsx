@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import {
   RiAddLine,
   RiDeleteBinLine,
-  RiEyeLine,
   RiArrowDownSLine,
   RiMapPinLine,
   RiResetLeftLine,
@@ -684,7 +683,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
         ) : null}
 
 
-        <TacticalCard className="col-span-12 xl:col-span-8">
+        <TacticalCard className="col-span-12">
           <SectionHeader
             eyebrow="总控字段"
             icon={<RiSpeedUpLine />}
@@ -714,6 +713,8 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           </CardBody>
         </TacticalCard>
 
+        <div className="col-span-12 h-0.5 bg-[var(--ink)]" />
+
         {/* ── CHANNEL 01：计时器系统 ── */}
         <SectionHeader
           className="col-span-12"
@@ -721,69 +722,66 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           icon={<RiTimerLine />}
           title="计时器系统"
           description="计时器负责阶段节奏。每张卡片配置独立计时方向、触发模式与快捷键。"
+          actions={
+            <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form} onClick={addTimerGroup}>
+              <RiAddLine data-icon="inline-start" />
+              新增分组
+            </Button>
+          }
         />
-        <div className="col-span-12">
-          <div className="grid grid-cols-12 gap-3">
-            <div className="col-span-12 flex flex-col gap-3 xl:col-span-4">
-              {form?.timerGroups.map((group) => (
-                <DisplaySettingsCard
-                  key={group.id}
-                  controlsDisabled={controlsDisabled || !form?.timerEnabled || !group.enabled}
-                  description="宽度可调，每个计时器一行；倒计时进度条会作为文本背景随剩余时间减少。"
-                  display={group.display}
-                  group={group}
-                  canDelete={Boolean(form && form.timerGroups.length > 1 && !form.timers.some((timer) => timer.groupId === group.id))}
-                  statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveTimersByGroup(form, group.id).length} 张有效卡片`}
-                  target="timer"
-                  title={`计时器透明窗口 · ${group.name}`}
-                  onGroupUpdate={(value) => updateTimerGroup(group.id, value)}
-                  onGroupDelete={() => removeTimerGroup(group.id)}
-                  onPositionSelection={() => void beginPositionSelection("timer", group.id)}
-                  onUpdate={(value) => updateTimerGroupDisplay(group.id, value)}
-                  onUpdateRect={(value) => updateTimerGroupDisplayRect(group.id, value)}
-                />
-              ))}
-              <Button className="w-full justify-center" disabled={controlsDisabled || !form} onClick={addTimerGroup} type="button" variant="outline">
-                <RiAddLine data-icon="inline-start" />
-                新增计时分组
-              </Button>
-            </div>
-
-            <div className="col-span-12 grid grid-cols-12 gap-3 xl:col-span-8">
-              {form?.timers.map((timer, index) => (
-                <div key={timer.id} data-timer-card={timer.id} className="col-span-12 2xl:col-span-6">
-                  <TimerCard
-                    controlsDisabled={controlsDisabled}
-                    index={index}
-                    isFavorite={favorites.isFavorite("timer", timer.id)}
-                    isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "timer" && highlightCardId.cardId === timer.id)}
-                    isRecording={recordingTarget?.type === "timer" && recordingTarget.id === timer.id}
-                    isDragging={draggingTimerId === timer.id}
-                    groupOptions={form.timerGroups}
-                    run={runsById.get(timer.id)}
-                    timer={timer}
-                    onDragOver={() => moveDraggingTimerOver(timer.id)}
-                    onDragStart={() => beginTimerDrag(timer.id)}
-                    onBeginHotkeyRecording={() => beginTimerHotkeyRecording(timer)}
-                    onHotkeyKeyDown={(event) => handleTimerHotkeyRecorderKeyDown(timer, event)}
-                    onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
-                    onRemove={() => removeTimer(timer.id)}
-                    onToggleFavorite={() => favorites.toggleFavorite("timer", timer.id)}
-                    onUpdate={(value) => updateTimer(timer.id, value)}
-                  />
-                </div>
-              ))}
-
-              <AddCardButton
-                className="col-span-12 min-h-36 2xl:col-span-6"
-                disabled={controlsDisabled || !form}
-                title="添加计时器"
-                description="名称、秒数、计时方向、快捷键均可自定义。"
-                onClick={addTimer}
-              />
-            </div>
-          </div>
+        <div className="col-span-12 flex flex-col gap-2">
+          {form?.timerGroups.map((group) => (
+            <DisplaySettingsInline
+              key={group.id}
+              controlsDisabled={controlsDisabled || !form?.timerEnabled || !group.enabled}
+              display={group.display}
+              group={group}
+              canDelete={Boolean(form && form.timerGroups.length > 1 && !form.timers.some((timer) => timer.groupId === group.id))}
+              statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveTimersByGroup(form, group.id).length} 张有效卡片`}
+              target="timer"
+              onGroupUpdate={(value) => updateTimerGroup(group.id, value)}
+              onGroupDelete={() => removeTimerGroup(group.id)}
+              onPositionSelection={() => void beginPositionSelection("timer", group.id)}
+              onUpdate={(value) => updateTimerGroupDisplay(group.id, value)}
+              onUpdateRect={(value) => updateTimerGroupDisplayRect(group.id, value)}
+            />
+          ))}
         </div>
+
+        <section className="col-span-12 grid min-h-0 gap-3 xl:grid-cols-2">
+          {form?.timers.map((timer, index) => (
+            <TimerCard
+              key={timer.id}
+              controlsDisabled={controlsDisabled}
+              index={index}
+              isFavorite={favorites.isFavorite("timer", timer.id)}
+              isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "timer" && highlightCardId.cardId === timer.id)}
+              isRecording={recordingTarget?.type === "timer" && recordingTarget.id === timer.id}
+              isDragging={draggingTimerId === timer.id}
+              groupOptions={form.timerGroups}
+              run={runsById.get(timer.id)}
+              timer={timer}
+              onDragOver={() => moveDraggingTimerOver(timer.id)}
+              onDragStart={() => beginTimerDrag(timer.id)}
+              onBeginHotkeyRecording={() => beginTimerHotkeyRecording(timer)}
+              onHotkeyKeyDown={(event) => handleTimerHotkeyRecorderKeyDown(timer, event)}
+              onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+              onRemove={() => removeTimer(timer.id)}
+              onToggleFavorite={() => favorites.toggleFavorite("timer", timer.id)}
+              onUpdate={(value) => updateTimer(timer.id, value)}
+            />
+          ))}
+
+          <AddCardButton
+            className="min-h-36"
+            disabled={controlsDisabled || !form}
+            title="添加计时器"
+            description="名称、秒数、计时方向、快捷键均可自定义。"
+            onClick={addTimer}
+          />
+        </section>
+
+        <div className="col-span-12 h-0.5 bg-[var(--ink)]" />
 
         {/* ── CHANNEL 02：计数器系统 ── */}
         <SectionHeader
@@ -792,85 +790,78 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           icon={<RiSpeedUpLine />}
           title="计数器系统"
           description="计数器负责战局累加。每张卡片有独立计数状态与快捷键。"
+          actions={
+            <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form} onClick={addCounterGroup}>
+              <RiAddLine data-icon="inline-start" />
+              新增分组
+            </Button>
+          }
         />
-        <div className="col-span-12">
-          <div className="grid grid-cols-12 gap-3">
-            <div className="col-span-12 flex flex-col gap-3 xl:col-span-4">
-              {form?.counterGroups.map((group) => (
-                <DisplaySettingsCard
-                  key={group.id}
-                  controlsDisabled={controlsDisabled || !form?.counterEnabled || !group.enabled}
-                  description="计数器拥有独立透明窗口；按快捷键累加，重置会回到设置的起始数。"
-                  display={group.display}
-                  group={group}
-                  canDelete={Boolean(form && form.counterGroups.length > 1 && !form.counters.some((counter) => counter.groupId === group.id))}
-                  statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveCountersByGroup(form, group.id).length} 张有效卡片`}
-                  target="counter"
-                  title={`计数器透明窗口 · ${group.name}`}
-                  onGroupUpdate={(value) => updateCounterGroup(group.id, value)}
-                  onGroupDelete={() => removeCounterGroup(group.id)}
-                  onPositionSelection={() => void beginPositionSelection("counter", group.id)}
-                  onUpdate={(value) => updateCounterGroupDisplay(group.id, value)}
-                  onUpdateRect={(value) => updateCounterGroupDisplayRect(group.id, value)}
-                />
-              ))}
-              <Button className="w-full justify-center" disabled={controlsDisabled || !form} onClick={addCounterGroup} type="button" variant="outline">
-                <RiAddLine data-icon="inline-start" />
-                新增计数分组
-              </Button>
-            </div>
-
-            <div className="col-span-12 grid grid-cols-12 gap-3 xl:col-span-8">
-              {form?.counters.map((counter, index) => (
-                <div key={counter.id} data-counter-card={counter.id} className="col-span-12 2xl:col-span-6">
-                  <CounterCard
-                    controlsDisabled={controlsDisabled}
-                    counter={counter}
-                    index={index}
-                    isFavorite={favorites.isFavorite("counter", counter.id)}
-                    isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "counter" && highlightCardId.cardId === counter.id)}
-                    isDragging={draggingCounterId === counter.id}
-                    isRecording={recordingTarget?.type === "counter" && recordingTarget.id === counter.id}
-                    groupOptions={form.counterGroups}
-                    run={counterRunsByIdMap.get(counter.id)}
-                    onAdjust={(delta) => void adjustCounter(counter.id, delta)}
-                    onBeginHotkeyRecording={() => beginCounterHotkeyRecording(counter)}
-                    onDragOver={() => moveDraggingCounterOver(counter.id)}
-                    onDragStart={() => beginCounterDrag(counter.id)}
-                    onHotkeyKeyDown={(event) => handleCounterHotkeyRecorderKeyDown(counter, event)}
-                    onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
-                    onRemove={() => removeCounter(counter.id)}
-                    onReset={() => void resetCounter(counter.id)}
-                    resetDisabled={controlsDisabled || !form?.counterEnabled}
-                    onToggleFavorite={() => favorites.toggleFavorite("counter", counter.id)}
-                    onUpdate={(value) => updateCounter(counter.id, value)}
-                  />
-                </div>
-              ))}
-
-              <AddCardButton
-                className="col-span-12 min-h-36 2xl:col-span-6"
-                disabled={controlsDisabled || !form}
-                title="添加计数器"
-                description="名称、起始数、快捷键均可自定义。"
-                onClick={addCounter}
-              />
-            </div>
-          </div>
+        <div className="col-span-12 flex flex-col gap-2">
+          {form?.counterGroups.map((group) => (
+            <DisplaySettingsInline
+              key={group.id}
+              controlsDisabled={controlsDisabled || !form?.counterEnabled || !group.enabled}
+              display={group.display}
+              group={group}
+              canDelete={Boolean(form && form.counterGroups.length > 1 && !form.counters.some((counter) => counter.groupId === group.id))}
+              statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveCountersByGroup(form, group.id).length} 张有效卡片`}
+              target="counter"
+              onGroupUpdate={(value) => updateCounterGroup(group.id, value)}
+              onGroupDelete={() => removeCounterGroup(group.id)}
+              onPositionSelection={() => void beginPositionSelection("counter", group.id)}
+              onUpdate={(value) => updateCounterGroupDisplay(group.id, value)}
+              onUpdateRect={(value) => updateCounterGroupDisplayRect(group.id, value)}
+            />
+          ))}
         </div>
+
+        <section className="col-span-12 grid min-h-0 gap-3 xl:grid-cols-2">
+          {form?.counters.map((counter, index) => (
+            <CounterCard
+              key={counter.id}
+              controlsDisabled={controlsDisabled}
+              counter={counter}
+              index={index}
+              isFavorite={favorites.isFavorite("counter", counter.id)}
+              isHighlighted={Boolean(highlightCardId && highlightCardId.kind === "counter" && highlightCardId.cardId === counter.id)}
+              isDragging={draggingCounterId === counter.id}
+              isRecording={recordingTarget?.type === "counter" && recordingTarget.id === counter.id}
+              groupOptions={form.counterGroups}
+              run={counterRunsByIdMap.get(counter.id)}
+              onAdjust={(delta) => void adjustCounter(counter.id, delta)}
+              onBeginHotkeyRecording={() => beginCounterHotkeyRecording(counter)}
+              onDragOver={() => moveDraggingCounterOver(counter.id)}
+              onDragStart={() => beginCounterDrag(counter.id)}
+              onHotkeyKeyDown={(event) => handleCounterHotkeyRecorderKeyDown(counter, event)}
+              onHotkeyRecorderBlur={handleHotkeyRecorderBlur}
+              onRemove={() => removeCounter(counter.id)}
+              onReset={() => void resetCounter(counter.id)}
+              resetDisabled={controlsDisabled || !form?.counterEnabled}
+              onToggleFavorite={() => favorites.toggleFavorite("counter", counter.id)}
+              onUpdate={(value) => updateCounter(counter.id, value)}
+            />
+          ))}
+
+          <AddCardButton
+            className="min-h-36"
+            disabled={controlsDisabled || !form}
+            title="添加计数器"
+            description="名称、起始数、快捷键均可自定义。"
+            onClick={addCounter}
+          />
+        </section>
       </AppPage>
   );
 }
 
-type DisplaySettingsCardProps = {
+type DisplaySettingsInlineProps = {
   canDelete: boolean;
   controlsDisabled: boolean;
-  description: string;
   display: TimerSettingsForm["display"] | undefined;
   group: TimerGroupForm;
   statusMessage: string;
   target: TimerDisplayTarget;
-  title: string;
   onGroupDelete: () => void;
   onGroupUpdate: (value: Partial<TimerGroupForm>) => void;
   onPositionSelection: () => void;
@@ -878,75 +869,62 @@ type DisplaySettingsCardProps = {
   onUpdateRect: (value: Partial<TimerSettingsForm["display"]["rect"]>) => void;
 };
 
-function DisplaySettingsCard({ canDelete, controlsDisabled, description, display, group, statusMessage, target, title, onGroupDelete, onGroupUpdate, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsCardProps) {
+function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, statusMessage, target, onGroupDelete, onGroupUpdate, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsInlineProps) {
   return (
-    <TacticalCard>
-      <SectionHeader
-        eyebrow={`[ FIELD UNIT ${target === "timer" ? "01" : "02"} ]`}
-        icon={<RiEyeLine />}
-        title={title}
-        description={description}
-      />
-      <CardBody className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <FieldGroup className="gap-4">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <ControlTile className="flex items-center gap-3">
-              <Switch checked={group.enabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
-              <div className="min-w-0">
-                <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--ink)] uppercase">分组开关</p>
-                <p className="mt-1 text-xs text-muted-foreground">关闭后隐藏本组窗口并解绑本组快捷键。</p>
-              </div>
-            </ControlTile>
-            <div className="flex items-end gap-3">
+    <ControlTile className="flex flex-col gap-3 bg-[var(--paper)]">
+      <div className="flex flex-wrap items-center gap-3">
+        <Switch checked={group.enabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
+        <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--ink)] uppercase">
+          {target === "timer" ? "计时器" : "计数器"}分组 · {group.name}
+        </p>
+        <Input
+          className="w-28 font-mono text-sm"
+          disabled={controlsDisabled && !group.enabled}
+          value={group.name}
+          onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })}
+          aria-label="分组名称"
+        />
+        <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0" size="icon-sm">
+          <RiDeleteBinLine />
+        </Button>
+        <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline" size="sm">
+          <RiMapPinLine data-icon="inline-start" />
+          位置
+        </Button>
+      </div>
+
+      <Collapsible defaultOpen={false}>
+        <InlineControl className="p-0">
+          <CollapsibleTrigger asChild>
+            <Button className="w-full justify-between px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.18em] uppercase" type="button" variant="ghost">
+              显示参数
+              <RiArrowDownSLine className="size-3.5" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="border-t border-[var(--ink)] px-2 py-2">
+            <div className="flex flex-wrap items-center gap-4">
               <Field className="min-w-0 flex-1">
-                <FieldLabel>分组名称</FieldLabel>
+                <FieldLabel className="font-mono text-[0.58rem]">字体透明度</FieldLabel>
                 <FieldContent>
-                  <Input disabled={controlsDisabled && !group.enabled} value={group.name} onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })} />
+                  <div className="flex items-center gap-3">
+                    <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
+                    <span className="w-10 text-right font-mono text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
+                  </div>
                 </FieldContent>
               </Field>
-              <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0">
-                <RiDeleteBinLine data-icon="inline-start" />
-                删除
-              </Button>
+              <Field className="w-36 shrink-0">
+                <FieldLabel className="font-mono text-[0.58rem]">窗口宽度</FieldLabel>
+                <FieldContent>
+                  <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" className="h-7 font-mono text-xs" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
+                </FieldContent>
+              </Field>
             </div>
-          </div>
-          <Collapsible defaultOpen={false}>
-            <InlineControl className="p-0">
-              <CollapsibleTrigger asChild>
-                <Button className="w-full justify-between px-3" type="button" variant="ghost">
-                  显示参数
-                  <RiArrowDownSLine className="size-4" />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="border-t border-[var(--ink)] px-3 py-3">
-                <FieldGroup className="gap-4">
-                  <Field>
-                    <FieldLabel>字体透明度</FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-4">
-                        <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
-                        <span className="w-12 text-right font-mono text-sm text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
-                      </div>
-                    </FieldContent>
-                  </Field>
-                  <Field>
-                    <FieldLabel>{target === "timer" ? "计时器" : "计数器"}透明窗口显示宽度</FieldLabel>
-                    <FieldContent>
-                      <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
-                    </FieldContent>
-                  </Field>
-                </FieldGroup>
-              </CollapsibleContent>
-            </InlineControl>
-          </Collapsible>
-          <InlineControl className="text-xs/relaxed text-muted-foreground">{statusMessage}</InlineControl>
-        </FieldGroup>
-        <Button className="self-start lg:self-center" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline">
-          <RiMapPinLine data-icon="inline-start" />
-          设置透明窗口位置
-        </Button>
-      </CardBody>
-    </TacticalCard>
+          </CollapsibleContent>
+        </InlineControl>
+      </Collapsible>
+
+      <p className="font-mono text-[0.58rem] font-bold tracking-[0.06em] text-muted-foreground uppercase">{statusMessage}</p>
+    </ControlTile>
   );
 }
 
@@ -974,7 +952,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
-    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
+    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
         eyebrow={`T-${String(index + 1).padStart(2, "0")}`}
         icon={<RiTimerLine />}
@@ -1010,7 +988,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
         </div>
       </CardHeader>
       <CardBody>
-        <FieldGroup className="gap-4">
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor={`${timer.id}-name`}>名称</FieldLabel>
             <FieldContent>
@@ -1071,7 +1049,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
               <p className="text-xs text-muted-foreground">总时长 {Number.parseInt(timer.durationSeconds, 10) * Number.parseInt(timer.segmentCount, 10)} 秒，每次触发减少 {timer.durationSeconds} 秒</p>
             ) : null}
           </Field>
-          <ControlTile className="flex items-center gap-3">
+          <ControlTile className="flex items-center gap-3 sm:col-span-2">
             <Switch
               checked={timer.ignoreRunning}
               disabled={controlsDisabled}
@@ -1082,7 +1060,9 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
               <p className="mt-1 text-xs text-muted-foreground">开启后运行时快捷键无效；关闭后运行时触发会重置计时器。</p>
             </div>
           </ControlTile>
-          <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
+          <div className="sm:col-span-2">
+            <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`} isRecording={isRecording} hotkey={timer.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
+          </div>
 
         </FieldGroup>
       </CardBody>
@@ -1115,7 +1095,7 @@ type CounterCardProps = {
 
 function CounterCard({ controlsDisabled, counter, groupOptions, index, isDragging, isFavorite, isHighlighted, isRecording, onAdjust, onBeginHotkeyRecording, onDragOver, onDragStart, onHotkeyKeyDown, onHotkeyRecorderBlur, onRemove, onReset, onToggleFavorite, onUpdate, resetDisabled, run }: CounterCardProps) {
   return (
-    <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
+    <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--alert-red)]" : "")} data-counter-card={counter.id} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
         eyebrow={`C-${String(index + 1).padStart(2, "0")}`}
         icon={<RiSpeedUpLine />}
@@ -1151,7 +1131,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
         </div>
       </CardHeader>
       <CardBody>
-        <FieldGroup className="gap-4">
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor={`${counter.id}-name`}>名称</FieldLabel>
             <FieldContent>
@@ -1182,7 +1162,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
             </FieldContent>
           </Field>
           <HotkeyField controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`} isRecording={isRecording} hotkey={counter.hotkey} onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown} onHotkeyRecorderBlur={onHotkeyRecorderBlur} />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
             <Button
               className="flex-1"
               disabled={resetDisabled}
@@ -1203,11 +1183,11 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
               <RiAddLine data-icon="inline-start" />
               +1
             </Button>
+            <Button className="flex-1" disabled={resetDisabled} onClick={onReset} type="button" variant="outline">
+              <RiResetLeftLine data-icon="inline-start" />
+              重置为起始数
+            </Button>
           </div>
-          <Button disabled={resetDisabled} onClick={onReset} type="button" variant="outline">
-            <RiResetLeftLine data-icon="inline-start" />
-            重置为起始数
-          </Button>
 
         </FieldGroup>
       </CardBody>

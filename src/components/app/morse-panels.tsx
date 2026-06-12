@@ -76,41 +76,51 @@ export function SelectionPanel({ configuredCount, form, isBusy, isPrimary = fals
               </Button>
             </ControlTile>
 
-            <div className="grid gap-3 xl:grid-cols-3">
+            <div className="flex flex-col gap-2">
               {REGION_LABELS.map((label, index) => {
                 const region = form?.regions[index] ?? null;
                 const isConfigured = Boolean(region);
                 const isSelecting = selectingSlot === index;
 
                 return (
-                  <ControlTile key={label} className="flex min-h-full flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2 border-b border-[var(--ink)] pb-3">
-                      <div className="min-w-0">
-                        <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">{`窗位 0${index + 1}`}</p>
-                        <p className="mt-1 truncate text-sm font-medium text-foreground">{label}</p>
-                        <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
-                          {isSelecting ? "当前轮次正在等待框选。" : isConfigured ? "坐标已写入，可直接放行识别。" : "尚未写入坐标，需先完成框选。"}
-                        </p>
+                  <ControlTile key={label} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">{`窗位 0${index + 1}`}</span>
+                        <span className="text-sm font-medium text-foreground">{label}</span>
                       </div>
                       <Badge className="shrink-0" variant={isSelecting ? "secondary" : isConfigured ? "default" : "outline"}>
                         {isSelecting ? "框选中" : isConfigured ? "已锁定" : "待锁定"}
                       </Badge>
                     </div>
 
-                    <InlineControl className="border-2 border-dashed border-[var(--ink)] bg-[var(--paper)] px-3 py-3">
-                      <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">坐标纪要</p>
-                      <p className="mt-2 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
-                    </InlineControl>
-
-                    <Button
-                      className="mt-auto w-full rounded-none"
-                      disabled={isBusy}
-                      onClick={() => onSelectOne(index)}
-                      type="button"
-                      variant={isConfigured ? "outline" : "default"}
-                    >
-                      {isSelecting ? "等待当前框选完成" : isConfigured ? "重选本窗位" : "写入本窗位"}
-                    </Button>
+                    {isConfigured ? (
+                      <>
+                        <InlineControl className="border-2 border-[var(--ink)] bg-[var(--paper)] px-3 py-2">
+                          <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--steel)] uppercase">坐标纪要</p>
+                          <p className="mt-1 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
+                        </InlineControl>
+                        <Button
+                          className="w-full rounded-none"
+                          disabled={isBusy}
+                          onClick={() => onSelectOne(index)}
+                          type="button"
+                          variant="outline"
+                        >
+                          {isSelecting ? "等待当前框选完成" : "重选本窗位"}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        className="w-full rounded-none"
+                        disabled={isBusy}
+                        onClick={() => onSelectOne(index)}
+                        type="button"
+                        variant="default"
+                      >
+                        {isSelecting ? "等待当前框选完成" : "写入本窗位"}
+                      </Button>
+                    )}
                   </ControlTile>
                 );
               })}
