@@ -15,20 +15,20 @@
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --background: #0c0c0b;
+  --background: #141412;
   --foreground: #d8d4cc;
-  --card: #0c0c0b;
+  --card: #141412;
   --card-foreground: #d8d4cc;
   --popover: #171715;
   --popover-foreground: #d8d4cc;
   --primary: #e8a000;
-  --primary-foreground: #0c0c0b;
+  --primary-foreground: #141412;
   --secondary: #171715;
   --secondary-foreground: #d8d4cc;
   --muted: #171715;
   --muted-foreground: #a8a49c;
   --accent: #e8a000;
-  --accent-foreground: #0c0c0b;
+  --accent-foreground: #141412;
   --destructive: #c85400;
   --border: #d8d4cc;
   --input: #d8d4cc;
@@ -43,12 +43,12 @@
   --sidebar-foreground: #d8d4cc;
   --sidebar-primary: #e8a000;
   --sidebar-primary-foreground: #0c0c0b;
-  --sidebar-accent: #0c0c0b;
+  --sidebar-accent: #141412;
   --sidebar-accent-foreground: #d8d4cc;
   --sidebar-border: #d8d4cc;
   --sidebar-ring: #e8a000;
 
-  --carbon: #0c0c0b;
+  --carbon: #141412;
   --slate: #171715;
   --iron: #232320;
   --chalk: #d8d4cc;
@@ -60,9 +60,9 @@
   --moss: #3f8a30;
   --void: #050504;
 
-  --surface-shell: #0c0c0b;
+  --surface-shell: #141412;
   --surface-panel: #171715;
-  --surface-card: #0c0c0b;
+  --surface-card: #141412;
   --surface-card-strong: #171715;
   --surface-tile: #171715;
   --surface-border: #9a968e;

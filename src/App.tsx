@@ -5,6 +5,7 @@ import {
   RiRadarLine,
   RiStarFill,
   RiTimerLine,
+  RiSpeedUpLine,
   RiAccountPinCircleLine,
   RiBarChartBoxLine,
   RiToolsLine,
@@ -34,6 +35,9 @@ const MorsePage = lazy(() =>
 const TimerPage = lazy(() =>
   import("@/components/app/timer-page").then((module) => ({ default: module.TimerPage })),
 );
+const CounterPage = lazy(() =>
+  import("@/components/app/counter-page").then((module) => ({ default: module.CounterPage })),
+);
 const RapidfirePage = lazy(() =>
   import("@/components/app/rapidfire-page").then((module) => ({ default: module.RapidfirePage })),
 );
@@ -54,8 +58,14 @@ const tools = [
   {
     id: "timer" as const,
     icon: RiTimerLine,
-    label: "计时\\计数器",
+    label: "计时器",
     short: "Timer",
+  },
+  {
+    id: "counter" as const,
+    icon: RiSpeedUpLine,
+    label: "计数器",
+    short: "Counter",
   },
   {
     id: "rapidfire" as const,
@@ -115,7 +125,7 @@ function ToolPageSuspense({ children, fallback = <ToolPageFallback /> }: { child
   return <Suspense fallback={fallback}>{children}</Suspense>;
 }
 
-type ToolHighlight = { kind: "timer" | "counter"; cardId: string; nonce: number } | { kind: "rapidfire"; cardId: string; nonce: number } | null;
+type ToolHighlight = { kind: "timer"; cardId: string; nonce: number } | { kind: "counter"; cardId: string; nonce: number } | { kind: "rapidfire"; cardId: string; nonce: number } | null;
 
 function renderToolPage(
   activeTool: ToolId,
@@ -126,7 +136,13 @@ function renderToolPage(
     case "timer":
       return (
         <TimerPage
-          highlightCardId={highlightCardId && (highlightCardId.kind === "timer" || highlightCardId.kind === "counter") ? highlightCardId : null}
+          highlightCardId={highlightCardId && highlightCardId.kind === "timer" ? highlightCardId : null}
+        />
+      );
+    case "counter":
+      return (
+        <CounterPage
+          highlightCardId={highlightCardId && highlightCardId.kind === "counter" ? highlightCardId : null}
         />
       );
     case "rapidfire":
@@ -236,9 +252,12 @@ function AppShell() {
     if (kind === "rapidfire") {
       setActiveTool("rapidfire");
       setHighlightCardId({ kind: "rapidfire", cardId, nonce: highlightNonceRef.current });
+    } else if (kind === "counter") {
+      setActiveTool("counter");
+      setHighlightCardId({ kind: "counter", cardId, nonce: highlightNonceRef.current });
     } else {
       setActiveTool("timer");
-      setHighlightCardId({ kind, cardId, nonce: highlightNonceRef.current });
+      setHighlightCardId({ kind: "timer", cardId, nonce: highlightNonceRef.current });
     }
   }, []);
 
@@ -268,7 +287,7 @@ function AppShell() {
   if (overlayMode === "counter-display") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerPage overlayMode="counter-display" />
+        <CounterPage overlayMode="counter-display" />
       </ToolPageSuspense>
     );
   }
@@ -284,7 +303,7 @@ function AppShell() {
   if (overlayMode === "counter-position") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerPage overlayMode="counter-position" />
+        <CounterPage overlayMode="counter-position" />
       </ToolPageSuspense>
     );
   }
@@ -330,7 +349,7 @@ function AppShell() {
         <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : activeTool === "morse" ? "D1" : activeTool === "delta-accounts" ? "A1" : activeTool === "delta-game" ? "A2" : "A3"}
+              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "morse" ? "D1" : activeTool === "delta-accounts" ? "A1" : activeTool === "delta-game" ? "A2" : "A3"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">

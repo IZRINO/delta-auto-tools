@@ -21,6 +21,7 @@ use tauri::{Manager, WindowEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
             let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
