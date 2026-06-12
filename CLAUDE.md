@@ -94,7 +94,7 @@ CSS-first 方案，**不存在** `tailwind.config.js`。主题 token 在 `src/Ap
 
 ### CSS 变量（设计 token）
 
-Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#807C74`、Dust `#545250`、Seam `#2A2926`、Amber `#E8A000`、Rust `#C85400`、Moss `#3F8A30`、Void `#050504`。
+Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9A968E`、Dust `#6E6B65`、Seam `#2A2926`、Amber `#E8A000`、Rust `#C85400`、Moss `#3F8A30`、Void `#050504`。
 
 ## Key Conventions
 
@@ -126,6 +126,20 @@ Timer 普通 scope 与 Rapidfire hold scope 允许同键共存。其他跨 scope
 ## Version Release
 
 版本号必须同步更新 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`（及 `Cargo.lock`）。发布 commit 须包含变更摘要和验证结果。必须创建 `v<version>` Tag 并推送。必须创建 GitHub Release 上传 MSI + NSIS 安装包。
+
+## Agent skills
+
+### Issue tracker
+
+Issues 使用 GitHub Issues，通过 `gh` CLI 读写。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+使用五级分流标签：needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
 
 ## Repo-Specific Notes
 

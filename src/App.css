@@ -5,7 +5,7 @@
 
 :root {
   font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.38;
   font-weight: 500;
   color-scheme: dark;
@@ -26,7 +26,7 @@
   --secondary: #171715;
   --secondary-foreground: #d8d4cc;
   --muted: #171715;
-  --muted-foreground: #807c74;
+  --muted-foreground: #a8a49c;
   --accent: #e8a000;
   --accent-foreground: #0c0c0b;
   --destructive: #c85400;
@@ -36,8 +36,8 @@
   --chart-1: #e8a000;
   --chart-2: #3f8a30;
   --chart-3: #c85400;
-  --chart-4: #807c74;
-  --chart-5: #545250;
+  --chart-4: #9a968e;
+  --chart-5: #6e6b65;
   --radius: 0;
   --sidebar: #171715;
   --sidebar-foreground: #d8d4cc;
@@ -52,8 +52,8 @@
   --slate: #171715;
   --iron: #232320;
   --chalk: #d8d4cc;
-  --zinc: #807c74;
-  --dust: #545250;
+  --zinc: #9a968e;
+  --dust: #6e6b65;
   --seam: #2a2926;
   --amber: #e8a000;
   --rust: #c85400;
@@ -65,7 +65,7 @@
   --surface-card: #0c0c0b;
   --surface-card-strong: #171715;
   --surface-tile: #171715;
-  --surface-border: #807c74;
+  --surface-border: #9a968e;
   --surface-border-strong: #d8d4cc;
   --surface-hover: #171715;
   --surface-highlight: #e8a000;
