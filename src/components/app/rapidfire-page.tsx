@@ -77,6 +77,14 @@ import { getErrorMessage } from "@/lib/error-utils";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
+
+const RAPIDFIRE_BOOTSTRAP_SPEC = {
+  getBootstrapCommand: "rapidfire_get_bootstrap",
+  saveSettingsCommand: "rapidfire_save_settings",
+  settingsToForm: rapidfireSettingsToForm,
+  parseSettingsForm: parseRapidfireSettingsForm,
+};
+
 import { useAutosave } from "@/hooks/use-autosave";
 import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 import { cn } from "@/lib/utils";
@@ -151,12 +159,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
   const beforeUpdateFormRef = useRef<() => void>(() => {});
 
   const bf = useBootstrapForm<RapidfireBootstrap, RapidfireSettings, RapidfireSettingsForm>({
-    spec: {
-      getBootstrapCommand: "rapidfire_get_bootstrap",
-      saveSettingsCommand: "rapidfire_save_settings",
-      settingsToForm: rapidfireSettingsToForm,
-      parseSettingsForm: parseRapidfireSettingsForm,
-    },
+    spec: RAPIDFIRE_BOOTSTRAP_SPEC,
     isNativeShell,
     loadStatusMessage: "正在加载连发器...",
     readyStatusMessage: "连发器已就绪。按住触发键开始；未开启不追加的卡片会在松开后自动补齐奇数次数。",
@@ -808,7 +811,7 @@ function RapidfireCardEditor({
           <Input
             className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder="输入卡片名称"
-            value={card.name}
+            value={card.name || "连发器"}
             disabled={disabled}
             onChange={(event) => onUpdate(card.id, { name: event.target.value })}
             aria-label="通道名称"

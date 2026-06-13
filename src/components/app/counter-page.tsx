@@ -43,6 +43,14 @@ import { getErrorMessage } from "@/lib/error-utils";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
+
+const COUNTER_BOOTSTRAP_SPEC = {
+  getBootstrapCommand: "timer_get_bootstrap",
+  saveSettingsCommand: "timer_save_settings",
+  settingsToForm: timerSettingsToForm,
+  parseSettingsForm: parseTimerSettingsForm,
+};
+
 import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 import { cn } from "@/lib/utils";
 import {
@@ -85,12 +93,7 @@ export function CounterPage({ overlayMode, highlightCardId }: CounterPageProps) 
 
 function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: CounterHighlightTarget | null; isNativeShell: boolean }) {
   const bf = useBootstrapForm<TimerBootstrap, import("@/components/app/timer-types").TimerSettings, import("@/components/app/timer-types").TimerSettingsForm>({
-    spec: {
-      getBootstrapCommand: "timer_get_bootstrap",
-      saveSettingsCommand: "timer_save_settings",
-      settingsToForm: timerSettingsToForm,
-      parseSettingsForm: parseTimerSettingsForm,
-    },
+    spec: COUNTER_BOOTSTRAP_SPEC,
     isNativeShell,
     loadStatusMessage: "正在加载计数器...",
     readyStatusMessage: "计数器已就绪。总开关控制透明窗口与快捷键，配置会持续保留。",
@@ -633,7 +636,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
           <Input
             className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder="输入卡片名称"
-            value={counter.name}
+            value={counter.name || "计数器"}
             disabled={controlsDisabled}
             onChange={(event) => onUpdate({ name: event.currentTarget.value })}
             aria-label="计数器名称"
