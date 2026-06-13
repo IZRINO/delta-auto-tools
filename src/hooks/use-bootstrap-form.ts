@@ -91,6 +91,10 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
     beforeUpdateForm,
   } = options;
 
+  // 稳定 spec 引用，避免页面级内联对象字面量导致无限循环（Issues #47/#48）
+  const specRef = useRef(spec);
+  specRef.current = spec;
+
   const autosaveVersionRef = useRef(0);
   const [bootstrap, setBootstrap] = useState<TBootstrap | null>(null);
   const [form, setForm] = useState<TForm | null>(null);
@@ -120,10 +124,10 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
       computeIsDirty(
         form,
         bootstrap?.settings ?? null,
-        spec.settingsToForm as unknown as (s: Record<string, unknown>) => TForm,
-        spec.parseSettingsForm as unknown as (f: TForm) => Record<string, unknown>,
+        specRef.current.settingsToForm as unknown as (s: Record<string, unknown>) => TForm,
+        specRef.current.parseSettingsForm as unknown as (f: TForm) => Record<string, unknown>,
       ),
-    [bootstrap, form, spec],
+    [bootstrap, form],
   );
 
   // updateForm
@@ -143,7 +147,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         if (saveInProgressMessage) {
           setStatusMessage(saveInProgressMessage);
         }
-        const next = await invoke<TBootstrap>(spec.saveSettingsCommand, { settingsValue });
+        const next = await invoke<TBootstrap>(specRef.current.saveSettingsCommand, { settingsValue });
 
         if (isStaleSave(pendingVersion, autosaveVersionRef)) {
           return;
@@ -155,7 +159,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
 
         updateState(() => {
           setBootstrap(next);
-          setForm(spec.settingsToForm(next.settings));
+          setForm(specRef.current.settingsToForm(next.settings));
           setPageError(null);
           setStatusMessage(msg);
         });
@@ -170,7 +174,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         setSaving(false);
       }
     },
-    [autosaveVersionRef, saveInProgressMessage, saveSuccessMessage, spec, updateState],
+    [autosaveVersionRef, saveInProgressMessage, saveSuccessMessage, updateState],
   );
 
   // syncBootstrap
@@ -179,19 +183,19 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
       const { syncMode, syncForm } = opts;
       const shouldSyncForm = syncMode === "full" || syncForm === true || formRef.current === null;
 
-      const next = await invoke<TBootstrap>(spec.getBootstrapCommand);
+      const next = await invoke<TBootstrap>(specRef.current.getBootstrapCommand);
 
       updateState(() => {
         setBootstrap(next);
         setPageError(null);
 
         if (shouldSyncForm) {
-          setForm(spec.settingsToForm(next.settings));
+          setForm(specRef.current.settingsToForm(next.settings));
         } else if (syncMode === "regions") {
           setForm((current) =>
             current
               ? { ...current, regions: next.settings.regions }
-              : spec.settingsToForm(next.settings),
+              : specRef.current.settingsToForm(next.settings),
           );
         }
         // syncMode "none" 或 syncForm false：仅更新 bootstrap，不动 form
@@ -199,7 +203,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
 
       return next;
     },
-    [formRef, spec, updateState],
+    [formRef, updateState],
   );
 
   // 初始加载 useEffect
