@@ -8,5 +8,15 @@
         "X-Goog-Api-Key": "AQ.Ab8RN6ItZxGT3ihhZ81wiGO-pwlPp225Aj9072LyAMcEvJWbDw"
       }
     }
+  },
+  "lsp": {
+    "typescript": {
+      "command": ["bunx", "typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+    },
+    "rust": {
+      "command": ["rust-analyzer"],
+      "extensions": [".rs"]
+    }
   }
 }
