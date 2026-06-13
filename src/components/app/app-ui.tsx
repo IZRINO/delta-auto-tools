@@ -115,8 +115,8 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
 }
 
 type SectionHeaderProps = {
-  title: string;
-  description?: string;
+  title: ReactNode;
+  description?: ReactNode;
   eyebrow?: string;
   icon?: ReactNode;
   badge?: ReactNode;

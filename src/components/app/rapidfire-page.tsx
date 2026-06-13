@@ -537,7 +537,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
                 />
                 <span
                   className={cn(
-                    "font-mono text-[0.65rem] font-black tracking-[0.12em] uppercase",
+                    "font-mono text-xs font-medium tracking-[0.12em] uppercase",
                     form.rapidfireEnabled ? "text-[var(--amber)]" : "text-[var(--zinc)]",
                   )}
                 >
@@ -641,11 +641,11 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
             <ControlTile key={group.id} className="flex flex-col gap-4 bg-[var(--carbon)]">
               <div className="flex items-start justify-between gap-3 border-b-2 border-[var(--chalk)] pb-3">
                 <div className="min-w-0">
-                  <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--amber)] uppercase">
+                  <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--amber)] uppercase">
                     第 {String(index + 1).padStart(2, "0")} 组
                   </p>
                   <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
-                  <p className="mt-1 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-muted-foreground">
+                  <p className="mt-1 font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground">
                     {rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片
                   </p>
                 </div>
@@ -672,7 +672,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
               <div className="flex flex-wrap items-center gap-2 border-t-2 border-[var(--chalk)] pt-3">
                 <ControlTile className="flex items-center gap-2 bg-[var(--slate)] px-3 py-2">
                   <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled} onCheckedChange={(checked) => updateGroup(group.id, { showOverlay: checked })} />
-                  <span className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-muted-foreground uppercase">透明窗口</span>
+                  <span className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">透明窗口</span>
                 </ControlTile>
                 <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !group.enabled} onClick={() => void beginPositionSelection(group.id)}>
                   <RiMapPinLine data-icon="inline-start" />
@@ -803,8 +803,17 @@ function RapidfireCardEditor({
       )}
     >
       <SectionHeader
-        eyebrow={`RF-${String(index + 1).padStart(2, "0")}`}
-        title="连发器"
+        eyebrow={`RF-${String(index + 1).padStart(2, "0")} · 连发器`}
+        title={(
+          <Input
+            className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
+            placeholder="输入卡片名称"
+            value={card.name}
+            disabled={disabled}
+            onChange={(event) => onUpdate(card.id, { name: event.target.value })}
+            aria-label="通道名称"
+          />
+        )}
         description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / 间隔 ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "补齐断开" : "补齐接通"}`}
         badge={
           <Badge variant={status.variant}>{status.label}</Badge>
@@ -824,19 +833,9 @@ function RapidfireCardEditor({
               RF-{String(index + 1).padStart(2, "0")}
             </span>
           </div>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
-            <div className="min-w-0">
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">通道名称</p>
-              <Input
-                className="mt-2 max-w-full bg-[var(--carbon)] font-medium"
-                placeholder="输入卡片名称"
-                value={card.name}
-                disabled={disabled}
-                onChange={(event) => onUpdate(card.id, { name: event.target.value })}
-              />
-            </div>
+          <div className="grid gap-3">
             <div>
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">所属分组</p>
+              <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>
               <Select disabled={disabled} value={card.groupId} onValueChange={(value) => onUpdate(card.id, { groupId: value })}>
                 <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
                   <SelectValue placeholder="选择分组" />

@@ -419,12 +419,12 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               <ControlTile className="border-0 flex items-center gap-3 bg-[var(--slate)]">
                 <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form} onCheckedChange={(checked) => updateForm("timerEnabled", checked)} />
                 <div className="min-w-0">
-                  <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--chalk)] uppercase">计时总开关</p>
+                  <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">计时总开关</p>
                   <p className="mt-1 text-xs text-muted-foreground">控制计时器快捷键与透明窗口输出。</p>
                 </div>
               </ControlTile>
             </div>
-            <InlineControl className="font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+            <InlineControl className="font-mono text-xs font-medium tracking-[0.08em] text-[var(--zinc)] uppercase">
               {statusMessage}
             </InlineControl>
           </CardBody>
@@ -450,7 +450,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           {form?.timerGroups.map((group) => (
             <DisplaySettingsInline
               key={group.id}
-              controlsDisabled={controlsDisabled || !form?.timerEnabled || !group.enabled}
+              controlsDisabled={controlsDisabled || !form?.timerEnabled}
               display={group.display}
               group={group}
               canDelete={Boolean(form && form.timerGroups.length > 1 && !form.timers.some((timer) => timer.groupId === group.id))}
@@ -520,12 +520,12 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
     <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
       <div className="flex flex-wrap items-center gap-3">
         <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
-        <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--chalk)] uppercase">
+        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
           {target === "timer" ? "计时器" : "计数器"}分组 · {group.name}
         </p>
         <Input
           className="w-28 font-mono text-sm"
-          disabled={controlsDisabled && !group.enabled}
+          disabled={controlsDisabled}
           value={group.name}
           onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })}
           aria-label="分组名称"
@@ -542,7 +542,7 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
       <Collapsible defaultOpen={false}>
         <InlineControl className="p-0">
           <CollapsibleTrigger asChild>
-            <Button className="w-full justify-between px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.18em] uppercase" type="button" variant="ghost">
+            <Button className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase" type="button" variant="ghost">
               显示参数
               <RiArrowDownSLine className="size-3.5" />
             </Button>
@@ -550,7 +550,7 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
           <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
             <div className="flex flex-wrap items-center gap-4">
               <Field className="min-w-0 flex-1">
-                <FieldLabel className="font-mono text-[0.58rem]">字体透明度</FieldLabel>
+                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
                 <FieldContent>
                   <div className="flex items-center gap-3">
                     <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
@@ -559,7 +559,7 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
                 </FieldContent>
               </Field>
               <Field className="w-36 shrink-0">
-                <FieldLabel className="font-mono text-[0.58rem]">窗口宽度</FieldLabel>
+                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
                 <FieldContent>
                   <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" className="h-7 font-mono text-xs" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
                 </FieldContent>
@@ -569,7 +569,7 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
         </InlineControl>
       </Collapsible>
 
-      <p className="font-mono text-[0.58rem] font-bold tracking-[0.06em] text-muted-foreground uppercase">{statusMessage}</p>
+      <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">{statusMessage}</p>
     </ControlTile>
   );
 }
@@ -600,9 +600,18 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   return (
     <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "")} data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow={`T-${String(index + 1).padStart(2, "0")}`}
+        eyebrow={`T-${String(index + 1).padStart(2, "0")} · 计时器`}
         icon={<RiTimerLine />}
-        title="计时器"
+        title={(
+          <Input
+            className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
+            placeholder="输入卡片名称"
+            value={timer.name}
+            disabled={controlsDisabled}
+            onChange={(event) => onUpdate({ name: event.currentTarget.value })}
+            aria-label="计时器名称"
+          />
+        )}
         description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
         badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge></>}
       />
@@ -613,19 +622,9 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
               T-{String(index + 1).padStart(2, "0")}
             </span>
           </div>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
-            <div className="min-w-0">
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">计时器名称</p>
-              <Input
-                className="mt-2 max-w-full bg-[var(--carbon)] font-medium"
-                placeholder="输入卡片名称"
-                value={timer.name}
-                disabled={controlsDisabled}
-                onChange={(event) => onUpdate({ name: event.currentTarget.value })}
-              />
-            </div>
+          <div className="grid gap-3">
             <div>
-              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">所属分组</p>
+              <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>
               <Select disabled={controlsDisabled} value={timer.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
                 <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
                   <SelectValue placeholder="选择分组" />
