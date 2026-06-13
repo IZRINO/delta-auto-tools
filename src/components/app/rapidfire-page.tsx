@@ -950,6 +950,20 @@ function RapidfireCardEditor({
             </Field>
           </ControlTile>
           <ControlTile className="bg-[var(--carbon)]">
+            <Field orientation="horizontal">
+              <Switch
+                id={`${card.id}-ignore-trigger-key`}
+                checked={card.ignoreTriggerKey}
+                disabled={disabled}
+                onCheckedChange={(checked) => onUpdate(card.id, { ignoreTriggerKey: checked })}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor={`${card.id}-ignore-trigger-key`}>忽略触发键</FieldLabel>
+                <FieldDescription>连发时阻止触发键本身同步输入；同触发键的其他卡片仍可触发。</FieldDescription>
+              </FieldContent>
+            </Field>
+          </ControlTile>
+          <ControlTile className="bg-[var(--carbon)]">
             <Field>
               <FieldLabel htmlFor={`${card.id}-interval`}>连发间隔</FieldLabel>
               <div className="flex items-center gap-2">

@@ -51,6 +51,7 @@ function sampleSettings(): RapidfireSettings {
         cancelJitterOnRelease: true,
         enabled: true,
         skipCompensation: false,
+        ignoreTriggerKey: false,
       },
     ],
   };
@@ -116,6 +117,24 @@ describe("rapidfire-types", () => {
     delete legacyCard.skipCompensation;
 
     expect(rapidfireSettingsToForm(legacy).cards[0].skipCompensation).toBe(false);
+  });
+
+  it("round trips per-card ignore trigger key switch", () => {
+    const form = rapidfireSettingsToForm(sampleSettings());
+    form.cards[0].ignoreTriggerKey = true;
+
+    const parsed = parseRapidfireSettingsForm(form);
+
+    expect(parsed.cards[0].ignoreTriggerKey).toBe(true);
+    expect(rapidfireSettingsToForm(parsed).cards[0].ignoreTriggerKey).toBe(true);
+  });
+
+  it("defaults legacy cards to not ignore trigger key", () => {
+    const legacy = sampleSettings();
+    const legacyCard = legacy.cards[0] as Partial<RapidfireSettings["cards"][number]>;
+    delete legacyCard.ignoreTriggerKey;
+
+    expect(rapidfireSettingsToForm(legacy).cards[0].ignoreTriggerKey).toBe(false);
   });
 
   it("does not mark saved settings dirty because of object key order", () => {

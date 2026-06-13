@@ -161,6 +161,7 @@ enum TargetKeyAction {
 fn target_fire_plan(
     target_key: &str,
     held_trigger_key: Option<&str>,
+    force_release_trigger: bool,
 ) -> Result<TargetFirePlan, String> {
     let target_key =
         parse_target_key(target_key).ok_or_else(|| format!("不支持的目标键: {target_key}"))?;
@@ -169,7 +170,9 @@ fn target_fire_plan(
         .transpose()?
         .map(|key| parse_target_key(&key).ok_or_else(|| format!("不支持的触发键: {key}")))
         .transpose()?;
-    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
+    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| {
+        trigger_key == &target_key || force_release_trigger
+    });
     let should_release_trigger_key = trigger_key_to_release.is_some();
 
     Ok(TargetFirePlan {
@@ -206,10 +209,11 @@ fn press_release_target_key(
     held_trigger_key: Option<&str>,
     press_jitter_min_ms: u64,
     press_jitter_max_ms: u64,
+    force_release_trigger: bool,
 ) -> Result<(), String> {
     use enigo::{Direction, Enigo, Keyboard, Settings};
 
-    let plan = target_fire_plan(target_key, held_trigger_key)?;
+    let plan = target_fire_plan(target_key, held_trigger_key, force_release_trigger)?;
     let key_str = target_key.to_string();
     let mut enigo =
         Enigo::new(&Settings::default()).map_err(|error| format!("初始化连发输入失败: {error}"))?;
@@ -392,6 +396,7 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
         cancel_jitter_on_release: card.cancel_jitter_on_release,
         enabled: card.enabled,
         skip_compensation: card.skip_compensation,
+        ignore_trigger_key: card.ignore_trigger_key,
     })
 }
 
@@ -632,11 +637,25 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 
         let compensation_delay_min_ms = inner.settings.compensation_delay_min_ms;
         let compensation_delay_max_ms = inner.settings.compensation_delay_max_ms;
-        let mut sessions_to_spawn = Vec::new();
 
+        // 同一次按键按下可能触发多张卡片；只要其中任意一张要求忽略触发键，
+        // 就对该触发键下的所有卡片统一释放触发键，避免其他卡片把触发键同步输入。
+        let mut card_infos: Vec<(
+            String,
+            String,
+            String,
+            u64,
+            u64,
+            u64,
+            u64,
+            u64,
+            bool,
+            bool,
+            bool,
+        )> = Vec::new();
         for card_id in &card_ids {
             let cid_owned = card_id.clone();
-            let card_info = inner
+            if let Some(info) = inner
                 .settings
                 .cards
                 .iter()
@@ -657,25 +676,30 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                         c.trigger_jitter_max_ms,
                         c.cancel_jitter_on_release,
                         c.skip_compensation,
+                        c.ignore_trigger_key,
                     )
-                });
+                })
+            {
+                card_infos.push(info);
+            }
+        }
+        let ignore_trigger_key_for_batch = card_infos.iter().any(|info| info.10);
 
-            let Some((
-                cid,
-                trigger,
-                target,
-                interval,
-                jitter_min,
-                jitter_max,
-                min_press_spacing_ms,
-                trigger_jitter_max_ms,
-                cancel_jitter_on_release,
-                skip_compensation,
-            )) = card_info
-            else {
-                continue;
-            };
-
+        let mut sessions_to_spawn = Vec::new();
+        for (
+            cid,
+            trigger,
+            target,
+            interval,
+            jitter_min,
+            jitter_max,
+            min_press_spacing_ms,
+            trigger_jitter_max_ms,
+            cancel_jitter_on_release,
+            skip_compensation,
+            _ignore_trigger_key,
+        ) in card_infos
+        {
             let session_id = next_session_id();
             let (control_tx, control_rx) = mpsc::channel();
             let compensate_now = Arc::new(AtomicBool::new(false));
@@ -698,7 +722,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             );
 
             sessions_to_spawn.push(RapidfireSessionWorker {
-                card_id: cid_owned,
+                card_id: cid,
                 session_id,
                 trigger_key: trigger,
                 target_key: target,
@@ -711,6 +735,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 min_press_spacing_ms,
                 trigger_jitter_max_ms,
                 cancel_jitter_on_release,
+                ignore_trigger_key: ignore_trigger_key_for_batch,
                 control_rx,
                 compensate_now,
                 last_press_at,
@@ -793,6 +818,8 @@ struct RapidfireSessionWorker {
     trigger_jitter_max_ms: u64,
     /// 抖动期间释放按键是否立即触发并追加
     cancel_jitter_on_release: bool,
+    /// 触发过程中是否忽略触发键本身
+    ignore_trigger_key: bool,
     control_rx: mpsc::Receiver<SessionControl>,
     compensate_now: Arc<AtomicBool>,
     last_press_at: Arc<Mutex<Instant>>,
@@ -900,6 +927,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
                 Some(&worker.trigger_key),
                 worker.press_jitter_min_ms,
                 worker.press_jitter_max_ms,
+                worker.ignore_trigger_key,
             ) {
                 Ok(()) => {
                     count = 1;
@@ -924,6 +952,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
                         Some(&worker.trigger_key),
                         worker.press_jitter_min_ms,
                         worker.press_jitter_max_ms,
+                        worker.ignore_trigger_key,
                     ) {
                         Ok(()) => {
                             count += 1;
@@ -979,6 +1008,7 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
             None,
             worker.press_jitter_min_ms,
             worker.press_jitter_max_ms,
+            false,
         ) {
             Ok(()) => {
                 count += 1;
@@ -1644,6 +1674,7 @@ mod tests {
             cancel_jitter_on_release: true,
             enabled: true,
             skip_compensation: false,
+            ignore_trigger_key: false,
         }
     }
 
@@ -1823,7 +1854,7 @@ mod tests {
 
     #[test]
     fn target_fire_plan_uses_press_and_release_actions() {
-        let plan = target_fire_plan("T", Some("T")).unwrap();
+        let plan = target_fire_plan("T", Some("T"), false).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
         assert_eq!(plan.trigger_key_to_release, parse_target_key("T"));
@@ -1839,7 +1870,7 @@ mod tests {
 
     #[test]
     fn target_fire_plan_releases_same_primary_trigger_for_modified_hotkey() {
-        let plan = target_fire_plan("-", Some("Shift+-")).unwrap();
+        let plan = target_fire_plan("-", Some("Shift+-"), false).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("-").unwrap());
         assert_eq!(plan.trigger_key_to_release, parse_target_key("-"));
@@ -1854,7 +1885,7 @@ mod tests {
     }
     #[test]
     fn target_fire_plan_keeps_different_trigger_key_held() {
-        let plan = target_fire_plan("Space", Some("W")).unwrap();
+        let plan = target_fire_plan("Space", Some("W"), false).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("Space").unwrap());
         assert_eq!(plan.trigger_key_to_release, None);
@@ -1866,13 +1897,29 @@ mod tests {
 
     #[test]
     fn target_fire_plan_allows_compensation_without_held_trigger() {
-        let plan = target_fire_plan("T", None).unwrap();
+        let plan = target_fire_plan("T", None, false).unwrap();
 
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
         assert_eq!(plan.trigger_key_to_release, None);
         assert_eq!(
             plan.actions,
             vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
+        );
+    }
+
+    #[test]
+    fn target_fire_plan_releases_different_trigger_when_forced() {
+        let plan = target_fire_plan("Space", Some("W"), true).unwrap();
+
+        assert_eq!(plan.target_key, parse_target_key("Space").unwrap());
+        assert_eq!(plan.trigger_key_to_release, parse_target_key("W"));
+        assert_eq!(
+            plan.actions,
+            vec![
+                TargetKeyAction::ReleaseHeldTrigger,
+                TargetKeyAction::PressTarget,
+                TargetKeyAction::ReleaseTarget
+            ]
         );
     }
 

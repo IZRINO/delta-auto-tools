@@ -26,6 +26,7 @@ export type RapidfireCard = {
   cancelJitterOnRelease: boolean;
   enabled: boolean;
   skipCompensation: boolean;
+  ignoreTriggerKey: boolean;
 };
 
 export type RapidfireSettings = {
@@ -82,6 +83,7 @@ export type RapidfireCardForm = {
   cancelJitterOnRelease: boolean;
   enabled: boolean;
   skipCompensation: boolean;
+  ignoreTriggerKey: boolean;
 };
 
 export type RapidfireGroupForm = {
@@ -190,6 +192,7 @@ export function rapidfireSettingsToForm(settings: RapidfireSettings): RapidfireS
       cancelJitterOnRelease: card.cancelJitterOnRelease ?? settings.cancelJitterOnRelease ?? true,
       enabled: card.enabled,
       skipCompensation: card.skipCompensation ?? false,
+      ignoreTriggerKey: card.ignoreTriggerKey ?? false,
     })),
   };
 }
@@ -493,6 +496,7 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       cancelJitterOnRelease: card.cancelJitterOnRelease ?? true,
       enabled: card.enabled,
       skipCompensation: card.skipCompensation,
+      ignoreTriggerKey: card.ignoreTriggerKey ?? false,
     };
   });
 
@@ -608,6 +612,7 @@ export function createRapidfireCard(id: string, existingCount = 0, groupId = DEF
     cancelJitterOnRelease: true,
     enabled: false,
     skipCompensation: false,
+    ignoreTriggerKey: false,
   };
 }
 

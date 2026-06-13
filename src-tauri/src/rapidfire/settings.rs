@@ -69,6 +69,7 @@ mod tests {
                 cancel_jitter_on_release: true,
                 enabled: true,
                 skip_compensation: false,
+                ignore_trigger_key: false,
             }],
         }
     }

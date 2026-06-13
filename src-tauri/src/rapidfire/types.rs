@@ -77,6 +77,9 @@ pub struct RapidfireCard {
     /// 开启后松开触发键时不执行奇数补齐，单数次数保持单数
     #[serde(default)]
     pub skip_compensation: bool,
+    /// 触发过程中是否忽略触发键本身（阻止触发键同步输入）
+    #[serde(default)]
+    pub ignore_trigger_key: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +106,8 @@ struct RapidfireCardInput {
     enabled: bool,
     #[serde(default)]
     skip_compensation: bool,
+    #[serde(default)]
+    ignore_trigger_key: bool,
 }
 
 impl RapidfireCardInput {
@@ -128,6 +133,7 @@ impl RapidfireCardInput {
                 .unwrap_or(cancel_jitter_on_release),
             enabled: self.enabled,
             skip_compensation: self.skip_compensation,
+            ignore_trigger_key: self.ignore_trigger_key,
         }
     }
 }
@@ -287,6 +293,7 @@ impl Default for RapidfireSettings {
                 cancel_jitter_on_release: true,
                 enabled: false,
                 skip_compensation: false,
+                ignore_trigger_key: false,
             }],
         }
     }
@@ -375,6 +382,7 @@ mod tests {
         assert!(settings.cards[0].cancel_jitter_on_release);
         assert!(!settings.cards[0].enabled);
         assert!(!settings.cards[0].skip_compensation);
+        assert!(!settings.cards[0].ignore_trigger_key);
     }
 
     #[test]
@@ -396,6 +404,7 @@ mod tests {
         assert_eq!(card.trigger_jitter_max_ms, 0);
         assert!(card.cancel_jitter_on_release);
         assert!(!card.skip_compensation);
+        assert!(!card.ignore_trigger_key);
     }
 
     #[test]
