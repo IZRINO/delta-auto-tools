@@ -209,6 +209,7 @@ describe("rapidfire-types", () => {
       cancelJitterOnRelease: true,
       enabled: true,
       skipCompensation: false,
+      ignoreTriggerKey: false,
     });
 
     const parsed = parseRapidfireSettingsForm(form);

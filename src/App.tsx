@@ -10,7 +10,7 @@ import {
   RiBarChartBoxLine,
   RiToolsLine,
   RiCompassDiscoverLine,
-  RiPowerLine,
+  RiShutDownLine,
 } from "@remixicon/react";
 
 import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
@@ -242,7 +242,7 @@ function GlobalSwitch() {
           : "border-[var(--alert-red)] bg-[var(--alert-red)]/10 text-[var(--alert-red)]",
       )}
     >
-      <RiPowerLine className="size-3.5" aria-hidden="true" />
+      <RiShutDownLine className="size-3.5" aria-hidden="true" />
       <span>{globalEnabled ? "全局开启" : "全局关闭"}</span>
       <Switch
         checked={globalEnabled}
