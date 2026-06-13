@@ -58,6 +58,7 @@ import {
   RAPIDFIRE_MIN_INTERVAL_MS,
   RAPIDFIRE_PRESS_JITTER_MAX_MS,
   RAPIDFIRE_PRESS_JITTER_MIN_MS,
+  RAPIDFIRE_TRIGGER_JITTER_MAX_MS,
   createRapidfireCard,
   createRapidfireGroup,
   DEFAULT_RAPIDFIRE_GROUP_ID,
@@ -1036,7 +1037,7 @@ function RapidfireCardEditor({
                           className="w-28 bg-[var(--carbon)] font-mono"
                           type="number"
                           min={0}
-                          max={1000}
+                          max={RAPIDFIRE_TRIGGER_JITTER_MAX_MS}
                           value={card.triggerJitterMaxMs}
                           disabled={disabled}
                           onChange={(event) => onUpdate(card.id, { triggerJitterMaxMs: event.target.value })}

@@ -41,6 +41,7 @@ const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 2000;
 const RAPIDFIRE_GLOBAL_DELAY_MIN_MS: u64 = 0;
 const RAPIDFIRE_GLOBAL_DELAY_MAX_MS: u64 = 10_000;
+const RAPIDFIRE_TRIGGER_JITTER_MAX_MS: u64 = 99_999;
 
 static NEXT_RAPIDFIRE_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -364,8 +365,11 @@ fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, String> {
             name, RAPIDFIRE_GLOBAL_DELAY_MAX_MS
         ));
     }
-    if card.trigger_jitter_max_ms > 1000 {
-        return Err(format!("{} 的触发抖动延迟上限不能大于 1000ms", name));
+    if card.trigger_jitter_max_ms > RAPIDFIRE_TRIGGER_JITTER_MAX_MS {
+        return Err(format!(
+            "{} 的触发抖动延迟上限不能大于 {}ms",
+            name, RAPIDFIRE_TRIGGER_JITTER_MAX_MS
+        ));
     }
     let min_press_spacing_ms = card.min_press_spacing_ms;
     let trigger_jitter_max_ms = card.trigger_jitter_max_ms;
@@ -523,7 +527,9 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
         .min_press_spacing_ms
         .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS)
         .min(RAPIDFIRE_GLOBAL_DELAY_MAX_MS);
-    settings_value.trigger_jitter_max_ms = settings_value.trigger_jitter_max_ms.min(1000);
+    settings_value.trigger_jitter_max_ms = settings_value
+        .trigger_jitter_max_ms
+        .min(RAPIDFIRE_TRIGGER_JITTER_MAX_MS);
 
     let mut seen_ids = HashMap::new();
     let mut cards = Vec::with_capacity(settings_value.cards.len());

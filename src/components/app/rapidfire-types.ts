@@ -121,6 +121,7 @@ export const RAPIDFIRE_GLOBAL_DELAY_MAX_MS = 10000;
 export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MIN_MS = 100;
 export const RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS = 150;
 export const RAPIDFIRE_DEFAULT_MIN_PRESS_SPACING_MS = 80;
+export const RAPIDFIRE_TRIGGER_JITTER_MAX_MS = 99999;
 export const DEFAULT_RAPIDFIRE_GROUP_ID = "default-rapidfire-group";
 
 // ---- 转换函数 ----
@@ -474,8 +475,8 @@ export function parseRapidfireSettingsForm(form: RapidfireSettingsForm): Rapidfi
       throw new Error(`${name} 的按键最小间距必须在 ${RAPIDFIRE_GLOBAL_DELAY_MIN_MS}-${RAPIDFIRE_GLOBAL_DELAY_MAX_MS}ms 之间。`);
     }
     const triggerJitterMaxMs = normalizeNonNegativeInteger(card.triggerJitterMaxMs, 0);
-    if (triggerJitterMaxMs > 1000) {
-      throw new Error(`${name} 的触发抖动延迟上限不能大于 1000ms。`);
+    if (triggerJitterMaxMs > RAPIDFIRE_TRIGGER_JITTER_MAX_MS) {
+      throw new Error(`${name} 的触发抖动延迟上限不能大于 ${RAPIDFIRE_TRIGGER_JITTER_MAX_MS}ms。`);
     }
 
     return {
