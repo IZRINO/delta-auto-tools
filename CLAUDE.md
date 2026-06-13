@@ -125,7 +125,67 @@ Timer 普通 scope 与 Rapidfire hold scope 允许同键共存。其他跨 scope
 
 ## Version Release
 
-版本号必须同步更新 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`（及 `Cargo.lock`）。发布 commit 须包含变更摘要和验证结果。必须创建 `v<version>` Tag 并推送。必须创建 GitHub Release 上传 MSI + NSIS 安装包。
+### 版本号同步
+
+版本号必须同步更新 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。如 `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
+
+### 构建
+
+每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包。打包成功后检查以下两个产物存在：
+- `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi`
+- `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
+
+### 发布 Commit
+
+发布 commit 不能只写 `发布 v<version>`。Subject 使用 `发布 v<version>`，正文必须包含变更摘要与验证结果，至少包含 `变更：` 和 `验证：` 两段。变更项从本次实际 diff / Release notes 提炼，禁止泛泛"更新版本"。推荐格式：
+
+```bash
+git commit -m "发布 v<version>" -m "变更：
+- ...
+
+验证：
+- bun run test
+- bun run tauri build"
+```
+
+### Tag
+
+每次版本发布必须创建并推送对应 `v<version>` Tag：
+
+```bash
+git tag -a v<version> -m "发布 v<version>"
+git push origin v<version>
+```
+
+### GitHub Release + 安装包上传
+
+每次版本发布必须创建 GitHub Release 并上传 MSI 与 NSIS 安装包：
+
+```bash
+# 新建 Release 并上传
+gh release create v<version> \
+  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  --repo IZRINO/delta-auto-tools --target master \
+  --title "delta-auto-tools <version>" --notes "<发布说明>"
+
+# Release 已存在时覆盖上传安装包
+gh release upload v<version> \
+  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  --repo IZRINO/delta-auto-tools --clobber
+```
+
+### 验证
+
+Release 发布后必须验证：
+
+```bash
+gh release view v<version> --repo IZRINO/delta-auto-tools \
+  --json tagName,url,isDraft,isPrerelease,assets
+```
+
+确认非 draft、非 prerelease，且两个安装包状态均为 `uploaded`。
 
 ## Agent skills
 
