@@ -1,5 +1,6 @@
 mod app_error;
 mod delta;
+mod global_state;
 mod hotkey_types;
 mod hotkeys;
 mod morse;
@@ -28,11 +29,13 @@ pub fn run() {
             let delta_state = delta::initialize(app.handle())?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
+            let global_state = global_state::GlobalState::new(true);
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(delta_state);
             app.manage(timer_state);
             app.manage(rapidfire_state);
+            app.manage(global_state);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -119,6 +122,8 @@ pub fn run() {
             rapidfire::rapidfire_position_moved,
             strategy::webview::strategy_open_window,
             strategy::fetch::strategy_fetch_page,
+            global_state::global_get_enabled,
+            global_state::global_set_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1301,6 +1301,19 @@ pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &Hotkey
     destroy_display_windows(app);
 }
 
+/// 停止所有正在运行的连发器会话（用于全局总开关关闭）。
+pub fn stop_all(app: &AppHandle, state: &RapidfireState) {
+    let bootstrap = {
+        let Ok(mut inner) = state.inner.lock() else {
+            return;
+        };
+        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
+        inner.runs.clear();
+        inner.bootstrap()
+    };
+    emit_state(app, bootstrap);
+}
+
 pub fn initialize(
     app: &AppHandle,
     hotkey_manager: &HotkeyManager,

@@ -60,6 +60,12 @@
   --moss: #3f8a30;
   --void: #050504;
 
+  --alert-red: #E11919;
+  --warning-amber: #A36A00;
+  --valid-green: #3F6B2A;
+  --terminal-green: #4AF626;
+  --phosphor: #EAEAEA;
+
   --surface-shell: #141412;
   --surface-panel: #171715;
   --surface-card: #141412;
@@ -76,6 +82,10 @@
   --shadow-subtle: none;
   --shadow-focus: 0 0 0 2px #e8a000;
   --shadow-tile: none;
+
+  --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+  --stripe-warning: repeating-linear-gradient(45deg, #E11919, #E11919 10px, transparent 10px, transparent 20px);
+  --misprint-offset: 0.04em;
 }
 
 @theme inline {
@@ -123,6 +133,11 @@
   --color-rust: var(--rust);
   --color-moss: var(--moss);
   --color-void: var(--void);
+  --color-alert-red: var(--alert-red);
+  --color-warning-amber: var(--warning-amber);
+  --color-valid-green: var(--valid-green);
+  --color-terminal-green: var(--terminal-green);
+  --color-phosphor: var(--phosphor);
   --radius-sm: 0;
   --radius-md: 0;
   --radius-lg: 0;

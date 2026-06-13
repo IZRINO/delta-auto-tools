@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[cfg(target_os = "windows")]
 use willhook::{
@@ -16,6 +16,7 @@ use willhook::{
     hook::Hook,
 };
 
+use crate::global_state::GlobalState;
 use crate::hotkey_types::{self as types, HotkeyBinding, ModifierKey, PrimaryKey};
 
 pub type HotkeyAction = Arc<dyn Fn(AppHandle) + Send + Sync + 'static>;
@@ -342,6 +343,15 @@ fn run_listener(
     while !stopped.load(Ordering::SeqCst) {
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
+                // 全局总开关关闭时，忽略所有热键事件（不触发任何回调）。
+                let global_enabled = app
+                    .try_state::<GlobalState>()
+                    .map(|state| state.enabled())
+                    .unwrap_or(true);
+                if !global_enabled {
+                    continue;
+                }
+
                 let hold_actions = hold_actions_for_event(
                     &hold_registrations,
                     event,

@@ -770,6 +770,19 @@ pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyMana
     destroy_display_windows(app);
 }
 
+/// 停止所有正在运行的计时器与计数器（用于全局总开关关闭）。
+pub fn stop_all(app: &AppHandle, state: &TimerState) {
+    let bootstrap = {
+        let Ok(mut inner) = state.inner.lock() else {
+            return;
+        };
+        inner.runs.clear();
+        persist_counter_runs(app, &inner);
+        inner.bootstrap()
+    };
+    emit_state(app, bootstrap);
+}
+
 fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
     // Multi-segment timer: pool model, recovers 1 second per real second
     if runtime.segment_count > 1 {

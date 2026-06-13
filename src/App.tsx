@@ -10,11 +10,15 @@ import {
   RiBarChartBoxLine,
   RiToolsLine,
   RiCompassDiscoverLine,
+  RiPowerLine,
 } from "@remixicon/react";
 
 import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
 import { FavoritesProvider, useFavorites } from "@/hooks/use-favorites";
+import { GlobalEnabledProvider, useGlobalEnabled } from "@/hooks/use-global-enabled";
 import type { FavoriteCardKind } from "@/components/app/favorites-utils";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 import "./App.css";
 
@@ -213,6 +217,42 @@ function IndexRailSection({ children, title }: { children: ReactNode; title: str
   );
 }
 
+function GlobalDisabledBanner() {
+  return (
+    <div className="mb-2 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
+      [ 全局总开关已关闭 ] 所有自动化功能与热键均已暂停，请在顶部工具栏重新开启。
+    </div>
+  );
+}
+
+function GlobalEnabledConsumer() {
+  const { globalEnabled } = useGlobalEnabled();
+  if (globalEnabled) return null;
+  return <GlobalDisabledBanner />;
+}
+
+function GlobalSwitch() {
+  const { globalEnabled, setGlobalEnabled } = useGlobalEnabled();
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 border-2 px-2 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.14em] uppercase",
+        globalEnabled
+          ? "border-[var(--moss)] bg-[var(--moss)]/10 text-[var(--moss)]"
+          : "border-[var(--alert-red)] bg-[var(--alert-red)]/10 text-[var(--alert-red)]",
+      )}
+    >
+      <RiPowerLine className="size-3.5" aria-hidden="true" />
+      <span>{globalEnabled ? "全局开启" : "全局关闭"}</span>
+      <Switch
+        checked={globalEnabled}
+        onCheckedChange={setGlobalEnabled}
+        aria-label="全局总开关"
+      />
+    </div>
+  );
+}
+
 function FavoritesIndexRailItem({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
   return (
     <IndexRailItem
@@ -230,7 +270,9 @@ function App() {
   return (
     <FavoritesProvider>
       <DeltaAccountsProvider>
-        <AppShell />
+        <GlobalEnabledProvider>
+          <AppShell />
+        </GlobalEnabledProvider>
       </DeltaAccountsProvider>
     </FavoritesProvider>
   );
@@ -360,9 +402,12 @@ function AppShell() {
               </p>
             </div>
           </div>
-          <div className="hidden items-center border-2 border-[var(--chalk)] bg-[var(--chalk)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--carbon)] uppercase sm:flex">
-            <span className="bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]">DESKTOP</span>
-            <span className="px-3 py-2 text-[var(--carbon)]">Tauri</span>
+          <div className="flex items-center gap-3">
+            <GlobalSwitch />
+            <div className="hidden items-center border-2 border-[var(--chalk)] bg-[var(--chalk)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--carbon)] uppercase sm:flex">
+              <span className="bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]">DESKTOP</span>
+              <span className="px-3 py-2 text-[var(--carbon)]">Tauri</span>
+            </div>
           </div>
         </div>
       </header>
@@ -424,6 +469,7 @@ function AppShell() {
           className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <div className="min-h-full w-full px-2 py-2 xl:px-3 xl:py-3">
+            <GlobalEnabledConsumer />
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
           </div>
         </main>
