@@ -1,10 +1,16 @@
 import type { ComponentProps, ReactNode } from "react";
-import { RiAddLine } from "@remixicon/react";
+import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiMapPinLine } from "@remixicon/react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 type AppPageProps = {
@@ -277,3 +283,269 @@ type SurfaceToggleGroupProps = {
 export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
   return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--chalk)] p-px", className)}>{children}</div>;
 }
+
+/* ────────── Phase-1: 工业风新增组件 ────────── */
+
+type ConfigRowProps = {
+  label: string;
+  value: ReactNode;
+  unit?: string;
+  state?: "idle" | "active" | "valid" | "warning" | "error";
+  className?: string;
+};
+
+export function ConfigRow({ label, value, unit, state = "idle", className }: ConfigRowProps) {
+  const stateColor: Record<string, string> = {
+    idle: "bg-[var(--zinc)]",
+    active: "bg-[var(--amber)]",
+    valid: "bg-[var(--valid-green)]",
+    warning: "bg-[var(--warning-amber)]",
+    error: "bg-[var(--alert-red)]",
+  };
+  return (
+    <div
+      data-state={state}
+      className={cn(
+        "grid grid-cols-[max-content_1fr_max-content_max-content] items-center gap-x-3 border-b border-[var(--seam)] px-3 py-2 text-[var(--chalk)]",
+        className,
+      )}
+    >
+      <span className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{label}</span>
+      <span className="min-w-0 truncate text-right font-mono text-sm font-bold tracking-[-0.02em] tabular-nums">{value}</span>
+      {unit ? <span className="font-mono text-[0.6rem] font-bold tracking-[0.1em] text-[var(--zinc)] uppercase">{unit}</span> : <span />}
+      <span className={cn("size-2", stateColor[state])} />
+    </div>
+  );
+}
+
+type StatusMatrixProps = {
+  items: { id: string; state: "idle" | "active" | "valid" | "warning" | "error"; label?: string }[];
+  className?: string;
+};
+
+export function StatusMatrix({ items, className }: StatusMatrixProps) {
+  const stateColor: Record<string, string> = {
+    idle: "bg-[var(--zinc)]",
+    active: "bg-[var(--amber)]",
+    valid: "bg-[var(--valid-green)]",
+    warning: "bg-[var(--warning-amber)]",
+    error: "bg-[var(--alert-red)]",
+  };
+  return (
+    <div className={cn("grid grid-cols-6 gap-px bg-[var(--seam)]", className)}>
+      {items.map((item) => (
+        <div
+          key={item.id}
+          data-state={item.state}
+          className={cn("relative flex aspect-square items-center justify-center bg-[var(--carbon)]", stateColor[item.state])}
+          title={item.label}
+        >
+          <span className="sr-only">{item.label ?? item.id}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type RoutingBarProps = {
+  children: ReactNode;
+  status?: "idle" | "running" | "error";
+  className?: string;
+};
+
+export function RoutingBar({ children, status = "idle", className }: RoutingBarProps) {
+  const statusIndicator: Record<string, string> = {
+    idle: "bg-[var(--zinc)]",
+    running: "bg-[var(--terminal-green)]",
+    error: "bg-[var(--alert-red)]",
+  };
+  return (
+    <div className={cn("flex items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]", className)}>
+      <div className={cn("size-2 animate-pulse", statusIndicator[status])} />
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+export function PagePreviewBanner({ className }: { className?: string }) {
+  return (
+    <Alert
+      variant="destructive"
+      className={cn("border-2 border-[var(--warning-amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}
+    >
+      <AlertTitle className="font-mono text-xs font-black tracking-[0.14em] text-[var(--warning-amber)] uppercase">
+        [ 浏览器预览模式 ]
+      </AlertTitle>
+      <AlertDescription className="font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">
+        当前处于浏览器预览模式，所有 Tauri 原生命令已被禁用。如需使用完整功能，请在桌面端运行。
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+type EmptyStateProps = {
+  icon?: ReactNode;
+  title: string;
+  description: ReactNode;
+  action?: ReactNode;
+  className?: string;
+};
+
+export function EmptyState({ action, className, description, icon, title }: EmptyStateProps) {
+  return (
+    <div className={cn("flex flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-6 py-12 text-center", className)}>
+      {icon ? <div className="mb-4 flex size-12 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--amber)]">{icon}</div> : null}
+      <h3 className="font-heading text-lg font-black uppercase tracking-[-0.02em] text-[var(--chalk)]">{title}</h3>
+      <p className="mt-2 max-w-[48ch] font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">{description}</p>
+      {action ? <div className="mt-6">{action}</div> : null}
+    </div>
+  );
+}
+
+type MacroNumberProps = {
+  value: ReactNode;
+  label?: string;
+  unit?: string;
+  className?: string;
+};
+
+export function MacroNumber({ className, label, unit, value }: MacroNumberProps) {
+  return (
+    <div className={cn("flex flex-col items-start gap-1", className)}>
+      {label ? (
+        <span className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--zinc)] uppercase">{label}</span>
+      ) : null}
+      <div className="flex items-baseline gap-2">
+        <span className="font-heading text-[clamp(3rem,10vw,9rem)] font-black leading-[0.82] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+          {value}
+        </span>
+        {unit ? (
+          <span className="font-mono text-[0.75rem] font-bold tracking-[0.1em] text-[var(--zinc)] uppercase">{unit}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type DragButtonProps = {
+  controlsDisabled: boolean;
+  onDragStart: () => void;
+};
+
+export function DragButton({ controlsDisabled, onDragStart }: DragButtonProps) {
+  return (
+    <Button aria-label="拖动排序" className="cursor-grab active:cursor-grabbing" disabled={controlsDisabled} onPointerDown={(event) => { event.preventDefault(); onDragStart(); }} size="icon-sm" type="button" variant="ghost">
+      <span className="text-xs font-bold">↕</span>
+    </Button>
+  );
+}
+
+type HotkeyFieldProps = {
+  controlsDisabled: boolean;
+  hotkey: string;
+  id: string;
+  isRecording: boolean;
+  onBeginHotkeyRecording: () => void;
+  onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onHotkeyRecorderBlur: () => void;
+};
+
+export function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyRecording, onHotkeyKeyDown, onHotkeyRecorderBlur }: HotkeyFieldProps) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>快捷键</FieldLabel>
+      <FieldContent>
+        <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id} onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown} type="button" variant="outline">
+          <span>{isRecording ? "录制中..." : hotkey || "未设置"}</span>
+          <span className="text-[0.6875rem] text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
+        </Button>
+      </FieldContent>
+    </Field>
+  );
+}
+
+type DisplaySettingsInlineProps = {
+  canDelete: boolean;
+  controlsDisabled: boolean;
+  display: { fontOpacity?: string; rect?: { width?: number } } | undefined;
+  group: { enabled: boolean; name: string };
+  statusMessage: string;
+  targetLabel: string;
+  onGroupDelete: () => void;
+  onGroupUpdate: (value: Partial<{ enabled: boolean; name: string }>) => void;
+  onPositionSelection: () => void;
+  onUpdate: (value: Partial<{ fontOpacity?: string }>) => void;
+  onUpdateRect: (value: Partial<{ width?: number }>) => void;
+};
+
+export function DisplaySettingsInline({
+  canDelete,
+  controlsDisabled,
+  display,
+  group,
+  statusMessage,
+  targetLabel,
+  onGroupDelete,
+  onGroupUpdate,
+  onPositionSelection,
+  onUpdate,
+  onUpdateRect,
+}: DisplaySettingsInlineProps) {
+  return (
+    <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
+      <div className="flex flex-wrap items-center gap-3">
+        <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
+        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
+          {targetLabel}分组 · {group.name}
+        </p>
+        <Input
+          className="w-28 font-mono text-sm"
+          disabled={controlsDisabled}
+          value={group.name}
+          onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })}
+          aria-label="分组名称"
+        />
+        <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0" size="icon-sm">
+          <RiDeleteBinLine />
+        </Button>
+        <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline" size="sm">
+          <RiMapPinLine data-icon="inline-start" />
+          位置
+        </Button>
+      </div>
+
+      <Collapsible defaultOpen={false}>
+        <InlineControl className="p-0">
+          <CollapsibleTrigger asChild>
+            <Button className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase" type="button" variant="ghost">
+              显示参数
+              <RiArrowDownSLine className="size-3.5" />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
+            <div className="flex flex-wrap items-center gap-4">
+              <Field className="min-w-0 flex-1">
+                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
+                <FieldContent>
+                  <div className="flex items-center gap-3">
+                    <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
+                    <span className="w-10 text-right font-mono text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
+                  </div>
+                </FieldContent>
+              </Field>
+              <Field className="w-36 shrink-0">
+                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
+                <FieldContent>
+                  <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" className="h-7 font-mono text-xs" value={display?.rect?.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
+                </FieldContent>
+              </Field>
+            </div>
+          </CollapsibleContent>
+        </InlineControl>
+      </Collapsible>
+
+      <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">{statusMessage}</p>
+    </ControlTile>
+  );
+}
+

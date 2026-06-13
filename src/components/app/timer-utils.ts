@@ -1,8 +1,15 @@
 import type React from "react";
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import type { CounterItem, CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerGroup, TimerGroupForm, TimerItem, TimerItemForm, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
 import { formatRecordedHotkey } from "@/components/app/morse-utils";
+
+export function formatTimerHotkey(event: Pick<React.KeyboardEvent<HTMLButtonElement>, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">): string | null {
+  return formatRecordedHotkey(event);
+}
 
 function displaySettingsToForm(display: TimerDisplaySettings) {
   return {
@@ -424,6 +431,39 @@ export function isTimerDirty(bootstrap: TimerBootstrap | null, form: TimerSettin
   }
 }
 
-export function formatTimerHotkey(event: Pick<React.KeyboardEvent<HTMLButtonElement>, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">): string | null {
-  return formatRecordedHotkey(event);
+export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: TimerBootstrap) => void) {
+  useEffect(() => {
+    document.body.dataset.overlayMode = "true";
+    return () => {
+      delete document.body.dataset.overlayMode;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeShell) {
+      return;
+    }
+
+    let disposed = false;
+    let unlistenStateChanged: (() => void) | undefined;
+
+    void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
+      if (!disposed) {
+        setBootstrap(next);
+      }
+    });
+
+    void listen<TimerBootstrap>("timer://state-changed", (event) => {
+      if (!disposed) {
+        setBootstrap(event.payload);
+      }
+    }).then((dispose) => {
+      unlistenStateChanged = dispose;
+    });
+
+    return () => {
+      disposed = true;
+      unlistenStateChanged?.();
+    };
+  }, [isNativeShell, setBootstrap]);
 }

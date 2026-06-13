@@ -4,8 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import {
   RiAddLine,
   RiDeleteBinLine,
-  RiArrowDownSLine,
-  RiMapPinLine,
   RiSpeedUpLine,
   RiStarFill,
   RiStarLine,
@@ -15,13 +13,10 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CardHeader } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PositionOverlay } from "@/components/ui/position-overlay";
@@ -30,9 +25,12 @@ import {
   AppPage,
   CardBody,
   ControlTile,
+  DisplaySettingsInline,
+  DragButton,
+  HotkeyField,
   InlineControl,
-  InlineNotice,
   PageHero,
+  PagePreviewBanner,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
@@ -66,6 +64,7 @@ import {
   timerProgressPercent,
   timerRunsById,
   timerSettingsToForm,
+  useTimerOverlayBootstrap,
 } from "@/components/app/timer-utils";
 import { useFavorites } from "@/hooks/use-favorites";
 
@@ -94,6 +93,22 @@ export function TimerPage({ overlayMode, highlightCardId }: TimerPageProps) {
   }
 
   return <TimerWorkbench highlightCardId={highlightCardId ?? null} isNativeShell={isNativeShell} />;
+}
+
+function timerSignalChar(timer: TimerItemForm, run?: TimerRunState): string {
+  if (!timer.enabled) return "○";
+  if (!run) return "▢";
+  if (run.status === "running") return "▣";
+  if (run.status === "finished") return "●";
+  return "▢";
+}
+
+function timerSignalState(timer: { enabled: boolean }, run?: TimerRunState): "idle" | "active" | "valid" | "warning" | "error" {
+  if (!timer.enabled) return "idle";
+  if (!run) return "idle";
+  if (run.status === "running") return "active";
+  if (run.status === "finished") return "valid";
+  return "idle";
 }
 
 function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: TimerHighlightTarget | null; isNativeShell: boolean }) {
@@ -403,9 +418,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 
         {!isNativeShell ? (
           <div className="col-span-12">
-            <InlineNotice title="浏览器预览模式">
-              当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code className="font-mono text-[var(--amber)]">bun run tauri dev</code> 或使用安装后的桌面应用。
-            </InlineNotice>
+            <PagePreviewBanner />
           </div>
         ) : null}
 
@@ -458,7 +471,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               group={group}
               canDelete={Boolean(form && form.timerGroups.length > 1 && !form.timers.some((timer) => timer.groupId === group.id))}
               statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveTimersByGroup(form, group.id).length} 张有效卡片`}
-              target="timer"
+              targetLabel="计时器"
               onGroupUpdate={(value) => updateTimerGroup(group.id, value)}
               onGroupDelete={() => removeTimerGroup(group.id)}
               onPositionSelection={() => void beginPositionSelection("timer", group.id)}
@@ -468,7 +481,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           ))}
         </div>
 
-        <section className="col-span-12 grid min-h-0 gap-3 xl:grid-cols-2">
+        <section className="@container col-span-12 grid min-h-0 gap-3 @xl:grid-cols-2">
           {form?.timers.map((timer, index) => (
             <TimerCard
               key={timer.id}
@@ -504,79 +517,6 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
   );
 }
 
-type DisplaySettingsInlineProps = {
-  canDelete: boolean;
-  controlsDisabled: boolean;
-  display: TimerSettingsForm["display"] | undefined;
-  group: TimerGroupForm;
-  statusMessage: string;
-  target: TimerDisplayTarget;
-  onGroupDelete: () => void;
-  onGroupUpdate: (value: Partial<TimerGroupForm>) => void;
-  onPositionSelection: () => void;
-  onUpdate: (value: Partial<TimerSettingsForm["display"]>) => void;
-  onUpdateRect: (value: Partial<TimerSettingsForm["display"]["rect"]>) => void;
-};
-
-function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, statusMessage, target, onGroupDelete, onGroupUpdate, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsInlineProps) {
-  return (
-    <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
-      <div className="flex flex-wrap items-center gap-3">
-        <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
-        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
-          {target === "timer" ? "计时器" : "计数器"}分组 · {group.name}
-        </p>
-        <Input
-          className="w-28 font-mono text-sm"
-          disabled={controlsDisabled}
-          value={group.name}
-          onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })}
-          aria-label="分组名称"
-        />
-        <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0" size="icon-sm">
-          <RiDeleteBinLine />
-        </Button>
-        <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline" size="sm">
-          <RiMapPinLine data-icon="inline-start" />
-          位置
-        </Button>
-      </div>
-
-      <Collapsible defaultOpen={false}>
-        <InlineControl className="p-0">
-          <CollapsibleTrigger asChild>
-            <Button className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase" type="button" variant="ghost">
-              显示参数
-              <RiArrowDownSLine className="size-3.5" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
-            <div className="flex flex-wrap items-center gap-4">
-              <Field className="min-w-0 flex-1">
-                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-3">
-                    <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
-                    <span className="w-10 text-right font-mono text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
-                  </div>
-                </FieldContent>
-              </Field>
-              <Field className="w-36 shrink-0">
-                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
-                <FieldContent>
-                  <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" className="h-7 font-mono text-xs" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
-                </FieldContent>
-              </Field>
-            </div>
-          </CollapsibleContent>
-        </InlineControl>
-      </Collapsible>
-
-      <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">{statusMessage}</p>
-    </ControlTile>
-  );
-}
-
 type TimerCardProps = {
   controlsDisabled: boolean;
   groupOptions: TimerGroupForm[];
@@ -601,7 +541,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
   return (
-    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "")} data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
+    <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "", run?.status === "running" ? "border-l-4 border-l-[var(--amber)]" : run?.status === "finished" ? "border-l-4 border-l-[var(--valid-green)]" : "")} data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
         eyebrow={`T-${String(index + 1).padStart(2, "0")} · 计时器`}
         icon={<RiTimerLine />}
@@ -615,46 +555,21 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
             aria-label="计时器名称"
           />
         )}
-        description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
-        badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge></>}
-      />
-      <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
-        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
-            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-medium leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
-              T-{String(index + 1).padStart(2, "0")}
-            </span>
-          </div>
-          <div className="grid gap-3">
-            <div>
-              <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>
-              <Select disabled={controlsDisabled} value={timer.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
-                <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
-                  <SelectValue placeholder="选择分组" />
-                </SelectTrigger>
-                <SelectContent>
-                  {groupOptions.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-[var(--chalk)] pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
+        description={run ? `${timerSignalChar(timer, run)} ${Math.floor(run.currentSeconds)}s` : (timer.enabled ? "▢ 等待触发" : "○ 已禁用")}
+        actions={(
+          <div className="flex items-center gap-1.5">
+            <Select disabled={controlsDisabled} value={timer.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
+              <SelectTrigger className="w-32 bg-[var(--carbon)]">
+                <SelectValue placeholder="分组" />
+              </SelectTrigger>
+              <SelectContent>
+                {groupOptions.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart} />
-            <Button
-              aria-label={isFavorite ? "取消收藏" : "加入收藏"}
-              aria-pressed={isFavorite}
-              className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")}
-              data-icon="inline-start"
-              disabled={controlsDisabled}
-              onClick={onToggleFavorite}
-              size="icon-sm"
-              type="button"
-              variant="outline"
-            >
+            <Button aria-label={isFavorite ? "取消收藏" : "加入收藏"} aria-pressed={isFavorite} className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")} disabled={controlsDisabled} onClick={onToggleFavorite} size="icon-sm" type="button" variant="outline">
               {isFavorite ? <RiStarFill /> : <RiStarLine />}
             </Button>
             <Switch checked={timer.enabled} disabled={controlsDisabled} aria-label="启用计时器" onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
@@ -662,8 +577,9 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
               <RiDeleteBinLine />
             </Button>
           </div>
-        </div>
-      </CardHeader>
+        )}
+        badge={<Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge>}
+      />
       <CardBody>
         <FieldGroup className="grid gap-4 sm:grid-cols-2">
           <Field>
@@ -724,35 +640,12 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   );
 }
 
-function DragButton({ controlsDisabled, onDragStart }: { controlsDisabled: boolean; onDragStart: () => void }) {
-  return (
-    <Button aria-label="拖动排序" className="cursor-grab active:cursor-grabbing" disabled={controlsDisabled} onPointerDown={(event) => { event.preventDefault(); onDragStart(); }} size="icon-sm" type="button" variant="ghost">
-      <span className="text-xs font-bold">↕</span>
-    </Button>
-  );
-}
-
-function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyRecording, onHotkeyKeyDown, onHotkeyRecorderBlur }: { controlsDisabled: boolean; hotkey: string; id: string; isRecording: boolean; onBeginHotkeyRecording: () => void; onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void; onHotkeyRecorderBlur: () => void }) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>快捷键</FieldLabel>
-      <FieldContent>
-        <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id} onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown} type="button" variant="outline">
-          <span>{isRecording ? "正在录制，按下快捷键..." : hotkey || "点击录制快捷键"}</span>
-          <span className="text-[0.6875rem] text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
-        </Button>
-      </FieldContent>
-    </Field>
-  );
-}
-
-
 
 function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
   const [now, setNow] = useState(Date.now);
 
-  useOverlayBootstrap(isNativeShell, setBootstrap);
+  useTimerOverlayBootstrap(isNativeShell, setBootstrap);
 
   useEffect(() => {
     let rafId: number;
@@ -852,7 +745,8 @@ function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNa
               <div className="relative flex min-w-0 items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-1.5">
                   {isActive ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary" /> : null}
-                  <span className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+              <span className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+                  <span className={cn("shrink-0 font-mono text-xs", isActive ? "text-primary" : finished ? "text-[var(--amber)]" : "text-white/60")}>{timerSignalState(timer, run)}</span>
                 </span>
                 <span className={finished && !isMultiSegment ? "shrink-0 text-primary-foreground italic" : "shrink-0 text-white"}>{displayValue}</span>
               </div>
@@ -862,43 +756,6 @@ function TimerDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNa
       </div>
     </div>
   );
-}
-
-function useOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: TimerBootstrap) => void) {
-  useEffect(() => {
-    document.body.dataset.overlayMode = "true";
-    return () => {
-      delete document.body.dataset.overlayMode;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell) {
-      return;
-    }
-
-    let disposed = false;
-    let unlistenStateChanged: (() => void) | undefined;
-
-    void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
-      if (!disposed) {
-        setBootstrap(next);
-      }
-    });
-
-    void listen<TimerBootstrap>("timer://state-changed", (event) => {
-      if (!disposed) {
-        setBootstrap(event.payload);
-      }
-    }).then((dispose) => {
-      unlistenStateChanged = dispose;
-    });
-
-    return () => {
-      disposed = true;
-      unlistenStateChanged?.();
-    };
-  }, [isNativeShell, setBootstrap]);
 }
 
 function TimerPositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {

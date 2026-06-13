@@ -3,9 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   RiAddLine,
-  RiArrowDownSLine,
   RiDeleteBinLine,
-  RiMapPinLine,
   RiResetLeftLine,
   RiSpeedUpLine,
   RiStarFill,
@@ -17,11 +15,9 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardHeader } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { PositionOverlay } from "@/components/ui/position-overlay";
 import {
@@ -29,6 +25,7 @@ import {
   AppPage,
   CardBody,
   ControlTile,
+  DisplaySettingsInline,
   InlineControl,
   InlineNotice,
   PageHero,
@@ -62,6 +59,7 @@ import {
   parseTimerSettingsForm,
   timerEffectiveCountersByGroup,
   timerSettingsToForm,
+  useTimerOverlayBootstrap,
 } from "@/components/app/timer-utils";
 import { useFavorites } from "@/hooks/use-favorites";
 
@@ -481,6 +479,7 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
               group={group}
               canDelete={Boolean(form && form.counterGroups.length > 1 && !form.counters.some((counter) => counter.groupId === group.id))}
               statusMessage={`${group.enabled ? "分组已启用" : "分组已关闭"} · ${timerEffectiveCountersByGroup(form, group.id).length} 张有效卡片`}
+              targetLabel="计数器"
               onGroupUpdate={(value) => updateCounterGroup(group.id, value)}
               onGroupDelete={() => removeCounterGroup(group.id)}
               onPositionSelection={() => void beginPositionSelection(group.id)}
@@ -530,78 +529,6 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
 }
 
 // ── 内部组件 ──
-
-type DisplaySettingsInlineProps = {
-  canDelete: boolean;
-  controlsDisabled: boolean;
-  display: import("@/components/app/timer-types").TimerSettingsForm["display"] | undefined;
-  group: TimerGroupForm;
-  statusMessage: string;
-  onGroupDelete: () => void;
-  onGroupUpdate: (value: Partial<TimerGroupForm>) => void;
-  onPositionSelection: () => void;
-  onUpdate: (value: Partial<import("@/components/app/timer-types").TimerSettingsForm["display"]>) => void;
-  onUpdateRect: (value: Partial<import("@/components/app/timer-types").TimerSettingsForm["display"]["rect"]>) => void;
-};
-
-function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, statusMessage, onGroupDelete, onGroupUpdate, onPositionSelection, onUpdate, onUpdateRect }: DisplaySettingsInlineProps) {
-  return (
-    <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
-      <div className="flex flex-wrap items-center gap-3">
-        <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
-        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
-          计数器分组 · {group.name}
-        </p>
-        <Input
-          className="w-28 font-mono text-sm"
-          disabled={controlsDisabled}
-          value={group.name}
-          onChange={(event) => onGroupUpdate({ name: event.currentTarget.value })}
-          aria-label="分组名称"
-        />
-        <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0" size="icon-sm">
-          <RiDeleteBinLine />
-        </Button>
-        <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button" variant="outline" size="sm">
-          <RiMapPinLine data-icon="inline-start" />
-          位置
-        </Button>
-      </div>
-
-      <Collapsible defaultOpen={false}>
-        <InlineControl className="p-0">
-          <CollapsibleTrigger asChild>
-            <Button className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase" type="button" variant="ghost">
-              显示参数
-              <RiArrowDownSLine className="size-3.5" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
-            <div className="flex flex-wrap items-center gap-4">
-              <Field className="min-w-0 flex-1">
-                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-3">
-                    <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05} value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]} onValueChange={([value]) => onUpdate({ fontOpacity: value.toFixed(2) })} />
-                    <span className="w-10 text-right font-mono text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
-                  </div>
-                </FieldContent>
-              </Field>
-              <Field className="w-36 shrink-0">
-                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
-                <FieldContent>
-                  <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320" className="h-7 font-mono text-xs" value={display?.rect.width ?? 320} onChange={(event) => onUpdateRect({ width: Number.parseInt(event.currentTarget.value, 10) || 320 })} />
-                </FieldContent>
-              </Field>
-            </div>
-          </CollapsibleContent>
-        </InlineControl>
-      </Collapsible>
-
-      <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">{statusMessage}</p>
-    </ControlTile>
-  );
-}
 
 type CounterCardProps = {
   controlsDisabled: boolean;
@@ -760,7 +687,7 @@ function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBeginHotkeyR
 function CounterDisplayOverlay({ groupId, isNativeShell }: { groupId: string; isNativeShell: boolean }) {
   const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
 
-  useOverlayBootstrap(isNativeShell, setBootstrap);
+  useTimerOverlayBootstrap(isNativeShell, setBootstrap);
 
   const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
   const group = bootstrap?.settings.counterGroups?.find((item) => item.id === groupId);
@@ -781,43 +708,6 @@ function CounterDisplayOverlay({ groupId, isNativeShell }: { groupId: string; is
       </div>
     </div>
   );
-}
-
-function useOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: TimerBootstrap) => void) {
-  useEffect(() => {
-    document.body.dataset.overlayMode = "true";
-    return () => {
-      delete document.body.dataset.overlayMode;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isNativeShell) {
-      return;
-    }
-
-    let disposed = false;
-    let unlistenStateChanged: (() => void) | undefined;
-
-    void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
-      if (!disposed) {
-        setBootstrap(next);
-      }
-    });
-
-    void listen<TimerBootstrap>("timer://state-changed", (event) => {
-      if (!disposed) {
-        setBootstrap(event.payload);
-      }
-    }).then((dispose) => {
-      unlistenStateChanged = dispose;
-    });
-
-    return () => {
-      disposed = true;
-      unlistenStateChanged?.();
-    };
-  }, [isNativeShell, setBootstrap]);
 }
 
 function CounterPositionOverlay({ isNativeShell }: { isNativeShell: boolean }) {
