@@ -803,8 +803,8 @@ function RapidfireCardEditor({
       )}
     >
       <SectionHeader
-        eyebrow={`UNIT ${String(index + 1).padStart(2, "0")}`}
-        title="FIRE CONTROL"
+        eyebrow={`RF-${String(index + 1).padStart(2, "0")}`}
+        title="连发器"
         description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / 间隔 ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "补齐断开" : "补齐接通"}`}
         badge={
           <Badge variant={status.variant}>{status.label}</Badge>
@@ -820,7 +820,7 @@ function RapidfireCardEditor({
       <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
         <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
           <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
-            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
+            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-medium leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
               RF-{String(index + 1).padStart(2, "0")}
             </span>
           </div>

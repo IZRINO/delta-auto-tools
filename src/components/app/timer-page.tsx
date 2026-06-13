@@ -519,7 +519,7 @@ function DisplaySettingsInline({ canDelete, controlsDisabled, display, group, st
   return (
     <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
       <div className="flex flex-wrap items-center gap-3">
-        <Switch checked={group.enabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
+        <Switch checked={group.enabled} disabled={controlsDisabled} onCheckedChange={(checked) => onGroupUpdate({ enabled: checked })} />
         <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--chalk)] uppercase">
           {target === "timer" ? "计时器" : "计数器"}分组 · {group.name}
         </p>
@@ -602,50 +602,32 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
       <SectionHeader
         eyebrow={`T-${String(index + 1).padStart(2, "0")}`}
         icon={<RiTimerLine />}
-        title={timer.name || `计时器 ${index + 1}`}
+        title="计时器"
         description={run ? `${run.status === "finished" ? "已结束" : "运行中"} · ${Math.floor(run.currentSeconds)}` : (timer.enabled ? "等待快捷键触发" : "已禁用")}
         badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={timer.enabled ? "default" : "outline"}>{timer.enabled ? "启用" : "禁用"}</Badge></>}
       />
       <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart} />
-            <Badge variant="outline">排序</Badge>
+        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
+          <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
+            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-medium leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
+              T-{String(index + 1).padStart(2, "0")}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              aria-label={isFavorite ? "取消收藏" : "加入收藏"}
-              aria-pressed={isFavorite}
-              className={cn(isFavorite ? "text-[var(--amber)]" : "text-[var(--zinc)]")}
-              data-icon="inline-start"
-              disabled={controlsDisabled}
-              onClick={onToggleFavorite}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              {isFavorite ? <RiStarFill /> : <RiStarLine />}
-            </Button>
-            <Switch checked={timer.enabled} onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
-            <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button" variant="ghost">
-              <RiDeleteBinLine />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardBody>
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-          <Field>
-            <FieldLabel htmlFor={`${timer.id}-name`}>名称</FieldLabel>
-            <FieldContent>
-              <Input id={`${timer.id}-name`} disabled={controlsDisabled} value={timer.name} onChange={(event) => onUpdate({ name: event.currentTarget.value })} />
-            </FieldContent>
-          </Field>
-          <Field>
-            <FieldLabel>所属分组</FieldLabel>
-            <FieldContent>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem]">
+            <div className="min-w-0">
+              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">计时器名称</p>
+              <Input
+                className="mt-2 max-w-full bg-[var(--carbon)] font-medium"
+                placeholder="输入卡片名称"
+                value={timer.name}
+                disabled={controlsDisabled}
+                onChange={(event) => onUpdate({ name: event.currentTarget.value })}
+              />
+            </div>
+            <div>
+              <p className="font-mono text-[0.62rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">所属分组</p>
               <Select disabled={controlsDisabled} value={timer.groupId} onValueChange={(value) => onUpdate({ groupId: value })}>
-                <SelectTrigger>
+                <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
                   <SelectValue placeholder="选择分组" />
                 </SelectTrigger>
                 <SelectContent>
@@ -656,8 +638,32 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
                   ))}
                 </SelectContent>
               </Select>
-            </FieldContent>
-          </Field>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-[var(--chalk)] pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
+            <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart} />
+            <Button
+              aria-label={isFavorite ? "取消收藏" : "加入收藏"}
+              aria-pressed={isFavorite}
+              className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")}
+              data-icon="inline-start"
+              disabled={controlsDisabled}
+              onClick={onToggleFavorite}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              {isFavorite ? <RiStarFill /> : <RiStarLine />}
+            </Button>
+            <Switch checked={timer.enabled} disabled={controlsDisabled} aria-label="启用计时器" onCheckedChange={(checked) => onUpdate({ enabled: checked })} />
+            <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button" variant="outline" aria-label="删除计时器">
+              <RiDeleteBinLine />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardBody>
+        <FieldGroup className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor={`${timer.id}-duration`}>每段秒数</FieldLabel>
             <FieldContent>
