@@ -191,15 +191,15 @@ gh release view v<version> --repo IZRINO/delta-auto-tools \
 
 ### Issue tracker
 
-Issues 使用 GitHub Issues，通过 `gh` CLI 读写。See `docs/agents/issue-tracker.md`.
+Issues 使用 GitHub Issues，通过 `gh` CLI 读写。详见 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 
-使用五级分流标签：needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix。See `docs/agents/triage-labels.md`.
+使用五级分流标签：needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix。详见 `docs/agents/triage-labels.md`。
 
 ### Domain docs
 
-Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
+Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agents/domain.md`。
 
 ## Repo-Specific Notes
 
