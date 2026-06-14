@@ -1,0 +1,33 @@
+import { listen, type Event } from "@tauri-apps/api/event";
+import type { TimerBootstrap } from "@/components/app/timer-types";
+import type { MorseRunResult, RegionSelectionProgress } from "@/components/app/morse-types";
+import type { RapidfireBootstrap } from "@/components/app/rapidfire-types";
+
+export const MORSE_EVENTS = {
+  runFinished: { name: "morse://run-finished" as const, payload: null as unknown as MorseRunResult },
+  selectionProgress: { name: "morse://selection-progress" as const, payload: null as unknown as RegionSelectionProgress },
+  hotkeyError: { name: "morse://hotkey-error" as const, payload: null as unknown as string },
+} as const;
+
+export const TIMER_EVENTS = {
+  stateChanged: { name: "timer://state-changed" as const, payload: null as unknown as TimerBootstrap },
+  hotkeyError: { name: "timer://hotkey-error" as const, payload: null as unknown as string },
+  hotkeyTriggered: { name: "timer://hotkey-triggered" as const, payload: null as unknown as string[] },
+  counterTriggered: { name: "timer://counter-triggered" as const, payload: null as unknown as string[] },
+} as const;
+
+export const RAPIDFIRE_EVENTS = {
+  stateChanged: { name: "rapidfire://state-changed" as const, payload: null as unknown as RapidfireBootstrap },
+  hotkeyError: { name: "rapidfire://hotkey-error" as const, payload: null as unknown as string },
+} as const;
+
+export const GLOBAL_EVENTS = {
+  enabledChanged: { name: "global://enabled-changed" as const, payload: null as unknown as boolean },
+} as const;
+
+export async function listenEvent<T extends { name: string; payload: unknown }>(
+  event: T,
+  handler: (event: Event<T["payload"]>) => void | Promise<void>
+) {
+  return listen<T["payload"]>(event.name, handler);
+}

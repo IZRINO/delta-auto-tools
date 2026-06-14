@@ -9,7 +9,7 @@ import {
   RiTimerLine,
 } from "@remixicon/react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listenEvent, RAPIDFIRE_EVENTS, TIMER_EVENTS } from "@/lib/tauri-events";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -105,7 +105,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
         // 浏览器预览 / 调用失败时静默忽略
       });
 
-    void listen<TimerBootstrap>("timer://state-changed", (event) => {
+    void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
       if (!disposed) {
         setTimerBootstrap(event.payload);
       }
@@ -113,7 +113,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
       unlistenTimerState = dispose;
     });
 
-    void listen<RapidfireBootstrap>("rapidfire://state-changed", (event) => {
+    void listenEvent(RAPIDFIRE_EVENTS.stateChanged, (event) => {
       if (!disposed) {
         setRapidfireBootstrap(event.payload);
       }
@@ -297,7 +297,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
             </>
           }
         />
-        <TacticalEmptyState icon={<RiStarLine />} title="还没有收藏" description="去计时\\计数器或连发器工具里，点击卡片头部的星标即可加入收藏。" />
+        <TacticalEmptyState className="col-span-12" icon={<RiStarLine />} title="还没有收藏" description="去计时器、计数器或连发器工具里，点击卡片头部的星标即可加入收藏。" />
       </AppPage>
     );
   }
@@ -345,19 +345,19 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
       </div>
 
       <ControlTile className="col-span-12 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2">
-        <Field orientation="horizontal" className="gap-2">
+        <Field orientation="horizontal" className="w-auto gap-2">
           <Switch id="fav-show-hotkey" checked={view.showHotkey} onCheckedChange={(checked) => updateView({ showHotkey: checked })} />
           <FieldLabel htmlFor="fav-show-hotkey" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--chalk)] uppercase">快捷键</FieldLabel>
         </Field>
-        <Field orientation="horizontal" className="gap-2">
+        <Field orientation="horizontal" className="w-auto gap-2">
           <Switch id="fav-compact" checked={view.compactMode} onCheckedChange={(checked) => updateView({ compactMode: checked })} />
           <FieldLabel htmlFor="fav-compact" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--chalk)] uppercase">紧凑</FieldLabel>
         </Field>
-        <Field orientation="horizontal" className="gap-2">
+        <Field orientation="horizontal" className="w-auto gap-2">
           <Switch id="fav-show-progress" checked={view.showProgress} onCheckedChange={(checked) => updateView({ showProgress: checked })} />
           <FieldLabel htmlFor="fav-show-progress" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--chalk)] uppercase">计时进度</FieldLabel>
         </Field>
-        <Field orientation="horizontal" className="gap-2">
+        <Field orientation="horizontal" className="w-auto gap-2">
           <Switch id="fav-show-counter" checked={view.showCounter} onCheckedChange={(checked) => updateView({ showCounter: checked })} />
           <FieldLabel htmlFor="fav-show-counter" className="cursor-pointer font-mono text-[0.66rem] font-black tracking-[0.08em] text-[var(--chalk)] uppercase">计数值</FieldLabel>
         </Field>

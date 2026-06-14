@@ -17,17 +17,13 @@ use willhook::{
 };
 
 use crate::global_state::GlobalState;
-use crate::hotkey_types::{self as types, HotkeyBinding, ModifierKey, PrimaryKey};
+use crate::hotkey_types::{
+    self as types, HotkeyBinding, ModifierKey, PrimaryKey,
+};
 
-pub type HotkeyAction = Arc<dyn Fn(AppHandle) + Send + Sync + 'static>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HoldAction {
-    Down,
-    Up,
-}
-
-pub type HoldActionCallback = Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync + 'static>;
+pub use crate::hotkey_types::{
+    ConflictPolicy, HoldAction, HoldActionCallback, HotkeyAction, HotkeyRegistration, HoldRegistration,
+};
 
 pub struct HotkeyManager {
     registrations: Arc<Mutex<Vec<HotkeyRegistration>>>,
@@ -38,20 +34,6 @@ pub struct HotkeyManager {
     worker: Option<JoinHandle<()>>,
     #[cfg(not(target_os = "windows"))]
     _worker: (),
-}
-
-struct HotkeyRegistration {
-    scope: String,
-    binding: HotkeyBinding,
-    enabled: bool,
-    action: HotkeyAction,
-}
-
-struct HoldRegistration {
-    scope: String,
-    binding: HotkeyBinding,
-    enabled: bool,
-    action: HoldActionCallback,
 }
 
 impl HotkeyManager {
@@ -125,6 +107,7 @@ impl HotkeyManager {
         &self,
         scope: &str,
         new_bindings: &[HotkeyBinding],
+        conflict_policy: ConflictPolicy,
     ) -> Result<(), String> {
         let registrations = self
             .registrations
@@ -139,7 +122,7 @@ impl HotkeyManager {
                 return Err(format!(
                     "快捷键 {} 与{}的快捷键冲突",
                     types::binding_to_string(new_binding),
-                    scope_name(existing.scope.as_str())
+                    existing.display_name
                 ));
             }
         }
@@ -155,12 +138,13 @@ impl HotkeyManager {
                     registration.enabled
                         && registration.scope != scope
                         && registration.binding == *new_binding
-                        && !normal_hold_conflict_allowed(scope, registration.scope.as_str())
+                        && !(conflict_policy == ConflictPolicy::AllowHold
+                            && registration.conflict_policy == ConflictPolicy::AllowHold)
                 }) {
                     return Err(format!(
                         "快捷键 {} 与{}的触发键冲突",
                         types::binding_to_string(new_binding),
-                        scope_name(existing.scope.as_str())
+                        existing.display_name
                     ));
                 }
             }
@@ -172,6 +156,7 @@ impl HotkeyManager {
         &self,
         scope: &str,
         new_bindings: &[HotkeyBinding],
+        conflict_policy: ConflictPolicy,
     ) -> Result<(), String> {
         let registrations = self
             .registrations
@@ -182,12 +167,13 @@ impl HotkeyManager {
                 registration.enabled
                     && registration.scope != scope
                     && registration.binding == *new_binding
-                    && !normal_hold_conflict_allowed(registration.scope.as_str(), scope)
+                    && !(registration.conflict_policy == ConflictPolicy::AllowHold
+                        && conflict_policy == ConflictPolicy::AllowHold)
             }) {
                 return Err(format!(
                     "触发键 {} 与{}的快捷键冲突",
                     types::binding_to_string(new_binding),
-                    scope_name(existing.scope.as_str())
+                    existing.display_name
                 ));
             }
         }
@@ -198,6 +184,8 @@ impl HotkeyManager {
         &self,
         scope: &str,
         bindings: Vec<(String, HotkeyAction)>,
+        display_name: String,
+        conflict_policy: ConflictPolicy,
     ) -> Result<(), String> {
         if let Some(error) = &self.install_error {
             return Err(error.clone());
@@ -209,6 +197,8 @@ impl HotkeyManager {
                 scope: scope.to_string(),
                 binding: HotkeyBinding::parse(&hotkey)?,
                 enabled: true,
+                display_name: display_name.clone(),
+                conflict_policy,
                 action,
             });
         }
@@ -216,7 +206,7 @@ impl HotkeyManager {
             .iter()
             .map(|registration| registration.binding.clone())
             .collect::<Vec<_>>();
-        self.validate_scope_conflicts(scope, parsed_bindings.as_slice())?;
+        self.validate_scope_conflicts(scope, parsed_bindings.as_slice(), conflict_policy)?;
 
         let mut registrations = self
             .registrations
@@ -255,6 +245,8 @@ impl HotkeyManager {
         &self,
         scope: &str,
         bindings: Vec<(String, HoldActionCallback)>,
+        display_name: String,
+        conflict_policy: ConflictPolicy,
     ) -> Result<(), String> {
         if let Some(error) = &self.install_error {
             return Err(error.clone());
@@ -266,6 +258,8 @@ impl HotkeyManager {
                 scope: scope.to_string(),
                 binding: HotkeyBinding::parse(&key)?,
                 enabled: true,
+                display_name: display_name.clone(),
+                conflict_policy,
                 action,
             });
         }
@@ -273,7 +267,7 @@ impl HotkeyManager {
             .iter()
             .map(|registration| registration.binding.clone())
             .collect::<Vec<_>>();
-        self.validate_hold_scope_conflicts(scope, parsed_bindings.as_slice())?;
+        self.validate_hold_scope_conflicts(scope, parsed_bindings.as_slice(), conflict_policy)?;
 
         let mut hold_regs = self
             .hold_registrations
@@ -296,19 +290,6 @@ impl HotkeyManager {
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         hold_regs.remove(scope);
         Ok(())
-    }
-}
-
-fn normal_hold_conflict_allowed(normal_scope: &str, hold_scope: &str) -> bool {
-    normal_scope == "timer" && hold_scope == "rapidfire"
-}
-
-fn scope_name(scope: &str) -> &'static str {
-    match scope {
-        "morse" => "摩斯密码解析",
-        "timer" => "计时器",
-        "rapidfire" => "连发器",
-        _ => "其他工具",
     }
 }
 
@@ -732,12 +713,22 @@ mod tests {
         let manager = test_manager();
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         manager
-            .replace_hold_scope("rapidfire", vec![("Shift+-".to_string(), callback)])
+            .replace_hold_scope(
+                "rapidfire",
+                vec![("Shift+-".to_string(), callback)],
+                "连发器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("应注册连发器组合触发键");
 
         let action: HotkeyAction = Arc::new(|_| {});
         let error = manager
-            .replace_scope("morse", vec![("Shift+-".to_string(), action)])
+            .replace_scope(
+                "morse",
+                vec![("Shift+-".to_string(), action)],
+                "摩斯密码解析".to_string(),
+                ConflictPolicy::Strict,
+            )
             .expect_err("摩斯快捷键不能复用连发器触发键");
 
         assert!(error.contains("与连发器的触发键冲突"));
@@ -748,12 +739,22 @@ mod tests {
         let manager = test_manager();
         let action: HotkeyAction = Arc::new(|_| {});
         manager
-            .replace_scope("morse", vec![("Ctrl+F2".to_string(), action)])
+            .replace_scope(
+                "morse",
+                vec![("Ctrl+F2".to_string(), action)],
+                "摩斯密码解析".to_string(),
+                ConflictPolicy::Strict,
+            )
             .expect("应注册摩斯快捷键");
 
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         let error = manager
-            .replace_hold_scope("rapidfire", vec![("Ctrl+F2".to_string(), callback)])
+            .replace_hold_scope(
+                "rapidfire",
+                vec![("Ctrl+F2".to_string(), callback)],
+                "连发器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect_err("连发器触发键不能复用其他工具快捷键");
 
         assert!(error.contains("与摩斯密码解析的快捷键冲突"));
@@ -764,12 +765,22 @@ mod tests {
         let manager = test_manager();
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         manager
-            .replace_hold_scope("rapidfire", vec![("F2".to_string(), callback)])
+            .replace_hold_scope(
+                "rapidfire",
+                vec![("F2".to_string(), callback)],
+                "连发器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("应注册连发器触发键");
 
         let action: HotkeyAction = Arc::new(|_| {});
         manager
-            .replace_scope("timer", vec![("F2".to_string(), action)])
+            .replace_scope(
+                "timer",
+                vec![("F2".to_string(), action)],
+                "计时器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("计时器快捷键允许复用连发器触发键");
     }
 
@@ -778,12 +789,22 @@ mod tests {
         let manager = test_manager();
         let action: HotkeyAction = Arc::new(|_| {});
         manager
-            .replace_scope("timer", vec![("F3".to_string(), action)])
+            .replace_scope(
+                "timer",
+                vec![("F3".to_string(), action)],
+                "计时器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("应注册计时器快捷键");
 
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         manager
-            .replace_hold_scope("rapidfire", vec![("F3".to_string(), callback)])
+            .replace_hold_scope(
+                "rapidfire",
+                vec![("F3".to_string(), callback)],
+                "连发器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("连发器触发键允许复用计时器快捷键");
     }
 
@@ -792,11 +813,21 @@ mod tests {
         let manager = test_manager();
         let action: HotkeyAction = Arc::new(|_| {});
         manager
-            .replace_scope("timer", vec![("F2".to_string(), Arc::clone(&action))])
+            .replace_scope(
+                "timer",
+                vec![("F2".to_string(), Arc::clone(&action))],
+                "计时器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("首次注册应成功");
 
         manager
-            .replace_scope("timer", vec![("F2".to_string(), action)])
+            .replace_scope(
+                "timer",
+                vec![("F2".to_string(), action)],
+                "计时器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
             .expect("同一工具覆盖自身快捷键应成功");
     }
 
@@ -847,6 +878,8 @@ mod tests {
             scope: "timer".to_string(),
             binding: HotkeyBinding::parse("F2").unwrap(),
             enabled: true,
+            display_name: "计时器".to_string(),
+            conflict_policy: ConflictPolicy::AllowHold,
             action: Arc::clone(&timer_action),
         }]));
         let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
@@ -855,6 +888,8 @@ mod tests {
                 scope: "rapidfire".to_string(),
                 binding: HotkeyBinding::parse("F2").unwrap(),
                 enabled: true,
+                display_name: "连发器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
                 action: Arc::clone(&rapidfire_action),
             }],
         )])));
@@ -936,6 +971,8 @@ mod tests {
                 scope: "rapidfire".to_string(),
                 binding: HotkeyBinding::parse("Shift+-").expect("should parse"),
                 enabled: true,
+                display_name: "连发器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
                 action: callback,
             }],
         )])));
@@ -1003,12 +1040,16 @@ mod tests {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("Shift+1").expect("should parse"),
                     enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
                     action: Arc::clone(&modified_callback),
                 },
                 HoldRegistration {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("1").expect("should parse"),
                     enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
                     action: Arc::clone(&bare_callback),
                 },
             ],
@@ -1080,12 +1121,16 @@ mod tests {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("1").expect("should parse"),
                     enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
                     action: Arc::clone(&bare_callback),
                 },
                 HoldRegistration {
                     scope: "rapidfire".to_string(),
                     binding: HotkeyBinding::parse("Shift+1").expect("should parse"),
                     enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
                     action: Arc::clone(&modified_callback),
                 },
             ],
@@ -1183,18 +1228,24 @@ mod tests {
                 scope: "timer".to_string(),
                 binding: HotkeyBinding::parse("F2").expect("should parse"),
                 enabled: true,
+                display_name: "计时器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
                 action: Arc::new(|_| {}),
             },
             HotkeyRegistration {
                 scope: "timer".to_string(),
                 binding: HotkeyBinding::parse("F2").expect("should parse"),
                 enabled: true,
+                display_name: "计时器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
                 action: Arc::new(|_| {}),
             },
             HotkeyRegistration {
                 scope: "morse".to_string(),
                 binding: HotkeyBinding::parse("F3").expect("should parse"),
                 enabled: true,
+                display_name: "摩斯密码解析".to_string(),
+                conflict_policy: ConflictPolicy::Strict,
                 action: Arc::new(|_| {}),
             },
         ]));

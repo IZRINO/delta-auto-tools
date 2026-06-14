@@ -56,9 +56,17 @@ src/
 ├── main.tsx                    # 提供 TooltipProvider
 ├── hooks/
 │   ├── use-mobile.ts           # 响应式断点 hook
-│   └── use-delta-accounts.tsx  # Delta 账号全局 Context + Provider + hook
+│   ├── use-delta-accounts.tsx  # Delta 账号全局 Context + Provider + hook
+│   ├── use-autosave.ts         # Autosave debounce 逻辑 hook
+│   ├── use-autosave.test.ts    # Autosave hook 测试
+│   ├── use-bootstrap-form-logic.ts  # Bootstrap/Form 双状态与脏检测逻辑 hook
+│   ├── use-bootstrap-form-logic.test.ts # Bootstrap/Form 逻辑 hook 测试
+│   ├── use-hotkey-recorder.ts  # 热键录制交互逻辑 hook
+│   ├── use-hotkey-recorder.test.ts # 热键录制 hook 测试
+│   └── use-highlight-scroll.ts # 收藏页高亮滚动动画 hook
 ├── lib/
-│   └── utils.ts                # tailwind-merge + clsx 工具函数
+│   ├── utils.ts                # tailwind-merge + clsx 工具函数
+│   └── tauri-events.ts         # 事件常量模块：MORSE_EVENTS / TIMER_EVENTS / RAPIDFIRE_EVENTS / GLOBAL_EVENTS 和 listenEvent<T> helper
 ├── components/
 │   ├── ui/                     # shadcn/ui 基础组件（~60 个）
 │   └── app/
@@ -68,10 +76,14 @@ src/
 │       ├── morse-types.ts      # 前端 TypeScript 类型定义与常量
 │       ├── morse-utils.ts      # 纯逻辑工具函数（序列化、格式化、热键解析）
 │       ├── morse-utils.test.ts # Morse 前端测试文件
-│       ├── timer-page.tsx      # 计时\计数器页面、透明窗口与位置设置 UI
+│       ├── timer-counter-page.tsx    # 计时\计数器合并页面容器：状态编排、表单、透明窗口与位置设置 UI
+│       ├── sync-card-list.tsx      # 同步卡片列表：封装 section 网格 + AddCardButton 的通用组件
+│       ├── sync-group-section.tsx  # 同步系统分组列表：封装 DisplaySettingsInline 的通用组件
 │       ├── timer-types.ts      # 计时\计数器前端 TypeScript 类型定义与常量
 │       ├── timer-utils.ts      # 计时\计数器纯逻辑工具函数（序列化、格式化、热键复用）
 │       ├── timer-utils.test.ts # 计时\计数器前端测试文件
+│       ├── favorites-utils.ts      # 收藏系统工具函数（收藏 ID 读写、卡片过滤等）
+│       ├── favorites-utils.test.ts # 收藏系统工具测试
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
@@ -100,12 +112,13 @@ src/
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染自定义三段式工业壳层（48px Top Manifest Bar、240px Left Index Rail、Main Work Grid）。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
-- 当前有四个真实工具页面（Morse、计时器、连发器、攻略网站）和 Delta 三页，Left Index Rail 在“当前工具 / 三角洲行动 API / PINNED”下切换；当前项黑底反白并使用 Alert Red 标识。
+- 当前有四个真实工具页面（Morse、计时器/计数器合并页、连发器、攻略网站）和 Delta 三页，Left Index Rail 在“当前工具 / 三角洲行动 API / PINNED”下切换；当前项黑底反白并使用 Alert Red 标识。
+- `App.tsx` 导航将 timer 和 counter 入口映射到同一个 `timer-counter-page.tsx` 页面组件；计数器与计时器共享同一配置页，通过顶部 Tab 切换显示组。
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），页面顶部使用紧凑浏览器工具条承载站点横向 Tab、新增 / 删除自定义站点、自动刷新档位、手动刷新和系统浏览器打开；当前 URL 只在工具条中紧凑展示并通过原生 `title` 补充说明，不使用会被 WebView2 原生层遮挡的 Radix Tooltip。新增自定义站点与自动刷新档位使用工具条下方内联面板，面板展开时会把 `strategy-content` 宿主区域向下挤，不使用 Dialog / SelectContent 等覆盖式浮层。工具条下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL，并使用 `min-h-0 flex-1 overflow-hidden` 吃满主应用剩余高度；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
-- **计时\计数器状态编排**：`timer-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
-- **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `morse_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
+- **计时\计数器状态编排**：`timer-counter-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
+- **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `timer_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
 - **热键录制**：录制时调用 `morse_set_hotkey_recording(true)` 暂停被动热键监听，录制后恢复。按 Escape 取消恢复旧值
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
 - **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`、`Pioneer`→`"pioneer"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
@@ -114,16 +127,22 @@ src/
 - **Delta 游戏数据分批加载**：`delta-game-data-loader.ts` 是游戏数据页的加载 Module；先请求 `player + record`，至少一个主请求成功后再请求 `assets + recent + achievement + password + bind`，并用版本号丢弃账号切换后的陈旧响应。
 - **Delta 数据展示**：当前所有游戏 API 返回使用 `JSON.stringify` 原始展示；待 API 响应结构确认后替换为结构化渲染
 - **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；当前实现会在选中账号不在过滤范围且存在匹配账号时自动切换到第一个匹配账号
+- **收藏系统**：`favorites-utils.ts` 提供 `localStorage` 收藏 ID 读写（前缀 `delta-auto-tools:favorites:<kind>`），支持 timer/counter/rapidfire 三类卡片收藏；收藏页通过 `use-highlight-scroll` 高亮并滚动到目标卡片
 
 ## 原生代码结构
 
 ```
 src-tauri/src/
-├── lib.rs                      # Tauri Builder 入口，注册所有 commands
+├── lib.rs                      # Tauri Builder 入口，注册所有 commands；generate_handler![] 按模块分组注释
 ├── main.rs                     # Windows 入口
+├── tool_base.rs                # 工具模块共享泛型基座：ToolLogic trait、ToolState<T>、ToolStateInner<T>、get_bootstrap<T>
+├── global_state.rs             # 全局总开关状态（GlobalState）与 enabled-changed 事件
+├── hotkey_types.rs             # 热键绑定类型、ConflictPolicy 枚举、HotkeyRegistration / HoldRegistration
+├── hotkeys.rs                  # 全局共享 willhook 键盘钩子，HotkeyManager，跨 scope 冲突检测
 ├── morse/
-│   ├── mod.rs                  # MorseState、命令注册、识别流程编排、持久化
+│   ├── mod.rs                  # MorseState、命令注册、热键协调与识别流程调度
 │   ├── types.rs                # Morse 数据结构（MorseSettings/MorseRunResult/HistoryEntry 等）
+│   ├── events.rs               # Morse 事件名字符串常量（run-finished/selection-progress/hotkey-error）
 │   ├── decoder.rs              # 摩斯密码 → 数字解码（仅 0-9）
 │   ├── input.rs                # enigo 自动键盘输入
 │   ├── input_listener.rs       # willhook 底层键盘钩子（Windows only）
@@ -132,35 +151,39 @@ src-tauri/src/
 │   └── settings.rs             # morse_settings.json 持久化
 ├── timer/
 │   ├── mod.rs                  # TimerState、命令注册、透明窗口、位置设置、运行态编排
-│   ├── types.rs                # TimerSettings/TimerItem/TimerBootstrap 等 DTO
+│   ├── types.rs                # TimerSettings/TimerItem/CounterItem/TimerBootstrap 等 DTO
+│   ├── events.rs               # Timer 事件名字符串常量（state-changed/hotkey-triggered/counter-triggered/hotkey-error）
 │   ├── hotkey.rs               # willhook 底层键盘钩子（Windows only）
-│   └── settings.rs             # timer_settings.json 持久化
+│   ├── settings.rs             # timer_settings.json 持久化
+│   └── counter_state.rs        # 计数器运行态独立持久化（timer_counter_state.json）
 ├── rapidfire/
 │   ├── mod.rs                  # RapidfireState、状态机、命令注册、透明窗口、位置设置
 │   ├── types.rs                # RapidfireSettings/RapidfireCard/RapidfireBootstrap 等 DTO
+│   ├── events.rs               # Rapidfire 事件名字符串常量（state-changed/hotkey-error）
 │   └── settings.rs             # rapidfire_settings.json 持久化
 └── delta/
     ├── mod.rs                  # 模块声明 + initialize()
-    ├── commands.rs             # 所有 Delta Tauri commands + DTO 定义
+    ├── commands.rs             # 所有 Delta Tauri commands + DTO 定义；含 with_game_auth / with_game_service 宏
     ├── constants.rs            # 常量（appid、URL、referer 等）
     ├── error.rs                # DeltaError 枚举 + 各类型转换
     ├── response.rs             # ApiResponse<T> 泛型响应结构
-    ├── state.rs                # DeltaState（repo + buckets + pending）
+    ├── state.rs                # DeltaState（repo + buckets + pending + game_service 缓存）
     ├── client/
     │   ├── mod.rs
     │   ├── headers.rs          # 浏览器模拟请求头
-    │   ├── http.rs             # build_client()：reqwest Client 构建
+    │   ├── http.rs             # build_client()：无参 reqwest Client 构建（已移除 HttpOptions 抽象）
     │   └── ide.rs              # IdeCall 封装（IDE 网关表单请求）
     ├── services/
     │   ├── mod.rs
-    │   ├── game.rs             # GameService：游戏数据查询（IDE gateway）
+    │   ├── game.rs             # GameService：游戏数据查询（IDE gateway）；缓存于 DeltaState
     │   ├── qq_auth.rs          # QQ 扫码登录 + 鉴权
     │   ├── qq_safe.rs          # QQ安全中心扫码登录 + 封禁查询
     │   ├── wechat_auth.rs      # 微信扫码登录 + 鉴权
     │   └── wegame_auth.rs      # Wegame QQ/微信登录 + 宝箱/抽卡
     ├── storage/
     │   ├── mod.rs
-    │   └── repo.rs             # DeltaRepo（SQLite，单表 delta_accounts）
+    │   ├── repo.rs             # DeltaRepo（SQLite，单表 delta_accounts）；含 Capability 枚举
+    │   └── secrets.rs          # 凭据本地加密（DPAPI）
     ├── resources/
     │   ├── ammo.json           # 空数组（未使用，配置在 game_config.rs）
     │   └── accessory.json      # 空数组（未使用，配置在 game_config.rs）
@@ -177,8 +200,8 @@ src-tauri/src/
 ```
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
-- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()` 和 `rapidfire::initialize()`，然后通过 `app.manage()` 注册状态
-- `tauri::generate_handler![]` 中列出所有命令，新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
+- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、`rapidfire::initialize()` 和 `global_state::GlobalState::new(true)`，然后通过 `app.manage()` 注册状态
+- `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame / 游戏数据 / morse / timer / rapidfire / strategy / global_state），新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
 
 ## Tauri commands
 
@@ -229,6 +252,7 @@ src-tauri/src/
 
 **账号与鉴权**：
 - `delta_list_accounts` / `delta_delete_account`
+- `delta_get_account_capabilities(accountId)` — 返回账号能力列表（`Vec<Capability>`）
 - `delta_qq_get_login_qr` / `delta_qq_poll_login_status` / `delta_qq_get_access_token` / `delta_qq_update_access_token`
 - `delta_wechat_get_login_qr` / `delta_wechat_poll_status` / `delta_wechat_get_access_token` / `delta_wechat_update_access_token`
 - `delta_qqsafe_get_login_qr` / `delta_qqsafe_poll_status` / `delta_qqsafe_get_access_token` / `delta_qqsafe_get_banned_list`
@@ -254,6 +278,10 @@ src-tauri/src/
 - `delta_game_get_manufacture(accountId)` — 制造列表
 - `delta_game_get_guns(gunId)` — 枪械详情（含弹药/配件 enrich）
 - `delta_game_get_bind(accountId)` — 角色绑定
+
+**全局状态**：
+- `global_get_enabled` — 读取全局总开关
+- `global_set_enabled(enabled)` — 设置全局总开关，关闭时立即停止所有运行中的连发和计时器 session
 
 ## UI and workflow constraints
 
@@ -296,8 +324,9 @@ src-tauri/src/
 
 ### Morse 端
 
-- `src-tauri/src/morse/mod.rs` 负责状态、命令注册、热键协调与识别流程调度。包含 `MorseState` （单 `Mutex<MorseStateInner>` + 独立 `Mutex<Option<PassiveHotkeyListener>>`）和 `run_recognition_flow()` 编排函数
+- `src-tauri/src/morse/mod.rs` 负责状态、命令注册、热键协调与识别流程调度。包含 `MorseState = ToolState<MorseLogic>` 和 `run_recognition_flow()` 编排函数
 - `src-tauri/src/morse/types.rs` 定义了所有 Morse 数据结构（`MorseSettings`、`MorseRunResult`、`MorseRegionDetail`、`HistoryEntry`、`MorseBootstrap`、`RegionSelectionProgress`、`RegionSelectionOutcome`、`RegionSelectionKind`）
+- `src-tauri/src/morse/events.rs` 定义事件名字符串常量（`RUN_FINISHED` / `SELECTION_PROGRESS` / `HOTKEY_ERROR`）
 - `src-tauri/src/morse/overlay.rs` 负责多步骤框选会话；中途取消不应污染已保存配置
 - `src-tauri/src/morse/settings.rs` 的持久化文件是 `morse_settings.json`
 - `src-tauri/src/morse/decoder.rs` 解码器仅支持 0-9 数字（10 种模式），不包含字母
@@ -310,7 +339,9 @@ src-tauri/src/
 
 - `src-tauri/src/timer/mod.rs` 负责状态、命令注册、计时器/计数器透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
 - `src-tauri/src/timer/types.rs` 定义所有计时\计数器数据结构（`TimerSettings`、`TimerItem`、`CounterItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState`、`CounterRunState` 等）。
+- `src-tauri/src/timer/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `HOTKEY_TRIGGERED` / `COUNTER_TRIGGERED` / `HOTKEY_ERROR`）
 - `src-tauri/src/timer/settings.rs` 的持久化文件是 `timer_settings.json`。
+- `TimerState` 包装 `ToolState<TimerLogic>` 并额外持有 `tick_task`（250ms 倒计时循环句柄）。
 - `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 相同快捷键的计时器会分组到同一个 action 并同时触发。
 - 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`；计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
@@ -328,9 +359,8 @@ src-tauri/src/
 - `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、会话状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 worker 线程编排。
 - `src-tauri/src/rapidfire/types.rs` 定义所有连发器数据结构（`RapidfireSettings`、`RapidfireCard`、`RapidfireBootstrap`、`RapidfireRunState`、`RapidfireRunStatus`、`RapidfireRect` 等）。
 - `src-tauri/src/rapidfire/settings.rs` 的持久化文件是 `rapidfire_settings.json`。
-- `RapidfireState` 使用单个 `Mutex<RapidfireStateInner>` 包裹所有可变字段；每张卡片的 `CardRuntime` 自带 `last_press_at: Arc<Mutex<Instant>>`，同一卡多 session 共享按键间距，不同卡片互不拖慢。
-- `RapidfireStateInner` 包含：`settings`、`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session 与卡片级 last_press_at）、`pending_position`、`hotkey_error`。
-- 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`。
+- `RapidfireState = ToolState<RapidfireLogic>`；`RapidfireLogic` 特有字段 `runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session 与卡片级 last_press_at）和 `pending_position`。
+- 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`，冲突策略使用 `ConflictPolicy::AllowHold`。
 - 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键触发键按下时也会同时触发同主键的无修饰键绑定（例如 `Shift+1` 同时触发 `Shift+1` 和 `1`），松开修饰键只停止组合键 session 并保留无修饰键 session；先按主键再按修饰键只新增组合键 session，不重启已运行的无修饰键 session。
 - 触发键主键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
 - 同一快捷键可绑定多个连发器卡片，按下时同时为所有绑定卡片创建独立连发 session 和独立 OS worker 线程。
@@ -414,21 +444,86 @@ src-tauri/src/
 
 ### Delta 状态管理
 
-`DeltaState` 使用多个独立锁分别保护不同数据：
+`DeltaState` 使用多个独立锁分别保护不同数据，并缓存 `GameService`：
 - `repo: DeltaRepo` — 直接持有（SQLite 连接内部自带 Mutex）
 - `buckets: Mutex<HashMap<i64, DeltaAccountRecord>>` — 内存账号缓存，与 DB 同步
 - `pending: Mutex<HashMap<String, PendingSession>>` — 扫码登录中会话（QQ/Wegame QQ）
+- `game_service: GameService` — 游戏数据查询服务实例，初始化时创建并在所有游戏数据命令中复用
 
 账号持久化使用 `persist_account()` 辅助函数（`commands.rs`）：DB upsert + 内存 buckets 同步更新，返回前必须转成 `DeltaAccountView` / `AccountLoginResult`。
 扫码登录 pending 会话使用 `remember_pending()` / `pending_cookie()` / `consume_pending_cookie()`，sessionKey 有 5 分钟 TTL，取令牌流程必须一次性消费。
 
-### Morse 状态管理（与 Delta 不同）
+**Capability 枚举**：`src-tauri/src/delta/storage/repo.rs` 定义 `Capability`（`GameData` / `Wegame` / `QqSafe` / `Pioneer`），`DeltaAccountView` 包含 `capabilities: Vec<Capability>`。前端 `delta-utils.ts` 读取 `account.capabilities`（取代 `ACCOUNT_KIND_CAPABILITIES` 常量），`delta-types.test.ts` 和 `delta-utils.test.ts` 已更新测试。
 
-`MorseState` 使用 **单个** `Mutex<MorseStateInner>` 包裹所有可变字段，外加独立的 `Mutex<Option<PassiveHotkeyListener>>`。锁被污染时返回中文错误"已损坏"。
+**泛型 helper 宏**：`commands.rs` 定义 `with_game_auth!` 和 `with_game_service!` 宏：
+- `with_game_auth!(state, account_id, method, args...)` — 从 `DeltaState` 构造 `GameAuth` 并调用 `GameService` 需要鉴权的方法
+- `with_game_service!(state, method, args...)` — 直接调用 `GameService` 无需鉴权的方法（如 `get_items` / `get_config` / `get_price` / `get_firearm_mod_list` / `get_recommendation` / `get_guns`）
+- `delta_get_account_capabilities` 命令返回指定账号的 `Vec<Capability>`
 
-`MorseStateInner` 包含：`settings`、`history`（VecDeque，上限 1000）、`latest_run`、`next_history_id`、`pending_selection`、`run_in_progress`、`hotkey_error`。
+### Morse 状态管理（ToolBase 泛型层）
 
-### GameService 编译期配置
+`MorseState` 已迁移到 `ToolBase` 泛型层：`MorseState = ToolState<MorseLogic>`，`MorseLogic` 实现 `ToolLogic` trait。
+- 共享字段（`settings`、`hotkey_error`）位于 `ToolStateInner<MorseLogic>` 中；工具特有字段（`history`、`latest_run`、`next_history_id`、`pending_selection`、`run_in_progress`）位于 `inner.logic` 中。
+- 所有工具通过 `state.lock_inner()` 访问共享内层，锁被污染时返回中文错误 `"已损坏"`。
+- `MorseLogic` 实现 `ToolLogic`：提供 `load_settings`/`save_settings`/`build_bootstrap`/`emit_state`；Morse 不通过 `emit_state` 推送完整 bootstrap，仅在识别完成和区域选择时通过 `morse/events.rs` 常量推送事件。
+- `src-tauri/src/morse/mod.rs` 负责命令注册、热键协调与识别流程调度。包含 `run_recognition_flow()` 编排函数和 `restart_hotkey_listener()` 辅助函数。
+- `src-tauri/src/morse/overlay.rs` 负责多步骤框选会话；中途取消不应污染已保存配置。
+- `src-tauri/src/morse/settings.rs` 的持久化文件是 `morse_settings.json`。
+- 修改原生命令时，必要时同步更新 `src-tauri/capabilities/default.json` 和 `src-tauri/src/lib.rs` 中的 `generate_handler![]`。
+
+### 计时器端状态管理（ToolBase 泛型层）
+
+`TimerState` 包装 `ToolState<TimerLogic>` 并额外持有 `tick_task`（250ms 倒计时循环句柄）：
+- `TimerLogic` 实现 `ToolLogic`，特有字段：`runs`（计时器运行时）、`counter_runs`（计数器当前值）、`pending_position`（位置设置会话）。
+- `TimerState::lock_inner()` 委托给 `self.tool.lock_inner()`，返回 `MutexGuard<ToolStateInner<TimerLogic>>`。
+- `src-tauri/src/timer/mod.rs` 负责命令注册、透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
+- `src-tauri/src/timer/settings.rs` 的持久化文件是 `timer_settings.json`。
+- `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
+- 相同快捷键的计时器会分组到同一个 action 并同时触发。
+- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`；计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
+- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态；`TimerSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。旧 `enabled` 字段仅用于兼容旧配置，归一化后等于两个独立开关的并集。
+- 计时器和计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计时器卡片顺序由 `settings.timers` 数组顺序决定，计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计时器支持 `Countdown`（10→0）和 `Countup`（0→10）两种方向；运行中重复快捷键触发会被忽略，结束后才能再次触发。
+- 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
+- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
+- 计数器运行态独立持久化到 `timer_counter_state.json`（`src-tauri/src/timer/counter_state.rs`），与 `timer_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
+- 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+
+### 连发器端状态管理（ToolBase 泛型层）
+
+`RapidfireState` 已迁移到 `ToolBase` 泛型层：`RapidfireState = ToolState<RapidfireLogic>`，`RapidfireLogic` 实现 `ToolLogic` trait。
+- 共享字段（`settings`、`hotkey_error`）位于 `ToolStateInner<RapidfireLogic>` 中；工具特有字段（`runs`、`pending_position`）位于 `inner.logic` 中。
+- 所有工具通过 `state.lock_inner()` 访问共享内层。
+- `src-tauri/src/rapidfire/mod.rs` 负责状态、命令注册、会话状态机编排、透明窗口创建/销毁、位置设置窗口、hotkey hold 回调协调与连发 worker 线程编排。
+- `src-tauri/src/rapidfire/types.rs` 定义所有连发器数据结构（`RapidfireSettings`、`RapidfireCard`、`RapidfireBootstrap`、`RapidfireRunState`、`RapidfireRunStatus`、`RapidfireRect` 等）。
+- `src-tauri/src/rapidfire/settings.rs` 的持久化文件是 `rapidfire_settings.json`。
+- `RapidfireLogic` 特有字段：`runs`（HashMap<cardId, CardRuntime>，每张卡可包含多个独立 session 与卡片级 last_press_at）、`pending_position`。
+- 连发器使用 `hotkeys::HotkeyManager` 的 hold 机制（`replace_hold_scope`/`clear_hold_scope`），注册范围为 `"rapidfire"`，冲突策略使用 `ConflictPolicy::AllowHold`。
+- 触发键可为单键或包含 Ctrl/Alt/Shift/Win 的组合键（例如 `Shift+-`），通过 `HoldAction::Down` 启动连发、`HoldAction::Up` 停止连发；组合键触发键按下时也会同时触发同主键的无修饰键绑定（例如 `Shift+1` 同时触发 `Shift+1` 和 `1`），松开修饰键只停止组合键 session 并保留无修饰键 session；先按主键再按修饰键只新增组合键 session，不重启已运行的无修饰键 session。
+- 触发键主键支持范围：字母 A-Z、数字 0-9、F1-F12、Space、Enter、Tab、Esc、Backspace、方向键、Home/End/PageUp/PageDown/Insert/Delete、Alt、符号键（`;` `,` `.` `/` `\` `[` `]` `-` `=` `` ` `` `'`）。
+- 同一快捷键可绑定多个连发器卡片，按下时同时为所有绑定卡片创建独立连发 session 和独立 OS worker 线程。
+- 每次触发键 Down 都创建新的 session；同一卡片快速再次触发不会覆盖、取消或 abort 旧 session，旧 session 会在收到 Up 后按卡片补齐策略自行退出。
+- 状态机以 session 为单位：`Firing → Stopping → Finished`；对外 `RapidfireRunState` 仍按 card 聚合，任一 session 存在时显示 `Firing`。
+- 触发键 Up 只停止本次对应 session；count 为偶数则线程退出；count 为奇数时，未开启卡片级不追加的卡片在线程内额外触发一次目标键补齐为偶数，开启不追加的卡片直接以单数退出。
+- 连发器透明窗口 label 是 `"rapidfire-display"`，位置设置窗口 label 是 `"rapidfire-position"`。
+- `RapidfireSettings.rapidfire_enabled` 控制 hold 热键注册、透明窗口显示和运行态。
+- 透明窗口宽度可由用户调整，范围 320-800px；高度按启用卡片数量计算。
+- 连发间隔最小 1ms（`RAPIDFIRE_MIN_INTERVAL_MS`）。
+- `RapidfireSettings.compensation_delay_min_ms` / `compensation_delay_max_ms` 控制奇数次数补齐前的随机等待范围；默认 100-150ms，可由 UI 全局设置。
+- `RapidfireCard.min_press_spacing_ms` 控制当前卡片目标键最小触发间距；默认 80ms，范围 0-10000ms。旧 `RapidfireSettings.min_press_spacing_ms` 仅作为反序列化兼容默认值来源。
+- `RapidfireCard.trigger_jitter_max_ms` / `cancel_jitter_on_release` 控制当前卡片按下触发键后的启动抖动延迟和抖动期间松手策略；旧 `RapidfireSettings.trigger_jitter_max_ms` / `cancel_jitter_on_release` 仅作为反序列化兼容默认值来源。
+- 目标键通过 `enigo::Key` 模拟真实 `Press → 8-12ms 抖动等待 → Release`，不要使用 `Direction::Click` 作为连发主路径。
+- 修改连发器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+- 连发器卡片支持按 `moveRapidfireCard` 顺序拖拽排序（与计时器拖拽实现一致：pointerdown 启动 / pointerup 收尾 / pointerenter 即时重排），卡片头部新增 `↕` DragButton；保留上移/下移按钮作为可访问性兜底。
+
+### 全局状态（GlobalState）
+
+`src-tauri/src/global_state.rs` 提供全局总开关（`GlobalState`），通过 `AtomicBool` 记录当前是否启用。
+- `global_get_enabled` / `global_set_enabled` 两个 Tauri command 暴露读写。
+- 关闭全局开关时通过 `global_set_enabled(false)` 触发 `"global://enabled-changed"` 事件，并立即调用 `rapidfire::stop_all` 和 `timer::stop_all` 停止所有运行中的连发和计时器 session。
+- 各工具热键回调和自动化流程启动前必须检查 `GlobalState::enabled()`，全局关闭时不应执行。
+- `lib.rs` 的 `setup` 中创建 `global_state::GlobalState::new(true)` 并 `app.manage()` 注册。
 
 `src-tauri/src/delta/utils/game_config.rs` 在编译期以内联常量形式定义了弹药和配件配置：
 - `AMMO_CONFIG`：18 种口径的弹药列表（名称 + 等级）
@@ -443,8 +538,9 @@ src-tauri/src/
 `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子：
 - Morse、计时器和连发器都必须通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 普通快捷键使用 `replace_scope`；连发器按住触发键使用 `replace_hold_scope` / `clear_hold_scope`，通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
-- `HotkeyManager` 在注册时基于解析后的 `HotkeyBinding` 做跨 scope 冲突检测；不要用显示字符串或主键 label 自行比较。
-- 冲突策略有一个显式例外：普通快捷键 scope `timer` 与 hold scope `rapidfire` 允许同键共存；运行时会先分发连发器 hold Down/Up，再分发计时器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝。
+- `HotkeyManager` 在注册时基于解析后的 `HotkeyBinding` 做跨 scope 冲突检测；冲突策略由 `ConflictPolicy` 枚举声明：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
+- `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` 接收该参数并传入 `validate_scope_conflicts` / `validate_hold_scope_conflicts`。
+- 显式例外：普通快捷键 scope `timer` 与 hold scope `rapidfire` 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时会先分发连发器 hold Down/Up，再分发计时器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
 - 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K`、`Shift+-`、单独 `Alt` 等格式，组合触发键能力属于连发器已完成特性，不得回退。
 - 录制 Morse 热键时通过 `morse_set_hotkey_recording` 暂停 Morse scope（`set_scope_enabled("morse", false)`），录制后恢复。
 - 非 Windows 平台直接返回错误，不做降级处理。
@@ -466,7 +562,10 @@ Morse 通过 Tauri events 通知前端（emit_to "main"）：
 - `"rapidfire://state-changed"` — 状态变更时推送 `RapidfireBootstrap`（同时推送到 rapidfire-display 窗口）
 - `"rapidfire://hotkey-error"` — 热键执行出错时推送错误字符串
 
-前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。
+全局事件：
+- `"global://enabled-changed"` — 全局总开关切换时推送 `boolean`
+
+前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。为避免事件名硬编码，后端在 `morse/events.rs`、`timer/events.rs`、`rapidfire/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义 `MORSE_EVENTS` / `TIMER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和类型安全的 `listenEvent<T>` helper。
 
 ## Overlay 状态机
 
@@ -485,10 +584,14 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 ### 前端测试（Vitest）
 - `src/components/app/morse-utils.test.ts` — Morse 前端测试，测试工具函数
 - `src/components/app/timer-utils.test.ts` — 计时\计数器前端测试，测试设置转层、进度计算与倒计时格式化
+- `src/components/app/favorites-utils.test.ts` — 收藏系统工具测试（收藏 ID 读写、卡片过滤等）
 - `src/components/app/delta-login-utils.test.ts` — Delta 登录工具测试（Tauri invoke 参数包装、sessionKey 提取等）
 - `src/components/app/delta-game-data-loader.test.ts` — 游戏数据分批加载测试（主批次、详情批次、陈旧响应丢弃、重试入口）
 - `src/components/app/delta-utils.test.ts` — Delta 工具函数测试（令牌状态判定、账号能力、显示名截断等）
 - `src/components/app/delta-types.test.ts` — Delta 类型常量测试（AccountKind camelCase 一致性守卫、能力映射完备性、登录流程映射等）
+- `src/hooks/use-bootstrap-form-logic.test.ts` — Bootstrap/Form 双状态与 autosave 逻辑 hook 测试
+- `src/hooks/use-hotkey-recorder.test.ts` — 热键录制交互逻辑 hook 测试
+- `src/hooks/use-autosave.test.ts` — Autosave debounce 逻辑 hook 测试
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
@@ -536,7 +639,7 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - 忽略本地或生成产物：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`.claude/settings.local.json`、`temp/`、`test-results/`
 - 不存在 `tailwind.config.js` — Tailwind v4 通过 CSS `@import "tailwindcss"` 配置
 - `GameService` 的弹药/配件配置已内联在 `game_config.rs`，**不需要**仓库根目录下的 `ammo.php` / `accessory.php`
-- 前端仅对 `src/components/app/morse-utils.ts` 有测试覆盖
+- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` + `delta-utils.ts` + `delta-types.ts` + `delta-login-utils.ts` + `delta-game-data-loader.ts` + `use-bootstrap-form-logic.ts` + `use-hotkey-recorder.ts` + `use-autosave.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
 - 新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和 `src-tauri/capabilities/default.json`
 - 仓库根目录的 `ammo.json` 和 `accessory.json`（`resources/` 下）为空数组，未被实际使用
 

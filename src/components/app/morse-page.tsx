@@ -1,12 +1,12 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   RiCheckboxCircleLine,
   RiHistoryLine,
   RiRefreshLine,
 } from "@remixicon/react";
 
+import { listenEvent, MORSE_EVENTS } from "@/lib/tauri-events";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
@@ -39,7 +39,6 @@ import {
   type MorseSettings,
   type MorseSettingsForm,
   type RegionSelectionOutcome,
-  type RegionSelectionProgress,
   type VerificationStatus,
 } from "@/components/app/morse-types";
 import {
@@ -149,7 +148,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     let unlistenSelectionProgress: (() => void) | undefined;
     let unlistenHotkeyError: (() => void) | undefined;
 
-    void listen<MorseRunResult>("morse://run-finished", async (event) => {
+    void listenEvent(MORSE_EVENTS.runFinished, async (event) => {
       if (isDisposed) return;
       const result = event.payload;
       startTransition(() => {
@@ -165,7 +164,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       }
     }).then((dispose) => { unlistenRunFinished = dispose; });
 
-    void listen<RegionSelectionProgress>("morse://selection-progress", (event) => {
+    void listenEvent(MORSE_EVENTS.selectionProgress, (event) => {
       if (isDisposed) return;
       const progress = event.payload;
       startTransition(() => {
@@ -178,7 +177,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       });
     }).then((dispose) => { unlistenSelectionProgress = dispose; });
 
-    void listen<string>("morse://hotkey-error", (event) => {
+    void listenEvent(MORSE_EVENTS.hotkeyError, (event) => {
       if (isDisposed) return;
       startTransition(() => {
         setBootstrap((current) => (current ? { ...current, hotkeyError: event.payload } : current));
@@ -320,7 +319,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
 
       {/* Status Matrix */}
       <div className="col-span-12">
-        <StatusMatrix items={statusItems} className="max-w-md" />
+        <StatusMatrix items={statusItems} />
       </div>
 
       {!isNativeShell ? (

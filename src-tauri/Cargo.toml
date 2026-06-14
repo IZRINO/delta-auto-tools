@@ -1,6 +1,6 @@
 [package]
 name = "delta-auto-tools"
-version = "0.14.9"
+version = "0.15.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -13,11 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.2", features = [] }
 
 [dependencies]
-base64 = "0.22.1"
-encoding_rs = "0.8.35"
 regex = "1.12.4"
 reqwest = { version = "0.12.28", default-features = false, features = ["brotli", "cookies", "deflate", "gzip", "json", "rustls-tls"] }
-rusqlite = { version = "0.40.1", features = ["bundled"] }
 tauri = { version = "2.11.2", features = ["unstable"] }
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-window-state = "2.4.1"
@@ -30,8 +27,7 @@ xcap = "0.9.6"
 enigo = "0.6.1"
 image = "0.25.10"
 willhook = "0.6.3"
-windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_System_Memory"] }
 
 [dev-dependencies]
-mockito = "1.7.2"
 tempfile = "3.27.0"
+

@@ -24,6 +24,8 @@ impl GlobalState {
     }
 }
 
+const ENABLED_CHANGED: &str = "global://enabled-changed";
+
 #[tauri::command]
 pub fn global_get_enabled(state: State<'_, GlobalState>) -> bool {
     state.enabled()
@@ -36,7 +38,7 @@ pub fn global_set_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     state.set_enabled(enabled);
-    let _ = app.emit_to("main", "global://enabled-changed", enabled);
+    let _ = app.emit_to("main", ENABLED_CHANGED, enabled);
 
     if !enabled {
         // 关闭全局开关时立即停止连发器与计时器的运行态会话

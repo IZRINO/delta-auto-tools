@@ -4,13 +4,14 @@ mod overlay;
 mod recognition;
 mod settings;
 mod types;
+mod events;
 
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::app_error::AppError;
 use crate::hotkey_types;
@@ -25,34 +26,48 @@ use self::{
     },
 };
 
-pub struct MorseState {
-    pub(crate) inner: Mutex<MorseStateInner>,
+pub struct MorseLogic {
+    pub history: VecDeque<HistoryEntry>,
+    pub latest_run: Option<MorseRunResult>,
+    pub next_history_id: u64,
+    pub pending_selection: Option<PendingSelection>,
+    pub run_in_progress: bool,
 }
 
-pub(crate) struct MorseStateInner {
-    settings: MorseSettings,
-    history: VecDeque<HistoryEntry>,
-    latest_run: Option<MorseRunResult>,
-    next_history_id: u64,
-    pending_selection: Option<PendingSelection>,
-    run_in_progress: bool,
-    hotkey_error: Option<String>,
-}
-
-impl MorseStateInner {
-    fn bootstrap(&self) -> MorseBootstrap {
-        MorseBootstrap {
-            settings: self.settings.clone(),
-            history: self.history.iter().cloned().collect(),
-            latest_run: self.latest_run.clone(),
-            hotkey_error: self.hotkey_error.clone(),
-        }
-    }
-
-    fn push_history(&mut self, entry: HistoryEntry) {
+impl MorseLogic {
+    pub fn push_history(&mut self, entry: HistoryEntry) {
         push_history_with_limit(&mut self.history, entry, 1000);
     }
 }
+
+impl crate::tool_base::ToolLogic for MorseLogic {
+    type Settings = MorseSettings;
+    type Bootstrap = MorseBootstrap;
+    const NAME: &'static str = "摩斯";
+
+    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String> {
+        settings::load_settings(app)
+    }
+
+    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String> {
+        settings::save_settings(app, settings)
+    }
+
+    fn build_bootstrap(inner: &crate::tool_base::ToolStateInner<Self>) -> Self::Bootstrap {
+        MorseBootstrap {
+            settings: inner.settings.clone(),
+            history: inner.logic.history.iter().cloned().collect(),
+            latest_run: inner.logic.latest_run.clone(),
+            hotkey_error: inner.hotkey_error.clone(),
+        }
+    }
+
+    fn emit_state<R: Runtime>(_app: &AppHandle<R>, _bootstrap: &Self::Bootstrap) {
+        // Morse 不通过 emit_state 推送完整 bootstrap，仅在识别完成和区域选择时推送事件
+    }
+}
+
+pub type MorseState = crate::tool_base::ToolState<MorseLogic>;
 
 fn push_history_with_limit(
     history: &mut VecDeque<HistoryEntry>,
@@ -74,21 +89,26 @@ fn restart_hotkey_listener(
     let action: HotkeyAction = Arc::new(|app_handle| {
         tauri::async_runtime::spawn(async move {
             if let Err(error) = run_recognition_flow(&app_handle, "hotkey", true).await {
-                let _ = app_handle.emit_to("main", "morse://hotkey-error", error);
+                let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
             }
         });
     });
 
-    match hotkey_manager.replace_scope("morse", vec![(hotkey.to_string(), action)]) {
+    match hotkey_manager.replace_scope(
+        "morse",
+        vec![(hotkey.to_string(), action)],
+        "摩斯密码解析".to_string(),
+        hotkey_types::ConflictPolicy::Strict,
+    ) {
         Ok(()) => {
-            if let Ok(mut inner) = state.inner.lock() {
+            if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = None;
             }
             let _ = app;
             Ok(())
         }
         Err(error) => {
-            if let Ok(mut inner) = state.inner.lock() {
+            if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error.clone());
             }
             Err(error)
@@ -103,19 +123,17 @@ fn set_hotkey_listener_paused(hotkey_manager: &HotkeyManager, paused: bool) -> R
 fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
     let state = app.state::<MorseState>();
     let mut inner = state
-        .inner
-        .lock()
-        .map_err(|_| "摩斯状态已损坏".to_string())?;
+        .lock_inner()?;
 
-    if inner.pending_selection.is_some() {
+    if inner.logic.pending_selection.is_some() {
         return Err("当前正在执行区域选择，请完成后再试".to_string());
     }
 
-    if inner.run_in_progress {
+    if inner.logic.run_in_progress {
         return Err("当前已有识别任务在运行中".to_string());
     }
 
-    inner.run_in_progress = true;
+    inner.logic.run_in_progress = true;
     Ok(inner.settings.clone())
 }
 
@@ -142,8 +160,8 @@ fn normalize_settings(mut settings_value: MorseSettings) -> Result<MorseSettings
 
 fn finish_run(app: &AppHandle) {
     let state = app.state::<MorseState>();
-    if let Ok(mut inner) = state.inner.lock() {
-        inner.run_in_progress = false;
+    if let Ok(mut inner) = state.lock_inner() {
+        inner.logic.run_in_progress = false;
     } else {
         eprintln!("摩斯状态已损坏，无法清除运行标志");
     };
@@ -209,27 +227,26 @@ async fn run_recognition_flow(
     finish_run(app);
     let result = run_result?;
     persist_run_result(app, result.clone());
-    let _ = app.emit_to("main", "morse://run-finished", result.clone());
+    let _ = app.emit_to("main", events::RUN_FINISHED, result.clone());
 
     Ok(result)
 }
 
 pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<MorseState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
-    let state = MorseState {
-        inner: Mutex::new(MorseStateInner {
-            settings: settings.clone(),
+    let state = MorseState::new(
+        MorseLogic {
             history: VecDeque::new(),
             latest_run: None,
             next_history_id: 1,
             pending_selection: None,
             run_in_progress: false,
-            hotkey_error: None,
-        }),
-    };
+        },
+        settings.clone(),
+    );
 
     if let Err(error) = restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey) {
-        if let Ok(mut inner) = state.inner.lock() {
+        if let Ok(mut inner) = state.lock_inner() {
             inner.hotkey_error = Some(error);
         }
     }
@@ -239,12 +256,7 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Mor
 
 #[tauri::command]
 pub fn morse_get_bootstrap(state: State<'_, MorseState>) -> Result<MorseBootstrap, AppError> {
-    let inner = state
-        .inner
-        .lock()
-        .map_err(|_| "摩斯状态已损坏".to_string())?;
-
-    Ok(inner.bootstrap())
+    crate::tool_base::get_bootstrap(state).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -284,7 +296,7 @@ pub fn morse_save_settings(
         .map_err(|_| "摩斯状态已损坏".to_string())?;
     inner.settings = settings_value;
 
-    Ok(inner.bootstrap())
+    Ok(crate::tool_base::ToolLogic::build_bootstrap(&inner))
 }
 
 #[tauri::command]
@@ -329,7 +341,7 @@ pub fn morse_overlay_submit_selection(
         settings::save_settings(&app, &settings_snapshot)?;
     }
 
-    let _ = app.emit_to("main", "morse://selection-progress", progress.clone());
+    let _ = app.emit_to("main", events::SELECTION_PROGRESS, progress.clone());
 
     Ok(progress)
 }
@@ -373,7 +385,7 @@ fn persist_run_result(app: &AppHandle, result: MorseRunResult) {
     let state = app.state::<MorseState>();
     if let Ok(mut inner) = state.inner.lock() {
         let entry = HistoryEntry {
-            id: inner.next_history_id,
+            id: inner.logic.next_history_id,
             result: result.value.clone(),
             success: result.error.is_none(),
             triggered_by: result.triggered_by.clone(),
@@ -382,9 +394,9 @@ fn persist_run_result(app: &AppHandle, result: MorseRunResult) {
             error: result.error.clone(),
         };
 
-        inner.next_history_id += 1;
-        inner.latest_run = Some(result);
-        inner.push_history(entry);
+        inner.logic.next_history_id += 1;
+        inner.logic.latest_run = Some(result);
+        inner.logic.push_history(entry);
     } else {
         eprintln!("摩斯状态已损坏，无法写入运行结果");
     };

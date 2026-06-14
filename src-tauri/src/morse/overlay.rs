@@ -55,7 +55,7 @@ const OVERLAY_LABEL: &str = "morse-overlay";
 fn resolve_pending(app: &AppHandle, kind: RegionSelectionKind) {
     let state = app.state::<MorseState>();
     if let Ok(mut inner) = state.inner.lock() {
-        let Some(pending) = inner.pending_selection.take() else {
+        let Some(pending) = inner.logic.pending_selection.take() else {
             return;
         };
 
@@ -173,11 +173,11 @@ pub async fn begin_region_selection(
             .lock()
             .map_err(|_| "区域选择状态已损坏".to_string())?;
 
-        if inner.pending_selection.is_some() {
+        if inner.logic.pending_selection.is_some() {
             return Err("当前已有一个区域选择流程在进行中".to_string());
         }
 
-        if inner.run_in_progress {
+        if inner.logic.run_in_progress {
             return Err("当前识别任务正在运行，请稍后再试".to_string());
         }
 
@@ -197,7 +197,7 @@ pub async fn begin_region_selection(
                 .collect()
         };
 
-        inner.pending_selection = Some(PendingSelection {
+        inner.logic.pending_selection = Some(PendingSelection {
             target: target.clone(),
             slots: slots.clone(),
             current_index: 0,
@@ -265,7 +265,7 @@ pub async fn begin_region_selection(
             .lock()
             .map_err(|_| "区域选择状态已损坏".to_string())?;
 
-        if let Some(pending) = inner.pending_selection.as_ref() {
+        if let Some(pending) = inner.logic.pending_selection.as_ref() {
             let (regions, click_regions) = if pending.target == "click" {
                 (
                     [None, None, None],
@@ -304,7 +304,7 @@ pub fn prepare_selection(
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .pending_selection
+        .logic.pending_selection
         .as_ref()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -325,7 +325,7 @@ pub fn commit_selection(
             .map_err(|_| "区域选择状态已损坏".to_string())?;
 
         let pending = inner
-            .pending_selection
+            .logic.pending_selection
             .as_ref()
             .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -342,7 +342,7 @@ pub fn commit_selection(
 
         if prepared.is_complete {
             let pending = inner
-                .pending_selection
+                .logic.pending_selection
                 .take()
                 .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
             let is_click = pending.target == "click";
@@ -354,7 +354,7 @@ pub fn commit_selection(
                 inner.settings.regions = prepared.progress.regions.clone();
             }
             sender = Some(pending.sender);
-        } else if let Some(pending) = inner.pending_selection.as_mut() {
+        } else if let Some(pending) = inner.logic.pending_selection.as_mut() {
             if let Some(ref click_regions) = prepared.progress.click_regions {
                 // 非完成态下，click_regions 是当前的 Vec<ClickRegion>，
                 // 回填到 slot 索引的 staged 中
@@ -398,13 +398,13 @@ pub fn finish_early(app: &AppHandle, state: &State<'_, MorseState>) -> Result<()
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .pending_selection
+        .logic.pending_selection
         .take()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
     if pending.target != "click" {
         // 采样模式不支持提前结束
-        inner.pending_selection = Some(pending);
+        inner.logic.pending_selection = Some(pending);
         return Err("当前不是点击区域选择，不支持提前结束".to_string());
     }
 
@@ -433,7 +433,7 @@ pub fn cancel_selection(
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .pending_selection
+        .logic.pending_selection
         .take()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -446,7 +446,7 @@ pub fn cancel_selection(
         .ok_or_else(|| "当前区域选择流程没有可用槽位".to_string())?;
 
     if expected_slot != slot {
-        inner.pending_selection = Some(pending);
+        inner.logic.pending_selection = Some(pending);
         return Err(format!(
             "区域选择槽位不匹配: 期望 {}, 实际 {}",
             expected_slot, slot

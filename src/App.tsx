@@ -6,14 +6,10 @@ import {
   RiStarFill,
   RiTimerLine,
   RiSpeedUpLine,
-  RiAccountPinCircleLine,
-  RiBarChartBoxLine,
-  RiToolsLine,
   RiCompassDiscoverLine,
   RiShutDownLine,
 } from "@remixicon/react";
 
-import { DeltaAccountsProvider } from "@/hooks/use-delta-accounts";
 import { FavoritesProvider, useFavorites } from "@/hooks/use-favorites";
 import { GlobalEnabledProvider, useGlobalEnabled } from "@/hooks/use-global-enabled";
 import type { FavoriteCardKind } from "@/components/app/favorites-utils";
@@ -35,21 +31,11 @@ const overlayWindowModes = new Set([
 const MorsePage = lazy(() =>
   import("@/components/app/morse-page").then((module) => ({ default: module.MorsePage })),
 );
-const TimerPage = lazy(() =>
-  import("@/components/app/timer-page").then((module) => ({ default: module.TimerPage })),
-);
-const CounterPage = lazy(() =>
-  import("@/components/app/counter-page").then((module) => ({ default: module.CounterPage })),
+const TimerCounterPage = lazy(() =>
+  import("@/components/app/timer-counter-page").then((module) => ({ default: module.TimerCounterPage })),
 );
 const RapidfirePage = lazy(() =>
   import("@/components/app/rapidfire-page").then((module) => ({ default: module.RapidfirePage })),
-);
-const DeltaAccountsPage = lazy(() =>
-  import("@/components/app/delta-accounts-page").then((module) => ({ default: module.DeltaAccountsPage })),
-);
-const DeltaGamePage = lazy(() => import("@/components/app/delta-game-page").then((module) => ({ default: module.DeltaGamePage })));
-const DeltaToolboxPage = lazy(() =>
-  import("@/components/app/delta-toolbox-page").then((module) => ({ default: module.DeltaToolboxPage })),
 );
 const StrategyPage = lazy(() =>
   import("@/components/app/strategy-page").then((module) => ({ default: module.StrategyPage })),
@@ -59,8 +45,7 @@ const FavoritesPage = lazy(() =>
 );
 
 const tools = [
-  { id: "timer" as const, icon: RiTimerLine, label: "计时器", short: "Timer" },
-  { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" },
+  { id: "timer" as const, icon: RiTimerLine, label: "计时/计数", short: "Sync" },
   { id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire" },
   { id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy" },
 ];
@@ -69,13 +54,7 @@ const deltaTools = [
   { id: "morse" as const, icon: RiRadarLine, label: "摩斯密码解析", short: "Morse" },
 ];
 
-const deltaApiTools = [
-  { id: "delta-accounts" as const, icon: RiAccountPinCircleLine, label: "账号管理", short: "Accounts" },
-  { id: "delta-game" as const, icon: RiBarChartBoxLine, label: "游戏数据", short: "Game Data" },
-  { id: "delta-toolbox" as const, icon: RiToolsLine, label: "工具箱", short: "Toolbox" },
-];
-
-type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | (typeof deltaApiTools)[number]["id"] | "favorites";
+type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | "favorites" | "counter";
 
 function ToolPageFallback() {
   return (
@@ -98,15 +77,10 @@ function renderToolPage(
 ) {
   switch (activeTool) {
     case "timer":
-      return (
-        <TimerPage
-          highlightCardId={highlightCardId && highlightCardId.kind === "timer" ? highlightCardId : null}
-        />
-      );
     case "counter":
       return (
-        <CounterPage
-          highlightCardId={highlightCardId && highlightCardId.kind === "counter" ? highlightCardId : null}
+        <TimerCounterPage
+          highlightCardId={highlightCardId && (highlightCardId.kind === "timer" || highlightCardId.kind === "counter") ? highlightCardId : null}
         />
       );
     case "rapidfire":
@@ -117,12 +91,6 @@ function renderToolPage(
       );
     case "favorites":
       return <FavoritesPage onNavigate={onNavigateFavorite} />;
-    case "delta-accounts":
-      return <DeltaAccountsPage />;
-    case "delta-game":
-      return <DeltaGamePage />;
-    case "delta-toolbox":
-      return <DeltaToolboxPage />;
     case "strategy":
       return <StrategyPage />;
     case "morse":
@@ -179,15 +147,6 @@ function TopTabBar({ activeTool, onToolClick }: { activeTool: ToolId; onToolClic
         />
       ))}
       {deltaTools.map((tool) => (
-        <TopTabItem
-          key={tool.id}
-          active={activeTool === tool.id}
-          icon={tool.icon}
-          label={tool.label}
-          onClick={() => onToolClick(tool.id)}
-        />
-      ))}
-      {deltaApiTools.map((tool) => (
         <TopTabItem
           key={tool.id}
           active={activeTool === tool.id}
@@ -305,11 +264,9 @@ function GlobalSwitch() {
 function App() {
   return (
     <FavoritesProvider>
-      <DeltaAccountsProvider>
-        <GlobalEnabledProvider>
-          <AppShell />
-        </GlobalEnabledProvider>
-      </DeltaAccountsProvider>
+      <GlobalEnabledProvider>
+        <AppShell />
+      </GlobalEnabledProvider>
     </FavoritesProvider>
   );
 }
@@ -330,12 +287,9 @@ function AppShell() {
     if (kind === "rapidfire") {
       setActiveTool("rapidfire");
       setHighlightCardId({ kind: "rapidfire", cardId, nonce: highlightNonceRef.current });
-    } else if (kind === "counter") {
-      setActiveTool("counter");
-      setHighlightCardId({ kind: "counter", cardId, nonce: highlightNonceRef.current });
     } else {
       setActiveTool("timer");
-      setHighlightCardId({ kind: "timer", cardId, nonce: highlightNonceRef.current });
+      setHighlightCardId({ kind: kind === "counter" ? "counter" : "timer", cardId, nonce: highlightNonceRef.current });
     }
   }, []);
 
@@ -358,7 +312,7 @@ function AppShell() {
   if (overlayMode === "timer-display") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerPage overlayMode="display" />
+        <TimerCounterPage overlayMode="display" />
       </ToolPageSuspense>
     );
   }
@@ -366,7 +320,7 @@ function AppShell() {
   if (overlayMode === "counter-display") {
     return (
       <ToolPageSuspense fallback={null}>
-        <CounterPage overlayMode="counter-display" />
+        <TimerCounterPage overlayMode="counter-display" />
       </ToolPageSuspense>
     );
   }
@@ -374,7 +328,7 @@ function AppShell() {
   if (overlayMode === "timer-position") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerPage overlayMode="position" />
+        <TimerCounterPage overlayMode="position" />
       </ToolPageSuspense>
     );
   }
@@ -382,7 +336,7 @@ function AppShell() {
   if (overlayMode === "counter-position") {
     return (
       <ToolPageSuspense fallback={null}>
-        <CounterPage overlayMode="counter-position" />
+        <TimerCounterPage overlayMode="counter-position" />
       </ToolPageSuspense>
     );
   }
@@ -403,7 +357,8 @@ function AppShell() {
     );
   }
 
-  const activeMeta = [...tools, ...deltaTools, ...deltaApiTools].find((tool) => tool.id === activeTool);
+  const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool)
+    ?? (activeTool === "counter" ? { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" } : undefined);
 
   return (
     <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-transparent">
@@ -428,7 +383,7 @@ function AppShell() {
         <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "morse" ? "D1" : activeTool === "delta-accounts" ? "A1" : activeTool === "delta-game" ? "A2" : "A3"}
+              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : "D1"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">
@@ -490,20 +445,6 @@ function AppShell() {
               />
             ))}
           </IndexRailSection>
-
-          <IndexRailSection title="三角洲行动 API">
-            {deltaApiTools.map((tool, index) => (
-              <IndexRailItem
-                active={activeTool === tool.id}
-                code={`A${index + 1}`}
-                icon={tool.icon}
-                key={tool.id}
-                label={tool.label}
-                meta={tool.short}
-                onClick={() => setActiveTool(tool.id)}
-              />
-            ))}
-          </IndexRailSection>
         </aside>
 
         <main
@@ -511,7 +452,7 @@ function AppShell() {
           tabIndex={-1}
           className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <div className="mx-auto min-h-full w-full max-w-7xl px-2 py-2 xl:px-3 xl:py-3">
+          <div className={cn("mx-auto min-h-full w-full px-2 py-2 xl:px-3 xl:py-3", activeTool === "strategy" ? "max-w-none" : "max-w-7xl")}>
             <GlobalEnabledConsumer />
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
           </div>

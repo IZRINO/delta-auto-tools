@@ -1,7 +1,7 @@
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listenEvent, RAPIDFIRE_EVENTS } from "@/lib/tauri-events";
 import {
   RiAddLine,
   RiArrowDownSLine,
@@ -213,14 +213,14 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
     let unlistenStateChanged: (() => void) | undefined;
     let unlistenHotkeyError: (() => void) | undefined;
 
-    void listen<RapidfireBootstrap>("rapidfire://state-changed", (event) => {
+    void listenEvent(RAPIDFIRE_EVENTS.stateChanged, (event) => {
       if (disposed) return;
       setBootstrap(event.payload);
     }).then((dispose) => {
       unlistenStateChanged = dispose;
     });
 
-    void listen<string>("rapidfire://hotkey-error", (event) => {
+    void listenEvent(RAPIDFIRE_EVENTS.hotkeyError, (event) => {
       if (disposed) return;
       setPageError(event.payload);
       setStatusMessage(event.payload);
@@ -1218,7 +1218,7 @@ function useRapidfireOverlayBootstrap(isNativeShell: boolean, setBootstrap: (val
       if (!disposed) setBootstrap(next);
     });
 
-    void listen<RapidfireBootstrap>("rapidfire://state-changed", (event) => {
+    void listenEvent(RAPIDFIRE_EVENTS.stateChanged, (event) => {
       if (!disposed) setBootstrap(event.payload);
     }).then((dispose) => {
       unlistenStateChanged = dispose;

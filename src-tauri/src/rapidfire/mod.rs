@@ -14,8 +14,12 @@ use tauri::{
 };
 use tokio::sync::oneshot;
 
+use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
+use tauri::Runtime;
+
 mod settings;
 mod types;
+mod events;
 
 pub use self::types::{
     RapidfireBootstrap, RapidfireCard, RapidfireGroup, RapidfireRect, RapidfireRunState,
@@ -26,7 +30,7 @@ pub use self::types::{
 use crate::{
     app_error::AppError,
     hotkey_types,
-    hotkeys::{HoldAction, HoldActionCallback, HotkeyManager},
+    hotkeys::HotkeyManager,
     overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
 };
 
@@ -48,18 +52,14 @@ static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 // ---- State ----
 
-pub struct RapidfireState {
-    inner: Mutex<RapidfireStateInner>,
+pub struct RapidfireLogic {
+    pub runs: HashMap<String, CardRuntime>,
+    pub pending_position: Option<PendingRapidfirePosition>,
 }
 
-struct RapidfireStateInner {
-    settings: RapidfireSettings,
-    runs: HashMap<String, CardRuntime>,
-    pending_position: Option<PendingRapidfirePosition>,
-    hotkey_error: Option<String>,
-}
+pub type RapidfireState = ToolState<RapidfireLogic>;
 
-struct CardRuntime {
+pub(crate) struct CardRuntime {
     sessions: HashMap<String, RapidfireSessionRuntime>,
     active_session_ids: Vec<String>,
     last_press_at: Arc<Mutex<Instant>>,
@@ -94,37 +94,60 @@ enum SessionControl {
     Cancel,
 }
 
-struct PendingRapidfirePosition {
+pub(crate) struct PendingRapidfirePosition {
     group_id: String,
     original_position: RapidfireRect,
     staged_position: RapidfireRect,
     sender: oneshot::Sender<RapidfireSelectionKind>,
 }
 
-impl RapidfireStateInner {
-    fn bootstrap(&self) -> RapidfireBootstrap {
+fn run_states(inner: &ToolStateInner<RapidfireLogic>) -> Vec<RapidfireRunState> {
+    inner.settings
+        .cards
+        .iter()
+        .map(|card| {
+            let run = inner.logic.runs.get(&card.id);
+            RapidfireRunState {
+                card_id: card.id.clone(),
+                status: run
+                    .map(CardRuntime::aggregate_status)
+                    .unwrap_or(RapidfireRunStatus::Idle),
+                count: run.map(CardRuntime::aggregate_count).unwrap_or(0),
+            }
+        })
+        .collect()
+}
+
+impl ToolLogic for RapidfireLogic {
+    type Settings = RapidfireSettings;
+    type Bootstrap = RapidfireBootstrap;
+    const NAME: &'static str = "连发器";
+
+    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String> {
+        settings::load_settings(app)
+    }
+
+    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String> {
+        settings::save_settings(app, settings)
+    }
+
+    fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap {
         RapidfireBootstrap {
-            settings: self.settings.clone(),
-            runs: self.run_states(),
-            hotkey_error: self.hotkey_error.clone(),
+            settings: inner.settings.clone(),
+            runs: run_states(inner),
+            hotkey_error: inner.hotkey_error.clone(),
         }
     }
 
-    fn run_states(&self) -> Vec<RapidfireRunState> {
-        self.settings
-            .cards
-            .iter()
-            .map(|card| {
-                let run = self.runs.get(&card.id);
-                RapidfireRunState {
-                    card_id: card.id.clone(),
-                    status: run
-                        .map(CardRuntime::aggregate_status)
-                        .unwrap_or(RapidfireRunStatus::Idle),
-                    count: run.map(CardRuntime::aggregate_count).unwrap_or(0),
-                }
-            })
-            .collect()
+    fn emit_state<R: Runtime>(app: &AppHandle<R>, bootstrap: &Self::Bootstrap) {
+        let _ = app.emit_to("main", events::STATE_CHANGED, (*bootstrap).clone());
+        for group in &bootstrap.settings.groups {
+            let _ = app.emit_to(
+                display_label_for_group(&group.id),
+                events::STATE_CHANGED,
+                (*bootstrap).clone(),
+            );
+        }
     }
 }
 
@@ -587,13 +610,13 @@ fn restart_hotkey_listeners(
     let bindings = by_key
         .into_iter()
         .map(|(key, card_ids)| {
-            let action: HoldActionCallback = Arc::new(move |app_handle, hold_action| {
+            let action: hotkey_types::HoldActionCallback = Arc::new(move |app_handle, hold_action| {
                 let card_ids = card_ids.clone();
                 let hold_action = hold_action.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = handle_hold_event(&app_handle, card_ids, hold_action).await
                     {
-                        let _ = app_handle.emit_to("main", "rapidfire://hotkey-error", error);
+                        let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
                     }
                 });
             });
@@ -601,9 +624,14 @@ fn restart_hotkey_listeners(
         })
         .collect::<Vec<_>>();
 
-    let result = hotkey_manager.replace_hold_scope("rapidfire", bindings);
+    let result = hotkey_manager.replace_hold_scope(
+        "rapidfire",
+        bindings,
+        "连发器".to_string(),
+        hotkey_types::ConflictPolicy::AllowHold,
+    );
     if result.is_ok() {
-        if let Ok(mut inner) = state.inner.lock() {
+        if let Ok(mut inner) = state.lock_inner() {
             inner.hotkey_error = None;
         }
     }
@@ -615,20 +643,18 @@ fn restart_hotkey_listeners(
 async fn handle_hold_event(
     app: &AppHandle,
     card_ids: Vec<String>,
-    hold_action: HoldAction,
+    hold_action: hotkey_types::HoldAction,
 ) -> Result<(), String> {
     match hold_action {
-        HoldAction::Down => handle_key_down(app, card_ids).await,
-        HoldAction::Up => handle_key_up(app, card_ids).await,
+        hotkey_types::HoldAction::Down => handle_key_down(app, card_ids).await,
+        hotkey_types::HoldAction::Up => handle_key_up(app, card_ids).await,
     }
 }
 
 async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
     let sessions_to_spawn = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
 
         if !inner.settings.rapidfire_enabled {
@@ -703,7 +729,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             let session_id = next_session_id();
             let (control_tx, control_rx) = mpsc::channel();
             let compensate_now = Arc::new(AtomicBool::new(false));
-            let run = inner.runs.entry(cid.clone()).or_default();
+            let run = inner.logic.runs.entry(cid.clone()).or_default();
             let last_press_at = run.last_press_at.clone();
 
             for session in run.sessions.values_mut() {
@@ -771,11 +797,9 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 
     if spawned_count > 0 {
         let bootstrap = {
-            let inner = state
-                .inner
-                .lock()
+            let inner = state.lock_inner()
                 .map_err(|_| "连发器状态已损坏".to_string())?;
-            inner.bootstrap()
+            RapidfireLogic::build_bootstrap(&inner)
         };
         emit_state(app, bootstrap);
     }
@@ -785,9 +809,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
     let stopped_count = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
 
         if !inner.settings.rapidfire_enabled {
@@ -797,7 +819,7 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
         let mut stopped_count = 0usize;
 
         for card_id in &card_ids {
-            let Some(run) = inner.runs.get_mut(card_id) else {
+            let Some(run) = inner.logic.runs.get_mut(card_id) else {
                 continue;
             };
 
@@ -811,11 +833,9 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
 
     if stopped_count > 0 {
         emit_state(app, {
-            let inner = state
-                .inner
-                .lock()
+            let inner = state.lock_inner()
                 .map_err(|_| "连发器状态已损坏".to_string())?;
-            inner.bootstrap()
+            RapidfireLogic::build_bootstrap(&inner)
         });
     }
     Ok(())
@@ -1079,12 +1099,12 @@ fn wait_for_next_fire(
 fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count: u64) -> bool {
     let state = app.state::<RapidfireState>();
     let bootstrap = {
-        let Ok(mut inner) = state.inner.lock() else {
+        let Ok(mut inner) = state.lock_inner() else {
             emit_hotkey_error(app, "连发器状态已损坏".to_string());
             return false;
         };
 
-        let Some(run) = inner.runs.get_mut(card_id) else {
+        let Some(run) = inner.logic.runs.get_mut(card_id) else {
             return false;
         };
         let Some(session) = run.sessions.get_mut(session_id) else {
@@ -1092,7 +1112,7 @@ fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count:
         };
 
         session.count = count;
-        inner.bootstrap()
+        RapidfireLogic::build_bootstrap(&inner)
     };
 
     emit_state(app, bootstrap);
@@ -1102,12 +1122,12 @@ fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count:
 fn finish_session(app: &AppHandle, card_id: &str, session_id: &str) {
     let state = app.state::<RapidfireState>();
     let bootstrap = {
-        let Ok(mut inner) = state.inner.lock() else {
+        let Ok(mut inner) = state.lock_inner() else {
             emit_hotkey_error(app, "连发器状态已损坏".to_string());
             return;
         };
 
-        let should_remove_run = if let Some(run) = inner.runs.get_mut(card_id) {
+        let should_remove_run = if let Some(run) = inner.logic.runs.get_mut(card_id) {
             run.sessions.remove(session_id);
             run.active_session_ids.retain(|id| id != session_id);
             run.sessions.is_empty()
@@ -1116,10 +1136,10 @@ fn finish_session(app: &AppHandle, card_id: &str, session_id: &str) {
         };
 
         if should_remove_run {
-            inner.runs.remove(card_id);
+            inner.logic.runs.remove(card_id);
         }
 
-        inner.bootstrap()
+        RapidfireLogic::build_bootstrap(&inner)
     };
 
     emit_state(app, bootstrap);
@@ -1181,20 +1201,13 @@ fn stop_removed_or_disabled_sessions(
 }
 
 fn emit_hotkey_error(app: &AppHandle, error: String) {
-    let _ = app.emit_to("main", "rapidfire://hotkey-error", error);
+    let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
 }
 
 // ---- Event emission ----
 
 fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
-    let _ = app.emit_to("main", "rapidfire://state-changed", bootstrap.clone());
-    for group in &bootstrap.settings.groups {
-        let _ = app.emit_to(
-            display_label_for_group(&group.id),
-            "rapidfire://state-changed",
-            bootstrap.clone(),
-        );
-    }
+    RapidfireLogic::emit_state(app, &bootstrap);
 }
 
 // ---- Window management ----
@@ -1312,9 +1325,9 @@ fn destroy_position_windows(app: &AppHandle) {
 
 pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_hold_scope("rapidfire");
-    if let Ok(mut inner) = state.inner.lock() {
-        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
-        inner.runs.clear();
+    if let Ok(mut inner) = state.lock_inner() {
+        stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
+        inner.logic.runs.clear();
     }
     destroy_position_windows(app);
     destroy_display_windows(app);
@@ -1323,12 +1336,12 @@ pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &Hotkey
 /// 停止所有正在运行的连发器会话（用于全局总开关关闭）。
 pub fn stop_all(app: &AppHandle, state: &RapidfireState) {
     let bootstrap = {
-        let Ok(mut inner) = state.inner.lock() else {
+        let Ok(mut inner) = state.lock_inner() else {
             return;
         };
-        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
-        inner.runs.clear();
-        inner.bootstrap()
+        stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
+        inner.logic.runs.clear();
+        RapidfireLogic::build_bootstrap(&inner)
     };
     emit_state(app, bootstrap);
 }
@@ -1338,18 +1351,15 @@ pub fn initialize(
     hotkey_manager: &HotkeyManager,
 ) -> Result<RapidfireState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
-    let state = RapidfireState {
-        inner: Mutex::new(RapidfireStateInner {
-            settings: settings.clone(),
-            runs: HashMap::new(),
-            pending_position: None,
-            hotkey_error: None,
-        }),
+    let logic = RapidfireLogic {
+        runs: HashMap::new(),
+        pending_position: None,
     };
+    let state = RapidfireState::new(logic, settings.clone());
 
     if settings.rapidfire_enabled {
         if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings) {
-            if let Ok(mut inner) = state.inner.lock() {
+            if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error);
             }
         }
@@ -1365,11 +1375,9 @@ pub fn initialize(
 pub fn rapidfire_get_bootstrap(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, AppError> {
-    let inner = state
-        .inner
-        .lock()
+    let inner = state.lock_inner()
         .map_err(|_| "连发器状态已损坏".to_string())?;
-    Ok(inner.bootstrap())
+    Ok(RapidfireLogic::build_bootstrap(&inner))
 }
 
 #[tauri::command]
@@ -1381,9 +1389,7 @@ pub fn rapidfire_save_settings(
 ) -> Result<RapidfireBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
     let previous_settings = {
-        let inner = state
-            .inner
-            .lock()
+        let inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.settings.clone()
     };
@@ -1393,18 +1399,14 @@ pub fn rapidfire_save_settings(
     if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
         let _ = settings::save_settings(&app, &previous_settings);
         let _ = restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings);
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());
         return Err(AppError::from(error));
     }
 
     let bootstrap = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
@@ -1415,14 +1417,14 @@ pub fn rapidfire_save_settings(
             .filter(|c| c.enabled && group_enabled(&settings_value.groups, &c.group_id))
             .map(|c| c.id.clone())
             .collect();
-        stop_removed_or_disabled_sessions(&mut inner.runs, &active_card_ids);
+        stop_removed_or_disabled_sessions(&mut inner.logic.runs, &active_card_ids);
 
         if !settings_value.rapidfire_enabled {
-            stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
-            inner.runs.clear();
+            stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
+            inner.logic.runs.clear();
         }
 
-        inner.bootstrap()
+        RapidfireLogic::build_bootstrap(&inner)
     };
 
     ensure_overlay_window(&app, &bootstrap.settings)?;
@@ -1436,13 +1438,11 @@ pub fn rapidfire_stop(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, AppError> {
     let bootstrap = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
-        stop_all_sessions(&mut inner.runs, SessionControl::Cancel);
-        inner.runs.clear();
-        inner.bootstrap()
+        stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
+        inner.logic.runs.clear();
+        RapidfireLogic::build_bootstrap(&inner)
     };
     emit_state(&app, bootstrap.clone());
     Ok(bootstrap)
@@ -1459,12 +1459,10 @@ pub async fn rapidfire_begin_position_selection(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_RAPIDFIRE_GROUP_ID.to_string());
     let position = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
 
-        if inner.pending_position.is_some() {
+        if inner.logic.pending_position.is_some() {
             return Err(AppError::Message("当前已有一个位置设置流程在进行中".to_string()));
         }
 
@@ -1477,7 +1475,7 @@ pub async fn rapidfire_begin_position_selection(
             .or_else(|| inner.settings.overlay_position.clone())
             .unwrap_or(RapidfireRect { x: 100, y: 100 });
 
-        inner.pending_position = Some(PendingRapidfirePosition {
+        inner.logic.pending_position = Some(PendingRapidfirePosition {
             group_id: group_id.clone(),
             original_position: pos.clone(),
             staged_position: pos.clone(),
@@ -1490,9 +1488,7 @@ pub async fn rapidfire_begin_position_selection(
     destroy_window(&app, &position_label);
 
     let display_width = {
-        let inner = state
-            .inner
-            .lock()
+        let inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner
             .settings
@@ -1503,9 +1499,7 @@ pub async fn rapidfire_begin_position_selection(
             .unwrap_or(inner.settings.overlay_width)
     };
     let display_height = {
-        let inner = state
-            .inner
-            .lock()
+        let inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         display_height(
             inner
@@ -1546,11 +1540,11 @@ pub async fn rapidfire_begin_position_selection(
             WindowEvent::Destroyed | WindowEvent::CloseRequested { .. }
         ) {
             let state = close_app.state::<RapidfireState>();
-            let mut inner = match state.inner.lock() {
+            let mut inner = match state.lock_inner() {
                 Ok(inner) => inner,
                 Err(_) => return,
             };
-            if let Some(pending) = inner.pending_position.take() {
+            if let Some(pending) = inner.logic.pending_position.take() {
                 let _ = pending.sender.send(RapidfireSelectionKind::Closed);
             }
         }
@@ -1563,9 +1557,7 @@ pub async fn rapidfire_begin_position_selection(
     destroy_window(&app, &position_label);
 
     let position = {
-        let inner = state
-            .inner
-            .lock()
+        let inner = state.lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         inner
             .settings
@@ -1590,11 +1582,9 @@ pub fn rapidfire_position_commit(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, AppError> {
     let (sender, group_id, bootstrap) = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.pending_position.take() else {
+        let Some(pending) = inner.logic.pending_position.take() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
@@ -1611,7 +1601,7 @@ pub fn rapidfire_position_commit(
             inner.settings.overlay_position = Some(pending.staged_position.clone());
         }
         settings::save_settings(&app, &inner.settings)?;
-        (pending.sender, group_id, inner.bootstrap())
+        (pending.sender, group_id, RapidfireLogic::build_bootstrap(&inner))
     };
 
     let _ = sender.send(RapidfireSelectionKind::Selected);
@@ -1627,11 +1617,9 @@ pub fn rapidfire_position_cancel(
     state: State<'_, RapidfireState>,
 ) -> Result<(), AppError> {
     let (sender, group_id, _original_position) = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.pending_position.take() else {
+        let Some(pending) = inner.logic.pending_position.take() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
@@ -1664,11 +1652,9 @@ pub fn rapidfire_position_moved(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireRect, AppError> {
     let (rect, group_id) = {
-        let mut inner = state
-            .inner
-            .lock()
+        let mut inner = state.lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.pending_position.as_mut() else {
+        let Some(pending) = inner.logic.pending_position.as_mut() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 

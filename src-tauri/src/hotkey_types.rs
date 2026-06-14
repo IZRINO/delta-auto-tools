@@ -1,4 +1,7 @@
 use std::collections::HashSet;
+use std::sync::Arc;
+
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModifierKey {
@@ -390,6 +393,40 @@ pub fn to_primary_key(key: willhook::event::KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::Other(0xDE) => Some(PrimaryKey::Named(NamedKey::Quote)),
         _ => None,
     }
+}
+
+pub type HotkeyAction = Arc<dyn Fn(AppHandle) + Send + Sync + 'static>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HoldAction {
+    Down,
+    Up,
+}
+
+pub type HoldActionCallback = Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync + 'static>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictPolicy {
+    Strict,
+    AllowHold,
+}
+
+pub struct HotkeyRegistration {
+    pub scope: String,
+    pub binding: HotkeyBinding,
+    pub enabled: bool,
+    pub display_name: String,
+    pub conflict_policy: ConflictPolicy,
+    pub action: HotkeyAction,
+}
+
+pub struct HoldRegistration {
+    pub scope: String,
+    pub binding: HotkeyBinding,
+    pub enabled: bool,
+    pub display_name: String,
+    pub conflict_policy: ConflictPolicy,
+    pub action: HoldActionCallback,
 }
 
 #[cfg(test)]

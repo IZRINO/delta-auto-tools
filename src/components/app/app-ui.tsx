@@ -163,7 +163,7 @@ export function StatusMatrix({ items, className }: StatusMatrixProps) {
     error: "bg-[var(--alert-red)]",
   };
   return (
-    <div className={cn("inline-flex gap-px border border-[var(--seam)] bg-[var(--seam)]", className)}>
+    <div className={cn("flex flex-wrap gap-px border border-[var(--seam)] bg-[var(--seam)]", className)}>
       {items.map((item) => (
         <div
           key={item.id}
@@ -172,7 +172,7 @@ export function StatusMatrix({ items, className }: StatusMatrixProps) {
           title={item.label}
         >
           <span className={cn("size-1.5", stateColor[item.state])} />
-          <span className="font-mono text-[0.58rem] font-bold tracking-[0.12em] text-[var(--chalk)] uppercase">
+          <span className="whitespace-nowrap font-mono text-[0.58rem] font-bold tracking-[0.12em] text-[var(--chalk)] uppercase">
             {item.label ?? item.id}
           </span>
         </div>

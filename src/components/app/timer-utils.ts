@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listenEvent, TIMER_EVENTS } from "@/lib/tauri-events";
 
 import type { CounterItem, CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerGroup, TimerGroupForm, TimerItem, TimerItemForm, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
 import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
@@ -453,7 +453,7 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
       }
     });
 
-    void listen<TimerBootstrap>("timer://state-changed", (event) => {
+    void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
       if (!disposed) {
         setBootstrap(event.payload);
       }
