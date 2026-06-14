@@ -28,10 +28,11 @@ import {
   DisplaySettingsInline,
   InlineControl,
   InlineNotice,
-  PageHero,
+  MacroHeader,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
+  StatusMatrix,
   TacticalCard,
 } from "@/components/app/app-ui";
 import type { CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplayMode, TimerGroupForm, TimerSelectionOutcome } from "@/components/app/timer-types";
@@ -390,10 +391,11 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
 
   return (
       <AppPage className="auto-rows-max">
-        <PageHero
-          eyebrow="02 / COUNTER"
-          title="战局计数板"
-          description="计数器负责战局累加。透明窗口与快捷键独立控制，配置会持续保留。"
+        <MacroHeader
+          code="C-02"
+          title="COUNTER / SYNC"
+          verticalLabel="计数器"
+          subtitle="计数器负责战局累加。透明窗口与快捷键独立控制，配置会持续保留。"
           badges={
             <>
               <Badge variant={form?.counterEnabled ? "default" : "secondary"}>计数通道{form?.counterEnabled ? "开启" : "关闭"}</Badge>
@@ -401,7 +403,7 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
               {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
             </>
           }
-          stats={
+          actions={
             <>
               <SignalTile
                 label="计数矩阵"
@@ -431,6 +433,16 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
           </div>
         ) : null}
 
+        <div className="col-span-12">
+          <StatusMatrix items={[
+            { id: "counter", state: form?.counterEnabled ? "active" : "idle", label: "计数通道" },
+            { id: "running", state: (bootstrap?.counterRuns.filter((run) => run.value > 0).length ?? 0) > 0 ? "active" : "idle", label: "已计数" },
+            { id: "hotkey", state: bootstrap?.hotkeyError ? "error" : form?.counterEnabled ? "valid" : "idle", label: "热键状态" },
+            { id: "save", state: isDirty ? "warning" : "valid", label: "保存状态" },
+            { id: "ready", state: form?.counterEnabled ? "valid" : "idle", label: "就绪状态" },
+            { id: "slots", state: (form?.counters.length ?? 0) > 0 ? "valid" : "warning", label: "计数槽位" },
+          ]} />
+        </div>
 
         <TacticalCard className="col-span-12">
           <SectionHeader
@@ -557,7 +569,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
   return (
     <TacticalCard active={isDragging} className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "")} data-counter-card={counter.id} data-favorite-card={`counter:${counter.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow={`C-${String(index + 1).padStart(2, "0")} · 计数器`}
+        eyebrow="计数器"
         icon={<RiSpeedUpLine />}
         title={(
           <Input
@@ -573,12 +585,7 @@ function CounterCard({ controlsDisabled, counter, groupOptions, index, isDraggin
         badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge></>}
       />
       <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
-        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
-            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-medium leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
-              C-{String(index + 1).padStart(2, "0")}
-            </span>
-          </div>
+        <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
           <div className="grid gap-3">
             <div>
               <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>

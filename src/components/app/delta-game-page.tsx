@@ -23,7 +23,7 @@ import type {
   GameDataLoadResult,
   GameDataState,
 } from "@/components/app/delta-game-data-loader";
-import { AppPage, PageHero, SignalTile, TacticalEmptyState } from "@/components/app/app-ui";
+import { AppPage, MacroHeader, SignalTile, TacticalEmptyState, StatusMatrix, ChannelTabs } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { DeltaDataCard } from "@/components/app/delta-data-card";
 import { DeltaQueryWorkbench } from "@/components/app/delta-query-workbench";
@@ -142,10 +142,10 @@ export function DeltaGamePage() {
   if (!isNativeShell) {
     return (
       <AppPage>
-        <PageHero
-          eyebrow="D2 / ASSETS"
-          title="游戏数据"
-          description="查看游戏内角色数据与资产信息"
+        <MacroHeader
+          code="A2"
+          title="GAME / ASSETS"
+          subtitle="查看游戏内角色数据与资产信息"
         />
         <TacticalEmptyState className="col-span-12" icon={<RiBarChartBoxLine />} title="需要桌面环境" description="需要桌面环境才能使用游戏数据功能。" />
       </AppPage>
@@ -154,11 +154,11 @@ export function DeltaGamePage() {
 
   return (
     <AppPage>
-      <PageHero
-        eyebrow="D2 / ASSETS"
-        title="游戏数据"
-        description="查看游戏内角色数据与资产信息"
-        stats={
+      <MacroHeader
+        code="A2"
+        title="GAME / ASSETS"
+        subtitle="查看游戏内角色数据与资产信息"
+        actions={
           hasCapability ? (
             <>
               <SignalTile label="等级" value={player.loading ? "—" : (player.data ? "已加载" : "—")} icon={<RiUserLine />} />
@@ -168,6 +168,27 @@ export function DeltaGamePage() {
           ) : undefined
         }
       />
+
+      <div className="col-span-12">
+        <StatusMatrix items={[
+          { id: "player", state: player.data ? "valid" : player.loading ? "active" : "idle", label: "玩家信息" },
+          { id: "record", state: record.data ? "valid" : record.loading ? "active" : "idle", label: "战绩记录" },
+          { id: "assets", state: assets.data ? "valid" : assets.loading ? "active" : "idle", label: "资产" },
+          { id: "recent", state: recent.data ? "valid" : recent.loading ? "active" : "idle", label: "近期对局" },
+          { id: "achievement", state: achievement.data ? "valid" : achievement.loading ? "active" : "idle", label: "成就" },
+          { id: "ready", state: hasCapability ? "valid" : "warning", label: "就绪状态" },
+        ]} />
+      </div>
+
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "dashboard", label: "仪表盘", active: true },
+            { id: "query", label: "查询", active: false },
+          ]}
+          onTabChange={() => {}}
+        />
+      </div>
 
       <div className="col-span-12 grid gap-3">
         <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">

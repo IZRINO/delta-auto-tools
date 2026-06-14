@@ -8,82 +8,84 @@
   font-size: 16px;
   line-height: 1.38;
   font-weight: 500;
-  color-scheme: dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 
-  --background: #141412;
-  --foreground: #d8d4cc;
-  --card: #141412;
-  --card-foreground: #d8d4cc;
-  --popover: #171715;
-  --popover-foreground: #d8d4cc;
-  --primary: #e8a000;
-  --primary-foreground: #141412;
-  --secondary: #171715;
-  --secondary-foreground: #d8d4cc;
-  --muted: #171715;
-  --muted-foreground: #a8a49c;
-  --accent: #e8a000;
-  --accent-foreground: #141412;
-  --destructive: #c85400;
-  --border: #d8d4cc;
-  --input: #d8d4cc;
-  --ring: #e8a000;
-  --chart-1: #e8a000;
-  --chart-2: #3f8a30;
-  --chart-3: #c85400;
-  --chart-4: #9a968e;
-  --chart-5: #6e6b65;
+  /* Bright base industrial palette */
+  --background: #FFFFFF;
+  --foreground: #0A0A0A;
+  --card: #FFFFFF;
+  --card-foreground: #0A0A0A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0A0A;
+  --primary: #E8A000;
+  --primary-foreground: #0A0A0A;
+  --secondary: #F5F5F5;
+  --secondary-foreground: #0A0A0A;
+  --muted: #F5F5F5;
+  --muted-foreground: #6B6B6B;
+  --accent: #E8A000;
+  --accent-foreground: #0A0A0A;
+  --destructive: #E11919;
+  --border: #0A0A0A;
+  --input: #0A0A0A;
+  --ring: #E8A000;
+  --chart-1: #E8A000;
+  --chart-2: #3F8A30;
+  --chart-3: #E11919;
+  --chart-4: #6B6B6B;
+  --chart-5: #9A9A9A;
   --radius: 0;
-  --sidebar: #171715;
-  --sidebar-foreground: #d8d4cc;
-  --sidebar-primary: #e8a000;
-  --sidebar-primary-foreground: #0c0c0b;
-  --sidebar-accent: #141412;
-  --sidebar-accent-foreground: #d8d4cc;
-  --sidebar-border: #d8d4cc;
-  --sidebar-ring: #e8a000;
+  --sidebar: #F5F5F5;
+  --sidebar-foreground: #0A0A0A;
+  --sidebar-primary: #E8A000;
+  --sidebar-primary-foreground: #0A0A0A;
+  --sidebar-accent: #FFFFFF;
+  --sidebar-accent-foreground: #0A0A0A;
+  --sidebar-border: #0A0A0A;
+  --sidebar-ring: #E8A000;
 
-  --carbon: #141412;
-  --slate: #171715;
-  --iron: #232320;
-  --chalk: #d8d4cc;
-  --zinc: #9a968e;
-  --dust: #6e6b65;
-  --seam: #2a2926;
-  --amber: #e8a000;
-  --rust: #c85400;
-  --moss: #3f8a30;
-  --void: #050504;
+  /* Industrial semantic tokens */
+  --carbon: #FFFFFF;
+  --slate: #F5F5F5;
+  --iron: #E5E5E5;
+  --chalk: #0A0A0A;
+  --zinc: #6B6B6B;
+  --dust: #9A9A9A;
+  --seam: #E5E5E5;
+  --amber: #E8A000;
+  --rust: #C85400;
+  --moss: #3F8A30;
+  --void: #2A2A2A;
 
   --alert-red: #E11919;
   --warning-amber: #A36A00;
-  --valid-green: #3F6B2A;
+  --valid-green: #3F8A30;
   --terminal-green: #4AF626;
-  --phosphor: #EAEAEA;
+  --phosphor: #0A0A0A;
 
-  --surface-shell: #141412;
-  --surface-panel: #171715;
-  --surface-card: #141412;
-  --surface-card-strong: #171715;
-  --surface-tile: #171715;
-  --surface-border: #9a968e;
-  --surface-border-strong: #d8d4cc;
-  --surface-hover: #171715;
-  --surface-highlight: #e8a000;
-  --surface-dot: #2a2926;
+  --surface-shell: #FFFFFF;
+  --surface-panel: #F5F5F5;
+  --surface-card: #FFFFFF;
+  --surface-card-strong: #F5F5F5;
+  --surface-tile: #F5F5F5;
+  --surface-border: #0A0A0A;
+  --surface-border-strong: #0A0A0A;
+  --surface-hover: #E5E5E5;
+  --surface-highlight: #E8A000;
+  --surface-dot: #E5E5E5;
 
   --shadow-shell: none;
   --shadow-card: none;
   --shadow-subtle: none;
-  --shadow-focus: 0 0 0 2px #e8a000;
+  --shadow-focus: 0 0 0 2px #E8A000;
   --shadow-tile: none;
 
-  --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+  --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
   --stripe-warning: repeating-linear-gradient(45deg, #E11919, #E11919 10px, transparent 10px, transparent 20px);
   --misprint-offset: 0.04em;
 }
@@ -163,14 +165,12 @@
     @apply bg-background text-foreground;
     background-color: var(--carbon);
     background-image:
-      linear-gradient(color-mix(in srgb, var(--seam) 30%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--seam) 30%, transparent) 1px, transparent 1px),
-      linear-gradient(color-mix(in srgb, var(--zinc) 8%, transparent) 2px, transparent 2px),
-      linear-gradient(90deg, color-mix(in srgb, var(--zinc) 8%, transparent) 2px, transparent 2px),
-      radial-gradient(circle at 18% 24%, color-mix(in srgb, var(--amber) 6%, transparent) 0, transparent 26rem),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.10'/%3E%3C/svg%3E");
-    background-position: 0 0, 0 0, 0 0, 0 0, center, 0 0;
-    background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px, auto, 180px 180px;
+      linear-gradient(color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px),
+      linear-gradient(90deg, color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px);
+    background-position: 0 0, 0 0, 0 0, 0 0;
+    background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px;
   }
 
   body[data-overlay-mode="true"] {
@@ -227,4 +227,9 @@
   .favorite-highlight {
     animation: favorite-highlight-pulse 1.5s ease-out 1;
   }
+}
+
+/* Tooltip z-index fix for WebView2 overlay issues */
+[data-slot="tooltip-content"] {
+  z-index: 9999;
 }

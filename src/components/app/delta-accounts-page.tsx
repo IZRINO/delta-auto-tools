@@ -4,7 +4,7 @@ import { RiAccountPinCircleLine, RiAddLine, RiDeleteBinLine, RiRefreshLine } fro
 import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { DeltaAccountRecord } from "@/components/app/delta-types";
 import { canRefreshToken } from "@/components/app/delta-utils";
-import { AppPage, PageHero, SignalTile, TacticalCard, SectionHeader, CardBody, TacticalEmptyState } from "@/components/app/app-ui";
+import { AppPage, MacroHeader, SignalTile, TacticalCard, SectionHeader, CardBody, TacticalEmptyState, StatusMatrix, ChannelTabs } from "@/components/app/app-ui";
 import { DeltaAccountCard } from "@/components/app/delta-account-card";
 import { DeltaLoginDialog } from "@/components/app/delta-login-dialog";
 import { Button } from "@/components/ui/button";
@@ -71,10 +71,10 @@ export function DeltaAccountsPage() {
   if (!isNativeShell) {
     return (
       <AppPage>
-        <PageHero
-          eyebrow="D1 / CREDENTIALS"
-          title="账号管理"
-          description="管理游戏账号登录状态与访问令牌"
+        <MacroHeader
+          code="A1"
+          title="ACCOUNTS / CREDENTIALS"
+          subtitle="管理游戏账号登录状态与访问令牌"
         />
         <TacticalEmptyState className="col-span-12" icon={<RiAccountPinCircleLine />} title="需要桌面环境" description="需要桌面环境才能使用账号管理功能。" />
       </AppPage>
@@ -83,24 +83,42 @@ export function DeltaAccountsPage() {
 
   return (
     <AppPage>
-      <PageHero
-        eyebrow="D1 / CREDENTIALS"
-        title="账号管理"
-        description="管理游戏账号登录状态与访问令牌"
+      <MacroHeader
+        code="A1"
+        title="ACCOUNTS / CREDENTIALS"
+        subtitle="管理游戏账号登录状态与访问令牌"
         actions={
-          <Button size="sm" onClick={() => setLoginOpen(true)}>
-            <RiAddLine data-icon="inline-start" />
-            添加账号
-          </Button>
-        }
-        stats={
           <>
             <SignalTile label="总账号" value={stats.total} icon={<RiAccountPinCircleLine />} />
             <SignalTile label="令牌有效" value={stats.valid} />
             <SignalTile label="即将过期" value={stats.expiring} />
+            <Button size="sm" onClick={() => setLoginOpen(true)}>
+              <RiAddLine data-icon="inline-start" />
+              添加账号
+            </Button>
           </>
         }
       />
+
+      <div className="col-span-12">
+        <StatusMatrix items={[
+          { id: "total", state: stats.total > 0 ? "valid" : "idle", label: "总账号" },
+          { id: "valid", state: stats.valid > 0 ? "valid" : "idle", label: "有效令牌" },
+          { id: "expiring", state: stats.expiring > 0 ? "warning" : "valid", label: "即将过期" },
+          { id: "ready", state: stats.total > 0 ? "valid" : "warning", label: "就绪" },
+          { id: "save", state: "valid", label: "保存状态" },
+          { id: "native", state: isNativeShell ? "valid" : "warning", label: "原生环境" },
+        ]} />
+      </div>
+
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "accounts", label: "账号列表", active: true },
+          ]}
+          onTabChange={() => {}}
+        />
+      </div>
 
       <div className="col-span-12 grid gap-3">
         <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">

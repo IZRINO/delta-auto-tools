@@ -21,10 +21,12 @@ import {
   AppPage,
   CardBody,
   ControlTile,
-  PageHero,
+  MacroHeader,
   SignalTile,
   TacticalCard,
   TacticalEmptyState,
+  StatusMatrix,
+  ChannelTabs,
 } from "@/components/app/app-ui";
 import type { RapidfireBootstrap, RapidfireCardForm } from "@/components/app/rapidfire-types";
 import { rapidfireSettingsToForm } from "@/components/app/rapidfire-types";
@@ -277,17 +279,17 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   if (details.length === 0) {
     return (
       <AppPage>
-        <PageHero
-          eyebrow="PIN / FAVORITES"
-          title="收藏"
-          description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
+        <MacroHeader
+          code="PIN"
+          title="FAVORITES / PINNED"
+          subtitle="在计时器、计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
           badges={
             <>
               <Badge variant="secondary">跨工具</Badge>
               <Badge variant="outline">{summary.total} 项</Badge>
             </>
           }
-          stats={
+          actions={
             <>
               <SignalTile label="计时器" value={summary.timerCount} detail="已收藏的计时器数量" />
               <SignalTile label="计数器" value={summary.counterCount} detail="已收藏的计数器数量" />
@@ -302,10 +304,10 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
 
   return (
     <AppPage>
-      <PageHero
-        eyebrow="PIN / FAVORITES"
-        title="收藏"
-        description="在计时\计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
+      <MacroHeader
+        code="PIN"
+        title="FAVORITES / PINNED"
+        subtitle="在计时器、计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
         badges={
           <>
             <Badge variant="secondary">跨工具</Badge>
@@ -313,7 +315,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
             {loading ? <Badge variant="outline">同步中…</Badge> : null}
           </>
         }
-        stats={
+        actions={
           <>
             <SignalTile label="计时器" value={summary.timerCount} detail="已收藏的计时器数量" />
             <SignalTile label="计数器" value={summary.counterCount} detail="已收藏的计数器数量" />
@@ -321,6 +323,26 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
           </>
         }
       />
+
+      <div className="col-span-12">
+        <StatusMatrix items={[
+          { id: "timer", state: summary.timerCount > 0 ? "valid" : "idle", label: "计时器" },
+          { id: "counter", state: summary.counterCount > 0 ? "valid" : "idle", label: "计数器" },
+          { id: "rapidfire", state: summary.rapidfireCount > 0 ? "valid" : "idle", label: "连发器" },
+          { id: "total", state: summary.total > 0 ? "valid" : "warning", label: "总计" },
+          { id: "sync", state: loading ? "active" : "valid", label: "同步状态" },
+          { id: "ready", state: "valid", label: "就绪" },
+        ]} />
+      </div>
+
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "all", label: "全部", active: true },
+          ]}
+          onTabChange={() => {}}
+        />
+      </div>
 
       <ControlTile className="col-span-12 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2">
         <Field orientation="horizontal" className="gap-2">

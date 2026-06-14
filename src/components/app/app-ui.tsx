@@ -1,5 +1,12 @@
 import type { ComponentProps, ReactNode } from "react";
-import { RiAddLine, RiArrowDownSLine, RiDeleteBinLine, RiMapPinLine } from "@remixicon/react";
+import {
+  RiAddLine,
+  RiArrowDownSLine,
+  RiDeleteBinLine,
+  RiErrorWarningLine,
+  RiInformationLine,
+  RiMapPinLine,
+} from "@remixicon/react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +18,10 @@ import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+
+/* ────────── App Page Grid ────────── */
 
 type AppPageProps = {
   children: ReactNode;
@@ -25,6 +35,60 @@ export function AppPage({ children, className }: AppPageProps) {
     </div>
   );
 }
+
+/* ────────── Macro Header ────────── */
+
+type MacroHeaderProps = {
+  code: string;
+  title: string;
+  subtitle: string;
+  verticalLabel?: string;
+  badges?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+};
+
+export function MacroHeader({ actions, badges, className, code, subtitle, title, verticalLabel }: MacroHeaderProps) {
+  return (
+    <section
+      className={cn(
+        "relative col-span-12 overflow-hidden border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]",
+        className,
+      )}
+    >
+      <div className="relative grid gap-px bg-[var(--chalk)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="hidden shrink-0 border-r-2 border-[var(--chalk)] bg-[var(--chalk)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
+          <span className="font-heading text-[clamp(2rem,3vw,4rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
+            {verticalLabel ?? title.replace(/^\s*(\S+).*/, "$1")}
+          </span>
+        </div>
+        <div className="min-w-0 bg-[var(--carbon)] px-3 py-3 sm:px-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--amber)] uppercase">
+              [ {code} ]
+            </p>
+            {badges}
+          </div>
+          <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
+            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2rem,4vw,4.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+              {title}
+            </h1>
+            <p className="max-w-[64ch] border-l-4 border-[var(--amber)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--zinc)] uppercase">
+              {subtitle}
+            </p>
+          </div>
+        </div>
+        {actions ? (
+          <aside className="grid min-w-0 bg-[var(--carbon)] lg:min-w-72 lg:max-w-[26rem]">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--chalk)] px-3 py-2">{actions}</div>
+          </aside>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/* ────────── Page Hero (legacy alias, maps to MacroHeader) ────────── */
 
 type PageHeroProps = {
   eyebrow: string;
@@ -46,7 +110,7 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
     >
       <div className="relative grid gap-px bg-[var(--chalk)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <div className="hidden shrink-0 border-r-2 border-[var(--chalk)] bg-[var(--chalk)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
-          <span className="font-heading text-[clamp(2.5rem,5vw,7rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
+          <span className="font-heading text-[clamp(2rem,3vw,4rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
             {eyebrow.replace(/^\s*(\S+).*/, "$1")}
           </span>
         </div>
@@ -58,7 +122,7 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
             {badges}
           </div>
           <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
-            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2.5rem,7vw,7rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+            <h1 className="max-w-4xl text-balance font-heading text-[clamp(2rem,4vw,4.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
               {title}
             </h1>
             <p className="max-w-[64ch] border-l-4 border-[var(--amber)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--zinc)] uppercase">
@@ -76,6 +140,48 @@ export function PageHero({ actions, badges, className, description, eyebrow, sta
     </section>
   );
 }
+
+/* ────────── Status Matrix ────────── */
+
+type StatusMatrixItem = {
+  id: string;
+  state: "idle" | "active" | "valid" | "warning" | "error";
+  label?: string;
+};
+
+type StatusMatrixProps = {
+  items: StatusMatrixItem[];
+  className?: string;
+};
+
+export function StatusMatrix({ items, className }: StatusMatrixProps) {
+  const stateColor: Record<string, string> = {
+    idle: "bg-[var(--zinc)]",
+    active: "bg-[var(--amber)]",
+    valid: "bg-[var(--valid-green)]",
+    warning: "bg-[var(--warning-amber)]",
+    error: "bg-[var(--alert-red)]",
+  };
+  return (
+    <div className={cn("inline-flex gap-px border border-[var(--seam)] bg-[var(--seam)]", className)}>
+      {items.map((item) => (
+        <div
+          key={item.id}
+          data-state={item.state}
+          className="relative flex items-center gap-2 bg-[var(--carbon)] px-2 py-1"
+          title={item.label}
+        >
+          <span className={cn("size-1.5", stateColor[item.state])} />
+          <span className="font-mono text-[0.58rem] font-bold tracking-[0.12em] text-[var(--chalk)] uppercase">
+            {item.label ?? item.id}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ────────── Signal Tile (legacy) ────────── */
 
 type SignalTileProps = {
   label: string;
@@ -100,6 +206,8 @@ export function SignalTile({ className, detail, icon, label, value }: SignalTile
   );
 }
 
+/* ────────── Tactical Card (legacy) ────────── */
+
 type TacticalCardProps = ComponentProps<typeof Card> & {
   active?: boolean;
 };
@@ -119,6 +227,8 @@ export function TacticalCard({ active, children, className, size = "sm", ...prop
     </Card>
   );
 }
+
+/* ────────── Section Header (legacy) ────────── */
 
 type SectionHeaderProps = {
   title: ReactNode;
@@ -155,6 +265,8 @@ export function SectionHeader({ actions, badge, className, description, eyebrow,
   );
 }
 
+/* ────────── Control Tile / Inline Control (legacy) ────────── */
+
 type ControlTileProps = {
   children: ReactNode;
   className?: string;
@@ -162,6 +274,10 @@ type ControlTileProps = {
 
 export function ControlTile({ children, className }: ControlTileProps) {
   return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--slate)] p-3", className)}>{children}</div>;
+}
+
+export function InlineControl({ children, className }: ControlTileProps) {
+  return <div className={cn("border border-[var(--chalk)] bg-[var(--carbon)] p-3", className)}>{children}</div>;
 }
 
 export function SaveStateBadge({ dirty, saving }: { dirty: boolean; saving: boolean }) {
@@ -174,117 +290,45 @@ export function CardBody({ children, className }: { children: ReactNode; classNa
   return <CardContent className={cn("pt-4", className)}>{children}</CardContent>;
 }
 
-type TacticalEmptyStateProps = {
-  icon?: ReactNode;
-  title: string;
-  description: ReactNode;
-  className?: string;
-  children?: ReactNode;
+/* ────────── New Industrial Components ────────── */
+
+/* Channel Tabs */
+
+type ChannelTab = {
+  id: string;
+  label: string;
+  active?: boolean;
 };
 
-export function TacticalEmptyState({ children, className, description, icon, title }: TacticalEmptyStateProps) {
+type ChannelTabsProps = {
+  tabs: ChannelTab[];
+  onTabChange: (id: string) => void;
+  className?: string;
+};
+
+export function ChannelTabs({ tabs, onTabChange, className }: ChannelTabsProps) {
   return (
-    <TacticalCard className={cn("min-h-48", className)}>
-      <CardBody className="flex h-full items-center justify-center">
-        <Empty className="min-h-40 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
-          {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
-          <EmptyHeader>
-            <EmptyTitle>{title}</EmptyTitle>
-            <EmptyDescription>{description}</EmptyDescription>
-          </EmptyHeader>
-          {children}
-        </Empty>
-      </CardBody>
-    </TacticalCard>
+    <div className={cn("flex border-b-2 border-[var(--chalk)] bg-[var(--carbon)]", className)}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          className={cn(
+            "px-4 py-2 font-mono text-xs font-black tracking-[0.12em] uppercase transition-colors focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]",
+            tab.active
+              ? "border-b-2 border-[var(--amber)] bg-[var(--chalk)] text-[var(--carbon)]"
+              : "border-b-2 border-transparent text-[var(--zinc)] hover:bg-[var(--slate)] hover:text-[var(--chalk)]",
+          )}
+          onClick={() => onTabChange(tab.id)}
+          type="button"
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
-type AddCardButtonProps = {
-  disabled?: boolean;
-  title: string;
-  description: ReactNode;
-  className?: string;
-  onClick: () => void;
-};
-
-export function AddCardButton({ className, description, disabled, onClick, title }: AddCardButtonProps) {
-  return (
-    <button
-      className={cn(
-        "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] p-4 text-center transition-colors hover:bg-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] active:bg-[var(--chalk)] active:text-[var(--carbon)] disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
-        <RiAddLine />
-      </span>
-      <span className="text-sm font-black uppercase text-[var(--chalk)] group-active:text-[var(--carbon)]">{title}</span>
-      <span className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase group-active:text-[var(--slate)]">{description}</span>
-    </button>
-  );
-}
-
-type JsonPreBlockProps = {
-  data: unknown;
-  className?: string;
-  maxHeightClassName?: string;
-};
-
-export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" }: JsonPreBlockProps) {
-  return (
-    <pre
-      className={cn(
-        maxHeightClassName,
-        "overflow-auto border-2 border-[var(--chalk)] bg-[var(--void)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--carbon)]",
-        className,
-      )}
-    >
-      {JSON.stringify(data, null, 2)}
-    </pre>
-  );
-}
-
-type InlineNoticeProps = {
-  title?: string;
-  children: ReactNode;
-  className?: string;
-};
-
-export function InlineNotice({ children, className, title }: InlineNoticeProps) {
-  return (
-    <Alert variant="destructive" className={cn("border-2 border-[var(--amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}>
-      {title ? <AlertTitle>{title}</AlertTitle> : null}
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
-  );
-}
-
-export function InlineControl({ children, className }: ControlTileProps) {
-  return <div className={cn("border border-[var(--chalk)] bg-[var(--carbon)] p-3", className)}>{children}</div>;
-}
-
-type CardToolbarProps = {
-  children: ReactNode;
-  className?: string;
-};
-
-export function CardToolbar({ children, className }: CardToolbarProps) {
-  return <div className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2", className)}>{children}</div>;
-}
-
-type SurfaceToggleGroupProps = {
-  children: ReactNode;
-  className?: string;
-};
-
-export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
-  return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--chalk)] p-px", className)}>{children}</div>;
-}
-
-/* ────────── Phase-1: 工业风新增组件 ────────── */
+/* Config Row */
 
 type ConfigRowProps = {
   label: string;
@@ -318,70 +362,98 @@ export function ConfigRow({ label, value, unit, state = "idle", className }: Con
   );
 }
 
-type StatusMatrixProps = {
-  items: { id: string; state: "idle" | "active" | "valid" | "warning" | "error"; label?: string }[];
+/* Help Hint (circle !) */
+
+type HelpHintProps = {
+  content: ReactNode;
   className?: string;
 };
 
-export function StatusMatrix({ items, className }: StatusMatrixProps) {
-  const stateColor: Record<string, string> = {
-    idle: "bg-[var(--zinc)]",
-    active: "bg-[var(--amber)]",
-    valid: "bg-[var(--valid-green)]",
-    warning: "bg-[var(--warning-amber)]",
-    error: "bg-[var(--alert-red)]",
-  };
+export function HelpHint({ content, className }: HelpHintProps) {
   return (
-    <div className={cn("grid grid-cols-6 gap-px bg-[var(--seam)]", className)}>
-      {items.map((item) => (
-        <div
-          key={item.id}
-          data-state={item.state}
-          className={cn("relative flex aspect-square items-center justify-center bg-[var(--carbon)]", stateColor[item.state])}
-          title={item.label}
+    <Tooltip delayDuration={200}>
+      <TooltipTrigger asChild>
+        <button
+          className={cn(
+            "inline-flex size-4 items-center justify-center rounded-full border border-[var(--zinc)] text-[var(--zinc)] hover:border-[var(--amber)] hover:text-[var(--amber)] focus:outline-none focus-visible:outline-2 focus-visible:outline-[var(--amber)]",
+            className,
+          )}
+          type="button"
         >
-          <span className="sr-only">{item.label ?? item.id}</span>
-        </div>
-      ))}
-    </div>
+          <RiInformationLine className="size-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs border border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-xs text-[var(--chalk)]">
+        {content}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
-type RoutingBarProps = {
-  children: ReactNode;
-  status?: "idle" | "running" | "error";
+/* Error Hint (square !) */
+
+type ErrorHintProps = {
+  content: ReactNode;
   className?: string;
 };
 
-export function RoutingBar({ children, status = "idle", className }: RoutingBarProps) {
-  const statusIndicator: Record<string, string> = {
-    idle: "bg-[var(--zinc)]",
-    running: "bg-[var(--terminal-green)]",
-    error: "bg-[var(--alert-red)]",
-  };
+export function ErrorHint({ content, className }: ErrorHintProps) {
   return (
-    <div className={cn("flex items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]", className)}>
-      <div className={cn("size-2 animate-pulse", statusIndicator[status])} />
-      <div className="flex flex-wrap items-center gap-2">{children}</div>
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <button
+          className={cn(
+            "inline-flex size-4 items-center justify-center border border-[var(--alert-red)] text-[var(--alert-red)] hover:bg-[var(--alert-red)] hover:text-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-[var(--alert-red)]",
+            className,
+          )}
+          type="button"
+        >
+          <RiErrorWarningLine className="size-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs border border-[var(--alert-red)] bg-[var(--carbon)] px-3 py-2 font-mono text-xs text-[var(--alert-red)]">
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/* Data Well */
+
+type DataWellProps = {
+  children: ReactNode;
+  className?: string;
+  maxHeight?: string;
+};
+
+export function DataWell({ children, className, maxHeight = "max-h-64" }: DataWellProps) {
+  return (
+    <div className={cn("overflow-auto border border-[var(--chalk)] bg-[var(--slate)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--chalk)]", maxHeight, className)}>
+      {children}
     </div>
   );
 }
 
-export function PagePreviewBanner({ className }: { className?: string }) {
+/* Field Unit */
+
+type FieldUnitProps = {
+  children: ReactNode;
+  className?: string;
+  header?: ReactNode;
+  footer?: ReactNode;
+};
+
+export function FieldUnit({ children, className, header, footer }: FieldUnitProps) {
   return (
-    <Alert
-      variant="destructive"
-      className={cn("border-2 border-[var(--warning-amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}
-    >
-      <AlertTitle className="font-mono text-xs font-black tracking-[0.14em] text-[var(--warning-amber)] uppercase">
-        [ 浏览器预览模式 ]
-      </AlertTitle>
-      <AlertDescription className="font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">
-        当前处于浏览器预览模式，所有 Tauri 原生命令已被禁用。如需使用完整功能，请在桌面端运行。
-      </AlertDescription>
-    </Alert>
+    <div className={cn("border-2 border-[var(--chalk)] bg-[var(--carbon)]", className)}>
+      {header ? <div className="border-b-2 border-[var(--chalk)] bg-[var(--chalk)] px-3 py-2 font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--carbon)] uppercase">{header}</div> : null}
+      <div className="p-3">{children}</div>
+      {footer ? <div className="border-t border-[var(--seam)] px-3 py-2">{footer}</div> : null}
+    </div>
   );
 }
+
+/* Empty State */
 
 type EmptyStateProps = {
   icon?: ReactNode;
@@ -401,6 +473,8 @@ export function EmptyState({ action, className, description, icon, title }: Empt
     </div>
   );
 }
+
+/* Macro Number */
 
 type MacroNumberProps = {
   value: ReactNode;
@@ -427,6 +501,8 @@ export function MacroNumber({ className, label, unit, value }: MacroNumberProps)
   );
 }
 
+/* Drag Button */
+
 type DragButtonProps = {
   controlsDisabled: boolean;
   onDragStart: () => void;
@@ -439,6 +515,8 @@ export function DragButton({ controlsDisabled, onDragStart }: DragButtonProps) {
     </Button>
   );
 }
+
+/* Hotkey Field */
 
 type HotkeyFieldProps = {
   controlsDisabled: boolean;
@@ -463,6 +541,8 @@ export function HotkeyField({ controlsDisabled, hotkey, id, isRecording, onBegin
     </Field>
   );
 }
+
+/* Display Settings Inline (legacy) */
 
 type DisplaySettingsInlineProps = {
   canDelete: boolean;
@@ -549,3 +629,138 @@ export function DisplaySettingsInline({
   );
 }
 
+/* Page Preview Banner (legacy) */
+
+export function PagePreviewBanner({ className }: { className?: string }) {
+  return (
+    <Alert
+      variant="destructive"
+      className={cn("border-2 border-[var(--warning-amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}
+    >
+      <AlertTitle className="font-mono text-xs font-black tracking-[0.14em] text-[var(--warning-amber)] uppercase">
+        [ 浏览器预览模式 ]
+      </AlertTitle>
+      <AlertDescription className="font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">
+        当前处于浏览器预览模式，所有 Tauri 原生命令已被禁用。如需使用完整功能，请在桌面端运行。
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+/* Tactical Empty State (legacy alias) */
+
+type TacticalEmptyStateProps = {
+  icon?: ReactNode;
+  title: string;
+  description: ReactNode;
+  className?: string;
+  children?: ReactNode;
+};
+
+export function TacticalEmptyState({ children, className, description, icon, title }: TacticalEmptyStateProps) {
+  return (
+    <TacticalCard className={cn("min-h-48", className)}>
+      <CardBody className="flex h-full items-center justify-center">
+        <Empty className="min-h-40 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+          {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
+          <EmptyHeader>
+            <EmptyTitle>{title}</EmptyTitle>
+            <EmptyDescription>{description}</EmptyDescription>
+          </EmptyHeader>
+          {children}
+        </Empty>
+      </CardBody>
+    </TacticalCard>
+  );
+}
+
+/* Add Card Button (legacy) */
+
+type AddCardButtonProps = {
+  disabled?: boolean;
+  title: string;
+  description: ReactNode;
+  className?: string;
+  onClick: () => void;
+};
+
+export function AddCardButton({ className, description, disabled, onClick, title }: AddCardButtonProps) {
+  return (
+    <button
+      className={cn(
+        "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] p-4 text-center transition-colors hover:bg-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] active:bg-[var(--chalk)] active:text-[var(--carbon)] disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
+        <RiAddLine />
+      </span>
+      <span className="text-sm font-black uppercase text-[var(--chalk)] group-active:text-[var(--carbon)]">{title}</span>
+      <span className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase group-active:text-[var(--slate)]">{description}</span>
+    </button>
+  );
+}
+
+/* Json Pre Block (legacy) */
+
+type JsonPreBlockProps = {
+  data: unknown;
+  className?: string;
+  maxHeightClassName?: string;
+};
+
+export function JsonPreBlock({ className, data, maxHeightClassName = "max-h-64" }: JsonPreBlockProps) {
+  return (
+    <pre
+      className={cn(
+        maxHeightClassName,
+        "overflow-auto border-2 border-[var(--chalk)] bg-[var(--void)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--carbon)]",
+        className,
+      )}
+    >
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  );
+}
+
+/* Inline Notice (legacy) */
+
+type InlineNoticeProps = {
+  title?: string;
+  children: ReactNode;
+  className?: string;
+};
+
+export function InlineNotice({ children, className, title }: InlineNoticeProps) {
+  return (
+    <Alert variant="destructive" className={cn("border-2 border-[var(--amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}>
+      {title ? <AlertTitle>{title}</AlertTitle> : null}
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
+  );
+}
+
+/* Card Toolbar (legacy) */
+
+type CardToolbarProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+export function CardToolbar({ children, className }: CardToolbarProps) {
+  return <div className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2", className)}>{children}</div>;
+}
+
+/* Surface Toggle Group (legacy) */
+
+type SurfaceToggleGroupProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+export function SurfaceToggleGroup({ children, className }: SurfaceToggleGroupProps) {
+  return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--chalk)] p-px", className)}>{children}</div>;
+}

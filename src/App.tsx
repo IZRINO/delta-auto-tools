@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 
 import "./App.css";
 
-
 const overlayWindowModes = new Set([
   "overlay",
   "timer-display",
@@ -58,61 +57,22 @@ const StrategyPage = lazy(() =>
 const FavoritesPage = lazy(() =>
   import("@/components/app/favorites-page").then((module) => ({ default: module.FavoritesPage })),
 );
+
 const tools = [
-  {
-    id: "timer" as const,
-    icon: RiTimerLine,
-    label: "计时器",
-    short: "Timer",
-  },
-  {
-    id: "counter" as const,
-    icon: RiSpeedUpLine,
-    label: "计数器",
-    short: "Counter",
-  },
-  {
-    id: "rapidfire" as const,
-    icon: RiGamepadLine,
-    label: "连发器",
-    short: "Rapidfire",
-  },
-  {
-    id: "strategy" as const,
-    icon: RiCompassDiscoverLine,
-    label: "攻略网站",
-    short: "Strategy",
-  },
+  { id: "timer" as const, icon: RiTimerLine, label: "计时器", short: "Timer" },
+  { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" },
+  { id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire" },
+  { id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy" },
 ];
 
 const deltaTools = [
-  {
-    id: "morse" as const,
-    icon: RiRadarLine,
-    label: "摩斯密码解析",
-    short: "Morse",
-  },
+  { id: "morse" as const, icon: RiRadarLine, label: "摩斯密码解析", short: "Morse" },
 ];
 
 const deltaApiTools = [
-  {
-    id: "delta-accounts" as const,
-    icon: RiAccountPinCircleLine,
-    label: "账号管理",
-    short: "Accounts",
-  },
-  {
-    id: "delta-game" as const,
-    icon: RiBarChartBoxLine,
-    label: "游戏数据",
-    short: "Game Data",
-  },
-  {
-    id: "delta-toolbox" as const,
-    icon: RiToolsLine,
-    label: "工具箱",
-    short: "Toolbox",
-  },
+  { id: "delta-accounts" as const, icon: RiAccountPinCircleLine, label: "账号管理", short: "Accounts" },
+  { id: "delta-game" as const, icon: RiBarChartBoxLine, label: "游戏数据", short: "Game Data" },
+  { id: "delta-toolbox" as const, icon: RiToolsLine, label: "工具箱", short: "Toolbox" },
 ];
 
 type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | (typeof deltaApiTools)[number]["id"] | "favorites";
@@ -170,6 +130,78 @@ function renderToolPage(
   }
 }
 
+/* ────────── Top Tab Bar (visible only on <1024px) ────────── */
+
+function TopTabItem({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof RiStarFill;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "flex flex-col items-center justify-center gap-0.5 border-b-2 px-3 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.12em] uppercase focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]",
+        active
+          ? "border-[var(--amber)] bg-[var(--chalk)] text-[var(--carbon)]"
+          : "border-transparent text-[var(--zinc)] hover:bg-[var(--slate)] hover:text-[var(--chalk)]",
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function TopTabBar({ activeTool, onToolClick }: { activeTool: ToolId; onToolClick: (id: ToolId) => void }) {
+  return (
+    <nav className="flex items-center overflow-x-auto border-b-2 border-[var(--chalk)] bg-[var(--carbon)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <TopTabItem
+        active={activeTool === "favorites"}
+        icon={RiStarFill}
+        label="收藏"
+        onClick={() => onToolClick("favorites")}
+      />
+      {tools.map((tool) => (
+        <TopTabItem
+          key={tool.id}
+          active={activeTool === tool.id}
+          icon={tool.icon}
+          label={tool.label}
+          onClick={() => onToolClick(tool.id)}
+        />
+      ))}
+      {deltaTools.map((tool) => (
+        <TopTabItem
+          key={tool.id}
+          active={activeTool === tool.id}
+          icon={tool.icon}
+          label={tool.label}
+          onClick={() => onToolClick(tool.id)}
+        />
+      ))}
+      {deltaApiTools.map((tool) => (
+        <TopTabItem
+          key={tool.id}
+          active={activeTool === tool.id}
+          icon={tool.icon}
+          label={tool.label}
+          onClick={() => onToolClick(tool.id)}
+        />
+      ))}
+    </nav>
+  );
+}
+
+/* ────────── Left Index Rail (visible only on >=1024px) ────────── */
+
 function IndexRailItem({
   active,
   code,
@@ -217,6 +249,21 @@ function IndexRailSection({ children, title }: { children: ReactNode; title: str
   );
 }
 
+function FavoritesIndexRailItem({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
+  return (
+    <IndexRailItem
+      active={active}
+      code="PIN"
+      icon={RiStarFill}
+      label="收藏夹"
+      meta={`PINNED / ${count}`}
+      onClick={onClick}
+    />
+  );
+}
+
+/* ────────── Global UI ────────── */
+
 function GlobalDisabledBanner() {
   return (
     <div className="mb-2 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
@@ -253,18 +300,7 @@ function GlobalSwitch() {
   );
 }
 
-function FavoritesIndexRailItem({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
-  return (
-    <IndexRailItem
-      active={active}
-      code="PIN"
-      icon={RiStarFill}
-      label="收藏夹"
-      meta={`PINNED / ${count}`}
-      onClick={onClick}
-    />
-  );
-}
+/* ────────── App Root ────────── */
 
 function App() {
   return (
@@ -310,6 +346,7 @@ function AppShell() {
       delete document.body.dataset.overlayMode;
     };
   }, [isOverlayWindowMode]);
+
   if (overlayMode === "overlay") {
     return (
       <ToolPageSuspense fallback={null}>
@@ -366,7 +403,6 @@ function AppShell() {
     );
   }
 
-
   const activeMeta = [...tools, ...deltaTools, ...deltaApiTools].find((tool) => tool.id === activeTool);
 
   return (
@@ -378,6 +414,7 @@ function AppShell() {
         跳到主内容
       </a>
 
+      {/* Top Manifest Bar */}
       <header className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] border-b-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]">
         <div className="flex items-center gap-3 border-r-2 border-[var(--chalk)] px-3">
           <div className="flex size-8 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
@@ -412,8 +449,14 @@ function AppShell() {
         </div>
       </header>
 
-      <div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden">
-        <aside className="min-h-0 overflow-y-auto border-r-2 border-[var(--chalk)] bg-[var(--slate)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Top Tab Bar (mobile/tablet <1024px) */}
+      <div className="lg:hidden">
+        <TopTabBar activeTool={activeTool} onToolClick={setActiveTool} />
+      </div>
+
+      <div className="grid min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
+        {/* Left Index Rail (desktop >=1024px) */}
+        <aside className="hidden min-h-0 overflow-y-auto border-r-2 border-[var(--chalk)] bg-[var(--slate)] lg:block [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="border-b-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
             工具索引 / 收藏 {favorites.items.length}
           </div>
@@ -468,7 +511,7 @@ function AppShell() {
           tabIndex={-1}
           className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          <div className="min-h-full w-full px-2 py-2 xl:px-3 xl:py-3">
+          <div className="mx-auto min-h-full w-full max-w-7xl px-2 py-2 xl:px-3 xl:py-3">
             <GlobalEnabledConsumer />
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
           </div>

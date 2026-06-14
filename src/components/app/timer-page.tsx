@@ -29,13 +29,14 @@ import {
   DragButton,
   HotkeyField,
   InlineControl,
-  PageHero,
+  MacroHeader,
   PagePreviewBanner,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
-  TacticalCard,
+  StatusMatrix,
   SurfaceToggleGroup,
+  TacticalCard,
 } from "@/components/app/app-ui";
 import type { TimerBootstrap, TimerDisplayMode, TimerGroupForm, TimerItemForm, TimerRunState, TimerSelectionOutcome, TimerSettings, TimerSettingsForm, TimerDisplayTarget } from "@/components/app/timer-types";
 import { DEFAULT_TIMER_GROUP_ID, TIMER_AUTOSAVE_DELAY_MS } from "@/components/app/timer-types";
@@ -383,10 +384,11 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
 
   return (
       <AppPage className="auto-rows-max">
-        <PageHero
-          eyebrow="02 / TIMER"
-          title="任务时序板"
-          description="计时器负责阶段节奏，计数器负责战局累加；透明窗口、定位窗口与快捷键保持双通道隔离。"
+        <MacroHeader
+          code="T-01"
+          title="TIMER / SYNC"
+          verticalLabel="计时器"
+          subtitle="计时器负责阶段节奏，计数器负责战局累加；透明窗口、定位窗口与快捷键保持双通道隔离。"
           badges={
             <>
               <Badge variant={form?.timerEnabled ? "default" : "secondary"}>计时通道{form?.timerEnabled ? "开启" : "关闭"}</Badge>
@@ -394,7 +396,7 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
               {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
             </>
           }
-          stats={
+          actions={
             <>
               <SignalTile
                 label="计时矩阵"
@@ -422,6 +424,16 @@ function TimerWorkbench({ highlightCardId, isNativeShell }: { highlightCardId: T
           </div>
         ) : null}
 
+        <div className="col-span-12">
+          <StatusMatrix items={[
+            { id: "timer", state: form?.timerEnabled ? "active" : "idle", label: "计时通道" },
+            { id: "counter", state: form?.counterEnabled ? "active" : "idle", label: "计数通道" },
+            { id: "running", state: (bootstrap?.runs.filter((run) => run.status === "running").length ?? 0) > 0 ? "active" : "idle", label: "运行中" },
+            { id: "hotkey", state: bootstrap?.hotkeyError ? "error" : form?.timerEnabled ? "valid" : "idle", label: "热键状态" },
+            { id: "save", state: isDirty ? "warning" : "valid", label: "保存状态" },
+            { id: "ready", state: form?.timerEnabled ? "valid" : "idle", label: "就绪状态" },
+          ]} />
+        </div>
 
         <TacticalCard className="col-span-12">
           <SectionHeader
@@ -543,7 +555,7 @@ function TimerCard({ controlsDisabled, groupOptions, index, isDragging, isFavori
   return (
     <TacticalCard active={isDragging} className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "", run?.status === "running" ? "border-l-4 border-l-[var(--amber)]" : run?.status === "finished" ? "border-l-4 border-l-[var(--valid-green)]" : "")} data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
       <SectionHeader
-        eyebrow={`T-${String(index + 1).padStart(2, "0")} · 计时器`}
+        eyebrow="计时器"
         icon={<RiTimerLine />}
         title={(
           <Input

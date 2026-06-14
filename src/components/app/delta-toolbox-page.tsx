@@ -5,7 +5,7 @@ import { useDeltaAccounts } from "@/hooks/use-delta-accounts";
 import type { AccountKind, ApiResponse } from "@/components/app/delta-types";
 import { ACCOUNT_KIND_LABELS } from "@/components/app/delta-types";
 import { getCapabilities } from "@/components/app/delta-utils";
-import { AppPage, CardBody, InlineNotice, JsonPreBlock, PageHero, SectionHeader, SurfaceToggleGroup, TacticalCard, TacticalEmptyState } from "@/components/app/app-ui";
+import { AppPage, CardBody, InlineNotice, JsonPreBlock, MacroHeader, SectionHeader, SurfaceToggleGroup, TacticalCard, TacticalEmptyState, StatusMatrix, ChannelTabs } from "@/components/app/app-ui";
 import { DeltaAccountSelector } from "@/components/app/delta-account-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -154,10 +154,10 @@ export function DeltaToolboxPage() {
   if (!isNativeShell) {
     return (
       <AppPage>
-        <PageHero
-          eyebrow="D3 / COMMANDS"
-          title="工具箱"
-          description="Wegame 运营、安全查询与先遣服测试"
+        <MacroHeader
+          code="A3"
+          title="TOOLBOX / COMMANDS"
+          subtitle="Wegame 运营、安全查询与先遣服测试"
         />
         <TacticalEmptyState className="col-span-12" icon={<RiGiftLine />} title="需要桌面环境" description="需要桌面环境才能使用工具箱功能。" />
       </AppPage>
@@ -166,11 +166,31 @@ export function DeltaToolboxPage() {
 
   return (
     <AppPage>
-      <PageHero
-        eyebrow="D3 / COMMANDS"
-        title="工具箱"
-        description="Wegame 运营、安全查询与先遣服测试"
+      <MacroHeader
+        code="A3"
+        title="TOOLBOX / COMMANDS"
+        subtitle="Wegame 运营、安全查询与先遣服测试"
       />
+
+      <div className="col-span-12">
+        <StatusMatrix items={[
+          { id: "wegame", state: selectedAccount?.kind === "wegameQq" || selectedAccount?.kind === "wegameWechat" ? "active" : "idle", label: "Wegame" },
+          { id: "qqsafe", state: selectedAccount?.kind === "qqSafe" ? "active" : "idle", label: "QQ安全" },
+          { id: "pioneer", state: selectedAccount?.kind === "pioneer" ? "active" : "idle", label: "先遣服" },
+          { id: "ready", state: selectedAccount ? "valid" : "warning", label: "就绪状态" },
+          { id: "native", state: isNativeShell ? "valid" : "warning", label: "原生环境" },
+          { id: "save", state: "valid", label: "保存状态" },
+        ]} />
+      </div>
+
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "tools", label: "工具", active: true },
+          ]}
+          onTabChange={() => {}}
+        />
+      </div>
 
       <div className="col-span-12 grid gap-3">
         <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-[14rem_minmax(0,1fr)]">

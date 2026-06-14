@@ -30,12 +30,14 @@ import {
   AddCardButton,
   AppPage,
   CardBody,
+  ChannelTabs,
   ControlTile,
   InlineNotice,
-  PageHero,
+  MacroHeader,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
+  StatusMatrix,
   TacticalCard,
 } from "@/components/app/app-ui";
 import type {
@@ -458,10 +460,11 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
   if (!form) {
     return (
       <AppPage className="auto-rows-max">
-        <PageHero
-          eyebrow="03 / RAPIDFIRE"
-          title="连发火控矩阵"
-          description="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
+        <MacroHeader
+          code="R-03"
+          title="RAPIDFIRE / CONTROL"
+          verticalLabel="连发器"
+          subtitle="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
         />
         {pageError ? (
           <div className="col-span-12">
@@ -490,10 +493,11 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         </div>
       ) : null}
 
-      <PageHero
-        eyebrow="03 / RAPIDFIRE"
-        title="连发火控矩阵"
-        description="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
+      <MacroHeader
+        code="R-03"
+        title="RAPIDFIRE / CONTROL"
+        verticalLabel="连发器"
+        subtitle="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
         badges={
           <>
             <Badge variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "总线接通" : "总线断开"}</Badge>
@@ -503,6 +507,9 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
         }
         actions={
           <>
+            <SignalTile label="活跃通道" value={activeRunCount} detail="非空闲卡片数量" />
+            <SignalTile label="待命通道" value={enabledCount} detail="已挂接触发键监听" />
+            <SignalTile label="累计发射" value={totalFireCount} detail={statusMessage} />
             <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
               <RiMapPinLine data-icon="inline-start" />
               校准位置
@@ -513,14 +520,29 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
             </Button>
           </>
         }
-        stats={
-          <>
-            <SignalTile label="活跃通道" value={activeRunCount} detail="非空闲卡片数量" />
-            <SignalTile label="待命通道" value={enabledCount} detail="已挂接触发键监听" />
-            <SignalTile label="累计发射" value={totalFireCount} detail={statusMessage} />
-          </>
-        }
       />
+
+      <div className="col-span-12">
+        <StatusMatrix items={[
+          { id: "rapidfire", state: form.rapidfireEnabled ? "active" : "idle", label: "总线状态" },
+          { id: "active", state: activeRunCount > 0 ? "active" : "idle", label: "活跃通道" },
+          { id: "enabled", state: enabledCount > 0 ? "valid" : "warning", label: "待命通道" },
+          { id: "save", state: isDirty ? "warning" : "valid", label: "保存状态" },
+          { id: "hotkey", state: bootstrap?.hotkeyError ? "error" : form.rapidfireEnabled ? "valid" : "idle", label: "热键状态" },
+          { id: "ready", state: form.rapidfireEnabled ? "valid" : "idle", label: "就绪状态" },
+        ]} />
+      </div>
+
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "cards", label: "通道", active: true },
+            { id: "global", label: "全局", active: false },
+            { id: "display", label: "显示", active: false },
+          ]}
+          onTabChange={() => {}}
+        />
+      </div>
 
       <TacticalCard className="col-span-12 xl:col-span-7">
         <SectionHeader
@@ -807,7 +829,7 @@ function RapidfireCardEditor({
       )}
     >
       <SectionHeader
-        eyebrow={`RF-${String(index + 1).padStart(2, "0")} · 连发器`}
+        eyebrow="连发器"
         title={(
           <Input
             className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -831,12 +853,7 @@ function RapidfireCardEditor({
         </div>
       ) : null}
       <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
-        <div className="grid gap-3 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
-          <div className="hidden items-center justify-center border-r-2 border-[var(--chalk)] pr-3 xl:flex">
-            <span className="font-heading text-[clamp(1.2rem,2.5vw,2.5rem)] font-medium leading-[0.85] tracking-[-0.06em] text-[var(--chalk)]">
-              RF-{String(index + 1).padStart(2, "0")}
-            </span>
-          </div>
+        <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
           <div className="grid gap-3">
             <div>
               <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>

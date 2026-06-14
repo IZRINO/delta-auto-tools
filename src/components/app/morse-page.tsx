@@ -1,6 +1,11 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  RiCheckboxCircleLine,
+  RiHistoryLine,
+  RiRefreshLine,
+} from "@remixicon/react";
 
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -8,9 +13,23 @@ import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 import { useHotkeyRecorder } from "@/hooks/use-hotkey-recorder";
 
 import { Badge } from "@/components/ui/badge";
-import { AppPage, InlineNotice, PageHero, SaveStateBadge, SignalTile } from "@/components/app/app-ui";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import {
+  AppPage,
+  ChannelTabs,
+  ConfigRow,
+  EmptyState,
+  FieldUnit,
+  HelpHint,
+  MacroHeader,
+  PagePreviewBanner,
+  SaveStateBadge,
+  StatusMatrix,
+} from "@/components/app/app-ui";
 import { RegionSelectionOverlay } from "@/components/app/morse-overlay";
-import { HistoryPanel, ResultPanel, SelectionPanel, WorkbenchControlPanel } from "@/components/app/morse-panels";
 import {
   AUTOSAVE_DELAY_MS,
   REGION_LABELS,
@@ -25,6 +44,7 @@ import {
 } from "@/components/app/morse-types";
 import {
   formatRecordedHotkey,
+  formatRegion,
   formatTimestamp,
   getErrorMessage,
   normalizeRunDetails,
@@ -42,6 +62,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const [verificationValue, setVerificationValue] = useState("");
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("idle");
   const [verificationMessage, setVerificationMessage] = useState("点击验证输入框即可执行一次仅识别流程，结果会直接回填到这里。");
+  const [activeTab, setActiveTab] = useState("selection");
 
   const bf = useBootstrapForm<MorseBootstrap, MorseSettings, MorseSettingsForm>({
     spec: {
@@ -100,9 +121,7 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     if (overlayMode || !isNativeShell) {
       return;
     }
-
     let disposed = false;
-
     void invoke("morse_set_hotkey_recording", { recording: recorder.isRecording }).catch((error) => {
       if (!disposed) {
         const message = getErrorMessage(error);
@@ -110,44 +129,33 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         setStatusMessage(message);
       }
     });
-
-    return () => {
-      disposed = true;
-    };
+    return () => { disposed = true; };
   }, [isNativeShell, recorder.isRecording, overlayMode]);
 
   useEffect(() => {
     if (!overlayMode) {
       return;
     }
-
     document.body.dataset.overlayMode = "true";
-    return () => {
-      delete document.body.dataset.overlayMode;
-    };
+    return () => { delete document.body.dataset.overlayMode; };
   }, [overlayMode]);
 
   useEffect(() => {
     if (overlayMode || !isNativeShell) {
       return;
     }
-
     let isDisposed = false;
     let unlistenRunFinished: (() => void) | undefined;
     let unlistenSelectionProgress: (() => void) | undefined;
     let unlistenHotkeyError: (() => void) | undefined;
 
     void listen<MorseRunResult>("morse://run-finished", async (event) => {
-      if (isDisposed) {
-        return;
-      }
-
+      if (isDisposed) return;
       const result = event.payload;
       startTransition(() => {
         setBootstrap((current) => (current ? { ...current, latestRun: result } : current));
         setStatusMessage(result.error ? `识别失败：${result.error}` : `识别完成：${result.value ?? "无结果"}`);
       });
-
       try {
         await syncBootstrap({ syncMode: "none" });
       } catch (error) {
@@ -155,51 +163,27 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
           setPageError(getErrorMessage(error));
         }
       }
-    }).then((dispose) => {
-      unlistenRunFinished = dispose;
-    });
+    }).then((dispose) => { unlistenRunFinished = dispose; });
 
     void listen<RegionSelectionProgress>("morse://selection-progress", (event) => {
-      if (isDisposed) {
-        return;
-      }
-
+      if (isDisposed) return;
       const progress = event.payload;
       startTransition(() => {
         setBootstrap((current) =>
-          current
-            ? {
-                ...current,
-                settings: {
-                  ...current.settings,
-                  regions: progress.regions,
-                },
-              }
-            : current,
+          current ? { ...current, settings: { ...current.settings, regions: progress.regions } } : current
         );
         setForm((current) =>
-          current
-            ? {
-                ...current,
-                regions: progress.regions,
-              }
-            : current,
+          current ? { ...current, regions: progress.regions } : current
         );
       });
-    }).then((dispose) => {
-      unlistenSelectionProgress = dispose;
-    });
+    }).then((dispose) => { unlistenSelectionProgress = dispose; });
 
     void listen<string>("morse://hotkey-error", (event) => {
-      if (isDisposed) {
-        return;
-      }
+      if (isDisposed) return;
       startTransition(() => {
         setBootstrap((current) => (current ? { ...current, hotkeyError: event.payload } : current));
       });
-    }).then((dispose) => {
-      unlistenHotkeyError = dispose;
-    });
+    }).then((dispose) => { unlistenHotkeyError = dispose; });
 
     return () => {
       isDisposed = true;
@@ -215,48 +199,33 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
   const configuredCount = savedSettings?.regions.filter(Boolean).length ?? 0;
   const runDetails = normalizeRunDetails(latestRun);
   const latestResultValue = latestRun?.value ?? null;
-  const latestResultTime = latestRun?.occurredAtMs ?? null;
   const hasLatestResult = Boolean(latestRun);
   const canRun = configuredCount === REGION_LABELS.length;
   const isBusy = loading || saving || running || selectingSlot !== null;
-  const stepOneComplete = configuredCount === REGION_LABELS.length;
-  const stepTwoActive = stepOneComplete && !hasLatestResult;
-  const stepThreeActive = hasLatestResult;
 
   const performSelectionSession = useCallback(async (slots: number[]) => {
-    if (slots.length === 0) {
-      return false;
-    }
-
+    if (slots.length === 0) return false;
     if (!isNativeShell) {
       setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
       return false;
     }
-
     setSelectingSlot(slots.length === 1 ? slots[0] : -1);
     setStatusMessage(
       slots.length === REGION_LABELS.length
         ? "请在悬浮层中依次完成 3 个区域框选。"
-        : `请在悬浮层中框选 ${REGION_LABELS[slots[0]]}。`,
+        : `请在悬浮层中框选 ${REGION_LABELS[slots[0]]}。`
     );
-
     try {
-      const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
-        slots,
-        target: "sampling",
-      });
+      const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", { slots, target: "sampling" });
       await syncBootstrap({ syncMode: "regions" });
-
       if (outcome.kind === "selected") {
         setStatusMessage(slots.length === REGION_LABELS.length ? "3 个区域已全部更新。" : `${REGION_LABELS[slots[0]]} 已更新。`);
         return true;
       }
-
       if (outcome.kind === "cancelled") {
         setStatusMessage("区域选择已取消。");
         return false;
       }
-
       setStatusMessage("区域选择窗口已关闭。");
       return false;
     } catch (error) {
@@ -269,66 +238,6 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     }
   }, [isNativeShell, syncBootstrap]);
 
-  const handleUpdateClickRegionDelay = useCallback((index: number, delayMs: string) => {
-    setForm((current) => {
-      if (!current) return current;
-      const next = current.clickRegions.map((r, i) =>
-        i === index ? { ...r, delayMs } : r,
-      );
-      return { ...current, clickRegions: next };
-    });
-  }, []);
-
-  const handleAddClickRegion = useCallback(async () => {
-    if (!isNativeShell) {
-      setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
-      return;
-    }
-
-    // 找到第一个空槽位
-    const regions = form?.clickRegions ?? [];
-    const emptyIndex = regions.findIndex((r) => !r.rect);
-    if (emptyIndex === -1) {
-      setStatusMessage("点击区域已满（最多 7 个）。");
-      return;
-    }
-
-    setSelectingSlot(-2);
-    setStatusMessage(`请在悬浮层中框选一个新的点击区域（槽位 ${emptyIndex + 1}）。`);
-
-    try {
-      const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
-        slots: [emptyIndex],
-        target: "click",
-      });
-      await syncBootstrap({ syncMode: "full" });
-
-      if (outcome.kind === "selected") {
-        setStatusMessage(`点击区域 ${emptyIndex + 1} 已添加。`);
-      } else if (outcome.kind === "cancelled") {
-        setStatusMessage("点击区域选择已取消。");
-      } else {
-        setStatusMessage("点击区域选择窗口已关闭。");
-      }
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setPageError(message);
-      setStatusMessage(message);
-    } finally {
-      setSelectingSlot(null);
-    }
-  }, [form?.clickRegions, isNativeShell, syncBootstrap]);
-
-  const handleRemoveClickRegion = useCallback((index: number) => {
-    setForm((current) => {
-      if (!current) return current;
-      const next = current.clickRegions.map((r, i) =>
-        i === index ? { rect: null, delayMs: "500" } : r,
-      );
-      return { ...current, clickRegions: next };
-    });
-  }, []);
-
   const handleVerificationRun = useCallback(async () => {
     if (!isNativeShell) {
       setVerificationStatus("error");
@@ -336,10 +245,8 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
       setStatusMessage("浏览器预览模式下不可执行识别，请在桌面端运行。");
       return;
     }
-
     setVerificationStatus("running");
     setVerificationMessage("正在执行一次仅识别测试验证...");
-
     try {
       setRunning(true);
       setStatusMessage("正在执行测试验证...");
@@ -348,20 +255,17 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
         setBootstrap((current) => (current ? { ...current, latestRun: result } : current));
         setPageError(result.error);
         setStatusMessage(result.error ? `识别失败：${result.error}` : `识别完成：${result.value ?? "无结果"}`);
-
         if (result.error) {
           setVerificationStatus("error");
           setVerificationMessage(result.error);
           return;
         }
-
         if (!result.value) {
           setVerificationValue("");
           setVerificationStatus("empty");
           setVerificationMessage("识别流程已执行，但本次没有得到可用结果。");
           return;
         }
-
         setVerificationValue(result.value);
         setVerificationStatus("success");
         setVerificationMessage("验证完成，结果已回填到输入框。再次聚焦会重新执行识别。");
@@ -386,103 +290,278 @@ export function MorsePage({ overlayMode = false }: MorsePageProps) {
     return <RegionSelectionOverlay slots={overlaySlots} />;
   }
 
-  const selectionControlsDisabled = loading || running || selectingSlot !== null || !isNativeShell;
+  const statusItems: { id: string; state: "idle" | "active" | "valid" | "warning" | "error"; label: string }[] = [
+    { id: "regions", state: configuredCount >= 1 ? "valid" : "idle", label: "采样窗位" },
+    { id: "hotkey", state: form?.hotkey ? "valid" : "idle", label: "热键绑定" },
+    { id: "threshold", state: form?.binaryThreshold ? "valid" : "idle", label: "二值化阈值" },
+    { id: "verification", state: verificationStatus === "success" ? "valid" : verificationStatus === "error" ? "error" : verificationStatus === "running" ? "active" : "idle", label: "验证状态" },
+    { id: "latest", state: latestResultValue ? "valid" : "idle", label: "最新报码" },
+    { id: "ready", state: canRun ? "valid" : "warning", label: "就绪状态" },
+  ];
 
   return (
-    <AppPage className="auto-rows-max gap-4">
-      <PageHero
-        eyebrow="MX-01 / DECODER"
-        title="摩斯信号破译台"
-        description="把采样窗位、阈值校准、单次验证与识别回溯串成一条硬线路，供战局内快速复核三码信号。"
+    <AppPage className="auto-rows-max gap-3">
+      <MacroHeader
+        code="MX-01"
+        title="MORSE / DECODER"
+        subtitle="把采样窗位、阈值校准、单次验证与识别回溯串成一条硬线路。"
         badges={
           <>
             <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "三区就绪" : "等待窗位标定"}</Badge>
             <SaveStateBadge dirty={isDirty} saving={saving} />
-            <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "链路占用" : "链路待命"}</Badge>
           </>
         }
-        stats={
-          <>
-            <SignalTile label="采样阵列" value={`${configuredCount}/3`} detail="三段信号窗位完成标定" />
-            <SignalTile label="最新报码" value={latestResultValue ?? "---"} detail={latestRunErrorOrFallback(latestRun?.error)} />
-            <SignalTile label="最近触发" value={formatTimestamp(latestResultTime)} detail="自动输入与热键触发统一归档" />
-          </>
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "链路占用" : "链路待命"}</Badge>
+          </div>
         }
       />
 
+      {/* Status Matrix */}
+      <div className="col-span-12">
+        <StatusMatrix items={statusItems} className="max-w-md" />
+      </div>
+
       {!isNativeShell ? (
         <div className="col-span-12">
-          <InlineNotice title="浏览器预览模式">
-            当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code className="font-mono text-[var(--amber)]">bun run tauri dev</code> 或使用安装后的桌面应用。
-          </InlineNotice>
+          <PagePreviewBanner />
         </div>
       ) : null}
 
-      {/* 结构分隔线 */}
-      <div className="col-span-12 h-0.5 bg-[var(--chalk)]" />
-
-      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-4">
-        <SelectionPanel
-          configuredCount={configuredCount}
-          form={form}
-          isBusy={selectionControlsDisabled}
-          isPreviewMode={!isNativeShell}
-          isPrimary={!stepOneComplete}
-          selectingSlot={selectingSlot}
-          onSelectAll={() => void performSelectionSession([0, 1, 2])}
-          onSelectOne={(slot) => void performSelectionSession([slot])}
+      {/* Channel Tabs */}
+      <div className="col-span-12">
+        <ChannelTabs
+          tabs={[
+            { id: "selection", label: "窗位", active: activeTab === "selection" },
+            { id: "workbench", label: "校准", active: activeTab === "workbench" },
+            { id: "result", label: "报码", active: activeTab === "result" },
+            { id: "history", label: "档案", active: activeTab === "history" },
+          ]}
+          onTabChange={setActiveTab}
         />
       </div>
 
-      <div className="col-span-12 grid min-h-0 gap-4 xl:col-span-8">
-        <WorkbenchControlPanel
-          form={form}
-          hotkeyButtonRef={hotkeyButtonRef}
-          hotkeyError={bootstrap?.hotkeyError}
-          isPrimary={stepTwoActive}
-          isRecordingHotkey={recorder.isRecording}
-          isVerifying={verificationStatus === "running"}
-          onAutoInputDelayChange={(value) => updateForm("autoInputDelay", value)}
-          onBeginHotkeyRecording={() => form && recorder.beginRecording(form.hotkey)}
-          onBinaryThresholdChange={(value) => updateForm("binaryThreshold", value)}
-          onHotkeyRecorderBlur={recorder.handleBlur}
-          onHotkeyRecorderKeyDown={recorder.handleKeyDown}
-          onVerificationChange={setVerificationValue}
-          onVerificationFocus={() => void handleVerificationRun()}
-          onVerificationRetry={() => void handleVerificationRun()}
-          verificationMessage={verificationMessage}
-          verificationStatus={verificationStatus}
-          verificationValue={verificationValue}
-          autoClickEnabled={form?.autoClickEnabled ?? false}
-          clickRegions={form?.clickRegions ?? []}
-          isBusy={isBusy}
-          onAutoClickEnabledChange={(value) => updateForm("autoClickEnabled", value)}
-          onAfterClickHotkeyChange={(value) => updateForm("afterClickHotkey", value)}
-          onUpdateClickRegionDelay={handleUpdateClickRegionDelay}
-          onAddClickRegion={() => void handleAddClickRegion()}
-          onRemoveClickRegion={handleRemoveClickRegion}
-        />
-      </div>
+      {/* Tab Content */}
+      <div className="col-span-12">
+        {activeTab === "selection" && (
+          <FieldUnit header="[ UNIT 01 ] 采样阵列 — 锁定三段信号窗位">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {REGION_LABELS.map((label, index) => {
+                const region = form?.regions[index] ?? null;
+                const isConfigured = Boolean(region);
+                return (
+                  <div key={label} className="border-2 border-[var(--chalk)] p-3">
+                    <div className="flex items-center justify-between gap-2 border-b border-[var(--seam)] pb-2 mb-2">
+                      <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">{label}</span>
+                      <Badge variant={isConfigured ? "default" : "outline"}>
+                        {isConfigured ? "已锁定" : "待锁定"}
+                      </Badge>
+                    </div>
+                    {isConfigured ? (
+                      <div className="font-mono text-xs text-[var(--zinc)]">{formatRegion(region)}</div>
+                    ) : (
+                      <div className="font-mono text-xs text-[var(--dust)]">未配置</div>
+                    )}
+                    <Button
+                      className="mt-2 w-full"
+                      disabled={isBusy}
+                      onClick={() => void performSelectionSession([index])}
+                      type="button"
+                      variant={isConfigured ? "outline" : "default"}
+                      size="sm"
+                    >
+                      {isConfigured ? "重选" : "框选"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={isBusy}
+                onClick={() => void performSelectionSession([0, 1, 2])}
+                type="button"
+              >
+                <RiRefreshLine data-icon="inline-start" />
+                一次框选三段窗位
+              </Button>
+            </div>
+          </FieldUnit>
+        )}
 
-      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--chalk)] p-3 xl:col-span-7">
-        <ResultPanel
-          hasResult={hasLatestResult}
-          isPrimary={stepThreeActive}
-          latestAutoTyped={Boolean(latestRun?.autoTyped)}
-          latestRunError={latestRun?.error}
-          latestRunValue={latestRun?.value}
-          latestTriggeredBy={latestRun?.triggeredBy}
-          runDetails={runDetails}
-        />
-      </div>
+        {activeTab === "workbench" && (
+          <FieldUnit header="[ UNIT 02 ] 参数机架 — 校准识别链路">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <ConfigRow
+                  label="热键"
+                  value={
+                    <Button
+                      ref={hotkeyButtonRef}
+                      className="h-auto w-full justify-between gap-4 border-2 border-[var(--chalk)] px-3 py-2 font-mono text-xs"
+                      onBlur={recorder.handleBlur}
+                      onClick={() => form && recorder.beginRecording(form.hotkey)}
+                      onKeyDown={recorder.handleKeyDown}
+                      type="button"
+                      variant="outline"
+                    >
+                      <span>{recorder.isRecording ? "正在录制..." : form?.hotkey || "点击录制"}</span>
+                      <HelpHint content="点击后按下目标快捷键，失焦取消录制。" />
+                    </Button>
+                  }
+                  state={form?.hotkey ? "valid" : "idle"}
+                />
+                <ConfigRow
+                  label="二值化阈值"
+                  value={
+                    <Input
+                      className="border-2 border-[var(--chalk)] font-mono text-xs"
+                      inputMode="numeric"
+                      max="255"
+                      min="0"
+                      onChange={(e) => updateForm("binaryThreshold", e.currentTarget.value)}
+                      value={form?.binaryThreshold ?? ""}
+                    />
+                  }
+                  state={form?.binaryThreshold ? "valid" : "idle"}
+                />
+                <ConfigRow
+                  label="自动输入延迟"
+                  value={
+                    <Input
+                      className="border-2 border-[var(--chalk)] font-mono text-xs"
+                      inputMode="numeric"
+                      min="0"
+                      onChange={(e) => updateForm("autoInputDelay", e.currentTarget.value)}
+                      value={form?.autoInputDelay ?? ""}
+                    />
+                  }
+                  unit="ms"
+                  state={form?.autoInputDelay ? "valid" : "idle"}
+                />
+                <div className="flex items-center gap-2 border-b border-[var(--seam)] px-3 py-2">
+                  <Switch
+                    checked={form?.autoClickEnabled ?? false}
+                    disabled={isBusy}
+                    onCheckedChange={(v) => updateForm("autoClickEnabled", v)}
+                  />
+                  <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">自动点击链路</span>
+                  <HelpHint content="识别成功后按设定顺序执行点击。" />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="border-2 border-[var(--chalk)] p-3">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">即时验证</span>
+                    <HelpHint content="聚焦输入框或按按钮执行一次仅识别测试。" />
+                  </div>
+                  <Input
+                    className="border-2 border-[var(--chalk)] font-mono text-sm tracking-wider"
+                    onChange={(e) => setVerificationValue(e.currentTarget.value)}
+                    onFocus={() => void handleVerificationRun()}
+                    placeholder="聚焦此处执行测试验证"
+                    value={verificationValue}
+                  />
+                  <p className="mt-2 font-mono text-xs text-[var(--zinc)]">{verificationMessage}</p>
+                  <Button
+                    className="mt-2 w-full"
+                    disabled={verificationStatus === "running"}
+                    onClick={() => void handleVerificationRun()}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                  >
+                    <RiRefreshLine data-icon="inline-start" />
+                    重新验证
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </FieldUnit>
+        )}
 
-      <div className="col-span-12 grid min-h-0 gap-4 border-2 border-[var(--chalk)] p-3 xl:col-span-5">
-        <HistoryPanel history={history} isPreviewMode={!isNativeShell} />
+        {activeTab === "result" && (
+          <FieldUnit header="[ UNIT 03 ] 报码输出 — 审阅三码结果">
+            {hasLatestResult ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="border-2 border-[var(--chalk)] bg-[var(--slate)] p-4">
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <Badge variant={latestRun?.error ? "outline" : latestRun?.value ? "default" : "secondary"}>
+                      {latestRun?.error ? "失败" : latestRun?.value ? "成功" : "等待"}
+                    </Badge>
+                    {latestRun?.triggeredBy ? <Badge variant="outline">{latestRun.triggeredBy}</Badge> : null}
+                    {latestRun?.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
+                  </div>
+                  <p className="font-mono text-xs font-black tracking-[0.18em] uppercase text-[var(--zinc)]">最新三码输出</p>
+                  <p className="mt-2 font-mono text-4xl font-semibold tracking-[0.24em] text-[var(--amber)]">
+                    {latestRun?.value ?? "---"}
+                  </p>
+                  <div className="mt-2 h-0.5 w-full bg-[var(--amber)]" />
+                  <p className="mt-2 text-xs text-[var(--zinc)]">{latestRun?.error ?? "执行识别后会在这里显示最新三码输出。"}</p>
+                </div>
+                <div className="space-y-2">
+                  {runDetails.map((detail) => (
+                    <div key={detail.slot} className="border-2 border-[var(--chalk)] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">{REGION_LABELS[detail.slot]}</span>
+                        <Badge variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
+                          {detail.error ? "失败" : detail.digit ?? "--"}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--zinc)]">
+                        <span className="font-mono">{detail.morse ?? "--"}</span>
+                        <span>{detail.thresholdMode}</span>
+                        <span>轮廓 {detail.contourCount}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<RiCheckboxCircleLine />}
+                title="等待报码"
+                description="完成前两单元后，三码结果会写入这里。"
+              />
+            )}
+          </FieldUnit>
+        )}
+
+        {activeTab === "history" && (
+          <FieldUnit header="[ UNIT 04 ] 运行档案 — 回看识别历史">
+            {history.length === 0 ? (
+              <EmptyState
+                icon={<RiHistoryLine />}
+                title="暂无档案"
+                description="执行一次识别后会在这里生成运行回执。"
+              />
+            ) : (
+              <ScrollArea className="h-72">
+                <div className="flex flex-col gap-2 pe-4">
+                  {history.map((entry) => (
+                    <div key={entry.id} className="border-2 border-[var(--chalk)] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--seam)] pb-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">
+                            {entry.result ? `报码 ${entry.result}` : "识别失败"}
+                          </span>
+                          <Badge variant={entry.success ? "default" : "outline"}>{entry.success ? "成功" : "失败"}</Badge>
+                          <Badge variant="outline">{entry.triggeredBy}</Badge>
+                          {entry.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
+                        </div>
+                        <span className="font-mono text-xs text-[var(--zinc)]">{formatTimestamp(entry.occurredAtMs)}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-[var(--zinc)]">{entry.error ? "本轮识别失败，建议回查窗位与阈值。" : "识别链路执行完成，结果已写入历史档案。"}</p>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </FieldUnit>
+        )}
       </div>
     </AppPage>
   );
-}
-
-function latestRunErrorOrFallback(error: string | null | undefined): string {
-  return error ? "最近一次识别失败，需回查三码链路" : "最新三码会在报码窗中放大显示";
 }

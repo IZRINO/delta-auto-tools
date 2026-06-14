@@ -8,7 +8,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { AppPage, CardBody, PageHero, SectionHeader, TacticalCard } from "@/components/app/app-ui";
+import { AppPage, CardBody, MacroHeader, SectionHeader, TacticalCard } from "@/components/app/app-ui";
 
 type ToolPlaceholderPageProps = {
   title: string;
@@ -25,10 +25,10 @@ const pendingItems = [
 export function ToolPlaceholderPage({ title, shortLabel, description }: ToolPlaceholderPageProps) {
   return (
     <AppPage>
-      <PageHero
-        eyebrow="占位模块"
+      <MacroHeader
+        code="--"
         title={title}
-        description={description}
+        subtitle={description}
         badges={
           <>
             <Badge variant="secondary">未开放</Badge>
