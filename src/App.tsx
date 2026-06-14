@@ -8,6 +8,7 @@ import {
   RiSpeedUpLine,
   RiCompassDiscoverLine,
   RiShutDownLine,
+  RiVolumeUpLine,
 } from "@remixicon/react";
 
 import { FavoritesProvider, useFavorites } from "@/hooks/use-favorites";
@@ -26,6 +27,7 @@ const overlayWindowModes = new Set([
   "counter-position",
   "rapidfire-display",
   "rapidfire-position",
+  "audio-overlay",
 ]);
 
 const MorsePage = lazy(() =>
@@ -43,11 +45,19 @@ const StrategyPage = lazy(() =>
 const FavoritesPage = lazy(() =>
   import("@/components/app/favorites-page").then((module) => ({ default: module.FavoritesPage })),
 );
+const AudioPage = lazy(() =>
+  import("@/components/app/audio-page").then((module) => ({ default: module.AudioPage })),
+);
+
+const AudioRegionOverlay = lazy(() =>
+  import("@/components/app/audio-page").then((module) => ({ default: module.AudioRegionOverlay })),
+);
 
 const tools = [
   { id: "timer" as const, icon: RiTimerLine, label: "计时/计数", short: "Sync" },
   { id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire" },
   { id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy" },
+  { id: "audio" as const, icon: RiVolumeUpLine, label: "音频", short: "Audio" },
 ];
 
 const deltaTools = [
@@ -93,6 +103,8 @@ function renderToolPage(
       return <FavoritesPage onNavigate={onNavigateFavorite} />;
     case "strategy":
       return <StrategyPage />;
+    case "audio":
+      return <AudioPage />;
     case "morse":
       return <MorsePage />;
   }
@@ -357,6 +369,14 @@ function AppShell() {
     );
   }
 
+  if (overlayMode === "audio-overlay") {
+    return (
+      <ToolPageSuspense fallback={null}>
+        <AudioRegionOverlay />
+      </ToolPageSuspense>
+    );
+  }
+
   const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool)
     ?? (activeTool === "counter" ? { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" } : undefined);
 
@@ -383,7 +403,7 @@ function AppShell() {
         <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : "D1"}
+              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : activeTool === "audio" ? "04" : "D1"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">

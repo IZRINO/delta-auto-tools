@@ -1,8 +1,10 @@
+mod audio;
 mod app_error;
 mod global_state;
 mod tool_base;
 mod hotkey_types;
 mod hotkeys;
+mod key_suppressor;
 mod morse;
 mod overlay_utils;
 mod rapidfire;
@@ -28,11 +30,13 @@ pub fn run() {
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
+            let audio_state = audio::initialize(app.handle(), &hotkey_manager)?;
             let global_state = global_state::GlobalState::new(true);
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
             app.manage(rapidfire_state);
+            app.manage(audio_state);
             app.manage(global_state);
             Ok(())
         })
@@ -45,6 +49,8 @@ pub fn run() {
                     timer::shutdown(app, &timer_state, &hotkey_manager);
                     let rapidfire_state = app.state::<rapidfire::RapidfireState>();
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
+                    let _audio_state = app.state::<audio::AudioState>();
+                    audio::shutdown(app, &hotkey_manager);
                     app.exit(0);
                 }
             }
@@ -80,6 +86,14 @@ pub fn run() {
             rapidfire::rapidfire_position_commit,
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
+
+            // ── audio ──
+            audio::audio_get_bootstrap,
+            audio::audio_save_settings,
+            audio::audio_begin_region_selection,
+            audio::audio_overlay_submit_selection,
+            audio::audio_overlay_cancel_selection,
+            audio::audio_test_play,
 
             // ── strategy ──
             strategy::webview::strategy_open_window,

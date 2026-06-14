@@ -1,9 +1,9 @@
 mod decoder;
 mod input;
 mod overlay;
-mod recognition;
+pub mod recognition;
 mod settings;
-mod types;
+pub mod types;
 mod events;
 
 use std::{

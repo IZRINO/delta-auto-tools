@@ -234,7 +234,7 @@ fn capture_region(region: &RegionRect) -> Result<RgbaImage, DetectionFailure> {
     })
 }
 
-fn region_to_capture_bounds(
+pub fn region_to_capture_bounds(
     region: &RegionRect,
     monitor_left: i32,
     monitor_top: i32,

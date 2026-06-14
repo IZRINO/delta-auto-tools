@@ -2,6 +2,7 @@ import { listen, type Event } from "@tauri-apps/api/event";
 import type { TimerBootstrap } from "@/components/app/timer-types";
 import type { MorseRunResult, RegionSelectionProgress } from "@/components/app/morse-types";
 import type { RapidfireBootstrap } from "@/components/app/rapidfire-types";
+import type { AudioBootstrap } from "@/components/app/audio-types";
 
 export const MORSE_EVENTS = {
   runFinished: { name: "morse://run-finished" as const, payload: null as unknown as MorseRunResult },
@@ -19,6 +20,13 @@ export const TIMER_EVENTS = {
 export const RAPIDFIRE_EVENTS = {
   stateChanged: { name: "rapidfire://state-changed" as const, payload: null as unknown as RapidfireBootstrap },
   hotkeyError: { name: "rapidfire://hotkey-error" as const, payload: null as unknown as string },
+} as const;
+
+export const AUDIO_EVENTS = {
+  stateChanged: { name: "audio://state-changed" as const, payload: null as unknown as AudioBootstrap },
+  hotkeyTriggered: { name: "audio://hotkey-triggered" as const, payload: null as unknown as string },
+  regionMatched: { name: "audio://region-matched" as const, payload: null as unknown as string },
+  hotkeyError: { name: "audio://hotkey-error" as const, payload: null as unknown as string },
 } as const;
 
 export const GLOBAL_EVENTS = {

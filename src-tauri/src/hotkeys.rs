@@ -16,6 +16,9 @@ use willhook::{
     hook::Hook,
 };
 
+#[cfg(target_os = "windows")]
+use crossbeam_channel::Receiver;
+
 use crate::global_state::GlobalState;
 use crate::hotkey_types::{
     self as types, HotkeyBinding, ModifierKey, PrimaryKey,
@@ -30,6 +33,13 @@ pub struct HotkeyManager {
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
     install_error: Option<String>,
+    /// KeySuppressor：通过 WH_KEYBOARD_LL 钩子吞噬被抑制的按键事件
+    #[cfg(target_os = "windows")]
+    key_suppressor: Option<crate::key_suppressor::KeySuppressor>,
+    /// 接收 KeySuppressor 转发的被抑制事件
+    #[cfg(target_os = "windows")]
+    #[allow(dead_code)]
+    suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
     #[cfg(target_os = "windows")]
     worker: Option<JoinHandle<()>>,
     #[cfg(not(target_os = "windows"))]
@@ -44,6 +54,16 @@ impl HotkeyManager {
 
         #[cfg(target_os = "windows")]
         {
+            // 启动 KeySuppressor（按键抑制钩子）
+            let (suppressor, suppressed_rx) =
+                match crate::key_suppressor::KeySuppressor::start() {
+                    Ok(pair) => (Some(pair.0), Some(pair.1)),
+                    Err(e) => {
+                        eprintln!("按键抑制钩子安装失败: {e}");
+                        (None, None)
+                    }
+                };
+
             let Some(hook) = willhook::keyboard_hook() else {
                 return Self {
                     registrations,
@@ -52,6 +72,8 @@ impl HotkeyManager {
                     install_error: Some(
                         "键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string(),
                     ),
+                    key_suppressor: suppressor,
+                    suppressed_rx,
                     worker: None,
                 };
             };
@@ -59,6 +81,7 @@ impl HotkeyManager {
             let worker_registrations = Arc::clone(&registrations);
             let worker_hold_registrations = Arc::clone(&hold_registrations);
             let worker_stopped = Arc::clone(&stopped);
+            let worker_suppressed_rx = suppressed_rx.clone();
             let worker = thread::Builder::new()
                 .name("shared-hotkey-listener".to_string())
                 .spawn(move || {
@@ -68,6 +91,7 @@ impl HotkeyManager {
                         worker_registrations,
                         worker_hold_registrations,
                         worker_stopped,
+                        worker_suppressed_rx,
                     )
                 })
                 .map_err(|error| format!("启动热键监听线程失败: {error}"));
@@ -78,6 +102,8 @@ impl HotkeyManager {
                     hold_registrations,
                     stopped,
                     install_error: None,
+                    key_suppressor: suppressor,
+                    suppressed_rx,
                     worker: Some(worker),
                 },
                 Err(error) => Self {
@@ -85,6 +111,8 @@ impl HotkeyManager {
                     hold_registrations,
                     stopped,
                     install_error: Some(error),
+                    key_suppressor: suppressor,
+                    suppressed_rx,
                     worker: None,
                 },
             }
@@ -101,6 +129,40 @@ impl HotkeyManager {
                 _worker: (),
             }
         }
+    }
+
+    /// 抑制指定按键：物理按键事件不会到达前台应用，但热键回调仍正常触发
+    #[cfg(target_os = "windows")]
+    pub fn suppress_key(&self, key: &str) -> Result<bool, String> {
+        if let Some(ref suppressor) = self.key_suppressor {
+            let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
+                .ok_or_else(|| format!("无法解析按键: {key}"))?;
+            Ok(suppressor.suppress(vk))
+        } else {
+            Err("按键抑制钩子未安装".to_string())
+        }
+    }
+
+    /// 取消抑制指定按键
+    #[cfg(target_os = "windows")]
+    pub fn unsuppress_key(&self, key: &str) -> Result<bool, String> {
+        if let Some(ref suppressor) = self.key_suppressor {
+            let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
+                .ok_or_else(|| format!("无法解析按键: {key}"))?;
+            Ok(suppressor.unsuppress(vk))
+        } else {
+            Err("按键抑制钩子未安装".to_string())
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn suppress_key(&self, _key: &str) -> Result<bool, String> {
+        Err("当前仅 Windows 支持按键抑制".to_string())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn unsuppress_key(&self, _key: &str) -> Result<bool, String> {
+        Err("当前仅 Windows 支持按键抑制".to_string())
     }
 
     fn validate_scope_conflicts(
@@ -316,12 +378,14 @@ fn run_listener(
     registrations: Arc<Mutex<Vec<HotkeyRegistration>>>,
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
+    suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
 ) {
     let mut matcher = HotkeyMatcher::new();
     let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
     let mut active_hold_modifiers = HashSet::new();
 
     while !stopped.load(Ordering::SeqCst) {
+        // 1. 处理 willhook 正常事件
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
                 // 全局总开关关闭时，忽略所有热键事件（不触发任何回调）。
@@ -352,11 +416,48 @@ fn run_listener(
                 }
             }
             Ok(_) => {}
-            Err(std::sync::mpsc::TryRecvError::Empty) => {
-                thread::sleep(Duration::from_millis(8));
-            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
         }
+
+        // 2. 处理 KeySuppressor 转发的被抑制事件
+        //    这些事件已被 WH_KEYBOARD_LL 钩子吞噬，不会到达前台应用，
+        //    但热键回调仍需正常触发
+        if let Some(ref rx) = suppressed_rx {
+            while let Ok(suppressed_event) = rx.try_recv() {
+                let global_enabled = app
+                    .try_state::<GlobalState>()
+                    .map(|state| state.enabled())
+                    .unwrap_or(true);
+                if !global_enabled {
+                    continue;
+                }
+
+                // 将被抑制事件转换为 willhook KeyboardEvent
+                let event =
+                    crate::key_suppressor::suppressed_event_to_willhook_event(&suppressed_event);
+
+                let hold_actions = hold_actions_for_event(
+                    &hold_registrations,
+                    event,
+                    &mut active_hold_keys,
+                    &mut active_hold_modifiers,
+                );
+                for (action, hold_action) in hold_actions {
+                    action(app.clone(), hold_action);
+                }
+
+                if let Some(key_state) = matcher.handle_event(event) {
+                    let actions = actions_for_key_state(&registrations, &key_state);
+
+                    for action in actions {
+                        action(app.clone());
+                    }
+                }
+            }
+        }
+
+        thread::sleep(Duration::from_millis(4));
     }
 }
 
@@ -701,6 +802,10 @@ mod tests {
             hold_registrations: Arc::new(Mutex::new(HashMap::new())),
             stopped: Arc::new(AtomicBool::new(false)),
             install_error: None,
+            #[cfg(target_os = "windows")]
+            key_suppressor: None,
+            #[cfg(target_os = "windows")]
+            suppressed_rx: None,
             #[cfg(target_os = "windows")]
             worker: None,
             #[cfg(not(target_os = "windows"))]
