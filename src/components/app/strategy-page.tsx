@@ -395,10 +395,10 @@ export function StrategyPage() {
     const nextUserSites = [...userSites, nextSite];
     setUserSites(nextUserSites);
     writeStoredUserSites(nextUserSites);
-    setActiveId(nextSite.id);
     setSiteForm(EMPTY_USER_SITE_FORM);
     setSiteFormError(null);
     setCreatePanelOpen(false);
+    setActiveId(nextSite.id);
     toast.success(`已新增攻略网站：${nextSite.label}`);
   }, [siteForm, userSites]);
 
@@ -498,15 +498,15 @@ export function StrategyPage() {
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_auto]">
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
-                <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => setSiteForm((current) => ({ ...current, shortLabel: event.currentTarget.value }))} placeholder="攻略站" />
+                <Input id="strategy-site-short-label" value={siteForm.shortLabel} onChange={(event) => { const value = event.currentTarget.value; setSiteForm((current) => ({ ...current, shortLabel: value })); }} placeholder="攻略站" />
               </Field>
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="strategy-site-label">完整名称</FieldLabel>
-                <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => setSiteForm((current) => ({ ...current, label: event.currentTarget.value }))} placeholder="自定义攻略站" />
+                <Input id="strategy-site-label" value={siteForm.label} onChange={(event) => { const value = event.currentTarget.value; setSiteForm((current) => ({ ...current, label: value })); }} placeholder="自定义攻略站" />
               </Field>
               <Field className="gap-1.5">
                 <FieldLabel htmlFor="strategy-site-url">URL</FieldLabel>
-                <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => setSiteForm((current) => ({ ...current, url: event.currentTarget.value }))} placeholder="https://example.com" />
+                <Input id="strategy-site-url" value={siteForm.url} onChange={(event) => { const value = event.currentTarget.value; setSiteForm((current) => ({ ...current, url: value })); }} placeholder="https://example.com" onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleCreateSite(); } }} />
               </Field>
               <div className="flex items-end gap-2">
                 <Button type="button" className="h-9" onClick={handleCreateSite}>
@@ -518,7 +518,7 @@ export function StrategyPage() {
             </div>
             <Field className="mt-3 gap-1.5">
               <FieldLabel htmlFor="strategy-site-description">简介（可选）</FieldLabel>
-              <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => setSiteForm((current) => ({ ...current, description: event.currentTarget.value }))} placeholder="用于在站点信息中展示" />
+              <Textarea id="strategy-site-description" value={siteForm.description} onChange={(event) => { const value = event.currentTarget.value; setSiteForm((current) => ({ ...current, description: value })); }} placeholder="用于在站点信息中展示" />
             </Field>
             {siteFormError ? <FieldDescription className="mt-2 text-destructive">{siteFormError}</FieldDescription> : null}
           </div>

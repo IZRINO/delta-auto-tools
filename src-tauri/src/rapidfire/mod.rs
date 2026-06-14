@@ -697,7 +697,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             trigger_jitter_max_ms,
             cancel_jitter_on_release,
             skip_compensation,
-            _ignore_trigger_key,
+            card_ignore_trigger_key,
         ) in card_infos
         {
             let session_id = next_session_id();
@@ -735,11 +735,30 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
                 min_press_spacing_ms,
                 trigger_jitter_max_ms,
                 cancel_jitter_on_release,
-                ignore_trigger_key: ignore_trigger_key_for_batch,
+                ignore_trigger_key: card_ignore_trigger_key,
                 control_rx,
                 compensate_now,
                 last_press_at,
             });
+        }
+
+        // 如果该批次中有任意卡片要求忽略触发键，在启动 session 前统一释放一次触发键，
+        // 确保触发键的初始状态为释放。
+        if ignore_trigger_key_for_batch {
+            if let Some(first_trigger) = sessions_to_spawn.first().map(|w| w.trigger_key.clone()) {
+                if let Ok(trigger_primary) = trigger_primary_label(&first_trigger) {
+                    if let Some(trigger_key) = parse_target_key(&trigger_primary) {
+                        let _ = (|| -> Result<(), String> {
+                            use enigo::{Direction, Enigo, Keyboard, Settings};
+                            let mut enigo = Enigo::new(&Settings::default())
+                                .map_err(|e| format!("初始化 enigo 失败: {e}"))?;
+                            enigo.key(trigger_key, Direction::Release)
+                                .map_err(|e| format!("释放触发键失败: {e}"))?;
+                            Ok(())
+                        })();
+                    }
+                }
+            }
         }
 
         sessions_to_spawn
