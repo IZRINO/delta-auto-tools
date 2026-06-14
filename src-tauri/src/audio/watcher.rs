@@ -214,8 +214,8 @@ fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -> f32 {
         return 0.0;
     }
 
-    let a_resized = a.resize_exact(width, height, image::imageops::FilterType::Nearest);
-    let b_resized = b.resize_exact(width, height, image::imageops::FilterType::Nearest);
+    let a_resized = a.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
+    let b_resized = b.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
 
     let a_rgb = a_resized.to_rgb8();
     let b_rgb = b_resized.to_rgb8();

@@ -1333,6 +1333,7 @@ fn destroy_position_windows(app: &AppHandle) {
 
 pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_hold_scope("rapidfire");
+    hotkey_manager.clear_all_suppressions();
     if let Ok(mut inner) = state.lock_inner() {
         stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
         inner.logic.runs.clear();

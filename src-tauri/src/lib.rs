@@ -50,6 +50,8 @@ pub fn run() {
                     let rapidfire_state = app.state::<rapidfire::RapidfireState>();
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
                     let _audio_state = app.state::<audio::AudioState>();
+                    let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
+                    hotkey_manager.clear_all_suppressions();
                     audio::shutdown(app, &hotkey_manager);
                     app.exit(0);
                 }

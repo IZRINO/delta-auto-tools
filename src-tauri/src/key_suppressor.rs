@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
 
@@ -91,11 +92,20 @@ impl KeySuppressor {
             .map(|keys| keys.contains(&vk_code))
             .unwrap_or(false)
     }
+
+    /// 取消所有抑制
+    pub fn clear_all(&self) {
+        if let Ok(mut keys) = self.suppressed_keys.lock() {
+            keys.clear();
+        }
+    }
 }
 
 impl Drop for KeySuppressor {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
+        // 使用 PeekMessage 循环的 run_suppressor_hook 无需额外唤醒；
+        // 旧的 GetMessageW 实现已被替换为 PeekMessageW 方案，避免永久阻塞。
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -160,7 +170,7 @@ pub fn vk_to_keyboard_key(vk_code: u32) -> willhook::event::KeyboardKey {
         0x20 => KeyboardKey::Space,
         0x21 => KeyboardKey::PageUp,
         0x22 => KeyboardKey::PageDown,
-        0x23 => KeyboardKey::Other(0x23),
+        0x23 => KeyboardKey::Other(0x23), // End: willhook 无 End 变体
         0x24 => KeyboardKey::Home,
         0x25 => KeyboardKey::ArrowLeft,
         0x26 => KeyboardKey::ArrowUp,
@@ -266,8 +276,8 @@ fn run_suppressor_hook(
 ) {
     use std::ptr;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, MSG, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP,
+        CallNextHookEx, PeekMessageW, MSG, SetWindowsHookExW, UnhookWindowsHookEx,
+        WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP, PM_REMOVE,
     };
 
     // KBDLLHOOKSTRUCT 不在 windows-sys 的默认 feature 中，手动定义
@@ -342,13 +352,21 @@ fn run_suppressor_hook(
         return;
     }
 
-    // 消息循环：WH_KEYBOARD_LL 钩子需要消息循环才能正常工作
+    // 消息循环：使用 PeekMessageW + 睡眠，避免 GetMessageW 永久阻塞导致线程无法退出
     let mut msg: MSG = unsafe { std::mem::zeroed() };
     while !stopped.load(Ordering::SeqCst) {
-        let ret = unsafe { GetMessageW(&mut msg, ptr::null_mut(), 0, 0) };
-        if ret == 0 || msg.message == WM_QUIT {
-            break;
+        unsafe {
+            // 非阻塞检查消息队列，避免 stopped 变更后无法退出
+            while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                if msg.message == WM_QUIT {
+                    break;
+                }
+                // TranslateMessage 和 DispatchMessage 对 WH_KEYBOARD_LL 钩子不是必须的，
+                // 但标准消息循环惯例保留。实际上钩子由系统直接调用，无需 dispatch。
+            }
         }
+        // 短暂睡眠降低 CPU 占用，同时保证 stopped 检查及时
+        thread::sleep(Duration::from_millis(5));
     }
 
     // 卸载钩子

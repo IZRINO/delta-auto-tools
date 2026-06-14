@@ -33,6 +33,7 @@ import { AUDIO_AUTOSAVE_DELAY_MS } from "@/components/app/audio-types";
 import { createEmptyAudioCard, parseSettingsForm, settingsToForm } from "@/components/app/audio-utils";
 import { getErrorMessage, getSelectionRect } from "@/components/app/morse-utils";
 import type { Point } from "@/components/app/morse-types";
+import { MIN_SELECTION_WIDTH, MIN_SELECTION_HEIGHT } from "@/components/app/morse-types";
 import { useNativeShell } from "@/hooks/use-native-shell";
 import { useBootstrapForm } from "@/hooks/use-bootstrap-form";
 import { useAutosave } from "@/hooks/use-autosave";
@@ -462,6 +463,10 @@ export function AudioRegionOverlay() {
 
   const submitSelection = useCallback(async () => {
     if (!currentRect || submitting) return;
+    if (currentRect.width <= MIN_SELECTION_WIDTH || currentRect.height <= MIN_SELECTION_HEIGHT) {
+      setStatusMessage(`区域太小（${currentRect.width}x${currentRect.height}），请重新框选。`);
+      return;
+    }
     setSubmitting(true);
     setStatusMessage("正在提交...");
     try {
@@ -501,6 +506,11 @@ export function AudioRegionOverlay() {
 
   const handleMouseUp = () => {
     if (!dragStart || submitting) return;
+    const rect = currentRect;
+    if (rect && (rect.width <= MIN_SELECTION_WIDTH || rect.height <= MIN_SELECTION_HEIGHT)) {
+      setStatusMessage(`区域太小（${rect.width}x${rect.height}），请重新框选。`);
+      return;
+    }
     setStatusMessage("区域已框选，按 Enter 确认或 Esc 取消。");
   };
 

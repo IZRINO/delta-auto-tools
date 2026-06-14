@@ -165,6 +165,17 @@ impl HotkeyManager {
         Err("当前仅 Windows 支持按键抑制".to_string())
     }
 
+    /// 取消所有被抑制的按键（应用关闭或全局关闭时调用）
+    #[cfg(target_os = "windows")]
+    pub fn clear_all_suppressions(&self) {
+        if let Some(ref suppressor) = self.key_suppressor {
+            suppressor.clear_all();
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn clear_all_suppressions(&self) {}
+
     fn validate_scope_conflicts(
         &self,
         scope: &str,

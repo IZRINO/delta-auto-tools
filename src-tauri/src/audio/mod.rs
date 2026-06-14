@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager};
-use tokio::sync::oneshot;
 
 use crate::app_error::AppError;
 use crate::hotkey_types::ConflictPolicy;
@@ -15,7 +14,7 @@ mod player;
 mod watcher;
 
 pub use self::types::{
-    AudioBootstrap, AudioCard, AudioSettings, AudioTriggerMode,
+    AudioBootstrap, AudioSettings, AudioTriggerMode,
 };
 pub use events::*;
 
@@ -28,10 +27,7 @@ const AUDIO_OVERLAY_LABEL: &str = "audio-overlay";
 
 // ---- State ----
 
-pub struct AudioLogic {
-    #[allow(dead_code)]
-    pub pending_selection: Option<PendingAudioSelection>,
-}
+pub struct AudioLogic;
 
 pub type AudioState = ToolState<AudioLogic>;
 
@@ -61,13 +57,6 @@ impl ToolLogic for AudioLogic {
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct PendingAudioSelection {
-    pub card_id: String,
-    pub sender: oneshot::Sender<RegionRect>,
-}
-
 // ---- Tauri commands ----
 
 #[tauri::command]
@@ -84,26 +73,35 @@ pub fn audio_save_settings(
     settings: AudioSettings,
 ) -> Result<AudioBootstrap, AppError> {
     let normalized = normalize_settings(settings);
+    let previous_settings = {
+        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        inner.settings.clone()
+    };
 
-    // 热键变化时重新注册
-    let hotkey_manager = app.state::<HotkeyManager>();
-    restart_hotkey_listeners(&hotkey_manager, &normalized);
-
-    // 区域监听变化时重启 watcher
-    let _ = watcher::restart_watchers(&app, &normalized);
-
-    // 保存设置
+    // 先保存到磁盘，失败时直接返回错误，不重启 listeners
     settings::write_settings(&app, &normalized).map_err(|e| AppError::from(e))?;
 
-    // 更新内存状态
+    // 再更新内存状态
     let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    inner.settings = normalized;
+    inner.settings = normalized.clone();
 
-    // 总开关关闭时停止所有
+    // 然后重启热键和 watcher
+    let hotkey_manager = app.state::<HotkeyManager>();
+    if let Err(e) = restart_hotkey_listeners(&hotkey_manager, &normalized) {
+        // 热键注册失败：回滚到之前的设置
+        let _ = settings::write_settings(&app, &previous_settings);
+        inner.settings = previous_settings;
+        inner.hotkey_error = Some(e.clone());
+        return Err(AppError::from(e));
+    }
+    let _ = watcher::restart_watchers(&app, &normalized);
+
+    // 总开关关闭时停止所有 watcher
     if !inner.settings.audio_enabled {
         let _ = watcher::stop_all_watchers(&app);
     }
 
+    inner.hotkey_error = None;
     let bootstrap = AudioLogic::build_bootstrap(&inner);
     AudioLogic::emit_state(&app, &bootstrap);
     Ok(bootstrap)
@@ -224,11 +222,11 @@ pub async fn audio_test_play(
 
 // ---- 热键 ----
 
-fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSettings) {
+fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSettings) -> Result<(), String> {
     let _ = hotkey_manager.clear_scope("audio");
 
     if !settings.audio_enabled {
-        return;
+        return Ok(());
     }
 
     let bindings: Vec<(String, crate::hotkey_types::HotkeyAction)> = settings
@@ -251,13 +249,15 @@ fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSett
         .collect();
 
     if !bindings.is_empty() {
-        let _ = hotkey_manager.replace_scope(
+        hotkey_manager.replace_scope(
             "audio",
             bindings,
             "音频".to_string(),
             ConflictPolicy::AllowHold,
-        );
+        )?;
     }
+
+    Ok(())
 }
 
 fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), String> {
@@ -298,20 +298,19 @@ pub fn initialize(
     hotkey_manager: &HotkeyManager,
 ) -> Result<AudioState, String> {
     let settings = settings::read_settings(app)?;
-    restart_hotkey_listeners(hotkey_manager, &settings);
+    let _ = restart_hotkey_listeners(hotkey_manager, &settings);
 
     // 启动区域监听 watcher
     let _ = watcher::restart_watchers(app, &settings);
 
-    let logic = AudioLogic {
-        pending_selection: None,
-    };
+    let logic = AudioLogic;
 
     Ok(AudioState::new(logic, settings))
 }
 
 pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("audio");
+    hotkey_manager.clear_all_suppressions();
     let _ = watcher::stop_all_watchers(app);
 }
 
@@ -329,24 +328,6 @@ fn normalize_settings(settings: AudioSettings) -> AudioSettings {
                 .as_millis();
             card.id = format!("audio-{now}");
         }
-    }
-
-    // 确保至少有一张默认卡片
-    if cards.is_empty() {
-        cards.push(AudioCard {
-            id: "audio-default".to_string(),
-            name: "音频卡片 1".to_string(),
-            enabled: true,
-            trigger_mode: AudioTriggerMode::Hotkey,
-            hotkey: None,
-            watch_region: None,
-            watch_reference_image_path: None,
-            watch_match_threshold: 0.9,
-            watch_poll_interval_ms: 500,
-            audio_file_path: String::new(),
-            volume: 0.8,
-            cooldown_ms: 1000,
-        });
     }
 
     AudioSettings {

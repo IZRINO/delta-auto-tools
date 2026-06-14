@@ -8,6 +8,10 @@ use rodio::{Decoder, OutputStream, Sink};
 ///
 /// 在阻塞线程中执行，因为 rodio 的 Sink::sleep_until_end 会阻塞直到播放完成。
 /// 如果需要在异步上下文使用，请用 tokio::task::spawn_blocking 包裹。
+///
+/// 注意：每次调用都会创建新的 OutputStream。rodio 的 OutputStream 不是 Send/Sync，
+/// 无法全局缓存，因此每次播放时重新初始化音频设备。对于频繁播放的场景，
+/// 建议改为在后台线程中维护一个 Sink 队列。
 pub fn play_audio_file(path: &str, volume: f32) -> Result<(), String> {
     let path = Path::new(path);
     if !path.exists() {
