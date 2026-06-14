@@ -49,11 +49,13 @@ pub fn global_set_enabled(
 }
 
 fn stop_active_sessions(app: &AppHandle) {
+    use crate::hotkeys::HotkeyManager;
     use crate::rapidfire;
     use crate::timer;
 
+    let hotkey_manager = app.try_state::<HotkeyManager>();
     if let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() {
-        rapidfire::stop_all(app, &rapidfire_state);
+        rapidfire::stop_all(app, &rapidfire_state, hotkey_manager.as_ref().map(|v| &**v));
     }
     if let Some(timer_state) = app.try_state::<timer::TimerState>() {
         timer::stop_all(app, &timer_state);

@@ -70,9 +70,9 @@ pub fn audio_get_bootstrap(
 pub fn audio_save_settings(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioState>,
-    settings: AudioSettings,
+    settings_value: AudioSettings,
 ) -> Result<AudioBootstrap, AppError> {
-    let normalized = normalize_settings(settings);
+    let normalized = normalize_settings(settings_value);
     let previous_settings = {
         let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         inner.settings.clone()

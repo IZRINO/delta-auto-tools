@@ -598,18 +598,40 @@ fn restart_hotkey_listeners(
         return hotkey_manager.clear_hold_scope("rapidfire");
     }
 
-    let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
+    let mut new_by_key: HashMap<String, Vec<String>> = HashMap::new();
     for card in &settings_value.cards {
         if !card.enabled || !group_enabled(&settings_value.groups, &card.group_id) {
             continue;
         }
-        by_key
+        new_by_key
             .entry(card.trigger_key.clone())
             .or_default()
             .push(card.id.clone());
     }
 
-    let bindings = by_key
+    // 检查当前内存中的绑定映射是否与新的映射一致；若一致则跳过 replace_hold_scope，
+    // 避免打断正在进行的 hold 回调（如用户正按住触发键时 autosave 触发了保存）。
+    let previous_by_key = {
+        let inner = state.lock_inner()
+            .map_err(|_| "连发器状态已损坏".to_string())?;
+        let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
+        for card in &inner.settings.cards {
+            if !card.enabled || !group_enabled(&inner.settings.groups, &card.group_id) {
+                continue;
+            }
+            by_key
+                .entry(card.trigger_key.clone())
+                .or_default()
+                .push(card.id.clone());
+        }
+        by_key
+    };
+
+    if new_by_key == previous_by_key {
+        return Ok(());
+    }
+
+    let bindings = new_by_key
         .into_iter()
         .map(|(key, card_ids)| {
             let action: hotkey_types::HoldActionCallback = Arc::new(move |app_handle, hold_action| {
@@ -1343,7 +1365,7 @@ pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &Hotkey
 }
 
 /// 停止所有正在运行的连发器会话（用于全局总开关关闭）。
-pub fn stop_all(app: &AppHandle, state: &RapidfireState) {
+pub fn stop_all(app: &AppHandle, state: &RapidfireState, hotkey_manager: Option<&HotkeyManager>) {
     let bootstrap = {
         let Ok(mut inner) = state.lock_inner() else {
             return;
@@ -1352,6 +1374,9 @@ pub fn stop_all(app: &AppHandle, state: &RapidfireState) {
         inner.logic.runs.clear();
         RapidfireLogic::build_bootstrap(&inner)
     };
+    if let Some(hm) = hotkey_manager {
+        hm.clear_all_suppressions();
+    }
     emit_state(app, bootstrap);
 }
 
@@ -1428,9 +1453,30 @@ pub fn rapidfire_save_settings(
             .collect();
         stop_removed_or_disabled_sessions(&mut inner.logic.runs, &active_card_ids);
 
+        // 清理被移除/禁用卡片对应的触发键抑制状态。
+        // difference() 选出的 trigger_key 在新设置中不再有任何启用+忽略+组启用的卡片，
+        // 因此对应的 suppress 可以安全取消。
+        let should_suppress: std::collections::HashSet<String> = settings_value
+            .cards
+            .iter()
+            .filter(|c| c.enabled && c.ignore_trigger_key && group_enabled(&settings_value.groups, &c.group_id))
+            .map(|c| c.trigger_key.clone())
+            .collect();
+        let previous_should_suppress: std::collections::HashSet<String> = previous_settings
+            .cards
+            .iter()
+            .filter(|c| c.enabled && c.ignore_trigger_key && group_enabled(&previous_settings.groups, &c.group_id))
+            .map(|c| c.trigger_key.clone())
+            .collect();
+
+        for trigger_key in previous_should_suppress.difference(&should_suppress) {
+            let _ = hotkey_manager.unsuppress_key(trigger_key);
+        }
+
         if !settings_value.rapidfire_enabled {
             stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
             inner.logic.runs.clear();
+            hotkey_manager.clear_all_suppressions();
         }
 
         RapidfireLogic::build_bootstrap(&inner)
@@ -1445,12 +1491,14 @@ pub fn rapidfire_save_settings(
 pub fn rapidfire_stop(
     app: AppHandle,
     state: State<'_, RapidfireState>,
+    hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<RapidfireBootstrap, AppError> {
     let bootstrap = {
         let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
         inner.logic.runs.clear();
+        hotkey_manager.clear_all_suppressions();
         RapidfireLogic::build_bootstrap(&inner)
     };
     emit_state(&app, bootstrap.clone());
