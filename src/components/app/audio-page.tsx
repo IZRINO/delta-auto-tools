@@ -148,8 +148,9 @@ function AudioWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const activeCards = form?.cards.filter((c) => c.enabled).length ?? 0;
 
   return (
-    <AppPage>
+    <AppPage className="auto-rows-max">
       <MacroHeader
+        className="col-span-12"
         code="A-04"
         title="AUDIO / 音频"
         verticalLabel="音频"
@@ -170,14 +171,14 @@ function AudioWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
       />
 
       {pageError && (
-        <div className="mb-3 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
+        <div className="col-span-12 mb-3 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
           [ 错误 ] {pageError}
         </div>
       )}
 
-      {!isNativeShell && <PagePreviewBanner />}
+      {!isNativeShell && <div className="col-span-12"><PagePreviewBanner /></div>}
 
-      <TacticalCard className="mt-3">
+      <TacticalCard className="col-span-12 mt-3">
         <SectionHeader eyebrow="全局设置" title="全局设置" />
         <CardBody>
           <ControlTile>
@@ -195,7 +196,7 @@ function AudioWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
         </CardBody>
       </TacticalCard>
 
-      <TacticalCard className="mt-3">
+      <TacticalCard className="col-span-12 mt-3">
         <SectionHeader
           eyebrow="音频卡片"
           title="音频卡片"
