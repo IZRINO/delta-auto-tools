@@ -361,7 +361,7 @@ function AudioCardEditor({
               </FieldContent>
             </Field>
             <Field>
-              <FieldLabel>轮询间隔 (ms)</FieldLabel>
+              <FieldLabel>检查间隔 (ms)</FieldLabel>
               <FieldContent>
                 <Input
                   type="number"
@@ -370,6 +370,7 @@ function AudioCardEditor({
                   step={100}
                   value={card.watchPollIntervalMs}
                   onChange={(e) => onUpdate({ watchPollIntervalMs: e.target.value })}
+                  title="每隔多久截图比对一次"
                 />
               </FieldContent>
             </Field>
@@ -401,7 +402,7 @@ function AudioCardEditor({
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>冷却时间 (ms)</FieldLabel>
+            <FieldLabel>触发冷却 (ms)</FieldLabel>
             <FieldContent>
               <Input
                 type="number"
@@ -410,6 +411,7 @@ function AudioCardEditor({
                 step={100}
                 value={card.cooldownMs}
                 onChange={(e) => onUpdate({ cooldownMs: e.target.value })}
+                title="匹配成功后多久内不重复触发"
               />
             </FieldContent>
           </Field>

@@ -93,6 +93,11 @@ impl KeySuppressor {
             .unwrap_or(false)
     }
 
+    /// 返回抑制键集合的共享引用，供热键监听线程过滤 willhook 重复事件
+    pub fn suppressed_keys_ref(&self) -> Arc<Mutex<HashSet<u32>>> {
+        Arc::clone(&self.suppressed_keys)
+    }
+
     /// 取消所有抑制
     pub fn clear_all(&self) {
         if let Ok(mut keys) = self.suppressed_keys.lock() {
@@ -156,6 +161,84 @@ pub fn primary_key_to_vk(primary: crate::hotkey_types::PrimaryKey) -> Option<u32
         PrimaryKey::Named(NamedKey::Backslash) => Some(0xDC),
         PrimaryKey::Named(NamedKey::BracketRight) => Some(0xDD),
         PrimaryKey::Named(NamedKey::Quote) => Some(0xDE),
+    }
+}
+
+/// 将 willhook 的 KeyboardKey 映射回 Windows VK code（vk_to_keyboard_key 的逆向映射）
+pub fn keyboard_key_to_vk(key: &willhook::event::KeyboardKey) -> Option<u32> {
+    use willhook::event::KeyboardKey;
+    match key {
+        KeyboardKey::BackSpace => Some(0x08),
+        KeyboardKey::Tab => Some(0x09),
+        KeyboardKey::Enter => Some(0x0D),
+        KeyboardKey::Escape => Some(0x1B),
+        KeyboardKey::Space => Some(0x20),
+        KeyboardKey::PageUp => Some(0x21),
+        KeyboardKey::PageDown => Some(0x22),
+        KeyboardKey::Home => Some(0x24),
+        KeyboardKey::Insert => Some(0x2D),
+        KeyboardKey::Delete => Some(0x2E),
+        KeyboardKey::ArrowLeft => Some(0x25),
+        KeyboardKey::ArrowUp => Some(0x26),
+        KeyboardKey::ArrowRight => Some(0x27),
+        KeyboardKey::ArrowDown => Some(0x28),
+        KeyboardKey::Number0 => Some(0x30),
+        KeyboardKey::Number1 => Some(0x31),
+        KeyboardKey::Number2 => Some(0x32),
+        KeyboardKey::Number3 => Some(0x33),
+        KeyboardKey::Number4 => Some(0x34),
+        KeyboardKey::Number5 => Some(0x35),
+        KeyboardKey::Number6 => Some(0x36),
+        KeyboardKey::Number7 => Some(0x37),
+        KeyboardKey::Number8 => Some(0x38),
+        KeyboardKey::Number9 => Some(0x39),
+        KeyboardKey::A => Some(0x41),
+        KeyboardKey::B => Some(0x42),
+        KeyboardKey::C => Some(0x43),
+        KeyboardKey::D => Some(0x44),
+        KeyboardKey::E => Some(0x45),
+        KeyboardKey::F => Some(0x46),
+        KeyboardKey::G => Some(0x47),
+        KeyboardKey::H => Some(0x48),
+        KeyboardKey::I => Some(0x49),
+        KeyboardKey::J => Some(0x4A),
+        KeyboardKey::K => Some(0x4B),
+        KeyboardKey::L => Some(0x4C),
+        KeyboardKey::M => Some(0x4D),
+        KeyboardKey::N => Some(0x4E),
+        KeyboardKey::O => Some(0x4F),
+        KeyboardKey::P => Some(0x50),
+        KeyboardKey::Q => Some(0x51),
+        KeyboardKey::R => Some(0x52),
+        KeyboardKey::S => Some(0x53),
+        KeyboardKey::T => Some(0x54),
+        KeyboardKey::U => Some(0x55),
+        KeyboardKey::V => Some(0x56),
+        KeyboardKey::W => Some(0x57),
+        KeyboardKey::X => Some(0x58),
+        KeyboardKey::Y => Some(0x59),
+        KeyboardKey::Z => Some(0x5A),
+        KeyboardKey::F1 => Some(0x70),
+        KeyboardKey::F2 => Some(0x71),
+        KeyboardKey::F3 => Some(0x72),
+        KeyboardKey::F4 => Some(0x73),
+        KeyboardKey::F5 => Some(0x74),
+        KeyboardKey::F6 => Some(0x75),
+        KeyboardKey::F7 => Some(0x76),
+        KeyboardKey::F8 => Some(0x77),
+        KeyboardKey::F9 => Some(0x78),
+        KeyboardKey::F10 => Some(0x79),
+        KeyboardKey::F11 => Some(0x7A),
+        KeyboardKey::F12 => Some(0x7B),
+        KeyboardKey::LeftAlt => Some(0x12),
+        KeyboardKey::LeftShift => Some(0xA0),
+        KeyboardKey::RightShift => Some(0xA1),
+        KeyboardKey::LeftControl => Some(0xA2),
+        KeyboardKey::RightControl => Some(0xA3),
+        KeyboardKey::LeftWindows => Some(0x5B),
+        KeyboardKey::RightWindows => Some(0x5C),
+        KeyboardKey::Other(vk) => Some(*vk),
+        _ => None,
     }
 }
 

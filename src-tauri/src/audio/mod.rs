@@ -147,11 +147,11 @@ pub async fn audio_begin_region_selection(
         tauri::WebviewUrl::App(overlay_url.parse().unwrap()),
     )
     .title("音频区域选择")
-    .inner_size(800.0, 600.0)
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
+    .fullscreen(true)
     .build();
 
     Ok(())
@@ -264,6 +264,7 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
     let state = app.state::<AudioState>();
     let inner = state.lock_inner()?;
     if !inner.settings.audio_enabled {
+        eprintln!("[音频] 触发播放跳过：音频功能未启用");
         return Ok(());
     }
 
@@ -275,6 +276,7 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
         .ok_or_else(|| "卡片不存在".to_string())?;
 
     if !card.enabled || card.audio_file_path.is_empty() {
+        eprintln!("[音频] 触发播放跳过：卡片未启用或音频路径为空 (card_id={card_id})");
         return Ok(());
     }
 
@@ -282,9 +284,13 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
     let volume = card.volume;
     drop(inner);
 
+    eprintln!("[音频] 快捷键触发播放: card_id={card_id}, path={path}, volume={volume}");
+
     // spawn_blocking 中播放音频
     let _ = std::thread::spawn(move || {
-        let _ = player::play_audio_file(&path, volume);
+        if let Err(e) = player::play_audio_file(&path, volume) {
+            eprintln!("[音频] 播放失败: {e}");
+        }
     });
 
     let _ = app.emit(HOTKEY_TRIGGERED, card_id);

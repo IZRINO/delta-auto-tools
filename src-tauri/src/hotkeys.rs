@@ -40,6 +40,10 @@ pub struct HotkeyManager {
     #[cfg(target_os = "windows")]
     #[allow(dead_code)]
     suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
+    /// 被抑制按键 VK 集合的共享引用，用于 run_listener 过滤 willhook 重复事件
+    #[cfg(target_os = "windows")]
+    #[allow(dead_code)]
+    suppressed_vk_set: Option<Arc<Mutex<std::collections::HashSet<u32>>>>,
     #[cfg(target_os = "windows")]
     worker: Option<JoinHandle<()>>,
     #[cfg(not(target_os = "windows"))]
@@ -64,6 +68,9 @@ impl HotkeyManager {
                     }
                 };
 
+            // 获取 suppressed_keys 共享引用（用于 run_listener 过滤 willhook 重复事件）
+            let suppressed_vk_set = suppressor.as_ref().map(|s| s.suppressed_keys_ref());
+
             let Some(hook) = willhook::keyboard_hook() else {
                 return Self {
                     registrations,
@@ -74,6 +81,7 @@ impl HotkeyManager {
                     ),
                     key_suppressor: suppressor,
                     suppressed_rx,
+                    suppressed_vk_set,
                     worker: None,
                 };
             };
@@ -82,6 +90,7 @@ impl HotkeyManager {
             let worker_hold_registrations = Arc::clone(&hold_registrations);
             let worker_stopped = Arc::clone(&stopped);
             let worker_suppressed_rx = suppressed_rx.clone();
+            let worker_suppressed_vk_set = suppressed_vk_set.clone();
             let worker = thread::Builder::new()
                 .name("shared-hotkey-listener".to_string())
                 .spawn(move || {
@@ -92,6 +101,7 @@ impl HotkeyManager {
                         worker_hold_registrations,
                         worker_stopped,
                         worker_suppressed_rx,
+                        worker_suppressed_vk_set,
                     )
                 })
                 .map_err(|error| format!("启动热键监听线程失败: {error}"));
@@ -104,6 +114,7 @@ impl HotkeyManager {
                     install_error: None,
                     key_suppressor: suppressor,
                     suppressed_rx,
+                    suppressed_vk_set,
                     worker: Some(worker),
                 },
                 Err(error) => Self {
@@ -113,6 +124,7 @@ impl HotkeyManager {
                     install_error: Some(error),
                     key_suppressor: suppressor,
                     suppressed_rx,
+                    suppressed_vk_set,
                     worker: None,
                 },
             }
@@ -382,6 +394,13 @@ fn matches_binding(binding: &HotkeyBinding, key_state: &KeyState) -> bool {
     binding.primary == key_state.primary && binding.modifiers == key_state.modifiers
 }
 
+/// 从 willhook KeyboardEvent 提取主键的 Windows VK code
+#[cfg(target_os = "windows")]
+fn keyboard_event_to_vk(event: &KeyboardEvent) -> Option<u32> {
+    use crate::key_suppressor::keyboard_key_to_vk;
+    event.key.as_ref().and_then(|k| keyboard_key_to_vk(k))
+}
+
 #[cfg(target_os = "windows")]
 fn run_listener(
     app: AppHandle,
@@ -390,6 +409,7 @@ fn run_listener(
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
     suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
+    suppressed_vk_set: Option<Arc<Mutex<std::collections::HashSet<u32>>>>,
 ) {
     let mut matcher = HotkeyMatcher::new();
     let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
@@ -406,6 +426,22 @@ fn run_listener(
                     .unwrap_or(true);
                 if !global_enabled {
                     continue;
+                }
+
+                // 消除双重事件分发：如果该键正在被 KeySuppressor 抑制，
+                // willhook 收到的是 KeySuppressor 钩子链传递过来的原始事件，
+                // 但 KeySuppressor 已吞噬该事件并转发到 suppressed_rx。
+                // 为避免同一事件被处理两次，跳过 willhook 对被抑制键的事件。
+                if let Some(ref vk_set) = suppressed_vk_set {
+                    if let Some(vk) = keyboard_event_to_vk(&event) {
+                        let is_suppressed = vk_set
+                            .lock()
+                            .map(|set| set.contains(&vk))
+                            .unwrap_or(false);
+                        if is_suppressed {
+                            continue;
+                        }
+                    }
                 }
 
                 let hold_actions = hold_actions_for_event(
@@ -817,6 +853,8 @@ mod tests {
             key_suppressor: None,
             #[cfg(target_os = "windows")]
             suppressed_rx: None,
+            #[cfg(target_os = "windows")]
+            suppressed_vk_set: None,
             #[cfg(target_os = "windows")]
             worker: None,
             #[cfg(not(target_os = "windows"))]

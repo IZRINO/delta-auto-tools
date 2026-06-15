@@ -110,9 +110,12 @@ async fn run_region_watcher(
 
     // 加载参考图像
     let reference_image = match load_reference_image(&reference_image_path) {
-        Some(img) => img,
+        Some(img) => {
+            eprintln!("[音频 watcher] 卡片 {card_id}: 参考图像加载成功 ({reference_image_path}), {}x{}", img.width(), img.height());
+            img
+        }
         None => {
-            eprintln!("[音频 watcher] 无法加载参考图像: {reference_image_path}");
+            eprintln!("[音频 watcher] 卡片 {card_id}: 无法加载参考图像: {reference_image_path}");
             return;
         }
     };
@@ -137,11 +140,14 @@ async fn run_region_watcher(
                 let similarity = compare_images(&captured, &reference_image);
                 if similarity >= threshold {
                     // 触发音频播放
+                    eprintln!("[音频 watcher] 卡片 {card_id}: 匹配成功 similarity={similarity:.4} >= threshold={threshold}");
                     let _ = app.emit(REGION_MATCHED, &card_id);
                     let path = audio_path.clone();
                     let vol = volume;
                     tokio::task::spawn_blocking(move || {
-                        let _ = player::play_audio_file(&path, vol);
+                        if let Err(e) = player::play_audio_file(&path, vol) {
+                            eprintln!("[音频 watcher] 播放失败: {e}");
+                        }
                     });
                     last_triggered = Some(Instant::now());
                 }

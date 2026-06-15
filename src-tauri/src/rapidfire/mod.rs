@@ -797,7 +797,10 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
         if ignore_trigger_key_for_batch {
             if let Some(first_trigger) = sessions_to_spawn.first().map(|w| w.trigger_key.clone()) {
                 let hotkey_manager = app.state::<HotkeyManager>();
-                let _ = hotkey_manager.suppress_key(&first_trigger);
+                match hotkey_manager.suppress_key(&first_trigger) {
+                    Ok(was_new) => eprintln!("[连发器] suppress_key({first_trigger}) -> was_new={was_new}"),
+                    Err(e) => eprintln!("[连发器] suppress_key({first_trigger}) 失败: {e}"),
+                }
             }
         }
 
@@ -859,7 +862,10 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
                 });
             if !has_active_ignore_session {
                 let hotkey_manager = app.state::<HotkeyManager>();
-                let _ = hotkey_manager.unsuppress_key(trigger_key);
+                match hotkey_manager.unsuppress_key(trigger_key) {
+                    Ok(was_suppressed) => eprintln!("[连发器] unsuppress_key({trigger_key}) -> was_suppressed={was_suppressed}"),
+                    Err(e) => eprintln!("[连发器] unsuppress_key({trigger_key}) 失败: {e}"),
+                }
             }
         }
 
