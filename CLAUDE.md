@@ -144,11 +144,26 @@ Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9
 
 版本号必须同步更新 `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。如 `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
 
+### 签名密钥（首次必须）
+
+接入自动更新前需要先执行 `scripts/setup-update-key.ps1` 生成密钥对：
+- 私钥保存到 `$HOME/.tauri/delta-auto-tools.key`（**不入库**）
+- 公钥自动写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`（**公开字段，必须随代码发布**）
+- 私钥用 `bunx --offline tauri signer generate` 生成
+
 ### 构建
 
-每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包。打包成功后检查以下两个产物存在：
+每次更新版本号后必须运行带签名的桌面构建。**构建时必须设置 `TAURI_SIGNING_PRIVATE_KEY` 环境变量**（私钥内容或 `TAURI_SIGNING_PRIVATE_KEY_PATH` 指向私钥文件路径），否则不会生成 `.sig` 签名文件。推荐用 `scripts/build-release.ps1` 一键签名构建。
+
+打包成功后必须检查以下产物存在：
 - `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi`
+- `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig`
 - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
+- `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
+
+### 生成 latest.json
+
+构建成功后必须运行 `scripts/generate-latest-json.ps1`，从 `*-setup.exe.sig` 签名文件生成 `src-tauri/target/release/bundle/latest.json`。**这是 Tauri 官方更新器运行时拉取的清单文件**；不生成且不上传到 Release 会导致应用内「检查更新」失败（错误：Could not fetch a valid release JSON from the remote）。
 
 ### 发布 Commit
 
@@ -172,22 +187,36 @@ git tag -a v<version> -m "发布 v<version>"
 git push origin v<version>
 ```
 
-### GitHub Release + 安装包上传
+### GitHub Release + 5 个资产上传
 
-每次版本发布必须创建 GitHub Release 并上传 MSI 与 NSIS 安装包：
+每次版本发布必须创建 GitHub Release，并**同时上传 5 个资产**（缺一不可）：
+
+| 资产 | 作用 |
+|---|---|
+| `delta-auto-tools_<version>_x64_en-US.msi` | Windows MSI 安装包 |
+| `delta-auto-tools_<version>_x64_en-US.msi.sig` | MSI 签名（更新器验证用） |
+| `delta-auto-tools_<version>_x64-setup.exe` | NSIS 一键安装包 |
+| `delta-auto-tools_<version>_x64-setup.exe.sig` | NSIS 签名 |
+| **`latest.json`** | Tauri updater 静态端点文件（不传则应用内「检查更新」失败） |
 
 ```bash
-# 新建 Release 并上传
+# 新建 Release 并上传 5 个资产
 gh release create v<version> \
   src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
+  src-tauri/target/release/bundle/latest.json \
   --repo IZRINO/delta-auto-tools --target master \
   --title "delta-auto-tools <version>" --notes "<发布说明>"
 
-# Release 已存在时覆盖上传安装包
+# Release 已存在时覆盖上传（同样 5 个资产）
 gh release upload v<version> \
   src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
+  src-tauri/target/release/bundle/latest.json \
   --repo IZRINO/delta-auto-tools --clobber
 ```
 
@@ -200,7 +229,7 @@ gh release view v<version> --repo IZRINO/delta-auto-tools \
   --json tagName,url,isDraft,isPrerelease,assets
 ```
 
-确认非 draft、非 prerelease，且两个安装包状态均为 `uploaded`。
+确认非 draft、非 prerelease，且**全部 5 个资产**状态均为 `uploaded`。
 
 ## Agent skills
 

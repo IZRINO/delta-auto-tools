@@ -701,11 +701,43 @@ overlay 窗口通过 `?mode=overlay&slots=0,1,2` 或 `?mode=overlay&slot=0` 查�
 - 本项目代码托管、Issue 跟踪、Tag 与 Release 发布以 GitHub 为准，当前远端应为 `https://github.com/IZRINO/delta-auto-tools`；不得再恢复或使用旧远程地址。
 - GitHub 初次迁移或远程异常时，按顺序处理：确认 `gh auth status` 已登录 → 必要时用 `gh repo create IZRINO/delta-auto-tools --public --description "三角洲行动工具：Tauri 2 + React + Rust 桌面工具"` 创建仓库 → 用 `git remote set-url origin https://github.com/IZRINO/delta-auto-tools` 切换远程 → `git push -u origin master` 推送主分支。
 - 更新版本号时必须同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json`；如 `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
-- 每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包；打包成功后检查以下两个产物存在：`src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi` 与 `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`。
+- 每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包。**构建必须在设置了 `TAURI_SIGNING_PRIVATE_KEY` 环境变量的情况下执行**（私钥内容或路径），否则不会生成 `.sig` 签名文件。推荐用 `scripts/build-release.ps1` 一键签名构建。打包成功后必须检查以下产物存在：
+  - `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi`
+  - `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig`
+  - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
+  - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
 - 每次版本发布提交不能只写 `发布 v<version>`。发布 commit subject 使用 `发布 v<version>`，正文必须跟上本次变更摘要与验证结果，至少包含 `变更：` 和 `验证：` 两段；变更项从本次实际 diff / Release notes 提炼，禁止写成泛泛的“更新版本”。推荐格式：`git commit -m "发布 v<version>" -m "变更：\n- ...\n- ...\n\n验证：\n- bun run test\n- bun run tauri build"`。
 - 每次版本发布必须创建并推送对应 `v<version>` Tag：`git tag -a v<version> -m "发布 v<version>"`，然后 `git push origin v<version>`。
-- 每次版本发布必须创建 GitHub Release，并通过 `gh release create v<version> <msi路径> <exe路径> --repo IZRINO/delta-auto-tools --target master --title "delta-auto-tools <version>" --notes <发布说明>` 上传 MSI 与 NSIS 安装包；Release 已存在时使用 `gh release upload v<version> <msi路径> <exe路径> --repo IZRINO/delta-auto-tools --clobber` 覆盖上传。
-- Release 发布后必须用 `gh release view v<version> --repo IZRINO/delta-auto-tools --json tagName,url,isDraft,isPrerelease,assets` 验证 Release 非 draft、非 prerelease，且两个安装包状态均为 `uploaded`。
+- **生成 `latest.json`**：构建成功后必须运行 `scripts/generate-latest-json.ps1`，从 `*-setup.exe.sig` 签名文件生成 `src-tauri/target/release/bundle/latest.json`。这是 Tauri 官方更新器运行时拉取的清单文件，**不生成且不上传会导致应用内「检查更新」失败**（错误：Could not fetch a valid release JSON from the remote）。
+- 每次版本发布必须创建 GitHub Release，**同时上传 5 个资产**（缺一不可）：
+  1. `delta-auto-tools_<version>_x64_en-US.msi`（MSI 安装包）
+  2. `delta-auto-tools_<version>_x64_en-US.msi.sig`（MSI 签名，供更新器验证）
+  3. `delta-auto-tools_<version>_x64-setup.exe`（NSIS 一键安装包）
+  4. `delta-auto-tools_<version>_x64-setup.exe.sig`（NSIS 签名）
+  5. **`latest.json`**（Tauri updater 静态端点文件，是 Tauri 官方更新器正常工作的必要条件）
+
+  完整命令模板：
+  ```bash
+  gh release create v<version> \
+    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
+    src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+    src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
+    src-tauri/target/release/bundle/latest.json \
+    --repo IZRINO/delta-auto-tools --target master \
+    --title "delta-auto-tools <version>" --notes "<发布说明>"
+
+  # Release 已存在时覆盖上传
+  gh release upload v<version> \
+    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
+    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
+    src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+    src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
+    src-tauri/target/release/bundle/latest.json \
+    --repo IZRINO/delta-auto-tools --clobber
+  ```
+- Release 发布后必须用 `gh release view v<version> --repo IZRINO/delta-auto-tools --json tagName,url,isDraft,isPrerelease,assets` 验证 Release 非 draft、非 prerelease，且**全部 5 个资产**状态均为 `uploaded`。
+- **签名密钥流程**：首次接入自动更新前必须运行 `scripts/setup-update-key.ps1` 生成密钥对。脚本会在 `$HOME/.tauri/delta-auto-tools.key` 生成私钥（**不入库**），并将公钥写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。`tauri.conf.json` 中 `pubkey` 是**公开的**（必须随代码发布，客户端用它验证签名），**不能用占位符替代**。`TAURI_SIGNING_PRIVATE_KEY` 私钥内容**绝不能**提交到版本控制。
 - 处理 GitHub Issues 时，先回复处理结论、变更范围、验证方式和需要用户确认的功能点；**不要在回复后直接关闭 Issue**。
 - Issue 回复后应保持开放状态，等待提报者或维护者确认功能行为符合预期；只有收到明确确认、重复问题已被合并追踪，或维护者明确判定无需继续处理时，才关闭 Issue。
 - 如果已提交修复但仍未确认，应在 Issue 中说明对应提交/版本与验证入口，并标记为待确认，而不是关闭。
