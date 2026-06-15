@@ -50,6 +50,7 @@ pub fn global_set_enabled(
 
 fn stop_active_sessions(app: &AppHandle) {
     use crate::hotkeys::HotkeyManager;
+    use crate::counter;
     use crate::rapidfire;
     use crate::timer;
 
@@ -59,5 +60,8 @@ fn stop_active_sessions(app: &AppHandle) {
     }
     if let Some(timer_state) = app.try_state::<timer::TimerState>() {
         timer::stop_all(app, &timer_state);
+    }
+    if let Some(counter_state) = app.try_state::<counter::CounterState>() {
+        counter::stop_all(app, &counter_state);
     }
 }

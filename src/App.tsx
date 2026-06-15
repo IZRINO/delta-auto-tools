@@ -33,8 +33,11 @@ const overlayWindowModes = new Set([
 const MorsePage = lazy(() =>
   import("@/components/app/morse-page").then((module) => ({ default: module.MorsePage })),
 );
-const TimerCounterPage = lazy(() =>
-  import("@/components/app/timer-counter-page").then((module) => ({ default: module.TimerCounterPage })),
+const TimerPage = lazy(() =>
+  import("@/components/app/timer-page").then((module) => ({ default: module.TimerPage })),
+);
+const CounterPage = lazy(() =>
+  import("@/components/app/counter-page").then((module) => ({ default: module.CounterPage })),
 );
 const RapidfirePage = lazy(() =>
   import("@/components/app/rapidfire-page").then((module) => ({ default: module.RapidfirePage })),
@@ -54,7 +57,8 @@ const AudioRegionOverlay = lazy(() =>
 );
 
 const tools = [
-  { id: "timer" as const, icon: RiTimerLine, label: "计时/计数", short: "Sync" },
+  { id: "timer" as const, icon: RiTimerLine, label: "计时器", short: "Timer" },
+  { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" },
   { id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire" },
   { id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy" },
   { id: "audio" as const, icon: RiVolumeUpLine, label: "音频", short: "Audio" },
@@ -64,7 +68,7 @@ const deltaTools = [
   { id: "morse" as const, icon: RiRadarLine, label: "摩斯密码解析", short: "Morse" },
 ];
 
-type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | "favorites" | "counter";
+type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] | "favorites";
 
 function ToolPageFallback() {
   return (
@@ -87,10 +91,15 @@ function renderToolPage(
 ) {
   switch (activeTool) {
     case "timer":
+      return (
+        <TimerPage
+          highlightCardId={highlightCardId && highlightCardId.kind === "timer" ? highlightCardId : null}
+        />
+      );
     case "counter":
       return (
-        <TimerCounterPage
-          highlightCardId={highlightCardId && (highlightCardId.kind === "timer" || highlightCardId.kind === "counter") ? highlightCardId : null}
+        <CounterPage
+          highlightCardId={highlightCardId && highlightCardId.kind === "counter" ? highlightCardId : null}
         />
       );
     case "rapidfire":
@@ -299,9 +308,12 @@ function AppShell() {
     if (kind === "rapidfire") {
       setActiveTool("rapidfire");
       setHighlightCardId({ kind: "rapidfire", cardId, nonce: highlightNonceRef.current });
+    } else if (kind === "counter") {
+      setActiveTool("counter");
+      setHighlightCardId({ kind: "counter", cardId, nonce: highlightNonceRef.current });
     } else {
       setActiveTool("timer");
-      setHighlightCardId({ kind: kind === "counter" ? "counter" : "timer", cardId, nonce: highlightNonceRef.current });
+      setHighlightCardId({ kind: "timer", cardId, nonce: highlightNonceRef.current });
     }
   }, []);
 
@@ -324,7 +336,7 @@ function AppShell() {
   if (overlayMode === "timer-display") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerCounterPage overlayMode="display" />
+        <TimerPage overlayMode="display" />
       </ToolPageSuspense>
     );
   }
@@ -332,7 +344,7 @@ function AppShell() {
   if (overlayMode === "counter-display") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerCounterPage overlayMode="counter-display" />
+        <CounterPage overlayMode="counter-display" />
       </ToolPageSuspense>
     );
   }
@@ -340,7 +352,7 @@ function AppShell() {
   if (overlayMode === "timer-position") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerCounterPage overlayMode="position" />
+        <TimerPage overlayMode="position" />
       </ToolPageSuspense>
     );
   }
@@ -348,7 +360,7 @@ function AppShell() {
   if (overlayMode === "counter-position") {
     return (
       <ToolPageSuspense fallback={null}>
-        <TimerCounterPage overlayMode="counter-position" />
+        <CounterPage overlayMode="counter-position" />
       </ToolPageSuspense>
     );
   }
@@ -377,8 +389,7 @@ function AppShell() {
     );
   }
 
-  const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool)
-    ?? (activeTool === "counter" ? { id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter" } : undefined);
+  const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool);
 
   return (
     <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-transparent">
@@ -403,7 +414,7 @@ function AppShell() {
         <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
           <div className="flex min-w-0 items-center gap-3">
             <span className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "01" : activeTool === "rapidfire" ? "02" : activeTool === "strategy" ? "03" : activeTool === "audio" ? "04" : "D1"}
+              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "audio" ? "05" : "D1"}
             </span>
             <div className="min-w-0">
               <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">

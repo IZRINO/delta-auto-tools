@@ -1,5 +1,5 @@
 import { listen, type Event } from "@tauri-apps/api/event";
-import type { TimerBootstrap } from "@/components/app/timer-types";
+import type { TimerBootstrap, CounterBootstrap } from "@/components/app/timer-types";
 import type { MorseRunResult, RegionSelectionProgress } from "@/components/app/morse-types";
 import type { RapidfireBootstrap } from "@/components/app/rapidfire-types";
 import type { AudioBootstrap } from "@/components/app/audio-types";
@@ -14,7 +14,12 @@ export const TIMER_EVENTS = {
   stateChanged: { name: "timer://state-changed" as const, payload: null as unknown as TimerBootstrap },
   hotkeyError: { name: "timer://hotkey-error" as const, payload: null as unknown as string },
   hotkeyTriggered: { name: "timer://hotkey-triggered" as const, payload: null as unknown as string[] },
-  counterTriggered: { name: "timer://counter-triggered" as const, payload: null as unknown as string[] },
+} as const;
+
+export const COUNTER_EVENTS = {
+  stateChanged: { name: "counter://state-changed" as const, payload: null as unknown as CounterBootstrap },
+  hotkeyError: { name: "counter://hotkey-error" as const, payload: null as unknown as string },
+  hotkeyTriggered: { name: "counter://hotkey-triggered" as const, payload: null as unknown as string[] },
 } as const;
 
 export const RAPIDFIRE_EVENTS = {

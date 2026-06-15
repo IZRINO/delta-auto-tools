@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Mutex, MutexGuard},
 };
 
 use tauri::{
@@ -13,37 +13,32 @@ use tokio::{
 };
 
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
-use std::sync::MutexGuard;
-use tauri::Runtime;
-
-mod counter_state;
-mod settings;
-mod types;
-mod events;
 use crate::app_error::AppError;
 use crate::hotkey_types::{ConflictPolicy, HoldAction, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
-use crate::overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component};
+use crate::overlay_utils::{
+    destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
+    hide_window, safe_label_component,
+};
 use crate::utils::now_ms;
 
-use self::counter_state::CounterState;
 use self::types::{
-    CounterItem, CounterRunState, TimerBootstrap, TimerDirection, TimerDisplaySettings,
-    TimerDisplayTarget, TimerGroup, TimerItem, TimerRect, TimerRunState, TimerRunStatus,
-    TimerSelectionKind, TimerSelectionOutcome, TimerSettings, TimerTriggerMode,
-    DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID,
+    TimerBootstrap, TimerDirection, TimerDisplaySettings, TimerGroup, TimerItem, TimerRect,
+    TimerRunState, TimerRunStatus, TimerSelectionKind, TimerSelectionOutcome, TimerSettings,
+    TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
 };
+
+mod settings;
+mod types;
+mod events;
 
 const TIMER_DISPLAY_LABEL: &str = "timer-display";
 const TIMER_POSITION_LABEL: &str = "timer-position";
-const COUNTER_DISPLAY_LABEL: &str = "counter-display";
-const COUNTER_POSITION_LABEL: &str = "counter-position";
 const TIMER_DISPLAY_WIDTH: i32 = 320;
 const TIMER_DISPLAY_MIN_HEIGHT: i32 = 96;
 
 pub struct TimerLogic {
     pub runs: HashMap<String, TimerRuntime>,
-    pub counter_runs: HashMap<String, i64>,
     pub pending_position: Option<PendingTimerPosition>,
 }
 
@@ -72,21 +67,15 @@ pub(crate) struct TimerRuntime {
 }
 
 pub(crate) struct PendingTimerPosition {
-    target: TimerDisplayTarget,
     group_id: String,
     original_rect: TimerRect,
     staged_rect: TimerRect,
     sender: oneshot::Sender<TimerSelectionKind>,
 }
 
-#[derive(Clone)]
-struct HotkeyTriggerTargets {
-    timer_ids: Vec<String>,
-    counter_ids: Vec<String>,
-}
-
 fn run_states(inner: &ToolStateInner<TimerLogic>) -> Vec<TimerRunState> {
-    inner.settings
+    inner
+        .settings
         .timers
         .iter()
         .filter_map(|timer| {
@@ -120,22 +109,6 @@ fn run_states(inner: &ToolStateInner<TimerLogic>) -> Vec<TimerRunState> {
         .collect()
 }
 
-fn counter_run_states(inner: &ToolStateInner<TimerLogic>) -> Vec<CounterRunState> {
-    inner.settings
-        .counters
-        .iter()
-        .map(|counter| CounterRunState {
-            id: counter.id.clone(),
-            value: inner
-                .logic
-                .counter_runs
-                .get(&counter.id)
-                .copied()
-                .unwrap_or(counter.start_value),
-        })
-        .collect()
-}
-
 impl ToolLogic for TimerLogic {
     type Settings = TimerSettings;
     type Bootstrap = TimerBootstrap;
@@ -153,48 +126,30 @@ impl ToolLogic for TimerLogic {
         TimerBootstrap {
             settings: inner.settings.clone(),
             runs: run_states(inner),
-            counter_runs: counter_run_states(inner),
             hotkey_error: inner.hotkey_error.clone(),
         }
     }
 
-    fn emit_state<R: Runtime>(app: &AppHandle<R>, bootstrap: &Self::Bootstrap) {
+    fn emit_state<R: tauri::Runtime>(app: &AppHandle<R>, bootstrap: &Self::Bootstrap) {
         let _ = app.emit_to("main", events::STATE_CHANGED, (*bootstrap).clone());
         for group in &bootstrap.settings.timer_groups {
             let _ = app.emit_to(
-                display_label_for_group(&TimerDisplayTarget::Timer, &group.id),
-                events::STATE_CHANGED,
-                (*bootstrap).clone(),
-            );
-        }
-        for group in &bootstrap.settings.counter_groups {
-            let _ = app.emit_to(
-                display_label_for_group(&TimerDisplayTarget::Counter, &group.id),
+                display_label_for_group(&group.id),
                 events::STATE_CHANGED,
                 (*bootstrap).clone(),
             );
         }
     }
-}
-
-/// 把当前 `counter_runs` 落盘。仅写入 `settings.counters` 里仍存在的 ID，
-/// 孤儿 ID（counter 已删但 state 文件残留）自动清理。写盘失败不阻塞主流程。
-fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<TimerLogic>) {
-    let mut runs = std::collections::BTreeMap::new();
-    for counter in &inner.settings.counters {
-        if let Some(value) = inner.logic.counter_runs.get(&counter.id) {
-            runs.insert(counter.id.clone(), *value);
-        }
-    }
-    let state = CounterState { runs };
-    let _ = counter_state::save(app, &state);
 }
 
 fn display_height(item_count: usize) -> i32 {
     TIMER_DISPLAY_MIN_HEIGHT.max(48 + item_count.max(1) as i32 * 30)
 }
 
-fn normalize_display(display: &mut TimerDisplaySettings, item_count: usize) -> Result<(), String> {
+fn normalize_display(
+    display: &mut TimerDisplaySettings,
+    item_count: usize,
+) -> Result<(), String> {
     display.rect.width = display.rect.width.max(TIMER_DISPLAY_WIDTH);
     display.rect.height = display_height(item_count);
 
@@ -219,7 +174,6 @@ fn normalize_groups(
     default_group_id: &str,
     legacy_display: TimerDisplaySettings,
     item_count_by_group: &HashMap<String, usize>,
-    label: &str,
 ) -> Result<Vec<TimerGroup>, String> {
     if groups.is_empty() {
         groups.push(default_group(
@@ -245,10 +199,10 @@ fn normalize_groups(
         }
         group.name = group.name.trim().to_string();
         if group.name.is_empty() {
-            return Err(format!("{label}分组名称不能为空"));
+            return Err("计时器分组名称不能为空".to_string());
         }
         if seen.insert(group.id.clone(), true).is_some() {
-            return Err(format!("{label}分组 ID 重复: {}", group.id));
+            return Err(format!("计时器分组 ID 重复: {}", group.id));
         }
 
         if group.id == default_group_id {
@@ -297,18 +251,6 @@ fn enabled_timer_count_for_group(settings_value: &TimerSettings, group_id: &str)
         .count()
 }
 
-fn enabled_counter_count_for_group(settings_value: &TimerSettings, group_id: &str) -> usize {
-    settings_value
-        .counters
-        .iter()
-        .filter(|counter| {
-            counter.enabled
-                && counter.group_id == group_id
-                && group_enabled(&settings_value.counter_groups, group_id)
-        })
-        .count()
-}
-
 fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
     let name = timer.name.trim();
     if name.is_empty() {
@@ -344,36 +286,12 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
     })
 }
 
-fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
-    let name = counter.name.trim();
-    if name.is_empty() {
-        return Err("计数器名称不能为空".to_string());
-    }
-
-    let hotkey = counter.hotkey.trim();
-    if hotkey.is_empty() {
-        return Err(format!("{} 的快捷键不能为空", name));
-    }
-
-    Ok(CounterItem {
-        id: counter.id.trim().to_string(),
-        group_id: counter.group_id.trim().to_string(),
-        name: name.to_string(),
-        start_value: counter.start_value,
-        hotkey: hotkey.to_string(),
-        enabled: counter.enabled,
-    })
-}
-
 fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings, String> {
-    if settings_value.enabled && !settings_value.timer_enabled && !settings_value.counter_enabled {
+    if settings_value.enabled && !settings_value.timer_enabled {
         settings_value.timer_enabled = true;
-        settings_value.counter_enabled = true;
     }
-
-    settings_value.enabled = settings_value.timer_enabled || settings_value.counter_enabled;
-    let legacy_timer_display = settings_value.display.clone();
-    let legacy_counter_display = settings_value.counter_display.clone();
+    settings_value.enabled = settings_value.timer_enabled;
+    let legacy_display = settings_value.display.clone();
 
     if settings_value.timers.is_empty() {
         settings_value.timers.push(TimerItem {
@@ -390,21 +308,7 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
         });
     }
 
-    if settings_value.counters.is_empty() {
-        settings_value.counters.push(CounterItem {
-            id: format!("counter-{}", crate::utils::now_ms()),
-            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
-            name: "计数器 1".to_string(),
-            start_value: 0,
-            hotkey: "F3".to_string(),
-            enabled: true,
-        });
-    }
-
     let raw_timer_group_ids = group_id_set(&settings_value.timer_groups, DEFAULT_TIMER_GROUP_ID);
-    let raw_counter_group_ids =
-        group_id_set(&settings_value.counter_groups, DEFAULT_COUNTER_GROUP_ID);
-
     let mut seen_ids = HashMap::new();
     let mut timers = Vec::with_capacity(settings_value.timers.len());
     for timer in &settings_value.timers {
@@ -418,35 +322,13 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
         timers.push(normalized);
     }
 
-    let mut counters = Vec::with_capacity(settings_value.counters.len());
-    for counter in &settings_value.counters {
-        let mut normalized = normalize_counter(counter)?;
-        if !raw_counter_group_ids.contains_key(&normalized.group_id) {
-            normalized.group_id = DEFAULT_COUNTER_GROUP_ID.to_string();
-        }
-        if seen_ids.insert(normalized.id.clone(), true).is_some() {
-            return Err(format!("计时/计数器 ID 重复: {}", normalized.id));
-        }
-        counters.push(normalized);
-    }
-
     settings_value.timers = timers;
-    settings_value.counters = counters;
     let timer_count_by_group = count_enabled_timers_by_group(&settings_value.timers);
-    let counter_count_by_group = count_enabled_counters_by_group(&settings_value.counters);
     settings_value.timer_groups = normalize_groups(
         settings_value.timer_groups,
         DEFAULT_TIMER_GROUP_ID,
-        legacy_timer_display,
+        legacy_display,
         &timer_count_by_group,
-        "计时器",
-    )?;
-    settings_value.counter_groups = normalize_groups(
-        settings_value.counter_groups,
-        DEFAULT_COUNTER_GROUP_ID,
-        legacy_counter_display,
-        &counter_count_by_group,
-        "计数器",
     )?;
     settings_value.display = group_display(
         &settings_value.timer_groups,
@@ -455,21 +337,6 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
     )
     .cloned()
     .unwrap_or_default();
-    settings_value.counter_display = group_display(
-        &settings_value.counter_groups,
-        DEFAULT_COUNTER_GROUP_ID,
-        DEFAULT_COUNTER_GROUP_ID,
-    )
-    .cloned()
-    .unwrap_or_else(|| TimerDisplaySettings {
-        rect: TimerRect {
-            x: 420,
-            y: 80,
-            width: TIMER_DISPLAY_WIDTH,
-            height: TIMER_DISPLAY_MIN_HEIGHT,
-        },
-        font_opacity: 0.92,
-    });
     Ok(settings_value)
 }
 
@@ -495,78 +362,45 @@ fn count_enabled_timers_by_group(timers: &[TimerItem]) -> HashMap<String, usize>
     map
 }
 
-fn count_enabled_counters_by_group(counters: &[CounterItem]) -> HashMap<String, usize> {
-    let mut map = HashMap::new();
-    for counter in counters {
-        if counter.enabled {
-            *map.entry(counter.group_id.clone()).or_insert(0) += 1;
-        }
-    }
-    map
-}
-
 fn restart_hotkey_listeners(
     state: &TimerState,
     hotkey_manager: &HotkeyManager,
     settings_value: &TimerSettings,
 ) -> Result<(), String> {
-    if !settings_value.timer_enabled && !settings_value.counter_enabled {
+    if !settings_value.timer_enabled {
         hotkey_manager.clear_scope("timer")?;
         return hotkey_manager.clear_hold_scope("timer");
     }
 
-    // 收集所有热键绑定的目标
-    let mut by_hotkey: HashMap<String, (Vec<String>, Vec<String>, Vec<String>)> = HashMap::new();
-    // (press_timer_ids, release_timer_ids, counter_ids)
+    let mut by_hotkey: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+    // (press_timer_ids, release_timer_ids)
 
-    if settings_value.timer_enabled {
-        for timer in &settings_value.timers {
-            if !timer.enabled || !group_enabled(&settings_value.timer_groups, &timer.group_id) {
-                continue;
-            }
-            let entry = by_hotkey
-                .entry(timer.hotkey.trim().to_string())
-                .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
-            match timer.trigger_mode {
-                TimerTriggerMode::Press => entry.0.push(timer.id.clone()),
-                TimerTriggerMode::Release => entry.1.push(timer.id.clone()),
-            }
+    for timer in &settings_value.timers {
+        if !timer.enabled || !group_enabled(&settings_value.timer_groups, &timer.group_id) {
+            continue;
         }
-    }
-    if settings_value.counter_enabled {
-        for counter in &settings_value.counters {
-            if !counter.enabled || !group_enabled(&settings_value.counter_groups, &counter.group_id)
-            {
-                continue;
-            }
-            by_hotkey
-                .entry(counter.hotkey.trim().to_string())
-                .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()))
-                .2
-                .push(counter.id.clone());
+        let entry = by_hotkey
+            .entry(timer.hotkey.trim().to_string())
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        match timer.trigger_mode {
+            TimerTriggerMode::Press => entry.0.push(timer.id.clone()),
+            TimerTriggerMode::Release => entry.1.push(timer.id.clone()),
         }
     }
 
     let mut normal_bindings: Vec<(String, HotkeyAction)> = Vec::new();
     let mut hold_bindings: Vec<(String, HoldActionCallback)> = Vec::new();
 
-    for (hotkey, (press_timer_ids, release_timer_ids, counter_ids)) in by_hotkey {
+    for (hotkey, (press_timer_ids, release_timer_ids)) in by_hotkey {
         if !release_timer_ids.is_empty() {
-            // 有释放模式计时器：使用 hold 绑定，Down 触发按压模式，Up 触发释放模式
-            let press_targets = HotkeyTriggerTargets {
-                timer_ids: press_timer_ids,
-                counter_ids,
-            };
-            let release_targets = HotkeyTriggerTargets {
-                timer_ids: release_timer_ids,
-                counter_ids: Vec::new(),
-            };
-            let hold_callback: HoldActionCallback = Arc::new(move |app_handle, action| {
+            let press_targets = press_timer_ids.clone();
+            let release_targets = release_timer_ids.clone();
+            let hold_callback: HoldActionCallback = std::sync::Arc::new(move |app_handle, action| {
                 let targets = match action {
                     HoldAction::Down => press_targets.clone(),
                     HoldAction::Up => release_targets.clone(),
                 };
-                if targets.timer_ids.is_empty() && targets.counter_ids.is_empty() {
+                if targets.is_empty() {
                     return;
                 }
                 let app = app_handle.clone();
@@ -578,12 +412,8 @@ fn restart_hotkey_listeners(
             });
             hold_bindings.push((hotkey, hold_callback));
         } else {
-            // 纯按压模式：使用普通绑定（当前行为）
-            let targets = HotkeyTriggerTargets {
-                timer_ids: press_timer_ids,
-                counter_ids,
-            };
-            let action: HotkeyAction = Arc::new(move |app_handle| {
+            let targets = press_timer_ids.clone();
+            let action: HotkeyAction = std::sync::Arc::new(move |app_handle| {
                 let targets = targets.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = trigger_hotkey_targets(&app_handle, targets) {
@@ -595,10 +425,7 @@ fn restart_hotkey_listeners(
         }
     }
 
-    // 先清空 scope，再分别注册普通和 hold 绑定
     hotkey_manager.clear_scope("timer")?;
-    // 始终调用 clear_hold_scope，避免 release 模式计时器全部移除后
-    // 旧的 hold 绑定残留导致 Up 事件仍触发空回调
     hotkey_manager.clear_hold_scope("timer")?;
 
     if !normal_bindings.is_empty() {
@@ -701,7 +528,7 @@ fn ensure_overlay_window(
     .inner_size(rect.width as f64, rect.height as f64)
     .position(rect.x as f64, rect.y as f64)
     .build()
-    .map_err(|error| format!("创建{title}失败: {error}"))?;
+    .map_err(|error| format!("创建{title}透明窗口失败: {error}"))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
@@ -711,7 +538,7 @@ fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Re
     let mut active_labels = HashSet::new();
 
     for group in &settings_value.timer_groups {
-        let label = display_label_for_group(&TimerDisplayTarget::Timer, &group.id);
+        let label = display_label_for_group(&group.id);
         active_labels.insert(label.clone());
         let mut display = group.display.clone();
         display.rect.height =
@@ -719,109 +546,55 @@ fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Re
         ensure_overlay_window(
             app,
             &label,
-            &display_query_for_group(&TimerDisplayTarget::Timer, &group.id),
+            &display_query_for_group(&group.id),
             &format!("计时器透明窗口 - {}", group.name),
             &display,
             settings_value.timer_enabled && group.enabled,
         )?;
     }
     destroy_stale_windows(app, TIMER_DISPLAY_LABEL, &active_labels);
-
-    let mut active_labels = HashSet::new();
-    for group in &settings_value.counter_groups {
-        let label = display_label_for_group(&TimerDisplayTarget::Counter, &group.id);
-        active_labels.insert(label.clone());
-        let mut display = group.display.clone();
-        display.rect.height =
-            display_height(enabled_counter_count_for_group(settings_value, &group.id));
-        ensure_overlay_window(
-            app,
-            &label,
-            &display_query_for_group(&TimerDisplayTarget::Counter, &group.id),
-            &format!("计数器透明窗口 - {}", group.name),
-            &display,
-            settings_value.counter_enabled && group.enabled,
-        )?;
-    }
-    destroy_stale_windows(app, COUNTER_DISPLAY_LABEL, &active_labels);
     Ok(())
 }
 
-fn display_label_for_group(target: &TimerDisplayTarget, group_id: &str) -> String {
-    match target {
-        TimerDisplayTarget::Timer if group_id == DEFAULT_TIMER_GROUP_ID => {
-            TIMER_DISPLAY_LABEL.to_string()
-        }
-        TimerDisplayTarget::Timer => {
-            format!("{}-{}", TIMER_DISPLAY_LABEL, safe_label_component(group_id))
-        }
-        TimerDisplayTarget::Counter if group_id == DEFAULT_COUNTER_GROUP_ID => {
-            COUNTER_DISPLAY_LABEL.to_string()
-        }
-        TimerDisplayTarget::Counter => {
-            format!(
-                "{}-{}",
-                COUNTER_DISPLAY_LABEL,
-                safe_label_component(group_id)
-            )
-        }
+fn display_label_for_group(group_id: &str) -> String {
+    if group_id == DEFAULT_TIMER_GROUP_ID {
+        TIMER_DISPLAY_LABEL.to_string()
+    } else {
+        format!("{}-{}", TIMER_DISPLAY_LABEL, safe_label_component(group_id))
     }
 }
 
-fn display_query_for_group(target: &TimerDisplayTarget, group_id: &str) -> String {
+fn display_query_for_group(group_id: &str) -> String {
     let group_id = encoded_query_value(group_id);
-    match target {
-        TimerDisplayTarget::Timer => {
-            format!("timer-display&groupId={group_id}")
-        }
-        TimerDisplayTarget::Counter => {
-            format!("counter-display&groupId={group_id}")
-        }
-    }
+    format!("timer-display&groupId={group_id}")
 }
 
 fn destroy_display_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, TIMER_DISPLAY_LABEL);
-    destroy_windows_with_prefix(app, COUNTER_DISPLAY_LABEL);
 }
 
 fn destroy_position_windows(app: &AppHandle) {
     destroy_windows_with_prefix(app, TIMER_POSITION_LABEL);
-    destroy_windows_with_prefix(app, COUNTER_POSITION_LABEL);
 }
 
-
-pub fn is_main_window_close(label: &str) -> bool {
-    label == "main"
-}
-
-pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyManager) {
-    let _ = hotkey_manager.clear_scope("timer");
-    let _ = hotkey_manager.clear_hold_scope("timer");
-    let _ = stop_tick_task(state);
-    // 这里在进程异常退出 / 用户直接关窗没走 reset 流程时仍有最后一份）。
-    if let Ok(inner) = state.lock_inner() {
-        persist_counter_runs(app, &inner);
+fn position_label_for_group(group_id: &str) -> String {
+    if group_id == DEFAULT_TIMER_GROUP_ID {
+        TIMER_POSITION_LABEL.to_string()
+    } else {
+        format!(
+            "{}-{}",
+            TIMER_POSITION_LABEL,
+            safe_label_component(group_id)
+        )
     }
-    destroy_position_windows(app);
-    destroy_display_windows(app);
 }
 
-/// 停止所有正在运行的计时器与计数器（用于全局总开关关闭）。
-pub fn stop_all(app: &AppHandle, state: &TimerState) {
-    let bootstrap = {
-        let Ok(mut inner) = state.lock_inner() else {
-            return;
-        };
-        inner.logic.runs.clear();
-        persist_counter_runs(app, &inner);
-        TimerLogic::build_bootstrap(&inner)
-    };
-    emit_state(app, bootstrap);
+fn position_mode_for_group(group_id: &str) -> String {
+    let group_id = encoded_query_value(group_id);
+    format!("timer-position&groupId={group_id}")
 }
 
 fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
-    // Multi-segment timer: pool model, recovers 1 second per real second
     if runtime.segment_count > 1 {
         if runtime.status != TimerRunStatus::Running {
             return false;
@@ -836,7 +609,6 @@ fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
             runtime.remaining_seconds = recovered;
             if recovered >= runtime.duration_seconds {
                 runtime.status = TimerRunStatus::Finished;
-                // 池恢复满时同步 recovery_start_pool，避免旧值导致下次按键错误计算
                 runtime.recovery_start_pool = runtime.duration_seconds;
             }
             return true;
@@ -851,7 +623,6 @@ fn update_timer_runtime(runtime: &mut TimerRuntime, now: u64) -> bool {
         return false;
     };
 
-    // Original single-segment timer logic
     let elapsed_seconds = now
         .saturating_sub(runtime.started_at_ms)
         .div_ceil(1000)
@@ -951,7 +722,8 @@ fn trigger_multisegment_runtime(
 fn tick(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TimerState>();
     let bootstrap = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
         let now = now_ms();
         let mut changed = false;
@@ -972,130 +744,96 @@ fn tick(app: &AppHandle) -> Result<(), String> {
 
 fn trigger_hotkey_targets(
     app: &AppHandle,
-    targets: HotkeyTriggerTargets,
+    timer_ids: Vec<String>,
 ) -> Result<TimerBootstrap, String> {
     let state = app.state::<TimerState>();
-    let triggered_timer_ids = targets.timer_ids.clone();
-    let triggered_counter_ids = targets.counter_ids.clone();
+    let triggered_timer_ids = timer_ids.clone();
     let bootstrap = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
 
-        if !inner.settings.timer_enabled && !inner.settings.counter_enabled {
+        if !inner.settings.timer_enabled {
             return Ok(TimerLogic::build_bootstrap(&inner));
         }
 
         let now = now_ms();
-        if inner.settings.timer_enabled {
-            for timer_id in &targets.timer_ids {
-                let Some(item) = inner
-                    .settings
-                    .timers
-                    .iter()
-                    .find(|item| {
-                        item.id == *timer_id
-                            && item.enabled
-                            && group_enabled(&inner.settings.timer_groups, &item.group_id)
-                    })
-                    .map(|item| {
-                        (
-                            item.id.clone(),
-                            item.duration_seconds,
-                            item.direction.clone(),
-                            item.ignore_running,
-                            item.segment_count,
-                        )
-                    })
-                else {
-                    continue;
-                };
+        for timer_id in timer_ids {
+            let Some(item) = inner
+                .settings
+                .timers
+                .iter()
+                .find(|item| {
+                    item.id == timer_id
+                        && item.enabled
+                        && group_enabled(&inner.settings.timer_groups, &item.group_id)
+                })
+                .map(|item| {
+                    (
+                        item.id.clone(),
+                        item.duration_seconds,
+                        item.direction.clone(),
+                        item.ignore_running,
+                        item.segment_count,
+                    )
+                })
+            else {
+                continue;
+            };
 
-                let (timer_id, duration_seconds, direction, ignore_running, segment_count) = item;
+            let (timer_id, duration_seconds, direction, ignore_running, segment_count) = item;
 
-                // Multi-segment timer: pool model, deduct segment_duration, auto-recover
-                if let Some(seg_count) = segment_count {
-                    if seg_count < 2 {
-                        continue;
-                    }
-                    let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
-
-                    // 触发前先按 tick 同源逻辑归一化 runtime，再用毫秒级 pool 扣段。
-                    // 这样按键落在 250ms tick 间隙、Finished 满池或 999ms 余量时，
-                    // 后续显示状态和扣除起点保持一致。
-                    let Some(next_runtime) = trigger_multisegment_runtime(
-                        inner.logic.runs.get_mut(&timer_id),
-                        now,
-                        total_duration,
-                        duration_seconds,
-                        direction,
-                        seg_count,
-                    ) else {
-                        continue;
-                    };
-
-                    inner.logic.runs.insert(timer_id, next_runtime);
+            if let Some(seg_count) = segment_count {
+                if seg_count < 2 {
                     continue;
                 }
-
-                // Normal timer: check running state
-                let is_running = matches!(
-                    inner.logic.runs.get(&timer_id).map(|runtime| &runtime.status),
-                    Some(TimerRunStatus::Running)
-                );
-
-                if is_running {
-                    if ignore_running {
-                        continue;
-                    }
-                    inner.logic.runs.remove(&timer_id);
-                }
-
-                let cur = match direction {
-                    TimerDirection::Countdown => duration_seconds,
-                    TimerDirection::Countup => 0,
-                };
-
-                inner.logic.runs.insert(
-                    timer_id,
-                    TimerRuntime {
-                        started_at_ms: now,
-                        ends_at_ms: Some(now + duration_seconds * 1000),
-                        current_seconds: cur,
-                        remaining_seconds: duration_seconds,
-                        duration_seconds,
-                        direction,
-                        status: TimerRunStatus::Running,
-                        segment_count: 1,
-                        segment_duration: duration_seconds,
-                        recovery_start_pool: 0,
-                    },
-                );
-            }
-        }
-
-        if inner.settings.counter_enabled {
-            let mut counter_changed = false;
-            for counter_id in &targets.counter_ids {
-                let Some((id, start_value)) = inner
-                    .settings
-                    .counters
-                    .iter()
-                    .find(|item| {
-                        item.id == *counter_id
-                            && item.enabled
-                            && group_enabled(&inner.settings.counter_groups, &item.group_id)
-                    })
-                    .map(|counter| (counter.id.clone(), counter.start_value))
-                else {
+                let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
+                let Some(next_runtime) = trigger_multisegment_runtime(
+                    inner.logic.runs.get_mut(&timer_id),
+                    now,
+                    total_duration,
+                    duration_seconds,
+                    direction,
+                    seg_count,
+                ) else {
                     continue;
                 };
-                let value = inner.logic.counter_runs.entry(id).or_insert(start_value);
-                *value += 1;
-                counter_changed = true;
+                inner.logic.runs.insert(timer_id, next_runtime);
+                continue;
             }
-            if counter_changed {
-                persist_counter_runs(app, &inner);
+
+            let is_running = matches!(
+                inner.logic.runs.get(&timer_id).map(|runtime| &runtime.status),
+                Some(TimerRunStatus::Running)
+            );
+
+            if is_running {
+                if ignore_running {
+                    continue;
+                }
+                inner.logic.runs.remove(&timer_id);
             }
+
+            let cur = match direction {
+                TimerDirection::Countdown => duration_seconds,
+                TimerDirection::Countup => 0,
+            };
+
+            inner.logic.runs.insert(
+                timer_id,
+                TimerRuntime {
+                    started_at_ms: now,
+                    ends_at_ms: Some(now + duration_seconds * 1000),
+                    current_seconds: cur,
+                    remaining_seconds: duration_seconds,
+                    duration_seconds,
+                    direction,
+                    status: TimerRunStatus::Running,
+                    segment_count: 1,
+                    segment_duration: duration_seconds,
+                    recovery_start_pool: 0,
+                },
+            );
         }
 
         TimerLogic::build_bootstrap(&inner)
@@ -1106,132 +844,66 @@ fn trigger_hotkey_targets(
     if !triggered_timer_ids.is_empty() {
         let _ = app.emit_to("main", events::HOTKEY_TRIGGERED, triggered_timer_ids);
     }
-    if !triggered_counter_ids.is_empty() {
-        let _ = app.emit_to("main", events::COUNTER_TRIGGERED, triggered_counter_ids);
-    }
     Ok(bootstrap)
 }
 
-fn default_group_id_for_target(target: &TimerDisplayTarget) -> &'static str {
-    match target {
-        TimerDisplayTarget::Timer => DEFAULT_TIMER_GROUP_ID,
-        TimerDisplayTarget::Counter => DEFAULT_COUNTER_GROUP_ID,
-    }
-}
-
-fn rect_for_target(
+fn rect_for_group(
     settings_value: &TimerSettings,
-    target: &TimerDisplayTarget,
     group_id: &str,
 ) -> TimerRect {
-    match target {
-        TimerDisplayTarget::Timer => group_display(
-            &settings_value.timer_groups,
-            DEFAULT_TIMER_GROUP_ID,
-            group_id,
-        )
-        .map(|display| display.rect.clone())
-        .unwrap_or_else(|| settings_value.display.rect.clone()),
-        TimerDisplayTarget::Counter => group_display(
-            &settings_value.counter_groups,
-            DEFAULT_COUNTER_GROUP_ID,
-            group_id,
-        )
-        .map(|display| display.rect.clone())
-        .unwrap_or_else(|| settings_value.counter_display.rect.clone()),
-    }
+    group_display(
+        &settings_value.timer_groups,
+        DEFAULT_TIMER_GROUP_ID,
+        group_id,
+    )
+    .map(|display| display.rect.clone())
+    .unwrap_or_else(|| settings_value.display.rect.clone())
 }
 
-fn set_rect_for_target(
+fn set_rect_for_group(
     settings_value: &mut TimerSettings,
-    target: &TimerDisplayTarget,
     group_id: &str,
     rect: TimerRect,
 ) {
-    match target {
-        TimerDisplayTarget::Timer => {
-            if let Some(group) = settings_value
-                .timer_groups
-                .iter_mut()
-                .find(|group| group.id == group_id)
-            {
-                group.display.rect = rect.clone();
-            }
-            if group_id == DEFAULT_TIMER_GROUP_ID {
-                settings_value.display.rect = rect;
-            }
-        }
-        TimerDisplayTarget::Counter => {
-            if let Some(group) = settings_value
-                .counter_groups
-                .iter_mut()
-                .find(|group| group.id == group_id)
-            {
-                group.display.rect = rect.clone();
-            }
-            if group_id == DEFAULT_COUNTER_GROUP_ID {
-                settings_value.counter_display.rect = rect;
-            }
-        }
+    if let Some(group) = settings_value
+        .timer_groups
+        .iter_mut()
+        .find(|group| group.id == group_id)
+    {
+        group.display.rect = rect.clone();
+    }
+    if group_id == DEFAULT_TIMER_GROUP_ID {
+        settings_value.display.rect = rect;
     }
 }
 
-fn position_label_for_target(target: &TimerDisplayTarget, group_id: &str) -> String {
-    match target {
-        TimerDisplayTarget::Timer if group_id == DEFAULT_TIMER_GROUP_ID => {
-            TIMER_POSITION_LABEL.to_string()
-        }
-        TimerDisplayTarget::Timer => {
-            format!(
-                "{}-{}",
-                TIMER_POSITION_LABEL,
-                safe_label_component(group_id)
-            )
-        }
-        TimerDisplayTarget::Counter if group_id == DEFAULT_COUNTER_GROUP_ID => {
-            COUNTER_POSITION_LABEL.to_string()
-        }
-        TimerDisplayTarget::Counter => {
-            format!(
-                "{}-{}",
-                COUNTER_POSITION_LABEL,
-                safe_label_component(group_id)
-            )
-        }
-    }
+pub fn is_main_window_close(label: &str) -> bool {
+    label == "main"
 }
 
-fn position_mode_for_target(target: &TimerDisplayTarget, group_id: &str) -> String {
-    let group_id = encoded_query_value(group_id);
-    match target {
-        TimerDisplayTarget::Timer => format!("timer-position&groupId={group_id}"),
-        TimerDisplayTarget::Counter => format!("counter-position&groupId={group_id}"),
-    }
+pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyManager) {
+    let _ = hotkey_manager.clear_scope("timer");
+    let _ = hotkey_manager.clear_hold_scope("timer");
+    let _ = stop_tick_task(state);
+    destroy_position_windows(app);
+    destroy_display_windows(app);
 }
 
-fn position_title_for_target(target: &TimerDisplayTarget) -> &'static str {
-    match target {
-        TimerDisplayTarget::Timer => "设置计时器位置",
-        TimerDisplayTarget::Counter => "设置计数器位置",
-    }
+pub fn stop_all(app: &AppHandle, state: &TimerState) {
+    let bootstrap = {
+        let Ok(mut inner) = state.lock_inner() else {
+            return;
+        };
+        inner.logic.runs.clear();
+        TimerLogic::build_bootstrap(&inner)
+    };
+    emit_state(app, bootstrap);
 }
+
 pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<TimerState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
-    let counter_state = counter_state::load(app);
-    let mut counter_runs: HashMap<String, i64> = HashMap::new();
-    for counter in &settings.counters {
-        let value = counter_state
-            .runs
-            .get(&counter.id)
-            .copied()
-            .unwrap_or(counter.start_value);
-        counter_runs.insert(counter.id.clone(), value);
-    }
-    // 孤儿 ID（settings.counters 已删、counter_state 还残留）直接丢弃，不污染运行态。
-
     let logic = TimerLogic {
         runs: HashMap::new(),
-        counter_runs,
         pending_position: None,
     };
     let tool = ToolState::new(logic, settings.clone());
@@ -1240,7 +912,7 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Tim
         tick_task: Mutex::new(None),
     };
 
-    if settings.timer_enabled || settings.counter_enabled {
+    if settings.timer_enabled {
         if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings) {
             if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error);
@@ -1255,7 +927,8 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Tim
 
 #[tauri::command]
 pub fn timer_get_bootstrap(state: State<'_, TimerState>) -> Result<TimerBootstrap, AppError> {
-    let inner = state.lock_inner()
+    let inner = state
+        .lock_inner()
         .map_err(|_| "计时器状态已损坏".to_string())?;
 
     Ok(TimerLogic::build_bootstrap(&inner))
@@ -1272,41 +945,26 @@ pub fn timer_save_settings(
     settings::save_settings(&app, &settings_value)?;
 
     if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());
         return Err(AppError::from(error));
     }
 
     let bootstrap = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
-        inner.logic.runs
+        inner
+            .logic
+            .runs
             .retain(|id, _| settings_value.timers.iter().any(|timer| timer.id == *id));
-        inner.logic.counter_runs.retain(|id, _| {
-            settings_value
-                .counters
-                .iter()
-                .any(|counter| counter.id == *id)
-        });
-        for counter in &settings_value.counters {
-            inner.logic.counter_runs
-                .entry(counter.id.clone())
-                .or_insert(counter.start_value);
-        }
         if !settings_value.timer_enabled {
             inner.logic.runs.clear();
         }
-        if !settings_value.counter_enabled {
-            inner.logic.counter_runs = settings_value
-                .counters
-                .iter()
-                .map(|counter| (counter.id.clone(), counter.start_value))
-                .collect();
-        }
-        // Clear runs for disabled timers
         let enabled_timer_ids: Vec<String> = settings_value
             .timers
             .iter()
@@ -1324,102 +982,11 @@ pub fn timer_save_settings(
 
 #[tauri::command]
 pub fn timer_trigger(timer_ids: Vec<String>, app: AppHandle) -> Result<TimerBootstrap, AppError> {
-    trigger_hotkey_targets(
-        &app,
-        HotkeyTriggerTargets {
-            timer_ids,
-            counter_ids: Vec::new(),
-        },
-    )
-    .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn timer_counter_trigger(
-    counter_ids: Vec<String>,
-    app: AppHandle,
-) -> Result<TimerBootstrap, AppError> {
-    trigger_hotkey_targets(
-        &app,
-        HotkeyTriggerTargets {
-            timer_ids: Vec::new(),
-            counter_ids,
-        },
-    )
-    .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn timer_counter_reset(counter_id: String, app: AppHandle) -> Result<TimerBootstrap, AppError> {
-    let state = app.state::<TimerState>();
-    let bootstrap = {
-        let mut inner = state.lock_inner()
-            .map_err(|_| "计数器状态已损坏".to_string())?;
-        let Some((id, start_value)) = inner
-            .settings
-            .counters
-            .iter()
-            .find(|counter| counter.id == counter_id)
-            .map(|counter| (counter.id.clone(), counter.start_value))
-        else {
-            return Err(AppError::Message("未找到计数器".to_string()));
-        };
-        inner.logic.counter_runs.insert(id, start_value);
-        persist_counter_runs(&app, &inner);
-        TimerLogic::build_bootstrap(&inner)
-    };
-
-    emit_state(&app, bootstrap.clone());
-    ensure_display_windows(&app, &bootstrap.settings)?;
-    Ok(bootstrap)
-}
-
-#[tauri::command]
-pub fn timer_counter_adjust(
-    counter_id: String,
-    delta: i32,
-    app: AppHandle,
-    state: State<'_, TimerState>,
-) -> Result<TimerBootstrap, AppError> {
-    let bootstrap = {
-        let mut inner = state.lock_inner()
-            .map_err(|_| "计数器状态已损坏".to_string())?;
-
-        // 验证 counter 存在且启用
-        let exists = inner
-            .settings
-            .counters
-            .iter()
-            .any(|c| c.id == counter_id && c.enabled);
-        if !exists {
-            return Err(AppError::Message("计数器不存在或未启用".to_string()));
-        }
-
-        let start_value = inner
-            .settings
-            .counters
-            .iter()
-            .find(|c| c.id == counter_id)
-            .map(|c| c.start_value)
-            .unwrap_or(0);
-
-        let current = inner.logic.counter_runs
-            .entry(counter_id)
-            .or_insert(start_value as i64);
-        let new_value = (*current + delta as i64).max(0);
-        *current = new_value;
-
-        persist_counter_runs(&app, &inner);
-        TimerLogic::build_bootstrap(&inner)
-    };
-
-    emit_state(&app, bootstrap.clone());
-    Ok(bootstrap)
+    trigger_hotkey_targets(&app, timer_ids).map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn timer_begin_position_selection(
-    target: TimerDisplayTarget,
     group_id: Option<String>,
     app: AppHandle,
     state: State<'_, TimerState>,
@@ -1427,18 +994,20 @@ pub async fn timer_begin_position_selection(
     let (sender, receiver) = oneshot::channel();
     let group_id = group_id
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| default_group_id_for_target(&target).to_string());
+        .unwrap_or_else(|| DEFAULT_TIMER_GROUP_ID.to_string());
     let rect = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
 
         if inner.logic.pending_position.is_some() {
-            return Err(AppError::Message("当前已有一个位置设置流程在进行中".to_string()));
+            return Err(AppError::Message(
+                "当前已有一个位置设置流程在进行中".to_string(),
+            ));
         }
 
-        let rect = rect_for_target(&inner.settings, &target, &group_id);
+        let rect = rect_for_group(&inner.settings, &group_id);
         inner.logic.pending_position = Some(PendingTimerPosition {
-            target: target.clone(),
             group_id: group_id.clone(),
             original_rect: rect.clone(),
             staged_rect: rect.clone(),
@@ -1447,21 +1016,17 @@ pub async fn timer_begin_position_selection(
         rect
     };
 
-    let label = position_label_for_target(&target, &group_id);
+    let label = position_label_for_group(&group_id);
     destroy_window(&app, &label);
 
     let window = WebviewWindowBuilder::new(
         &app,
         &label,
         WebviewUrl::App(
-            format!(
-                "index.html?mode={}",
-                position_mode_for_target(&target, &group_id)
-            )
-            .into(),
+            format!("index.html?mode={}", position_mode_for_group(&group_id)).into(),
         ),
     )
-    .title(position_title_for_target(&target))
+    .title("设置计时器位置")
     .decorations(false)
     .transparent(true)
     .shadow(false)
@@ -1473,7 +1038,7 @@ pub async fn timer_begin_position_selection(
     .inner_size(rect.width as f64, rect.height as f64)
     .position(rect.x as f64, rect.y as f64)
     .build()
-    .map_err(|error| format!("创建位置设置窗口失败: {error}"))?;
+    .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {
@@ -1497,15 +1062,15 @@ pub async fn timer_begin_position_selection(
     destroy_window(&app, &label);
 
     let rect = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
-        rect_for_target(&inner.settings, &target, &group_id)
+        rect_for_group(&inner.settings, &group_id)
     };
 
     Ok(TimerSelectionOutcome {
         kind,
         rect,
-        target,
         group_id: Some(group_id),
     })
 }
@@ -1515,54 +1080,51 @@ pub fn timer_position_commit(
     app: AppHandle,
     state: State<'_, TimerState>,
 ) -> Result<TimerBootstrap, AppError> {
-    let (sender, target, group_id, bootstrap) = {
-        let mut inner = state.lock_inner()
+    let (sender, group_id, bootstrap) = {
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
-        let target = pending.target.clone();
         let group_id = pending.group_id.clone();
-        set_rect_for_target(
-            &mut inner.settings,
-            &target,
-            &group_id,
-            pending.staged_rect.clone(),
-        );
+        set_rect_for_group(&mut inner.settings, &group_id, pending.staged_rect.clone());
         settings::save_settings(&app, &inner.settings)?;
-        (pending.sender, target, group_id, TimerLogic::build_bootstrap(&inner))
+        (
+            pending.sender,
+            group_id,
+            TimerLogic::build_bootstrap(&inner),
+        )
     };
 
     let _ = sender.send(TimerSelectionKind::Selected);
-    destroy_window(&app, &position_label_for_target(&target, &group_id));
+    destroy_window(&app, &position_label_for_group(&group_id));
     ensure_display_windows(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
     Ok(bootstrap)
 }
 
 #[tauri::command]
-pub fn timer_position_cancel(app: AppHandle, state: State<'_, TimerState>) -> Result<(), AppError> {
-    let (sender, target, group_id) = {
-        let mut inner = state.lock_inner()
+pub fn timer_position_cancel(
+    app: AppHandle,
+    state: State<'_, TimerState>,
+) -> Result<(), AppError> {
+    let (sender, group_id) = {
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
         };
 
-        let target = pending.target.clone();
         let group_id = pending.group_id.clone();
-        set_rect_for_target(
-            &mut inner.settings,
-            &target,
-            &group_id,
-            pending.original_rect,
-        );
-        (pending.sender, target, group_id)
+        set_rect_for_group(&mut inner.settings, &group_id, pending.original_rect);
+        (pending.sender, group_id)
     };
 
     let _ = sender.send(TimerSelectionKind::Cancelled);
-    destroy_window(&app, &position_label_for_target(&target, &group_id));
+    destroy_window(&app, &position_label_for_group(&group_id));
     Ok(())
 }
 
@@ -1573,8 +1135,9 @@ pub fn timer_position_moved(
     app: AppHandle,
     state: State<'_, TimerState>,
 ) -> Result<TimerRect, AppError> {
-    let (rect, target, group_id) = {
-        let mut inner = state.lock_inner()
+    let (rect, group_id) = {
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.as_mut() else {
             return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
@@ -1582,14 +1145,10 @@ pub fn timer_position_moved(
 
         pending.staged_rect.x = x;
         pending.staged_rect.y = y;
-        (
-            pending.staged_rect.clone(),
-            pending.target.clone(),
-            pending.group_id.clone(),
-        )
+        (pending.staged_rect.clone(), pending.group_id.clone())
     };
 
-    if let Some(window) = app.get_webview_window(&position_label_for_target(&target, &group_id)) {
+    if let Some(window) = app.get_webview_window(&position_label_for_group(&group_id)) {
         let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
     }
 
@@ -1615,17 +1174,6 @@ mod tests {
         }
     }
 
-    fn sample_counter(id: &str, hotkey: &str) -> CounterItem {
-        CounterItem {
-            id: id.to_string(),
-            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
-            name: id.to_string(),
-            start_value: 0,
-            hotkey: hotkey.to_string(),
-            enabled: true,
-        }
-    }
-
     #[test]
     fn display_height_has_minimum() {
         assert_eq!(display_height(0), TIMER_DISPLAY_MIN_HEIGHT);
@@ -1638,8 +1186,6 @@ mod tests {
         assert!(is_main_window_close("main"));
         assert!(!is_main_window_close(TIMER_DISPLAY_LABEL));
         assert!(!is_main_window_close(TIMER_POSITION_LABEL));
-        assert!(!is_main_window_close(COUNTER_DISPLAY_LABEL));
-        assert!(!is_main_window_close(COUNTER_POSITION_LABEL));
     }
 
     #[test]
@@ -1647,38 +1193,26 @@ mod tests {
         let mut settings = TimerSettings::default();
         settings.display.rect.width = 480;
         settings.timers = vec![sample_timer("a", "F2"), sample_timer("b", "F3")];
-        settings.counters = vec![sample_counter("c", "F4")];
 
         let normalized = normalize_settings(settings).unwrap();
 
         assert_eq!(normalized.display.rect.width, 480);
         assert_eq!(normalized.display.rect.height, 108);
-        assert_eq!(
-            normalized.counter_display.rect.height,
-            TIMER_DISPLAY_MIN_HEIGHT
-        );
     }
 
     #[test]
     fn normalize_settings_migrates_legacy_groups() {
         let mut settings = TimerSettings::default();
         settings.display.rect.width = 480;
-        settings.counter_display.rect.width = 520;
         settings.timer_groups.clear();
-        settings.counter_groups.clear();
         settings.timers = vec![sample_timer("a", "F2")];
-        settings.counters = vec![sample_counter("c", "F3")];
 
         let normalized = normalize_settings(settings).unwrap();
 
         assert_eq!(normalized.timer_groups.len(), 1);
-        assert_eq!(normalized.counter_groups.len(), 1);
         assert_eq!(normalized.timer_groups[0].id, DEFAULT_TIMER_GROUP_ID);
-        assert_eq!(normalized.counter_groups[0].id, DEFAULT_COUNTER_GROUP_ID);
         assert_eq!(normalized.timer_groups[0].display.rect.width, 480);
-        assert_eq!(normalized.counter_groups[0].display.rect.width, 520);
         assert_eq!(normalized.timers[0].group_id, DEFAULT_TIMER_GROUP_ID);
-        assert_eq!(normalized.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);
     }
 
     #[test]

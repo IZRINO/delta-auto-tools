@@ -50,15 +50,21 @@ export type CounterItem = {
   enabled: boolean;
 };
 
+/** 计时器后端 Settings（仅 timer 字段） */
 export type TimerSettings = {
   enabled?: boolean;
   timerEnabled?: boolean;
+  display: TimerDisplaySettings;
+  timerGroups?: TimerGroup[];
+  timers: TimerItem[];
+};
+
+/** 计数器后端 Settings（仅 counter 字段） */
+export type CounterSettings = {
+  enabled?: boolean;
   counterEnabled?: boolean;
   display: TimerDisplaySettings;
-  counterDisplay: TimerDisplaySettings;
-  timerGroups?: TimerGroup[];
   counterGroups?: CounterGroup[];
-  timers: TimerItem[];
   counters: CounterItem[];
 };
 
@@ -85,9 +91,16 @@ export type CounterRunState = {
   value: number;
 };
 
+/** 计时器 Bootstrap */
 export type TimerBootstrap = {
   settings: TimerSettings;
   runs: TimerRunState[];
+  hotkeyError: string | null;
+};
+
+/** 计数器 Bootstrap */
+export type CounterBootstrap = {
+  settings: CounterSettings;
   counterRuns: CounterRunState[];
   hotkeyError: string | null;
 };
@@ -116,18 +129,21 @@ export type CounterItemForm = {
 
 export type TimerSettingsForm = {
   timerEnabled: boolean;
+  display: {
+    rect: TimerRect;
+    fontOpacity: string;
+  };
+  timerGroups: TimerGroupForm[];
+  timers: TimerItemForm[];
+};
+
+export type CounterSettingsForm = {
   counterEnabled: boolean;
   display: {
     rect: TimerRect;
     fontOpacity: string;
   };
-  counterDisplay: {
-    rect: TimerRect;
-    fontOpacity: string;
-  };
-  timerGroups: TimerGroupForm[];
   counterGroups: TimerGroupForm[];
-  timers: TimerItemForm[];
   counters: CounterItemForm[];
 };
 
@@ -141,16 +157,13 @@ export type TimerGroupForm = {
   };
 };
 
-export type TimerDisplayTarget = "timer" | "counter";
-
 export type TimerSelectionOutcome = {
   kind: "selected" | "cancelled" | "closed";
   rect: TimerRect;
-  target: TimerDisplayTarget;
   groupId?: string | null;
 };
 
-export type TimerDisplayMode = "display" | "position" | "counter-display" | "counter-position";
+export type CounterSelectionOutcome = TimerSelectionOutcome;
 
 export const TIMER_AUTOSAVE_DELAY_MS = 400;
 export const TIMER_DISPLAY_WIDTH = 320;

@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { TimerSettings } from "@/components/app/timer-types";
-import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID } from "@/components/app/timer-types";
-import { formatTimerHotkey, formatTimerRemaining, isTimerRunActive, moveTimerItem, parseTimerSettingsForm, timerEffectiveCountersByGroup, timerEffectiveTimersByGroup, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
+import { DEFAULT_TIMER_GROUP_ID } from "@/components/app/timer-types";
+import { formatTimerHotkey, formatTimerRemaining, isTimerRunActive, moveTimerItem, parseTimerSettingsForm, timerEffectiveTimersByGroup, timerProgressPercent, timerSettingsToForm } from "@/components/app/timer-utils";
 
 function sampleSettings(): TimerSettings {
   return {
     enabled: true,
     timerEnabled: true,
-    counterEnabled: true,
     display: {
       rect: {
         x: 10,
@@ -17,15 +16,6 @@ function sampleSettings(): TimerSettings {
         height: 96,
       },
       fontOpacity: 0.75,
-    },
-    counterDisplay: {
-      rect: {
-        x: 340,
-        y: 20,
-        width: 320,
-        height: 96,
-      },
-      fontOpacity: 0.8,
     },
     timerGroups: [
       {
@@ -43,22 +33,6 @@ function sampleSettings(): TimerSettings {
         },
       },
     ],
-    counterGroups: [
-      {
-        id: DEFAULT_COUNTER_GROUP_ID,
-        name: "默认分组",
-        enabled: true,
-        display: {
-          rect: {
-            x: 340,
-            y: 20,
-            width: 320,
-            height: 96,
-          },
-          fontOpacity: 0.8,
-        },
-      },
-    ],
     timers: [
       {
         id: "alpha",
@@ -71,16 +45,6 @@ function sampleSettings(): TimerSettings {
         enabled: true,
         ignoreRunning: true,
         segmentCount: null,
-      },
-    ],
-    counters: [
-      {
-        id: "counter-alpha",
-        groupId: DEFAULT_COUNTER_GROUP_ID,
-        name: "测试计数器",
-        startValue: 5,
-        hotkey: "Ctrl+F3",
-        enabled: true,
       },
     ],
   };
@@ -101,17 +65,13 @@ describe("timer-utils", () => {
   it("migrates legacy settings into default groups", () => {
     const legacy = sampleSettings();
     delete legacy.timerGroups;
-    delete legacy.counterGroups;
     legacy.timers = legacy.timers.map(({ groupId: _groupId, ...timer }) => timer);
-    legacy.counters = legacy.counters.map(({ groupId: _groupId, ...counter }) => counter);
 
     const form = timerSettingsToForm(legacy);
     const parsed = parseTimerSettingsForm(form);
 
     expect(form.timerGroups.map((group) => group.id)).toEqual([DEFAULT_TIMER_GROUP_ID]);
-    expect(form.counterGroups.map((group) => group.id)).toEqual([DEFAULT_COUNTER_GROUP_ID]);
     expect(parsed.timers[0].groupId).toBe(DEFAULT_TIMER_GROUP_ID);
-    expect(parsed.counters[0].groupId).toBe(DEFAULT_COUNTER_GROUP_ID);
   });
 
   it("filters effective cards by master, group, and card switches", () => {
@@ -122,7 +82,6 @@ describe("timer-utils", () => {
       enabled: false,
       display: form.display,
     });
-    form.counterGroups[0].enabled = false;
     form.timers.push({
       ...form.timers[0],
       id: "beta",
@@ -132,18 +91,15 @@ describe("timer-utils", () => {
 
     expect(timerEffectiveTimersByGroup(form, DEFAULT_TIMER_GROUP_ID).map((timer) => timer.id)).toEqual(["alpha"]);
     expect(timerEffectiveTimersByGroup(form, "timer-group-b")).toEqual([]);
-    expect(timerEffectiveCountersByGroup(form, DEFAULT_COUNTER_GROUP_ID)).toEqual([]);
   });
 
   it("preserves custom display width through form parsing", () => {
     const form = timerSettingsToForm(sampleSettings());
     form.display.rect.width = 480;
-    form.counterDisplay.rect.width = 520;
 
     const parsed = parseTimerSettingsForm(form);
 
     expect(parsed.display.rect.width).toBe(480);
-    expect(parsed.counterDisplay.rect.width).toBe(520);
   });
 
   it("moves timer items by id while preserving all items", () => {

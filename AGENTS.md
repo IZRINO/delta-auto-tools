@@ -6,8 +6,9 @@
 - 当前仓库是 **Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust** 的桌面工具，产品名为"三角洲行动工具"（Delta Auto Tools），为游戏《三角洲行动》提供辅助功能。
 - 当前产品由四部分原生能力组成：
   1. **Morse 识别工作台**：主界面负责设置、识别结果、历史记录；overlay 负责连续区域框选。核心流程：截取屏幕区域 → 二值化 → 轮廓检测 → 摩斯密码解码 → 自动输入结果。
-  2. **计时\计数器工作台**：主界面负责多个计时器/计数器卡片、计时器与计数器独立总开关、两个透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景，计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 / 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
-  3. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、卡片级按键最小间距、卡片级启动抖动延迟/松手策略、全局补齐延迟、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按卡片配置的启动抖动和最小间距持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
+  2. **计时器工作台**：主界面负责多个计时器卡片、计时器总开关、透明窗口位置与字体透明度设置；计时器透明窗口负责按卡片顺序逐行显示正/反计时和进度背景。核心流程：自定义快捷键 → 计时器触发后运行到结束且运行中不重复触发 → 独立透明窗口置顶点击穿透显示结果。
+  3. **计数器工作台**：主界面负责多个计数器卡片、计数器总开关、透明窗口位置与字体透明度设置；计数器透明窗口负责逐行显示当前计数。核心流程：自定义快捷键 → 计数器触发后累加 → 独立透明窗口置顶点击穿透显示结果。
+  4. **连发器工作台**：主界面负责多张连发器卡片配置、卡片级不追加补齐、卡片级按键最小间距、卡片级启动抖动延迟/松手策略、全局补齐延迟、总开关、透明窗口显示/隐藏和位置设置；透明窗口负责按卡片顺序逐行显示触发键→目标键映射和运行状态。核心流程：按住触发键 → 按卡片配置的启动抖动和最小间距持续触发目标键 → 松开时未开启不追加的卡片按全局补齐延迟等待并自动补齐触发次数为偶数 / 开启不追加的卡片保持原始次数 → 独立透明窗口置顶点击穿透显示结果。
 - 原生能力通过 Tauri commands 暴露，核心逻辑位于 `src-tauri/src/morse/*`、`src-tauri/src/timer/*`、`src-tauri/src/rapidfire/*`、`src-tauri/src/strategy/*` 与 `src-tauri/src/delta/*`，不是 HTTP 服务。
   4. **Delta 工具接口层**：通过 Tauri commands 暴露 Wegame 认证、QQ/微信/QQ安全中心/先遣服鉴权和游戏数据查询能力，前端已接入账号管理、游戏数据与工具箱页面。
 - 前端已接入 Tailwind CSS v4 与 shadcn/ui（`radix-vega` 风格，remixicon 图标库）。这些是当前界面基础设施的一部分。
@@ -76,12 +77,17 @@ src/
 │       ├── morse-types.ts      # 前端 TypeScript 类型定义与常量
 │       ├── morse-utils.ts      # 纯逻辑工具函数（序列化、格式化、热键解析）
 │       ├── morse-utils.test.ts # Morse 前端测试文件
-│       ├── timer-counter-page.tsx    # 计时\计数器合并页面容器：状态编排、表单、透明窗口与位置设置 UI
+│       ├── timer-page.tsx      # 计时器页面容器：状态编排、表单、透明窗口与位置设置 UI
+│       ├── counter-page.tsx    # 计数器页面容器：状态编排、表单、透明窗口与位置设置 UI
+│       ├── sync-overlay-window.tsx # 共享 overlay 组件：计时器/计数器/连发器透明窗口与位置设置通用封装
 │       ├── sync-card-list.tsx      # 同步卡片列表：封装 section 网格 + AddCardButton 的通用组件
 │       ├── sync-group-section.tsx  # 同步系统分组列表：封装 DisplaySettingsInline 的通用组件
-│       ├── timer-types.ts      # 计时\计数器前端 TypeScript 类型定义与常量
-│       ├── timer-utils.ts      # 计时\计数器纯逻辑工具函数（序列化、格式化、热键复用）
-│       ├── timer-utils.test.ts # 计时\计数器前端测试文件
+│       ├── timer-types.ts      # 计时器前端 TypeScript 类型定义与常量
+│       ├── counter-types.ts    # 计数器前端 TypeScript 类型定义与常量
+│       ├── timer-utils.ts      # 计时器纯逻辑工具函数（序列化、格式化、热键复用）
+│       ├── counter-utils.ts    # 计数器纯逻辑工具函数（序列化、格式化、热键复用）
+│       ├── timer-utils.test.ts # 计时器前端测试文件
+│       ├── counter-utils.test.ts # 计数器前端测试文件
 │       ├── favorites-utils.ts      # 收藏系统工具函数（收藏 ID 读写、卡片过滤等）
 │       ├── favorites-utils.test.ts # 收藏系统工具测试
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
@@ -112,13 +118,14 @@ src/
 
 - **入口链路**：`index.html` → `src/main.tsx` → `src/App.tsx`
 - `App.tsx` 判断 `?mode=overlay` / `?mode=timer-display` / `?mode=timer-position` / `?mode=counter-display` / `?mode=counter-position` / `?mode=rapidfire-display` / `?mode=rapidfire-position` 参数：overlay / display / position 模式直接渲染对应独立窗口；桌面模式渲染自定义三段式工业壳层（48px Top Manifest Bar、240px Left Index Rail、Main Work Grid）。Delta 工具不使用 overlay 模式，攻略网站不再使用 `?mode=strategy-browser` 独立窗口入口
-- 当前有四个真实工具页面（Morse、计时器/计数器合并页、连发器、攻略网站）和 Delta 三页，Left Index Rail 在“当前工具 / 三角洲行动 API / PINNED”下切换；当前项黑底反白并使用 Alert Red 标识。
-- `App.tsx` 导航将 timer 和 counter 入口映射到同一个 `timer-counter-page.tsx` 页面组件；计数器与计时器共享同一配置页，通过顶部 Tab 切换显示组。
+- 当前有五个真实工具页面（Morse、计时器、计数器、连发器、攻略网站）和 Delta 三页，Left Index Rail 在“当前工具 / 三角洲行动 API / PINNED”下切换；当前项黑底反白并使用 Alert Red 标识。
+- `App.tsx` 导航将 timer 入口映射到 `timer-page.tsx`，counter 入口映射到 `counter-page.tsx`；计数器与计时器为独立配置页，不再共享同一页面。
 - `ToolPlaceholderPage` 接收 `title` / `shortLabel` / `description` 参数，展示"未开放"状态——Delta 命令的 UI 尚未接入
 - **攻略网站工作台（strategy-page）**：主窗口负责内置站点与用户自定义站点的集中管理（`localStorage` 前缀 `delta-auto-tools:strategy:user-sites`），页面顶部使用紧凑浏览器工具条承载站点横向 Tab、新增 / 删除自定义站点、自动刷新档位、手动刷新和系统浏览器打开；当前 URL 只在工具条中紧凑展示并通过原生 `title` 补充说明，不使用会被 WebView2 原生层遮挡的 Radix Tooltip。新增自定义站点与自动刷新档位使用工具条下方内联面板，面板展开时会把 `strategy-content` 宿主区域向下挤，不使用 Dialog / SelectContent 等覆盖式浮层。工具条下方定位宿主区域创建 label `strategy-content` 的 Tauri 子 WebView 真实导航当前外部 URL，并使用 `min-h-0 flex-1 overflow-hidden` 吃满主应用剩余高度；站点切换、手动刷新、自动刷新到期时会销毁并重建该子 WebView，主窗口 resize / 布局变化 / 滚动时同步 `setPosition` / `setSize`，组件卸载时关闭 `strategy-content`，避免切换工具页后遮挡主界面。自动刷新档位按站点持久化到 `delta-auto-tools:strategy:<site>:refresh-seconds`，允许值为关闭 / 30 秒 / 1 分钟 / 2 分钟 / 5 分钟 / 10 分钟；损坏值回落到关闭态。cookie、JS redirect、localStorage、同源 API 和人机验证由 WebView2 站点自身处理，不再默认使用 iframe/srcDoc，也不再打开 `strategy-browser` 独立窗口。`strategy_fetch_page` 保留为后端实验 / 兼容入口：Rust 端使用 Chrome 135 头抓取 HTML，共享 cookie jar，嗅探 `document.cookie = '...'; location.href = '...'` / `window.location.href = '...'` / `location.replace(...)` JS 重定向并最多跟随 3 次；命中 CC check 时返回 `challenge`。
 - **Morse 状态编排**：`morse-page.tsx` 负责所有状态管理，子组件只接收 props
-- **计时\计数器状态编排**：`timer-counter-page.tsx` 负责计时器/计数器表单、两个透明窗口状态订阅、位置设置与自动保存
-- **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `timer_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
+- **计时器状态编排**：`timer-page.tsx` 负责计时器表单、透明窗口状态订阅、位置设置与自动保存
+- **计数器状态编排**：`counter-page.tsx` 负责计数器表单、透明窗口状态订阅、位置设置与自动保存
+- **autosave 模式**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）自动调用 `timer_save_settings` 或 `counter_save_settings`。使用 `autosaveVersionRef` 防止陈旧保存覆盖
 - **热键录制**：录制时调用 `morse_set_hotkey_recording(true)` 暂停被动热键监听，录制后恢复。按 Escape 取消恢复旧值
 - 浏览器预览模式（非 Tauri shell）会禁用所有原生命令操作，显示提示信息
 - **Delta AccountKind 序列化一致性**：Rust 端 `#[serde(rename_all = "camelCase")]` 将 `QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`、`Pioneer`→`"pioneer"`；前端 `AccountKind` 必须使用这些 camelCase 字符串（不是 snake_case 的 `"qqsafe"`/`"wegame_qq"`/`"wegame_wechat"`）。`delta-types.test.ts` 中的 `AccountKind camelCase consistency` 测试守卫此约束
@@ -151,11 +158,18 @@ src-tauri/src/
 │   └── settings.rs             # morse_settings.json 持久化
 ├── timer/
 │   ├── mod.rs                  # TimerState、命令注册、透明窗口、位置设置、运行态编排
-│   ├── types.rs                # TimerSettings/TimerItem/CounterItem/TimerBootstrap 等 DTO
-│   ├── events.rs               # Timer 事件名字符串常量（state-changed/hotkey-triggered/counter-triggered/hotkey-error）
+│   ├── types.rs                # TimerSettings/TimerItem/TimerBootstrap 等 DTO
+│   ├── events.rs               # Timer 事件名字符串常量（state-changed/hotkey-triggered/hotkey-error）
 │   ├── hotkey.rs               # willhook 底层键盘钩子（Windows only）
 │   ├── settings.rs             # timer_settings.json 持久化
-│   └── counter_state.rs        # 计数器运行态独立持久化（timer_counter_state.json）
+│   └── counter_state.rs        # 已废弃：计数器逻辑已迁移至 counter/ 模块
+├── counter/
+│   ├── mod.rs                  # CounterState、命令注册、透明窗口、位置设置、运行态编排
+│   ├── types.rs                # CounterSettings/CounterItem/CounterBootstrap 等 DTO
+│   ├── events.rs               # Counter 事件名字符串常量（state-changed/counter-triggered/hotkey-error）
+│   ├── hotkey.rs               # willhook 底层键盘钩子（Windows only）
+│   ├── settings.rs             # counter_settings.json 持久化
+│   └── counter_state.rs        # 计数器运行态独立持久化（counter_state.json）
 ├── rapidfire/
 │   ├── mod.rs                  # RapidfireState、状态机、命令注册、透明窗口、位置设置
 │   ├── types.rs                # RapidfireSettings/RapidfireCard/RapidfireBootstrap 等 DTO
@@ -200,8 +214,8 @@ src-tauri/src/
 ```
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
-- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、`rapidfire::initialize()` 和 `global_state::GlobalState::new(true)`，然后通过 `app.manage()` 注册状态
-- `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame / 游戏数据 / morse / timer / rapidfire / strategy / global_state），新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
+- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、`counter::initialize()`、`rapidfire::initialize()` 和 `global_state::GlobalState::new(true)`，然后通过 `app.manage()` 注册状态
+- `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame / 游戏数据 / morse / timer / counter / rapidfire / strategy / global_state），新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
 
 ## Tauri commands
 
@@ -221,15 +235,27 @@ src-tauri/src/
 
 | 命令 | 说明 |
 |------|------|
-| `timer_get_bootstrap` | 获取计时\计数器初始状态（settings + runs + counterRuns + hotkeyError） |
-| `timer_save_settings` | 保存计时\计数器设置，计时器/计数器各自总开关关闭时隐藏对应透明窗口并解绑对应快捷键 |
+| `timer_get_bootstrap` | 获取计时器初始状态（settings + runs + hotkeyError） |
+| `timer_save_settings` | 保存计时器设置，总开关关闭时隐藏透明窗口并解绑快捷键 |
 | `timer_trigger` | 手动触发一个或多个计时器 |
-| `timer_counter_trigger` | 手动触发一个或多个计数器 |
-| `timer_counter_reset` | 将指定计数器重置为设置的起始数 |
-| `timer_begin_position_selection` | 打开固定大小的位置设置窗口（支持计时器/计数器目标） |
-| `timer_position_commit` | Enter 保存透明窗口位置 |
-| `timer_position_cancel` | Esc 取消位置设置 |
-| `timer_position_moved` | 位置设置窗口拖动时暂存坐标 |
+| `timer_begin_position_selection` | 打开固定大小的位置设置窗口（计时器目标） |
+| `timer_position_commit` | Enter 保存计时器透明窗口位置 |
+| `timer_position_cancel` | Esc 取消计时器位置设置 |
+| `timer_position_moved` | 计时器位置设置窗口拖动时暂存坐标 |
+
+### 计数器命令面
+
+| 命令 | 说明 |
+|------|------|
+| `counter_get_bootstrap` | 获取计数器初始状态（settings + runs + hotkeyError） |
+| `counter_save_settings` | 保存计数器设置，总开关关闭时隐藏透明窗口并解绑快捷键 |
+| `counter_trigger` | 手动触发一个或多个计数器 |
+| `counter_reset` | 将指定计数器重置为设置的起始数 |
+| `counter_adjust` | 调整指定计数器的当前值（增/减） |
+| `counter_begin_position_selection` | 打开固定大小的位置设置窗口（计数器目标） |
+| `counter_position_commit` | Enter 保存计数器透明窗口位置 |
+| `counter_position_cancel` | Esc 取消计数器位置设置 |
+| `counter_position_moved` | 计数器位置设置窗口拖动时暂存坐标 |
 
 ### 连发器命令面
 
@@ -337,22 +363,37 @@ src-tauri/src/
 
 ### 计时器端
 
-- `src-tauri/src/timer/mod.rs` 负责状态、命令注册、计时器/计数器透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
-- `src-tauri/src/timer/types.rs` 定义所有计时\计数器数据结构（`TimerSettings`、`TimerItem`、`CounterItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState`、`CounterRunState` 等）。
-- `src-tauri/src/timer/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `HOTKEY_TRIGGERED` / `COUNTER_TRIGGERED` / `HOTKEY_ERROR`）
+- `src-tauri/src/timer/mod.rs` 负责状态、命令注册、计时器透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
+- `src-tauri/src/timer/types.rs` 定义所有计时器数据结构（`TimerSettings`、`TimerItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState` 等）。
+- `src-tauri/src/timer/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `HOTKEY_TRIGGERED` / `HOTKEY_ERROR`）
 - `src-tauri/src/timer/settings.rs` 的持久化文件是 `timer_settings.json`。
 - `TimerState` 包装 `ToolState<TimerLogic>` 并额外持有 `tick_task`（250ms 倒计时循环句柄）。
 - `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 相同快捷键的计时器会分组到同一个 action 并同时触发。
-- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`；计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
-- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态；`TimerSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。旧 `enabled` 字段仅用于兼容旧配置，归一化后等于两个独立开关的并集。
-- 计时器和计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
-- 计时器卡片顺序由 `settings.timers` 数组顺序决定，计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`。
+- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态。
+- 计时器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计时器卡片顺序由 `settings.timers` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
 - 计时器支持 `Countdown`（10→0）和 `Countup`（0→10）两种方向；运行中重复快捷键触发会被忽略，结束后才能再次触发。
 - 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
-- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
-- 计数器运行态独立持久化到 `timer_counter_state.json`（`src-tauri/src/timer/counter_state.rs`），与 `timer_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+
+### 计数器端
+
+- `src-tauri/src/counter/mod.rs` 负责状态、命令注册、计数器透明窗口创建/销毁、位置设置窗口和计数器运行态编排。
+- `src-tauri/src/counter/types.rs` 定义所有计数器数据结构（`CounterSettings`、`CounterItem`、`CounterDisplaySettings`、`CounterBootstrap`、`CounterRunState` 等）。
+- `src-tauri/src/counter/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `COUNTER_TRIGGERED` / `HOTKEY_ERROR`）
+- `src-tauri/src/counter/settings.rs` 的持久化文件是 `counter_settings.json`。
+- `CounterState` 包装 `ToolState<CounterLogic>`。
+- `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；计数器通过同一个 `HotkeyManager` 注册 scope `"counter"`，避免多个 keyboard hook 互相抢占导致安装失败。
+- 相同快捷键的计数器会分组到同一个 action 并同时触发。
+- 计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
+- `CounterSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。
+- 计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`counter_reset` 会恢复到 `start_value`。
+- 计数器运行态独立持久化到 `counter_state.json`（`src-tauri/src/counter/counter_state.rs`），与 `counter_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
+- 修改计数器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### 连发器端
 
@@ -474,21 +515,41 @@ src-tauri/src/
 ### 计时器端状态管理（ToolBase 泛型层）
 
 `TimerState` 包装 `ToolState<TimerLogic>` 并额外持有 `tick_task`（250ms 倒计时循环句柄）：
-- `TimerLogic` 实现 `ToolLogic`，特有字段：`runs`（计时器运行时）、`counter_runs`（计数器当前值）、`pending_position`（位置设置会话）。
+- `TimerLogic` 实现 `ToolLogic`，特有字段：`runs`（计时器运行时）、`pending_position`（位置设置会话）。
 - `TimerState::lock_inner()` 委托给 `self.tool.lock_inner()`，返回 `MutexGuard<ToolStateInner<TimerLogic>>`。
-- `src-tauri/src/timer/mod.rs` 负责命令注册、透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
+- `src-tauri/src/timer/mod.rs` 负责命令注册、计时器透明窗口创建/销毁、位置设置窗口和倒计时 tick 编排。
+- `src-tauri/src/timer/types.rs` 定义所有计时器数据结构（`TimerSettings`、`TimerItem`、`TimerDisplaySettings`、`TimerBootstrap`、`TimerRunState` 等）。
+- `src-tauri/src/timer/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `HOTKEY_TRIGGERED` / `HOTKEY_ERROR`）
 - `src-tauri/src/timer/settings.rs` 的持久化文件是 `timer_settings.json`。
 - `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；Morse 与计时器都通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 相同快捷键的计时器会分组到同一个 action 并同时触发。
-- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`；计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
-- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态；`TimerSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。旧 `enabled` 字段仅用于兼容旧配置，归一化后等于两个独立开关的并集。
-- 计时器和计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
-- 计时器卡片顺序由 `settings.timers` 数组顺序决定，计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计时器透明窗口 label 是 `"timer-display"`，位置设置窗口 label 是 `"timer-position"`。
+- `TimerSettings.timer_enabled` 控制计时器快捷键注册、计时器透明窗口显示和计时器运行态。
+- 计时器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计时器卡片顺序由 `settings.timers` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
 - 计时器支持 `Countdown`（10→0）和 `Countup`（0→10）两种方向；运行中重复快捷键触发会被忽略，结束后才能再次触发。
 - 计时结束后运行态保持 `remainingSeconds=0` 与 `status=Finished`，前端按方向显示终值并高亮斜体。
-- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`timer_counter_reset` 会恢复到 `start_value`。
-- 计数器运行态独立持久化到 `timer_counter_state.json`（`src-tauri/src/timer/counter_state.rs`），与 `timer_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
 - 修改计时器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+
+### 计数器端状态管理（ToolBase 泛型层）
+
+`CounterState` 包装 `ToolState<CounterLogic>`：
+- `CounterLogic` 实现 `ToolLogic`，特有字段：`runs`（计数器当前值）、`pending_position`（位置设置会话）。
+- `CounterState::lock_inner()` 委托给 `self.tool.lock_inner()`，返回 `MutexGuard<ToolStateInner<CounterLogic>>`。
+- `src-tauri/src/counter/mod.rs` 负责命令注册、计数器透明窗口创建/销毁、位置设置窗口和计数器运行态编排。
+- `src-tauri/src/counter/types.rs` 定义所有计数器数据结构（`CounterSettings`、`CounterItem`、`CounterDisplaySettings`、`CounterBootstrap`、`CounterRunState` 等）。
+- `src-tauri/src/counter/events.rs` 定义事件名字符串常量（`STATE_CHANGED` / `COUNTER_TRIGGERED` / `HOTKEY_ERROR`）
+- `src-tauri/src/counter/settings.rs` 的持久化文件是 `counter_settings.json`。
+- `src-tauri/src/counter/counter_state.rs` 的持久化文件是 `counter_state.json`。
+- `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子；计数器通过同一个 `HotkeyManager` 注册 scope `"counter"`，避免多个 keyboard hook 互相抢占导致安装失败。
+- 相同快捷键的计数器会分组到同一个 action 并同时触发。
+- 计数器透明窗口 label 是 `"counter-display"`，位置设置窗口 label 是 `"counter-position"`。
+- `CounterSettings.counter_enabled` 控制计数器快捷键注册、计数器透明窗口显示和计数器运行态。
+- 计数器透明窗口宽度可由用户调整，最小宽度 320px；高度按卡片数量计算，避免多于 3 个项目时出现滚动条。
+- 计数器卡片顺序由 `settings.counters` 数组顺序决定；设置页拖动排序后，透明窗口按相同顺序逐行显示。
+- 计数器运行态保存在 `counter_runs`，快捷键触发时累加 1，`counter_reset` 会恢复到 `start_value`。
+- 计数器运行态独立持久化到 `counter_state.json`（`src-tauri/src/counter/counter_state.rs`），与 `counter_settings.json` 平行：用户配置（`start_value` / hotkey / enabled）和运行态（实际累加值）分离。`initialize()` 加载时合并 `settings.counters` 与已保存的 runs（缺则用 `start_value`，孤儿 ID 丢弃）；每次累加 / reset / 应用关闭时通过 `persist_counter_runs` 落盘，孤儿 ID（counter 已删）自动清理，写盘失败不阻塞主流程。
+- 修改计数器命令或窗口 label 时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
 
 ### 连发器端状态管理（ToolBase 泛型层）
 
@@ -521,7 +582,7 @@ src-tauri/src/
 
 `src-tauri/src/global_state.rs` 提供全局总开关（`GlobalState`），通过 `AtomicBool` 记录当前是否启用。
 - `global_get_enabled` / `global_set_enabled` 两个 Tauri command 暴露读写。
-- 关闭全局开关时通过 `global_set_enabled(false)` 触发 `"global://enabled-changed"` 事件，并立即调用 `rapidfire::stop_all` 和 `timer::stop_all` 停止所有运行中的连发和计时器 session。
+- 关闭全局开关时通过 `global_set_enabled(false)` 触发 `"global://enabled-changed"` 事件，并立即调用 `rapidfire::stop_all`、`timer::stop_all` 和 `counter::stop_all` 停止所有运行中的连发、计时器和计数器 session。
 - 各工具热键回调和自动化流程启动前必须检查 `GlobalState::enabled()`，全局关闭时不应执行。
 - `lib.rs` 的 `setup` 中创建 `global_state::GlobalState::new(true)` 并 `app.manage()` 注册。
 
@@ -536,11 +597,11 @@ src-tauri/src/
 ### 被动热键监听（Windows only）
 
 `src-tauri/src/hotkeys.rs` 使用 `willhook` crate 注册全局共享底层键盘钩子：
-- Morse、计时器和连发器都必须通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
+- Morse、计时器、计数器和连发器都必须通过同一个 `HotkeyManager` 注册 scope，避免多个 keyboard hook 互相抢占导致安装失败。
 - 普通快捷键使用 `replace_scope`；连发器按住触发键使用 `replace_hold_scope` / `clear_hold_scope`，通过 `HoldAction::Down` / `HoldAction::Up` 回调通知。
 - `HotkeyManager` 在注册时基于解析后的 `HotkeyBinding` 做跨 scope 冲突检测；冲突策略由 `ConflictPolicy` 枚举声明：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
 - `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` 接收该参数并传入 `validate_scope_conflicts` / `validate_hold_scope_conflicts`。
-- 显式例外：普通快捷键 scope `timer` 与 hold scope `rapidfire` 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时会先分发连发器 hold Down/Up，再分发计时器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
+- 显式例外：普通快捷键 scope `timer` / `counter` 与 hold scope `rapidfire` 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时会先分发连发器 hold Down/Up，再分发计时器/计数器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Counter 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
 - 热键绑定 parser 支持：`Ctrl+Shift+F2`、`F1`、`Ctrl+Alt+K`、`Shift+-`、单独 `Alt` 等格式，组合触发键能力属于连发器已完成特性，不得回退。
 - 录制 Morse 热键时通过 `morse_set_hotkey_recording` 暂停 Morse scope（`set_scope_enabled("morse", false)`），录制后恢复。
 - 非 Windows 平台直接返回错误，不做降级处理。
@@ -562,10 +623,15 @@ Morse 通过 Tauri events 通知前端（emit_to "main"）：
 - `"rapidfire://state-changed"` — 状态变更时推送 `RapidfireBootstrap`（同时推送到 rapidfire-display 窗口）
 - `"rapidfire://hotkey-error"` — 热键执行出错时推送错误字符串
 
+计数器通过 Tauri events 通知前端：
+- `"counter://state-changed"` — 状态变更时推送 `CounterBootstrap`（同时推送到 counter-display 窗口）
+- `"counter://counter-triggered"` — 计数器快捷键触发后推送计数器 ID 列表
+- `"counter://hotkey-error"` — 热键执行出错时推送错误字符串
+
 全局事件：
 - `"global://enabled-changed"` — 全局总开关切换时推送 `boolean`
 
-前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。为避免事件名硬编码，后端在 `morse/events.rs`、`timer/events.rs`、`rapidfire/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义 `MORSE_EVENTS` / `TIMER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和类型安全的 `listenEvent<T>` helper。
+前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。为避免事件名硬编码，后端在 `morse/events.rs`、`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和类型安全的 `listenEvent<T>` helper。
 
 ## Overlay 状态机
 

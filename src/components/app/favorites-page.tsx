@@ -9,7 +9,7 @@ import {
   RiTimerLine,
 } from "@remixicon/react";
 import { invoke } from "@tauri-apps/api/core";
-import { listenEvent, RAPIDFIRE_EVENTS, TIMER_EVENTS } from "@/lib/tauri-events";
+import { listenEvent, RAPIDFIRE_EVENTS, TIMER_EVENTS, COUNTER_EVENTS } from "@/lib/tauri-events";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +34,11 @@ import type {
   CounterItem,
   CounterRunState,
   TimerBootstrap,
+  CounterBootstrap,
   TimerItem,
   TimerRunState,
 } from "@/components/app/timer-types";
+import { counterSettingsToForm } from "@/components/app/counter-utils";
 import { timerSettingsToForm } from "@/components/app/timer-utils";
 import { useFavorites } from "@/hooks/use-favorites";
 import { useNativeShell } from "@/hooks/use-native-shell";
@@ -72,6 +74,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
   const { items, view, toggleFavorite, moveFavorite, updateView, prune } = favorites;
 
   const [timerBootstrap, setTimerBootstrap] = useState<TimerBootstrap | null>(null);
+  const [counterBootstrap, setCounterBootstrap] = useState<CounterBootstrap | null>(null);
   const [rapidfireBootstrap, setRapidfireBootstrap] = useState<RapidfireBootstrap | null>(null);
   const [loading, setLoading] = useState(isNativeShell);
 
@@ -81,6 +84,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
     }
     let disposed = false;
     let unlistenTimerState: (() => void) | undefined;
+    let unlistenCounterState: (() => void) | undefined;
     let unlistenRapidfireState: (() => void) | undefined;
 
     setLoading(true);
@@ -105,6 +109,16 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
         // 浏览器预览 / 调用失败时静默忽略
       });
 
+    void invoke<CounterBootstrap>("counter_get_bootstrap")
+      .then((next) => {
+        if (!disposed) {
+          setCounterBootstrap(next);
+        }
+      })
+      .catch(() => {
+        // 浏览器预览 / 调用失败时静默忽略
+      });
+
     void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
       if (!disposed) {
         setTimerBootstrap(event.payload);
@@ -121,9 +135,18 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
       unlistenRapidfireState = dispose;
     });
 
+    void listenEvent(COUNTER_EVENTS.stateChanged, (event) => {
+      if (!disposed) {
+        setCounterBootstrap(event.payload);
+      }
+    }).then((dispose) => {
+      unlistenCounterState = dispose;
+    });
+
     return () => {
       disposed = true;
       unlistenTimerState?.();
+      unlistenCounterState?.();
       unlistenRapidfireState?.();
       setLoading(false);
     };
@@ -146,23 +169,28 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
     return map;
   }, [timerBootstrap?.runs]);
 
+  const counterSettingsForm = useMemo(
+    () => (counterBootstrap ? counterSettingsToForm(counterBootstrap.settings) : null),
+    [counterBootstrap],
+  );
+
   const counterRunsById = useMemo(() => {
     const map = new Map<string, CounterRunState>();
-    for (const run of timerBootstrap?.counterRuns ?? []) {
+    for (const run of counterBootstrap?.counterRuns ?? []) {
       map.set(run.id, run);
     }
     return map;
-  }, [timerBootstrap?.counterRuns]);
+  }, [counterBootstrap?.counterRuns]);
 
   // 解析每个收藏项的详情；孤儿收藏（卡片已删除）会被自动清理。
   const details = useMemo(() => {
     const result: Array<{ item: FavoriteItem; detail: FavoriteDetail | null }> = [];
-    if (timerSettingsForm === null && rapidfireSettingsForm === null) {
+    if (timerSettingsForm === null && counterSettingsForm === null && rapidfireSettingsForm === null) {
       return result;
     }
     for (const item of items) {
       if (item.kind === "timer") {
-        const card = timerSettingsForm?.timers.find((timer) => timer.id === item.cardId);
+        const card = timerSettingsForm?.timers.find((timer: { id: string }) => timer.id === item.cardId);
         if (!card) {
           result.push({ item, detail: null });
           continue;
@@ -183,7 +211,7 @@ export function FavoritesPage({ onNavigate }: FavoritesPageProps) {
           detail: { kind: "timer", card: timerItem, run: timerRunsById.get(card.id) },
         });
       } else if (item.kind === "counter") {
-        const card = timerSettingsForm?.counters.find((counter) => counter.id === item.cardId);
+        const card = counterSettingsForm?.counters.find((counter: { id: string }) => counter.id === item.cardId);
         if (!card) {
           result.push({ item, detail: null });
           continue;

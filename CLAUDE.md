@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。四个原生能力模块：Morse 摩斯识别、计时/计数器、连发器、Delta 账号与游戏数据接口。外加攻略网站工作台。
+Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。四个原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、Delta 账号与游戏数据接口。外加攻略网站工作台。
 
 ## Commands
 
@@ -54,7 +54,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 ### Tauri IPC 模式
 
 - **Command 调用**：`invoke<XxxBootstrap>("tool_action", { params })`
-- **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`。后端在 `morse/events.rs`、`timer/events.rs`、`rapidfire/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和 `listenEvent<T>` helper 订阅，避免硬编码事件名。
+- **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`。后端在 `morse/events.rs`、`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和 `listenEvent<T>` helper 订阅，避免硬编码事件名。
 - **原生 shell 检测**：`useNativeShell()` 检查 `__TAURI_INTERNALS__`，浏览器预览模式下禁用所有原生命令
 
 ### Overlay 窗口系统
@@ -70,7 +70,8 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | tool_base | `src-tauri/src/tool_base.rs` | 工具模块共享泛型基座：ToolLogic trait、ToolState<T>、ToolStateInner<T>、get_bootstrap<T> |
 | global_state | `src-tauri/src/global_state.rs` | 全局总开关（GlobalState）与 enabled-changed 事件 |
 | morse | `src-tauri/src/morse/` | 屏幕截取→二值化→轮廓检测→摩斯解码→自动输入；overlay 多步骤框选会话；MorseState = ToolState<MorseLogic> |
-| timer | `src-tauri/src/timer/` | 多计时器/计数器，250ms tick 循环，透明窗口，计数器运行态独立持久化；TimerState 包装 ToolState<TimerLogic> |
+| timer | `src-tauri/src/timer/` | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic> |
+| counter | `src-tauri/src/counter/` | 多计数器，透明窗口，计数器运行态独立持久化；CounterState 包装 ToolState<CounterLogic> |
 | rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距；RapidfireState = ToolState<RapidfireLogic> |
 | delta | `src-tauri/src/delta/` | 6 种账号鉴权流程（QQ/微信/QQ安全中心/Wegame/先遣服），SQLite 账号存储，DPAPI 加密，IDE 网关游戏数据查询；GameService 缓存于 DeltaState |
 | hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy） |
@@ -117,7 +118,7 @@ Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9
 
 - `ConflictPolicy` 枚举声明冲突策略：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
 - `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` 接收该参数。
-- Timer 普通 scope 与 Rapidfire hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时会先分发连发器 hold Down/Up，再分发计时器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
+- Timer 普通 scope 与 Counter 普通 scope 与 Rapidfire hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时会先分发连发器 hold Down/Up，再分发计时器/计数器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Counter 普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
 - 其他跨 scope 冲突必须拒绝。录制热键时暂停对应 scope。
 
 ### Overlay 透明窗口约束

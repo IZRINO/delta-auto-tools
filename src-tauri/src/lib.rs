@@ -1,4 +1,5 @@
 mod audio;
+mod counter;
 mod app_error;
 mod global_state;
 mod tool_base;
@@ -29,12 +30,14 @@ pub fn run() {
             let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
+            let counter_state = counter::initialize(app.handle(), &hotkey_manager)?;
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
             let audio_state = audio::initialize(app.handle(), &hotkey_manager)?;
             let global_state = global_state::GlobalState::new(true);
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
+            app.manage(counter_state);
             app.manage(rapidfire_state);
             app.manage(audio_state);
             app.manage(global_state);
@@ -47,6 +50,8 @@ pub fn run() {
                     let timer_state = app.state::<timer::TimerState>();
                     let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
                     timer::shutdown(app, &timer_state, &hotkey_manager);
+                    let counter_state = app.state::<counter::CounterState>();
+                    counter::shutdown(app, &counter_state, &hotkey_manager);
                     let rapidfire_state = app.state::<rapidfire::RapidfireState>();
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
                     let _audio_state = app.state::<audio::AudioState>();
@@ -72,13 +77,21 @@ pub fn run() {
             timer::timer_get_bootstrap,
             timer::timer_save_settings,
             timer::timer_trigger,
-            timer::timer_counter_trigger,
-            timer::timer_counter_reset,
-            timer::timer_counter_adjust,
             timer::timer_begin_position_selection,
             timer::timer_position_commit,
             timer::timer_position_cancel,
             timer::timer_position_moved,
+
+            // ── counter ──
+            counter::counter_get_bootstrap,
+            counter::counter_save_settings,
+            counter::counter_trigger,
+            counter::counter_reset,
+            counter::counter_adjust,
+            counter::counter_begin_position_selection,
+            counter::counter_position_commit,
+            counter::counter_position_cancel,
+            counter::counter_position_moved,
 
             // ── rapidfire ──
             rapidfire::rapidfire_get_bootstrap,

@@ -3,8 +3,8 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listenEvent, TIMER_EVENTS } from "@/lib/tauri-events";
 
-import type { CounterItem, CounterItemForm, CounterRunState, TimerBootstrap, TimerDisplaySettings, TimerGroup, TimerGroupForm, TimerItem, TimerItemForm, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
-import { DEFAULT_COUNTER_GROUP_ID, DEFAULT_TIMER_GROUP_ID, TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
+import type { TimerBootstrap, TimerDisplaySettings, TimerGroup, TimerGroupForm, TimerItem, TimerItemForm, TimerRunState, TimerSettings, TimerSettingsForm } from "@/components/app/timer-types";
+import { DEFAULT_TIMER_GROUP_ID, TIMER_DISPLAY_MIN_HEIGHT, TIMER_DISPLAY_WIDTH } from "@/components/app/timer-types";
 import { formatRecordedHotkey } from "@/components/app/morse-utils";
 
 export function formatTimerHotkey(event: Pick<React.KeyboardEvent<HTMLButtonElement>, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">): string | null {
@@ -27,15 +27,6 @@ function defaultTimerGroup(display: TimerDisplaySettings): TimerGroup {
   };
 }
 
-function defaultCounterGroup(display: TimerDisplaySettings): TimerGroup {
-  return {
-    id: DEFAULT_COUNTER_GROUP_ID,
-    name: "默认分组",
-    enabled: true,
-    display,
-  };
-}
-
 function groupsToForm(groups: TimerGroup[]): TimerGroupForm[] {
   return groups.map((group) => ({
     id: group.id,
@@ -50,7 +41,7 @@ function normalizeGroups(
   legacyDisplay: TimerDisplaySettings,
   defaultGroupId: string,
 ): TimerGroup[] {
-  const normalized = (groups && groups.length > 0 ? groups : [defaultGroupId === DEFAULT_TIMER_GROUP_ID ? defaultTimerGroup(legacyDisplay) : defaultCounterGroup(legacyDisplay)])
+  const normalized = (groups && groups.length > 0 ? groups : [defaultTimerGroup(legacyDisplay)])
     .map((group) => ({
       id: group.id.trim() || defaultGroupId,
       name: group.name.trim() || "未命名分组",
@@ -59,7 +50,7 @@ function normalizeGroups(
     }));
 
   if (!normalized.some((group) => group.id === defaultGroupId)) {
-    normalized.unshift(defaultGroupId === DEFAULT_TIMER_GROUP_ID ? defaultTimerGroup(legacyDisplay) : defaultCounterGroup(legacyDisplay));
+    normalized.unshift(defaultTimerGroup(legacyDisplay));
   }
 
   return normalized;
@@ -80,17 +71,12 @@ function parseFontOpacity(value: string): number {
 export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm {
   const legacyEnabled = Boolean(settings.enabled);
   const timerGroups = normalizeGroups(settings.timerGroups, settings.display, DEFAULT_TIMER_GROUP_ID);
-  const counterGroups = normalizeGroups(settings.counterGroups, settings.counterDisplay, DEFAULT_COUNTER_GROUP_ID);
   const timerGroupIds = new Set(timerGroups.map((group) => group.id));
-  const counterGroupIds = new Set(counterGroups.map((group) => group.id));
 
   return {
     timerEnabled: settings.timerEnabled ?? legacyEnabled,
-    counterEnabled: settings.counterEnabled ?? legacyEnabled,
     display: displaySettingsToForm(settings.display),
-    counterDisplay: displaySettingsToForm(settings.counterDisplay),
     timerGroups: groupsToForm(timerGroups),
-    counterGroups: groupsToForm(counterGroups),
     timers: settings.timers.map((timer) => ({
       id: timer.id,
       groupId: normalizeGroupId(timer.groupId, timerGroupIds, DEFAULT_TIMER_GROUP_ID),
@@ -102,14 +88,6 @@ export function timerSettingsToForm(settings: TimerSettings): TimerSettingsForm 
       enabled: timer.enabled ?? true,
       ignoreRunning: timer.ignoreRunning ?? true,
       segmentCount: timer.segmentCount != null ? String(timer.segmentCount) : "",
-    })),
-    counters: settings.counters.map((counter) => ({
-      id: counter.id,
-      groupId: normalizeGroupId(counter.groupId, counterGroupIds, DEFAULT_COUNTER_GROUP_ID),
-      name: counter.name,
-      startValue: String(counter.startValue),
-      hotkey: counter.hotkey,
-      enabled: counter.enabled ?? true,
     })),
   };
 }
@@ -132,22 +110,12 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     throw new Error("至少需要保留一个计时器。");
   }
 
-  if (form.counters.length === 0) {
-    throw new Error("至少需要保留一个计数器。");
-  }
-
   const timerGroups = parseGroups(
     mirrorDefaultGroupDisplay(form.timerGroups, DEFAULT_TIMER_GROUP_ID, form.display),
     DEFAULT_TIMER_GROUP_ID,
     "计时器分组",
   );
-  const counterGroups = parseGroups(
-    mirrorDefaultGroupDisplay(form.counterGroups, DEFAULT_COUNTER_GROUP_ID, form.counterDisplay),
-    DEFAULT_COUNTER_GROUP_ID,
-    "计数器分组",
-  );
   const timerGroupIds = new Set(timerGroups.map((group) => group.id));
-  const counterGroupIds = new Set(counterGroups.map((group) => group.id));
 
   const timers = form.timers.map((timer): TimerItem => {
     const name = timer.name.trim();
@@ -179,55 +147,19 @@ export function parseTimerSettingsForm(form: TimerSettingsForm): TimerSettings {
     };
   });
 
-  const counters = form.counters.map((counter): CounterItem => {
-    const name = counter.name.trim();
-    if (!name) {
-      throw new Error("计数器名称不能为空。");
-    }
-
-    const hotkey = counter.hotkey.trim();
-    if (!hotkey) {
-      throw new Error(`${name} 的快捷键不能为空。`);
-    }
-
-    const startValue = Number.parseInt(counter.startValue, 10);
-    if (!Number.isInteger(startValue)) {
-      throw new Error(`${name} 的起始数必须是整数。`);
-    }
-
-    return {
-      id: counter.id,
-      groupId: normalizeGroupId(counter.groupId, counterGroupIds, DEFAULT_COUNTER_GROUP_ID),
-      name,
-      startValue,
-      hotkey,
-      enabled: counter.enabled,
-    };
-  });
-
   const timerCountsByGroup = enabledCountByGroup(timers);
-  const counterCountsByGroup = enabledCountByGroup(counters);
   const normalizedTimerGroups = timerGroups.map((group) => ({
     ...group,
     display: parseDisplaySettings(displaySettingsToForm(group.display), timerCountsByGroup.get(group.id) ?? 0),
   }));
-  const normalizedCounterGroups = counterGroups.map((group) => ({
-    ...group,
-    display: parseDisplaySettings(displaySettingsToForm(group.display), counterCountsByGroup.get(group.id) ?? 0),
-  }));
   const legacyTimerDisplay = normalizedTimerGroups.find((group) => group.id === DEFAULT_TIMER_GROUP_ID)?.display ?? normalizedTimerGroups[0].display;
-  const legacyCounterDisplay = normalizedCounterGroups.find((group) => group.id === DEFAULT_COUNTER_GROUP_ID)?.display ?? normalizedCounterGroups[0].display;
 
   return {
-    enabled: form.timerEnabled || form.counterEnabled,
+    enabled: form.timerEnabled,
     timerEnabled: form.timerEnabled,
-    counterEnabled: form.counterEnabled,
     display: legacyTimerDisplay,
-    counterDisplay: legacyCounterDisplay,
     timerGroups: normalizedTimerGroups,
-    counterGroups: normalizedCounterGroups,
     timers,
-    counters,
   };
 }
 
@@ -287,26 +219,9 @@ export function createTimerGroup(existingCount: number): TimerGroupForm {
   };
 }
 
-export function createCounterGroup(existingCount: number): TimerGroupForm {
-  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  return {
-    id: `counter-group-${suffix}`,
-    name: `计数分组 ${existingCount + 1}`,
-    enabled: true,
-    display: displaySettingsToForm(counterDefaultDisplay()),
-  };
-}
-
 function timerDefaultDisplay(): TimerDisplaySettings {
   return {
     rect: { x: 80, y: 80, width: TIMER_DISPLAY_WIDTH, height: TIMER_DISPLAY_MIN_HEIGHT },
-    fontOpacity: 0.92,
-  };
-}
-
-function counterDefaultDisplay(): TimerDisplaySettings {
-  return {
-    rect: { x: 420, y: 80, width: TIMER_DISPLAY_WIDTH, height: TIMER_DISPLAY_MIN_HEIGHT },
     fontOpacity: 0.92,
   };
 }
@@ -329,20 +244,6 @@ export function createTimerItem(existingCount: number, groupId = DEFAULT_TIMER_G
   };
 }
 
-export function createCounterItem(existingCount: number, groupId = DEFAULT_COUNTER_GROUP_ID): CounterItem {
-  const nextIndex = existingCount + 1;
-  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-  return {
-    id: `counter-${suffix}`,
-    groupId,
-    name: `计数器 ${nextIndex}`,
-    startValue: 0,
-    hotkey: "F3",
-    enabled: true,
-  };
-}
-
 export function timerEffectiveTimersByGroup(form: TimerSettingsForm | null, groupId: string): TimerItemForm[] {
   if (!form?.timerEnabled) {
     return [];
@@ -352,17 +253,6 @@ export function timerEffectiveTimersByGroup(form: TimerSettingsForm | null, grou
     return [];
   }
   return form.timers.filter((timer) => timer.groupId === groupId && timer.enabled);
-}
-
-export function timerEffectiveCountersByGroup(form: TimerSettingsForm | null, groupId: string): CounterItemForm[] {
-  if (!form?.counterEnabled) {
-    return [];
-  }
-  const group = form.counterGroups.find((item) => item.id === groupId);
-  if (!group?.enabled) {
-    return [];
-  }
-  return form.counters.filter((counter) => counter.groupId === groupId && counter.enabled);
 }
 
 export function moveTimerItem<T extends { id: string }>(items: T[], activeId: string, overId: string): T[] {
@@ -415,10 +305,6 @@ export function timerRunsById(runs: TimerRunState[]): Map<string, TimerRunState>
   return new Map(runs.map((run) => [run.id, run]));
 }
 
-export function counterRunsById(runs: CounterRunState[]): Map<string, CounterRunState> {
-  return new Map(runs.map((run) => [run.id, run]));
-}
-
 export function isTimerDirty(bootstrap: TimerBootstrap | null, form: TimerSettingsForm | null): boolean {
   if (!bootstrap || !form) {
     return false;
@@ -466,4 +352,20 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
       unlistenStateChanged?.();
     };
   }, [isNativeShell, setBootstrap]);
+}
+
+export function timerSignalChar(timer: { enabled: boolean }, run?: TimerRunState): string {
+  if (!timer.enabled) return "○";
+  if (!run) return "▢";
+  if (run.status === "running") return "▣";
+  if (run.status === "finished") return "▩";
+  return "▢";
+}
+
+export function timerSignalState(timer: { enabled: boolean }, run?: TimerRunState): "idle" | "active" | "valid" | "warning" | "error" {
+  if (!timer.enabled) return "idle";
+  if (!run) return "idle";
+  if (run.status === "running") return "active";
+  if (run.status === "finished") return "valid";
+  return "idle";
 }
