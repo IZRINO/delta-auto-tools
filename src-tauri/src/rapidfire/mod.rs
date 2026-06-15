@@ -799,11 +799,16 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
         // 物理按键事件将被 WH_KEYBOARD_LL 钩子吞噬，不会到达前台应用，
         // 但热键回调仍正常触发。
         if ignore_trigger_key_for_batch {
-            if let Some(first_trigger) = sessions_to_spawn.first().map(|w| w.trigger_key.clone()) {
-                let hotkey_manager = app.state::<HotkeyManager>();
-                match hotkey_manager.suppress_key(&first_trigger) {
-                    Ok(was_new) => eprintln!("[连发器] suppress_key({first_trigger}) -> was_new={was_new}"),
-                    Err(e) => eprintln!("[连发器] suppress_key({first_trigger}) 失败: {e}"),
+            // 抑制批次中所有不同的触发键（而非只取第一个）
+            let trigger_keys: std::collections::HashSet<String> = sessions_to_spawn
+                .iter()
+                .map(|w| w.trigger_key.clone())
+                .collect();
+            let hotkey_manager = app.state::<HotkeyManager>();
+            for trigger_key in &trigger_keys {
+                match hotkey_manager.suppress_key(trigger_key) {
+                    Ok(was_new) => eprintln!("[连发器] suppress_key({trigger_key}) -> was_new={was_new}"),
+                    Err(e) => eprintln!("[连发器] suppress_key({trigger_key}) 失败: {e}"),
                 }
             }
         }
@@ -1390,6 +1395,7 @@ pub fn stop_all(app: &AppHandle, state: &RapidfireState, hotkey_manager: Option<
     };
     if let Some(hm) = hotkey_manager {
         hm.clear_all_suppressions();
+        let _ = hm.stop_suppressor();
     }
     emit_state(app, bootstrap);
 }
@@ -1487,10 +1493,17 @@ pub fn rapidfire_save_settings(
             let _ = hotkey_manager.unsuppress_key(trigger_key);
         }
 
+        // 如果不再有任何启用的 ignore_trigger_key 卡片，停止 KeySuppressor 钩子
+        // 以消除对所有键盘输入的额外延迟
+        if should_suppress.is_empty() && !previous_should_suppress.is_empty() {
+            let _ = hotkey_manager.stop_suppressor();
+        }
+
         if !settings_value.rapidfire_enabled {
             stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
             inner.logic.runs.clear();
             hotkey_manager.clear_all_suppressions();
+            let _ = hotkey_manager.stop_suppressor();
         }
 
         RapidfireLogic::build_bootstrap(&inner)
@@ -1513,6 +1526,7 @@ pub fn rapidfire_stop(
         stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
         inner.logic.runs.clear();
         hotkey_manager.clear_all_suppressions();
+        let _ = hotkey_manager.stop_suppressor();
         RapidfireLogic::build_bootstrap(&inner)
     };
     emit_state(&app, bootstrap.clone());

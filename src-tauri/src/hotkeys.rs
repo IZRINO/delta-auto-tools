@@ -33,17 +33,15 @@ pub struct HotkeyManager {
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
     install_error: Option<String>,
-    /// KeySuppressor：通过 WH_KEYBOARD_LL 钩子吞噬被抑制的按键事件
+    /// KeySuppressor：通过 WH_KEYBOARD_LL 钩子吞噬被抑制的按键事件（懒加载）
     #[cfg(target_os = "windows")]
-    key_suppressor: Option<crate::key_suppressor::KeySuppressor>,
-    /// 接收 KeySuppressor 转发的被抑制事件
+    key_suppressor: Arc<Mutex<Option<crate::key_suppressor::KeySuppressor>>>,
+    /// 接收 KeySuppressor 转发的被抑制事件（懒加载，通过 Arc<Mutex> 共享给 run_listener）
     #[cfg(target_os = "windows")]
-    #[allow(dead_code)]
-    suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
+    suppressed_rx: Arc<Mutex<Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>>>,
     /// 被抑制按键 VK 集合的共享引用，用于 run_listener 过滤 willhook 重复事件
     #[cfg(target_os = "windows")]
-    #[allow(dead_code)]
-    suppressed_vk_set: Option<Arc<Mutex<std::collections::HashSet<u32>>>>,
+    suppressed_vk_set: Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
     #[cfg(target_os = "windows")]
     worker: Option<JoinHandle<()>>,
     #[cfg(not(target_os = "windows"))]
@@ -58,18 +56,11 @@ impl HotkeyManager {
 
         #[cfg(target_os = "windows")]
         {
-            // 启动 KeySuppressor（按键抑制钩子）
-            let (suppressor, suppressed_rx) =
-                match crate::key_suppressor::KeySuppressor::start() {
-                    Ok(pair) => (Some(pair.0), Some(pair.1)),
-                    Err(e) => {
-                        eprintln!("按键抑制钩子安装失败: {e}");
-                        (None, None)
-                    }
-                };
-
-            // 获取 suppressed_keys 共享引用（用于 run_listener 过滤 willhook 重复事件）
-            let suppressed_vk_set = suppressor.as_ref().map(|s| s.suppressed_keys_ref());
+            // KeySuppressor 不再无条件启动，改为懒加载
+            // 只在有 ignore_trigger_key 卡片启用时才安装第二个 WH_KEYBOARD_LL 钩子
+            let key_suppressor = Arc::new(Mutex::new(None));
+            let suppressed_rx = Arc::new(Mutex::new(None));
+            let suppressed_vk_set = Arc::new(Mutex::new(None));
 
             let Some(hook) = willhook::keyboard_hook() else {
                 return Self {
@@ -79,7 +70,7 @@ impl HotkeyManager {
                     install_error: Some(
                         "键盘钩子安装失败，请检查杀毒软件或系统权限设置".to_string(),
                     ),
-                    key_suppressor: suppressor,
+                    key_suppressor,
                     suppressed_rx,
                     suppressed_vk_set,
                     worker: None,
@@ -89,8 +80,8 @@ impl HotkeyManager {
             let worker_registrations = Arc::clone(&registrations);
             let worker_hold_registrations = Arc::clone(&hold_registrations);
             let worker_stopped = Arc::clone(&stopped);
-            let worker_suppressed_rx = suppressed_rx.clone();
-            let worker_suppressed_vk_set = suppressed_vk_set.clone();
+            let worker_suppressed_rx = Arc::clone(&suppressed_rx);
+            let worker_suppressed_vk_set = Arc::clone(&suppressed_vk_set);
             let worker = thread::Builder::new()
                 .name("shared-hotkey-listener".to_string())
                 .spawn(move || {
@@ -112,7 +103,7 @@ impl HotkeyManager {
                     hold_registrations,
                     stopped,
                     install_error: None,
-                    key_suppressor: suppressor,
+                    key_suppressor,
                     suppressed_rx,
                     suppressed_vk_set,
                     worker: Some(worker),
@@ -122,7 +113,7 @@ impl HotkeyManager {
                     hold_registrations,
                     stopped,
                     install_error: Some(error),
-                    key_suppressor: suppressor,
+                    key_suppressor,
                     suppressed_rx,
                     suppressed_vk_set,
                     worker: None,
@@ -143,10 +134,65 @@ impl HotkeyManager {
         }
     }
 
+    /// 懒加载启动 KeySuppressor（仅在有 ignore_trigger_key 卡片启用时调用）
+    #[cfg(target_os = "windows")]
+    pub fn start_suppressor(&self) -> Result<(), String> {
+        let mut suppressor_guard = self.key_suppressor.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if suppressor_guard.is_some() {
+            return Ok(()); // 已经启动
+        }
+
+        let (suppressor, rx) = crate::key_suppressor::KeySuppressor::start()?;
+        let vk_set = suppressor.suppressed_keys_ref();
+
+        *suppressor_guard = Some(suppressor);
+
+        let mut rx_guard = self.suppressed_rx.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        *rx_guard = Some(rx);
+
+        let mut vk_guard = self.suppressed_vk_set.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        *vk_guard = Some(vk_set);
+
+        Ok(())
+    }
+
+    /// 停止 KeySuppressor（当所有抑制需求消失时调用）
+    #[cfg(target_os = "windows")]
+    pub fn stop_suppressor(&self) -> Result<(), String> {
+        let mut suppressor_guard = self.key_suppressor.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if suppressor_guard.is_none() {
+            return Ok(()); // 已经停止
+        }
+
+        // 先清理抑制列表，再 Drop suppressor（触发钩子卸载）
+        if let Some(suppressor) = suppressor_guard.take() {
+            suppressor.clear_all();
+        }
+
+        let mut rx_guard = self.suppressed_rx.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        *rx_guard = None;
+
+        let mut vk_guard = self.suppressed_vk_set.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        *vk_guard = None;
+
+        Ok(())
+    }
+
     /// 抑制指定按键：物理按键事件不会到达前台应用，但热键回调仍正常触发
     #[cfg(target_os = "windows")]
     pub fn suppress_key(&self, key: &str) -> Result<bool, String> {
-        if let Some(ref suppressor) = self.key_suppressor {
+        // 确保 suppressor 已启动
+        self.start_suppressor()?;
+
+        let guard = self.key_suppressor.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if let Some(ref suppressor) = *guard {
             let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
                 .ok_or_else(|| format!("无法解析按键: {key}"))?;
             Ok(suppressor.suppress(vk))
@@ -158,7 +204,9 @@ impl HotkeyManager {
     /// 取消抑制指定按键
     #[cfg(target_os = "windows")]
     pub fn unsuppress_key(&self, key: &str) -> Result<bool, String> {
-        if let Some(ref suppressor) = self.key_suppressor {
+        let guard = self.key_suppressor.lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if let Some(ref suppressor) = *guard {
             let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
                 .ok_or_else(|| format!("无法解析按键: {key}"))?;
             Ok(suppressor.unsuppress(vk))
@@ -177,11 +225,23 @@ impl HotkeyManager {
         Err("当前仅 Windows 支持按键抑制".to_string())
     }
 
+    #[cfg(not(target_os = "windows"))]
+    pub fn start_suppressor(&self) -> Result<(), String> {
+        Err("当前仅 Windows 支持按键抑制".to_string())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn stop_suppressor(&self) -> Result<(), String> {
+        Err("当前仅 Windows 支持按键抑制".to_string())
+    }
+
     /// 取消所有被抑制的按键（应用关闭或全局关闭时调用）
     #[cfg(target_os = "windows")]
     pub fn clear_all_suppressions(&self) {
-        if let Some(ref suppressor) = self.key_suppressor {
-            suppressor.clear_all();
+        if let Ok(guard) = self.key_suppressor.lock() {
+            if let Some(ref suppressor) = *guard {
+                suppressor.clear_all();
+            }
         }
     }
 
@@ -404,15 +464,19 @@ fn keyboard_event_to_vk(event: &KeyboardEvent) -> Option<u32> {
 #[cfg(target_os = "windows")]
 fn is_event_suppressed(
     event: &KeyboardEvent,
-    suppressed_vk_set: Option<&Arc<Mutex<std::collections::HashSet<u32>>>>,
+    suppressed_vk_set: &Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
 ) -> bool {
     suppressed_vk_set
-        .and_then(|vk_set| {
-            keyboard_event_to_vk(event).map(|vk| {
-                vk_set
-                    .lock()
-                    .map(|set| set.contains(&vk))
-                    .unwrap_or(false)
+        .lock()
+        .ok()
+        .and_then(|guard| {
+            guard.as_ref().and_then(|vk_set| {
+                keyboard_event_to_vk(event).map(|vk| {
+                    vk_set
+                        .lock()
+                        .map(|set| set.contains(&vk))
+                        .unwrap_or(false)
+                })
             })
         })
         .unwrap_or(false)
@@ -425,8 +489,8 @@ fn run_listener(
     registrations: Arc<Mutex<Vec<HotkeyRegistration>>>,
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
-    suppressed_rx: Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>,
-    suppressed_vk_set: Option<Arc<Mutex<std::collections::HashSet<u32>>>>,
+    suppressed_rx: Arc<Mutex<Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>>>,
+    suppressed_vk_set: Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
 ) {
     let mut matcher = HotkeyMatcher::new();
     let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
@@ -446,7 +510,7 @@ fn run_listener(
                 // willhook 收到的是 KeySuppressor 钩子链传递过来的原始事件，
                 // 但 KeySuppressor 已吞噬该事件并转发到 suppressed_rx。
                 // 为避免同一事件被处理两次，跳过 willhook 对被抑制键的事件。
-                let is_suppressed = is_event_suppressed(&event, suppressed_vk_set.as_ref());
+                let is_suppressed = is_event_suppressed(&event, &suppressed_vk_set);
 
                 if global_enabled && !is_suppressed {
                     let hold_actions = hold_actions_for_event(
@@ -476,7 +540,7 @@ fn run_listener(
         // 2. 处理 KeySuppressor 转发的被抑制事件
         //    这些事件已被 WH_KEYBOARD_LL 钩子吞噬，不会到达前台应用，
         //    但热键回调仍需正常触发
-        if let Some(ref rx) = suppressed_rx {
+        if let Some(rx) = suppressed_rx.lock().ok().and_then(|mut g| g.take() ) {
             while let Ok(suppressed_event) = rx.try_recv() {
                 let global_enabled = app
                     .try_state::<GlobalState>()
@@ -508,9 +572,13 @@ fn run_listener(
                     }
                 }
             }
+            // 把 rx 放回去
+            if let Ok(mut guard) = suppressed_rx.lock() {
+                *guard = Some(rx);
+            }
         }
 
-        thread::sleep(Duration::from_millis(4));
+        thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -856,11 +924,11 @@ mod tests {
             stopped: Arc::new(AtomicBool::new(false)),
             install_error: None,
             #[cfg(target_os = "windows")]
-            key_suppressor: None,
+            key_suppressor: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "windows")]
-            suppressed_rx: None,
+            suppressed_rx: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "windows")]
-            suppressed_vk_set: None,
+            suppressed_vk_set: Arc::new(Mutex::new(None)),
             #[cfg(target_os = "windows")]
             worker: None,
             #[cfg(not(target_os = "windows"))]
@@ -1079,13 +1147,14 @@ mod tests {
     fn suppressed_willhook_event_is_detected_without_consuming_loop() {
         use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
-        let suppressed = Arc::new(Mutex::new(HashSet::from([0x70])));
+        let suppressed = Arc::new(Mutex::new(Some(Arc::new(Mutex::new(HashSet::from([0x70]))))));
         let event = keyboard_event(KeyboardKey::F1, KeyPress::Down(IsSystemKeyPress::Normal));
         let other_event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
 
-        assert!(is_event_suppressed(&event, Some(&suppressed)));
-        assert!(!is_event_suppressed(&other_event, Some(&suppressed)));
-        assert!(!is_event_suppressed(&event, None));
+        assert!(is_event_suppressed(&event, &suppressed));
+        assert!(!is_event_suppressed(&other_event, &suppressed));
+        let empty: Arc<Mutex<Option<Arc<Mutex<HashSet<u32>>>>>> = Arc::new(Mutex::new(None));
+        assert!(!is_event_suppressed(&event, &empty));
     }
 
     #[test]

@@ -33,6 +33,9 @@ pub struct KeySuppressor {
     event_sender: Sender<SuppressedKeyboardEvent>,
     stopped: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
+    /// worker 线程 ID，用于 PostThreadMessage 唤醒
+    #[cfg(target_os = "windows")]
+    worker_thread_id: Option<u32>,
 }
 
 impl KeySuppressor {
@@ -50,12 +53,27 @@ impl KeySuppressor {
         let worker_tx = tx.clone();
         let (install_tx, install_rx) = mpsc::channel();
 
+        #[cfg(target_os = "windows")]
+        let (tid_tx, tid_rx) = mpsc::channel();
+
         let worker = thread::Builder::new()
             .name("key-suppressor".to_string())
             .spawn(move || {
+                #[cfg(target_os = "windows")]
+                {
+                    // Windows 线程 ID 来自 GetCurrentThreadId
+                    let win_tid = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
+                    let _ = tid_tx.send(win_tid);
+                }
+                let _ = (); // suppress unused variable warning on non-windows
                 run_suppressor_hook(worker_suppressed, worker_stopped, worker_tx, install_tx);
             })
             .map_err(|e| format!("启动按键抑制线程失败: {e}"))?;
+
+        #[cfg(target_os = "windows")]
+        let worker_thread_id = tid_rx.recv_timeout(Duration::from_secs(2)).ok();
+        #[cfg(not(target_os = "windows"))]
+        let worker_thread_id: Option<u32> = None;
 
         match install_rx.recv_timeout(Duration::from_secs(2)) {
             Ok(Ok(())) => {}
@@ -77,6 +95,7 @@ impl KeySuppressor {
                 event_sender: tx,
                 stopped,
                 worker: Some(worker),
+                worker_thread_id,
             },
             rx,
         ))
@@ -125,8 +144,15 @@ impl KeySuppressor {
 impl Drop for KeySuppressor {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
-        // 使用 PeekMessage 循环的 run_suppressor_hook 无需额外唤醒；
-        // 旧的 GetMessageW 实现已被替换为 PeekMessageW 方案，避免永久阻塞。
+        // 通过 PostThreadMessage 唤醒 GetMessageW 阻塞的 worker 线程
+        #[cfg(target_os = "windows")]
+        if let Some(tid) = self.worker_thread_id {
+            use windows_sys::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+            const WM_USER_SHUTDOWN: u32 = 0x0400 + 1; // WM_USER + 1
+            unsafe {
+                PostThreadMessageW(tid, WM_USER_SHUTDOWN, 0, 0);
+            }
+        }
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -377,8 +403,8 @@ fn run_suppressor_hook(
     use std::ptr;
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG,
-        PM_REMOVE, WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP,
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG,
+        WH_KEYBOARD_LL, WM_KEYUP, WM_SYSKEYUP,
     };
 
     // KBDLLHOOKSTRUCT 不在 windows-sys 的默认 feature 中，手动定义
@@ -393,6 +419,9 @@ fn run_suppressor_hook(
 
     // LLKHF_INJECTED = 0x10
     const LLKHF_INJECTED: u32 = 0x10;
+
+    // 自定义退出消息，对应 Drop 中的 PostThreadMessage
+    const WM_USER_SHUTDOWN: u32 = 0x0400 + 1;
 
     // 全局共享状态：使用全局静态变量让钩子回调能访问
     // 由于 WH_KEYBOARD_LL 钩子回调必须是 extern "system" fn，不能直接捕获环境
@@ -458,21 +487,21 @@ fn run_suppressor_hook(
     }
     let _ = install_sender.send(Ok(()));
 
-    // 消息循环：使用 PeekMessageW + 睡眠，避免 GetMessageW 永久阻塞导致线程无法退出
+    // 消息循环：使用 GetMessageW 阻塞等待，零延迟响应键盘事件。
+    // 退出时通过 PostThreadMessage(WM_USER_SHUTDOWN) 唤醒线程。
     let mut msg: MSG = unsafe { std::mem::zeroed() };
-    while !stopped.load(Ordering::SeqCst) {
-        unsafe {
-            // 非阻塞检查消息队列，避免 stopped 变更后无法退出
-            while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
-                if msg.message == WM_QUIT {
-                    break;
-                }
-                // TranslateMessage 和 DispatchMessage 对 WH_KEYBOARD_LL 钩子不是必须的，
-                // 但标准消息循环惯例保留。实际上钩子由系统直接调用，无需 dispatch。
-            }
+    loop {
+        let ret = unsafe { GetMessageW(&mut msg, ptr::null_mut(), 0, 0) };
+        if ret == 0 || msg.message == WM_USER_SHUTDOWN {
+            // WM_QUIT 或自定义退出消息
+            break;
         }
-        // 短暂睡眠降低 CPU 占用，同时保证 stopped 检查及时
-        thread::sleep(Duration::from_millis(5));
+        // TranslateMessage/DispatchMessage 对 WH_KEYBOARD_LL 钩子不是必须的，
+        // 钩子由系统在消息处理前直接调用。但消息循环需要 GetMessageW 来维持钩子链。
+        // stopped 标志作为额外安全网：如果 PostThreadMessage 丢失，线程仍能退出
+        if stopped.load(Ordering::SeqCst) {
+            break;
+        }
     }
 
     // 卸载钩子
