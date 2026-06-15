@@ -444,6 +444,16 @@ function AudioCardEditor({
                             />
                         </FieldContent>
                     </Field>
+                    <Field>
+                        <FieldLabel>允许同时播放</FieldLabel>
+                        <FieldContent>
+                            <Switch
+                                checked={card.allowSimultaneous}
+                                onCheckedChange={(checked) => onUpdate({allowSimultaneous: checked})}
+                                title="开启后此卡片音频可与其他卡片同时播放（默认互斥）"
+                            />
+                        </FieldContent>
+                    </Field>
                 </FieldGroup>
             </div>
         </div>
@@ -464,6 +474,7 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
         audioFilePath: card.audioFilePath,
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
+        allowSimultaneous: card.allowSimultaneous ?? false,
     };
 }
 

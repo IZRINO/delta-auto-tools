@@ -17,7 +17,7 @@ use tauri::{AppHandle, Emitter};
 static WATCHER_CANCEL_MAP: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
 /// 启动/重启所有区域监听 watcher
-pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(), String> {
+pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: std::sync::mpsc::Sender<player::AudioCommand>) -> Result<(), String> {
     if !settings.audio_enabled {
         return stop_all_watchers(app);
     }
@@ -58,6 +58,8 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
         let region_clone = region.clone();
         let ref_path_clone = ref_path.clone();
         let cancel_clone = Arc::clone(&cancel);
+        let allow_simultaneous = card.allow_simultaneous;
+        let playback_tx_clone = playback_tx.clone();
 
         cancel_map.insert(card_id.clone(), cancel);
 
@@ -69,6 +71,8 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
                 ref_path_clone,
                 audio_path,
                 volume,
+                allow_simultaneous,
+                playback_tx_clone,
                 cooldown_ms,
                 threshold,
                 poll_interval_ms,
@@ -100,6 +104,8 @@ async fn run_region_watcher(
     reference_image_path: String,
     audio_path: String,
     volume: f32,
+    allow_simultaneous: bool,
+    playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     threshold: f32,
     poll_interval_ms: u32,
@@ -146,11 +152,9 @@ async fn run_region_watcher(
                     let _ = app.emit(REGION_MATCHED, &card_id);
                     let path = audio_path.clone();
                     let vol = volume;
-                    tokio::task::spawn_blocking(move || {
-                        if let Err(e) = player::play_audio_file(&path, vol) {
-                            eprintln!("[音频 watcher] 播放失败: {e}");
-                        }
-                    });
+                    let tx = playback_tx.clone();
+                    let exclusive = !allow_simultaneous;
+                    let _ = tx.send(player::AudioCommand::Play { path, volume: vol, exclusive });
                     last_triggered = Some(Instant::now());
                 }
             }

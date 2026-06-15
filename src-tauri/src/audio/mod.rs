@@ -27,7 +27,10 @@ const AUDIO_OVERLAY_LABEL: &str = "audio-overlay";
 
 // ---- State ----
 
-pub struct AudioLogic;
+pub struct AudioLogic {
+    /// 音频播放线程的命令发送端
+    pub playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
+}
 
 pub type AudioState = ToolState<AudioLogic>;
 
@@ -94,7 +97,7 @@ pub fn audio_save_settings(
         inner.hotkey_error = Some(e.clone());
         return Err(AppError::from(e));
     }
-    let _ = watcher::restart_watchers(&app, &normalized);
+    let _ = watcher::restart_watchers(&app, &normalized, inner.logic.playback_tx.clone());
 
     // 总开关关闭时停止所有 watcher
     if !inner.settings.audio_enabled {
@@ -195,17 +198,17 @@ pub async fn audio_overlay_submit_selection(
     destroy_window(&app, &overlay_label);
 
     // 更新卡片区域
-    let (settings_snapshot, bootstrap) = {
+    let (settings_snapshot, bootstrap, playback_tx) = {
         let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
             return Err(AppError::from("卡片不存在".to_string()));
         };
         card.watch_region = Some(region);
         settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
-        (inner.settings.clone(), AudioLogic::build_bootstrap(&inner))
+        (inner.settings.clone(), AudioLogic::build_bootstrap(&inner), inner.logic.playback_tx.clone())
     };
 
-    watcher::restart_watchers(&app, &settings_snapshot).map_err(AppError::from)?;
+    watcher::restart_watchers(&app, &settings_snapshot, playback_tx).map_err(AppError::from)?;
     AudioLogic::emit_state(&app, &bootstrap);
     Ok(())
 }
@@ -226,7 +229,7 @@ pub async fn audio_test_play(
     state: tauri::State<'_, AudioState>,
     card_id: String,
 ) -> Result<(), AppError> {
-    let (path, volume) = {
+    let (path, volume, allow_simultaneous, playback_tx) = {
         let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         let card = inner
             .settings
@@ -239,13 +242,20 @@ pub async fn audio_test_play(
             return Err(AppError::from("未设置音频文件路径".to_string()));
         }
 
-        (card.audio_file_path.clone(), card.volume)
+        (
+            card.audio_file_path.clone(),
+            card.volume,
+            card.allow_simultaneous,
+            inner.logic.playback_tx.clone(),
+        )
     };
 
-    // 在阻塞线程中播放音频
-    let _ = tokio::task::spawn_blocking(move || player::play_audio_file(&path, volume))
-        .await
-        .map_err(|e| AppError::from(format!("播放失败: {e}")))?;
+    // 通过协调器播放音频
+    let _ = playback_tx.send(player::AudioCommand::Play {
+        path,
+        volume,
+        exclusive: !allow_simultaneous,
+    });
 
     Ok(())
 }
@@ -312,15 +322,17 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
 
     let path = card.audio_file_path.clone();
     let volume = card.volume;
+    let allow_simultaneous = card.allow_simultaneous;
+    let playback_tx = inner.logic.playback_tx.clone();
     drop(inner);
 
-    eprintln!("[音频] 快捷键触发播放: card_id={card_id}, path={path}, volume={volume}");
+    eprintln!("[音频] 快捷键触发播放: card_id={card_id}, path={path}, volume={volume}, simultaneous={allow_simultaneous}");
 
-    // spawn_blocking 中播放音频
-    let _ = std::thread::spawn(move || {
-        if let Err(e) = player::play_audio_file(&path, volume) {
-            eprintln!("[音频] 播放失败: {e}");
-        }
+    // 通过协调器播放音频
+    let _ = playback_tx.send(player::AudioCommand::Play {
+        path,
+        volume,
+        exclusive: !allow_simultaneous,
     });
 
     let _ = app.emit(HOTKEY_TRIGGERED, card_id);
@@ -336,10 +348,13 @@ pub fn initialize(
     let settings = settings::read_settings(app)?;
     let _ = restart_hotkey_listeners(hotkey_manager, &settings);
 
-    // 启动区域监听 watcher
-    let _ = watcher::restart_watchers(app, &settings);
+    // 启动音频播放线程
+    let (playback_tx, _worker) = player::start_audio_thread();
 
-    let logic = AudioLogic;
+    // 启动区域监听 watcher
+    let _ = watcher::restart_watchers(app, &settings, playback_tx.clone());
+
+    let logic = AudioLogic { playback_tx };
 
     Ok(AudioState::new(logic, settings))
 }
@@ -348,6 +363,11 @@ pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("audio");
     hotkey_manager.clear_all_suppressions();
     let _ = watcher::stop_all_watchers(app);
+
+    // 通知音频线程关闭
+    if let Ok(inner) = app.state::<AudioState>().lock_inner() {
+        let _ = inner.logic.playback_tx.send(player::AudioCommand::Shutdown);
+    };
 }
 
 // ---- 设置规范化 ----

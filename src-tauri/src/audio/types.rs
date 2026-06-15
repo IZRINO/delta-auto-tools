@@ -72,6 +72,9 @@ pub struct AudioCard {
     pub volume: f32,
     #[serde(default = "default_cooldown_ms")]
     pub cooldown_ms: u32,
+    /// 允许此卡片的音频与其他卡片同时播放（默认互斥）
+    #[serde(default)]
+    pub allow_simultaneous: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -114,5 +117,15 @@ mod tests {
         assert_eq!(card.trigger_mode, AudioTriggerMode::Hotkey);
         assert_eq!(card.volume, 0.8);
         assert_eq!(card.cooldown_ms, 1000);
+        assert!(!card.allow_simultaneous);
+    }
+
+    #[test]
+    fn audio_card_allow_simultaneous_roundtrip() {
+        let json = r#"{"id":"c2","name":"并发播放","allowSimultaneous":true}"#;
+        let card: AudioCard = serde_json::from_str(json).unwrap();
+        assert!(card.allow_simultaneous);
+        let reserialized = serde_json::to_string(&card).unwrap();
+        assert!(reserialized.contains("\"allowSimultaneous\":true"));
     }
 }

@@ -33,6 +33,7 @@ describe("audio-utils", () => {
                         watchMatchThreshold: 0.85,
                         watchPollIntervalMs: 1000,
                         hotkey: "Ctrl+F1",
+                        allowSimultaneous: false,
                     },
                 ],
             };
@@ -42,6 +43,7 @@ describe("audio-utils", () => {
             expect(form.cards[0].watchMatchThreshold).toBe("0.85");
             expect(form.cards[0].watchPollIntervalMs).toBe("1000");
             expect(form.cards[0].hotkey).toBe("Ctrl+F1");
+            expect(form.cards[0].allowSimultaneous).toBe(false);
         });
     });
 
@@ -63,6 +65,7 @@ describe("audio-utils", () => {
                         audioFilePath: "test.mp3",
                         volume: "0.8",
                         cooldownMs: "1000",
+                        allowSimultaneous: false,
                     },
                 ],
             };
@@ -71,6 +74,7 @@ describe("audio-utils", () => {
             expect(settings.cards[0].volume).toBe(0.8);
             expect(settings.cards[0].cooldownMs).toBe(1000);
             expect(settings.cards[0].hotkey).toBe("Ctrl+F1");
+            expect(settings.cards[0].allowSimultaneous).toBe(false);
         });
 
         it("throws for empty name", () => {
@@ -90,6 +94,7 @@ describe("audio-utils", () => {
                         audioFilePath: "test.mp3",
                         volume: "0.8",
                         cooldownMs: "1000",
+                        allowSimultaneous: false,
                     },
                 ],
             };
@@ -113,6 +118,7 @@ describe("audio-utils", () => {
                         audioFilePath: "test.mp3",
                         volume: "1.5",
                         cooldownMs: "1000",
+                        allowSimultaneous: false,
                     },
                 ],
             };
@@ -156,6 +162,7 @@ describe("audio-utils", () => {
                         audioFilePath: "local.mp3",
                         volume: "0.8",
                         cooldownMs: "1000",
+                        allowSimultaneous: false,
                     },
                 ],
             };

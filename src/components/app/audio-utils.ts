@@ -22,6 +22,7 @@ function cardToForm(card: AudioCard): AudioCardForm {
         audioFilePath: card.audioFilePath,
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
+        allowSimultaneous: card.allowSimultaneous ?? false,
     };
 }
 
@@ -77,6 +78,7 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         audioFilePath: form.audioFilePath.trim(),
         volume,
         cooldownMs,
+        allowSimultaneous: form.allowSimultaneous ?? false,
     };
 }
 

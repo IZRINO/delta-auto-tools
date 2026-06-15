@@ -15,6 +15,7 @@ export type AudioCard = {
     audioFilePath: string;
     volume: number;
     cooldownMs: number;
+    allowSimultaneous: boolean;
 };
 
 export type AudioSettings = {
@@ -45,6 +46,7 @@ export type AudioCardForm = {
     audioFilePath: string;
     volume: string;
     cooldownMs: string;
+    allowSimultaneous: boolean;
 };
 
 export const DEFAULT_AUDIO_CARD: AudioCard = {
@@ -60,6 +62,7 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     audioFilePath: "",
     volume: 0.8,
     cooldownMs: 1000,
+    allowSimultaneous: false,
 };
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
