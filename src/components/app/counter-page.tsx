@@ -388,7 +388,7 @@ function CounterWorkbench({ highlightCardId, isNativeShell }: { highlightCardId:
       <MacroHeader
         code="02"
         title="COUNTER BOARD"
-        verticalLabel="计数器"
+        verticalLabel="计数"
         subtitle="计数器负责战局累加。每张卡片有独立计数状态与快捷键。"
         badges={
           <>

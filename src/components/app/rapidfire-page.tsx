@@ -496,7 +496,7 @@ function RapidfireWorkbench({ highlightCardId, isNativeShell }: { highlightCardI
       <MacroHeader
         code="R-03"
         title="RAPIDFIRE / CONTROL"
-        verticalLabel="连发器"
+        verticalLabel="连发"
         subtitle="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
         badges={
           <>
