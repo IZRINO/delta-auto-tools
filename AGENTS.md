@@ -112,6 +112,10 @@ src/
 │       ├── delta-account-selector.tsx # 账号选择器横条组件（按类型过滤）
 │       ├── delta-data-card.tsx      # 数据展示卡片组件（loading/error/retry 通用）
 │       └── delta-query-workbench.tsx # 查询工作台（6 种参数化 API 动态表单）
+│       ├── about-page.tsx       # 关于面板 Dialog（版本/协议/致谢/更新状态机）
+│       ├── about-types.ts      # 关于面板 TypeScript 类型
+│       ├── about-deps.ts       # 开源库致谢列表常量
+│       └── about-deps.test.ts  # 致谢列表基础测试
 ```
 
 ### 前端核心模式
@@ -144,6 +148,9 @@ src-tauri/src/
 ├── main.rs                     # Windows 入口
 ├── tool_base.rs                # 工具模块共享泛型基座：ToolLogic trait、ToolState<T>、ToolStateInner<T>、get_bootstrap<T>
 ├── global_state.rs             # 全局总开关状态（GlobalState）与 enabled-changed 事件
+├── about/
+│   ├── mod.rs                  # 关于面板命令：about_get_bootstrap / about_check_for_update / about_download_and_install
+│   └── events.rs               # 关于事件名字符串常量（update-progress）
 ├── hotkey_types.rs             # 热键绑定类型、ConflictPolicy 枚举、HotkeyRegistration / HoldRegistration
 ├── hotkeys.rs                  # 全局共享 willhook 键盘钩子，HotkeyManager，跨 scope 冲突检测
 ├── morse/
@@ -215,7 +222,7 @@ src-tauri/src/
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
 - `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、`counter::initialize()`、`rapidfire::initialize()` 和 `global_state::GlobalState::new(true)`，然后通过 `app.manage()` 注册状态
-- `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame / 游戏数据 / morse / timer / counter / rapidfire / strategy / global_state），新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
+- `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame / 游戏数据 / morse / timer / counter / rapidfire / strategy / global_state / about），新增命令必须同步添加到这里和 `src-tauri/capabilities/default.json`
 
 ## Tauri commands
 
@@ -308,6 +315,11 @@ src-tauri/src/
 **全局状态**：
 - `global_get_enabled` — 读取全局总开关
 - `global_set_enabled(enabled)` — 设置全局总开关，关闭时立即停止所有运行中的连发和计时器 session
+
+**关于面板**：
+- `about_get_bootstrap` — 获取软件信息（版本、协议、依赖列表）
+- `about_check_for_update` — 检查 GitHub Releases 是否有新版本
+- `about_download_and_install` — 下载并安装更新，通过 `about://update-progress` 事件推送进度
 
 ## UI and workflow constraints
 
@@ -630,6 +642,9 @@ Morse 通过 Tauri events 通知前端（emit_to "main"）：
 
 全局事件：
 - `"global://enabled-changed"` — 全局总开关切换时推送 `boolean`
+
+关于面板事件：
+- `"about://update-progress"` — 更新进度推送 `UpdateProgress`（checking/notAvailable/available/downloading/downloaded/installing/installed/error）
 
 前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。为避免事件名硬编码，后端在 `morse/events.rs`、`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和类型安全的 `listenEvent<T>` helper。
 

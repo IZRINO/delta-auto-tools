@@ -75,9 +75,18 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距；RapidfireState = ToolState<RapidfireLogic> |
 | delta | `src-tauri/src/delta/` | 6 种账号鉴权流程（QQ/微信/QQ安全中心/Wegame/先遣服），SQLite 账号存储，DPAPI 加密，IDE 网关游戏数据查询；GameService 缓存于 DeltaState |
 | hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy） |
+| about | `src-tauri/src/about/` | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress` |
 | strategy | `src-tauri/src/strategy/` | 兼容入口：`strategy_open_window` 创建子 WebView，`strategy_fetch_page` Chrome 头抓取+JS 重定向跟随 |
 
 新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和 `src-tauri/capabilities/default.json`。
+
+### 更新器（Tauri Updater）
+
+项目已接入 `tauri-plugin-updater`（Rust）与 `@tauri-apps/plugin-updater`（前端）+ `@tauri-apps/plugin-process`（relaunch）。
+- `tauri.conf.json` 中 `plugins.updater` 配置了 GitHub Releases 端点与 `installMode: "passive"`；`pubkey` 字段需运行 `scripts/setup-update-key.ps1` 生成密钥后填入
+- 构建发布版前需设置 `$env:TAURI_SIGNING_PRIVATE_KEY`（私钥内容，非路径），可选 `$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- `about` 模块封装了 `about_check_for_update`（检查）和 `about_download_and_install`（下载+安装+进度推送），前端通过 `ABOUT_EVENTS.updateProgress` 监听进度
+- `pubkey` 为空时更新器返回错误，前端降级为「打开 GitHub Release 页面」模式
 
 ## UI & Styling
 
@@ -212,6 +221,6 @@ Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agen
 - 使用 **Bun**，不要切换到 npm/pnpm/yarn
 - 不存在 `tailwind.config.js`
 - `src-tauri/src/delta/resources/ammo.json` 和 `accessory.json` 为空数组，未使用；实际配置在 `game_config.rs` 内联常量
-- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` + `delta-utils.ts` + `delta-types.ts` + `delta-login-utils.ts` + `delta-game-data-loader.ts` + `use-bootstrap-form-logic.ts` + `use-hotkey-recorder.ts` + `use-autosave.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
+- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` + `delta-utils.ts` + `delta-types.ts` + `delta-login-utils.ts` + `delta-game-data-loader.ts` + `use-bootstrap-form-logic.ts` + `use-hotkey-recorder.ts` + `use-autosave.ts` + `about-deps.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
 - `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新

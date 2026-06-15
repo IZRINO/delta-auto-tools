@@ -35,3 +35,12 @@ temp/
 .graphify_*.py
 .graphify_*.txt
 graphify-out/cache/*.json
+
+# codegraph local runtime state
+.codegraph/daemon.pid
+.codegraph/cache/
+.codegraph/*.db
+.codegraph/*.db-wal
+.codegraph/*.db-shm
+.codegraph/*.log
+.codegraph/.dirty

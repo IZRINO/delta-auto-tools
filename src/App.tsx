@@ -9,6 +9,7 @@ import {
   RiCompassDiscoverLine,
   RiShutDownLine,
   RiVolumeUpLine,
+  RiInformationLine,
 } from "@remixicon/react";
 
 import { FavoritesProvider, useFavorites } from "@/hooks/use-favorites";
@@ -54,6 +55,10 @@ const AudioPage = lazy(() =>
 
 const AudioRegionOverlay = lazy(() =>
   import("@/components/app/audio-page").then((module) => ({ default: module.AudioRegionOverlay })),
+);
+
+const AboutDialog = lazy(() =>
+  import("@/components/app/about-page").then((module) => ({ default: module.AboutDialog })),
 );
 
 const tools = [
@@ -300,6 +305,7 @@ function AppShell() {
   const [activeTool, setActiveTool] = useState<ToolId>("morse");
   const [highlightCardId, setHighlightCardId] = useState<ToolHighlight>(null);
   const highlightNonceRef = useRef(0);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const favorites = useFavorites();
   const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
 
@@ -442,7 +448,8 @@ function AppShell() {
 
       <div className="grid min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
         {/* Left Index Rail (desktop >=1024px) */}
-        <aside className="hidden min-h-0 overflow-y-auto border-r-2 border-[var(--chalk)] bg-[var(--slate)] lg:block [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <aside className="hidden min-h-0 flex-col border-r-2 border-[var(--chalk)] bg-[var(--slate)] lg:flex">
+          <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="border-b-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
             工具索引 / 收藏 {favorites.items.length}
           </div>
@@ -476,6 +483,27 @@ function AppShell() {
               />
             ))}
           </IndexRailSection>
+          </div>
+
+          {/* 关于 / About — 固定在 Rail 底部 */}
+          <div className="border-t-2 border-[var(--chalk)] bg-[var(--carbon)]">
+            <button
+              className="group grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch text-left transition-colors hover:bg-[var(--slate)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]"
+              onClick={() => setAboutOpen(true)}
+              type="button"
+            >
+              <span className="bg-[var(--amber)]" aria-hidden="true" />
+              <span className="min-w-0 px-3 py-3">
+                <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">关于</span>
+                <span className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase group-hover:text-[var(--chalk)]">
+                  SYS / ABOUT
+                </span>
+              </span>
+              <span className="flex items-center justify-center border-l border-[var(--chalk)] text-[var(--amber)]">
+                <RiInformationLine className="size-4" aria-hidden="true" />
+              </span>
+            </button>
+          </div>
         </aside>
 
         <main
@@ -489,6 +517,11 @@ function AppShell() {
           </div>
         </main>
       </div>
+
+      {/* 关于面板 Dialog */}
+      <ToolPageSuspense fallback={null}>
+        <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
+      </ToolPageSuspense>
     </div>
   );
 }

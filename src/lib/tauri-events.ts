@@ -3,6 +3,7 @@ import type { TimerBootstrap, CounterBootstrap } from "@/components/app/timer-ty
 import type { MorseRunResult, RegionSelectionProgress } from "@/components/app/morse-types";
 import type { RapidfireBootstrap } from "@/components/app/rapidfire-types";
 import type { AudioBootstrap } from "@/components/app/audio-types";
+import type { UpdateProgress } from "@/components/app/about-types";
 
 export const MORSE_EVENTS = {
   runFinished: { name: "morse://run-finished" as const, payload: null as unknown as MorseRunResult },
@@ -36,6 +37,10 @@ export const AUDIO_EVENTS = {
 
 export const GLOBAL_EVENTS = {
   enabledChanged: { name: "global://enabled-changed" as const, payload: null as unknown as boolean },
+} as const;
+
+export const ABOUT_EVENTS = {
+  updateProgress: { name: "about://update-progress" as const, payload: null as unknown as UpdateProgress },
 } as const;
 
 export async function listenEvent<T extends { name: string; payload: unknown }>(

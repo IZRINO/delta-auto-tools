@@ -1,3 +1,4 @@
+mod about;
 mod audio;
 mod counter;
 mod app_error;
@@ -26,7 +27,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+
             let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
@@ -117,6 +122,11 @@ pub fn run() {
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,
+
+            // ── about ──
+            about::about_get_bootstrap,
+            about::about_check_for_update,
+            about::about_download_and_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
