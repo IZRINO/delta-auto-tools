@@ -593,6 +593,7 @@ fn restart_hotkey_listeners(
     state: &RapidfireState,
     hotkey_manager: &HotkeyManager,
     settings_value: &RapidfireSettings,
+    force: bool,
 ) -> Result<(), String> {
     if !settings_value.rapidfire_enabled {
         return hotkey_manager.clear_hold_scope("rapidfire");
@@ -627,7 +628,7 @@ fn restart_hotkey_listeners(
         by_key
     };
 
-    if new_by_key == previous_by_key {
+    if !force && new_by_key == previous_by_key {
         return Ok(());
     }
 
@@ -1398,7 +1399,7 @@ pub fn initialize(
     let state = RapidfireState::new(logic, settings.clone());
 
     if settings.rapidfire_enabled {
-        if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings) {
+        if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings, true) {
             if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error);
             }
@@ -1436,9 +1437,9 @@ pub fn rapidfire_save_settings(
 
     settings::save_settings(&app, &settings_value)?;
 
-    if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
+    if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value, false) {
         let _ = settings::save_settings(&app, &previous_settings);
-        let _ = restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings);
+        let _ = restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings, true);
         let mut inner = state.lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());

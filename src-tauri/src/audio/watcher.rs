@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use tokio::sync::Mutex;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::audio::types::AudioSettings;
@@ -24,7 +24,8 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
 
     let mut cancel_map = WATCHER_CANCEL_MAP
         .get_or_init(|| Mutex::new(HashMap::new()))
-        .blocking_lock();
+        .lock()
+        .map_err(|_| "音频监听状态已损坏".to_string())?;
 
     // 先取消所有现有 watcher
     for (_, cancel) in cancel_map.drain() {
@@ -60,7 +61,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
 
         cancel_map.insert(card_id.clone(), cancel);
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             run_region_watcher(
                 app_clone,
                 card_id,
@@ -84,7 +85,8 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
 pub fn stop_all_watchers(_app: &AppHandle) -> Result<(), String> {
     let mut cancel_map = WATCHER_CANCEL_MAP
         .get_or_init(|| Mutex::new(HashMap::new()))
-        .blocking_lock();
+        .lock()
+        .map_err(|_| "音频监听状态已损坏".to_string())?;
     for (_, cancel) in cancel_map.drain() {
         cancel.store(true, Ordering::SeqCst);
     }
@@ -176,32 +178,44 @@ fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::Dyn
         use crate::morse::recognition::region_to_capture_bounds;
 
         let monitors = Monitor::all().ok()?;
-        let primary = monitors.first()?;
+        for monitor in monitors {
+            let (Ok(monitor_left), Ok(monitor_top), Ok(monitor_width), Ok(monitor_height)) = (
+                monitor.x(),
+                monitor.y(),
+                monitor.width(),
+                monitor.height(),
+            ) else {
+                continue;
+            };
+            let scale_factor = monitor.scale_factor().unwrap_or(1.0);
 
-        let monitor_left = primary.x().ok()?;
-        let monitor_top = primary.y().ok()?;
-        let monitor_width = primary.width().ok()?;
-        let monitor_height = primary.height().ok()?;
-        let scale_factor = primary.scale_factor().unwrap_or(1.0);
+            let Some((x, y, width, height)) = region_to_capture_bounds(
+                region,
+                monitor_left,
+                monitor_top,
+                monitor_width,
+                monitor_height,
+                scale_factor,
+            ) else {
+                continue;
+            };
 
-        let (x, y, width, height) = region_to_capture_bounds(
-            region,
-            monitor_left,
-            monitor_top,
-            monitor_width,
-            monitor_height,
-            scale_factor,
-        )?;
+            let Ok(capture) = monitor.capture_region(x, y, width, height) else {
+                continue;
+            };
 
-        let capture = primary.capture_region(x, y, width, height).ok()?;
+            let Some(rgba) = image::RgbaImage::from_raw(
+                capture.width() as u32,
+                capture.height() as u32,
+                capture.into_raw(),
+            ) else {
+                continue;
+            };
 
-        let rgba = image::RgbaImage::from_raw(
-            capture.width() as u32,
-            capture.height() as u32,
-            capture.into_raw(),
-        )?;
+            return Some(image::DynamicImage::ImageRgba8(rgba));
+        }
 
-        Some(image::DynamicImage::ImageRgba8(rgba))
+        None
     }
 
     #[cfg(not(target_os = "windows"))]

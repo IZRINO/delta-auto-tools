@@ -15,6 +15,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
+use std::sync::mpsc;
 
 /// 被抑制的键盘事件，从 KeySuppressor 转发给热键监听线程
 #[derive(Debug, Clone)]
@@ -47,13 +48,28 @@ impl KeySuppressor {
         let worker_suppressed = Arc::clone(&suppressed_keys);
         let worker_stopped = Arc::clone(&stopped);
         let worker_tx = tx.clone();
+        let (install_tx, install_rx) = mpsc::channel();
 
         let worker = thread::Builder::new()
             .name("key-suppressor".to_string())
             .spawn(move || {
-                run_suppressor_hook(worker_suppressed, worker_stopped, worker_tx);
+                run_suppressor_hook(worker_suppressed, worker_stopped, worker_tx, install_tx);
             })
             .map_err(|e| format!("启动按键抑制线程失败: {e}"))?;
+
+        match install_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                stopped.store(true, Ordering::SeqCst);
+                let _ = worker.join();
+                return Err(error);
+            }
+            Err(_) => {
+                stopped.store(true, Ordering::SeqCst);
+                let _ = worker.join();
+                return Err("按键抑制钩子安装超时".to_string());
+            }
+        }
 
         Ok((
             Self {
@@ -356,8 +372,10 @@ fn run_suppressor_hook(
     suppressed_keys: Arc<Mutex<HashSet<u32>>>,
     stopped: Arc<AtomicBool>,
     event_sender: Sender<SuppressedKeyboardEvent>,
+    install_sender: mpsc::Sender<Result<(), String>>,
 ) {
     use std::ptr;
+    use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, PeekMessageW, MSG, SetWindowsHookExW, UnhookWindowsHookEx,
         WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP, PM_REMOVE,
@@ -432,8 +450,13 @@ fn run_suppressor_hook(
     let hook_handle = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL as i32, Some(hook_callback), ptr::null_mut(), 0) };
 
     if hook_handle.is_null() {
+        let error_code = unsafe { GetLastError() };
+        let _ = install_sender.send(Err(format!(
+            "安装按键抑制钩子失败，系统错误码: {error_code}"
+        )));
         return;
     }
+    let _ = install_sender.send(Ok(()));
 
     // 消息循环：使用 PeekMessageW + 睡眠，避免 GetMessageW 永久阻塞导致线程无法退出
     let mut msg: MSG = unsafe { std::mem::zeroed() };
@@ -463,6 +486,30 @@ fn run_suppressor_hook(
     _suppressed_keys: Arc<Mutex<HashSet<u32>>>,
     _stopped: Arc<AtomicBool>,
     _event_sender: Sender<SuppressedKeyboardEvent>,
+    install_sender: mpsc::Sender<Result<(), String>>,
 ) {
+    let _ = install_sender.send(Err("当前仅 Windows 支持按键抑制".to_string()));
     // 非 Windows 平台不做任何操作
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    use willhook::event::KeyboardKey;
+
+    #[test]
+    fn keyboard_key_vk_roundtrip_supports_common_keys() {
+        let cases = [
+            (KeyboardKey::A, 0x41),
+            (KeyboardKey::Number1, 0x31),
+            (KeyboardKey::F1, 0x70),
+            (KeyboardKey::Space, 0x20),
+            (KeyboardKey::Other(0xBD), 0xBD),
+        ];
+
+        for (key, vk) in cases {
+            assert_eq!(keyboard_key_to_vk(&key), Some(vk));
+            assert_eq!(keyboard_key_to_vk(&vk_to_keyboard_key(vk)), Some(vk));
+        }
+    }
 }

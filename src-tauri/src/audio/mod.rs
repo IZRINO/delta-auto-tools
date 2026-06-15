@@ -129,6 +129,7 @@ pub async fn audio_begin_region_selection(
     if !card.enabled {
         return Err(AppError::from("卡片未启用".to_string()));
     }
+    drop(inner);
 
     // 创建 overlay 窗口
     let overlay_url = format!(
@@ -140,8 +141,9 @@ pub async fn audio_begin_region_selection(
     let mut active_labels = std::collections::HashSet::new();
     active_labels.insert(label.clone());
     destroy_stale_windows(&app, AUDIO_OVERLAY_LABEL, &active_labels);
+    destroy_window(&app, &label);
 
-    let _window = tauri::WebviewWindowBuilder::new(
+    tauri::WebviewWindowBuilder::new(
         &app,
         &label,
         tauri::WebviewUrl::App(overlay_url.parse().unwrap()),
@@ -149,10 +151,15 @@ pub async fn audio_begin_region_selection(
     .title("音频区域选择")
     .decorations(false)
     .transparent(true)
+    .shadow(false)
     .always_on_top(true)
     .skip_taskbar(true)
+    .focused(true)
+    .visible(true)
+    .resizable(false)
     .fullscreen(true)
-    .build();
+    .build()
+    .map_err(|error| AppError::from(format!("创建音频区域选择窗口失败: {error}")))?;
 
     Ok(())
 }
@@ -169,13 +176,17 @@ pub async fn audio_overlay_submit_selection(
     destroy_window(&app, &overlay_label);
 
     // 更新卡片区域
-    let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    if let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) {
+    let (settings_snapshot, bootstrap) = {
+        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
+            return Err(AppError::from("卡片不存在".to_string()));
+        };
         card.watch_region = Some(region);
-    }
-    settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
+        settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
+        (inner.settings.clone(), AudioLogic::build_bootstrap(&inner))
+    };
 
-    let bootstrap = AudioLogic::build_bootstrap(&inner);
+    watcher::restart_watchers(&app, &settings_snapshot).map_err(AppError::from)?;
     AudioLogic::emit_state(&app, &bootstrap);
     Ok(())
 }
@@ -239,9 +250,9 @@ fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSett
                 let action: crate::hotkey_types::HotkeyAction =
                     Arc::new(move |app: tauri::AppHandle| {
                         let card_id = card_id.clone();
-                        tokio::spawn(async move {
-                            let _ = trigger_audio_play(&app, &card_id);
-                        });
+                        if let Err(error) = trigger_audio_play(&app, &card_id) {
+                            let _ = app.emit_to("main", HOTKEY_ERROR, error);
+                        }
                     });
                 (key.clone(), action)
             })

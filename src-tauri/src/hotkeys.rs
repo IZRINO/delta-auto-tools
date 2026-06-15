@@ -402,6 +402,23 @@ fn keyboard_event_to_vk(event: &KeyboardEvent) -> Option<u32> {
 }
 
 #[cfg(target_os = "windows")]
+fn is_event_suppressed(
+    event: &KeyboardEvent,
+    suppressed_vk_set: Option<&Arc<Mutex<std::collections::HashSet<u32>>>>,
+) -> bool {
+    suppressed_vk_set
+        .and_then(|vk_set| {
+            keyboard_event_to_vk(event).map(|vk| {
+                vk_set
+                    .lock()
+                    .map(|set| set.contains(&vk))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
 fn run_listener(
     app: AppHandle,
     hook: Hook,
@@ -424,41 +441,30 @@ fn run_listener(
                     .try_state::<GlobalState>()
                     .map(|state| state.enabled())
                     .unwrap_or(true);
-                if !global_enabled {
-                    continue;
-                }
 
                 // 消除双重事件分发：如果该键正在被 KeySuppressor 抑制，
                 // willhook 收到的是 KeySuppressor 钩子链传递过来的原始事件，
                 // 但 KeySuppressor 已吞噬该事件并转发到 suppressed_rx。
                 // 为避免同一事件被处理两次，跳过 willhook 对被抑制键的事件。
-                if let Some(ref vk_set) = suppressed_vk_set {
-                    if let Some(vk) = keyboard_event_to_vk(&event) {
-                        let is_suppressed = vk_set
-                            .lock()
-                            .map(|set| set.contains(&vk))
-                            .unwrap_or(false);
-                        if is_suppressed {
-                            continue;
-                        }
+                let is_suppressed = is_event_suppressed(&event, suppressed_vk_set.as_ref());
+
+                if global_enabled && !is_suppressed {
+                    let hold_actions = hold_actions_for_event(
+                        &hold_registrations,
+                        event,
+                        &mut active_hold_keys,
+                        &mut active_hold_modifiers,
+                    );
+                    for (action, hold_action) in hold_actions {
+                        action(app.clone(), hold_action);
                     }
-                }
 
-                let hold_actions = hold_actions_for_event(
-                    &hold_registrations,
-                    event,
-                    &mut active_hold_keys,
-                    &mut active_hold_modifiers,
-                );
-                for (action, hold_action) in hold_actions {
-                    action(app.clone(), hold_action);
-                }
+                    if let Some(key_state) = matcher.handle_event(event) {
+                        let actions = actions_for_key_state(&registrations, &key_state);
 
-                if let Some(key_state) = matcher.handle_event(event) {
-                    let actions = actions_for_key_state(&registrations, &key_state);
-
-                    for action in actions {
-                        action(app.clone());
+                        for action in actions {
+                            action(app.clone());
+                        }
                     }
                 }
             }
@@ -1066,6 +1072,20 @@ mod tests {
         assert!(Arc::ptr_eq(&hold_actions[0].0, &rapidfire_action));
         assert_eq!(normal_actions.len(), 1);
         assert!(Arc::ptr_eq(&normal_actions[0], &timer_action));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn suppressed_willhook_event_is_detected_without_consuming_loop() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let suppressed = Arc::new(Mutex::new(HashSet::from([0x70])));
+        let event = keyboard_event(KeyboardKey::F1, KeyPress::Down(IsSystemKeyPress::Normal));
+        let other_event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
+
+        assert!(is_event_suppressed(&event, Some(&suppressed)));
+        assert!(!is_event_suppressed(&other_event, Some(&suppressed)));
+        assert!(!is_event_suppressed(&event, None));
     }
 
     #[test]

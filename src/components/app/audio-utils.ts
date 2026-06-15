@@ -96,6 +96,24 @@ export function createEmptyAudioCard(): AudioCard {
   };
 }
 
+export function mergeAudioWatchRegionsIntoForm(
+  current: AudioSettingsForm | null,
+  settings: AudioSettings,
+): AudioSettingsForm {
+  const nextForm = settingsToForm(settings);
+  if (!current) {
+    return nextForm;
+  }
+  const byId = new Map(nextForm.cards.map((card) => [card.id, card]));
+  return {
+    ...current,
+    cards: current.cards.map((card) => {
+      const remote = byId.get(card.id);
+      return remote ? { ...card, watchRegion: remote.watchRegion } : card;
+    }),
+  };
+}
+
 export function getAudioCardFormErrors(form: AudioCardForm): Record<string, string | null> {
   const errors: Record<string, string | null> = {};
 

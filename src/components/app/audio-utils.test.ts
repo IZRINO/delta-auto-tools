@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createEmptyAudioCard,
   generateCardId,
+  mergeAudioWatchRegionsIntoForm,
   parseSettingsForm,
   settingsToForm,
 } from "@/components/app/audio-utils";
@@ -134,6 +135,47 @@ describe("audio-utils", () => {
       expect(card.name).toBe("");
       expect(card.volume).toBe(0.8);
       expect(card.id).toMatch(/^audio-/);
+    });
+  });
+
+  describe("mergeAudioWatchRegionsIntoForm", () => {
+    it("merges backend watchRegion without overwriting local edits", () => {
+      const current = {
+        audioEnabled: true,
+        cards: [
+          {
+            id: "c1",
+            name: "本地未保存名称",
+            enabled: true,
+            triggerMode: "regionWatch" as const,
+            hotkey: "",
+            watchRegion: null,
+            watchReferenceImagePath: "local.png",
+            watchMatchThreshold: "0.9",
+            watchPollIntervalMs: "500",
+            audioFilePath: "local.mp3",
+            volume: "0.8",
+            cooldownMs: "1000",
+          },
+        ],
+      };
+      const merged = mergeAudioWatchRegionsIntoForm(current, {
+        audioEnabled: true,
+        cards: [
+          {
+            ...DEFAULT_AUDIO_CARD,
+            id: "c1",
+            name: "后端名称",
+            triggerMode: "regionWatch",
+            watchRegion: { x: 10, y: 20, width: 30, height: 40 },
+            audioFilePath: "remote.mp3",
+          },
+        ],
+      });
+
+      expect(merged.cards[0].name).toBe("本地未保存名称");
+      expect(merged.cards[0].audioFilePath).toBe("local.mp3");
+      expect(merged.cards[0].watchRegion).toEqual({ x: 10, y: 20, width: 30, height: 40 });
     });
   });
 });

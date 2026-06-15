@@ -30,7 +30,7 @@ import {
 } from "@/components/app/app-ui";
 import type { AudioBootstrap, AudioCard, AudioSettings, AudioSettingsForm } from "@/components/app/audio-types";
 import { AUDIO_AUTOSAVE_DELAY_MS } from "@/components/app/audio-types";
-import { createEmptyAudioCard, parseSettingsForm, settingsToForm } from "@/components/app/audio-utils";
+import { createEmptyAudioCard, mergeAudioWatchRegionsIntoForm, parseSettingsForm, settingsToForm } from "@/components/app/audio-utils";
 import { getErrorMessage, getSelectionRect } from "@/components/app/morse-utils";
 import type { Point } from "@/components/app/morse-types";
 import { MIN_SELECTION_WIDTH, MIN_SELECTION_HEIGHT } from "@/components/app/morse-types";
@@ -54,14 +54,16 @@ function AudioWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
   const {
     form,
     setForm,
+    setBootstrap,
     isDirty,
     updateForm,
     saveSettings,
-    syncBootstrap,
     loading,
     saving,
     pageError,
+    setPageError,
     statusMessage,
+    setStatusMessage,
     autosaveVersionRef,
   } = useBootstrapForm<AudioBootstrap, AudioSettings, AudioSettingsForm>({
     spec: AUDIO_BOOTSTRAP_SPEC,
@@ -84,13 +86,35 @@ function AudioWorkbench({ isNativeShell }: { isNativeShell: boolean }) {
 
   useEffect(() => {
     if (!isNativeShell) return;
-    const unlisten = listenEvent(AUDIO_EVENTS.stateChanged, () => {
-      void syncBootstrap({ syncForm: false });
+    let disposed = false;
+    let unlistenStateChanged: (() => void) | undefined;
+    let unlistenHotkeyError: (() => void) | undefined;
+
+    void listenEvent(AUDIO_EVENTS.stateChanged, (event) => {
+      if (disposed) return;
+      const next = event.payload;
+      setBootstrap(next);
+      setForm((current) => mergeAudioWatchRegionsIntoForm(current, next.settings));
+      setPageError(null);
+    }).then((dispose) => {
+      unlistenStateChanged = dispose;
     });
+
+    void listenEvent(AUDIO_EVENTS.hotkeyError, (event) => {
+      if (disposed) return;
+      setPageError(event.payload);
+      setStatusMessage(event.payload);
+      toast.error(event.payload);
+    }).then((dispose) => {
+      unlistenHotkeyError = dispose;
+    });
+
     return () => {
-      void unlisten.then((f) => f());
+      disposed = true;
+      unlistenStateChanged?.();
+      unlistenHotkeyError?.();
     };
-  }, [isNativeShell, syncBootstrap]);
+  }, [isNativeShell, setBootstrap, setForm, setPageError, setStatusMessage]);
 
   const handleAddCard = useCallback(() => {
     setForm((current) => {
