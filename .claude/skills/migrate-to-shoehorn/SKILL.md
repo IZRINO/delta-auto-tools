@@ -7,7 +7,8 @@ description: Migrate test files from `as` type assertions to @total-typescript/s
 
 ## Why shoehorn?
 
-`shoehorn` lets you pass partial data in tests while keeping TypeScript happy. It replaces `as` assertions with type-safe alternatives.
+`shoehorn` lets you pass partial data in tests while keeping TypeScript happy. It replaces `as` assertions with
+type-safe alternatives.
 
 **Test code only.** Never use shoehorn in production code.
 
@@ -97,7 +98,7 @@ getUser(fromAny({ body: { id: 123 } }));
 ## When to use each
 
 | Function        | Use case                                           |
-| --------------- | -------------------------------------------------- |
+|-----------------|----------------------------------------------------|
 | `fromPartial()` | Pass partial data that still type-checks           |
 | `fromAny()`     | Pass intentionally wrong data (keeps autocomplete) |
 | `fromExact()`   | Force full object (swap with fromPartial later)    |
@@ -105,14 +106,14 @@ getUser(fromAny({ body: { id: 123 } }));
 ## Workflow
 
 1. **Gather requirements** - ask user:
-   - What test files have `as` assertions causing problems?
-   - Are they dealing with large objects where only some properties matter?
-   - Do they need to pass intentionally wrong data for error testing?
+    - What test files have `as` assertions causing problems?
+    - Are they dealing with large objects where only some properties matter?
+    - Do they need to pass intentionally wrong data for error testing?
 
 2. **Install and migrate**:
-   - [ ] Install: `npm i @total-typescript/shoehorn`
-   - [ ] Find test files with `as` assertions: `grep -r " as [A-Z]" --include="*.test.ts" --include="*.spec.ts"`
-   - [ ] Replace `as Type` with `fromPartial()`
-   - [ ] Replace `as unknown as Type` with `fromAny()`
-   - [ ] Add imports from `@total-typescript/shoehorn`
-   - [ ] Run type check to verify
+    - [ ] Install: `npm i @total-typescript/shoehorn`
+    - [ ] Find test files with `as` assertions: `grep -r " as [A-Z]" --include="*.test.ts" --include="*.spec.ts"`
+    - [ ] Replace `as Type` with `fromPartial()`
+    - [ ] Replace `as unknown as Type` with `fromAny()`
+    - [ ] Add imports from `@total-typescript/shoehorn`
+    - [ ] Run type check to verify

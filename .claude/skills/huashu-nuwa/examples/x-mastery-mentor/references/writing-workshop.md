@@ -9,6 +9,7 @@
 **适用场景**：验证想法、日常互动、观点输出
 
 **格式选择**：
+
 - 观点陈述：一个鲜明立场（「大多数人X做错了...」）
 - 金句：可截图传播的一句话
 - 提问：引发回复（记住Reply=27x Like）
@@ -21,21 +22,27 @@
 ## Hook改进示例（Before → After）
 
 **示例1：AI工具推广**
+
 - Before: `I tested 5 AI coding tools. Here's what I found.`
 - 问题：无好奇缺口、无可信度锚点、无具体收益
-- After: `I mass-tested 5 AI coding tools on the same project (a full-stack app in 48 hours). One saved me 12 hours. The others were useless. A thread:`
+- After:
+  `I mass-tested 5 AI coding tools on the same project (a full-stack app in 48 hours). One saved me 12 hours. The others were useless. A thread:`
 - 改了什么：加了具体场景(full-stack app)、时间锚点(48h)、悬念(哪个？)、可信度(实测数据)
 
 **示例2：Build in Public**
+
 - Before: `Just launched my new app. Check it out!`
 - 问题：零好奇缺口、自说自话、没回答「为什么我要看」
-- After: `I built an iOS app with zero coding experience using only AI tools. It hit #1 Paid on the App Store in 3 days. Here's exactly how (and what almost killed it):`
+- After:
+  `I built an iOS app with zero coding experience using only AI tools. It hit #1 Paid on the App Store in 3 days. Here's exactly how (and what almost killed it):`
 - 改了什么：加了身份反差(零经验)、结果锚点(#1 Paid)、时间框架(3天)、悬念(almost killed it)
 
 **示例3：争议观点**
+
 - Before: `AI coding tools are overrated.`
 - 问题：观点太模糊、没有stake in the ground
-- After: `Unpopular opinion: 90% of "AI coding tools" reviews on X are from people who never shipped a real product. I've shipped 3 apps. Here's what actually works vs what's just demo-ware:`
+- After:
+  `Unpopular opinion: 90% of "AI coding tools" reviews on X are from people who never shipped a real product. I've shipped 3 apps. Here's what actually works vs what's just demo-ware:`
 - 改了什么：加了具体数据(90%)、可信度(shipped 3 apps)、对立面(demo-ware)、承诺交付(what works)
 
 ---
@@ -48,26 +55,31 @@
 必须回答：给谁看？讲什么？为什么信你？能得到什么？
 
 Hook公式：
+
 - 可信度元素（「我研究了1000个...」「作为X年的Y...」）
 - 场景锚点（「In 2024...」「上周...」）
 - 核心收益（「How to...」「Why...」）
 - 具体交付（「10 bullets on...」「A thread:」）
 
 **2. Main Points（正文）**
+
 - 每条tweet第一句当小标题
 - 1/3/1节奏
 - 每条能独立成文
 - Sweet spot: 8-12条
 
 **3. TL;DR**
+
 - 先写TL;DR当大纲
 - 只列要点标题
 
 **4. CTA（行动召唤）**
+
 - 总结核心收获
 - 明确下一步（Follow/Bookmark/Newsletter）
 
 **Cole的7种模板**：
+
 1. **Framework**：To solve X, I do Y, To achieve Z
 2. **Story**：先给结局→再给开头→读者为找「中间」读完
 3. **Actionable**：清单式可执行建议
@@ -104,5 +116,6 @@ Hook公式：
 **Step 4: 选3个最让你兴奋的，开写**
 
 **Bush的大小问题策略**：
+
 - 大问题（how to be happier）= 大受众但浅 → 拉新
 - 小问题（how to grow podcast from 2K to 10K）= 小受众但深 → 留人

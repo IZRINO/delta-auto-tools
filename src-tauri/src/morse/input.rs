@@ -25,8 +25,8 @@ pub async fn type_result(value: &str, delay_ms: u64) -> Result<(), String> {
 
         Ok(())
     })
-    .await
-    .map_err(|error| format!("自动输入任务执行失败: {error}"))?
+        .await
+        .map_err(|error| format!("自动输入任务执行失败: {error}"))?
 }
 
 pub async fn press_hotkey_once(hotkey: &str) -> Result<(), String> {
@@ -59,8 +59,8 @@ pub async fn press_hotkey_once(hotkey: &str) -> Result<(), String> {
 
         click_result
     })
-    .await
-    .map_err(|error| format!("点击完成后按键任务执行失败: {error}"))?
+        .await
+        .map_err(|error| format!("点击完成后按键任务执行失败: {error}"))?
 }
 
 /// 按顺序点击已配置的点击区域，每个区域使用独立的延迟
@@ -96,8 +96,8 @@ pub async fn click_regions(regions: &[ClickRegion]) -> Result<(), String> {
 
         Ok(())
     })
-    .await
-    .map_err(|error| format!("自动点击任务执行失败: {error}"))?
+        .await
+        .map_err(|error| format!("自动点击任务执行失败: {error}"))?
 }
 
 fn ordered_modifiers(binding: &HotkeyBinding) -> Vec<ModifierKey> {
@@ -107,9 +107,9 @@ fn ordered_modifiers(binding: &HotkeyBinding) -> Vec<ModifierKey> {
         ModifierKey::Shift,
         ModifierKey::Super,
     ]
-    .into_iter()
-    .filter(|modifier| binding.modifiers.contains(modifier))
-    .collect()
+        .into_iter()
+        .filter(|modifier| binding.modifiers.contains(modifier))
+        .collect()
 }
 
 fn modifier_to_key(modifier: ModifierKey) -> Key {

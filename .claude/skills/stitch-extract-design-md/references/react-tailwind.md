@@ -90,14 +90,14 @@ The `variable` names hint at usage: `--font-display` for headlines,
 
 Don't read every component. Focus on these archetypes:
 
-| Component Type | What to Extract |
-|:---|:---|
-| Layout / Shell | Max-width, padding, grid structure |
-| Button / CTA | Border radius, colors, hover states, padding |
-| Card | Shadow, border, radius, internal spacing |
-| Nav / Header | Typography treatment, active states |
-| Form / Input | Border, focus state, padding |
-| Hero / Landing section | Spacing, typography scale, alignment |
+| Component Type         | What to Extract                              |
+|:-----------------------|:---------------------------------------------|
+| Layout / Shell         | Max-width, padding, grid structure           |
+| Button / CTA           | Border radius, colors, hover states, padding |
+| Card                   | Shadow, border, radius, internal spacing     |
+| Nav / Header           | Typography treatment, active states          |
+| Form / Input           | Border, focus state, padding                 |
+| Hero / Landing section | Spacing, typography scale, alignment         |
 
 For each, look at the `className` prop for Tailwind classes or the
 `styled()` / `css()` calls for CSS-in-JS values.

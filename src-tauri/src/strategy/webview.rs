@@ -4,8 +4,8 @@
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use url::Url;
 
-use crate::app_error::AppError;
 use super::types::{StrategyOpenWindowRequest, StrategyOpenWindowResponse};
+use crate::app_error::AppError;
 
 /// 默认单站窗口尺寸（足够阅读攻略页内容）。
 const DEFAULT_INNER_WIDTH: f64 = 1024.0;

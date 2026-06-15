@@ -14,7 +14,8 @@ Enhance my prompt "make me a login page" for better Stitch generation results.
 
 ## Skill Structure
 
-This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, workflow, and reference materials.
+This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, workflow,
+and reference materials.
 
 ```text
 enhance-prompt/

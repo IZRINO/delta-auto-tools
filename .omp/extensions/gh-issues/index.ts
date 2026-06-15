@@ -1,10 +1,5 @@
-import type {
-    ExecOptions,
-    ExecResult,
-    ExtensionAPI,
-    ExtensionCommandContext,
-} from "@oh-my-pi/pi-coding-agent";
-import { getKeybindings, matchesKey } from "@oh-my-pi/pi-tui";
+import type {ExecOptions, ExecResult, ExtensionAPI, ExtensionCommandContext,} from "@oh-my-pi/pi-coding-agent";
+import {getKeybindings, matchesKey} from "@oh-my-pi/pi-tui";
 
 export interface IssueAuthor {
     login: string;
@@ -47,12 +42,15 @@ interface WatcherStatus {
 
 interface DeferredStop {
     promise: Promise<void>;
+
     resolve(): void;
 }
 
 interface InterruptKeybindings {
     getDefinition(keybinding: string): unknown;
+
     getKeys(keybinding: string): string[];
+
     matches(data: string, keybinding: string): boolean;
 }
 
@@ -165,7 +163,7 @@ class GhIssuesWatcher {
             if (!isInterruptInput(data)) return undefined;
             stopActiveWatcher();
             this.#ctx.ui.notify("[gh-issues] 已通过中断键停止", "info");
-            return { consume: true };
+            return {consume: true};
         });
     }
 
@@ -206,7 +204,7 @@ class GhIssuesWatcher {
         for (const issue of freshIssues) {
             this.#status.seenIssueNumbers.add(issue.number);
         }
-        return { freshIssues };
+        return {freshIssues};
     }
 
     #emitPollResult(result: PollResult): void {
@@ -236,7 +234,7 @@ class GhIssuesWatcher {
                 },
                 attribution: "user",
             },
-            { deliverAs: "nextTurn", triggerTurn: true },
+            {deliverAs: "nextTurn", triggerTurn: true},
         );
         this.#ctx.ui.notify(
             this.#withSchedule(`${result.freshIssues.length} 个新 issue 已自动触发 Agent 执行（带提示词）`),
@@ -354,7 +352,7 @@ function stopActiveWatcher(): boolean {
 }
 
 async function fetchIssues(pi: ExtensionAPI, repo: string, cwd: string, signal: AbortSignal): Promise<Issue[]> {
-    const execOptions: ExecOptions = { cwd, signal };
+    const execOptions: ExecOptions = {cwd, signal};
     const result = await pi.exec(
         "gh",
         [
@@ -422,7 +420,7 @@ function parseIssue(value: unknown): Issue | undefined {
 
 function parseIssueAuthor(value: unknown): IssueAuthor | null {
     if (!isRecord(value) || typeof value.login !== "string") return null;
-    return { login: value.login };
+    return {login: value.login};
 }
 
 function isIssueLabel(value: unknown): value is IssueLabel {
@@ -470,7 +468,7 @@ function tokenizeArgs(input: string): Token[] {
 
 function pushToken(tokens: Token[], text: string, quoted: boolean): void {
     if (text.length === 0) return;
-    tokens.push({ text, quoted });
+    tokens.push({text, quoted});
 }
 
 function formatIssueNotification(issues: readonly Issue[]): string {
@@ -511,7 +509,7 @@ function createDeferredStop(): DeferredStop {
     const promise = new Promise<void>((resolve) => {
         resolveStop = resolve;
     });
-    return { promise, resolve: resolveStop };
+    return {promise, resolve: resolveStop};
 }
 
 function formatTimestamp(date: Date | null): string {

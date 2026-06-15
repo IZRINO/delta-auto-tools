@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 
 use tokio::time::{interval, MissedTickBehavior};
 
-use crate::audio::types::AudioSettings;
-use crate::audio::player;
 use crate::audio::events::REGION_MATCHED;
+use crate::audio::player;
+use crate::audio::types::AudioSettings;
 use tauri::{AppHandle, Emitter};
 
 /// 全局 watcher 状态：卡片 ID -> 取消标记
@@ -74,7 +74,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings) -> Result<(),
                 poll_interval_ms,
                 cancel_clone,
             )
-            .await;
+                .await;
         });
     }
 

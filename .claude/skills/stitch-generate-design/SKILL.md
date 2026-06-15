@@ -288,6 +288,7 @@ Call the `generate_variants` tool with the appropriate options:
 ```
 
 **Variant Options:**
+
 - **`variantCount`**: 1–5 variants (default: 3)
 - **`creativeRange`**: `REFINE` (subtle), `EXPLORE` (balanced), or `REIMAGINE`
   (radical)

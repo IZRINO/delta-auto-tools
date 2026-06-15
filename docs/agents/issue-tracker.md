@@ -6,7 +6,9 @@
 
 - **创建 Issue**：`gh issue create --title "..." --body "..."`。多行正文使用 heredoc。
 - **读取 Issue**：`gh issue view <number> --comments`，可用 `jq` 过滤评论和标签。
-- **列出 Issue**：`gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`，配合 `--label` 和 `--state` 过滤。
+- **列出 Issue**：
+  `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
+  ，配合 `--label` 和 `--state` 过滤。
 - **评论 Issue**：`gh issue comment <number> --body "..."`
 - **添加 / 移除标签**：`gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **关闭 Issue**：`gh issue close <number> --comment "..."`

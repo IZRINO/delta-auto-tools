@@ -21,11 +21,11 @@ comparison must be **baseline → working tree**, not **baseline → HEAD**.
 
 ## The strategy: complete working-tree state vs baseline
 
-| What | How | Captures |
-|------|-----|----------|
-| Tracked changes | `git diff <baseline>` (single revision — **no** `..HEAD`) | committed, staged, unstaged, **and** deleted tracked files |
-| Untracked files | `git ls-files --others --exclude-standard` | brand-new deliverables never `git add`-ed |
-| Invalid/unavailable baseline | filesystem existence (`-e`, `git ls-files`) | `no-git` sentinel, bogus sha, or non-repo dir |
+| What                         | How                                                       | Captures                                                   |
+|------------------------------|-----------------------------------------------------------|------------------------------------------------------------|
+| Tracked changes              | `git diff <baseline>` (single revision — **no** `..HEAD`) | committed, staged, unstaged, **and** deleted tracked files |
+| Untracked files              | `git ls-files --others --exclude-standard`                | brand-new deliverables never `git add`-ed                  |
+| Invalid/unavailable baseline | filesystem existence (`-e`, `git ls-files`)               | `no-git` sentinel, bogus sha, or non-repo dir              |
 
 `git diff <baseline>` (a single revision argument) diffs the **working tree** against the
 baseline commit, so it already folds in staged + unstaged changes *and* any commits made after

@@ -9,8 +9,8 @@ use std::sync::Arc;
 use regex::Regex;
 use reqwest::header;
 
-use crate::app_error::AppError;
 use super::types::{ChallengeInfo, StrategyFetchResponse};
+use crate::app_error::AppError;
 
 /// JS 重定向最大跟随层数。
 const MAX_REDIRECT_DEPTH: u32 = 3;

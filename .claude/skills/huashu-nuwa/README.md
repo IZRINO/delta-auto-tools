@@ -97,7 +97,8 @@ Naval     ❯ 你列了三个欲望。每个欲望都是你跟不快乐签的一
             自己吃饭。金融这碗饭，不是谁都端得起的。
 ```
 
-这不是角色扮演。乔布斯用的是「聚焦即说不」和「端到端控制」心智模型，Naval用的是「欲望即合同」，马斯克用的是「渐近极限法」，张雪峰用的是「ROI教育观」和「阶层流动现实主义」。**它们不是在复读名人语录，是在用名人的认知框架帮你分析。**
+这不是角色扮演。乔布斯用的是「聚焦即说不」和「端到端控制」心智模型，Naval用的是「欲望即合同」，马斯克用的是「渐近极限法」，张雪峰用的是「ROI教育观」和「阶层流动现实主义」。
+**它们不是在复读名人语录，是在用名人的认知框架帮你分析。**
 
 ---
 
@@ -129,13 +130,13 @@ npx skills add alchaincyf/nuwa-skill
 
 蒸馏各领域最强的人，需要提取比日常工作习惯更深的东西。女娲提取五层：
 
-| 层次 | 说明 |
-|---|---|
+| 层次       | 说明                |
+|----------|-------------------|
 | **怎么说话** | 表达DNA——语气、节奏、用词偏好 |
-| **怎么想** | 心智模型、认知框架 |
-| **怎么判断** | 决策启发式 |
-| **什么不做** | 反模式、价值观底线 |
-| **知道局限** | 诚实边界 |
+| **怎么想**  | 心智模型、认知框架         |
+| **怎么判断** | 决策启发式             |
+| **什么不做** | 反模式、价值观底线         |
+| **知道局限** | 诚实边界              |
 
 工作习惯可以靠流程文档传递，但让芒格和马斯克面对同一个问题做出不同判断的，是认知框架。女娲提取的是认知操作系统。
 
@@ -157,26 +158,26 @@ npx skills add alchaincyf/nuwa-skill
 
 ### 人物Skill
 
-| 人物 | 领域 | 独立仓库 | 一键安装 |
-|------|------|---------|---------|
-| 🔥 **Paul Graham** | 创业/写作/产品/人生哲学 | [paul-graham-skill](https://github.com/alchaincyf/paul-graham-skill) | `npx skills add alchaincyf/paul-graham-skill` |
-| 🔥 **张一鸣** | 产品/组织/全球化/人才 | [zhang-yiming-skill](https://github.com/alchaincyf/zhang-yiming-skill) | `npx skills add alchaincyf/zhang-yiming-skill` |
-| 🔥 **Karpathy** | AI/工程/教育/开源 | [karpathy-skill](https://github.com/alchaincyf/karpathy-skill) | `npx skills add alchaincyf/karpathy-skill` |
+| 人物                    | 领域                | 独立仓库                                                                       | 一键安装                                             |
+|-----------------------|-------------------|----------------------------------------------------------------------------|--------------------------------------------------|
+| 🔥 **Paul Graham**    | 创业/写作/产品/人生哲学     | [paul-graham-skill](https://github.com/alchaincyf/paul-graham-skill)       | `npx skills add alchaincyf/paul-graham-skill`    |
+| 🔥 **张一鸣**            | 产品/组织/全球化/人才      | [zhang-yiming-skill](https://github.com/alchaincyf/zhang-yiming-skill)     | `npx skills add alchaincyf/zhang-yiming-skill`   |
+| 🔥 **Karpathy**       | AI/工程/教育/开源       | [karpathy-skill](https://github.com/alchaincyf/karpathy-skill)             | `npx skills add alchaincyf/karpathy-skill`       |
 | 🔥 **Ilya Sutskever** | AI安全/scaling/研究品味 | [ilya-sutskever-skill](https://github.com/alchaincyf/ilya-sutskever-skill) | `npx skills add alchaincyf/ilya-sutskever-skill` |
-| 🔥 **MrBeast** | 内容创造/YouTube方法论 | [mrbeast-skill](https://github.com/alchaincyf/mrbeast-skill) | `npx skills add alchaincyf/mrbeast-skill` |
-| 🔥 **特朗普** | 谈判/权力/传播/行为预判 | [trump-skill](https://github.com/alchaincyf/trump-skill) | `npx skills add alchaincyf/trump-skill` |
-| ⭐ **乔布斯** | 产品/设计/战略 | [steve-jobs-skill](https://github.com/alchaincyf/steve-jobs-skill) | `npx skills add alchaincyf/steve-jobs-skill` |
-| **马斯克** | 工程/成本/第一性原理 | [elon-musk-skill](https://github.com/alchaincyf/elon-musk-skill) | `npx skills add alchaincyf/elon-musk-skill` |
-| **芒格** | 投资/多元思维/逆向思考 | [munger-skill](https://github.com/alchaincyf/munger-skill) | `npx skills add alchaincyf/munger-skill` |
-| **费曼** | 学习/教学/科学思维 | [feynman-skill](https://github.com/alchaincyf/feynman-skill) | `npx skills add alchaincyf/feynman-skill` |
-| **纳瓦尔** | 财富/杠杆/人生哲学 | [naval-skill](https://github.com/alchaincyf/naval-skill) | `npx skills add alchaincyf/naval-skill` |
-| **塔勒布** | 风险/反脆弱/不确定性 | [taleb-skill](https://github.com/alchaincyf/taleb-skill) | `npx skills add alchaincyf/taleb-skill` |
-| **张雪峰** | 教育/职业规划/阶层流动 | [zhangxuefeng-skill](https://github.com/alchaincyf/zhangxuefeng-skill) | `npx skills add alchaincyf/zhangxuefeng-skill` |
+| 🔥 **MrBeast**        | 内容创造/YouTube方法论   | [mrbeast-skill](https://github.com/alchaincyf/mrbeast-skill)               | `npx skills add alchaincyf/mrbeast-skill`        |
+| 🔥 **特朗普**            | 谈判/权力/传播/行为预判     | [trump-skill](https://github.com/alchaincyf/trump-skill)                   | `npx skills add alchaincyf/trump-skill`          |
+| ⭐ **乔布斯**             | 产品/设计/战略          | [steve-jobs-skill](https://github.com/alchaincyf/steve-jobs-skill)         | `npx skills add alchaincyf/steve-jobs-skill`     |
+| **马斯克**               | 工程/成本/第一性原理       | [elon-musk-skill](https://github.com/alchaincyf/elon-musk-skill)           | `npx skills add alchaincyf/elon-musk-skill`      |
+| **芒格**                | 投资/多元思维/逆向思考      | [munger-skill](https://github.com/alchaincyf/munger-skill)                 | `npx skills add alchaincyf/munger-skill`         |
+| **费曼**                | 学习/教学/科学思维        | [feynman-skill](https://github.com/alchaincyf/feynman-skill)               | `npx skills add alchaincyf/feynman-skill`        |
+| **纳瓦尔**               | 财富/杠杆/人生哲学        | [naval-skill](https://github.com/alchaincyf/naval-skill)                   | `npx skills add alchaincyf/naval-skill`          |
+| **塔勒布**               | 风险/反脆弱/不确定性       | [taleb-skill](https://github.com/alchaincyf/taleb-skill)                   | `npx skills add alchaincyf/taleb-skill`          |
+| **张雪峰**               | 教育/职业规划/阶层流动      | [zhangxuefeng-skill](https://github.com/alchaincyf/zhangxuefeng-skill)     | `npx skills add alchaincyf/zhangxuefeng-skill`   |
 
 ### 主题Skill
 
-| 主题 | 领域 | 独立仓库 | 一键安装 |
-|------|------|---------|---------|
+| 主题      | 领域            | 独立仓库                                                           | 一键安装                                       |
+|---------|---------------|----------------------------------------------------------------|--------------------------------------------|
 | **X导师** | X/Twitter运营全栈 | [x-mentor-skill](https://github.com/alchaincyf/x-mentor-skill) | `npx skills add alchaincyf/x-mentor-skill` |
 
 人物Skill蒸馏一个人的思维方式；主题Skill蒸馏一个领域的方法论。每个仓库都包含完整的调研数据和效果示例对话。
@@ -197,7 +198,8 @@ npx skills add alchaincyf/nuwa-skill
 
 女娲造Skill，**[达尔文](https://github.com/alchaincyf/darwin-skill)** 让Skill进化。
 
-受 Karpathy autoresearch 启发，达尔文.skill 用自主实验循环批量优化所有Skill：8维度评估、棘轮机制（只保留改进，自动回滚退步）、独立子agent评分。女娲的 Phase 5 双Agent精炼就内置了达尔文的评估体系，这也是女娲生成的Skill质量高的原因之一。
+受 Karpathy autoresearch 启发，达尔文.skill 用自主实验循环批量优化所有Skill：8维度评估、棘轮机制（只保留改进，自动回滚退步）、独立子agent评分。女娲的
+Phase 5 双Agent精炼就内置了达尔文的评估体系，这也是女娲生成的Skill质量高的原因之一。
 
 ```bash
 npx skills add alchaincyf/darwin-skill
@@ -246,13 +248,15 @@ nuwa-skill/
     └── x-mastery-mentor/             # X导师（主题Skill）
 ```
 
-调研过程全透明。每个example都包含完整的调研文件，你可以看到信息怎么被收集、筛选、变成心智模型。乔布斯的示例还附带了一段完整的实战对话记录（聊AI硬件、OpenAI vs Anthropic、Apple破局），展示Skill在多轮深度对话中的表现。
+调研过程全透明。每个example都包含完整的调研文件，你可以看到信息怎么被收集、筛选、变成心智模型。乔布斯的示例还附带了一段完整的实战对话记录（聊AI硬件、OpenAI
+vs Anthropic、Apple破局），展示Skill在多轮深度对话中的表现。
 
 ---
 
 ## 背后的故事
 
-[同事.skill](https://github.com/titanwings/colleague-skill) 最近在GitHub爆火——把离职同事蒸馏成AI Skill，几天破5000星。它证明了一件事：蒸馏一个人是完全可行的。
+[同事.skill](https://github.com/titanwings/colleague-skill) 最近在GitHub爆火——把离职同事蒸馏成AI
+Skill，几天破5000星。它证明了一件事：蒸馏一个人是完全可行的。
 
 既然我们有了蒸馏人的能力，为什么只蒸馏身边的同事？去蒸馏各领域最强的人。而且幸运的是，这些人通常留下了大量可以被蒸馏的材料——著作、演讲、访谈、社交媒体。这是对自己能力的极大补充。
 
@@ -268,14 +272,14 @@ nuwa-skill/
 
 **花叔 Huashu** — AI Native Coder，独立开发者，代表作：小猫补光灯（AppStore 付费榜 Top1）
 
-| 平台 | 链接 |
-|------|------|
-| 🌐 官网 | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
-| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust) |
-| 📺 B站 | [花叔](https://space.bilibili.com/14097567) |
-| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain) |
-| 📕 小红书 | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf) |
-| 💬 公众号 | 微信搜「花叔」或扫码关注 ↓ |
+| 平台         | 链接                                                                        |
+|------------|---------------------------------------------------------------------------|
+| 🌐 官网      | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
+| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust)                                 |
+| 📺 B站      | [花叔](https://space.bilibili.com/14097567)                                 |
+| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain)                              |
+| 📕 小红书     | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf)   |
+| 💬 公众号     | 微信搜「花叔」或扫码关注 ↓                                                            |
 
 <img src="wechat-qrcode.jpg" alt="公众号二维码" width="360">
 
@@ -303,16 +307,21 @@ MIT License © [花叔 Huashu](https://github.com/alchaincyf)
 
 > *"The next person you want to distill doesn't have to be a colleague."*
 
-**[colleague-skill](https://github.com/titanwings/colleague-skill)** proved that distilling a person into an AI skill is viable. **Nuwa** asks: why stop at colleagues? Distill the best minds in every field — Munger, Feynman, Musk, Naval — people who conveniently left mountains of distillable material behind.
+**[colleague-skill](https://github.com/titanwings/colleague-skill)** proved that distilling a person into an AI skill is
+viable. **Nuwa** asks: why stop at colleagues? Distill the best minds in every field — Munger, Feynman, Musk, Naval —
+people who conveniently left mountains of distillable material behind.
 
-Nuwa is a Claude Code skill that extracts cognitive frameworks — mental models, decision heuristics, expression DNA — from any public figure into a runnable perspective skill.
+Nuwa is a Claude Code skill that extracts cognitive frameworks — mental models, decision heuristics, expression DNA —
+from any public figure into a runnable perspective skill.
 
 Not role-playing. Cognitive architecture extraction.
 
 **Install**: `npx skills add alchaincyf/nuwa-skill`
 
-**How it works**: Input a name → 6 parallel research agents → 40+ primary sources → triple-verified mental models → quality-validated SKILL.md
+**How it works**: Input a name → 6 parallel research agents → 40+ primary sources → triple-verified mental models →
+quality-validated SKILL.md
 
-**13 person skills + 1 topic skill included** — all with full research data. The Jobs example includes a complete multi-turn conversation demo.
+**13 person skills + 1 topic skill included** — all with full research data. The Jobs example includes a complete
+multi-turn conversation demo.
 
 See the Chinese README above for live examples and methodology.

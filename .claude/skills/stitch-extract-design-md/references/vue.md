@@ -48,6 +48,7 @@ Vue components bundle template, script, and style together:
 ```
 
 **Key extraction points:**
+
 - `var(--*)` references → trace back to global CSS for the actual values
 - `scoped` styles → component-specific, but reveal consistent patterns
 - BEM naming (`.card__title`) → hints at component hierarchy

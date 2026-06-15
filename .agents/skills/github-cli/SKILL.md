@@ -5,7 +5,8 @@ description: This skill should be used when users need to interact with GitHub v
 
 # GitHub CLI Skill
 
-This skill provides comprehensive guidance for using the GitHub CLI (`gh`) to manage repositories, CI/CD workflows, issues, pull requests, and releases.
+This skill provides comprehensive guidance for using the GitHub CLI (`gh`) to manage repositories, CI/CD workflows,
+issues, pull requests, and releases.
 
 ## Prerequisites
 

@@ -1315,19 +1315,19 @@ fn ensure_overlay_window_for_group(
             format!("index.html?mode=rapidfire-display&groupId={group_query_id}").into(),
         ),
     )
-    .title(format!("连发器透明窗口 - {}", group.name))
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(false)
-    .visible(true)
-    .resizable(false)
-    .inner_size(width as f64, height as f64)
-    .position(pos.0 as f64, pos.1 as f64)
-    .build()
-    .map_err(|error| format!("创建连发器透明窗口失败: {error}"))?;
+        .title(format!("连发器透明窗口 - {}", group.name))
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(true)
+        .resizable(false)
+        .inner_size(width as f64, height as f64)
+        .position(pos.0 as f64, pos.1 as f64)
+        .build()
+        .map_err(|error| format!("创建连发器透明窗口失败: {error}"))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
@@ -1590,19 +1590,19 @@ pub async fn rapidfire_begin_position_selection(
             format!("index.html?mode=rapidfire-position&groupId={group_query_id}").into(),
         ),
     )
-    .title("设置连发器位置")
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(true)
-    .visible(true)
-    .resizable(false)
-    .inner_size(display_width as f64, display_height as f64)
-    .position(position.x as f64, position.y as f64)
-    .build()
-    .map_err(|error| format!("创建连发器位置设置窗口失败: {error}"))?;
+        .title("设置连发器位置")
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true)
+        .visible(true)
+        .resizable(false)
+        .inner_size(display_width as f64, display_height as f64)
+        .position(position.x as f64, position.y as f64)
+        .build()
+        .map_err(|error| format!("创建连发器位置设置窗口失败: {error}"))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {

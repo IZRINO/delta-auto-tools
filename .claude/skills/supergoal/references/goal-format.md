@@ -2,21 +2,34 @@
 
 ## What `/goal` actually is
 
-`/goal <end-state condition>` is a host slash command available in both Claude Code and Codex (Codex CLI). It is **not** a task description. It is a **measurable end-state condition** that a fast evaluator checks against the transcript after each agent turn. The agent keeps working — running tools, editing files — until the condition holds, at which point control returns to the user.
+`/goal <end-state condition>` is a host slash command available in both Claude Code and Codex (Codex CLI). It is **not**
+a task description. It is a **measurable end-state condition** that a fast evaluator checks against the transcript after
+each agent turn. The agent keeps working — running tools, editing files — until the condition holds, at which point
+control returns to the user.
 
 Key implications:
 
-1. **Condition is short.** A long task body in the `/goal` argument is the wrong shape. Long content belongs in files the agent reads from disk.
-2. **The evaluator only sees the transcript.** Conditions must be phrased so the agent's own output can prove them ("X printed", "Y exit code surfaced", "Z file count reported"). The evaluator does not independently run tools or read files.
+1. **Condition is short.** A long task body in the `/goal` argument is the wrong shape. Long content belongs in files
+   the agent reads from disk.
+2. **The evaluator only sees the transcript.** Conditions must be phrased so the agent's own output can prove them ("X
+   printed", "Y exit code surfaced", "Z file count reported"). The evaluator does not independently run tools or read
+   files.
 3. **Host behaviour:**
-   - **Claude Code**: a small fast model (Haiku) checks the condition each turn; "no" → continue with the reason as guidance; "yes" → clear goal, return control.
-   - **Codex**: auto-continuation loop drives the goal to terminal status (complete / budget_limited / paused / cleared). Five subcommands: `/goal <objective>`, `/goal` (status), `/goal pause`, `/goal resume`, `/goal clear`.
+    - **Claude Code**: a small fast model (Haiku) checks the condition each turn; "no" → continue with the reason as
+      guidance; "yes" → clear goal, return control.
+    - **Codex**: auto-continuation loop drives the goal to terminal status (complete / budget_limited / paused /
+      cleared). Five subcommands: `/goal <objective>`, `/goal` (status), `/goal pause`, `/goal resume`, `/goal clear`.
 
 ## Supergoal's single-`/goal` shape
 
-Supergoal uses **one** `/goal` per run, dispatched by the **user** at the end of Stage 7. Slash commands fire only from user input on both Claude Code and Codex — the planner cannot fire `/goal` from its own message text. Stage 7's job is to write all phase specs to disk, then print a copy-paste-ready `/goal` block. The user pastes once; from there, the run is autonomous.
+Supergoal uses **one** `/goal` per run, dispatched by the **user** at the end of Stage 7. Slash commands fire only from
+user input on both Claude Code and Codex — the planner cannot fire `/goal` from its own message text. Stage 7's job is
+to write all phase specs to disk, then print a copy-paste-ready `/goal` block. The user pastes once; from there, the run
+is autonomous.
 
-The condition is (`<run-root>` is this run's namespaced artifact dir, e.g. `.supergoal/add-dark-mode-Ab3Kx9`; the planner substitutes the concrete path before printing the block so the pasted line carries the real directory — never the placeholder):
+The condition is (`<run-root>` is this run's namespaced artifact dir, e.g. `.supergoal/add-dark-mode-Ab3Kx9`; the
+planner substitutes the concrete path before printing the block so the pasted line carries the real directory — never
+the placeholder):
 
 ```
 Execute all phases of <run-root>/ROADMAP.md sequentially.
@@ -36,11 +49,14 @@ SUPERGOAL_RUN_COMPLETE, and no FAILURE_HANDOFF or AUDIT_HANDOFF
 this run.
 ```
 
-This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single `/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the audit is clean.
+This works on both hosts. There is no per-phase `/goal` dispatch and no inter-session chain — once active, a single
+`/goal` session reads PROTOCOL.md, loops through every phase spec, runs the final audit, and only completes when the
+audit is clean.
 
 ## Required transcript blocks (Supergoal-specific)
 
-The phase specs and PROTOCOL.md require the agent to print these named blocks during execution. They are what the human-readable evaluator (you, watching) AND the host evaluator both rely on.
+The phase specs and PROTOCOL.md require the agent to print these named blocks during execution. They are what the
+human-readable evaluator (you, watching) AND the host evaluator both rely on.
 
 ### `SUPERGOAL_PHASE_START` (once per phase, at execution start)
 
@@ -166,7 +182,8 @@ All <N> phases complete. Audit passed in <rounds> round(s).
 Summary: <5 lines max — what shipped, what changed, what to verify manually>
 ```
 
-The first banner is **only** printed when trust-prior is more than 30% of total checks. Below 30%, only the plain `Audit coverage:` line appears — same honesty, no false alarm.
+The first banner is **only** printed when trust-prior is more than 30% of total checks. Below 30%, only the plain
+`Audit coverage:` line appears — same honesty, no false alarm.
 
 ## Failure blocks (used by recovery protocol)
 
@@ -210,6 +227,8 @@ STATE.md updated to BLOCKED. User intervention required.
 ## Anti-patterns
 
 - **Don't stuff long task content into the `/goal` argument.** Use a short condition; put work in files.
-- **Don't make conditions the evaluator can't verify from the transcript.** "Tests pass" is wrong (evaluator can't run tests); "`SUPERGOAL_PHASE_DONE` printed for all phases" is right.
-- **Don't chain `/goal` commands across sessions.** One run = one `/goal`. The agent loops internally inside that session.
+- **Don't make conditions the evaluator can't verify from the transcript.** "Tests pass" is wrong (evaluator can't run
+  tests); "`SUPERGOAL_PHASE_DONE` printed for all phases" is right.
+- **Don't chain `/goal` commands across sessions.** One run = one `/goal`. The agent loops internally inside that
+  session.
 - **Don't skip evidence to save space.** Files have no char budget — be exhaustive.

@@ -54,6 +54,7 @@ $theme: mat.m2-define-light-theme((
 ```
 
 **What to extract:**
+
 - Palette choices → map to functional color roles
 - Typography config → maps directly to the hierarchy section
 - Light vs dark theme → atmosphere
@@ -99,6 +100,7 @@ component styles:
 ## PrimeNG / Nebular / NG-ZORRO
 
 If component libraries are used:
+
 - **PrimeNG**: Theme SCSS in `node_modules/primeng/resources/themes/` —
   look for custom theme or `styles.scss` overrides.
 - **Nebular**: `nb-theme()` in `styles.scss` with custom theme object.
@@ -108,6 +110,7 @@ If component libraries are used:
 ## Responsive Patterns
 
 Check for:
+
 - `@media` queries in `styles.scss` and component styles
 - Angular CDK `BreakpointObserver` usage in components
 - Tailwind responsive prefixes if Tailwind is configured

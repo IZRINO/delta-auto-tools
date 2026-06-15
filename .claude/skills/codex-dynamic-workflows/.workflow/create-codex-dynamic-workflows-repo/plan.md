@@ -2,7 +2,8 @@
 
 ## Goal
 
-Create a public, installable `codex-dynamic-workflows` repository in `/Users/oldwinter` that faithfully adapts the fan-out/fan-in workflow ideas from `Michaelliv/pi-dynamic-workflows` into a Codex skill package.
+Create a public, installable `codex-dynamic-workflows` repository in `/Users/oldwinter` that faithfully adapts the
+fan-out/fan-in workflow ideas from `Michaelliv/pi-dynamic-workflows` into a Codex skill package.
 
 ## Success Criteria
 
@@ -33,7 +34,8 @@ Create a public, installable `codex-dynamic-workflows` repository in `/Users/old
 
 ## Approval Required
 
-User explicitly requested public GitHub upload and local install attempt. No additional approval needed for those scoped external actions.
+User explicitly requested public GitHub upload and local install attempt. No additional approval needed for those scoped
+external actions.
 
 ## Work Packets
 

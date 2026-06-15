@@ -28,13 +28,13 @@ Non-blocking decisions recorded here so we can proceed without round-trips. If a
 
 ## Phase map
 
-| # | Phase | Depends on | Deliverable |
-|---|-------|------------|-------------|
-| 1 | {{P1_NAME}} | — | {{P1_DELIVERABLE}} |
-| 2 | {{P2_NAME}} | 1 | {{P2_DELIVERABLE}} |
-| 3 | {{P3_NAME}} | 1, 2 | {{P3_DELIVERABLE}} |
-| ... | ... | ... | ... |
-| N | Polish & Harden | 1..N-1 | Every aspect is verified |
+| #   | Phase           | Depends on | Deliverable              |
+|-----|-----------------|------------|--------------------------|
+| 1   | {{P1_NAME}}     | —          | {{P1_DELIVERABLE}}       |
+| 2   | {{P2_NAME}}     | 1          | {{P2_DELIVERABLE}}       |
+| 3   | {{P3_NAME}}     | 1, 2       | {{P3_DELIVERABLE}}       |
+| ... | ...             | ...        | ...                      |
+| N   | Polish & Harden | 1..N-1     | Every aspect is verified |
 
 ---
 
@@ -43,19 +43,23 @@ Non-blocking decisions recorded here so we can proceed without round-trips. If a
 **Why:** {{P1_WHY}}
 
 **Deliverables:**
+
 - {{P1_FILE_OR_FEATURE_1}}
 - {{P1_FILE_OR_FEATURE_2}}
 
 **Acceptance criteria:**
+
 - [ ] {{CRIT_1}}
 - [ ] {{CRIT_2}}
 - [ ] {{CRIT_3}}
 
 **Mandatory commands:**
+
 - `{{CMD_1}}`
 - `{{CMD_2}}`
 
 **Evidence required:**
+
 - {{EVIDENCE_1}}
 - {{EVIDENCE_2}}
 
@@ -75,7 +79,8 @@ Non-blocking decisions recorded here so we can proceed without round-trips. If a
 
 ## Phase N — Polish & Harden
 
-**Why:** Catch what earlier phases missed because they were focused on shipping behavior. This is how "every aspect is perfect" gets enforced.
+**Why:** Catch what earlier phases missed because they were focused on shipping behavior. This is how "every aspect is
+perfect" gets enforced.
 
 **Sub-passes (each must produce evidence):**
 
@@ -89,10 +94,12 @@ Non-blocking decisions recorded here so we can proceed without round-trips. If a
 - [ ] **Regression sweep** — full test suite + manual check of one adjacent feature
 
 **Mandatory commands:**
+
 - All build/test/lint commands from earlier phases
 - Whatever stack-specific perf/security checks apply
 
 **Evidence required:**
+
 - One paragraph per sub-pass with what was checked and what was found/fixed
 - Final `git diff --stat` summary
 - Final test summary

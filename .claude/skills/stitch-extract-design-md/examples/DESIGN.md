@@ -158,11 +158,11 @@ trail data.
 Depth is conveyed through **Glassmorphism** and backdrop filters rather than
 traditional heavy shadows. Surfaces use a hierarchy of transparency:
 
-1.  **Base Layer:** Solid 'Powder White' or 'Deep Peak Blue'.
-2.  **Middle Layer (Cards/Modals):** 70% opacity white with a 20px backdrop blur
-    and a thin 1px 'Ice' border (white at 40% opacity).
-3.  **Top Layer (Floating Actions):** 90% opacity with a subtle 4px ambient
-    shadow to separate the element from the blurred background.
+1. **Base Layer:** Solid 'Powder White' or 'Deep Peak Blue'.
+2. **Middle Layer (Cards/Modals):** 70% opacity white with a 20px backdrop blur
+   and a thin 1px 'Ice' border (white at 40% opacity).
+3. **Top Layer (Floating Actions):** 90% opacity with a subtle 4px ambient
+   shadow to separate the element from the blurred background.
 
 This creates a "stacked ice" effect that maintains visual clarity while giving
 the UI a premium, modern feel.

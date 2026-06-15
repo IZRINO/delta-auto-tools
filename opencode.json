@@ -11,12 +11,27 @@
   },
   "lsp": {
     "typescript": {
-      "command": ["bunx", "typescript-language-server", "--stdio"],
-      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+      "command": [
+        "bunx",
+        "typescript-language-server",
+        "--stdio"
+      ],
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs"
+      ]
     },
     "rust": {
-      "command": ["rust-analyzer"],
-      "extensions": [".rs"]
+      "command": [
+        "rust-analyzer"
+      ],
+      "extensions": [
+        ".rs"
+      ]
     }
   }
 }

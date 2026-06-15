@@ -12,7 +12,8 @@
 [![Codex Skill](https://img.shields.io/badge/Codex-Skill-blueviolet)](https://github.com/openai/codex)
 [![Skills](https://img.shields.io/badge/skills.sh-Compatible-green)](https://skills.sh)
 
-在手机上用 Codex 改应用，最大的卡点不是写代码，是看不到效果。Go Live 让每次改动自动部署上线，给你一条手机直接能打开的链接。Vibe coding，从“写完”到“看到”，中间不再断。
+在手机上用 Codex 改应用，最大的卡点不是写代码，是看不到效果。Go Live 让每次改动自动部署上线，给你一条手机直接能打开的链接。Vibe
+coding，从“写完”到“看到”，中间不再断。
 
 中文 | [English](README_EN.md)
 
@@ -39,7 +40,8 @@ https://github.com/Sac-Y/go-live
 
 ## 如何使用
 
-Go Live 不绑定某个部署平台。Codex 会先看项目已有部署方式，优先沿用现有平台；如果需要 Vercel、Cloudflare、GitHub 等插件能力，会在执行时再提示你安装或授权。
+Go Live 不绑定某个部署平台。Codex 会先看项目已有部署方式，优先沿用现有平台；如果需要 Vercel、Cloudflare、GitHub
+等插件能力，会在执行时再提示你安装或授权。
 
 装好之后，在 Codex 里直接说：
 

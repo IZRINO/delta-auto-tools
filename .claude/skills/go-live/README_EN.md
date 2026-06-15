@@ -14,7 +14,8 @@
 
 **Go Live is a Codex skill for mobile-first Codex workflows.**
 
-When you use Codex from the ChatGPT mobile app, localhost is not a useful preview. Go Live asks Codex to deploy and verify the app, website, or frontend change, then send back a public URL you can open on your phone.
+When you use Codex from the ChatGPT mobile app, localhost is not a useful preview. Go Live asks Codex to deploy and
+verify the app, website, or frontend change, then send back a public URL you can open on your phone.
 
 English | [中文](README.md)
 
@@ -41,7 +42,9 @@ https://github.com/Sac-Y/go-live
 
 ## Usage
 
-Go Live is not tied to a specific deployment provider. Codex should first inspect the project and reuse the existing deployment path. If Vercel, Cloudflare, GitHub, or another plugin capability is needed, Codex can ask for installation or authorization during the task.
+Go Live is not tied to a specific deployment provider. Codex should first inspect the project and reuse the existing
+deployment path. If Vercel, Cloudflare, GitHub, or another plugin capability is needed, Codex can ask for installation
+or authorization during the task.
 
 After installing, say things like:
 
@@ -63,7 +66,8 @@ Notes:
 
 - Do not leave only a localhost URL unless the user explicitly asks for local-only preview.
 - If the project already has a deployment provider, keep using it instead of creating a new one.
-- If deployment needs login, project linking, environment variables, or commit/push, Codex should explain the blocker and the next step.
+- If deployment needs login, project linking, environment variables, or commit/push, Codex should explain the blocker
+  and the next step.
 - Do not claim deployment succeeded before checking the public URL.
 
 ---

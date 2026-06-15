@@ -4,14 +4,17 @@
 
 ## Language
 
-本文档中 **Delta** 是《三角洲行动》的英文简写，二者等价，不另作术语定义。涉及代码中的 `delta_` 前缀（如 `delta_list_accounts`、`delta-accounts` 路由 ID）均为工程命名，语义指向三角洲行动相关功能。
+本文档中 **Delta** 是《三角洲行动》的英文简写，二者等价，不另作术语定义。涉及代码中的 `delta_` 前缀（如 `delta_list_accounts`、
+`delta-accounts` 路由 ID）均为工程命名，语义指向三角洲行动相关功能。
 
 **账号管理**:
-管理游戏账号登录、令牌刷新和删除的独立页面，支持 QQ / 微信 / QQSafe / Wegame QQ / Wegame 微信 / 先遣服 6 种鉴权流程。页面负责账号全生命周期：添加（扫码登录）→ 令牌状态监控 → 手动/自动刷新 → 重新登录 → 删除。
+管理游戏账号登录、令牌刷新和删除的独立页面，支持 QQ / 微信 / QQSafe / Wegame QQ / Wegame 微信 / 先遣服 6
+种鉴权流程。页面负责账号全生命周期：添加（扫码登录）→ 令牌状态监控 → 手动/自动刷新 → 重新登录 → 删除。
 _Avoid_: 账号中心、登录页、用户管理
 
 **游戏数据**:
-通过游戏 API 查询角色信息的独立页面，包含无参数仪表盘（7 个 API 自动加载）和查询工作台（6 个参数化 API 按需调用）。依赖 QQ 或微信账号的 `GameAuth` 鉴权。
+通过游戏 API 查询角色信息的独立页面，包含无参数仪表盘（7 个 API 自动加载）和查询工作台（6 个参数化 API 按需调用）。依赖 QQ
+或微信账号的 `GameAuth` 鉴权。
 _Avoid_: 数据面板、游戏面板、数据中心
 
 **工具箱**:
@@ -19,51 +22,69 @@ Wegame 运营操作、QQSafe 封禁查询与先遣服测试列表的独立页面
 _Avoid_: 工具页、运营页、辅助页
 
 **查询工作台**:
-游戏数据页内的参数化查询区域，通过下拉选择 API 类型、动态渲染参数表单并展示结果。当前支持物品查询、物价查询、枪械详情、操作日志、改装方案、地图推荐 6 种查询。
+游戏数据页内的参数化查询区域，通过下拉选择 API 类型、动态渲染参数表单并展示结果。当前支持物品查询、物价查询、枪械详情、操作日志、改装方案、地图推荐
+6 种查询。
 _Avoid_: 查询面板、搜索区、API浏览器
 
 **令牌状态**:
-账号访问令牌的有效性判定，分四级：有效（绿点，距过期 >3 天）、即将过期（黄点 + 剩余天数，距过期 ≤3 天但未过期）、已过期（红点，expiresAt ≤ 当前时间）、无过期信息（灰色点，expiresAt 为 null 或 accessToken 为 null）。Wegame 和部分 QQSafe 账号可能无过期时间字段。
+账号访问令牌的有效性判定，分四级：有效（绿点，距过期 >3 天）、即将过期（黄点 + 剩余天数，距过期 ≤3
+天但未过期）、已过期（红点，expiresAt ≤ 当前时间）、无过期信息（灰色点，expiresAt 为 null 或 accessToken 为 null）。Wegame 和部分
+QQSafe 账号可能无过期时间字段。
 _Avoid_: token状态、凭证状态、认证状态
 
 **账号能力**:
-根据账号类型决定可用的功能域。QQ 和微信账号可查游戏数据（acctype 分别为 qc 和 wx）；Wegame QQ 和 Wegame 微信账号可领取保险箱礼包和每日抽卡；QQSafe 账号可查封禁记录和游戏报告；先遣服账号可查测试游戏列表。能力互不重叠。
+根据账号类型决定可用的功能域。QQ 和微信账号可查游戏数据（acctype 分别为 qc 和 wx）；Wegame QQ 和 Wegame
+微信账号可领取保险箱礼包和每日抽卡；QQSafe 账号可查封禁记录和游戏报告；先遣服账号可查测试游戏列表。能力互不重叠。
 _Avoid_: 账号权限、账号功能、账号角色
 
 **登录 Dialog**:
-模态对话框引导用户完成扫码登录流程：选择账号类型 → 显示二维码并自动轮询 → 登录成功后获取访问令牌。三种模式：QQ 扫码模式（QQ/QQSafe/WegameQQ/Pioneer 共享结构，返回 qrImage+qrToken+qrSig+loginSig+cookie）、微信扫码模式（WeChat/WegameWeChat，返回 qrCode URL+uuid）、Wegame 令牌模式（WegameQQ 返回 tgpId+tgpTicket，WegameWeChat 返回 tgpId+tgpTicket）。关闭 Dialog 时立即停止轮询定时器。
+模态对话框引导用户完成扫码登录流程：选择账号类型 → 显示二维码并自动轮询 → 登录成功后获取访问令牌。三种模式：QQ
+扫码模式（QQ/QQSafe/WegameQQ/Pioneer 共享结构，返回 qrImage+qrToken+qrSig+loginSig+cookie）、微信扫码模式（WeChat/WegameWeChat，返回
+qrCode URL+uuid）、Wegame 令牌模式（WegameQQ 返回 tgpId+tgpTicket，WegameWeChat 返回 tgpId+tgpTicket）。关闭 Dialog
+时立即停止轮询定时器。
 _Avoid_: 登录页、登录向导、登录面板
 
 **自动刷新**:
-调用 API 失败时检测令牌过期，自动调用对应类型的 `update_access_token` 命令刷新令牌，成功后更新全局 Context 并重试原请求。刷新失败（cookie 也过期或类型不支持刷新如 Wegame/QQSafe）则标记账号为"需重新登录"。同一账号的并发刷新请求通过 Promise 去重，避免重复调用。
+调用 API 失败时检测令牌过期，自动调用对应类型的 `update_access_token` 命令刷新令牌，成功后更新全局 Context
+并重试原请求。刷新失败（cookie 也过期或类型不支持刷新如 Wegame/QQSafe）则标记账号为"需重新登录"。同一账号的并发刷新请求通过
+Promise 去重，避免重复调用。
 _Avoid_: 静默刷新、后台刷新、隐形刷新
 
 **分批加载**:
-游戏数据页选中账号后先并行加载 player 和 record 两个核心摘要 API，渲染 PageHero 指标和两个核心卡片后，再并行加载 assets、recent、achievement、password、bind 五个详情 API。切换账号时通过版本号机制（loadVersion）取消过期请求的回调处理。
+游戏数据页选中账号后先并行加载 player 和 record 两个核心摘要 API，渲染 PageHero 指标和两个核心卡片后，再并行加载
+assets、recent、achievement、password、bind 五个详情 API。切换账号时通过版本号机制（loadVersion）取消过期请求的回调处理。
 _Avoid_: 懒加载、渐进加载、流式加载
 
 **版本号机制**:
-游戏数据页用于取消过期请求的方案：每次切换账号递增 loadVersion 计数器，API 请求的回调中检查当前 loadVersion 是否等于发起时的值，不等则丢弃响应。因 Tauri invoke 不支持 AbortController，此为替代方案。
+游戏数据页用于取消过期请求的方案：每次切换账号递增 loadVersion 计数器，API 请求的回调中检查当前 loadVersion
+是否等于发起时的值，不等则丢弃响应。因 Tauri invoke 不支持 AbortController，此为替代方案。
 _Avoid_: 请求取消、请求版本
 
 **Pioneer 账号标识**:
-先遣服账号的身份判定问题。Pioneer 登录走 QQ 流程但产出 key（而非 openid+accessToken），Rust 后端 AccountKind 枚举当前无 Pioneer 变体。前端需通过 extraJson 中的标记或扩展 AccountKind 来区分。此为待决项。
+先遣服账号的身份判定问题。Pioneer 登录走 QQ 流程但产出 key（而非 openid+accessToken），Rust 后端 AccountKind 枚举当前无
+Pioneer 变体。前端需通过 extraJson 中的标记或扩展 AccountKind 来区分。此为待决项。
 _Avoid_: 先遣服标记、Pioneer标记
 
 **GameAuth**:
-游戏数据 API 的鉴权结构，包含 openid、accessToken 和 acctype 三个字段。acctype 由账号类型决定：QQ 系为 "qc"，微信系为 "wx"。Wegame 账号不使用此结构。
+游戏数据 API 的鉴权结构，包含 openid、accessToken 和 acctype 三个字段。acctype 由账号类型决定：QQ 系为 "qc"，微信系为 "wx"
+。Wegame 账号不使用此结构。
 _Avoid_: 游戏鉴权、游戏凭证
 
 **WegameTicket**:
-Wegame 运营操作（开箱/抽卡）的鉴权结构，包含 id（Wegame UIN）和 ticket（tgpTicket）两个字段。Wegame 账号的 accessToken 字段实际存储 tgpTicket 值。
+Wegame 运营操作（开箱/抽卡）的鉴权结构，包含 id（Wegame UIN）和 ticket（tgpTicket）两个字段。Wegame 账号的 accessToken 字段实际存储
+tgpTicket 值。
 _Avoid_: Wegame鉴权、Wegame凭证
 
 **QQ 扫码模式**:
-QQ / QQSafe / WegameQQ / Pioneer 共享的登录流程模式。第一步调用 `get_login_qr` 获取二维码（base64 图片 + qrToken + qrSig + loginSig + cookie），第二步以 2 秒间隔轮询 `poll_login_status`（返回状态码 0=成功 1=等待 2=已扫描 -2=过期 -3=拒绝 -4=错误），第三步调用 `get_access_token` 获取访问令牌。二维码有效期约 30 秒。
+QQ / QQSafe / WegameQQ / Pioneer 共享的登录流程模式。第一步调用 `get_login_qr` 获取二维码（base64 图片 + qrToken + qrSig +
+loginSig + cookie），第二步以 2 秒间隔轮询 `poll_login_status`（返回状态码 0=成功 1=等待 2=已扫描 -2=过期 -3=拒绝
+-4=错误），第三步调用 `get_access_token` 获取访问令牌。二维码有效期约 30 秒。
 _Avoid_: QR登录模式、二维码模式
 
 **微信扫码模式**:
-WeChat / WegameWeChat 共享的登录流程模式。第一步调用 `get_login_qr` 获取微信扫码 URL（qrCode）和 uuid，第二步轮询 `poll_status`（返回状态码 1=等待 2=已扫描 3=成功 -2=超时 -3=拒绝 -4=错误），第三步用 wxCode 调用 `get_access_token` 获取令牌。微信二维码有效期约 5 分钟。
+WeChat / WegameWeChat 共享的登录流程模式。第一步调用 `get_login_qr` 获取微信扫码 URL（qrCode）和 uuid，第二步轮询
+`poll_status`（返回状态码 1=等待 2=已扫描 3=成功 -2=超时 -3=拒绝 -4=错误），第三步用 wxCode 调用 `get_access_token`
+获取令牌。微信二维码有效期约 5 分钟。
 _Avoid_: 微信模式、WeChat模式
 
 **摩斯密码解析**:
@@ -174,16 +195,21 @@ _Avoid_: 优先级、分组、队列
 > **Domain expert:** "不，计时器是当前工具菜单下的独立工具，只参考摩斯的位置设置交互。"
 
 > **Dev:** "Wegame 账号的 accessToken 存的是什么？"
-> **Domain expert:** "Wegame 的 access_token 字段实际存的是 tgpTicket，用于构造 WegameTicket { id, ticket } 进行开箱和抽卡操作。"
+> **Domain expert:** "Wegame 的 access_token 字段实际存的是 tgpTicket，用于构造 WegameTicket { id, ticket }
+> 进行开箱和抽卡操作。"
 
 > **Dev:** "Pioneer 账号在 AccountKind 里怎么区分？"
-> **Domain expert:** "这是个待决项。当前 Rust 后端只有 5 种 AccountKind（qq/wechat/qqsafe/wegame_qq/wegame_wechat），没有 Pioneer 变体。Pioneer 走 QQ 登录流程但产出 key 而非 openid+accessToken，需要在前端通过 extraJson 标记或扩展后端枚举来区分。"
+> **Domain expert:** "这是个待决项。当前 Rust 后端只有 5 种 AccountKind（qq/wechat/qqsafe/wegame_qq/wegame_wechat），没有
+> Pioneer 变体。Pioneer 走 QQ 登录流程但产出 key 而非 openid+accessToken，需要在前端通过 extraJson
+> 标记或扩展后端枚举来区分。"
 
 > **Dev:** "游戏 API 返回的结构是确定的吗？"
-> **Domain expert:** "Rust 后端返回 ApiResponse<Value>，即非结构化 JSON。前端 Phase 1 用动态渲染，后续根据实际数据补充类型定义。"
+> **Domain expert:** "Rust 后端返回 ApiResponse<Value>，即非结构化 JSON。前端 Phase 1
+> 用动态渲染，后续根据实际数据补充类型定义。"
 
 > **Dev:** "QQSafe 的 code 参数从哪来？"
-> **Domain expert:** "QQSafe 登录成功后 JWT 存储在 account.extraJson 中，前端需 base64 解码 JWT payload 提取 code 字段。如果 extraJson 为 null，则无法查询封禁记录，需提示重新登录。"
+> **Domain expert:** "QQSafe 登录成功后 JWT 存储在 account.extraJson 中，前端需 base64 解码 JWT payload 提取 code 字段。如果
+> extraJson 为 null，则无法查询封禁记录，需提示重新登录。"
 
 ## Flagged ambiguities
 

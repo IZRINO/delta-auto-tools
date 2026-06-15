@@ -222,7 +222,7 @@ async fn run_recognition_flow(
         }
         Ok::<MorseRunResult, String>(result)
     }
-    .await;
+        .await;
 
     finish_run(app);
     let result = run_result?;

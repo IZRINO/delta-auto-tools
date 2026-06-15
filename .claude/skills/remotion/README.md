@@ -4,7 +4,8 @@ Generate professional walkthrough videos from Stitch app designs using Remotion.
 
 ## What This Skill Does
 
-This skill bridges Stitch (UI design platform) and Remotion (programmatic video library) to automatically create walkthrough videos showcasing app screens with:
+This skill bridges Stitch (UI design platform) and Remotion (programmatic video library) to automatically create
+walkthrough videos showcasing app screens with:
 
 - **Smooth transitions**: Cross-fades, slides, and zoom effects
 - **Text overlays**: Screen titles, descriptions, and feature callouts
@@ -20,9 +21,11 @@ This skill bridges Stitch (UI design platform) and Remotion (programmatic video 
 ## Example Use Case
 
 **User Request:**
-> "Look up the screens in my Stitch project 'Calculator App' and build a remotion video that shows a walkthrough of the screens."
+> "Look up the screens in my Stitch project 'Calculator App' and build a remotion video that shows a walkthrough of the
+> screens."
 
 **What Happens:**
+
 1. Agent retrieves all screens from the Stitch project
 2. Downloads screenshots for each screen
 3. Creates a Remotion composition with transitions
@@ -75,11 +78,13 @@ project/
 ## Integration Points
 
 **With Stitch:**
+
 - Uses Stitch MCP to list projects and screens
 - Downloads screenshots and HTML code
 - Extracts screen metadata (title, dimensions)
 
 **With Remotion:**
+
 - Creates TypeScript/React components
 - Configures composition settings
 - Renders video using Remotion CLI or MCP

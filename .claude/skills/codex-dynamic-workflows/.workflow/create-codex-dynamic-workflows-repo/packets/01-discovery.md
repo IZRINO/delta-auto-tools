@@ -4,9 +4,10 @@ Packet ID: 01-discovery
 Objective: Map the current context, sources, constraints, and acceptance criteria.
 Context: Workflow `Create Codex Dynamic Workflows Repository`. Add task-specific context before delegation.
 Files / sources:
+
 - TBD
-Ownership: Read-only discovery.
-Assignee: parent
+  Ownership: Read-only discovery.
+  Assignee: parent
 
 ## Do
 

@@ -4,13 +4,14 @@
 > - **[他说过的]**：有直接引语或可靠文字记录的内容
 > - **[来源转述]**：经过第三方总结，无法确认原话的内容
 > - **[我推断的]**：基于多方证据的合理推断
-> 可信度：★★★★★ = 有文字稿原文 / ★★★★ = 权威媒体报道 / ★★★ = 博客或社区转述
+    > 可信度：★★★★★ = 有文字稿原文 / ★★★★ = 权威媒体报道 / ★★★ = 博客或社区转述
 
 ---
 
 ## 一、主要访谈清单
 
 ### 1. Lex Fridman Podcast #333（2022年10月29日）
+
 **主题**：Tesla AI, Self-Driving, Optimus, Aliens, and AGI
 **时长**：约3小时34分钟
 **链接**：https://lexfridman.com/andrej-karpathy/
@@ -19,12 +20,14 @@
 ---
 
 ### 2. Dwarkesh Patel Podcast（2025年10月17日）
+
 **主题**：AGI is still a decade away
 **时长**：约2小时25分钟
 **链接**：https://www.dwarkesh.com/p/andrej-karpathy
 **可信度**：★★★★★（有完整文字稿）
 
 时间戳：
+
 - 0:00:00 AGI还需十年
 - 0:30:33 LLM的认知缺陷
 - 0:40:53 RL很糟糕（但其他方法更糟）
@@ -36,6 +39,7 @@
 ---
 
 ### 3. No Priors Podcast 第一次（2024年9月5日）
+
 **主题**：The Road to Autonomous Intelligence
 **可信度**：★★★★（有摘要，无全文稿）
 
@@ -44,8 +48,10 @@
 ---
 
 ### 4. No Priors Podcast 第二次（2026年初）
+
 **主题**：Code Agents, AutoResearch, and the Loopy Era of AI
-**链接**：https://podscripts.co/podcasts/no-priors-artificial-intelligence-technology-startups/andrej-karpathy-on-code-agents-autoresearch-and-the-loopy-era-of-ai
+**链接
+**：https://podscripts.co/podcasts/no-priors-artificial-intelligence-technology-startups/andrej-karpathy-on-code-agents-autoresearch-and-the-loopy-era-of-ai
 **可信度**：★★★★（有文字稿摘要）
 
 涵盖：代码Agent相变、工程职业重构、AutoResearch项目。
@@ -53,6 +59,7 @@
 ---
 
 ### 5. YC AI Startup School 演讲（2025年6月）
+
 **主题**：Software Is Changing (Again) / Software 3.0
 **链接**：https://www.ycombinator.com/library/MW-andrej-karpathy-software-is-changing-again
 **可信度**：★★★★★（有官方视频）
@@ -60,6 +67,7 @@
 ---
 
 ### 6. Tesla AI Day 2021（2021年8月19日）
+
 **可信度**：★★★★★（有完整文字稿）
 
 Karpathy出现时间戳：47:09 – 1:24:30。
@@ -72,7 +80,8 @@ Karpathy出现时间戳：47:09 – 1:24:30。
 
 **[他说过的]** 在Dwarkesh访谈中：「我的AGI时间表比AI技术圈的人悲观5-10倍，但比AI怀疑论者仍然相当乐观。」他称这个判断来自15年AI预测经验，通过直觉平均化得出——不是数学模型，是田野观察。★★★★★
 
-**[他说过的]** 「他们没有足够的智力，不够多模态，无法进行计算机操作……没有持续学习能力。你无法告诉它们某事然后让它们记住。」——谈Agent的缺陷，2025年10月 ★★★★★
+**[他说过的]** 「他们没有足够的智力，不够多模态，无法进行计算机操作……没有持续学习能力。你无法告诉它们某事然后让它们记住。」——谈Agent的缺陷，2025年10月
+★★★★★
 
 **[他说过的]** 自我评论：「我说得太快了，我为此道歉。这对我不利，因为有时我的说话线程跑得比我的思考快。」★★★★★
 
@@ -106,7 +115,8 @@ Karpathy出现时间戳：47:09 – 1:24:30。
 > [他说过的] 模型权重是模糊压缩的长期记忆，上下文窗口是实际推理的工作记忆。
 
 **「软件2.0」**（Medium文章，2017年）★★★★★
-> [他说过的] 传统代码（Software 1.0）是程序员直接写的指令；神经网络权重（Software 2.0）是数据优化出来的指令。后者的「源代码」是数据集，「编译器」是训练过程，「二进制」是最终权重。
+> [他说过的] 传统代码（Software 1.0）是程序员直接写的指令；神经网络权重（Software
+> 2.0）是数据优化出来的指令。后者的「源代码」是数据集，「编译器」是训练过程，「二进制」是最终权重。
 
 ---
 
@@ -161,7 +171,8 @@ Karpathy出现时间戳：47:09 – 1:24:30。
 > [他说过的] 这是他课程（CS231n、Zero to Hero）的核心逻辑：理解=能从零重建。
 
 **「学习不应该是有趣的」**（推文，2024年2月）★★★★★
-> [他说过的] "Learning is not supposed to be fun. It doesn't have to be actively not fun either, but the primary feeling should be that of effort."
+> [他说过的] "Learning is not supposed to be fun. It doesn't have to be actively not fun either, but the primary feeling
+> should be that of effort."
 > 他批评YouTube/TikTok上「给学习穿上娱乐外衣」的内容。
 
 ---
@@ -195,16 +206,16 @@ CS231n课程设计：从单个矩阵乘法开始，到反向传播，到卷积�
 
 ## 七、值得深挖的访谈片段索引
 
-| 访谈/来源 | 时间点/章节 | 主题 | 特别价值 |
-|---------|-----------|------|---------| 
-| Dwarkesh #1 | 0:40:53 | "RL很糟糕" | 他对反直觉命题的辩护方式 |
-| Dwarkesh #1 | 0:30:33 | LLM认知缺陷 | "从稻草中吮吸监督信号"比喻 |
-| Lex #333 | 意识段落 | NPC/意识 | 他如何用不确定性重构问题 |
-| YC演讲 | Iron Man段落 | 产品哲学 | 套装vs机器人比喻 |
-| No Priors | 代码Agent段落 | 相变描述 | "思考vs打字"比率重构 |
-| Tesla AI Day 2021 | 47:09起 | 视觉栈 | 大型工程决策如何折射团队结构 |
-| 推文 2023-09 | LLM OS | OS比喻 | 最完整的"LLM即OS"框架 |
-| 博客 2015 | RNN文章 | 技术写作风格 | "先震惊后解释"叙事结构 |
+| 访谈/来源             | 时间点/章节     | 主题      | 特别价值           |
+|-------------------|------------|---------|----------------| 
+| Dwarkesh #1       | 0:40:53    | "RL很糟糕" | 他对反直觉命题的辩护方式   |
+| Dwarkesh #1       | 0:30:33    | LLM认知缺陷 | "从稻草中吮吸监督信号"比喻 |
+| Lex #333          | 意识段落       | NPC/意识  | 他如何用不确定性重构问题   |
+| YC演讲              | Iron Man段落 | 产品哲学    | 套装vs机器人比喻      |
+| No Priors         | 代码Agent段落  | 相变描述    | "思考vs打字"比率重构   |
+| Tesla AI Day 2021 | 47:09起     | 视觉栈     | 大型工程决策如何折射团队结构 |
+| 推文 2023-09        | LLM OS     | OS比喻    | 最完整的"LLM即OS"框架 |
+| 博客 2015           | RNN文章      | 技术写作风格  | "先震惊后解释"叙事结构   |
 
 ---
 
@@ -229,10 +240,12 @@ CS231n课程设计：从单个矩阵乘法开始，到反向传播，到卷积�
 - Dwarkesh Podcast: https://www.dwarkesh.com/p/andrej-karpathy
 - Lex Fridman Podcast #333: https://lexfridman.com/andrej-karpathy/
 - YC AI Startup School演讲: https://www.ycombinator.com/library/MW-andrej-karpathy-software-is-changing-again
-- No Priors transcript: https://podscripts.co/podcasts/no-priors-artificial-intelligence-technology-startups/andrej-karpathy-on-code-agents-autoresearch-and-the-loopy-era-of-ai
+- No Priors
+  transcript: https://podscripts.co/podcasts/no-priors-artificial-intelligence-technology-startups/andrej-karpathy-on-code-agents-autoresearch-and-the-loopy-era-of-ai
 - CVPR 2021 Talk: https://bdtechtalks.com/2021/06/28/tesla-computer-vision-autonomous-driving/
 - Tesla AI Day 2021: https://elon-musk-interviews.com/2021/08/31/tesla-ai-day-the-presentation-i/
 - Karpathy Tweet - LLM as OS: https://x.com/karpathy/status/1707437820045062561
 - Karpathy Tweet - Vibe Coding: https://x.com/karpathy/status/1886192184808149383
-- The Decoder - Agent立场翻转: https://the-decoder.com/former-tesla-ai-chief-andrej-karpathy-now-codes-mostly-in-english-just-three-months-after-calling-ai-agents-useless/
+- The Decoder -
+  Agent立场翻转: https://the-decoder.com/former-tesla-ai-chief-andrej-karpathy-now-codes-mostly-in-english-just-three-months-after-calling-ai-agents-useless/
 - Simon Willison摘要: https://simonwillison.net/2025/Oct/18/agi-is-still-a-decade-away/

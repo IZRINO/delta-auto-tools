@@ -278,7 +278,7 @@ pub fn region_to_capture_bounds(
         monitor_right,
         monitor_bottom,
     )
-    .then(|| to_local_capture_bounds(physical, monitor_left, monitor_top))
+        .then(|| to_local_capture_bounds(physical, monitor_left, monitor_top))
 }
 
 fn rect_bounds(x: i32, y: i32, width: i32, height: i32) -> (i32, i32, i32, i32) {

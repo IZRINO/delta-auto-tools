@@ -1,10 +1,12 @@
 # Pi Dynamic Workflows To Codex
 
-This package adapts the ideas of [`Michaelliv/pi-dynamic-workflows`](https://github.com/Michaelliv/pi-dynamic-workflows) to Codex skills and goal-oriented work. It does not embed Pi or expose a Pi extension.
+This package adapts the ideas of [`Michaelliv/pi-dynamic-workflows`](https://github.com/Michaelliv/pi-dynamic-workflows)
+to Codex skills and goal-oriented work. It does not embed Pi or expose a Pi extension.
 
 ## What Pi Provides
 
-Pi's package registers a `workflow` tool. The model writes deterministic JavaScript, and the tool runs it in a sandbox with workflow globals:
+Pi's package registers a `workflow` tool. The model writes deterministic JavaScript, and the tool runs it in a sandbox
+with workflow globals:
 
 - `agent(prompt, opts)`
 - `parallel(thunks)`
@@ -15,7 +17,8 @@ Pi's package registers a `workflow` tool. The model writes deterministic JavaScr
 - `cwd`
 - `budget`
 
-The runtime fans out to in-memory Pi subagent sessions, streams compact progress, supports abort, and can ask subagents for structured JSON output.
+The runtime fans out to in-memory Pi subagent sessions, streams compact progress, supports abort, and can ask subagents
+for structured JSON output.
 
 ## Codex Adaptation
 

@@ -4,9 +4,10 @@ Packet ID: 02-execution
 Objective: Perform the main implementation or analysis slice with a bounded write scope.
 Context: Workflow `Create Codex Dynamic Workflows Repository`. Add task-specific context before delegation.
 Files / sources:
+
 - TBD
-Ownership: Task-specific files or artifacts.
-Assignee: subagent-or-parent
+  Ownership: Task-specific files or artifacts.
+  Assignee: subagent-or-parent
 
 ## Do
 

@@ -6,15 +6,16 @@ disable-model-invocation: true
 
 # Ubiquitous Language
 
-Extract and formalize domain terminology from the current conversation into a consistent glossary, saved to a local file.
+Extract and formalize domain terminology from the current conversation into a consistent glossary, saved to a local
+file.
 
 ## Process
 
 1. **Scan the conversation** for domain-relevant nouns, verbs, and concepts
 2. **Identify problems**:
-   - Same word used for different concepts (ambiguity)
-   - Different words used for the same concept (synonyms)
-   - Vague or overloaded terms
+    - Same word used for different concepts (ambiguity)
+    - Different words used for the same concept (synonyms)
+    - Vague or overloaded terms
 3. **Propose a canonical glossary** with opinionated term choices
 4. **Write to `UBIQUITOUS_LANGUAGE.md`** in the working directory using the format below
 5. **Output a summary** inline in the conversation
@@ -59,14 +60,22 @@ Write a `UBIQUITOUS_LANGUAGE.md` file with this structure:
 
 ## Rules
 
-- **Be opinionated.** When multiple words exist for the same concept, pick the best one and list the others as aliases to avoid.
-- **Flag conflicts explicitly.** If a term is used ambiguously in the conversation, call it out in the "Flagged ambiguities" section with a clear recommendation.
-- **Only include terms relevant for domain experts.** Skip the names of modules or classes unless they have meaning in the domain language.
+- **Be opinionated.** When multiple words exist for the same concept, pick the best one and list the others as aliases
+  to avoid.
+- **Flag conflicts explicitly.** If a term is used ambiguously in the conversation, call it out in the "Flagged
+  ambiguities" section with a clear recommendation.
+- **Only include terms relevant for domain experts.** Skip the names of modules or classes unless they have meaning in
+  the domain language.
 - **Keep definitions tight.** One sentence max. Define what it IS, not what it does.
 - **Show relationships.** Use bold term names and express cardinality where obvious.
-- **Only include domain terms.** Skip generic programming concepts (array, function, endpoint) unless they have domain-specific meaning.
-- **Group terms into multiple tables** when natural clusters emerge (e.g. by subdomain, lifecycle, or actor). Each group gets its own heading and table. If all terms belong to a single cohesive domain, one table is fine — don't force groupings.
-- **Write an example dialogue.** A short conversation (3-5 exchanges) between a dev and a domain expert that demonstrates how the terms interact naturally. The dialogue should clarify boundaries between related concepts and show terms being used precisely.
+- **Only include domain terms.** Skip generic programming concepts (array, function, endpoint) unless they have
+  domain-specific meaning.
+- **Group terms into multiple tables** when natural clusters emerge (e.g. by subdomain, lifecycle, or actor). Each group
+  gets its own heading and table. If all terms belong to a single cohesive domain, one table is fine — don't force
+  groupings.
+- **Write an example dialogue.** A short conversation (3-5 exchanges) between a dev and a domain expert that
+  demonstrates how the terms interact naturally. The dialogue should clarify boundaries between related concepts and
+  show terms being used precisely.
 
 <example>
 
@@ -74,11 +83,13 @@ Write a `UBIQUITOUS_LANGUAGE.md` file with this structure:
 
 > **Dev:** "How do I test the **sync service** without Docker?"
 
-> **Domain expert:** "Provide the **filesystem layer** instead of the **Docker layer**. It implements the same **Sandbox service** interface but uses a local directory as the **sandbox**."
+> **Domain expert:** "Provide the **filesystem layer** instead of the **Docker layer**. It implements the same **Sandbox
+service** interface but uses a local directory as the **sandbox**."
 
 > **Dev:** "So **sync-in** still creates a **bundle** and unpacks it?"
 
-> **Domain expert:** "Exactly. The **sync service** doesn't know which layer it's talking to. It calls `exec` and `copyIn` — the **filesystem layer** just runs those as local shell commands."
+> **Domain expert:** "Exactly. The **sync service** doesn't know which layer it's talking to. It calls `exec` and
+`copyIn` — the **filesystem layer** just runs those as local shell commands."
 
 </example>
 

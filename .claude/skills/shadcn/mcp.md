@@ -14,7 +14,7 @@ shadcn mcp init   # write config for your editor
 Editor config files:
 
 | Editor      | Config file                     |
-| ----------- | ------------------------------- |
+|-------------|---------------------------------|
 | Claude Code | `.mcp.json`                     |
 | Cursor      | `.cursor/mcp.json`              |
 | VS Code     | `.vscode/mcp.json`              |
@@ -25,7 +25,8 @@ Editor config files:
 
 ## Tools
 
-> **Tip:** MCP tools handle registry operations (search, view, install). For project configuration (aliases, framework, Tailwind version), use `npx shadcn@latest info` — there is no MCP equivalent.
+> **Tip:** MCP tools handle registry operations (search, view, install). For project configuration (aliases, framework,
+> Tailwind version), use `npx shadcn@latest info` — there is no MCP equivalent.
 
 ### `shadcn:get_project_registries`
 
@@ -40,7 +41,8 @@ namespaces such as `@acme`, public GitHub sources such as `owner/repo`, or
 registry catalog URLs. Omit `registries` to list from every registry configured
 in `components.json`.
 
-**Input:** `registries` (string[], optional — omit for all configured), `types` (string[], optional — e.g. `["ui", "block"]`), `limit` (number, optional, defaults to 100), `offset` (number, optional)
+**Input:** `registries` (string[], optional — omit for all configured), `types` (string[], optional — e.g.
+`["ui", "block"]`), `limit` (number, optional, defaults to 100), `offset` (number, optional)
 
 ### `shadcn:search_items_in_registries`
 
@@ -49,7 +51,8 @@ GitHub sources, or registry catalog URLs. Omit `registries` to search every
 registry configured in `components.json` — e.g. "find me a hero" across all
 configured registries.
 
-**Input:** `registries` (string[], optional — omit for all configured), `query` (string), `types` (string[], optional — e.g. `["ui", "block"]`), `limit` (number, optional, defaults to 100), `offset` (number, optional)
+**Input:** `registries` (string[], optional — omit for all configured), `query` (string), `types` (string[], optional —
+e.g. `["ui", "block"]`), `limit` (number, optional, defaults to 100), `offset` (number, optional)
 
 ### `shadcn:view_items_in_registries`
 
@@ -63,7 +66,8 @@ View item details including full file contents.
 Find usage examples and demos with source code. Omit `registries` to search
 every registry configured in `components.json`.
 
-**Input:** `registries` (string[], optional — omit for all configured), `query` (string) — e.g. `"accordion-demo"`, `"button example"`
+**Input:** `registries` (string[], optional — omit for all configured), `query` (string) — e.g. `"accordion-demo"`,
+`"button example"`
 
 ### `shadcn:get_add_command_for_items`
 

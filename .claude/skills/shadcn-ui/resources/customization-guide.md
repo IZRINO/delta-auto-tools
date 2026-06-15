@@ -4,15 +4,18 @@ Learn how to customize shadcn/ui components to match your brand and design requi
 
 ## Theming Approach
 
-shadcn/ui uses a CSS variable-based theming system, making it easy to customize colors, spacing, and other design tokens globally.
+shadcn/ui uses a CSS variable-based theming system, making it easy to customize colors, spacing, and other design tokens
+globally.
 
 ## Color Customization
 
 ### Understanding the Color System
 
-shadcn/ui uses HSL color values stored as CSS variables. Each color has a base value and a foreground variant for text/content that appears on top of it.
+shadcn/ui uses HSL color values stored as CSS variables. Each color has a base value and a foreground variant for
+text/content that appears on top of it.
 
 **Base Color Variables** (in `globals.css`):
+
 ```css
 :root {
   --background: 0 0% 100%;        /* Page background */
@@ -47,6 +50,7 @@ To match your brand, update the primary color:
 ```
 
 **HSL Format**: `hue saturation lightness`
+
 - Hue: 0-360 (color wheel position)
 - Saturation: 0-100% (color intensity)
 - Lightness: 0-100% (brightness)
@@ -104,6 +108,7 @@ shadcn/ui includes dark mode support out of the box. Add dark mode colors:
 ### Toggle Dark Mode
 
 **Next.js with next-themes**:
+
 ```bash
 npm install next-themes
 ```
@@ -229,6 +234,7 @@ export interface ButtonProps
 ```
 
 Usage:
+
 ```tsx
 <Button variant="success" size="xl">Save Changes</Button>
 ```
@@ -304,6 +310,7 @@ export default function RootLayout({ children }) {
 ```
 
 Use in components:
+
 ```tsx
 <h1 className="font-heading text-3xl">Heading</h1>
 <p className="font-sans">Body text</p>
@@ -435,6 +442,7 @@ module.exports = {
 ```
 
 Use in components:
+
 ```tsx
 <div className="animate-fade-in">Content</div>
 ```
@@ -491,6 +499,7 @@ export const designTokens = {
 ```
 
 Use in components:
+
 ```tsx
 import { designTokens } from "@/lib/design-tokens"
 

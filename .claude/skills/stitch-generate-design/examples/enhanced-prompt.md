@@ -1,6 +1,7 @@
 # Example: Prompt Enhancement
 
 ## User Input (Vague)
+
 > "Make a landing page for my fitness app called 'Pulse'. It should have a
 > place for features and a hero section."
 
@@ -20,6 +21,7 @@ high-performance.
 **PLATFORM:** Web, Desktop-first
 
 **PAGE STRUCTURE:**
+
 1. **Header**: Minimalist navigation with Pulse logo (left) and "Start Training"
    primary call-to-action button (right).
 2. **Hero Section**: Large, emotive fitness photography background. Headline:

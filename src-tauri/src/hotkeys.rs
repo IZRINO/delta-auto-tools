@@ -25,7 +25,7 @@ use crate::hotkey_types::{
 };
 
 pub use crate::hotkey_types::{
-    ConflictPolicy, HoldAction, HoldActionCallback, HotkeyAction, HotkeyRegistration, HoldRegistration,
+    ConflictPolicy, HoldAction, HoldActionCallback, HoldRegistration, HotkeyAction, HotkeyRegistration,
 };
 
 pub struct HotkeyManager {
@@ -224,7 +224,7 @@ impl HotkeyManager {
                         && registration.scope != scope
                         && registration.binding == *new_binding
                         && !(conflict_policy == ConflictPolicy::AllowHold
-                            && registration.conflict_policy == ConflictPolicy::AllowHold)
+                        && registration.conflict_policy == ConflictPolicy::AllowHold)
                 }) {
                     return Err(format!(
                         "快捷键 {} 与{}的触发键冲突",
@@ -253,7 +253,7 @@ impl HotkeyManager {
                     && registration.scope != scope
                     && registration.binding == *new_binding
                     && !(registration.conflict_policy == ConflictPolicy::AllowHold
-                        && conflict_policy == ConflictPolicy::AllowHold)
+                    && conflict_policy == ConflictPolicy::AllowHold)
             }) {
                 return Err(format!(
                     "触发键 {} 与{}的快捷键冲突",
@@ -1162,7 +1162,7 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         )
-        .is_empty());
+            .is_empty());
 
         let down_actions = hold_actions_for_event(
             &hold_registrations,
@@ -1240,7 +1240,7 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         )
-        .is_empty());
+            .is_empty());
 
         let down_actions = hold_actions_for_event(
             &hold_registrations,

@@ -21,7 +21,8 @@ When blocked, Claude sees a message telling it that it does not have authority t
 
 ### 1. Ask scope
 
-Ask the user: install for **this project only** (`.claude/settings.json`) or **all projects** (`~/.claude/settings.json`)?
+Ask the user: install for **this project only** (`.claude/settings.json`) or **all projects** (
+`~/.claude/settings.json`)?
 
 ### 2. Copy the hook script
 
@@ -78,7 +79,8 @@ Add to the appropriate settings file:
 }
 ```
 
-If the settings file already exists, merge the hook into existing `hooks.PreToolUse` array — don't overwrite other settings.
+If the settings file already exists, merge the hook into existing `hooks.PreToolUse` array — don't overwrite other
+settings.
 
 ### 4. Ask about customization
 

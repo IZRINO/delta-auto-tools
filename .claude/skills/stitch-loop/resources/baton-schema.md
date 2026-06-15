@@ -1,6 +1,7 @@
 # Baton File Schema
 
-The baton file (`next-prompt.md`) is the communication mechanism between loop iterations. It tells the next agent what to build.
+The baton file (`next-prompt.md`) is the communication mechanism between loop iterations. It tells the next agent what
+to build.
 
 ## Format
 
@@ -15,9 +16,9 @@ page: <filename-without-extension>
 
 ### Frontmatter (YAML)
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `page` | string | Yes | Output filename (without `.html` extension) |
+| Field  | Type   | Required | Description                                 |
+|--------|--------|----------|---------------------------------------------|
+| `page` | string | Yes      | Output filename (without `.html` extension) |
 
 ### Body (Markdown)
 

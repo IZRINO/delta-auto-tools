@@ -1,39 +1,39 @@
-import { describe, expect, test } from "bun:test";
-import type {
-    ExecOptions,
-    ExecResult,
-    ExtensionAPI,
-    ExtensionCommandContext,
-} from "@oh-my-pi/pi-coding-agent";
+import {describe, expect, test} from "bun:test";
+import type {ExecOptions, ExecResult, ExtensionAPI, ExtensionCommandContext,} from "@oh-my-pi/pi-coding-agent";
 import {
+    type KeybindingDefinitions,
     KeybindingsManager,
+    type KeyId,
     setKeybindings,
     TUI_KEYBINDINGS,
-    type KeybindingDefinitions,
-    type KeyId,
 } from "@oh-my-pi/pi-tui";
-import registerGhIssues, { parseArgs } from "./index.ts";
+import registerGhIssues, {parseArgs} from "./index.ts";
 
 interface Deferred<T> {
     promise: Promise<T>;
+
     resolve(value: T): void;
+
     reject(reason?: unknown): void;
 }
 
 interface TimerCapture {
     scheduled: CapturedTimer[];
+
     restore(): void;
 }
 
 interface CapturedTimer {
     handle: Timer;
-    callback(): void;
     delay: number | undefined;
     cleared: boolean;
+
+    callback(): void;
 }
 
 interface CommandRegistration {
     description?: string;
+
     handler(args: string, ctx: ExtensionCommandContext): Promise<void>;
 }
 
@@ -77,7 +77,7 @@ type ExecHandler = (command: string, args: string[], options?: ExecOptions) => P
 
 const TEST_KEYBINDINGS: KeybindingDefinitions = {
     ...TUI_KEYBINDINGS,
-    "app.interrupt": { defaultKeys: "escape" },
+    "app.interrupt": {defaultKeys: "escape"},
 };
 
 installKeybindings();
@@ -93,11 +93,11 @@ function createDeferred<T>(): Deferred<T> {
         resolve = resolvePromise;
         reject = rejectPromise;
     });
-    return { promise, resolve, reject };
+    return {promise, resolve, reject};
 }
 
 function issuesResult(issues: readonly unknown[]): ExecResult {
-    return { stdout: JSON.stringify(issues), stderr: "", code: 0, killed: false };
+    return {stdout: JSON.stringify(issues), stderr: "", code: 0, killed: false};
 }
 
 function emptyIssuesResult(): ExecResult {
@@ -111,7 +111,7 @@ function sampleIssue(number: number, title = `测试 issue ${number}`): unknown 
         url: `https://github.com/foo/bar/issues/${number}`,
         body: "测试内容",
         createdAt: "2026-06-01T00:00:00Z",
-        author: { login: "tester" },
+        author: {login: "tester"},
         labels: [],
     };
 }
@@ -166,7 +166,7 @@ function createHarness(exec: ExecHandler): ExtensionHarness {
         },
         exec,
         sendMessage: (message: SentMessage["message"], options?: SentMessage["options"]) => {
-            sentMessages.push({ message, options });
+            sentMessages.push({message, options});
         },
     } as unknown as ExtensionAPI;
 
@@ -174,7 +174,7 @@ function createHarness(exec: ExecHandler): ExtensionHarness {
         cwd: "D:/Project/rust/delta-auto-tools",
         ui: {
             notify: (message: string, type?: "info" | "warning" | "error") => {
-                notifications.push({ message, type });
+                notifications.push({message, type});
             },
             onTerminalInput: (handler: TerminalHandler) => {
                 terminalHandlers.push(handler);
@@ -184,7 +184,7 @@ function createHarness(exec: ExecHandler): ExtensionHarness {
                 };
             },
             setStatus: (key: string, text: string | undefined) => {
-                statuses.push({ key, text });
+                statuses.push({key, text});
             },
             setWorkingMessage: (message?: string) => {
                 workingMessages.push(message);
@@ -193,17 +193,17 @@ function createHarness(exec: ExecHandler): ExtensionHarness {
     } as unknown as ExtensionCommandContext;
 
     registerGhIssues(pi);
-    return { commands, ctx, terminalHandlers, workingMessages, statuses, notifications, sentMessages };
+    return {commands, ctx, terminalHandlers, workingMessages, statuses, notifications, sentMessages};
 }
 
 async function stopViaInterrupt(harness: ExtensionHarness, run: Promise<void>, input = "\u001b"): Promise<void> {
-    expect(harness.terminalHandlers[0]?.(input)).toEqual({ consume: true });
+    expect(harness.terminalHandlers[0]?.(input)).toEqual({consume: true});
     await run;
 }
 
 describe("parseArgs", () => {
     test("uses defaults when only prompt is provided", () => {
-        expect(parseArgs("\"请逐个分析\"")).toEqual({ prompt: "请逐个分析" });
+        expect(parseArgs("\"请逐个分析\"")).toEqual({prompt: "请逐个分析"});
     });
 
     test("classifies repo interval and prompt by shape", () => {
@@ -235,9 +235,9 @@ describe("parseArgs", () => {
     });
 
     test("non-positive and non-integer numbers stay prompt", () => {
-        expect(parseArgs("0")).toEqual({ prompt: "0" });
-        expect(parseArgs("-5")).toEqual({ prompt: "-5" });
-        expect(parseArgs("30.7")).toEqual({ prompt: "30.7" });
+        expect(parseArgs("0")).toEqual({prompt: "0"});
+        expect(parseArgs("-5")).toEqual({prompt: "-5"});
+        expect(parseArgs("30.7")).toEqual({prompt: "30.7"});
     });
 
     test("extra prompt tokens are preserved", () => {
@@ -261,7 +261,7 @@ describe("gh-issues poller", () => {
             await flushMicrotasks();
             expect(timers.scheduled).toHaveLength(0);
             expect(harness.workingMessages[0]).toContain("按 Esc 停止");
-            expect(harness.statuses[0]).toMatchObject({ key: "gh-issues" });
+            expect(harness.statuses[0]).toMatchObject({key: "gh-issues"});
             expect(harness.statuses[0]?.text).toContain("foo/bar 每 1 分钟");
             expect(harness.statuses[0]?.text).toContain("上次输出 尚无");
             expect(harness.statuses[0]?.text).toContain("下次运行 立即执行");
@@ -277,7 +277,7 @@ describe("gh-issues poller", () => {
 
             await stopViaInterrupt(harness, run);
             expect(harness.workingMessages.at(-1)).toBeUndefined();
-            expect(harness.statuses.at(-1)).toEqual({ key: "gh-issues", text: undefined });
+            expect(harness.statuses.at(-1)).toEqual({key: "gh-issues", text: undefined});
         } finally {
             timers.restore();
         }
@@ -317,7 +317,7 @@ describe("gh-issues poller", () => {
     });
 
     test("honors remapped app interrupt key", async () => {
-        installKeybindings({ "app.interrupt": "ctrl+x" });
+        installKeybindings({"app.interrupt": "ctrl+x"});
         const timers = installTimerCapture();
         const harness = createHarness(() => Promise.resolve(emptyIssuesResult()));
 
@@ -335,7 +335,7 @@ describe("gh-issues poller", () => {
     });
 
     test("does not stop on Escape when app interrupt is explicitly disabled", async () => {
-        installKeybindings({ "app.interrupt": [] });
+        installKeybindings({"app.interrupt": []});
         const timers = installTimerCapture();
         const harness = createHarness(() => Promise.resolve(emptyIssuesResult()));
 
@@ -433,7 +433,7 @@ describe("gh-issues poller", () => {
             expect(harness.sentMessages[0]?.message.content).toContain("不要等待用户再次确认");
             expect(harness.sentMessages[0]?.message.content).toContain("用户提示：");
             expect(harness.sentMessages[0]?.message.content).toContain(prompt);
-            expect(harness.sentMessages[0]?.options).toEqual({ deliverAs: "nextTurn", triggerTurn: true });
+            expect(harness.sentMessages[0]?.options).toEqual({deliverAs: "nextTurn", triggerTurn: true});
             expect(harness.notifications.some((entry) => entry.message.includes("已自动触发 Agent 执行"))).toBe(true);
 
             await stopViaInterrupt(harness, run);
@@ -481,7 +481,7 @@ describe("gh-issues poller", () => {
     test("reports gh failures without killing watcher", async () => {
         installKeybindings();
         const timers = installTimerCapture();
-        const harness = createHarness(() => Promise.resolve({ stdout: "", stderr: "认证失败", code: 1, killed: false }));
+        const harness = createHarness(() => Promise.resolve({stdout: "", stderr: "认证失败", code: 1, killed: false}));
 
         try {
             const run = harness.commands["gh-issues"].handler("foo/bar 2", harness.ctx);

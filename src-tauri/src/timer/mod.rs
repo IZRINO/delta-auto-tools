@@ -12,7 +12,6 @@ use tokio::{
     time::{self, Duration},
 };
 
-use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::app_error::AppError;
 use crate::hotkey_types::{ConflictPolicy, HoldAction, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
@@ -20,6 +19,7 @@ use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
 };
+use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
 
 use self::types::{
@@ -335,8 +335,8 @@ fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings
         DEFAULT_TIMER_GROUP_ID,
         DEFAULT_TIMER_GROUP_ID,
     )
-    .cloned()
-    .unwrap_or_default();
+        .cloned()
+        .unwrap_or_default();
     Ok(settings_value)
 }
 
@@ -516,19 +516,19 @@ fn ensure_overlay_window(
         label,
         WebviewUrl::App(format!("index.html?mode={query_mode}").into()),
     )
-    .title(title)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(false)
-    .visible(true)
-    .resizable(false)
-    .inner_size(rect.width as f64, rect.height as f64)
-    .position(rect.x as f64, rect.y as f64)
-    .build()
-    .map_err(|error| format!("创建{title}透明窗口失败: {error}"))?;
+        .title(title)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(true)
+        .resizable(false)
+        .inner_size(rect.width as f64, rect.height as f64)
+        .position(rect.x as f64, rect.y as f64)
+        .build()
+        .map_err(|error| format!("创建{title}透明窗口失败: {error}"))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
@@ -856,8 +856,8 @@ fn rect_for_group(
         DEFAULT_TIMER_GROUP_ID,
         group_id,
     )
-    .map(|display| display.rect.clone())
-    .unwrap_or_else(|| settings_value.display.rect.clone())
+        .map(|display| display.rect.clone())
+        .unwrap_or_else(|| settings_value.display.rect.clone())
 }
 
 fn set_rect_for_group(
@@ -1026,19 +1026,19 @@ pub async fn timer_begin_position_selection(
             format!("index.html?mode={}", position_mode_for_group(&group_id)).into(),
         ),
     )
-    .title("设置计时器位置")
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(true)
-    .visible(true)
-    .resizable(false)
-    .inner_size(rect.width as f64, rect.height as f64)
-    .position(rect.x as f64, rect.y as f64)
-    .build()
-    .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
+        .title("设置计时器位置")
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true)
+        .visible(true)
+        .resizable(false)
+        .inner_size(rect.width as f64, rect.height as f64)
+        .position(rect.x as f64, rect.y as f64)
+        .build()
+        .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {

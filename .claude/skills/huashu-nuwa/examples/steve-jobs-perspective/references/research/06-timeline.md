@@ -9,7 +9,8 @@
 
 ### 出生与领养
 
-- **1955年2月24日**：Steven Paul Jobs出生于加州旧金山。生父Abdulfattah "John" Jandali（叙利亚裔政治学研究生），生母Joanne Schieble（威斯康星大学研究生）。两人未婚，Schieble的父亲反对她嫁给阿拉伯人，因此将孩子送养
+- **1955年2月24日**：Steven Paul Jobs出生于加州旧金山。生父Abdulfattah "John" Jandali（叙利亚裔政治学研究生），生母Joanne
+  Schieble（威斯康星大学研究生）。两人未婚，Schieble的父亲反对她嫁给阿拉伯人，因此将孩子送养
 - **1955年**：被Paul Jobs（机械师/二手车商）和Clara Jobs（会计）领养，定居加州Mountain View
 - Jobs后来得知自己是被领养的，这成为他一生的重要心理背景。Paul Jobs向他保证：「你是被特别选中的」
 
@@ -30,7 +31,8 @@
 
 - **1972年秋**：进入俄勒冈州波特兰的Reed College
 - **1972年底/1973年初**：一个学期后退学——觉得父母花积蓄供他读书却不知道想干什么是一种浪费。但继续在校园旁听课程长达18个月
-- **旁听书法课**：Robert Palladino教授的课让他对字体和排版产生深刻兴趣，十年后直接影响了Macintosh的字体设计。这是他后来「connecting the dots」哲学的核心例证
+- **旁听书法课**：Robert Palladino教授的课让他对字体和排版产生深刻兴趣，十年后直接影响了Macintosh的字体设计。这是他后来「connecting
+  the dots」哲学的核心例证
 - **1974年**：回到加州，在Atari担任技术员。同年与好友Daniel Kottke前往印度进行为期7个月的精神之旅，接触禅宗佛教
 - **1974-1975年**：开始在洛斯阿尔托斯禅宗中心修行，师从乙川弘文（Kobun Chino Otogawa）。禅宗对他的产品哲学产生终身影响：简洁、专注、直觉
 
@@ -45,7 +47,8 @@
 
 ### 车库创业
 
-- **1976年4月1日**：Steve Jobs（21岁）、Steve Wozniak（25岁）和Ronald Wayne（41岁）正式创立Apple Computer, Inc.。Wayne持有10%股份，但12天后以800美元卖回
+- **1976年4月1日**：Steve Jobs（21岁）、Steve Wozniak（25岁）和Ronald Wayne（41岁）正式创立Apple Computer,
+  Inc.。Wayne持有10%股份，但12天后以800美元卖回
 - 初始资金：Jobs卖掉自己的VW面包车（1500美元），Wozniak卖掉HP-65计算器（500美元）
 - **Apple I**：手工组装的裸电路板，售价666.66美元。主要在当地电脑商店The Byte Shop销售，生产了约200台
 
@@ -65,7 +68,8 @@
 - **1981年**：Jobs从Lisa项目被排挤后接管Macintosh项目，将其重新定义为「改变世界」的产品
 - **1983年**：Jobs说服百事可乐总裁John Sculley加入Apple担任CEO，用了那句著名的话：「你想一辈子卖糖水，还是想改变世界？」
 - **1984年1月22日**：Ridley Scott导演的「1984」广告在Super Bowl XVIII第三节间隙播出，成为广告史上最具标志性的作品
-- **1984年1月24日**：Macintosh在De Anza College Flint Center的Apple年度股东大会上正式发布。Jobs从一个布袋中取出Mac，屏幕上显示「insanely great」。初始售价2,495美元
+- **1984年1月24日**：Macintosh在De Anza College Flint Center的Apple年度股东大会上正式发布。Jobs从一个布袋中取出Mac，屏幕上显示「insanely
+  great」。初始售价2,495美元
 
 ### 权力斗争与被逐
 
@@ -84,14 +88,16 @@
 
 - **1985年9月**：创立NeXT, Inc.，目标是制造面向高等教育和商业市场的高端工作站
 - **1988年10月12日**：NeXT Computer（后称NeXT Cube）在旧金山交响乐大厅发布。售价6,500美元（不含显示器则更高），配备当时最先进的技术
-- NeXT的操作系统NeXTSTEP成为其真正遗产——面向对象编程、Objective-C语言、开发工具。Tim Berners-Lee在NeXT上发明了万维网（World Wide Web）
+- NeXT的操作系统NeXTSTEP成为其真正遗产——面向对象编程、Objective-C语言、开发工具。Tim Berners-Lee在NeXT上发明了万维网（World
+  Wide Web）
 - **1990年**：发布NeXTstation，定价更低，但仍然无法打开大众市场
 - **1993年**：NeXT停止硬件生产（总共仅售出约50,000台），转型为纯软件公司，专注NeXTSTEP/Intel
 - **1994年**：NeXT首次实现年度盈利（103万美元）
 
 ### Pixar与动画革命
 
-- **1986年2月3日**：Jobs以500万美元从George Lucas手中收购Lucasfilm的电脑图形部门（Computer Graphics Division），并另外注资500万美元，成为Pixar的董事长和大股东
+- **1986年2月3日**：Jobs以500万美元从George Lucas手中收购Lucasfilm的电脑图形部门（Computer Graphics
+  Division），并另外注资500万美元，成为Pixar的董事长和大股东
 - **1986年**：Pixar短片《Luxo Jr.》获得奥斯卡最佳动画短片提名，展示了电脑动画的潜力
 - **1988年**：《Tin Toy》成为第一部获得奥斯卡最佳动画短片的电脑动画作品
 - **1991年5月**：Pixar与迪士尼签署协议，合作制作三部电脑动画长片
@@ -102,7 +108,8 @@
 - **1995年11月29日**：Pixar在NASDAQ以代码「PIXR」IPO，发行价22美元，开盘半小时内从28美元涨到45美元，超越Netscape成为当年最大IPO。Jobs的Pixar股份价值约12亿美元
 - **1997年2月25日**：Pixar与迪士尼签署新的10年5部电影合作协议，利润五五分成，品牌平等标注
 
-**思想转折点**：流放期是Jobs成长为成熟领导者的关键阶段。在NeXT他学会了不再只追求「insanely great」而忽略商业现实；在Pixar他学会了放手让专业人士（John Lasseter、Ed Catmull）做他们擅长的事。Laurene和孩子们让他的生活有了锚点。
+**思想转折点**：流放期是Jobs成长为成熟领导者的关键阶段。在NeXT他学会了不再只追求「insanely
+great」而忽略商业现实；在Pixar他学会了放手让专业人士（John Lasseter、Ed Catmull）做他们擅长的事。Laurene和孩子们让他的生活有了锚点。
 
 ### 家庭关系变化
 
@@ -116,12 +123,14 @@
 
 ### 拯救濒临破产的Apple
 
-- **1996年12月20日**：Apple宣布以4.29亿美元收购NeXT。Jobs回到Apple担任「非正式顾问」（informal adviser），当时Apple CEO为Gil Amelio
+- **1996年12月20日**：Apple宣布以4.29亿美元收购NeXT。Jobs回到Apple担任「非正式顾问」（informal adviser），当时Apple CEO为Gil
+  Amelio
 - **1997年7月9日**：Apple董事会解除Amelio的CEO职务
 - **1997年9月16日**：Jobs被任命为临时CEO（interim CEO，戏称iCEO），年薪象征性地设为1美元
 - **1997年**：发起「Think Different」广告运动，向爱因斯坦、甘地、毕加索等「疯狂的人」致敬。这不仅是广告，更是宣告Apple精神的回归
 - **1997年8月6日**：在Macworld Boston宣布Microsoft将向Apple投资1.5亿美元，引起台下嘘声，但这笔交易帮助Apple度过财务危机
-- **1997-1998年**：大幅精简产品线，砍掉Newton、Cyberdog、OpenDoc等项目。将Apple的几十条产品线简化为四象限矩阵：消费者/专业 × 台式机/笔记本
+- **1997-1998年**：大幅精简产品线，砍掉Newton、Cyberdog、OpenDoc等项目。将Apple的几十条产品线简化为四象限矩阵：消费者/专业 ×
+  台式机/笔记本
 - **1997年11月10日**：推出Apple Online Store，消费者可以直接定制和购买Apple产品
 
 ### iMac与设计复兴
@@ -154,7 +163,8 @@
 
 - **2006年1月24日**：迪士尼宣布以74亿美元全股票交易收购Pixar。Jobs成为迪士尼最大个人股东（持股约7%），并加入迪士尼董事会
 
-**思想转折点**：回归后的Jobs完全不同于1985年离开时的那个人。他学会了：（1）聚焦——砍掉90%产品线；（2）与顶尖人才合作而非对抗；（3）设计不是装饰，而是产品的灵魂；（4）零售体验的重要性。iMac到iPod的连续成功证明了他的蜕变。
+**思想转折点**
+：回归后的Jobs完全不同于1985年离开时的那个人。他学会了：（1）聚焦——砍掉90%产品线；（2）与顶尖人才合作而非对抗；（3）设计不是装饰，而是产品的灵魂；（4）零售体验的重要性。iMac到iPod的连续成功证明了他的蜕变。
 
 ---
 
@@ -197,11 +207,13 @@
 
 ### 癌症诊断与治疗
 
-- **2003年10月**：一次肾脏CT扫描意外发现胰腺肿瘤。医生最初认为是普通胰腺癌（通常致命），后确诊为罕见的胰腺神经内分泌肿瘤（Pancreatic Neuroendocrine Tumor, pNET），手术可治愈
+- **2003年10月**：一次肾脏CT扫描意外发现胰腺肿瘤。医生最初认为是普通胰腺癌（通常致命），后确诊为罕见的胰腺神经内分泌肿瘤（Pancreatic
+  Neuroendocrine Tumor, pNET），手术可治愈
 - **2003年10月-2004年7月（约9个月）**：Jobs拒绝手术，尝试替代疗法——素食、针灸、草药、灵性治疗。这个决定后来被广泛认为可能延误了治疗的最佳时机
 - **2004年7月31日**：在斯坦福大学医学中心接受胰十二指肠切除术（Whipple手术），切除部分胰腺、胆囊、胃和小肠
 - **2004年8月1日**：向Apple员工发送邮件，告知自己患有「一种非常罕见的胰腺癌」，称手术成功，无需化疗或放疗
-- **2005年6月12日**：在斯坦福大学毕业典礼发表著名演讲——「Stay Hungry, Stay Foolish」。讲述三个故事：connecting the dots（人生点滴的连接）、love and loss（爱与失去）、death（死亡）。这成为互联网时代最被引用的演讲之一
+- **2005年6月12日**：在斯坦福大学毕业典礼发表著名演讲——「Stay Hungry, Stay Foolish」。讲述三个故事：connecting the
+  dots（人生点滴的连接）、love and loss（爱与失去）、death（死亡）。这成为互联网时代最被引用的演讲之一
 
 ### 病情恶化
 
@@ -217,7 +229,8 @@
 - **2011年3月2日**：从病假中返回主持iPad 2发布会（最后一次产品发布）
 - **2011年6月6日**：最后一次WWDC keynote，发布iCloud
 - **2011年6月7日**：最后一次公开露面，在Cupertino市议会展示Apple Park方案
-- **2011年8月24日**：Jobs正式辞去Apple CEO职务，致信董事会：「我一直说，如果有一天我不能再履行CEO的职责和期望，我会第一个告诉你们。很不幸，那一天到了。」Tim Cook接任CEO，Jobs转任董事会主席
+- **2011年8月24日**：Jobs正式辞去Apple CEO职务，致信董事会：「我一直说，如果有一天我不能再履行CEO的职责和期望，我会第一个告诉你们。很不幸，那一天到了。」Tim
+  Cook接任CEO，Jobs转任董事会主席
 
 ### 辞世
 
@@ -239,22 +252,22 @@
 
 ## 附录：关键人际关系图谱
 
-| 人物 | 关系 | 关键影响 |
-|------|------|----------|
-| Steve Wozniak | 联合创始人 | Apple I/II的技术天才，Jobs的第一个搭档 |
-| Mike Markkula | 早期投资者/导师 | 教Jobs商业运营，投入Apple的第一笔大钱 |
-| John Sculley | Apple CEO（1983-1993） | 被Jobs招募，后将Jobs逐出Apple |
-| Jony Ive | Apple首席设计官 | 与Jobs共同塑造了Apple的设计语言（iMac到iPhone） |
-| Tim Cook | Apple COO/CEO | Jobs的接班人，运营天才 |
-| Ed Catmull | Pixar联合创始人 | Pixar的技术灵魂，教Jobs尊重创意流程 |
-| John Lasseter | Pixar首席创意官 | Pixar的创意灵魂，《玩具总动员》导演 |
-| Laurene Powell Jobs | 妻子 | 1991年结婚，Jobs的精神支柱和生活锚点 |
-| Chrisann Brennan | 前女友 | Lisa的母亲，早期关系复杂而痛苦 |
-| Lisa Brennan-Jobs | 长女 | 最初被否认，后逐渐和解的父女关系 |
-| Bob Iger | 迪士尼CEO | Pixar-Disney合并的关键人物，Jobs的朋友 |
-| Bill Gates | 微软创始人 | 一生的竞争对手和复杂的友谊 |
-| 乙川弘文 | 禅宗老师 | Jobs的精神导师，主持其婚礼 |
-| Mona Simpson | 亲妹妹（生母所生） | 1986年Jobs找到生母后认识，关系亲密 |
+| 人物                  | 关系                   | 关键影响                              |
+|---------------------|----------------------|-----------------------------------|
+| Steve Wozniak       | 联合创始人                | Apple I/II的技术天才，Jobs的第一个搭档        |
+| Mike Markkula       | 早期投资者/导师             | 教Jobs商业运营，投入Apple的第一笔大钱           |
+| John Sculley        | Apple CEO（1983-1993） | 被Jobs招募，后将Jobs逐出Apple             |
+| Jony Ive            | Apple首席设计官           | 与Jobs共同塑造了Apple的设计语言（iMac到iPhone） |
+| Tim Cook            | Apple COO/CEO        | Jobs的接班人，运营天才                     |
+| Ed Catmull          | Pixar联合创始人           | Pixar的技术灵魂，教Jobs尊重创意流程            |
+| John Lasseter       | Pixar首席创意官           | Pixar的创意灵魂，《玩具总动员》导演              |
+| Laurene Powell Jobs | 妻子                   | 1991年结婚，Jobs的精神支柱和生活锚点            |
+| Chrisann Brennan    | 前女友                  | Lisa的母亲，早期关系复杂而痛苦                 |
+| Lisa Brennan-Jobs   | 长女                   | 最初被否认，后逐渐和解的父女关系                  |
+| Bob Iger            | 迪士尼CEO               | Pixar-Disney合并的关键人物，Jobs的朋友       |
+| Bill Gates          | 微软创始人                | 一生的竞争对手和复杂的友谊                     |
+| 乙川弘文                | 禅宗老师                 | Jobs的精神导师，主持其婚礼                   |
+| Mona Simpson        | 亲妹妹（生母所生）            | 1986年Jobs找到生母后认识，关系亲密             |
 
 ---
 

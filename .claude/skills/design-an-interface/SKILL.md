@@ -5,7 +5,8 @@ description: Generate multiple radically different interface designs for a modul
 
 # Design an Interface
 
-Based on "Design It Twice" from "A Philosophy of Software Design": your first idea is unlikely to be the best. Generate multiple radically different designs, then compare.
+Based on "Design It Twice" from "A Philosophy of Software Design": your first idea is unlikely to be the best. Generate
+multiple radically different designs, then compare.
 
 ## Workflow
 
@@ -84,7 +85,8 @@ From "A Philosophy of Software Design":
 
 **Implementation efficiency**: Does interface shape allow efficient implementation? Or force awkward internals?
 
-**Depth**: Small interface hiding significant complexity = deep module (good). Large interface with thin implementation = shallow module (avoid).
+**Depth**: Small interface hiding significant complexity = deep module (good). Large interface with thin
+implementation = shallow module (avoid).
 
 ## Anti-Patterns
 

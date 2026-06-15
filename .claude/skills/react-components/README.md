@@ -14,7 +14,8 @@ Convert my Landing Page screen in my Podcast Stitch Project to a React component
 
 ## Skill Structure
 
-This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, validation scripts, and design tokens.
+This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, validation
+scripts, and design tokens.
 
 ```text
 skills/react-components/

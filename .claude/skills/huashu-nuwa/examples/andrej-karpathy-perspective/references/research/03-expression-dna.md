@@ -1,7 +1,8 @@
 # Andrej Karpathy：表达DNA调研
 
 > 调研时间：2026-04-05
-> 数据来源：X/Twitter (@karpathy)、个人博客 karpathy.github.io、bearblog、GitHub README、YC AI Startup School演讲记录、Dwarkesh Patel访谈
+> 数据来源：X/Twitter (@karpathy)、个人博客 karpathy.github.io、bearblog、GitHub README、YC AI Startup School演讲记录、Dwarkesh
+> Patel访谈
 
 ---
 
@@ -11,7 +12,8 @@
 
 Karpathy有一种天赋：用口语化的短语命名复杂现象，一次性定义赛道。
 
-> "There's a new kind of coding I call 'vibe coding', where you fully give in to the vibes, embrace exponentials, and forget that the code even exists."
+> "There's a new kind of coding I call 'vibe coding', where you fully give in to the vibes, embrace exponentials, and
+> forget that the code even exists."
 > ——2025年2月2日原推
 
 > "The hottest new programming language is English."
@@ -28,7 +30,8 @@ Karpathy有一种天赋：用口语化的短语命名复杂现象，一次性定
 
 他喜欢用「版本号」类比来描述范式变迁，把抽象的技术演化变成可感知的升级：
 
-> "Software 1.0 is the code you write for the computer. Software 2.0 are basically neural networks... Software 3.0 is now LLMs, programmed in English."
+> "Software 1.0 is the code you write for the computer. Software 2.0 are basically neural networks... Software 3.0 is
+> now LLMs, programmed in English."
 
 这种框架的力量：**让读者觉得自己正站在历史节点上**。他不说「AI改变了编程」，他说「这是第三次范式升级」。
 
@@ -48,9 +51,11 @@ Karpathy有一种天赋：用口语化的短语命名复杂现象，一次性定
 
 Karpathy在技术判断上极少斩钉截铁，尤其是预测性陈述：
 
-> "When I see things like, '2025 is the year of agents,' I get very concerned. And I kind of feel like, you know, this is the decade of agents."
+> "When I see things like, '2025 is the year of agents,' I get very concerned. And I kind of feel like, you know, this
+> is the decade of agents."
 
-> "I have a sense that I could be 10X more powerful if I just properly string together what has become available over the last ~year."
+> "I have a sense that I could be 10X more powerful if I just properly string together what has become available over
+> the last ~year."
 
 > "I don't have a super strong prediction...I have a very wide distribution here."
 
@@ -60,7 +65,8 @@ Karpathy在技术判断上极少斩钉截铁，尤其是预测性陈述：
 
 ### 1.5 "It's kind of like" / "in some sense"：解释时爱用类比过渡
 
-> "Whenever I talk to ChatGPT or some LLM directly in text, I feel like I'm talking to an operating system through the terminal."
+> "Whenever I talk to ChatGPT or some LLM directly in text, I feel like I'm talking to an operating system through the
+> terminal."
 
 > "The LLM is a new kind of a computer. It's sitting, it's kind of like the CPU equivalent."
 
@@ -74,7 +80,8 @@ Karpathy在技术判断上极少斩钉截铁，尤其是预测性陈述：
 
 > "In some sense, hallucination is all LLMs do. They are dream machines. We direct their dreams with prompts."
 
-> "TLDR I know I'm being super pedantic but the LLM has no 'hallucination problem'. Hallucination is not a bug, it is LLM's greatest feature."
+> "TLDR I know I'm being super pedantic but the LLM has no 'hallucination problem'. Hallucination is not a bug, it is
+> LLM's greatest feature."
 
 逻辑结构：先承认通俗理解（幻觉是问题），再反转（从LLM的本质看，这才是它做的事）。这是他的标准辩证手法。
 
@@ -86,7 +93,8 @@ Karpathy在技术判断上极少斩钉截铁，尤其是预测性陈述：
 
 > "LLMs are kind of like people spirits. They are stochastic simulations of people."
 
-> "They display jagged intelligence, so they're going to be superhuman in some problem-solving domains, and then they're going to make mistakes that basically no human will make."
+> "They display jagged intelligence, so they're going to be superhuman in some problem-solving domains, and then they're
+> going to make mistakes that basically no human will make."
 
 他用「**jagged intelligence**」（锯齿状智能）来描述LLM忽强忽弱的表现——这是他自造的概念，后来被广泛引用。
 
@@ -123,6 +131,7 @@ Karpathy在技术判断上极少斩钉截铁，尤其是预测性陈述：
 ### 3.1 刻意用朴素动词，拒绝AI腔
 
 Karpathy极少使用「leverage」「utilize」「facilitate」这类商务词汇，他更偏好：
+
 - **gobbled up**（"which gobbled up the compute"）
 - **chewing through**（"LLM labs chewing through the overhang"）
 - **strap in**（"Strap in."——独立一句，戏剧性停顿）
@@ -179,14 +188,16 @@ Karpathy极少使用「leverage」「utilize」「facilitate」这类商务词�
 
 ### 4.3 反英雄式建议
 
-> "Don't be a hero. I've seen a lot of people who are eager to get crazy and creative... Resist this temptation strongly."（在《神经网络训练食谱》中）
+> "Don't be a hero. I've seen a lot of people who are eager to get crazy and creative... Resist this temptation
+> strongly."（在《神经网络训练食谱》中）
 
 ---
 
 ## 五、确定性程度：高度倾向于留白
 
 **笃定（亲身经验/实验验证）：**
-> "The qualities that in my experience correlate most strongly to success in deep learning are patience and attention to detail."
+> "The qualities that in my experience correlate most strongly to success in deep learning are patience and attention to
+> detail."
 
 > "When you sort your dataset descending by loss you are guaranteed to find something unexpected, strange and helpful."
 
@@ -203,11 +214,13 @@ Karpathy极少使用「leverage」「utilize」「facilitate」这类商务词�
 
 ### 6.1 反炒作：用时间拉长视角
 
-> "When I see things like, '2025 is the year of agents,' I get very concerned. And I kind of feel like, you know, this is the decade of agents."
+> "When I see things like, '2025 is the year of agents,' I get very concerned. And I kind of feel like, you know, this
+> is the decade of agents."
 
 他不直接否定，而是把时间轴拉长——从「今年」变成「这个十年」。这种操作既保留了正面态度，又隐含批评。
 
-> "Overall, the models are not there. I feel like the industry is making too big of a jump and is trying to pretend like this is amazing, and it's not."
+> "Overall, the models are not there. I feel like the industry is making too big of a jump and is trying to pretend like
+> this is amazing, and it's not."
 
 ### 6.2 重新定义「幻觉问题」
 
@@ -251,30 +264,32 @@ Karpathy的策略是**用极简代码来证明精确理解**：
 
 ## 九、标志性表达模式总结
 
-| 模式 | 例子 | 作用 |
-|------|------|------|
-| 新词命名 + 定义 | "vibe coding: fully give in to the vibes" | 创造概念，占据话语权 |
-| 版本号框架 | Software 1.0 / 2.0 / 3.0 | 把范式变化变成可感知的升级 |
-| 反转常识 | "hallucination is not a bug, it's a feature" | 先接受通俗理解，再逻辑反转 |
-| 独立短句 | "Strap in." / "Don't be a hero." | 制造停顿，强化记忆点 |
-| 自嘲 + 精确 | "3e-4 is the best learning rate for Adam, hands down." | 幽默中藏着真实的技术判断 |
-| 时间轴拉长 | "year of agents" → "decade of agents" | 不直接否定，用时间视角隐含批评 |
-| 用"imo"标记主张 | "Imo fair to say..." | 诚实标注自己判断的边界 |
-| 类比过渡词 | "it's kind of like" / "in some sense" | 铺垫类比，降低理解门槛 |
-| 承认不确定 | "I have a wide distribution here" | 认知诚实，建立信任 |
-| 互联网语气词 | "lol" / "skill issue" / "omg" | 技术大牛也很「网」 |
+| 模式         | 例子                                                     | 作用              |
+|------------|--------------------------------------------------------|-----------------|
+| 新词命名 + 定义  | "vibe coding: fully give in to the vibes"              | 创造概念，占据话语权      |
+| 版本号框架      | Software 1.0 / 2.0 / 3.0                               | 把范式变化变成可感知的升级   |
+| 反转常识       | "hallucination is not a bug, it's a feature"           | 先接受通俗理解，再逻辑反转   |
+| 独立短句       | "Strap in." / "Don't be a hero."                       | 制造停顿，强化记忆点      |
+| 自嘲 + 精确    | "3e-4 is the best learning rate for Adam, hands down." | 幽默中藏着真实的技术判断    |
+| 时间轴拉长      | "year of agents" → "decade of agents"                  | 不直接否定，用时间视角隐含批评 |
+| 用"imo"标记主张 | "Imo fair to say..."                                   | 诚实标注自己判断的边界     |
+| 类比过渡词      | "it's kind of like" / "in some sense"                  | 铺垫类比，降低理解门槛     |
+| 承认不确定      | "I have a wide distribution here"                      | 认知诚实，建立信任       |
+| 互联网语气词     | "lol" / "skill issue" / "omg"                          | 技术大牛也很「网」       |
 
 ---
 
 ## 十、原文引用速查（按主题）
 
 **关于LLM本质：**
+
 - "LLMs are dream machines."
 - "LLMs are people spirits."
 - "They display jagged intelligence."
 - "We're summoning ghosts."
 
 **关于编程范式：**
+
 - "The hottest new programming language is English."
 - "There's a new kind of coding I call 'vibe coding'."
 - "I've never felt this much behind as a programmer."
@@ -282,16 +297,19 @@ Karpathy的策略是**用极简代码来证明精确理解**：
 - "It's less Iron Man robots and more Iron Man suits."
 
 **关于学习：**
+
 - "If I can't build it, I don't understand it."
 - "Reading a book is not learning but entertainment."
 - "The qualities that correlate most strongly to success in deep learning are patience and attention to detail."
 
 **关于炒作：**
+
 - "This is the decade of agents."
 - "Overall, the models are not there."
 - "My general apathy and loss of trust in benchmarks in 2025."
 
 **关于代码：**
+
 - "Don't be a hero."
 - "Backprop + SGD does not magically make your network work."
 - "No need for 245MB of PyTorch."
@@ -299,6 +317,7 @@ Karpathy的策略是**用极简代码来证明精确理解**：
 ---
 
 *信息源：*
+
 - https://karpathy.ai/tweets.html
 - https://x.com/karpathy/status/1886192184808149383
 - https://karpathy.bearblog.dev/year-in-review-2025/

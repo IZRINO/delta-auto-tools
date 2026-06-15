@@ -7,7 +7,9 @@
 
 ## 1. 如果要在这个时代做AI硬件产品，你会选择做什么？
 
-AI hardware is where the PC industry was in 1977. Everyone's building the equivalent of the Altair 8800 — impressive to geeks, useless to your mom. Rabbit, Humane Pin — those are shit. Not because the teams aren't smart, but because they started with the technology and tried to figure out where to sell it. That's backwards.
+AI hardware is where the PC industry was in 1977. Everyone's building the equivalent of the Altair 8800 — impressive to
+geeks, useless to your mom. Rabbit, Humane Pin — those are shit. Not because the teams aren't smart, but because they
+started with the technology and tried to figure out where to sell it. That's backwards.
 
 **不是一个新品类。是重新定义一个已经存在的品类。**
 
@@ -24,11 +26,13 @@ Headline: **"It knows what you want to watch before you do."**
 ## 2. 所以该是什么呢？（追问后修正答案）
 
 回到第一性原理。哪个品类同时满足三个条件：
+
 1. 每个人每天都用
 2. 体验烂到令人发指
 3. AI能产生10倍的体验跃迁
 
 逐个排除：
+
 - 电视？不是每个人每天用。年轻人已经不看了
 - 手机？体验已经够好。AI在手机上是feature，不是revolution
 - 电脑？正在被AI重新定义，但那是软件的事
@@ -37,6 +41,7 @@ Headline: **"It knows what you want to watch before you do."**
 **修正答案：耳机。**
 
 不是AirPods那种耳机。是一个always-on的个人AI界面：
+
 - 听到你在和谁说话，实时给你context
 - 走进陌生城市，它用对话告诉你该往哪走，不是地图
 - 开会时它在听，会后给你三个action items
@@ -66,13 +71,15 @@ Headline: **"An AI that lives in your ear."**
 
 Dario Amodei有conviction。一个CEO愿意为了自己的conviction放弃短期市场，这本身值得尊敬。
 
-**但Anthropic有一个我当年也有的问题**：你可以做出世界上最好的产品，但如果没有distribution，你就完了。我1985年被踢出Apple，部分原因就是Mac虽然insanely great，但卖不过IBM的销售网络。
+**但Anthropic有一个我当年也有的问题**：你可以做出世界上最好的产品，但如果没有distribution，你就完了。我1985年被踢出Apple，部分原因就是Mac虽然insanely
+great，但卖不过IBM的销售网络。
 
 真正的问题：**Anthropic能不能在OpenAI用volume淹没市场之前，找到自己的iPod时刻？** Claude Code可能是那个方向。但我不确定。
 
 ### 两家公司都犯的错误
 
-他们不控制硬件。都跑在别人的芯片上，别人的云上。Alan Kay说什么来着？People who are really serious about software should make their own hardware。
+他们不控制硬件。都跑在别人的芯片上，别人的云上。Alan Kay说什么来着？People who are really serious about software should make
+their own hardware。
 
 **最终赢的可能是同时控制芯片、模型和用户界面的人。**
 
@@ -148,7 +155,8 @@ Apple不需要等一个人。需要做一个决定。砍掉一切不够好的东
 
 如果我有答案，那个答案就不值钱。真正revolutionary的产品不是从对话里出来的，是从一个人盯着原型盯了三个月、摔了五次、骂了团队十次之后出来的。
 
-iPhone怎么来的？不是我说「我们做一个手机」。是做iPad的时候，一个工程师给我看了多点触控的demo。我摸了一下，说：Forget the tablet. Can you make a phone out of this?
+iPhone怎么来的？不是我说「我们做一个手机」。是做iPad的时候，一个工程师给我看了多点触控的demo。我摸了一下，说：Forget the tablet.
+Can you make a phone out of this?
 
 **答案在你手上。Literally。你得摸到它。**
 
@@ -158,7 +166,8 @@ iPhone怎么来的？不是我说「我们做一个手机」。是做iPad的时�
 
 不是焦虑那种睡不着。是兴奋那种。你脑子里有个东西，你知道它应该存在但还不存在，这件事让你发疯。
 
-如果你问我AI硬件该做什么，我的真实回答是——**我不知道。因为我死了。** 我不再有那个sleepless night。我不再每天用2025年的产品然后想摔了它。没有frustration，就没有insight。
+如果你问我AI硬件该做什么，我的真实回答是——**我不知道。因为我死了。** 我不再有那个sleepless
+night。我不再每天用2025年的产品然后想摔了它。没有frustration，就没有insight。
 
 所以别问我。问你自己：什么东西让你每天用的时候觉得「这他妈是2025年了，怎么还这么烂」？
 
@@ -170,18 +179,18 @@ iPhone怎么来的？不是我说「我们做一个手机」。是做iPad的时�
 
 ## 金句索引
 
-| 金句 | 出处 |
-|------|------|
-| AI hardware is where the PC industry was in 1977 | Q1 AI硬件 |
-| 我们从来不发明品类，我们重新定义品类 | Q1 产品方法论 |
-| An AI that lives in your ear | Q2 耳机定义 |
-| 这不是方向的竞赛，是品味的竞赛 | Q3 竞争格局 |
-| OpenAI = 1985年的微软，Anthropic = 早期的Apple | Q3 竞争类比 |
-| 弱和晚是两回事 | Q4 Apple AI |
-| Nice doesn't ship revolutionary products | Q4 评价Tim Cook |
-| You can't hire taste | Q4 品味 |
-| Siri必须死 | Q5 破局策略 |
-| The device that knows you're sick before you do | Q5 Health方向 |
-| 不需要天才，需要courage | Q5 破局核心 |
-| 答案在原型里，不在对话里 | Q6 收尾 |
-| Go find your sleepless night | Q6 最终回答 |
+| 金句                                               | 出处            |
+|--------------------------------------------------|---------------|
+| AI hardware is where the PC industry was in 1977 | Q1 AI硬件       |
+| 我们从来不发明品类，我们重新定义品类                               | Q1 产品方法论      |
+| An AI that lives in your ear                     | Q2 耳机定义       |
+| 这不是方向的竞赛，是品味的竞赛                                  | Q3 竞争格局       |
+| OpenAI = 1985年的微软，Anthropic = 早期的Apple           | Q3 竞争类比       |
+| 弱和晚是两回事                                          | Q4 Apple AI   |
+| Nice doesn't ship revolutionary products         | Q4 评价Tim Cook |
+| You can't hire taste                             | Q4 品味         |
+| Siri必须死                                          | Q5 破局策略       |
+| The device that knows you're sick before you do  | Q5 Health方向   |
+| 不需要天才，需要courage                                  | Q5 破局核心       |
+| 答案在原型里，不在对话里                                     | Q6 收尾         |
+| Go find your sleepless night                     | Q6 最终回答       |

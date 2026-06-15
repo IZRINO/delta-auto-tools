@@ -3,7 +3,9 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -17,5 +19,8 @@
     "verbatimModuleSyntax": true,
     "types": []
   },
-  "include": ["index.ts", "*.test.ts"]
+  "include": [
+    "index.ts",
+    "*.test.ts"
+  ]
 }

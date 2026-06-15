@@ -25,6 +25,7 @@
 张一鸣有一组反复出现的核心词，在采访、微博、演讲中高频出现，形成他独特的概念语库。
 
 **高频词清单（有据可查）：**
+
 - 延迟满足感（一次采访中出现10次以上）
 - 好奇心
 - 平常心
@@ -100,6 +101,7 @@
 **【原话】** 理由：「读传记让我更有耐心，看传记有机会审视他人的人生，能看到人在巨大浪潮中的变化……很多很伟大的人，年轻时的生活也是差不多的，也由点滴的事情构成，大家都是平凡人。」（2018清华经管对话实录，品玩整理）
 
 **可查的引用对象：**
+
 - 乔布斯（多次引用stay hungry，并做出自己的解析）
 - 韦尔奇（坦率文化，引用于微博2010-7-24）
 - 佛教禅语（「不离日用常行内」「本自具足」——9周年演讲）
@@ -128,6 +130,7 @@
 ## 综合风格素描（供写作时参考）
 
 **他确实这么做的：**
+
 - 把情绪翻译成可观测的行为或数据
 - 用小场景（跑步/睡觉/游泳）进入大概念
 - 重复同一组词汇直到它变成他的标签
@@ -135,6 +138,7 @@
 - 描述自己时多用「我发现」「我感觉」，制造探索者姿态
 
 **他不做的（有据可查）：**
+
 - 几乎不煽情，不用「我们一起」「感谢大家」等团队动员语言
 - 不向上管理，不讨好外部叙事（明确被列为字节文化禁忌）
 - 不用夸张形容词——他批评过公司内部报告的形容词堆砌
@@ -154,7 +158,10 @@
 - 品玩PingWest：张一鸣对话钱颖一（上）人们对大的转折特别容易无感 https://www.pingwest.com/a/159341
 - 36氪：张一鸣内部信全文——宣布卸任字节跳动CEO https://36kr.com/p/1232165369369221
 - 站长之家：张一鸣字节跳动9周年演讲全文 https://www.chinaz.com/news/1232495.shtml
-- KrASIA英文整理：Zhang Yiming doing extraordinary things with an ordinary mind https://kr-asia.com/zhang-yiming-doing-extraordinary-things-with-an-ordinary-mind-bytedances-ninth-anniversary-speech
-- Source Code Capital整理：ByteDance's Zhang Yiming on "Bring Outside in" https://sourcecodecap.com/code-class-post/bytedances-zhang-yiming-bring-outside-in-and-avoid-managing-up-how-to-protect-the-comp/
-- Interconnected（Wilson Xia翻译整理）：Zhang Yiming's Last Speech https://interconnect.substack.com/p/zhang-yimings-last-speech-part-i
+- KrASIA英文整理：Zhang Yiming doing extraordinary things with an ordinary
+  mind https://kr-asia.com/zhang-yiming-doing-extraordinary-things-with-an-ordinary-mind-bytedances-ninth-anniversary-speech
+- Source Code Capital整理：ByteDance's Zhang Yiming on "Bring Outside
+  in" https://sourcecodecap.com/code-class-post/bytedances-zhang-yiming-bring-outside-in-and-avoid-managing-up-how-to-protect-the-comp/
+- Interconnected（Wilson Xia翻译整理）：Zhang Yiming's Last
+  Speech https://interconnect.substack.com/p/zhang-yimings-last-speech-part-i
 - 科技先生：张一鸣10年微博语录汇总 https://techsir.com/a/202207/78729.html

@@ -395,7 +395,7 @@ mod tests {
             "intervalMs": 100,
             "enabled": true
         }))
-        .expect("旧卡片配置应补齐默认抖动");
+            .expect("旧卡片配置应补齐默认抖动");
 
         assert_eq!(card.press_jitter_min_ms, 8);
         assert_eq!(card.press_jitter_max_ms, 12);
@@ -427,7 +427,7 @@ mod tests {
                 "enabled": true
             }]
         }))
-        .expect("旧连发器设置应把全局值迁移到卡片");
+            .expect("旧连发器设置应把全局值迁移到卡片");
 
         assert_eq!(settings.compensation_delay_min_ms, 100);
         assert_eq!(settings.compensation_delay_max_ms, 150);
@@ -458,7 +458,7 @@ mod tests {
                 "enabled": true
             }]
         }))
-        .expect("卡片级值优先于旧全局值");
+            .expect("卡片级值优先于旧全局值");
 
         assert_eq!(settings.cards[0].min_press_spacing_ms, 0);
         assert_eq!(settings.cards[0].trigger_jitter_max_ms, 5);

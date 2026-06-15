@@ -11,13 +11,17 @@ PG的写作风格常被概括为"像说话一样写作"，但多位分析者指�
 
 **核心矛盾**：表面极简，底层精密。
 
-- Sasha Chapin的分析：PG"不是一个简单的写作者。他复杂而精微。只是复杂性不在词汇层面，所以你不注意看就发现不了"。（来源：[Sasha Chapin, Substack](https://sashachapin.substack.com/p/paul-graham-isnt-a-simple-writer)）
-- Henry Oliver的分析：PG的风格类似于"戏剧或电影的现实主义"——模拟真实对话，但经过精心结构化。他用"简单的原子"组合出"近乎完美的节奏"。（来源：[Henry Oliver, Common Reader](https://www.commonreader.co.uk/p/paul-grahams-plain-rhetoric)）
+- Sasha Chapin的分析：PG"不是一个简单的写作者。他复杂而精微。只是复杂性不在词汇层面，所以你不注意看就发现不了"
+  。（来源：[Sasha Chapin, Substack](https://sashachapin.substack.com/p/paul-graham-isnt-a-simple-writer)）
+- Henry Oliver的分析：PG的风格类似于"戏剧或电影的现实主义"——模拟真实对话，但经过精心结构化。他用"简单的原子"组合出"
+  近乎完美的节奏"。（来源：[Henry Oliver, Common Reader](https://www.commonreader.co.uk/p/paul-grahams-plain-rhetoric)）
 
 **可量化特征**：
+
 - 约70%的essays包含"for example"一词，说明抽象观点后最多间隔1-2句就会接一个具体例子
 - 200+篇essays，跨越25+年持续输出
-- 偏好Germanic（日耳曼）词根的简单词汇，但实证分析显示其Latinate词比例与Sam Altman等同行无显著差异（来源：[Arjun Panickssery, Substack](https://arjunpanickssery.substack.com/p/germanic-vs-latinate-words-in-writing)）
+- 偏好Germanic（日耳曼）词根的简单词汇，但实证分析显示其Latinate词比例与Sam
+  Altman等同行无显著差异（来源：[Arjun Panickssery, Substack](https://arjunpanickssery.substack.com/p/germanic-vs-latinate-words-in-writing)）
 
 ---
 
@@ -25,36 +29,40 @@ PG的写作风格常被概括为"像说话一样写作"，但多位分析者指�
 
 ### 2.1 经典句式模板
 
-| 模板 | 示例 | 使用场景 |
-|------|------|---------|
-| **"The way to X is to Y"** | "The way to get startup ideas is not to try to think of startup ideas. It's to look for problems." | 揭示反直觉方法论 |
-| **"Most people don't realize..."** | "Most people dislike uncertainty" | 引入大众盲区 |
-| **"It turns out..."** | "It turns out to be very useful to work on what interests you the most" | 揭示意外发现 |
-| **"X is like Y"** | "Startups are as unnatural as skiing" / 程序语言"should be a pencil, not a pen" | 类比说明 |
-| **"If you X, you Y"** | "If you're in a job that feels safe, you are not going to get exceptional" | 条件因果 |
-| **"The [adj]-est [noun] are..."** | "The statements that make people maddest are those they worry might be true" | 极端化论点 |
-| **"There's a [noun] that..."** | "There's a third ingredient that's not as well understood" | 引入被忽视的要素 |
-| **"I think" / "I suspect"** | "I suspect few housing projects in the US were designed by architects who expected to live in them" | 谦逊限定+锐利观点 |
-| **"[X] and [Y]" 对仗** | "Before I had kids, I was afraid of having kids" | 平行结构创造节奏 |
+| 模板                                 | 示例                                                                                                  | 使用场景      |
+|------------------------------------|-----------------------------------------------------------------------------------------------------|-----------|
+| **"The way to X is to Y"**         | "The way to get startup ideas is not to try to think of startup ideas. It's to look for problems."  | 揭示反直觉方法论  |
+| **"Most people don't realize..."** | "Most people dislike uncertainty"                                                                   | 引入大众盲区    |
+| **"It turns out..."**              | "It turns out to be very useful to work on what interests you the most"                             | 揭示意外发现    |
+| **"X is like Y"**                  | "Startups are as unnatural as skiing" / 程序语言"should be a pencil, not a pen"                         | 类比说明      |
+| **"If you X, you Y"**              | "If you're in a job that feels safe, you are not going to get exceptional"                          | 条件因果      |
+| **"The [adj]-est [noun] are..."**  | "The statements that make people maddest are those they worry might be true"                        | 极端化论点     |
+| **"There's a [noun] that..."**     | "There's a third ingredient that's not as well understood"                                          | 引入被忽视的要素  |
+| **"I think" / "I suspect"**        | "I suspect few housing projects in the US were designed by architects who expected to live in them" | 谦逊限定+锐利观点 |
+| **"[X] and [Y]" 对仗**               | "Before I had kids, I was afraid of having kids"                                                    | 平行结构创造节奏  |
 
 ### 2.2 开篇模式（Essay Openings）
 
 PG的开篇极少用定义或引用，而是以下几种模式：
 
-1. **个人轶事切入**："Before I had kids, I was afraid of having kids" / "A few days ago I finally figured out something I've wondered about for 25 years"
-2. **常识+转折**："Everyone knows that to do great work you need both natural ability and determination. But there's a third ingredient that's not as well understood"
+1. **个人轶事切入**："Before I had kids, I was afraid of having kids" / "A few days ago I finally figured out something
+   I've wondered about for 25 years"
+2. **常识+转折**："Everyone knows that to do great work you need both natural ability and determination. But there's a
+   third ingredient that's not as well understood"
 3. **直接陈述一个大胆论点**：直奔主题，不铺垫
 4. **自问自答（Antipophora）**：提出一个问题，然后展开探索式回答
 
 ### 2.3 高频词汇偏好
 
 **喜欢用的词**：
+
 - 简单动词：think, know, want, need, make, start, try, seem, work
 - 限定词：probably, usually, most, roughly, fairly, somewhat
 - 口语化连接：but, so, and, though, because
 - 隐喻词：seed, path, landscape, machine, lever
 
 **明确厌恶的词**：
+
 - "delve"——PG在2024年Twitter上公开表示这是ChatGPT标志词，引发"delve门"争议
 - "burgeoning"——同样被他视为书面腔/AI腔标志
 - 学术腔词汇（methodology, utilize, facilitate等）
@@ -67,20 +75,24 @@ PG的开篇极少用定义或引用，而是以下几种模式：
 ### 3.1 平行结构（Parallelism）
 
 PG大量使用句子的两半对仗，创造节奏感：
+
 - "had" / "having", "sold" / "suddenly" 的镜像结构
-- 三连结构（Tricolon）：刻意加长最后一个元素增加份量，如"natural ability, determination, and an obsessive interest in a particular topic"
+- 三连结构（Tricolon）：刻意加长最后一个元素增加份量，如"natural ability, determination, and an obsessive interest in a
+  particular topic"
 
 （来源：[Henry Oliver分析](https://www.commonreader.co.uk/p/paul-grahams-plain-rhetoric)）
 
 ### 3.2 自我引用（Self-Riffing）
 
-PG在段落中引入一个词后，会在后续句子中"回扣"这个词，用语言本身做论证的桥梁。Sasha Chapin称这让"从一个论点过渡到下一个论点变得如黄油般顺滑"。
+PG在段落中引入一个词后，会在后续句子中"回扣"这个词，用语言本身做论证的桥梁。Sasha Chapin称这让"
+从一个论点过渡到下一个论点变得如黄油般顺滑"。
 
 （来源：[Sasha Chapin分析](https://sashachapin.substack.com/p/paul-graham-isnt-a-simple-writer)）
 
 ### 3.3 战略性"高级词汇"
 
-PG通常用最简单的词，但偶尔精准投放一个高级表达以制造冲击。Chapin举例"spectral signature of a hater"——因稀缺而有力，产生三重效果：满足感、强调判断、注意力抓取。
+PG通常用最简单的词，但偶尔精准投放一个高级表达以制造冲击。Chapin举例"spectral signature of a hater"
+——因稀缺而有力，产生三重效果：满足感、强调判断、注意力抓取。
 
 ### 3.4 自问自答（Antipophora）
 
@@ -89,6 +101,7 @@ PG的essays经常用自问自答推进论证，类似莎士比亚独白的结构
 ### 3.5 "聊天感"（Chattiness）
 
 具体技巧包括：
+
 - 混用缩写："I'm"和"they are"在同一段出现（模拟真实说话的不一致性）
 - 填充语言："very specific"这类口语化强调
 - 连续提问
@@ -103,10 +116,12 @@ PG的essays经常用自问自答推进论证，类似莎士比亚独白的结构
 PG在Twitter上的风格与essay有明显差异——更短、更锐、更挑衅。
 
 **典型推文句式**：
+
 - **格言式**："If you optimize for engagement, it turns out you optimize for lies"
 - **类比式**："You don't become a tech hub by being the new home of Amazon, but by being the home of the new Amazon"
 - **观察式**："It's a good sign when people misuse your software to do Y. It means they want Y a lot"
-- **讽刺式**：对政治家使用ChatGPT生成政策的嘲讽——"I doubt we can improve the hardware as fast as you can improve the software"（2025年4月，对Sam Altman说）
+- **讽刺式**：对政治家使用ChatGPT生成政策的嘲讽——"I doubt we can improve the hardware as fast as you can improve the
+  software"（2025年4月，对Sam Altman说）
 - **立场式**："The deprioritization of tweets with links in them is Twitter's biggest flaw"
 
 （来源：[Paul Graham @paulg on X](https://x.com/paulg)）
@@ -125,13 +140,13 @@ PG在Twitter上的风格与essay有明显差异——更短、更锐、更挑衅
 
 ### 5.1 主要争议
 
-| 时间 | 事件 | PG的立场 | 回应方式 |
-|------|------|---------|---------|
-| 2024年4月 | "Delve门"——称"delve"是ChatGPT标志词 | 坚持原观点 | 持续辩论，后将部分推文设为私密 |
-| 2022年12月 | 因发Mastodon链接被Twitter封号 | 公开表态离开Twitter | 高调声明，后回归 |
-| 2013年 | 关于女性在科技行业的争议言论 | 称"如果要真正擅长编程，应该会自己发现" | 未大幅退让 |
-| 2024年 | 分享加沙医疗报告 | 转发65位医护在加沙的见闻 | 直接转发，不过多评论 |
-| 多次 | 经济不平等辩论 | 认为来自创业的不平等是好事 | 写长essay详细论证 |
+| 时间       | 事件                            | PG的立场                | 回应方式            |
+|----------|-------------------------------|----------------------|-----------------|
+| 2024年4月  | "Delve门"——称"delve"是ChatGPT标志词 | 坚持原观点                | 持续辩论，后将部分推文设为私密 |
+| 2022年12月 | 因发Mastodon链接被Twitter封号        | 公开表态离开Twitter        | 高调声明，后回归        |
+| 2013年    | 关于女性在科技行业的争议言论                | 称"如果要真正擅长编程，应该会自己发现" | 未大幅退让           |
+| 2024年    | 分享加沙医疗报告                      | 转发65位医护在加沙的见闻        | 直接转发，不过多评论      |
+| 多次       | 经济不平等辩论                       | 认为来自创业的不平等是好事        | 写长essay详细论证     |
 
 （来源：[Medium分析](https://medium.com/@moyosoreale/the-paul-graham-vs-nigerian-twitter-saga-lexical-racism-and-language-bias-masked-as-chatgpt-53ee9f6459aa)、[Fortune报道](https://fortune.com/2022/12/18/twitter-suspends-paul-graham-venture-capitalist-supportive-of-elon-musk-after-he-tweets-about-mastodon-link/)、[Inc.com](https://www.inc.com/issie-lapowsky/paul-graham-women-in-tech.html)）
 
@@ -153,13 +168,13 @@ PG的幽默不是脱口秀式的表演，而是学者式的冷幽默和讽刺：
 
 ### 6.1 幽默类型
 
-| 类型 | 特征 | 示例 |
-|------|------|------|
-| **类比讽刺** | 用意外的类比揭示荒谬 | "Dressing up is inevitably a substitute for good ideas. It is no coincidence that technically inept business types are known as 'suits'" |
-| **反转预期** | 用严肃的语气说出意外的结论 | "I wish they had just told us outright that we were savages and our world was stupid"（谈校园霸凌） |
-| **自嘲式谦逊** | 拿自己开涮引出论点 | "A few days ago I finally figured out something I've wondered about for 25 years" |
-| **冷面陈述** | 用平淡语气陈述激进观点 | "Startups often have to do dubious things" |
-| **荒诞类比** | 比较两个通常不相关的事物 | 将Navy SEAL训练与美国中学生追求人气相比较 |
+| 类型        | 特征            | 示例                                                                                                                                       |
+|-----------|---------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| **类比讽刺**  | 用意外的类比揭示荒谬    | "Dressing up is inevitably a substitute for good ideas. It is no coincidence that technically inept business types are known as 'suits'" |
+| **反转预期**  | 用严肃的语气说出意外的结论 | "I wish they had just told us outright that we were savages and our world was stupid"（谈校园霸凌）                                             |
+| **自嘲式谦逊** | 拿自己开涮引出论点     | "A few days ago I finally figured out something I've wondered about for 25 years"                                                        |
+| **冷面陈述**  | 用平淡语气陈述激进观点   | "Startups often have to do dubious things"                                                                                               |
+| **荒诞类比**  | 比较两个通常不相关的事物  | 将Navy SEAL训练与美国中学生追求人气相比较                                                                                                                |
 
 ### 6.2 幽默原则
 
@@ -174,24 +189,25 @@ PG的幽默不是脱口秀式的表演，而是学者式的冷幽默和讽刺：
 
 ### 7.1 PG自述的写作方法
 
-| 维度 | 具体做法 | 来源 |
-|------|---------|------|
-| **日常时间** | 早上送孩子上学后到下午接孩子前，约5小时 | [Writing Routines采访](https://www.writingroutines.com/paul-graham-interview/) |
-| **工作环境** | 安静的房间、可关的门、至少一扇窗 | 同上 |
-| **写作方式** | 先出rough draft，然后反复修改，大量删除 | [Writing, Briefly](https://paulgraham.com/writing44.html) |
-| **修改强度** | 发表前每句话读100遍以上 | [How to Write Usefully](https://paulgraham.com/useful.html) |
-| **突破瓶颈** | 散步。有时在办公室踱步就够了，有时需要出门走一走 | Writing Routines采访 |
-| **质量测试** | 写作过程中是否让自己感到惊讶 | 同上 |
-| **反馈机制** | 让朋友读草稿，至少杀掉过两篇完整的essay | 同上 |
-| **速度参考** | "Writing, Briefly"这篇essay用了67分钟（23分钟写，44分钟改写） | Writing, Briefly |
-| **初稿vs终稿** | 80%的essay观点在写作过程中才出现 | Writing, Briefly |
-| **未发表练习** | 在笔记本上写了15年essay但未发表，当作思维工具 | How to Write Usefully |
+| 维度         | 具体做法                                          | 来源                                                                           |
+|------------|-----------------------------------------------|------------------------------------------------------------------------------|
+| **日常时间**   | 早上送孩子上学后到下午接孩子前，约5小时                          | [Writing Routines采访](https://www.writingroutines.com/paul-graham-interview/) |
+| **工作环境**   | 安静的房间、可关的门、至少一扇窗                              | 同上                                                                           |
+| **写作方式**   | 先出rough draft，然后反复修改，大量删除                     | [Writing, Briefly](https://paulgraham.com/writing44.html)                    |
+| **修改强度**   | 发表前每句话读100遍以上                                 | [How to Write Usefully](https://paulgraham.com/useful.html)                  |
+| **突破瓶颈**   | 散步。有时在办公室踱步就够了，有时需要出门走一走                      | Writing Routines采访                                                           |
+| **质量测试**   | 写作过程中是否让自己感到惊讶                                | 同上                                                                           |
+| **反馈机制**   | 让朋友读草稿，至少杀掉过两篇完整的essay                        | 同上                                                                           |
+| **速度参考**   | "Writing, Briefly"这篇essay用了67分钟（23分钟写，44分钟改写） | Writing, Briefly                                                             |
+| **初稿vs终稿** | 80%的essay观点在写作过程中才出现                          | Writing, Briefly                                                             |
+| **未发表练习**  | 在笔记本上写了15年essay但未发表，当作思维工具                    | How to Write Usefully                                                        |
 
 ### 7.2 PG的写作四标准
 
 好的essay = **重要性 x 新颖性 x 正确性 x 力度**（四者相乘）。
 
-- **正确性**：claims尽可能强，但不过线变成谬误。他用Pike's Peak做比喻——说它"在科罗拉多中部附近"比"在科罗拉多某处"有用，但说"在正中心"就是错误
+- **正确性**：claims尽可能强，但不过线变成谬误。他用Pike's Peak做比喻——说它"在科罗拉多中部附近"比"在科罗拉多某处"有用，但说"
+  在正中心"就是错误
 - **力度**：大胆但真实（bold, but true），避免学术式的模糊对冲和煽动者的虚假断言
 - **限定词的正当使用**："I think"不是软弱，而是精确表达确信程度
 - **Morris法则**（以友人Robert Morris命名）：只发表自己确信的观点，删掉弱句子，放弃不work的分支
@@ -204,16 +220,17 @@ PG的幽默不是脱口秀式的表演，而是学者式的冷幽默和讽刺：
 
 ### 8.1 PG自述的影响源
 
-| 影响者 | PG的评价 | 影响维度 |
-|--------|---------|---------|
-| **P.G. Wodehouse** | "Wodehouse is so good that I get distracted by his perfection. Not a word wrong." | 写作的首要楷模，词汇精准+节奏完美 |
-| **20世纪英国作家群** | 喜欢他们"写得如此直截了当" | 平实风格（plain style）的传统 |
-| **Francis Bacon** | Henry Oliver将PG与Bacon类比 | 探索式essay，基于直接经验，话题广泛 |
-| **数学家/科学家/工程师** | PG自述"影响我思维方式的不是作家，是这些人" | 思维方式（非表达方式）的影响 |
+| 影响者                | PG的评价                                                                             | 影响维度                 |
+|--------------------|-----------------------------------------------------------------------------------|----------------------|
+| **P.G. Wodehouse** | "Wodehouse is so good that I get distracted by his perfection. Not a word wrong." | 写作的首要楷模，词汇精准+节奏完美    |
+| **20世纪英国作家群**      | 喜欢他们"写得如此直截了当"                                                                    | 平实风格（plain style）的传统 |
+| **Francis Bacon**  | Henry Oliver将PG与Bacon类比                                                           | 探索式essay，基于直接经验，话题广泛 |
+| **数学家/科学家/工程师**    | PG自述"影响我思维方式的不是作家，是这些人"                                                           | 思维方式（非表达方式）的影响       |
 
 ### 8.2 风格谱系定位
 
 Henry Oliver将PG置于以下英语散文传统中：
+
 - **平实风格（Plain Style）**的继承者
 - 与Evelyn Waugh、Nancy Mitford并列——用"仿佛拥有英语"的姿态使用语言
 - 本质是**逻辑切割的结构 + 闲聊式的语言**的融合
@@ -222,7 +239,8 @@ Henry Oliver将PG置于以下英语散文传统中：
 
 ### 8.3 PG收藏的名言（风格线索）
 
-PG在个人网站维护了一个[名言页](https://www.paulgraham.com/quo.html)，收录了Churchill、Feynman、Munger、Alan Kay等人的话。值得注意的共性：这些名言都极度简洁、有力、反常规。这反映了PG自身的审美标准。
+PG在个人网站维护了一个[名言页](https://www.paulgraham.com/quo.html)，收录了Churchill、Feynman、Munger、Alan
+Kay等人的话。值得注意的共性：这些名言都极度简洁、有力、反常规。这反映了PG自身的审美标准。
 
 ---
 
@@ -230,15 +248,15 @@ PG在个人网站维护了一个[名言页](https://www.paulgraham.com/quo.html)
 
 PG反复写作的主题构成了他的"intellectual territory"：
 
-| 主题群 | 代表essays | 核心论点 |
-|--------|-----------|---------|
-| **独立思考vs从众** | What You Can't Say, Keep Your Identity Small | 大众共识往往是错的，独立思考是稀缺资源 |
-| **创业方法论** | Do Things That Don't Scale, How to Get Startup Ideas | 做反直觉的事，从小问题开始 |
-| **写作即思考** | Putting Ideas into Words, Writes and Write-Nots | 写作不只是表达已有想法，而是生成新想法的工具 |
-| **财富与不平等** | Economic Inequality, How to Make Wealth | 通过创造价值获得财富是正当的 |
-| **教育批判** | Why Nerds Are Unpopular, What You'll Wish You'd Known | 学校是人造环境，不是真实世界 |
-| **品味与设计** | Taste for Makers, Hackers and Painters | 好品味可以培养，编程是一种手艺 |
-| **AI与写作未来** | Writes and Write-Nots (2024) | AI将把世界分为"写的人"和"不写的人"，即"思考的人"和"不思考的人" |
+| 主题群          | 代表essays                                              | 核心论点                                 |
+|--------------|-------------------------------------------------------|--------------------------------------|
+| **独立思考vs从众** | What You Can't Say, Keep Your Identity Small          | 大众共识往往是错的，独立思考是稀缺资源                  |
+| **创业方法论**    | Do Things That Don't Scale, How to Get Startup Ideas  | 做反直觉的事，从小问题开始                        |
+| **写作即思考**    | Putting Ideas into Words, Writes and Write-Nots       | 写作不只是表达已有想法，而是生成新想法的工具               |
+| **财富与不平等**   | Economic Inequality, How to Make Wealth               | 通过创造价值获得财富是正当的                       |
+| **教育批判**     | Why Nerds Are Unpopular, What You'll Wish You'd Known | 学校是人造环境，不是真实世界                       |
+| **品味与设计**    | Taste for Makers, Hackers and Painters                | 好品味可以培养，编程是一种手艺                      |
+| **AI与写作未来**  | Writes and Write-Nots (2024)                          | AI将把世界分为"写的人"和"不写的人"，即"思考的人"和"不思考的人" |
 
 ---
 
@@ -335,6 +353,7 @@ twitter_style:
 ## 来源索引
 
 ### PG原文
+
 - [Write Like You Talk](https://paulgraham.com/talk.html)
 - [Writing, Briefly](https://paulgraham.com/writing44.html)
 - [Write Simply](https://www.paulgraham.com/simply.html)
@@ -346,6 +365,7 @@ twitter_style:
 - [Paul Graham Quotes Page](https://www.paulgraham.com/quo.html)
 
 ### 风格分析
+
 - [Henry Oliver: Paul Graham's Plain Rhetoric](https://www.commonreader.co.uk/p/paul-grahams-plain-rhetoric)
 - [Sasha Chapin: Paul Graham Isn't a Simple Writer](https://sashachapin.substack.com/p/paul-graham-isnt-a-simple-writer)
 - [Paul Graham 101 (Jaakko)](https://www.jaakkoj.com/blog/graham)
@@ -353,14 +373,17 @@ twitter_style:
 - [Germanic vs Latinate Words Analysis](https://arjunpanickssery.substack.com/p/germanic-vs-latinate-words-in-writing)
 
 ### 采访与过程
+
 - [Writing Routines Interview](https://www.writingroutines.com/paul-graham-interview/)
 
 ### 争议事件
+
 - [Delve门 - Medium分析](https://medium.com/@moyosoreale/the-paul-graham-vs-nigerian-twitter-saga-lexical-racism-and-language-bias-masked-as-chatgpt-53ee9f6459aa)
 - [Twitter封号 - Fortune](https://fortune.com/2022/12/18/twitter-suspends-paul-graham-venture-capitalist-supportive-of-elon-musk-after-he-tweets-about-mastodon-link/)
 - [女性与科技 - Inc.com](https://www.inc.com/issie-lapowsky/paul-graham-women-in-tech.html)
 
 ### 语录合集
+
 - [50 Quotes from Paul Graham - Glasp](https://blog.glasp.co/50-quotes-from-paul-graham/)
 - [Paul Graham Quotes - Goodreads](https://www.goodreads.com/author/quotes/23551.Paul_Graham)
 - [Paul Graham @paulg on X](https://x.com/paulg)

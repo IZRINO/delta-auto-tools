@@ -14,7 +14,8 @@ Analyze my Furniture Collection project's Home screen and generate a comprehensi
 
 ## Skill Structure
 
-This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, workflow, and reference materials.
+This repository follows the **Agent Skills** open standard. Each skill is self-contained with its own logic, workflow,
+and reference materials.
 
 ```text
 design-md/

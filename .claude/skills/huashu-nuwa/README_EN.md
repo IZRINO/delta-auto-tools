@@ -14,7 +14,8 @@
 
 <br>
 
-[colleague-skill](https://github.com/titanwings/colleague-skill) proved that distilling a person into an AI skill is viable.
+[colleague-skill](https://github.com/titanwings/colleague-skill) proved that distilling a person into an AI skill is
+viable.
 So why stop at colleagues? Go distill Munger, Feynman, Musk.
 Just input a name — Nuwa handles research, extraction, and validation automatically.
 
@@ -58,7 +59,8 @@ Musk    ❯ Don't think about how to reduce it yet. Calculate the physical minim
            Don't optimize the funnel — question whether the funnel should exist at all.
 ```
 
-This is not role-play. Naval uses his "desire as contract" mental model. Musk uses "asymptotic limit" reasoning. **They are not reciting quotes — they are analyzing your problem through the cognitive frameworks of these minds.**
+This is not role-play. Naval uses his "desire as contract" mental model. Musk uses "asymptotic limit" reasoning. **They
+are not reciting quotes — they are analyzing your problem through the cognitive frameworks of these minds.**
 
 ---
 
@@ -88,17 +90,19 @@ After creation, invoke directly:
 
 ## What Nuwa Distills
 
-Distilling the best minds in any field requires extracting something deeper than daily work habits. Nuwa extracts six layers:
+Distilling the best minds in any field requires extracting something deeper than daily work habits. Nuwa extracts six
+layers:
 
-| Layer | Description |
-|---|---|
-| **How they speak** | Expression DNA — tone, rhythm, word preferences |
-| **How they think** | Mental models, cognitive frameworks |
-| **How they judge** | Decision heuristics |
-| **What they won't do** | Anti-patterns, value floor |
-| **Honest limits** | What the skill genuinely cannot do |
+| Layer                  | Description                                     |
+|------------------------|-------------------------------------------------|
+| **How they speak**     | Expression DNA — tone, rhythm, word preferences |
+| **How they think**     | Mental models, cognitive frameworks             |
+| **How they judge**     | Decision heuristics                             |
+| **What they won't do** | Anti-patterns, value floor                      |
+| **Honest limits**      | What the skill genuinely cannot do              |
 
-Work habits can be conveyed through process docs. But what makes Munger and Musk reach different conclusions about the same problem is their cognitive frameworks. Nuwa extracts the cognitive operating system.
+Work habits can be conveyed through process docs. But what makes Munger and Musk reach different conclusions about the
+same problem is their cognitive frameworks. Nuwa extracts the cognitive operating system.
 
 ### Honest Limits
 
@@ -116,13 +120,18 @@ Every skill explicitly states what it cannot do:
 
 Input a name, and Nuwa does four things:
 
-**1. Six parallel research streams** — writings, podcasts/interviews, social media, critic perspectives, decision records, life timeline. 6 agents running simultaneously, each archived.
+**1. Six parallel research streams** — writings, podcasts/interviews, social media, critic perspectives, decision
+records, life timeline. 6 agents running simultaneously, each archived.
 
-**2. Triple-verification extraction** — a claim must pass three tests before being recorded as a mental model: appears across 2+ domains (not a one-off statement), can predict positions on new questions (has predictive power), not something any smart person would think (has exclusivity). All three required.
+**2. Triple-verification extraction** — a claim must pass three tests before being recorded as a mental model: appears
+across 2+ domains (not a one-off statement), can predict positions on new questions (has predictive power), not
+something any smart person would think (has exclusivity). All three required.
 
-**3. Build the skill** — 3–7 mental models + 5–10 decision heuristics + expression DNA + values & anti-patterns + honest limits, written into SKILL.md.
+**3. Build the skill** — 3–7 mental models + 5–10 decision heuristics + expression DNA + values & anti-patterns + honest
+limits, written into SKILL.md.
 
-**4. Quality validation** — test with 3 questions the person publicly answered; the direction must match. Then test with 1 question they never addressed; the skill should show appropriate uncertainty rather than false confidence.
+**4. Quality validation** — test with 3 questions the person publicly answered; the direction must match. Then test with
+1 question they never addressed; the skill should show appropriate uncertainty rather than false confidence.
 
 Full methodology in `references/extraction-framework.md`.
 
@@ -141,7 +150,8 @@ nuwa-skill/
     └── elon-musk-perspective/   # Musk full example + research data
 ```
 
-All research is fully transparent. The examples include complete research files — you can see how information was collected, filtered, and turned into mental models.
+All research is fully transparent. The examples include complete research files — you can see how information was
+collected, filtered, and turned into mental models.
 
 ---
 
@@ -157,21 +167,28 @@ All research is fully transparent. The examples include complete research files 
 
 ## The Story Behind It
 
-[colleague-skill](https://github.com/titanwings/colleague-skill) recently exploded on GitHub — distilling departing colleagues into AI skills, crossing 5,000 stars in days. It proved one thing: distilling a person is completely viable.
+[colleague-skill](https://github.com/titanwings/colleague-skill) recently exploded on GitHub — distilling departing
+colleagues into AI skills, crossing 5,000 stars in days. It proved one thing: distilling a person is completely viable.
 
-Since we have the ability to distill people, why stop at colleagues nearby? Go distill the best minds in every field. And fortunately, these people usually left behind vast amounts of distillable material — books, talks, interviews, social media. This is an enormous enhancement to your own thinking.
+Since we have the ability to distill people, why stop at colleagues nearby? Go distill the best minds in every field.
+And fortunately, these people usually left behind vast amounts of distillable material — books, talks, interviews,
+social media. This is an enormous enhancement to your own thinking.
 
-I've been doing something like this for a while — not distilling colleagues, but Munger, Feynman, Naval, Musk, Taleb. Today I'm open-sourcing the methodology.
+I've been doing something like this for a while — not distilling colleagues, but Munger, Feynman, Naval, Musk, Taleb.
+Today I'm open-sourcing the methodology.
 
 Nuwa doesn't copy people. It extracts cognitive operating systems.
 
-**Nuwa (女娲)**, the goddess in Chinese mythology who created humans from clay. Here the clay is public information, and what's created is not a person — it's a mirror.
+**Nuwa (女娲)**, the goddess in Chinese mythology who created humans from clay. Here the clay is public information, and
+what's created is not a person — it's a mirror.
 
 ---
 
 ## About the Author
 
-Huashu / Huasheng, AI Native Coder, indie developer. All products are built by AI-written code ([Kitten Fill Light](https://apps.apple.com/app/id6738028637) reached #1 on China App Store paid chart). Running 40+ custom skills in Claude Code. Nuwa is the skill that makes skills.
+Huashu / Huasheng, AI Native Coder, indie developer. All products are built by AI-written
+code ([Kitten Fill Light](https://apps.apple.com/app/id6738028637) reached #1 on China App Store paid chart). Running
+40+ custom skills in Claude Code. Nuwa is the skill that makes skills.
 
 - WeChat Official Account: 花叔 (Huashu)
 - X: [@AlchainHust](https://x.com/AlchainHust)

@@ -4,232 +4,233 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 :root {
-  font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  font-size: 16px;
-  line-height: 1.38;
-  font-weight: 500;
-  color-scheme: light;
-  font-synthesis: none;
-  text-rendering: geometricPrecision;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+    font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.38;
+    font-weight: 500;
+    color-scheme: light;
+    font-synthesis: none;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
 
-  /* Bright base industrial palette */
-  --background: #FFFFFF;
-  --foreground: #0A0A0A;
-  --card: #FFFFFF;
-  --card-foreground: #0A0A0A;
-  --popover: #FFFFFF;
-  --popover-foreground: #0A0A0A;
-  --primary: #E8A000;
-  --primary-foreground: #0A0A0A;
-  --secondary: #F5F5F5;
-  --secondary-foreground: #0A0A0A;
-  --muted: #F5F5F5;
-  --muted-foreground: #6B6B6B;
-  --accent: #E8A000;
-  --accent-foreground: #0A0A0A;
-  --destructive: #E11919;
-  --border: #0A0A0A;
-  --input: #0A0A0A;
-  --ring: #E8A000;
-  --chart-1: #E8A000;
-  --chart-2: #3F8A30;
-  --chart-3: #E11919;
-  --chart-4: #6B6B6B;
-  --chart-5: #9A9A9A;
-  --radius: 0;
-  --sidebar: #F5F5F5;
-  --sidebar-foreground: #0A0A0A;
-  --sidebar-primary: #E8A000;
-  --sidebar-primary-foreground: #0A0A0A;
-  --sidebar-accent: #FFFFFF;
-  --sidebar-accent-foreground: #0A0A0A;
-  --sidebar-border: #0A0A0A;
-  --sidebar-ring: #E8A000;
+    /* Bright base industrial palette */
+    --background: #FFFFFF;
+    --foreground: #0A0A0A;
+    --card: #FFFFFF;
+    --card-foreground: #0A0A0A;
+    --popover: #FFFFFF;
+    --popover-foreground: #0A0A0A;
+    --primary: #E8A000;
+    --primary-foreground: #0A0A0A;
+    --secondary: #F5F5F5;
+    --secondary-foreground: #0A0A0A;
+    --muted: #F5F5F5;
+    --muted-foreground: #6B6B6B;
+    --accent: #E8A000;
+    --accent-foreground: #0A0A0A;
+    --destructive: #E11919;
+    --border: #0A0A0A;
+    --input: #0A0A0A;
+    --ring: #E8A000;
+    --chart-1: #E8A000;
+    --chart-2: #3F8A30;
+    --chart-3: #E11919;
+    --chart-4: #6B6B6B;
+    --chart-5: #9A9A9A;
+    --radius: 0;
+    --sidebar: #F5F5F5;
+    --sidebar-foreground: #0A0A0A;
+    --sidebar-primary: #E8A000;
+    --sidebar-primary-foreground: #0A0A0A;
+    --sidebar-accent: #FFFFFF;
+    --sidebar-accent-foreground: #0A0A0A;
+    --sidebar-border: #0A0A0A;
+    --sidebar-ring: #E8A000;
 
-  /* Industrial semantic tokens */
-  --carbon: #FFFFFF;
-  --slate: #F5F5F5;
-  --iron: #E5E5E5;
-  --chalk: #0A0A0A;
-  --zinc: #6B6B6B;
-  --dust: #9A9A9A;
-  --seam: #E5E5E5;
-  --amber: #E8A000;
-  --rust: #C85400;
-  --moss: #3F8A30;
-  --void: #2A2A2A;
+    /* Industrial semantic tokens */
+    --carbon: #FFFFFF;
+    --slate: #F5F5F5;
+    --iron: #E5E5E5;
+    --chalk: #0A0A0A;
+    --zinc: #6B6B6B;
+    --dust: #9A9A9A;
+    --seam: #E5E5E5;
+    --amber: #E8A000;
+    --rust: #C85400;
+    --moss: #3F8A30;
+    --void: #2A2A2A;
 
-  --alert-red: #E11919;
-  --warning-amber: #A36A00;
-  --valid-green: #3F8A30;
-  --terminal-green: #4AF626;
-  --phosphor: #0A0A0A;
+    --alert-red: #E11919;
+    --warning-amber: #A36A00;
+    --valid-green: #3F8A30;
+    --terminal-green: #4AF626;
+    --phosphor: #0A0A0A;
 
-  --surface-shell: #FFFFFF;
-  --surface-panel: #F5F5F5;
-  --surface-card: #FFFFFF;
-  --surface-card-strong: #F5F5F5;
-  --surface-tile: #F5F5F5;
-  --surface-border: #0A0A0A;
-  --surface-border-strong: #0A0A0A;
-  --surface-hover: #E5E5E5;
-  --surface-highlight: #E8A000;
-  --surface-dot: #E5E5E5;
+    --surface-shell: #FFFFFF;
+    --surface-panel: #F5F5F5;
+    --surface-card: #FFFFFF;
+    --surface-card-strong: #F5F5F5;
+    --surface-tile: #F5F5F5;
+    --surface-border: #0A0A0A;
+    --surface-border-strong: #0A0A0A;
+    --surface-hover: #E5E5E5;
+    --surface-highlight: #E8A000;
+    --surface-dot: #E5E5E5;
 
-  --shadow-shell: none;
-  --shadow-card: none;
-  --shadow-subtle: none;
-  --shadow-focus: 0 0 0 2px #E8A000;
-  --shadow-tile: none;
+    --shadow-shell: none;
+    --shadow-card: none;
+    --shadow-subtle: none;
+    --shadow-focus: 0 0 0 2px #E8A000;
+    --shadow-tile: none;
 
-  --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
-  --stripe-warning: repeating-linear-gradient(45deg, #E11919, #E11919 10px, transparent 10px, transparent 20px);
-  --misprint-offset: 0.04em;
+    --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.05) 2px, rgba(0, 0, 0, 0.05) 4px);
+    --stripe-warning: repeating-linear-gradient(45deg, #E11919, #E11919 10px, transparent 10px, transparent 20px);
+    --misprint-offset: 0.04em;
 }
 
 @theme inline {
-  --font-heading: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --font-sans: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
-  --color-background: var(--background);
-  --color-carbon: var(--carbon);
-  --color-slate: var(--slate);
-  --color-iron: var(--iron);
-  --color-chalk: var(--chalk);
-  --color-zinc: var(--zinc);
-  --color-dust: var(--dust);
-  --color-seam: var(--seam);
-  --color-amber: var(--amber);
-  --color-rust: var(--rust);
-  --color-moss: var(--moss);
-  --color-void: var(--void);
-  --color-alert-red: var(--alert-red);
-  --color-warning-amber: var(--warning-amber);
-  --color-valid-green: var(--valid-green);
-  --color-terminal-green: var(--terminal-green);
-  --color-phosphor: var(--phosphor);
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-xl: 0;
-  --radius-2xl: 0;
-  --radius-3xl: 0;
-  --radius-4xl: 0;
-  --font-mono: 'JetBrains Mono Variable', 'Consolas', monospace;
+    --font-heading: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    --font-sans: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --color-carbon: var(--carbon);
+    --color-slate: var(--slate);
+    --color-iron: var(--iron);
+    --color-chalk: var(--chalk);
+    --color-zinc: var(--zinc);
+    --color-dust: var(--dust);
+    --color-seam: var(--seam);
+    --color-amber: var(--amber);
+    --color-rust: var(--rust);
+    --color-moss: var(--moss);
+    --color-void: var(--void);
+    --color-alert-red: var(--alert-red);
+    --color-warning-amber: var(--warning-amber);
+    --color-valid-green: var(--valid-green);
+    --color-terminal-green: var(--terminal-green);
+    --color-phosphor: var(--phosphor);
+    --radius-sm: 0;
+    --radius-md: 0;
+    --radius-lg: 0;
+    --radius-xl: 0;
+    --radius-2xl: 0;
+    --radius-3xl: 0;
+    --radius-4xl: 0;
+    --font-mono: 'JetBrains Mono Variable', 'Consolas', monospace;
 }
 
 @layer base {
-  html,
-  body,
-  #root {
-    min-height: 100dvh;
-    height: 100dvh;
-  }
+    html,
+    body,
+    #root {
+        min-height: 100dvh;
+        height: 100dvh;
+    }
 
-  body {
-    font-family: var(--font-sans);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
-    @apply bg-background text-foreground;
-    background-color: var(--carbon);
-    background-image:
-      linear-gradient(color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
-      linear-gradient(color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px),
-      linear-gradient(90deg, color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px);
-    background-position: 0 0, 0 0, 0 0, 0 0;
-    background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px;
-  }
+    body {
+        font-family: var(--font-sans);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.01em;
+        @apply bg-background text-foreground;
+        background-color: var(--carbon);
+        background-image: linear-gradient(color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
+        linear-gradient(color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px),
+        linear-gradient(90deg, color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px);
+        background-position: 0 0, 0 0, 0 0, 0 0;
+        background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px;
+    }
 
-  body[data-overlay-mode="true"] {
-    background: transparent;
-  }
+    body[data-overlay-mode="true"] {
+        background: transparent;
+    }
 
-  body[data-overlay-mode="true"] #root {
-    background: transparent;
-  }
+    body[data-overlay-mode="true"] #root {
+        background: transparent;
+    }
 
-  body:not([data-overlay-mode="true"]) {
-    overflow: hidden;
-  }
-  * {
-    @apply border-border outline-ring/50;
-  }
-  html {
-    scroll-behavior: smooth;
-  }
+    body:not([data-overlay-mode="true"]) {
+        overflow: hidden;
+    }
+
+    * {
+        @apply border-border outline-ring/50;
+    }
+
+    html {
+        scroll-behavior: smooth;
+    }
 }
 
 [data-token-status="valid"] {
-  background-color: var(--moss);
+    background-color: var(--moss);
 }
 
 [data-token-status="expiring_soon"] {
-  background-color: var(--rust);
+    background-color: var(--rust);
 }
 
 [data-token-status="expired"] {
-  background-color: var(--destructive);
+    background-color: var(--destructive);
 }
 
 [data-token-status="none"] {
-  background-color: var(--zinc);
+    background-color: var(--zinc);
 }
 
 @keyframes favorite-highlight-pulse {
-  0% {
-    outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
-    transform: translateZ(0);
-  }
-  35% {
-    outline: 4px solid color-mix(in srgb, var(--amber) 84%, transparent);
-    transform: translateZ(0);
-  }
-  100% {
-    outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
-    transform: translateZ(0);
-  }
+    0% {
+        outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
+        transform: translateZ(0);
+    }
+    35% {
+        outline: 4px solid color-mix(in srgb, var(--amber) 84%, transparent);
+        transform: translateZ(0);
+    }
+    100% {
+        outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
+        transform: translateZ(0);
+    }
 }
 
 @layer utilities {
-  .favorite-highlight {
-    animation: favorite-highlight-pulse 1.5s ease-out 1;
-  }
+    .favorite-highlight {
+        animation: favorite-highlight-pulse 1.5s ease-out 1;
+    }
 }
 
 /* Tooltip z-index fix for WebView2 overlay issues */
 [data-slot="tooltip-content"] {
-  z-index: 9999;
+    z-index: 9999;
 }

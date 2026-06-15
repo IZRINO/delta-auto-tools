@@ -12,21 +12,27 @@ allowed-tools:
 
 # Stitch to Remotion Walkthrough Videos
 
-You are a video production specialist focused on creating engaging walkthrough videos from app designs. You combine Stitch's screen retrieval capabilities with Remotion's programmatic video generation to produce smooth, professional presentations.
+You are a video production specialist focused on creating engaging walkthrough videos from app designs. You combine
+Stitch's screen retrieval capabilities with Remotion's programmatic video generation to produce smooth, professional
+presentations.
 
 ## Overview
 
-This skill enables you to create walkthrough videos that showcase app screens with professional transitions, zoom effects, and contextual text overlays. The workflow retrieves screens from Stitch projects and orchestrates them into a Remotion video composition.
+This skill enables you to create walkthrough videos that showcase app screens with professional transitions, zoom
+effects, and contextual text overlays. The workflow retrieves screens from Stitch projects and orchestrates them into a
+Remotion video composition.
 
 ## Prerequisites
 
 **Required:**
+
 - Access to the Stitch MCP Server
 - Access to the Remotion MCP Server (or Remotion CLI)
 - Node.js and npm installed
 - A Stitch project with designed screens
 
 **Recommended:**
+
 - Familiarity with Remotion's video capabilities
 - Understanding of React components (Remotion uses React)
 
@@ -35,47 +41,48 @@ This skill enables you to create walkthrough videos that showcase app screens wi
 ### Step 1: Discover Available MCP Servers
 
 Run `list_tools` to identify available MCP servers and their prefixes:
+
 - **Stitch MCP**: Look for `stitch:` or `mcp_stitch:` prefix
 - **Remotion MCP**: Look for `remotion:` or `mcp_remotion:` prefix
 
 ### Step 2: Retrieve Stitch Project Information
 
 1. **Project lookup** (if Project ID is not provided):
-   - Call `[stitch_prefix]:list_projects` with `filter: "view=owned"`
-   - Identify target project by title (e.g., "Calculator App")
-   - Extract Project ID from `name` field (e.g., `projects/13534454087919359824`)
+    - Call `[stitch_prefix]:list_projects` with `filter: "view=owned"`
+    - Identify target project by title (e.g., "Calculator App")
+    - Extract Project ID from `name` field (e.g., `projects/13534454087919359824`)
 
 2. **Screen retrieval**:
-   - Call `[stitch_prefix]:list_screens` with the project ID (numeric only)
-   - Review screen titles to identify all screens for the walkthrough
-   - Extract Screen IDs from each screen's `name` field
+    - Call `[stitch_prefix]:list_screens` with the project ID (numeric only)
+    - Review screen titles to identify all screens for the walkthrough
+    - Extract Screen IDs from each screen's `name` field
 
 3. **Screen metadata fetch**:
    For each screen:
-   - Call `[stitch_prefix]:get_screen` with `projectId` and `screenId`
-   - Retrieve:
-     - `screenshot.downloadUrl` — Visual asset for the video
-     - `htmlCode.downloadUrl` — Optional: for extracting text/content
-     - `width`, `height` — Screen dimensions for proper scaling
-     - Screen title and description for text overlays
+    - Call `[stitch_prefix]:get_screen` with `projectId` and `screenId`
+    - Retrieve:
+        - `screenshot.downloadUrl` — Visual asset for the video
+        - `htmlCode.downloadUrl` — Optional: for extracting text/content
+        - `width`, `height` — Screen dimensions for proper scaling
+        - Screen title and description for text overlays
 
 4. **Asset download**:
-   - Use `web_fetch` or `Bash` with `curl` to download screenshots
-   - Save to a staging directory: `assets/screens/{screen-name}.png`
-   - Organize assets in order of the intended walkthrough flow
+    - Use `web_fetch` or `Bash` with `curl` to download screenshots
+    - Save to a staging directory: `assets/screens/{screen-name}.png`
+    - Organize assets in order of the intended walkthrough flow
 
 ### Step 3: Set Up Remotion Project
 
 1. **Check for existing Remotion project**:
-   - Look for `remotion.config.ts` or `package.json` with Remotion dependencies
-   - If exists, use the existing project structure
+    - Look for `remotion.config.ts` or `package.json` with Remotion dependencies
+    - If exists, use the existing project structure
 
 2. **Create new Remotion project** (if needed):
    ```bash
    npm create video@latest -- --blank
    ```
-   - Choose TypeScript template
-   - Set up in a dedicated `video/` directory
+    - Choose TypeScript template
+    - Set up in a dedicated `video/` directory
 
 3. **Install dependencies**:
    ```bash
@@ -90,19 +97,19 @@ Run `list_tools` to identify available MCP servers and their prefixes:
 Create a modular Remotion composition with these components:
 
 1. **`ScreenSlide.tsx`** — Individual screen display component
-   - Props: `imageSrc`, `title`, `description`, `width`, `height`
-   - Features: Zoom-in animation, fade transitions
-   - Duration: Configurable (default 3-5 seconds per screen)
+    - Props: `imageSrc`, `title`, `description`, `width`, `height`
+    - Features: Zoom-in animation, fade transitions
+    - Duration: Configurable (default 3-5 seconds per screen)
 
 2. **`WalkthroughComposition.tsx`** — Main video composition
-   - Sequences multiple `ScreenSlide` components
-   - Handles transitions between screens
-   - Adds text overlays and annotations
+    - Sequences multiple `ScreenSlide` components
+    - Handles transitions between screens
+    - Adds text overlays and annotations
 
 3. **`config.ts`** — Video configuration
-   - Frame rate (default: 30 fps)
-   - Video dimensions (match Stitch screen dimensions or scale appropriately)
-   - Total duration calculation
+    - Frame rate (default: 30 fps)
+    - Video dimensions (match Stitch screen dimensions or scale appropriately)
+    - Total duration calculation
 
 ### Transition Effects
 
@@ -119,8 +126,8 @@ Use Remotion's `@remotion/transitions` for professional effects:
   ```
 
 - **Zoom**: Zoom in/out effects for emphasis
-  - Use `spring()` animation for smooth zoom
-  - Apply to important UI elements
+    - Use `spring()` animation for smooth zoom
+    - Apply to important UI elements
 
 ### Text Overlays
 
@@ -172,22 +179,23 @@ Add contextual information using Remotion's text rendering:
 Create the video components following Remotion best practices:
 
 1. **Create `ScreenSlide.tsx`**:
-   - Use `useCurrentFrame()` and `spring()` for animations
-   - Implement zoom and fade effects
-   - Add text overlays with proper timing
+    - Use `useCurrentFrame()` and `spring()` for animations
+    - Implement zoom and fade effects
+    - Add text overlays with proper timing
 
 2. **Create `WalkthroughComposition.tsx`**:
-   - Import screen manifest
-   - Sequence screens with `<Sequence>` components
-   - Apply transitions between screens
-   - Calculate proper timing and offsets
+    - Import screen manifest
+    - Sequence screens with `<Sequence>` components
+    - Apply transitions between screens
+    - Calculate proper timing and offsets
 
 3. **Update `remotion.config.ts`**:
-   - Set composition ID
-   - Configure video dimensions
-   - Set frame rate and duration
+    - Set composition ID
+    - Configure video dimensions
+    - Set frame rate and duration
 
 **Reference Resources:**
+
 - Use `resources/screen-slide-template.tsx` as starting point
 - Follow `resources/composition-checklist.md` for completeness
 - Review examples in `examples/` directory
@@ -198,18 +206,18 @@ Create the video components following Remotion best practices:
    ```bash
    npm run dev
    ```
-   - Opens browser-based preview
-   - Allows real-time editing and refinement
+    - Opens browser-based preview
+    - Allows real-time editing and refinement
 
 2. **Adjust timing**:
-   - Ensure each screen has appropriate display duration
-   - Verify transitions are smooth
-   - Check text overlay timing
+    - Ensure each screen has appropriate display duration
+    - Verify transitions are smooth
+    - Check text overlay timing
 
 3. **Fine-tune animations**:
-   - Adjust spring configurations for zoom effects
-   - Modify easing functions for transitions
-   - Ensure text is readable at all times
+    - Adjust spring configurations for zoom effects
+    - Modify easing functions for transitions
+    - Ensure text is readable at all times
 
 ### Step 4: Render Video
 
@@ -219,13 +227,13 @@ Create the video components following Remotion best practices:
    ```
 
 2. **Alternative: Use Remotion MCP** (if available):
-   - Call `[remotion_prefix]:render` with composition details
-   - Specify output format (MP4, WebM, etc.)
+    - Call `[remotion_prefix]:render` with composition details
+    - Specify output format (MP4, WebM, etc.)
 
 3. **Optimization options**:
-   - Set quality level (`--quality`)
-   - Configure codec (`--codec h264` or `h265`)
-   - Enable parallel rendering (`--concurrency`)
+    - Set quality level (`--quality`)
+    - Configure codec (`--codec h264` or `h265`)
+    - Enable parallel rendering (`--concurrency`)
 
 ## Advanced Features
 
@@ -307,6 +315,7 @@ Remotion maintains its own Agent Skills that define best practices. Review these
 - **Installation**: `npx skills add remotion-dev/skills`
 
 Key Remotion skills to leverage:
+
 - Animation timing and easing
 - Composition architecture patterns
 - Performance optimization
@@ -317,6 +326,7 @@ Key Remotion skills to leverage:
 ### Pattern 1: Simple Slide Show
 
 Basic walkthrough with fade transitions:
+
 - 3-5 seconds per screen
 - Cross-fade transitions
 - Bottom text overlay with screen title
@@ -325,6 +335,7 @@ Basic walkthrough with fade transitions:
 ### Pattern 2: Feature Highlight
 
 Focus on specific UI elements:
+
 - Zoom into specific regions
 - Animated circles/arrows pointing to features
 - Slow-motion emphasis on key interactions
@@ -333,6 +344,7 @@ Focus on specific UI elements:
 ### Pattern 3: User Flow
 
 Show step-by-step user journey:
+
 - Sequential screen flow with directional slides
 - Numbered steps overlay
 - Highlight user actions (clicks, taps)
@@ -340,13 +352,13 @@ Show step-by-step user journey:
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| **Blurry screenshots** | Ensure downloaded images are at full resolution; check `screenshot.downloadUrl` quality settings |
-| **Misaligned text** | Verify screen dimensions match composition size; adjust text positioning based on actual screen size |
-| **Choppy animations** | Increase frame rate to 60fps; use proper spring configurations with appropriate damping |
-| **Remotion build fails** | Check Node version compatibility; ensure all dependencies are installed; review Remotion docs |
-| **Timing feels off** | Adjust duration per screen in manifest; preview in Remotion Studio; test with actual users |
+| Issue                    | Solution                                                                                             |
+|--------------------------|------------------------------------------------------------------------------------------------------|
+| **Blurry screenshots**   | Ensure downloaded images are at full resolution; check `screenshot.downloadUrl` quality settings     |
+| **Misaligned text**      | Verify screen dimensions match composition size; adjust text positioning based on actual screen size |
+| **Choppy animations**    | Increase frame rate to 60fps; use proper spring configurations with appropriate damping              |
+| **Remotion build fails** | Check Node version compatibility; ensure all dependencies are installed; review Remotion docs        |
+| **Timing feels off**     | Adjust duration per screen in manifest; preview in Remotion Studio; test with actual users           |
 
 ## Best Practices
 
@@ -360,12 +372,14 @@ Show step-by-step user journey:
 ## Example Usage
 
 **User prompt:**
+
 ```
 Look up the screens in my Stitch project "Calculator App" and build a remotion video 
 that shows a walkthrough of the screens.
 ```
 
 **Agent workflow:**
+
 1. List Stitch projects → Find "Calculator App" → Extract project ID
 2. List screens in project → Identify all screens (Home, History, Settings)
 3. Download screenshots for each screen → Save to `assets/screens/`

@@ -2,7 +2,8 @@
 
 ## 1. 目标
 
-桌面主界面采用 `DESIGN.md` 定义的 **Swiss Industrial Print × Declassified Tactical Control Board**：工业纸面、粗黑结构线、巨型模块标题、密集 telemetry、机械标签和单一航空红焦点。它不是白色 SaaS 后台、不是旧 Sidebar + 圆角 Card + Hero，也不是全黑 CRT。
+桌面主界面采用 `DESIGN.md` 定义的 **Swiss Industrial Print × Declassified Tactical Control Board**：工业纸面、粗黑结构线、巨型模块标题、密集
+telemetry、机械标签和单一航空红焦点。它不是白色 SaaS 后台、不是旧 Sidebar + 圆角 Card + Hero，也不是全黑 CRT。
 
 本次重构只改变视觉框架与 JSX 布局，不改变工具行为、数据流、Tauri command、窗口入口或透明窗口核心约束。
 
@@ -11,9 +12,11 @@
 以下内容必须保持现状：
 
 - `src/App.tsx` 中 `overlayWindowModes` 的语义和 early-return 入口。
-- 查询参数入口：`?mode=overlay`、`?mode=timer-display`、`?mode=counter-display`、`?mode=timer-position`、`?mode=counter-position`、`?mode=rapidfire-display`、`?mode=rapidfire-position`。
+- 查询参数入口：`?mode=overlay`、`?mode=timer-display`、`?mode=counter-display`、`?mode=timer-position`、
+  `?mode=counter-position`、`?mode=rapidfire-display`、`?mode=rapidfire-position`。
 - Tauri command 名称与前端 `invoke` 调用参数。
-- 原生窗口 label：`morse-overlay`、`timer-display`、`timer-position`、`counter-display`、`counter-position`、`rapidfire-display`、`rapidfire-position`、`strategy-content`。
+- 原生窗口 label：`morse-overlay`、`timer-display`、`timer-position`、`counter-display`、`counter-position`、
+  `rapidfire-display`、`rapidfire-position`、`strategy-content`。
 - Morse 连续区域框选流程、autosave、热键录制暂停 / 恢复逻辑。
 - 计时器 / 计数器独立总开关、运行态、透明窗口显示、位置设置和排序逻辑。
 - 连发器 hold 热键状态机、启动抖动、最小间距、补齐触发、不追加策略、透明窗口行为。
@@ -50,7 +53,8 @@
 `src/App.tsx` 的桌面主窗口是三段式机械界面：
 
 1. **Top Manifest Bar**：48px 顶栏，展示产品代号、当前模块、工具总数、窗口数和 Tauri 运行面。
-2. **Left Index Rail**：240px 档案索引轨，工具项固定显示编号、英文代号、中文名；当前项黑底反白并带 Alert Red 标识；收藏显示 `PINNED / <count>`。
+2. **Left Index Rail**：240px 档案索引轨，工具项固定显示编号、英文代号、中文名；当前项黑底反白并带 Alert Red 标识；收藏显示
+   `PINNED / <count>`。
 3. **Main Work Grid**：页面内容进入 12 列工作网格。
 
 Overlay / display / position 查询参数入口仍 early return，不经过主壳层。
@@ -70,7 +74,8 @@ Overlay / display / position 查询参数入口仍 early return，不经过主�
 
 ### 4.4 基础 UI 原语
 
-`src/components/ui/*` 的常用原语已统一为工业机械样式：Button、Card、Badge、Input、Textarea、Tabs、ToggleGroup/Toggle、Dialog、Select、Dropdown、ContextMenu、Popover、Tooltip、Switch、Checkbox、Radio、Slider、Progress、Table、Alert。
+`src/components/ui/*`
+的常用原语已统一为工业机械样式：Button、Card、Badge、Input、Textarea、Tabs、ToggleGroup/Toggle、Dialog、Select、Dropdown、ContextMenu、Popover、Tooltip、Switch、Checkbox、Radio、Slider、Progress、Table、Alert。
 
 行为层仍使用原 shadcn/Radix 组件；只改变 class。
 
@@ -96,7 +101,8 @@ Overlay / display / position 查询参数入口仍 early return，不经过主�
 
 在 `bun run tauri dev` 中检查：
 
-- 主窗口 Top Manifest Bar、Left Index Rail、Morse、Timer/Counter、Rapidfire、Strategy、Delta Accounts、Delta Game、Delta Toolbox、Favorites 统一为浅色工业粗粝风。
+- 主窗口 Top Manifest Bar、Left Index Rail、Morse、Timer/Counter、Rapidfire、Strategy、Delta Accounts、Delta Game、Delta
+  Toolbox、Favorites 统一为浅色工业粗粝风。
 - 每个工作台有巨大模块元素、高密度数据区和 Alert Red 焦点。
 - `?mode=overlay` 仍透明，不出现主窗口纸面背景。
 - `?mode=timer-display`、`?mode=counter-display`、`?mode=rapidfire-display` 仍为透明 / 深色游戏叠加体验，置顶和点击穿透不被视觉重构破坏。

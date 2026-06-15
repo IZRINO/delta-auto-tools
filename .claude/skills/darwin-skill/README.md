@@ -12,7 +12,8 @@
 
 **像训练模型一样优化你的 Agent Skills。**
 
-受 [Andrej Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch) 启发，将自主实验循环从模型训练搬到 Skill 优化领域。一个只能向前转的棘轮。
+受 [Andrej Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch) 启发，将自主实验循环从模型训练搬到 Skill
+优化领域。一个只能向前转的棘轮。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-Compatible-blueviolet)](https://skills.sh)
@@ -34,7 +35,8 @@ npx skills add alchaincyf/darwin-skill
 
 ## 为什么做这个
 
-Agent Skill 生态在快速扩张。Claude Code、Codex、OpenClaw、Trae、CodeBuddy 等工具都支持 SKILL.md 格式。当你有 10 个 Skills 时可以手动维护；当你有 60+ 个 Skills 时，你需要一个系统。
+Agent Skill 生态在快速扩张。Claude Code、Codex、OpenClaw、Trae、CodeBuddy 等工具都支持 SKILL.md 格式。当你有 10 个 Skills
+时可以手动维护；当你有 60+ 个 Skills 时，你需要一个系统。
 
 传统的 Skill 审查是**纯结构性的**：检查格式对不对、步骤有没有编号、路径能不能访问。但一个格式完美的 Skill，跑出来的效果可能很差。
 
@@ -44,30 +46,31 @@ Agent Skill 生态在快速扩张。Claude Code、Codex、OpenClaw、Trae、Code
 
 ## 从 autoresearch 到 Skill Optimizer
 
-这个项目直接受 Karpathy autoresearch 启发。autoresearch 的做法是：写一个 `program.md` 定义目标和约束，让 agent 自主生成和测试代码变更，只保留可测量的改进。
+这个项目直接受 Karpathy autoresearch 启发。autoresearch 的做法是：写一个 `program.md` 定义目标和约束，让 agent
+自主生成和测试代码变更，只保留可测量的改进。
 
 我们把同样的思路搬到了 Skill 优化：
 
-| autoresearch | 达尔文.skill | 为什么这样映射 |
-|:---|:---|:---|
-| `program.md` | 本 SKILL.md | 定义评估标准和约束规则 |
-| `train.py` | 每个待优化的 SKILL.md | 被优化的资产，每次实验只改它 |
-| `val_bpb` | 8 维加权总分（满分100） | 可量化的优化目标 |
-| `git ratchet` | keep / revert 机制 | 只保留有改进的 commit |
-| `test set` | test-prompts.json | 验证改进是否真的有效 |
-| 全自主运行 | **人在回路** | Skill 的好坏比 loss 更微妙，需要人的判断 |
+| autoresearch  | 达尔文.skill         | 为什么这样映射                    |
+|:--------------|:------------------|:---------------------------|
+| `program.md`  | 本 SKILL.md        | 定义评估标准和约束规则                |
+| `train.py`    | 每个待优化的 SKILL.md   | 被优化的资产，每次实验只改它             |
+| `val_bpb`     | 8 维加权总分（满分100）    | 可量化的优化目标                   |
+| `git ratchet` | keep / revert 机制  | 只保留有改进的 commit             |
+| `test set`    | test-prompts.json | 验证改进是否真的有效                 |
+| 全自主运行         | **人在回路**          | Skill 的好坏比 loss 更微妙，需要人的判断 |
 
 ---
 
 ## 五条核心原则
 
-| # | 原则 | 说明 |
-|:---|:---|:---|
+| #  | 原则          | 说明                         |
+|:---|:------------|:---------------------------|
 | 01 | **单一可编辑资产** | 每次只改一个 SKILL.md，变量可控，改进可归因 |
-| 02 | **双重评估** | 结构评分（静态分析）+ 效果验证（跑测试看输出） |
-| 03 | **棘轮机制** | 只保留改进，自动回滚退步，分数只升不降 |
-| 04 | **独立评分** | 评分用子 agent，避免「自己改自己评」的偏差 |
-| 05 | **人在回路** | 每个 Skill 优化完后暂停，用户确认再继续下一个 |
+| 02 | **双重评估**    | 结构评分（静态分析）+ 效果验证（跑测试看输出）   |
+| 03 | **棘轮机制**    | 只保留改进，自动回滚退步，分数只升不降        |
+| 04 | **独立评分**    | 评分用子 agent，避免「自己改自己评」的偏差   |
+| 05 | **人在回路**    | 每个 Skill 优化完后暂停，用户确认再继续下一个 |
 
 ---
 
@@ -116,7 +119,9 @@ npx skills add alchaincyf/darwin-skill
 
 安装后在任何支持 Skill 的 Agent 工具中说「优化所有skills」或「优化某个skill」就行。
 
-无法访问 GitHub 的朋友，可以直接下载 zip 包：[darwin-skill.zip](https://pub-161ae4b5ed0644c4a43b5c6412287e03.r2.dev/skills/darwin-skill.zip)，解压后把 SKILL.md 放到 `~/.claude/skills/darwin-skill/` 目录即可。
+无法访问 GitHub 的朋友，可以直接下载 zip
+包：[darwin-skill.zip](https://pub-161ae4b5ed0644c4a43b5c6412287e03.r2.dev/skills/darwin-skill.zip)，解压后把 SKILL.md 放到
+`~/.claude/skills/darwin-skill/` 目录即可。
 
 ---
 
@@ -130,14 +135,14 @@ npx skills add alchaincyf/darwin-skill
 
 ## 关于作者
 
-| | |
-|:---|:---|
-| 🌐 官网 | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
-| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust) |
-| 📺 B站 | [花叔](https://space.bilibili.com/14097567) |
-| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain) |
-| 📕 小红书 | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf) |
-| 💬 公众号 | 微信搜「花叔」 |
+|            |                                                                           |
+|:-----------|:--------------------------------------------------------------------------|
+| 🌐 官网      | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
+| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust)                                 |
+| 📺 B站      | [花叔](https://space.bilibili.com/14097567)                                 |
+| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain)                              |
+| 📕 小红书     | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf)   |
+| 💬 公众号     | 微信搜「花叔」                                                                   |
 
 ---
 

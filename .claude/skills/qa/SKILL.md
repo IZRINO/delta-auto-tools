@@ -5,7 +5,8 @@ description: Interactive QA session where user reports bugs or issues conversati
 
 # QA Session
 
-Run an interactive QA session. The user describes problems they're encountering. You clarify, explore the codebase for context, and file GitHub issues that are durable, user-focused, and use the project's domain language.
+Run an interactive QA session. The user describes problems they're encountering. You clarify, explore the codebase for
+context, and file GitHub issues that are durable, user-focused, and use the project's domain language.
 
 ## For each issue the user raises
 
@@ -21,13 +22,15 @@ Do NOT over-interview. If the description is clear enough to file, move on.
 
 ### 2. Explore the codebase in the background
 
-While talking to the user, kick off an Agent (subagent_type=Explore) in the background to understand the relevant area. The goal is NOT to find a fix — it's to:
+While talking to the user, kick off an Agent (subagent_type=Explore) in the background to understand the relevant area.
+The goal is NOT to find a fix — it's to:
 
 - Learn the domain language used in that area (check UBIQUITOUS_LANGUAGE.md)
 - Understand what the feature is supposed to do
 - Identify the user-facing behavior boundary
 
-This context helps you write a better issue — but the issue itself should NOT reference specific files, line numbers, or internal implementation details.
+This context helps you write a better issue — but the issue itself should NOT reference specific files, line numbers, or
+internal implementation details.
 
 ### 3. Assess scope: single issue or breakdown?
 
@@ -35,7 +38,8 @@ Before filing, decide whether this is a **single issue** or needs to be **broken
 
 Break down when:
 
-- The fix spans multiple independent areas (e.g. "the form validation is wrong AND the success message is missing AND the redirect is broken")
+- The fix spans multiple independent areas (e.g. "the form validation is wrong AND the success message is missing AND
+  the redirect is broken")
 - There are clearly separable concerns that different people could work on in parallel
 - The user describes something that has multiple distinct failure modes or symptoms
 
@@ -111,7 +115,8 @@ Or "None — can start immediately" if no blockers.
 When creating a breakdown:
 
 - **Prefer many thin issues over few thick ones** — each should be independently fixable and verifiable
-- **Mark blocking relationships honestly** — if issue B genuinely can't be tested until issue A is fixed, say so. If they're independent, mark both as "None — can start immediately"
+- **Mark blocking relationships honestly** — if issue B genuinely can't be tested until issue A is fixed, say so. If
+  they're independent, mark both as "None — can start immediately"
 - **Create issues in dependency order** so you can reference real issue numbers in "Blocked by"
 - **Maximize parallelism** — the goal is that multiple people (or agents) can grab different issues simultaneously
 

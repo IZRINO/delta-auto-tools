@@ -1,17 +1,18 @@
 # Elon Musk 调研素材索引
 
 ## 调研时间：2026-04-04
+
 ## 调研方法：5个并行Agent，共40+轮WebSearch
 
 ## 完整调研文件
 
-| 维度 | 文件位置 | 内容概述 |
-|------|---------|---------|
-| 著作与系统思考 | `07-调研与分析/Elon-Musk-思想体系调研-20260404.md` | Master Plan系列、第一性原理操作、自创概念、推荐书单、矛盾分析 |
-| 长对话与即兴思考 | `07-调研与分析/马斯克即兴思考方式调研.md` | 播客访谈、法庭证词、五步算法、思维模式提取 |
-| 决策记录与行动 | `07-调研与分析/马斯克决策模式与行为分析-20260404.md` | SpaceX/Tesla/X/xAI/DOGE关键决策、言行一致清单、危机行为模式 |
-| 碎片表达 | Agent输出（未存文件） | Twitter风格分析、11394条推文统计、收购前后变化、公开辩论 |
-| 他者视角 | Agent输出（未存文件） | Isaacson传记发现、心理学分析、前员工评价、与贝佐斯/乔布斯对比 |
+| 维度       | 文件位置                                    | 内容概述                                      |
+|----------|-----------------------------------------|-------------------------------------------|
+| 著作与系统思考  | `07-调研与分析/Elon-Musk-思想体系调研-20260404.md` | Master Plan系列、第一性原理操作、自创概念、推荐书单、矛盾分析      |
+| 长对话与即兴思考 | `07-调研与分析/马斯克即兴思考方式调研.md`               | 播客访谈、法庭证词、五步算法、思维模式提取                     |
+| 决策记录与行动  | `07-调研与分析/马斯克决策模式与行为分析-20260404.md`     | SpaceX/Tesla/X/xAI/DOGE关键决策、言行一致清单、危机行为模式 |
+| 碎片表达     | Agent输出（未存文件）                           | Twitter风格分析、11394条推文统计、收购前后变化、公开辩论        |
+| 他者视角     | Agent输出（未存文件）                           | Isaacson传记发现、心理学分析、前员工评价、与贝佐斯/乔布斯对比       |
 
 ## 一手来源（马斯克本人）
 
@@ -43,9 +44,11 @@
 
 > "The only rules you have to follow are the laws of physics — everything else is a recommendation." — Isaacson传记
 
-> "I tend to approach things from a physics framework. Physics teaches you to reason from first principles rather than by analogy." — 多次公开采访
+> "I tend to approach things from a physics framework. Physics teaches you to reason from first principles rather than
+> by analogy." — 多次公开采访
 
-> "What are the material constituents of the batteries? What is the stock market value of the material constituents?" — TED Talk
+> "What are the material constituents of the batteries? What is the stock market value of the material constituents?" —
+> TED Talk
 
 > "The most common error of a smart engineer is to optimize a thing that should not exist." — 五步算法
 

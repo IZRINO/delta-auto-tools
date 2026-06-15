@@ -24,20 +24,21 @@ description: |
 
 收到问题后，先判断类型，加载对应reference：
 
-| 用户问题类型 | 执行场景 | 按需加载 |
-|------------|---------|---------|
-| 怎么写推文/Thread | → 场景A | `writing-workshop.md` + `algorithm-niche.md` |
-| 不知道发什么/没灵感 | → 场景B | `writing-workshop.md` + `mental-models-heuristics.md` |
-| 审阅已写内容 | → 场景C | `quality-analytics.md` + `writing-workshop.md` |
-| 怎么涨粉/策略 | → 场景D | `growth-monetization.md` + `algorithm-niche.md` |
-| 账号诊断/分析报告 | → 场景E | `quality-analytics.md`（含报告模板） |
-| 算法/平台规则 | → 直接回答 | `algorithm-niche.md` |
-| AI赛道问题 | → 直接回答 | `algorithm-niche.md` |
-| 变现 | → 直接回答 | `growth-monetization.md` |
-| 底层思维/为什么 | → 直接回答 | `mental-models-heuristics.md` |
-| 避坑/常见错误 | → 直接回答 | `quality-analytics.md` |
+| 用户问题类型       | 执行场景   | 按需加载                                                  |
+|--------------|--------|-------------------------------------------------------|
+| 怎么写推文/Thread | → 场景A  | `writing-workshop.md` + `algorithm-niche.md`          |
+| 不知道发什么/没灵感   | → 场景B  | `writing-workshop.md` + `mental-models-heuristics.md` |
+| 审阅已写内容       | → 场景C  | `quality-analytics.md` + `writing-workshop.md`        |
+| 怎么涨粉/策略      | → 场景D  | `growth-monetization.md` + `algorithm-niche.md`       |
+| 账号诊断/分析报告    | → 场景E  | `quality-analytics.md`（含报告模板）                         |
+| 算法/平台规则      | → 直接回答 | `algorithm-niche.md`                                  |
+| AI赛道问题       | → 直接回答 | `algorithm-niche.md`                                  |
+| 变现           | → 直接回答 | `growth-monetization.md`                              |
+| 底层思维/为什么     | → 直接回答 | `mental-models-heuristics.md`                         |
+| 避坑/常见错误      | → 直接回答 | `quality-analytics.md`                                |
 
 **加载原则**：
+
 - 只加载当前场景需要的reference，不要一次全读
 - `references/research/` 下的6份原始调研报告仅在需要追溯来源时读取
 - 如有用户历史数据（`user-data/`），优先静默读取 `strategy.md`
@@ -201,15 +202,16 @@ Step 5: 个性化策略更新
 
 所有个性化数据保存在 `user-data/{username}/` 目录下：
 
-| 文件 | 用途 |
-|------|------|
-| `profile.md` | 账号基本信息（粉丝、Bio、Premium状态） |
-| `tweets_{date}.json` | 推文原始数据（结构化） |
-| `tweets_{date}.md` | 推文可读版汇总 |
-| `report_{date}.html` | 诊断报告（经济学人风格） |
-| `strategy.md` | 个性化策略（每次诊断后更新） |
+| 文件                   | 用途                       |
+|----------------------|--------------------------|
+| `profile.md`         | 账号基本信息（粉丝、Bio、Premium状态） |
+| `tweets_{date}.json` | 推文原始数据（结构化）              |
+| `tweets_{date}.md`   | 推文可读版汇总                  |
+| `report_{date}.html` | 诊断报告（经济学人风格）             |
+| `strategy.md`        | 个性化策略（每次诊断后更新）           |
 
 **自动索引规则**（每次Skill激活时执行）：
+
 1. 检查 `user-data/` 是否有当前用户的数据
 2. 如有 → 静默读取 `strategy.md`，将用户画像作为上下文
 3. 超过30天 → 提醒重新诊断
@@ -235,18 +237,18 @@ Step 5: 个性化策略更新
 
 ## Reference索引
 
-| 文件 | 内容 | 行数 |
-|------|------|------|
-| **操作层（按需加载）** | | |
-| `references/writing-workshop.md` | 短推文/Hook/Thread/选题系统 | ~120 |
-| `references/algorithm-niche.md` | X算法速查 + AI赛道专精 | ~130 |
-| `references/growth-monetization.md` | 增长引擎 + 变现 + 流派对比 | ~100 |
-| `references/quality-analytics.md` | 质量清单 + 反模式 + 复盘 + 报告模板 | ~130 |
-| `references/mental-models-heuristics.md` | 6个心智模型 + 10条启发式 | ~220 |
-| **调研层（追溯来源时读取）** | | |
-| `references/research/01-writing-methods.md` | Cole/Bush/Ship 30体系 | 503 |
-| `references/research/02-growth-engines.md` | Sahil/Welsh增长策略 | 386 |
-| `references/research/03-content-brand.md` | Koe/Hormozi内容哲学 | 398 |
-| `references/research/04-platform-mechanics.md` | X算法与平台规则 | 415 |
-| `references/research/05-ai-tech-niche.md` | AI赛道特殊策略 | 404 |
-| `references/research/06-cases-antipatterns.md` | 案例与反模式 | 369 |
+| 文件                                             | 内容                     | 行数   |
+|------------------------------------------------|------------------------|------|
+| **操作层（按需加载）**                                  |                        |      |
+| `references/writing-workshop.md`               | 短推文/Hook/Thread/选题系统   | ~120 |
+| `references/algorithm-niche.md`                | X算法速查 + AI赛道专精         | ~130 |
+| `references/growth-monetization.md`            | 增长引擎 + 变现 + 流派对比       | ~100 |
+| `references/quality-analytics.md`              | 质量清单 + 反模式 + 复盘 + 报告模板 | ~130 |
+| `references/mental-models-heuristics.md`       | 6个心智模型 + 10条启发式        | ~220 |
+| **调研层（追溯来源时读取）**                               |                        |      |
+| `references/research/01-writing-methods.md`    | Cole/Bush/Ship 30体系    | 503  |
+| `references/research/02-growth-engines.md`     | Sahil/Welsh增长策略        | 386  |
+| `references/research/03-content-brand.md`      | Koe/Hormozi内容哲学        | 398  |
+| `references/research/04-platform-mechanics.md` | X算法与平台规则               | 415  |
+| `references/research/05-ai-tech-niche.md`      | AI赛道特殊策略               | 404  |
+| `references/research/06-cases-antipatterns.md` | 案例与反模式                 | 369  |

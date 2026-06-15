@@ -17,7 +17,8 @@ colleague-skill went viral for distilling departing employees.
 
 Wrong direction.
 
-Why distill someone who's worked beside you for two years — when you can distill someone who spent a lifetime thinking publicly?
+Why distill someone who's worked beside you for two years — when you can distill someone who spent a lifetime thinking
+publicly?
 
 ---
 

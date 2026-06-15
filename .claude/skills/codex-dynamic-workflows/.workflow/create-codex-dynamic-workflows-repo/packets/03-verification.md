@@ -4,9 +4,10 @@ Packet ID: 03-verification
 Objective: Verify the integrated outcome against the original success criteria.
 Context: Workflow `Create Codex Dynamic Workflows Repository`. Add task-specific context before delegation.
 Files / sources:
+
 - TBD
-Ownership: Checks, tests, install smoke, or manual audit.
-Assignee: parent
+  Ownership: Checks, tests, install smoke, or manual audit.
+  Assignee: parent
 
 ## Do
 

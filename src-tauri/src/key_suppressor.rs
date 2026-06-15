@@ -377,8 +377,8 @@ fn run_suppressor_hook(
     use std::ptr;
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, PeekMessageW, MSG, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP, PM_REMOVE,
+        CallNextHookEx, PeekMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG,
+        PM_REMOVE, WH_KEYBOARD_LL, WM_KEYUP, WM_QUIT, WM_SYSKEYUP,
     };
 
     // KBDLLHOOKSTRUCT 不在 windows-sys 的默认 feature 中，手动定义

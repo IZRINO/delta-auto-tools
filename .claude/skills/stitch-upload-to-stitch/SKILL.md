@@ -32,17 +32,20 @@ Use `list_projects` to find the correct `projectId`.
 ### 2. Get the API Key
 
 Locate your active MCP server configuration file and extract the API key:
+
 - **Antigravity**: `.gemini/antigravity/mcp_config.json` or `.gemini/jetski/mcp_config.json`
 - **Gemini CLI**: `~/.gemini/settings.json` or `~/.gemini/extensions/Stitch/gemini-extension.json`
 - **Claude Code**: `~/.claude.json`
 
 Extract:
+
 - **API Key**: From the `X-Goog-Api-Key` header or auth argument
 - **MCP URL** (optional): From the `httpUrl` or endpoint argument (defaults to
   `https://stitch.googleapis.com`)
 
 > [!IMPORTANT]
-> If you cannot find the API key in any of these locations, or if you cannot access these files, you MUST ask the user to provide the Stitch API key. Do not proceed without a valid API key.
+> If you cannot find the API key in any of these locations, or if you cannot access these files, you MUST ask the user
+> to provide the Stitch API key. Do not proceed without a valid API key.
 
 ### 3. Run Upload Script
 
@@ -65,7 +68,9 @@ python3 <SKILL_DIR>/scripts/upload_to_stitch.py \
 
 > [!TIP]
 > **macOS / SSL Certificate Troubleshooting:**
-> If the upload fails with `ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`, this means your Python installation does not have root certificate authorities configured.
+> If the upload fails with
+`ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer certificate`, this means your
+> Python installation does not have root certificate authorities configured.
 > Fix it by prepending `SSL_CERT_FILE` using the `certifi` bundle:
 > ```bash
 > SSL_CERT_FILE=$(python3 -c "import certifi; print(certifi.where())") python3 <SKILL_DIR>/scripts/upload_to_stitch.py \
@@ -76,12 +81,12 @@ python3 <SKILL_DIR>/scripts/upload_to_stitch.py \
 
 ### Supported File Types
 
-| Extension | MIME Type |
-|:---|:---|
-| `.png` | `image/png` |
+| Extension       | MIME Type    |
+|:----------------|:-------------|
+| `.png`          | `image/png`  |
 | `.jpg`, `.jpeg` | `image/jpeg` |
-| `.webp` | `image/webp` |
-| `.html`, `.htm` | `text/html` |
+| `.webp`         | `image/webp` |
+| `.html`, `.htm` | `text/html`  |
 
 The script auto-detects MIME type from the file extension.
 

@@ -16,6 +16,7 @@ allowed-tools:
 Transform your existing frontend code into a Stitch Design so you can iterate and improve it using Stitch.
 
 This skill orchestrates three other skills in sequence:
+
 1. `extract-static-html`: Extract a single self-contained HTML file from your build output.
 2. `extract-design-md`: Analyze the source code to create a design system (DESIGN.md).
 3. `upload-to-stitch`: Upload that HTML file and the design system to your Stitch project.
@@ -70,6 +71,7 @@ Use the same `upload-to-stitch` skill's script to upload the extracted HTML file
 Read [skills/upload-to-stitch/SKILL.md](../upload-to-stitch/SKILL.md) for detailed instructions and script usage.
 
 You will need:
+
 - The path to the standalone HTML file generated in Step 1.
 - Your Stitch API Key (same key used in Step 4).
 - The target `projectId`.

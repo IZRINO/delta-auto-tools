@@ -1,88 +1,85 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listenEvent, GLOBAL_EVENTS } from "@/lib/tauri-events";
+import {createContext, type ReactNode, useCallback, useContext, useEffect, useState,} from "react";
+import {invoke} from "@tauri-apps/api/core";
+import {GLOBAL_EVENTS, listenEvent} from "@/lib/tauri-events";
 
-import { useNativeShell } from "@/hooks/use-native-shell";
+import {useNativeShell} from "@/hooks/use-native-shell";
 
 const GLOBAL_ENABLED_STORAGE_KEY = "delta-auto-tools:global-enabled";
 
 const GlobalEnabledContext = createContext<{
-  globalEnabled: boolean;
-  setGlobalEnabled: (enabled: boolean) => void;
+    globalEnabled: boolean;
+    setGlobalEnabled: (enabled: boolean) => void;
 }>({
-  globalEnabled: true,
-  setGlobalEnabled: () => {},
+    globalEnabled: true,
+    setGlobalEnabled: () => {
+    },
 });
 
-export function GlobalEnabledProvider({ children }: { children: ReactNode }) {
-  const isNativeShell = useNativeShell();
-  const [globalEnabled, setGlobalEnabledState] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try {
-      const stored = window.localStorage.getItem(GLOBAL_ENABLED_STORAGE_KEY);
-      return stored === null ? true : stored === "true";
-    } catch {
-      return true;
-    }
-  });
-
-  useEffect(() => {
-    if (!isNativeShell) return;
-
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-
-    void invoke<boolean>("global_get_enabled").then((enabled) => {
-      if (disposed) return;
-      setGlobalEnabledState(enabled);
-      try {
-        window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(enabled));
-      } catch {}
+export function GlobalEnabledProvider({children}: { children: ReactNode }) {
+    const isNativeShell = useNativeShell();
+    const [globalEnabled, setGlobalEnabledState] = useState(() => {
+        if (typeof window === "undefined") return true;
+        try {
+            const stored = window.localStorage.getItem(GLOBAL_ENABLED_STORAGE_KEY);
+            return stored === null ? true : stored === "true";
+        } catch {
+            return true;
+        }
     });
 
-    void listenEvent(GLOBAL_EVENTS.enabledChanged, (event) => {
-      if (disposed) return;
-      setGlobalEnabledState(event.payload);
-      try {
-        window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(event.payload));
-      } catch {}
-    }).then((dispose) => {
-      unlisten = dispose;
-    });
+    useEffect(() => {
+        if (!isNativeShell) return;
 
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [isNativeShell]);
+        let disposed = false;
+        let unlisten: (() => void) | undefined;
 
-  const setGlobalEnabled = useCallback(
-    (enabled: boolean) => {
-      setGlobalEnabledState(enabled);
-      try {
-        window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(enabled));
-      } catch {}
-      if (isNativeShell) {
-        void invoke("global_set_enabled", { enabled });
-      }
-    },
-    [isNativeShell],
-  );
+        void invoke<boolean>("global_get_enabled").then((enabled) => {
+            if (disposed) return;
+            setGlobalEnabledState(enabled);
+            try {
+                window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(enabled));
+            } catch {
+            }
+        });
 
-  return (
-    <GlobalEnabledContext.Provider value={{ globalEnabled, setGlobalEnabled }}>
-      {children}
-    </GlobalEnabledContext.Provider>
-  );
+        void listenEvent(GLOBAL_EVENTS.enabledChanged, (event) => {
+            if (disposed) return;
+            setGlobalEnabledState(event.payload);
+            try {
+                window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(event.payload));
+            } catch {
+            }
+        }).then((dispose) => {
+            unlisten = dispose;
+        });
+
+        return () => {
+            disposed = true;
+            unlisten?.();
+        };
+    }, [isNativeShell]);
+
+    const setGlobalEnabled = useCallback(
+        (enabled: boolean) => {
+            setGlobalEnabledState(enabled);
+            try {
+                window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(enabled));
+            } catch {
+            }
+            if (isNativeShell) {
+                void invoke("global_set_enabled", {enabled});
+            }
+        },
+        [isNativeShell],
+    );
+
+    return (
+        <GlobalEnabledContext.Provider value={{globalEnabled, setGlobalEnabled}}>
+            {children}
+        </GlobalEnabledContext.Provider>
+    );
 }
 
 export function useGlobalEnabled() {
-  return useContext(GlobalEnabledContext);
+    return useContext(GlobalEnabledContext);
 }

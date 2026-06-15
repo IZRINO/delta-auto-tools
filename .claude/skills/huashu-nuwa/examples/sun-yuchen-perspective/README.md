@@ -137,14 +137,14 @@ npx skills add alchaincyf/sun-yuchen-perspective
 
 ### 6个心智模型
 
-| 模型 | 一句话 | 来源 |
-|------|--------|------|
-| **注意力套利** | 花出去的钱不是成本，是注意力采购 | 巴菲特午餐456万、香蕉620万、特朗普7500万 |
-| **叙事覆盖** | 不改变事实，改变事实的定义 | 白皮书「翻译问题」、割韭菜=「市场教育」 |
-| **身份杠杆** | 身份是可以购买和堆叠的资产 | 湖畔大学→格莱纳达大使→特朗普盟友 |
-| **场景切换矩阵** | 不同权力结构，完全不同的人设 | 中国=悔过青年、SEC=外国人、社区=坦诚学习者 |
-| **快速复制+品牌溢价** | 抄最好的，然后用营销超越原版 | 白皮书抄IPFS但USDT交易量碾压以太坊 |
-| **金钱万能钥匙** | 大多数问题都有一个美元价格标签 | 456万→认识巴菲特、1000万→和解SEC |
+| 模型            | 一句话              | 来源                        |
+|---------------|------------------|---------------------------|
+| **注意力套利**     | 花出去的钱不是成本，是注意力采购 | 巴菲特午餐456万、香蕉620万、特朗普7500万 |
+| **叙事覆盖**      | 不改变事实，改变事实的定义    | 白皮书「翻译问题」、割韭菜=「市场教育」      |
+| **身份杠杆**      | 身份是可以购买和堆叠的资产    | 湖畔大学→格莱纳达大使→特朗普盟友         |
+| **场景切换矩阵**    | 不同权力结构，完全不同的人设   | 中国=悔过青年、SEC=外国人、社区=坦诚学习者  |
+| **快速复制+品牌溢价** | 抄最好的，然后用营销超越原版   | 白皮书抄IPFS但USDT交易量碾压以太坊     |
+| **金钱万能钥匙**    | 大多数问题都有一个美元价格标签  | 456万→认识巴菲特、1000万→和解SEC    |
 
 ### 8条决策启发式
 
@@ -159,13 +159,13 @@ npx skills add alchaincyf/sun-yuchen-perspective
 
 ### 5种割味造句公式
 
-| 公式 | 示例 |
-|------|------|
-| 碰瓷造句法 | 「我和巴菲特聊过这个，他说crypto没价值，结果呢？850亿。」 |
-| 数字轰炸法 | 「3.73亿用户、850亿USDT、130亿笔交易。你告诉我谁是骗子？」 |
-| 暴论+反问法 | 「90%的人会死。你准备当那10%，还是等着被洗出去？」 |
-| 重新定义法 | 「你说我炒作？我管这叫市场教育。」 |
-| 行动宣言法 | 「All in AI。不需要讨论。」 |
+| 公式     | 示例                                   |
+|--------|--------------------------------------|
+| 碰瓷造句法  | 「我和巴菲特聊过这个，他说crypto没价值，结果呢？850亿。」    |
+| 数字轰炸法  | 「3.73亿用户、850亿USDT、130亿笔交易。你告诉我谁是骗子？」 |
+| 暴论+反问法 | 「90%的人会死。你准备当那10%，还是等着被洗出去？」         |
+| 重新定义法  | 「你说我炒作？我管这叫市场教育。」                    |
+| 行动宣言法  | 「All in AI。不需要讨论。」                   |
 
 ### 表达DNA
 
@@ -188,22 +188,25 @@ npx skills add alchaincyf/sun-yuchen-perspective
 
 6个调研文件，共1528行，全部在 [`references/research/`](references/research/) 目录：
 
-| 文件 | 内容 | 行数 |
-|------|------|------|
-| `01-writings.md` | 著作与系统思考（2本书、白皮书、播客、教育背景包装） | 148 |
-| `02-conversations.md` | 对话与即兴思考（8+播客/采访、5种人设切换模式） | 438 |
-| `03-expression-dna.md` | 表达风格DNA（推文模式、蹭热点公式、中英双面人设） | 259 |
+| 文件                     | 内容                           | 行数  |
+|------------------------|------------------------------|-----|
+| `01-writings.md`       | 著作与系统思考（2本书、白皮书、播客、教育背景包装）   | 148 |
+| `02-conversations.md`  | 对话与即兴思考（8+播客/采访、5种人设切换模式）    | 438 |
+| `03-expression-dna.md` | 表达风格DNA（推文模式、蹭热点公式、中英双面人设）   | 259 |
 | `04-external-views.md` | 他者视角（SEC指控、Vitalik评价、「孙割」溯源） | 322 |
-| `05-decisions.md` | 重大决策分析（13个决策、7种模式、言行一致性） | 212 |
-| `06-timeline.md` | 完整时间线（1990-2026、5个关键转折点） | 149 |
+| `05-decisions.md`      | 重大决策分析（13个决策、7种模式、言行一致性）     | 212 |
+| `06-timeline.md`       | 完整时间线（1990-2026、5个关键转折点）     | 149 |
 
 ### 一手来源
 
-《这世界既残酷也温柔》(2017) · TRON白皮书 · Bankless Podcast 2024 · Bad Crypto Podcast #212/#410 · Empire Podcast (Blockworks) · CNBC采访 2023 · Thought Economics · CoinDesk Consensus HK 2025 · Odaily独家 2025 · 王峰十问 2018 · Twitter/X @justinsuntron
+《这世界既残酷也温柔》(2017) · TRON白皮书 · Bankless Podcast 2024 · Bad Crypto Podcast #212/#410 · Empire Podcast (
+Blockworks) · CNBC采访 2023 · Thought Economics · CoinDesk Consensus HK 2025 · Odaily独家 2025 · 王峰十问 2018 ·
+Twitter/X @justinsuntron
 
 ### 二手来源
 
-SEC Case No. 1:23-cv-02340 · The Verge调查系列 2022 · Bloomberg「From Pariah to Trump Moneyman」2025 · Slate「The nefarious truth」2024 · Fortune · PANews · 腾讯新闻「区块链病人」
+SEC Case No. 1:23-cv-02340 · The Verge调查系列 2022 · Bloomberg「From Pariah to Trump Moneyman」2025 · Slate「The nefarious
+truth」2024 · Fortune · PANews · 腾讯新闻「区块链病人」
 
 信息源已排除知乎/微信公众号/百度百科。
 
@@ -253,15 +256,15 @@ sun-yuchen-perspective/
 
 女娲已蒸馏的其他人物，每个都可独立安装：
 
-| 人物 | 领域 | 安装 |
-|------|------|------|
-| [乔布斯.skill](https://github.com/alchaincyf/steve-jobs-skill) | 产品/设计/聚焦 | `npx skills add alchaincyf/steve-jobs-skill` |
-| [马斯克.skill](https://github.com/alchaincyf/elon-musk-skill) | 工程/成本/第一性原理 | `npx skills add alchaincyf/elon-musk-skill` |
-| [芒格.skill](https://github.com/alchaincyf/munger-skill) | 投资/多元思维/逆向思考 | `npx skills add alchaincyf/munger-skill` |
-| [费曼.skill](https://github.com/alchaincyf/feynman-skill) | 学习/教学/科学思维 | `npx skills add alchaincyf/feynman-skill` |
-| [塔勒布.skill](https://github.com/alchaincyf/taleb-skill) | 风险/反脆弱/不确定性 | `npx skills add alchaincyf/taleb-skill` |
-| [特朗普.skill](https://github.com/alchaincyf/trump-skill) | 谈判/权力/叙事操控 | `npx skills add alchaincyf/trump-skill` |
-| [纳瓦尔.skill](https://github.com/alchaincyf/naval-skill) | 财富/杠杆/人生哲学 | `npx skills add alchaincyf/naval-skill` |
+| 人物                                                            | 领域           | 安装                                             |
+|---------------------------------------------------------------|--------------|------------------------------------------------|
+| [乔布斯.skill](https://github.com/alchaincyf/steve-jobs-skill)   | 产品/设计/聚焦     | `npx skills add alchaincyf/steve-jobs-skill`   |
+| [马斯克.skill](https://github.com/alchaincyf/elon-musk-skill)    | 工程/成本/第一性原理  | `npx skills add alchaincyf/elon-musk-skill`    |
+| [芒格.skill](https://github.com/alchaincyf/munger-skill)        | 投资/多元思维/逆向思考 | `npx skills add alchaincyf/munger-skill`       |
+| [费曼.skill](https://github.com/alchaincyf/feynman-skill)       | 学习/教学/科学思维   | `npx skills add alchaincyf/feynman-skill`      |
+| [塔勒布.skill](https://github.com/alchaincyf/taleb-skill)        | 风险/反脆弱/不确定性  | `npx skills add alchaincyf/taleb-skill`        |
+| [特朗普.skill](https://github.com/alchaincyf/trump-skill)        | 谈判/权力/叙事操控   | `npx skills add alchaincyf/trump-skill`        |
+| [纳瓦尔.skill](https://github.com/alchaincyf/naval-skill)        | 财富/杠杆/人生哲学   | `npx skills add alchaincyf/naval-skill`        |
 | [张雪峰.skill](https://github.com/alchaincyf/zhangxuefeng-skill) | 教育/职业规划/阶层流动 | `npx skills add alchaincyf/zhangxuefeng-skill` |
 
 想蒸馏更多人？用 [女娲.skill](https://github.com/alchaincyf/nuwa-skill)，输入任何名字即可。
@@ -276,14 +279,14 @@ MIT — 随便用，随便改，随便蒸馏。
 
 **花叔 Huashu** — AI Native Coder，独立开发者，代表作：小猫补光灯（AppStore 付费榜 Top1）
 
-| 平台 | 链接 |
-|------|------|
-| 🌐 官网 | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
-| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust) |
-| 📺 B站 | [花叔](https://space.bilibili.com/14097567) |
-| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain) |
-| 📕 小红书 | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf) |
-| 💬 公众号 | 微信搜「花叔」|
+| 平台         | 链接                                                                        |
+|------------|---------------------------------------------------------------------------|
+| 🌐 官网      | [bookai.top](https://bookai.top) · [huasheng.ai](https://www.huasheng.ai) |
+| 𝕏 Twitter | [@AlchainHust](https://x.com/AlchainHust)                                 |
+| 📺 B站      | [花叔](https://space.bilibili.com/14097567)                                 |
+| ▶️ YouTube | [@Alchain](https://www.youtube.com/@Alchain)                              |
+| 📕 小红书     | [花叔](https://www.xiaohongshu.com/user/profile/5abc6f17e8ac2b109179dfdf)   |
+| 💬 公众号     | 微信搜「花叔」                                                                   |
 
 <div align="center">
 

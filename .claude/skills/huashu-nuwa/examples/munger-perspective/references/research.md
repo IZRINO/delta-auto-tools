@@ -1,17 +1,18 @@
 # 查理·芒格 调研素材索引
 
 ## 调研时间：2026-04-04
+
 ## 调研方法：5个并行Agent分别负责不同维度，共执行50+次WebSearch
 
 ## 详细调研文件位置
 
-| 维度 | 文件 | 内容摘要 |
-|------|------|----------|
-| 著作与系统思考 | `/07-调研与分析/查理芒格思想体系深度调研-20260404.md` | 7个核心论点、6个原创概念、25种误判心理学完整清单、推荐书单、智识谱系 |
-| 长对话与即兴思考 | `/04-写作参考/调研-芒格即兴思考方式.md` | 资格论、I have nothing to add分析、降维类比DNA、渐进极端化策略、8条表达策略 |
-| 表达风格DNA | `/07-调研与分析/芒格表达风格DNA分析.md` | 句式模式、幽默类型分析、批评升级链、与巴菲特对比、金句精选 |
-| 外部批评与盲点 | `/04-写作参考/调研-芒格外部批评与盲点分析.md` | 7个盲点、阿里巴巴惨败、Munger Hall争议、选择性理性批评 |
-| 决策记录与行动 | `/芒格决策行动记录-调研.md` | 人生转折、6个关键投资决策、5个公开失误、言行一致性分析、时间线 |
+| 维度       | 文件                                   | 内容摘要                                               |
+|----------|--------------------------------------|----------------------------------------------------|
+| 著作与系统思考  | `/07-调研与分析/查理芒格思想体系深度调研-20260404.md` | 7个核心论点、6个原创概念、25种误判心理学完整清单、推荐书单、智识谱系               |
+| 长对话与即兴思考 | `/04-写作参考/调研-芒格即兴思考方式.md`            | 资格论、I have nothing to add分析、降维类比DNA、渐进极端化策略、8条表达策略 |
+| 表达风格DNA  | `/07-调研与分析/芒格表达风格DNA分析.md`           | 句式模式、幽默类型分析、批评升级链、与巴菲特对比、金句精选                      |
+| 外部批评与盲点  | `/04-写作参考/调研-芒格外部批评与盲点分析.md`         | 7个盲点、阿里巴巴惨败、Munger Hall争议、选择性理性批评                  |
+| 决策记录与行动  | `/芒格决策行动记录-调研.md`                    | 人生转折、6个关键投资决策、5个公开失误、言行一致性分析、时间线                   |
 
 ## 一手来源（芒格直接产出）
 
@@ -35,17 +36,21 @@
 
 ## 关键引用（原文）
 
-> "You can't really know anything if you just remember isolated facts. You must have a latticework of models in your head." — USC 1994
+> "You can't really know anything if you just remember isolated facts. You must have a latticework of models in your
+> head." — USC 1994
 
 > "Invert, always invert." — 引用Jacobi，多场合反复使用
 
-> "It is remarkable how much long-term advantage people like us have gotten by trying to be consistently not stupid, instead of trying to be very intelligent." — 伯克希尔股东会
+> "It is remarkable how much long-term advantage people like us have gotten by trying to be consistently not stupid,
+> instead of trying to be very intelligent." — 伯克希尔股东会
 
-> "I never allow myself to have an opinion on anything that I don't know the other side's argument better than they do." — Daily Journal年会
+> "I never allow myself to have an opinion on anything that I don't know the other side's argument better than they
+> do." — Daily Journal年会
 
 > "Show me the incentive and I'll show you the outcome." — 多场合
 
-> "I regard Alibaba as one of the worst mistakes I ever made. I got charmed by the idea of their position in the Chinese internet; I didn't stop to realize they're still a goddamn retailer." — Daily Journal 2023
+> "I regard Alibaba as one of the worst mistakes I ever made. I got charmed by the idea of their position in the Chinese
+> internet; I didn't stop to realize they're still a goddamn retailer." — Daily Journal 2023
 
 > "All I want to know is where I'm going to die, so I'll never go there." — 多场合
 

@@ -173,7 +173,7 @@ mod tests {
                 "hotkey": "F3"
             }]
         }))
-        .expect("旧计数器配置应反序列化");
+            .expect("旧计数器配置应反序列化");
 
         assert!(settings.counter_groups.is_empty());
         assert_eq!(settings.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);

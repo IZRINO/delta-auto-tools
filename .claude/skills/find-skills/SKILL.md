@@ -20,7 +20,8 @@ Use this skill when the user:
 
 ## What is the Skills CLI?
 
-The Skills CLI (`npx skills`) is the package manager for the open agent skills ecosystem. Skills are modular packages that extend agent capabilities with specialized knowledge, workflows, and tools.
+The Skills CLI (`npx skills`) is the package manager for the open agent skills ecosystem. Skills are modular packages
+that extend agent capabilities with specialized knowledge, workflows, and tools.
 
 **Key commands:**
 
@@ -43,9 +44,12 @@ When a user asks for help with something, identify:
 
 ### Step 2: Check the Leaderboard First
 
-Before running a CLI search, check the [skills.sh leaderboard](https://skills.sh/) to see if a well-known skill already exists for the domain. The leaderboard ranks skills by total installs, surfacing the most popular and battle-tested options.
+Before running a CLI search, check the [skills.sh leaderboard](https://skills.sh/) to see if a well-known skill already
+exists for the domain. The leaderboard ranks skills by total installs, surfacing the most popular and battle-tested
+options.
 
 For example, top skills for web development include:
+
 - `vercel-labs/agent-skills` — React, Next.js, web design (100K+ installs each)
 - `anthropics/skills` — Frontend design, document processing (100K+ installs)
 
@@ -68,8 +72,10 @@ For example:
 **Do not recommend a skill based solely on search results.** Always verify:
 
 1. **Install count** — Prefer skills with 1K+ installs. Be cautious with anything under 100.
-2. **Source reputation** — Official sources (`vercel-labs`, `anthropics`, `microsoft`) are more trustworthy than unknown authors.
-3. **GitHub stars** — Check the source repository. A skill from a repo with <100 stars should be treated with skepticism.
+2. **Source reputation** — Official sources (`vercel-labs`, `anthropics`, `microsoft`) are more trustworthy than unknown
+   authors.
+3. **GitHub stars** — Check the source repository. A skill from a repo with <100 stars should be treated with
+   skepticism.
 
 ### Step 5: Present Options to the User
 
@@ -108,7 +114,7 @@ The `-g` flag installs globally (user-level) and `-y` skips confirmation prompts
 When searching, consider these common categories:
 
 | Category        | Example Queries                          |
-| --------------- | ---------------------------------------- |
+|-----------------|------------------------------------------|
 | Web Development | react, nextjs, typescript, css, tailwind |
 | Testing         | testing, jest, playwright, e2e           |
 | DevOps          | deploy, docker, kubernetes, ci-cd        |

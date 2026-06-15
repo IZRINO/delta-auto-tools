@@ -21,7 +21,8 @@ Usually safe:
 - drafting plans, packet prompts, reports, or local artifacts
 - running narrow tests, linters, typechecks, and dry runs
 - creating non-destructive workflow directories under `.workflow/`
-- spawning a small number of subagents when the user explicitly asked for subagents, a swarm, or this dynamic workflow skill to run
+- spawning a small number of subagents when the user explicitly asked for subagents, a swarm, or this dynamic workflow
+  skill to run
 
 ## If Risk Is Ambiguous
 

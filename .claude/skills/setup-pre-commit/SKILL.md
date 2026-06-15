@@ -16,7 +16,8 @@ description: Set up Husky pre-commit hooks with lint-staged (Prettier), type che
 
 ### 1. Detect package manager
 
-Check for `package-lock.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (yarn), `bun.lockb` (bun). Use whichever is present. Default to npm if unclear.
+Check for `package-lock.json` (npm), `pnpm-lock.yaml` (pnpm), `yarn.lock` (yarn), `bun.lockb` (bun). Use whichever is
+present. Default to npm if unclear.
 
 ### 2. Install dependencies
 
@@ -44,7 +45,8 @@ npm run typecheck
 npm run test
 ```
 
-**Adapt**: Replace `npm` with detected package manager. If repo has no `typecheck` or `test` script in package.json, omit those lines and tell the user.
+**Adapt**: Replace `npm` with detected package manager. If repo has no `typecheck` or `test` script in package.json,
+omit those lines and tell the user.
 
 ### 5. Create `.lintstagedrc`
 

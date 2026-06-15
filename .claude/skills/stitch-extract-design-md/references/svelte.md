@@ -54,6 +54,7 @@ theme store.
 ```
 
 **Extraction points:**
+
 - Component props (like `variant`) reveal the intended variant system
 - `var(--*)` references → trace to `app.css`
 - Transition values reveal the interaction design philosophy
@@ -95,6 +96,7 @@ of your design system extraction.
 ## Skeleton UI / DaisyUI / Flowbite-Svelte
 
 If component libraries are used:
+
 - **Skeleton UI**: Theme defined in `tailwind.config.js` using Skeleton's
   design token system. Look for custom theme config object.
 - **DaisyUI**: Theme in `tailwind.config.js` → `daisyui.themes` array.

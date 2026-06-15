@@ -20,32 +20,32 @@ Use this checklist to ensure your Remotion walkthrough video composition is comp
 ## ✅ Component Structure
 
 - [ ] `ScreenSlide.tsx` component created
-  - [ ] Props interface defined
-  - [ ] Zoom animation implemented
-  - [ ] Fade animation implemented
-  - [ ] Text overlay included
+    - [ ] Props interface defined
+    - [ ] Zoom animation implemented
+    - [ ] Fade animation implemented
+    - [ ] Text overlay included
 - [ ] `WalkthroughComposition.tsx` created
-  - [ ] Screen manifest imported
-  - [ ] `<Sequence>` components for each screen
-  - [ ] Transitions between screens configured
-  - [ ] Proper timing offsets calculated
+    - [ ] Screen manifest imported
+    - [ ] `<Sequence>` components for each screen
+    - [ ] Transitions between screens configured
+    - [ ] Proper timing offsets calculated
 
 ## ✅ Configuration
 
 - [ ] `remotion.config.ts` updated
-  - [ ] Composition ID set
-  - [ ] Video dimensions configured
-  - [ ] Frame rate set (30 or 60 fps)
-  - [ ] Duration calculated correctly
+    - [ ] Composition ID set
+    - [ ] Video dimensions configured
+    - [ ] Frame rate set (30 or 60 fps)
+    - [ ] Duration calculated correctly
 - [ ] Video metadata set (if applicable)
-  - [ ] Title
-  - [ ] Description
+    - [ ] Title
+    - [ ] Description
 
 ## ✅ Animations & Transitions
 
 - [ ] Spring animations use appropriate configs
-  - [ ] Damping values (8-15 typical)
-  - [ ] Stiffness values (60-100 typical)
+    - [ ] Damping values (8-15 typical)
+    - [ ] Stiffness values (60-100 typical)
 - [ ] Transitions feel smooth
 - [ ] Text overlays timed correctly
 - [ ] No jarring or abrupt changes
@@ -118,6 +118,7 @@ Use this checklist to ensure your Remotion walkthrough video composition is comp
 ---
 
 **Notes:**
+
 - Mark items with `[x]` as you complete them
 - Add custom checklist items specific to your project
 - Review Remotion documentation for updates

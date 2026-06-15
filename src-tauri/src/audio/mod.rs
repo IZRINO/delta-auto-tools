@@ -160,22 +160,22 @@ pub async fn audio_begin_region_selection(
                 "index.html?mode=audio-overlay&audio_card={}",
                 encoded_query_value(&card_id)
             )
-            .into(),
+                .into(),
         ),
     )
-    .title("音频区域选择")
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(true)
-    .visible(true)
-    .resizable(false)
-    .inner_size(screen_w as f64, screen_h as f64)
-    .position(screen_x as f64, screen_y as f64)
-    .build()
-    .map_err(|error| AppError::from(format!("创建音频区域选择窗口失败: {error}")))?;
+        .title("音频区域选择")
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true)
+        .visible(true)
+        .resizable(false)
+        .inner_size(screen_w as f64, screen_h as f64)
+        .position(screen_x as f64, screen_y as f64)
+        .build()
+        .map_err(|error| AppError::from(format!("创建音频区域选择窗口失败: {error}")))?;
 
     // 窗口创建后强制最大化，防止 DPI 缩放导致尺寸不足
     let _ = window.maximize();

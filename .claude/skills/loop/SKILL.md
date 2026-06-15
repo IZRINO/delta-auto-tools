@@ -5,7 +5,8 @@ description: Use only when user explicitly invokes $loop.
 
 # CodexPotter Loop
 
-This is a control protocol for running subagents in a loop pattern to "reconcile" repo to fulfill the user request, which may be a complex task or target state.
+This is a control protocol for running subagents in a loop pattern to "reconcile" repo to fulfill the user request,
+which may be a complex task or target state.
 
 When working in this pattern, subagents own all task execution, you are the orchestrator, you must:
 
@@ -14,7 +15,8 @@ When working in this pattern, subagents own all task execution, you are the orch
 
 ## 1. Prepare handoff
 
-Build a concise `initial_prompt` for the next LLM. Include user's request and context from previous conversation; do not inspect the repository to enrich it.
+Build a concise `initial_prompt` for the next LLM. Include user's request and context from previous conversation; do not
+inspect the repository to enrich it.
 
 Structure `initial_prompt` with these sections:
 
@@ -48,6 +50,7 @@ Other skills like $xxx should be kept as is if they are part of the user request
 ```
 
 where:
+
 - `{yyyy} {mm} {dd}` is current local date
 - `{slug}` is a short descriptive name generated from the user request (e.g., "add_login_feature", "fix_bug_123").
 
@@ -89,15 +92,15 @@ Run at most 6 rounds by default (user can change via --rounds N). In each round,
 5. Read handoff file, stop if the frontmatter contains the literal value `finite_incantatem: true`
 
 If potter_worker agent is not available:
-  This is a critical issue. Fail fast, do not use other alternative agents.
-  Ask user to follow https://github.com/breezewish/CodexPotter to setup.
+This is a critical issue. Fail fast, do not use other alternative agents.
+Ask user to follow https://github.com/breezewish/CodexPotter to setup.
 
 If handoff file cannot be read:
-  Stop immediately and report the control-state problem.
-  Do not repair it in the parent agent.
+Stop immediately and report the control-state problem.
+Do not repair it in the parent agent.
 
 If `finite_incantatem` is not true after a round and there are more rounds left:
-  Start the next round (even if subagent reports all tasks done).
+Start the next round (even if subagent reports all tasks done).
 
 ## 4. Final Report
 
@@ -105,8 +108,8 @@ After the loop stops, report these to user (using bullet points):
 
 - Total rounds run.
 - State (one of):
-  - round limit reached
-  - finished (when finite_incantatem==true)
+    - round limit reached
+    - finished (when finite_incantatem==true)
 - git hash change (if available) (xxxxxx -> xxxxxx).
 - Last subagent messages of each round, which is the work summary. Keep it unchanged.
 - Overall summary (according to last subagent messages in all rounds).
@@ -122,7 +125,8 @@ If what user passed in is an existing handoff file to resume (iterate more round
 
 ## How to continue
 
-If current loop was paused / interrupted and user wants to continue, you could simply send `continue` prompt to the subagent.
+If current loop was paused / interrupted and user wants to continue, you could simply send `continue` prompt to the
+subagent.
 
 ## Feedback Principles
 

@@ -2,11 +2,17 @@
   "servers": {
     "rust-analyzer": {
       "command": "rust-analyzer",
-      "fileTypes": [".rs"],
-      "rootMarkers": ["src-tauri/Cargo.toml"],
+      "fileTypes": [
+        ".rs"
+      ],
+      "rootMarkers": [
+        "src-tauri/Cargo.toml"
+      ],
       "settings": {
         "rust-analyzer": {
-          "linkedProjects": ["src-tauri/Cargo.toml"],
+          "linkedProjects": [
+            "src-tauri/Cargo.toml"
+          ],
           "cargo": {
             "targetDir": "src-tauri/target"
           },

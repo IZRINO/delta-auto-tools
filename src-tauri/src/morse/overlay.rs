@@ -218,7 +218,7 @@ pub async fn begin_region_selection(
                 .collect::<Vec<_>>()
                 .join(",")
         )
-        .into(),
+            .into(),
     );
     let builder = WebviewWindowBuilder::new(app, OVERLAY_LABEL, overlay_url)
         .title("选择摩斯区域")

@@ -233,7 +233,7 @@ mod tests {
                 "hotkey": "F2"
             }]
         }))
-        .expect("旧计时器配置应反序列化");
+            .expect("旧计时器配置应反序列化");
 
         assert!(settings.timer_groups.is_empty());
         assert_eq!(settings.timers[0].group_id, DEFAULT_TIMER_GROUP_ID);

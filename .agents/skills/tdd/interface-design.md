@@ -27,5 +27,5 @@ Good interfaces make testing natural:
    ```
 
 3. **Small surface area**
-   - Fewer methods = fewer tests needed
-   - Fewer params = simpler test setup
+    - Fewer methods = fewer tests needed
+    - Fewer params = simpler test setup

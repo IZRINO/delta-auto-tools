@@ -181,7 +181,7 @@ Dependency rules:
 When reasoning about a registry item string, classify it first.
 
 | Address                             | Scheme    | Meaning                                                      |
-| ----------------------------------- | --------- | ------------------------------------------------------------ |
+|-------------------------------------|-----------|--------------------------------------------------------------|
 | `button`                            | shadcn    | Official shadcn item named `button`.                         |
 | `@acme/button`                      | namespace | Item `button` from configured registry `@acme`.              |
 | `@acme/ui/button`                   | namespace | Item `ui/button` from configured registry `@acme`.           |

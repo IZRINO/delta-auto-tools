@@ -10,17 +10,20 @@
 
 ### 1.1 《危险的特朗普》系列（The Dangerous Case of Donald Trump）
 
-**来源**：Bandy X. Lee 主编，多版本（2017年原版27位专家、2019年更新版37位、2024年《More Dangerous Case》40位、2025年《Much More Dangerous Case》50位专家）
+**来源**：Bandy X. Lee 主编，多版本（2017年原版27位专家、2019年更新版37位、2024年《More Dangerous Case》40位、2025年《Much More
+Dangerous Case》50位专家）
 
 **核心论点**：
 
 多位精神病学家和心理健康专家认为，特朗普表现出以下人格特征的组合：
+
 - 自恋型人格（Narcissistic Personality Disorder）
 - 反社会型人格特征（Antisocial Personality traits）
 - 偏执型人格（Paranoid Personality）
 - 病态自恋（Malignant Narcissism）——自恋 + 反社会 + 偏执 + 施虐倾向的组合
 
-心理学家 Philip Zimbardo（斯坦福监狱实验设计者）和 Rosemary Sword 用「无约束的极端当下享乐主义」（unbridled and extreme present hedonism）解释特朗普的冲动性。
+心理学家 Philip Zimbardo（斯坦福监狱实验设计者）和 Rosemary Sword 用「无约束的极端当下享乐主义」（unbridled and extreme
+present hedonism）解释特朗普的冲动性。
 
 Craig Malkin 将病态自恋与权力的结合描述为"致命组合"。
 
@@ -28,12 +31,14 @@ Craig Malkin 将病态自恋与权力的结合描述为"致命组合"。
 Bandy X. Lee 提出，特朗普的心理状态具有"传染性"——从权力中心向外扩散，先感染脆弱个体，最终影响整个群体，使追随者群体集体脱离现实，即便每个个体未必是精神病患者。
 
 **重要争议——戈德沃特规则（Goldwater Rule）**：
+
 - 美国精神病学会（APA）明确规定，精神科医生不得对未亲自检查的公众人物作出诊断
 - Allen Frances（DSM-5 人格障碍诊断标准的主要起草人之一）明确反对：认为特朗普不满足人格障碍的门槛诊断条件，因为诊断要求有「临床上显著的痛苦或损伤」，而特朗普本人并不痛苦——他让别人痛苦
 - Frances 认为这些批评是对真正精神疾病患者的污名化
 - 学术期刊《Tandfonline》刊文批评此类分析为"误诊特朗普"
 
-**来源链接**：[Scientific American - Shared Psychosis](https://www.scientificamerican.com/article/the-shared-psychosis-of-donald-trump-and-his-loyalists/) | [JAAPL书评](https://jaapl.org/content/46/2/267) | [The Conversation批评文章](https://theconversation.com/trump-accused-of-malignant-narcissism-but-how-accurately-can-you-diagnose-someone-youve-never-met-242277)
+**来源链接
+**：[Scientific American - Shared Psychosis](https://www.scientificamerican.com/article/the-shared-psychosis-of-donald-trump-and-his-loyalists/) | [JAAPL书评](https://jaapl.org/content/46/2/267) | [The Conversation批评文章](https://theconversation.com/trump-accused-of-malignant-narcissism-but-how-accurately-can-you-diagnose-someone-youve-never-met-242277)
 
 ---
 
@@ -45,14 +50,17 @@ Bandy X. Lee 提出，特朗普的心理状态具有"传染性"——从权力�
 
 McAdams 不走诊断路线，而是从人格科学角度提出一个独特框架：
 
-特朗普是罕见的**缺乏人生叙事**的人（lacks an inner story）。正常人发展出连贯的人生故事来赋予生命意义、统一性和道德框架，而特朗普将生命视为一系列孤立的战役——每一集是独立的，不构成弧线，不积累意义。
+特朗普是罕见的**缺乏人生叙事**的人（lacks an inner
+story）。正常人发展出连贯的人生故事来赋予生命意义、统一性和道德框架，而特朗普将生命视为一系列孤立的战役——每一集是独立的，不构成弧线，不积累意义。
 
 核心推论：
+
 - **"真相对特朗普来说是当下有用的东西"**（Truth for Donald Trump is whatever works to win in the moment）
 - 他在道德和规范约束方面享有极大自由，因为前一集的言行不约束下一集
 - 这解释了为什么他的矛盾言论对他本人毫无困扰
 
-**来源**：[Northwestern Now介绍](https://news.northwestern.edu/stories/2020/03/the-strange-case-of-donald-j-trump-a-psychological-reckoning) | [PMC学术文章](https://pmc.ncbi.nlm.nih.gov/articles/PMC8763223/)
+**来源
+**：[Northwestern Now介绍](https://news.northwestern.edu/stories/2020/03/the-strange-case-of-donald-j-trump-a-psychological-reckoning) | [PMC学术文章](https://pmc.ncbi.nlm.nih.gov/articles/PMC8763223/)
 
 ---
 
@@ -75,12 +83,14 @@ McAdams 不走诊断路线，而是从人格科学角度提出一个独特框架
 **家族动力学分析**：
 
 Mary Trump 将外祖父 Fred Trump Sr. 诊断为"高功能反社会人格"（high-functioning sociopath），认为他是塑造特朗普的核心力量：
+
 - Fred Sr. 将软弱视为不可原谅的缺陷
 - 特朗普两岁时母亲因病住院六个月，在情感关键期缺失母性照料
 - 结果：特朗普从未建立共情、脆弱性和互惠关系的内在模型
 
 **对特朗普的诊断主张**（基于 DSM-5）：
 Mary Trump 认为特朗普满足自恋型人格障碍的全部九项标准，同时可能存在：
+
 - 反社会人格特征
 - 依赖型人格特征
 - 影响情绪、行为和认知的学习障碍
@@ -89,7 +99,8 @@ Mary Trump 认为特朗普满足自恋型人格障碍的全部九项标准，同
 
 **注意**：这是家人回忆录，存在个人恩怨因素（涉及遗产纠纷），需与其他来源交叉验证。
 
-**来源**：[NPR书评](https://www.npr.org/2020/07/23/894159895/trumps-niece-describes-a-toxic-family-dynamic-where-kindness-was-weakness) | [Psychology Today分析](https://www.psychologytoday.com/us/blog/narcissism-demystified/202007/provocative-psychological-analysis-trump-trump)
+**来源
+**：[NPR书评](https://www.npr.org/2020/07/23/894159895/trumps-niece-describes-a-toxic-family-dynamic-where-kindness-was-weakness) | [Psychology Today分析](https://www.psychologytoday.com/us/blog/narcissism-demystified/202007/provocative-psychological-analysis-trump-trump)
 
 ---
 
@@ -103,9 +114,11 @@ Mary Trump 认为特朗普满足自恋型人格障碍的全部九项标准，同
 
 - 白宫办公厅主任 John Kelly：称特朗普是"白痴"（idiot）和"失控者"（unhinged）
 - 国防部长 James Mattis：说特朗普的理解力相当于"五六年级学生"
-- 高级幕僚偷走椭圆办公室桌上的草案文件，阻止总统签署可能危害机密情报行动的命令——Woodward 称此为"行政政变"（administrative coup d'état）
+- 高级幕僚偷走椭圆办公室桌上的草案文件，阻止总统签署可能危害机密情报行动的命令——Woodward 称此为"行政政变"（administrative
+  coup d'état）
 
 **行为模式记录**：
+
 - 拒绝在决策前阅读研究资料
 - 忽视并贬低专家建议
 - 依赖直觉和仓促决定管理椭圆办公室
@@ -123,7 +136,9 @@ Mary Trump 认为特朗普满足自恋型人格障碍的全部九项标准，同
 Bolton 发现，特朗普将外交政策视为房地产交易——关于个人关系、制造电视效果、推进自身利益。
 
 关键观察：
-- **"我很难找到任何一个重大决策，在我任职期间，不是被连任计算所驱动的"**（I am hard-pressed to identify any significant Trump decision during my tenure that wasn't driven by reelection calculations.）
+
+- **"我很难找到任何一个重大决策，在我任职期间，不是被连任计算所驱动的"**（I am hard-pressed to identify any significant
+  Trump decision during my tenure that wasn't driven by reelection calculations.）
 - 特朗普向中国国家主席习近平请求增购大豆和小麦，以确保农业州选举支持——把国家外交当作竞选工具
 - 特朗普对独裁者的崇拜往往使他在谈判中主动让步，削弱美国谈判地位
 
@@ -131,7 +146,8 @@ Bolton 发现，特朗普将外交政策视为房地产交易——关于个人�
 
 **注意**：Bolton 是鹰派，在叙利亚等政策上与特朗普有深刻分歧，其批评具有政治色彩，但其身份使他的观察具有内部权威性。
 
-**来源**：[NPR书评](https://www.npr.org/2020/06/17/879609378/john-bolton-unloads-on-former-boss-trump-even-if-its-a-little-late-now) | [CBS News关键揭露](https://www.cbsnews.com/news/john-bolton-book-trump-revelations-the-room-where-it-happened/)
+**来源
+**：[NPR书评](https://www.npr.org/2020/06/17/879609378/john-bolton-unloads-on-former-boss-trump-even-if-its-a-little-late-now) | [CBS News关键揭露](https://www.cbsnews.com/news/john-bolton-book-trump-revelations-the-room-where-it-happened/)
 
 ---
 
@@ -161,7 +177,8 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 - 在与外国领导人通话时，特朗普经常感到无聊，作出"疯狂的承诺"，随后由幕僚悄悄忽视不执行
 - 展示了白宫内部的混乱、派系斗争和功能失调
 
-**来源**：[NPR书评](https://www.npr.org/2021/10/04/1042733598/once-again-trump-aide-paints-a-picture-of-a-white-house-wracked-by-chaos-infight)
+**来源
+**：[NPR书评](https://www.npr.org/2021/10/04/1042733598/once-again-trump-aide-paints-a-picture-of-a-white-house-wracked-by-chaos-infight)
 
 ---
 
@@ -180,7 +197,8 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 
 **注意**：特朗普方面否认这些描述，称Kelly是被解雇后的不满者。这些是未经录音的个人记忆，但来自最高级别内部官员。
 
-**来源**：[NBC News报道](https://www.nbcnews.com/politics/2024-election/john-kelly-says-donald-trump-meets-definition-fascist-rcna176706) | [CNN报道](https://www.cnn.com/2024/10/22/politics/trump-fascist-john-kelly/)
+**来源
+**：[NBC News报道](https://www.nbcnews.com/politics/2024-election/john-kelly-says-donald-trump-meets-definition-fascist-rcna176706) | [CNN报道](https://www.cnn.com/2024/10/22/politics/trump-fascist-john-kelly/)
 
 ---
 
@@ -200,7 +218,8 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 
 **背景**：Schwartz 为钱接受了代笔任务，后来公开忏悔，并持续在社交媒体上批评特朗普，具有明确的对抗立场，但他的一手观察是独特的。
 
-**来源**：[CBS News报道](https://www.cbsnews.com/news/tony-schwartz-trumps-ghostwriter-says-writing-the-art-of-the-deal-is-the-greatest-regret-of-his-life/)
+**来源
+**：[CBS News报道](https://www.cbsnews.com/news/tony-schwartz-trumps-ghostwriter-says-writing-the-art-of-the-deal-is-the-greatest-regret-of-his-life/)
 
 ---
 
@@ -211,14 +230,17 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 **来源**：前德国总理安格拉·默克尔，2024年12月出版回忆录
 
 **对特朗普的直接描述**：
+
 - 特朗普"明显被普京迷住"，被具有独裁倾向的政治家"俘获"
-- **"他对这些人能做的事情拥有的纯粹权力，始终有一种迷恋"**（there was always a kind of fascination with the sheer power of what these people could do）
+- **"他对这些人能做的事情拥有的纯粹权力，始终有一种迷恋"**（there was always a kind of fascination with the sheer power of
+  what these people could do）
 - 特朗普梦想着绕过议会机构，独自作决定——"在民主制度下，你无法与民主价值观调和这一点"
 - 描述特朗普具有"专注于自身利益的房地产经纪人心态"
 
 **注意**：默克尔回忆录总体评价是信息量大但分析不深，缺乏新的独家内幕，措辞较为克制。
 
-**来源**：[CNN报道](https://www.cnn.com/2024/12/03/world/angela-merkel-trump-fascination-putin-kim-intl/) | [Washington Post书评](https://www.washingtonpost.com/books/2024/11/29/angela-merkel-freedom-memoir-review/)
+**来源
+**：[CNN报道](https://www.cnn.com/2024/12/03/world/angela-merkel-trump-fascination-putin-kim-intl/) | [Washington Post书评](https://www.washingtonpost.com/books/2024/11/29/angela-merkel-freedom-memoir-review/)
 
 ---
 
@@ -227,6 +249,7 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 **来源**：前CIA莫斯科站站长分析（NPR采访），多位情报分析师报告
 
 普京对特朗普使用的具体手段：
+
 - **奉承（Flattery）**：普京深知特朗普的自我（ego）和不安全感，用赞美作为工具
 - 心理博弈：普京长达二十年在接触历届美国总统时都使用奉承与欺骗的组合战术
 - 有趣的悖论：奉承对普京来说是弱点的标志，但他反过来用奉承来操控特朗普
@@ -235,7 +258,8 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 
 前国家安全顾问 H.R. McMaster 描述普京如何"玩弄"特朗普的自我：**"普京了解如何操纵特朗普的自我"**。
 
-**来源**：[NPR分析](https://www.npr.org/transcripts/nx-s1-5580313) | [CNN世界领导人奉承报道](https://www.cnn.com/2017/05/04/politics/trump-foreign-leaders-flattery/index.html)
+**来源
+**：[NPR分析](https://www.npr.org/transcripts/nx-s1-5580313) | [CNN世界领导人奉承报道](https://www.cnn.com/2017/05/04/politics/trump-foreign-leaders-flattery/index.html)
 
 ---
 
@@ -244,6 +268,7 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 **来源**：外交观察者、亚洲外交分析（Foreign Affairs）
 
 安倍是盟国领导人中"管理特朗普"最成功的代表：
+
 - 选举后立即飞往特朗普大厦拜会，成为第一个求见的外国领导人
 - 大力称赞特朗普的高尔夫球技
 - 通过持续奉承和个人关系建立缓冲，保护日本的实质利益
@@ -261,11 +286,13 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 **来源**：哈佛大学政治学教授，《How Democracies Die》（2018），及2025年更新分析文章
 
 核心框架：
+
 - 现代威权主义不是通过政变，而是通过**稳步侵蚀政治规范和民主制度**实现的
 - Levitsky 和 Lucan Way（2025）认为：美国面临"竞争性威权主义"（competitive authoritarianism）风险——选举继续举行，但国家机器被武器化用来对付反对派
 - 超过500位政治学家的调查（2025年4月）：绝大多数认为美国正在从自由民主迅速向威权主义转变
 
-**来源**：[Foreign Affairs深度文章](https://www.foreignaffairs.com/united-states/path-american-authoritarianism-trump) | [NPR报道](https://www.npr.org/2025/04/22/nx-s1-5340753/trump-democracy-authoritarianism-competive-survey-political-scientist)
+**来源
+**：[Foreign Affairs深度文章](https://www.foreignaffairs.com/united-states/path-american-authoritarianism-trump) | [NPR报道](https://www.npr.org/2025/04/22/nx-s1-5340753/trump-democracy-authoritarianism-competive-survey-political-scientist)
 
 ---
 
@@ -276,23 +303,24 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 **谁被特朗普吸引？三个核心因素的交叉点**：
 
 1. **威权主义人格（Authoritarian Personality）**：
-   - 对内群体规范的严格依从
-   - 对强化这些规范的权威的服从
-   - 对挑战者和"外人"的强烈敌意
-   - 2016年共和党初选中，威权主义态度得分是预测特朗普支持的最强统计因子
+    - 对内群体规范的严格依从
+    - 对强化这些规范的权威的服从
+    - 对挑战者和"外人"的强烈敌意
+    - 2016年共和党初选中，威权主义态度得分是预测特朗普支持的最强统计因子
 
 2. **经济-神经质组合**：
-   - 帝国理工研究：只有特朗普在高神经质（neuroticism）、经济剥夺和低族裔多样性地区同时获胜
-   - 神经质是以焦虑、恐惧、愤怒为特征的人格特质
-   - 感到被人口结构变化、经济下行和负面情绪威胁的人倾向于支持威权领导人
+    - 帝国理工研究：只有特朗普在高神经质（neuroticism）、经济剥夺和低族裔多样性地区同时获胜
+    - 神经质是以焦虑、恐惧、愤怒为特征的人格特质
+    - 感到被人口结构变化、经济下行和负面情绪威胁的人倾向于支持威权领导人
 
 3. **社会支配倾向（Social Dominance Orientation）**：
-   - 特朗普通过反复强调群体地位区分（白人 vs 移民/少数族裔）来激活社会支配倾向
-   - 叙事框架："我是反转者，我来抽干沼泽，我来炸掉华盛顿"——吸引所有对现状不满的人
+    - 特朗普通过反复强调群体地位区分（白人 vs 移民/少数族裔）来激活社会支配倾向
+    - 叙事框架："我是反转者，我来抽干沼泽，我来炸掉华盛顿"——吸引所有对现状不满的人
 
 **情感机制**：威权性格在威胁感中被"激活"，替罪羊式叙事将目标群体塑造为经济和生存双重威胁。
 
-**来源**：[Psychology Today完整分析](https://www.psychologytoday.com/us/blog/mind-in-the-machine/201812/complete-psychological-analysis-trumps-support) | [Imperial Business School研究](https://www.imperial.ac.uk/business-school/ib-knowledge/management/neuroticism-deprivation-and-racial-bias-trumps-unique-authoritarian-appeal/)
+**来源
+**：[Psychology Today完整分析](https://www.psychologytoday.com/us/blog/mind-in-the-machine/201812/complete-psychological-analysis-trumps-support) | [Imperial Business School研究](https://www.imperial.ac.uk/business-school/ib-knowledge/management/neuroticism-deprivation-and-racial-bias-trumps-unique-authoritarian-appeal/)
 
 ---
 
@@ -300,25 +328,28 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 
 ### 7.1 心理按钮（被利用的弱点）
 
-| 弱点 | 具体表现 | 来源证据 |
-|------|---------|---------|
+| 弱点          | 具体表现                | 来源证据                    |
+|-------------|---------------------|-------------------------|
 | 自我需求（ego需求） | 奉承立即改变谈判立场（安倍、普京案例） | Bolton, Woodward, CNN报道 |
-| 对批评的极度敏感 | 将任何负面报道视为个人攻击，必须反击 | Grisham, Schwartz |
-| 对"赢"的执念 | 宁可在细节上让步，只要能声称"赢了" | McAdams, Bolton |
-| 对失败的恐惧 | 2020年选举后的精神崩溃程度 | Hutchinson, Meadows |
-| 注意力短暂 | 被奉承和娱乐后就失去对谈判细节的关注 | Schwartz, Grisham |
+| 对批评的极度敏感    | 将任何负面报道视为个人攻击，必须反击  | Grisham, Schwartz       |
+| 对"赢"的执念     | 宁可在细节上让步，只要能声称"赢了"  | McAdams, Bolton         |
+| 对失败的恐惧      | 2020年选举后的精神崩溃程度     | Hutchinson, Meadows     |
+| 注意力短暂       | 被奉承和娱乐后就失去对谈判细节的关注  | Schwartz, Grisham       |
 
 ### 7.2 私下 vs 公开行为的差异
 
 **有对比的领域**：
+
 - **公开**：粗鲁、挑衅、极度表演性；**私下**（部分亲密幕僚描述）：有时慷慨、感谢下属、偶尔展示个人温情
 - **但**：多份独立记录显示私下同样存在激烈暴怒（番茄酱事件、掀桌子）
 - 私录显示"他在私下和公开同样自恋、不稳定和无知"（Woodward记录）
-- 对外声称支持某人，私下表达蔑视——例如曾公开赞扬 Vanessa Guillén 英雄，私下抱怨"不值得为一个该死的墨西哥人花6万块"（Kelly揭露）
+- 对外声称支持某人，私下表达蔑视——例如曾公开赞扬 Vanessa Guillén 英雄，私下抱怨"不值得为一个该死的墨西哥人花6万块"
+  （Kelly揭露）
 
 ### 7.3 交易型人格的运作逻辑
 
 **交易核心逻辑**（来源：MIT Press学术分析 + 心理学研究）：
+
 - 发现对手弱点，最大化利用杠杆
 - 合同签署前，任何策略都可接受（包括欺骗）
 - 合同后违约，若成本收益合算则可接受
@@ -333,33 +364,34 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 
 ### 争议1：能否对公众人物远程诊断？
 
-| 立场 | 代表人物 | 观点 |
-|------|---------|------|
-| 支持远程评估 | Bandy X. Lee, John Gartner | "警告义务"超越戈德沃特规则 |
-| 反对远程诊断 | Allen Frances（DSM-5主要作者） | 不满足诊断门槛；是对精神疾病的污名化 |
-| 中间立场 | The Conversation/City St George's大学分析 | 可以描述行为，不可下诊断结论 |
+| 立场     | 代表人物                                  | 观点                 |
+|--------|---------------------------------------|--------------------|
+| 支持远程评估 | Bandy X. Lee, John Gartner            | "警告义务"超越戈德沃特规则     |
+| 反对远程诊断 | Allen Frances（DSM-5主要作者）              | 不满足诊断门槛；是对精神疾病的污名化 |
+| 中间立场   | The Conversation/City St George's大学分析 | 可以描述行为，不可下诊断结论     |
 
 ### 争议2：私下行为的真实面目
 
-| 角度 | 描述 | 来源 |
-|------|------|------|
-| 正面描述（忠实支持者视角） | 慷慨、忠诚、体贴、私下是"最亲爱的人" | 部分长期幕僚 |
-| 负面描述（离职者视角） | 恐怖脾气、蔑视部下、私下言论与公开截然矛盾 | Kelly, Hutchinson, Grisham, Woodward |
-| 私录证据 | 私下与公开同样自恋不稳定 | Woodward录音 |
+| 角度            | 描述                    | 来源                                   |
+|---------------|-----------------------|--------------------------------------|
+| 正面描述（忠实支持者视角） | 慷慨、忠诚、体贴、私下是"最亲爱的人"   | 部分长期幕僚                               |
+| 负面描述（离职者视角）   | 恐怖脾气、蔑视部下、私下言论与公开截然矛盾 | Kelly, Hutchinson, Grisham, Woodward |
+| 私录证据          | 私下与公开同样自恋不稳定          | Woodward录音                           |
 
 ### 争议3：特朗普主义是否等于法西斯主义？
 
-| 立场 | 代表人物 | 观点 |
-|------|---------|------|
-| 是 | John Kelly, Timothy Snyder, Jason Stanley | 符合法西斯主义定义的关键要素 |
-| 否/慎用 | 部分历史学家 | 与历史上的法西斯主义有本质区别；概念滥用削弱分析力 |
-| 「竞争性威权主义」框架 | Levitsky & Way | 比"法西斯"更精确的当代民主倒退模型 |
+| 立场          | 代表人物                                      | 观点                        |
+|-------------|-------------------------------------------|---------------------------|
+| 是           | John Kelly, Timothy Snyder, Jason Stanley | 符合法西斯主义定义的关键要素            |
+| 否/慎用        | 部分历史学家                                    | 与历史上的法西斯主义有本质区别；概念滥用削弱分析力 |
+| 「竞争性威权主义」框架 | Levitsky & Way                            | 比"法西斯"更精确的当代民主倒退模型        |
 
 ---
 
 ## 九、信息来源汇总
 
 ### 专业分析来源（高可信度）
+
 - Dan P. McAdams《The Strange Case of Donald J. Trump》，牛津大学出版社，2020
 - Bandy X. Lee 编《The Dangerous Case of Donald Trump》系列，2017-2025
 - PMC学术论文《Dimensions of pathological narcissism and intention to vote for Donald Trump》
@@ -367,6 +399,7 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 - Imperial Business School研究：神经质+经济剥夺+低族裔多样性的特朗普选票预测模型
 
 ### 第一手回忆录（内部观察，具政治色彩）
+
 - Bob Woodward《Fear》（2018）、《Rage》（2020）
 - John Bolton《The Room Where It Happened》（2020）
 - Cassidy Hutchinson《Enough》（2023）
@@ -375,10 +408,12 @@ Hutchinson 描述了特朗普"令人恐惧的脾气"，并称在亲眼看到那�
 - Angela Merkel《Freedom》（2024）
 
 ### 核心亲历者评价
+
 - Tony Schwartz（《Art of the Deal》代笔人）——高价值第一手观察，但有明确对抗立场
 - John Kelly（前白宫办公厅主任）——2024年公开揭露，13位前官员联署支持
 
 ### 新闻报道
+
 - Bob Woodward（Washington Post）
 - CNN、NPR、The Atlantic 深度报道
 

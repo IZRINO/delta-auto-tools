@@ -5,6 +5,7 @@ This guide walks you through setting up shadcn/ui in both new and existing proje
 ## Prerequisites
 
 Before you begin, ensure you have:
+
 - **Node.js 18+** installed
 - **React 18+** in your project
 - **Tailwind CSS 3.0+** configured
@@ -14,19 +15,21 @@ Before you begin, ensure you have:
 
 ### Option 1: npx shadcn create (Recommended)
 
-The easiest way to start a new project with shadcn/ui is using the `create` command, which allows you to customize everything (framework, library, style, font, etc.).
+The easiest way to start a new project with shadcn/ui is using the `create` command, which allows you to customize
+everything (framework, library, style, font, etc.).
 
 ```bash
 npx shadcn@latest create
 ```
 
 This interactive command will guide you through:
-1.  **Project Name**: Directory for your app.
-2.  **Visual Style**: Choose from Vega, Nova, Maia, Lyra, Mira, or Classic.
-3.  **Base Color**: Select your primary theme color.
-4.  **Framework**: Next.js, Vite, Laravel, etc.
-5.  **Component Library**: Choose **Radix UI** or **Base UI**.
-6.  **RTL Support**: Enable Right-to-Left support if needed.
+
+1. **Project Name**: Directory for your app.
+2. **Visual Style**: Choose from Vega, Nova, Maia, Lyra, Mira, or Classic.
+3. **Base Color**: Select your primary theme color.
+4. **Framework**: Next.js, Vite, Laravel, etc.
+5. **Component Library**: Choose **Radix UI** or **Base UI**.
+6. **RTL Support**: Enable Right-to-Left support if needed.
 
 ### Option 2: Classic Manual Setup (Next.js)
 
@@ -99,11 +102,11 @@ npx shadcn@latest init
 You'll be asked to configure:
 
 1. **Style**: Choose between `default`, `new-york`, or one of the new styles (Vega, Nova, etc.)
-   - `default`: Clean and minimal design
-   - `new-york`: More refined with subtle details
+    - `default`: Clean and minimal design
+    - `new-york`: More refined with subtle details
 
 2. **Base Color**: Choose your primary color palette
-   - slate, gray, zinc, neutral, or stone
+    - slate, gray, zinc, neutral, or stone
 
 3. **CSS Variables**: Recommend `yes` for easier theming
 
@@ -112,15 +115,18 @@ You'll be asked to configure:
 5. **Import Alias**: Default is `@/components` (recommended)
 
 6. **React Server Components**: Choose based on your framework
-   - `yes` for Next.js 13+ with app directory
-   - `no` for Vite, CRA, or Next.js pages directory
+    - `yes` for Next.js 13+ with app directory
+    - `no` for Vite, CRA, or Next.js pages directory
 
-7. **RTL Support**: Answer `yes` if you need Right-to-Left layout support (this will use logical properties like `ms-4` instead of `ml-4`).
+7. **RTL Support**: Answer `yes` if you need Right-to-Left layout support (this will use logical properties like `ms-4`
+   instead of `ml-4`).
 
 ## Advanced Features
 
 ### Visual Styles
+
 shadcn/ui now offers multiple visual styles beyond the defaults:
+
 - **Vega**: The classic shadcn/ui look.
 - **Nova**: Reduced padding/margins, compact.
 - **Maia**: Soft, rounded, generous spacing.
@@ -128,14 +134,16 @@ shadcn/ui now offers multiple visual styles beyond the defaults:
 - **Mira**: Dense, compact.
 
 ### Base UI Support
-You can now choose between **Radix UI** and **Base UI** as the underlying primitive library. They share the same component API/abstraction, so your usage remains consistent.
 
+You can now choose between **Radix UI** and **Base UI** as the underlying primitive library. They share the same
+component API/abstraction, so your usage remains consistent.
 
 ### Step 3: Verify Configuration
 
 The init command creates/updates several files:
 
 **components.json** (root of project):
+
 ```json
 {
   "$schema": "https://ui.shadcn.com/schema.json",
@@ -156,6 +164,7 @@ The init command creates/updates several files:
 ```
 
 **src/lib/utils.ts**:
+
 ```typescript
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
@@ -166,6 +175,7 @@ export function cn(...inputs: ClassValue[]) {
 ```
 
 **Updated tailwind.config.js**:
+
 ```javascript
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -223,6 +233,7 @@ module.exports = {
 ```
 
 **Updated globals.css** (or equivalent):
+
 ```css
 @tailwind base;
 @tailwind components;
@@ -362,8 +373,8 @@ Components will be added to `src/components/ui/` by default.
    ```
 
 3. **Verify Tailwind is working**:
-   - Component should render with proper styling
-   - Check browser dev tools for applied classes
+    - Component should render with proper styling
+    - Check browser dev tools for applied classes
 
 4. **Test dark mode** (if using CSS variables):
    ```tsx
@@ -378,7 +389,8 @@ Components will be added to `src/components/ui/` by default.
 
 ### Styles not applying
 
-**Solution**: 
+**Solution**:
+
 - Ensure `globals.css` is imported in your app entry point
 - Verify Tailwind config `content` paths include your files
 - Check CSS variables are defined in `globals.css`
@@ -386,6 +398,7 @@ Components will be added to `src/components/ui/` by default.
 ### TypeScript errors in components
 
 **Solution**:
+
 - Run `npm install` to ensure all dependencies are installed
 - Check that `@types/react` is installed
 - Restart TypeScript server in your editor
@@ -393,6 +406,7 @@ Components will be added to `src/components/ui/` by default.
 ### Components look broken
 
 **Solution**:
+
 - Verify `tailwindcss-animate` is installed: `npm install tailwindcss-animate`
 - Check that CSS variables are properly defined
 - Ensure you're not overriding component styles globally

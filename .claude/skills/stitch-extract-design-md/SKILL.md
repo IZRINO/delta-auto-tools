@@ -59,17 +59,17 @@ extraction patterns to use.
 
 Scan the project root for telltale files:
 
-| Signal File | Framework / Tool |
-|:---|:---|
-| `package.json` with `react` | React / Next.js |
-| `package.json` with `vue` | Vue / Nuxt |
-| `package.json` with `svelte` | Svelte / SvelteKit |
-| `package.json` with `@angular/core` | Angular |
-| `tailwind.config.js/ts` | Tailwind CSS |
-| `postcss.config.js` | PostCSS pipeline |
-| `styled-components` or `@emotion` in deps | CSS-in-JS |
-| `.css` / `.scss` / `.less` files only | Plain CSS / SASS |
-| `theme.js` / `theme.ts` / `tokens.js` | Design token files |
+| Signal File                               | Framework / Tool   |
+|:------------------------------------------|:-------------------|
+| `package.json` with `react`               | React / Next.js    |
+| `package.json` with `vue`                 | Vue / Nuxt         |
+| `package.json` with `svelte`              | Svelte / SvelteKit |
+| `package.json` with `@angular/core`       | Angular            |
+| `tailwind.config.js/ts`                   | Tailwind CSS       |
+| `postcss.config.js`                       | PostCSS pipeline   |
+| `styled-components` or `@emotion` in deps | CSS-in-JS          |
+| `.css` / `.scss` / `.less` files only     | Plain CSS / SASS   |
+| `theme.js` / `theme.ts` / `tokens.js`     | Design token files |
 
 Read `package.json` first — it reveals the framework, CSS tooling, and any
 design-token libraries (e.g., `style-dictionary`, `@chakra-ui/react`,
@@ -91,6 +91,7 @@ src/
 ```
 
 Also check for:
+
 - `tailwind.config.js` / `tailwind.config.ts` — Custom colors, fonts, spacing
 - `globals.css` / `global.css` — CSS custom properties (variables)
 - Any `theme.*` or `tokens.*` files
@@ -136,13 +137,13 @@ Read the broadest styling first to understand the overall mood:
 
 Look for these signals in the source:
 
-| Source Location | What It Tells You |
-|:---|:---|
-| Root `background-color` or Tailwind `bg-*` on layouts | Overall lightness/darkness |
-| Spacing scale in Tailwind config or CSS vars | Whitespace philosophy |
-| Number of components vs. wrapper padding | Density |
-| Custom property naming (`--warm-*` vs `--cool-*`) | Color temperature intent |
-| Comments in theme files | Design intent in the developer's own words |
+| Source Location                                       | What It Tells You                          |
+|:------------------------------------------------------|:-------------------------------------------|
+| Root `background-color` or Tailwind `bg-*` on layouts | Overall lightness/darkness                 |
+| Spacing scale in Tailwind config or CSS vars          | Whitespace philosophy                      |
+| Number of components vs. wrapper padding              | Density                                    |
+| Custom property naming (`--warm-*` vs `--cool-*`)     | Color temperature intent                   |
+| Comments in theme files                               | Design intent in the developer's own words |
 
 #### 2. Color Palette & Roles
 
@@ -151,14 +152,14 @@ Search across all layers:
 
 **Where to find colors:**
 
-| Layer | What to Search |
-|:---|:---|
-| CSS custom properties | `--color-*`, `--primary`, `--bg-*` |
-| Tailwind config | `theme.extend.colors` |
-| Theme/token files | Color objects, palettes |
-| Component styles | `background-color`, `color`, `border-color` |
-| Inline/scoped styles | `bg-*`, `text-*` classes in templates |
-| CSS-in-JS theme objects | `colors`, `palette` keys |
+| Layer                   | What to Search                              |
+|:------------------------|:--------------------------------------------|
+| CSS custom properties   | `--color-*`, `--primary`, `--bg-*`          |
+| Tailwind config         | `theme.extend.colors`                       |
+| Theme/token files       | Color objects, palettes                     |
+| Component styles        | `background-color`, `color`, `border-color` |
+| Inline/scoped styles    | `bg-*`, `text-*` classes in templates       |
+| CSS-in-JS theme objects | `colors`, `palette` keys                    |
 
 **How to organize:** Group colors by function, not by hue:
 
@@ -182,21 +183,24 @@ the intended color.
 Extract the complete typographic system:
 
 **Font families:**
+
 - Check CSS `font-family`, Tailwind `fontFamily`, Google Fonts links, or
   local `@font-face` declarations.
 - Note the **character** of each font: geometric vs humanist, serif vs sans,
   the feeling it evokes.
 
 **Type scale (hierarchy):**
+
 - Find every heading level (H1-H6) and body text, noting:
-  - `font-size` (in rem or px)
-  - `font-weight` (numeric value + descriptive name)
-  - `letter-spacing` (and why — elegance? compactness?)
-  - `line-height` (generous for readability? tight for display?)
+    - `font-size` (in rem or px)
+    - `font-weight` (numeric value + descriptive name)
+    - `letter-spacing` (and why — elegance? compactness?)
+    - `line-height` (generous for readability? tight for display?)
 - Map component usage: Which heading level do product cards use? What about
   hero sections?
 
 **Spacing principles:**
+
 - How does text spacing relate to the overall spacing scale?
 - Letter-spacing patterns on headings vs body
 - Line-height philosophy (generous/relaxed for body, tighter for display)
@@ -206,12 +210,14 @@ Extract the complete typographic system:
 Analyze the 4-5 most important UI primitives:
 
 **Buttons:**
+
 - Corner radius (and what it communicates — playful? professional? minimal?)
 - Color scheme for primary, secondary, and ghost variants
 - Hover/focus/active states and transition timing
 - Padding ratios (horizontal vs vertical)
 
 **Cards / Containers:**
+
 - Corner radius (often different from buttons — slightly rounder)
 - Shadow strategy: flat, subtle hover shadows, or always elevated?
 - Border treatment: hairline borders, colored accents, or none?
@@ -219,17 +225,20 @@ Analyze the 4-5 most important UI primitives:
 - Image treatment within cards (full-bleed, padded, rounded?)
 
 **Navigation:**
+
 - Layout pattern (horizontal bar, vertical sidebar, drawer)
 - Typography treatment (uppercase, letter-spacing, weight)
 - Active/hover state indicators (underline, color, background)
 - Mobile behavior (hamburger, bottom nav, drawer)
 
 **Inputs & Forms:**
+
 - Border style and focus state behavior
 - Corner style consistency with buttons
 - Padding and touch-target sizing
 
 **Domain-Specific Components:**
+
 - Identify 1-2 components unique to this project (e.g., product cards,
   dashboard widgets, chat bubbles) and describe their styling patterns.
 
@@ -238,21 +247,25 @@ Analyze the 4-5 most important UI primitives:
 Extract the structural system:
 
 **Grid & Structure:**
+
 - Max content width (from `max-width` on containers)
 - Column system (CSS Grid, Flexbox patterns, defined breakpoints)
 - Responsive breakpoints (from media queries or Tailwind config)
 
 **Whitespace Strategy:**
+
 - Base spacing unit (8px grid? 4px? custom?)
 - Section margins (how much space between major sections)
 - Edge padding (page margins at different breakpoints)
 
 **Alignment & Visual Balance:**
+
 - Text alignment patterns (centered heroes, left-aligned body)
 - Image-to-text ratios
 - Visual weight distribution
 
 **Responsive Behavior:**
+
 - Mobile-first or desktop-first?
 - How do grids collapse? Padding scale?
 - Touch target sizing
@@ -276,11 +289,14 @@ Assemble everything into the standard DESIGN.md format. Place it at
 if it doesn't exist).
 
 > [!IMPORTANT]
-> You **MUST** include the YAML frontmatter at the top of the file with `name` and `colors` mapping, exactly as shown in the example at [examples/DESIGN.md](examples/DESIGN.md). This structured data is required for other skills to parse the design system.
+> You **MUST** include the YAML frontmatter at the top of the file with `name` and `colors` mapping, exactly as shown in
+> the example at [examples/DESIGN.md](examples/DESIGN.md). This structured data is required for other skills to parse the
+> design system.
 >
 > Failure to include this YAML block with at least the core color tokens is a failure to use this skill correctly.
 
-Use the format from the example at [examples/DESIGN.md](examples/DESIGN.md) as your template. The file must start with the YAML block, followed by the markdown sections:
+Use the format from the example at [examples/DESIGN.md](examples/DESIGN.md) as your template. The file must start with
+the YAML block, followed by the markdown sections:
 
 ```markdown
 # Design System: [Project Name]
