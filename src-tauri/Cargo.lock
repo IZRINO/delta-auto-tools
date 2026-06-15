@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "delta-auto-tools"
-version = "0.16.1"
+version = "0.16.2"
 dependencies = [
  "crossbeam-channel",
  "enigo",
