@@ -1,6 +1,6 @@
 [package]
 name = "delta-auto-tools"
-version = "0.15.4"
+version = "0.15.5"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

@@ -41,6 +41,9 @@ const RAPIDFIRE_DISPLAY_MIN_WIDTH: i32 = 320;
 const RAPIDFIRE_DISPLAY_MAX_WIDTH: i32 = 800;
 const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 1;
 const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
+/// 首次开火前等待物理触发键事件到达前台应用的稳定延迟。
+/// 解决 enigo SendInput 目标键先于物理触发键到达前台应用的竞态。
+const RAPIDFIRE_INITIAL_SETTLE_MS: u64 = 8;
 const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 2000;
 const RAPIDFIRE_GLOBAL_DELAY_MIN_MS: u64 = 0;
@@ -967,6 +970,10 @@ fn run_session_worker(app: AppHandle, worker: RapidfireSessionWorker) {
     let interval = Duration::from_millis(worker.interval_ms.max(RAPIDFIRE_MIN_INTERVAL_MS));
     let mut count = 0u64;
     let mut next_fire_at = Instant::now();
+
+    // 首次开火前稳定延迟：让物理触发键事件先到达前台应用，
+    // 避免 enigo 合成的目标键先于触发键出现在输入流中。
+    thread::sleep(Duration::from_millis(RAPIDFIRE_INITIAL_SETTLE_MS));
 
     // 触发抖动延迟：按键按下后等待 jitter 时长再开始连发
     if worker.trigger_jitter_max_ms > 0 {

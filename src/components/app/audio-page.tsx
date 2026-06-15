@@ -468,9 +468,12 @@ export function AudioRegionOverlay() {
 
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Point | null>(null);
-  const [statusMessage, setStatusMessage] = useState("拖拽鼠标框选监听区域，Enter 确认，Esc 取消。");
+  // 松开后固定的已选区域（等待确认/重选）
+  const [committedRect, setCommittedRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [statusMessage, setStatusMessage] = useState("拖拽鼠标框选监听区域，松开后按 Enter 确认，Esc 取消。");
   const [submitting, setSubmitting] = useState(false);
 
+  // 拖拽中的实时矩形
   const currentRect = useMemo(() => {
     if (!dragStart || !dragCurrent) return null;
     return getSelectionRect(dragStart, dragCurrent);
@@ -489,37 +492,40 @@ export function AudioRegionOverlay() {
   }, [cardId, submitting]);
 
   const submitSelection = useCallback(async () => {
-    if (!currentRect || submitting) return;
-    if (currentRect.width <= MIN_SELECTION_WIDTH || currentRect.height <= MIN_SELECTION_HEIGHT) {
-      setStatusMessage(`区域太小（${currentRect.width}x${currentRect.height}），请重新框选。`);
+    const rect = committedRect;
+    if (!rect || submitting) return;
+    if (rect.width <= MIN_SELECTION_WIDTH || rect.height <= MIN_SELECTION_HEIGHT) {
+      setStatusMessage(`区域太小（${rect.width}x${rect.height}），请重新框选。`);
       return;
     }
     setSubmitting(true);
     setStatusMessage("正在提交...");
     try {
-      await invoke("audio_overlay_submit_selection", { cardId, region: currentRect });
+      await invoke("audio_overlay_submit_selection", { cardId, region: rect });
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
       setSubmitting(false);
     }
-  }, [cardId, currentRect, submitting]);
+  }, [cardId, committedRect, submitting]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         void cancelSelection();
-      } else if (event.key === "Enter" && currentRect && !submitting) {
+      } else if (event.key === "Enter" && committedRect && !submitting) {
         event.preventDefault();
         void submitSelection();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cancelSelection, currentRect, submitSelection, submitting]);
+  }, [cancelSelection, committedRect, submitSelection, submitting]);
 
   const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (submitting || event.button !== 0) return;
+    // 重新框选：清除已提交矩形
+    setCommittedRect(null);
     const point = { x: event.clientX, y: event.clientY };
     setDragStart(point);
     setDragCurrent(point);
@@ -534,12 +540,23 @@ export function AudioRegionOverlay() {
   const handleMouseUp = () => {
     if (!dragStart || submitting) return;
     const rect = currentRect;
+    // 清除拖拽状态，固定矩形
+    setDragStart(null);
+    setDragCurrent(null);
+
     if (rect && (rect.width <= MIN_SELECTION_WIDTH || rect.height <= MIN_SELECTION_HEIGHT)) {
+      setCommittedRect(null);
       setStatusMessage(`区域太小（${rect.width}x${rect.height}），请重新框选。`);
       return;
     }
-    setStatusMessage("区域已框选，按 Enter 确认或 Esc 取消。");
+    if (rect) {
+      setCommittedRect(rect);
+      setStatusMessage("区域已框选，按 Enter 确认或重新拖拽框选，Esc 取消。");
+    }
   };
+
+  // 最终显示的矩形：拖拽中用实时矩形，松开后用已提交矩形
+  const displayRect = currentRect ?? committedRect;
 
   return (
     <div
@@ -552,14 +569,14 @@ export function AudioRegionOverlay() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
-      {currentRect && (
+      {displayRect && (
         <div
           className="pointer-events-none absolute border-2 border-[var(--amber)] bg-[var(--amber)]/16"
           style={{
-            left: currentRect.x,
-            top: currentRect.y,
-            width: currentRect.width,
-            height: currentRect.height,
+            left: displayRect.x,
+            top: displayRect.y,
+            width: displayRect.width,
+            height: displayRect.height,
           }}
         />
       )}
@@ -567,16 +584,16 @@ export function AudioRegionOverlay() {
       <div className="pointer-events-none absolute left-6 top-6 max-w-md border-2 border-white/40 bg-[var(--carbon)]/88 px-4 py-4 text-[var(--chalk)] backdrop-blur-md">
         <h1 className="text-lg font-semibold text-[var(--chalk)]">音频区域选择</h1>
         <p className="mt-2 text-sm text-[var(--zinc)]">{statusMessage}</p>
-        {currentRect && (
+        {displayRect && (
           <p className="mt-3 border border-[var(--seam)] bg-[var(--slate)]/80 px-3 py-2 font-mono text-xs text-[var(--zinc)]">
-            {`X ${currentRect.x} · Y ${currentRect.y} · W ${currentRect.width} · H ${currentRect.height}`}
+            {`X ${displayRect.x} · Y ${displayRect.y} · W ${displayRect.width} · H ${displayRect.height}`}
           </p>
         )}
       </div>
 
       <div className="absolute right-6 top-6 flex items-center gap-2 border-2 border-white/30 bg-[var(--carbon)]/80 px-3 py-3 backdrop-blur-md">
         <Button
-          disabled={!currentRect || submitting}
+          disabled={!committedRect || submitting}
           onClick={() => void submitSelection()}
           type="button"
           variant="secondary"

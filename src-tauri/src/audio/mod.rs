@@ -132,21 +132,36 @@ pub async fn audio_begin_region_selection(
     drop(inner);
 
     // 创建 overlay 窗口
-    let overlay_url = format!(
-        "/?mode=audio-overlay&audio_card={}",
-        encoded_query_value(&card_id)
-    );
-
     let label = format!("{}-{}", AUDIO_OVERLAY_LABEL, safe_label_component(&card_id));
     let mut active_labels = std::collections::HashSet::new();
     active_labels.insert(label.clone());
     destroy_stale_windows(&app, AUDIO_OVERLAY_LABEL, &active_labels);
     destroy_window(&app, &label);
 
-    tauri::WebviewWindowBuilder::new(
+    // 用 xcap 获取主显示器物理尺寸，显式设置窗口 inner_size + position 覆盖全屏，
+    // 替代 fullscreen(true)——后者在 WebView2 透明窗口上可能只覆盖部分区域。
+    let (screen_x, screen_y, screen_w, screen_h) = xcap::Monitor::all()
+        .ok()
+        .and_then(|monitors| monitors.into_iter().next())
+        .map(|monitor| {
+            let x = monitor.x().unwrap_or(0);
+            let y = monitor.y().unwrap_or(0);
+            let w = monitor.width().unwrap_or(1920);
+            let h = monitor.height().unwrap_or(1080);
+            (x, y, w, h)
+        })
+        .unwrap_or((0, 0, 1920, 1080));
+
+    let window = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::App(overlay_url.parse().unwrap()),
+        tauri::WebviewUrl::App(
+            format!(
+                "index.html?mode=audio-overlay&audio_card={}",
+                encoded_query_value(&card_id)
+            )
+            .into(),
+        ),
     )
     .title("音频区域选择")
     .decorations(false)
@@ -157,9 +172,13 @@ pub async fn audio_begin_region_selection(
     .focused(true)
     .visible(true)
     .resizable(false)
-    .fullscreen(true)
+    .inner_size(screen_w as f64, screen_h as f64)
+    .position(screen_x as f64, screen_y as f64)
     .build()
     .map_err(|error| AppError::from(format!("创建音频区域选择窗口失败: {error}")))?;
+
+    // 窗口创建后强制最大化，防止 DPI 缩放导致尺寸不足
+    let _ = window.maximize();
 
     Ok(())
 }
