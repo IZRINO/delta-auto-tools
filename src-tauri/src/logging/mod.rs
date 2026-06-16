@@ -92,8 +92,10 @@ thread_local! {
 }
 
 /// 当前线程的 trace_id 上下文
+#[allow(dead_code)]
 pub struct TraceContext;
 
+#[allow(dead_code)]
 impl TraceContext {
     /// 设置当前线程的 trace_id
     pub fn set(trace_id: &str) {
@@ -141,12 +143,11 @@ pub fn session_id() -> &'static str {
     &SESSION_ID
 }
 
-// ── 全局写入函数 ──
-
 /// 全局日志写入入口（供宏调用）
 ///
 /// 由宏自动注入 origin/location/trace_id/thread_id，
 /// 业务代码不应直接调用此函数，应使用 log_error! 等宏。
+#[allow(dead_code)]
 pub fn log_write(
     level: LogLevel,
     source: &str,

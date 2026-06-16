@@ -720,7 +720,10 @@ fn trigger_multisegment_runtime(
 }
 
 fn tick(app: &AppHandle) -> Result<(), String> {
-    let state = app.state::<TimerState>();
+    let Some(state) = app.try_state::<TimerState>() else {
+        // 状态尚未注册（setup 期间），跳过本次 tick
+        return Ok(());
+    };
     let bootstrap = {
         let mut inner = state
             .lock_inner()
