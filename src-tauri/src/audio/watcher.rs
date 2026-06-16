@@ -166,7 +166,7 @@ async fn run_region_watcher(
 }
 
 /// 加载参考图像
-fn load_reference_image(path: &str) -> Option<image::DynamicImage> {
+pub(crate) fn load_reference_image(path: &str) -> Option<image::DynamicImage> {
     let path = Path::new(path);
     if !path.exists() {
         return None;
@@ -175,7 +175,7 @@ fn load_reference_image(path: &str) -> Option<image::DynamicImage> {
 }
 
 /// 截取屏幕区域（使用 xcap）
-fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage> {
+pub(crate) fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage> {
     #[cfg(target_os = "windows")]
     {
         use xcap::Monitor;
@@ -231,7 +231,7 @@ fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::Dyn
 /// 比较两张图像的相似度（返回 0.0-1.0，1.0 表示完全相同）
 /// 使用灰度 ZNCC（归一化互相关）算法，对光照变化鲁棒。
 /// 参考图若含 Alpha 通道，透明像素（alpha < 128）不参与比较。
-fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -> f32 {
+pub(crate) fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -> f32 {
     let width = a.width().min(b.width());
     let height = a.height().min(b.height());
 

@@ -25,6 +25,15 @@ use crate::overlay_utils::{
 
 const AUDIO_OVERLAY_LABEL: &str = "audio-overlay";
 
+// ---- TestMatchResult ----
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestMatchResult {
+    pub similarity: f32,
+    pub triggered: bool,
+}
+
 // ---- State ----
 
 pub struct AudioLogic {
@@ -258,6 +267,50 @@ pub async fn audio_test_play(
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn audio_test_match(
+    _app: tauri::AppHandle,
+    state: tauri::State<'_, AudioState>,
+    card_id: String,
+) -> Result<TestMatchResult, AppError> {
+    let (region, ref_path, threshold) = {
+        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        let card = inner
+            .settings
+            .cards
+            .iter()
+            .find(|c| c.id == card_id)
+            .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
+
+        if card.trigger_mode != types::AudioTriggerMode::RegionWatch {
+            return Err(AppError::from("只有区域监听模式卡片支持匹配测试".to_string()));
+        }
+        let region = card.watch_region.clone().ok_or_else(|| AppError::from("未设置监听区域".to_string()))?;
+        let ref_path = card.watch_reference_image_path.clone().ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
+        if ref_path.is_empty() {
+            return Err(AppError::from("参考图像路径为空".to_string()));
+        }
+        let threshold = card.watch_match_threshold;
+        (region, ref_path, threshold)
+    };
+
+    // 截图
+    let captured = watcher::capture_region(&region)
+        .ok_or_else(|| AppError::from("截图失败".to_string()))?;
+
+    // 加载参考图像
+    let reference_image = watcher::load_reference_image(&ref_path)
+        .ok_or_else(|| AppError::from("无法加载参考图像".to_string()))?;
+
+    let similarity = watcher::compare_images(&captured, &reference_image);
+    let triggered = similarity >= threshold;
+
+    Ok(TestMatchResult {
+        similarity,
+        triggered,
+    })
 }
 
 // ---- 热键 ----

@@ -154,6 +154,22 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [isNativeShell],
     );
 
+    const handleTestMatch = useCallback(
+        async (cardId: string) => {
+            if (!isNativeShell) return;
+            try {
+                type TestMatchResult = { similarity: number; triggered: boolean };
+                const result = await invoke<TestMatchResult>("audio_test_match", {cardId});
+                toast.success(
+                    `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}`
+                );
+            } catch (error) {
+                toast.error(getErrorMessage(error));
+            }
+        },
+        [isNativeShell],
+    );
+
     const handleBeginRegionSelection = useCallback(
         async (cardId: string) => {
             if (!isNativeShell) return;
@@ -232,6 +248,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onUpdate={(patch) => handleUpdateCard(index, patch)}
                             onRemove={() => handleRemoveCard(index)}
                             onTestPlay={() => handleTestPlay(card.id)}
+                            onTestMatch={() => handleTestMatch(card.id)}
                             onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
                         />
                     ))}
@@ -254,6 +271,7 @@ function AudioCardEditor({
                              onUpdate,
                              onRemove,
                              onTestPlay,
+                             onTestMatch,
                              onBeginRegionSelection,
                          }: {
     card: AudioSettingsForm["cards"][number];
@@ -261,6 +279,7 @@ function AudioCardEditor({
     onUpdate: (patch: Partial<AudioSettingsForm["cards"][number]>) => void;
     onRemove: () => void;
     onTestPlay: () => void;
+    onTestMatch: () => void;
     onBeginRegionSelection: () => void;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
@@ -349,6 +368,13 @@ function AudioCardEditor({
                                         <RiVolumeUpLine className="size-4" aria-hidden="true"/>
                                         {card.watchRegion ? "重新框选" : "框选区域"}
                                     </Button>
+                                    {card.watchRegion && (
+                                        <Button variant="ghost" size="sm" onClick={onTestMatch}
+                                                data-icon="inline-start">
+                                            <RiPlayLine className="size-4" aria-hidden="true"/>
+                                            实时匹配测试
+                                        </Button>
+                                    )}
                                     {card.watchRegion && (
                                         <Badge variant="outline" className="font-mono text-xs">
                                             {card.watchRegion.x},{card.watchRegion.y} / {card.watchRegion.width}x{card.watchRegion.height}

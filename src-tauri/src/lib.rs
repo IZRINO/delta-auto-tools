@@ -114,6 +114,7 @@ pub fn run() {
             audio::audio_overlay_submit_selection,
             audio::audio_overlay_cancel_selection,
             audio::audio_test_play,
+            audio::audio_test_match,
 
             // ── strategy ──
             strategy::webview::strategy_open_window,
