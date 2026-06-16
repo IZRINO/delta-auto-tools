@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {AUDIO_EVENTS, listenEvent} from "@/lib/tauri-events";
-import {RiAddLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
+import {RiCheckLine, RiCloseLine, RiDeleteBinLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/c
 import {Switch} from "@/components/ui/switch";
 import {
     AppPage,
+    AddCardButton,
     CardBody,
     ControlTile,
     MacroHeader,
@@ -221,37 +222,27 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             </TacticalCard>
 
             <TacticalCard className="col-span-12 mt-3">
-                <SectionHeader
-                    eyebrow="音频卡片"
-                    title="音频卡片"
-                    actions={
-                        <Button variant="secondary" size="sm" onClick={handleAddCard} data-icon="inline-start">
-                            <RiAddLine className="size-4" aria-hidden="true"/>
-                            新增卡片
-                        </Button>
-                    }
-                />
-                <CardBody>
-                    {form?.cards.length === 0 && (
-                        <div
-                            className="py-8 text-center font-mono text-xs font-black tracking-[0.14em] text-[var(--zinc)] uppercase">
-                            [ 无音频卡片 ] 点击上方按钮添加
-                        </div>
-                    )}
-                    <div className="space-y-3">
-                        {form?.cards.map((card, index) => (
-                            <AudioCardEditor
-                                key={card.id}
-                                card={card}
-                                index={index}
-                                onUpdate={(patch) => handleUpdateCard(index, patch)}
-                                onRemove={() => handleRemoveCard(index)}
-                                onTestPlay={() => handleTestPlay(card.id)}
-                                onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
-                            />
-                        ))}
-                    </div>
-                </CardBody>
+                <SectionHeader eyebrow="音频卡片" title="音频卡片" />
+                <section className="@container grid min-h-0 gap-3 p-3 @xl:grid-cols-2">
+                    {form?.cards.map((card, index) => (
+                        <AudioCardEditor
+                            key={card.id}
+                            card={card}
+                            index={index}
+                            onUpdate={(patch) => handleUpdateCard(index, patch)}
+                            onRemove={() => handleRemoveCard(index)}
+                            onTestPlay={() => handleTestPlay(card.id)}
+                            onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
+                        />
+                    ))}
+                    <AddCardButton
+                        className="min-h-36"
+                        disabled={!isNativeShell || loading}
+                        title="新增音频卡片"
+                        description="添加新的快捷键触发或区域监听音频卡片。"
+                        onClick={handleAddCard}
+                    />
+                </section>
             </TacticalCard>
         </AppPage>
     );
