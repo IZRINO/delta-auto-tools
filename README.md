@@ -18,7 +18,7 @@
   iframe/srcDoc 代理渲染。支持手动刷新、按站点持久化的自动刷新档位和系统浏览器打开兜底；`strategy_fetch_page` /
   `strategy_open_window` 保留为后端实验 / 兼容入口。
 - **关于面板 / 自动更新**：在主窗口 Left Index Rail 左下角提供固定位置的「关于」入口，Dialog 形式展示当前版本、目标平台、Tauri
-  runtime、开源协议（GPLv2+）、前后端 32 项主要依赖致谢，以及基于 Tauri 官方更新器（`tauri-plugin-updater`
+  runtime、开源协议（GPLv2+）、前后端 32 项主要依赖致谢、日志级别设置，以及基于 Tauri 官方更新器（`tauri-plugin-updater`
   ）的应用内版本检查、下载、安装与自动重启能力。更新配置以 `latest.json` 静态端点指向 GitHub Releases，构建产物带私钥签名（
   `*.sig`）。
 

@@ -8,12 +8,14 @@ import {toast} from "sonner";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
+import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {DataWell, FieldUnit, StatusMatrix} from "@/components/app/app-ui";
 import {DEPENDENCIES} from "@/components/app/about-deps";
 import type {AboutBootstrap, UpdateInfo, UpdateProgress} from "@/components/app/about-types";
 import {ABOUT_EVENTS, listenEvent} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {cn} from "@/lib/utils";
+import {getLogSettings, setLogSettings as saveLogSettings, type LogSettings, type FrontendLogLevel} from "@/lib/logging";
 
 type AboutDialogProps = {
     open: boolean;
@@ -26,6 +28,7 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [progress, setProgress] = useState<UpdateProgress | null>(null);
     const [checking, setChecking] = useState(false);
+    const [logSettings, setLogSettings] = useState<LogSettings | null>(null);
 
     useEffect(() => {
         if (!open || !isNativeShell) return;
@@ -33,6 +36,18 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
         void invoke<AboutBootstrap>("about_get_bootstrap").then((data) => {
             if (disposed) return;
             setBootstrap(data);
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [open, isNativeShell]);
+
+    useEffect(() => {
+        if (!open || !isNativeShell) return;
+        let disposed = false;
+        void getLogSettings().then((settings) => {
+            if (disposed) return;
+            setLogSettings(settings);
         });
         return () => {
             disposed = true;
@@ -99,6 +114,12 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
         }
     }, [bootstrap]);
 
+    const handleLogLevelChange = useCallback(async (level: string) => {
+        if (!logSettings || !isNativeShell) return;
+        const newSettings: LogSettings = {...logSettings, globalLevel: level as FrontendLogLevel};
+        await saveLogSettings(newSettings);
+        setLogSettings(newSettings);
+    }, [logSettings, isNativeShell]);
     // 进度状态到 StatusMatrix items
     const statusItems = (() => {
         if (!progress) return [];
@@ -218,6 +239,35 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
                             )}
                         </>
                     )}
+                </FieldUnit>
+                {/* 日志级别 */}
+                <FieldUnit header="[ LOG LEVEL ]" className="border-2 border-[var(--chalk)]">
+                    {!isNativeShell && (
+                        <p className="font-mono text-xs font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                            日志设置仅在桌面端可用
+                        </p>
+                    )}
+                    {isNativeShell && logSettings && (
+                        <RadioGroup
+                            value={logSettings.globalLevel}
+                            onValueChange={handleLogLevelChange}
+                            className="grid grid-cols-5 gap-2"
+                        >
+                            {(["error", "warn", "info", "debug", "trace"] as const).map((level) => (
+                                <label key={level} htmlFor={`log-${level}`}
+                                       className="flex items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-2 cursor-pointer hover:border-[var(--amber)]">
+                                    <RadioGroupItem value={level} id={`log-${level}`}/>
+                                    <span
+                                        className="font-mono text-[0.68rem] font-bold tracking-[0.12em] uppercase">
+                                        {level.toUpperCase()}
+                                    </span>
+                                </label>
+                            ))}
+                        </RadioGroup>
+                    )}
+                    <p className="mt-2 font-mono text-[0.56rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                        当前: {logSettings?.globalLevel?.toUpperCase() ?? "INFO"} · 重启后保持
+                    </p>
                 </FieldUnit>
 
                 {/* 开源协议 */}

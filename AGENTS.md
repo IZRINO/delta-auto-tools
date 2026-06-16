@@ -80,6 +80,7 @@ src/
 │   └── use-highlight-scroll.ts # 收藏页高亮滚动动画 hook
 ├── lib/
 │   ├── utils.ts                # tailwind-merge + clsx 工具函数
+│   ├── logging.ts             # 前端日志接口（initLogging、logFrontend、generateTraceId、便捷 log 对象）
 │   └── tauri-events.ts         # 事件常量模块：MORSE_EVENTS / TIMER_EVENTS / RAPIDFIRE_EVENTS / GLOBAL_EVENTS 和 listenEvent<T> helper
 ├── components/
 │   ├── ui/                     # shadcn/ui 基础组件（~60 个）
@@ -184,6 +185,11 @@ src-tauri/src/
 ├── main.rs                     # Windows 入口
 ├── tool_base.rs                # 工具模块共享泛型基座：ToolLogic trait、ToolState<T>、ToolStateInner<T>、get_bootstrap<T>
 ├── global_state.rs             # 全局总开关状态（GlobalState）与 enabled-changed 事件
+├── logging/
+│   ├── mod.rs                  # 日志系统：LogLevel、LogSettings、FrontendLogRequest、TraceContext、session_id、Tauri Commands
+│   ├── format.rs               # 日志行格式化（混合格式：人类可读 | JSON 结构化）
+│   ├── writer.rs               # LogWriter（BufWriter + Mutex + 按天轮转 + 清理 + 级别过滤）
+│   └── macros.rs               # log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏
 ├── about/
 │   ├── mod.rs                  # 关于面板命令：about_get_bootstrap / about_check_for_update / about_download_and_install
 │   └── events.rs               # 关于事件名字符串常量（update-progress）
@@ -258,10 +264,10 @@ src-tauri/src/
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
 - `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、
-  `counter::initialize()`、`rapidfire::initialize()` 和 `global_state::GlobalState::new(true)`，然后通过 `app.manage()`
-  注册状态
+  `counter::initialize()`、`rapidfire::initialize()`、`global_state::GlobalState::new(true)` 和 `logging::init_logger()`，然后通过 `app.manage()`
+  注册状态；关闭时调用 `logging::shutdown()` flush BufWriter
 - `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame /
-  游戏数据 / morse / timer / counter / rapidfire / strategy / global_state / about），新增命令必须同步添加到这里和
+  游戏数据 / morse / timer / counter / rapidfire / strategy / global_state / logging / about），新增命令必须同步添加到这里和
   `src-tauri/capabilities/default.json`
 
 ## Tauri commands
@@ -367,6 +373,13 @@ src-tauri/src/
 - `about_get_bootstrap` — 获取软件信息（版本、协议、依赖列表）
 - `about_check_for_update` — 检查 GitHub Releases 是否有新版本
 - `about_download_and_install` — 下载并安装更新，通过 `about://update-progress` 事件推送进度
+
+**日志系统**：
+
+- `log_write_frontend` — 前端日志写入（接收 FrontendLogRequest）
+- `log_get_session_id` — 获取当前运行实例 session_id（6 位字母数字）
+- `log_get_level` — 获取当前日志级别设置（返回 LogSettings）
+- `log_set_level` — 更新日志级别设置（保存到 log_settings.json + 更新内存过滤阈值）
 
 ## UI and workflow constraints
 
@@ -781,6 +794,21 @@ TTL，取令牌流程必须一次性消费。
 - 录制 Morse 热键时通过 `morse_set_hotkey_recording` 暂停 Morse scope（`set_scope_enabled("morse", false)`），录制后恢复。
 - 非 Windows 平台直接返回错误，不做降级处理。
 
+### 日志系统
+
+- `src-tauri/src/logging/mod.rs` 负责日志系统公共接口：`LogLevel` 枚举（Error/Warn/Info/Debug/Trace）、`LogSettings` 配置、`FrontendLogRequest` 前端日志请求 DTO、`TraceContext` 线程本地链路追踪、`session_id` 运行实例标识、`log_write` 全局写入函数、Tauri Commands。
+- `src-tauri/src/logging/format.rs` 负责日志行格式化：混合格式（前半段人类可读 `|` 后半段 JSON 结构化），字段顺序为 timestamp / level / origin / location / trace / session / message / json_payload。
+- `src-tauri/src/logging/writer.rs` 负责 `LogWriter`（BufWriter + Mutex + 按天轮转 + 30 天清理 + 100 MB 总大小限制 + 级别过滤），路径优先软件安装目录 `logs/`，回退 `%LocalAppData%\org.izrino.delta-auto-tools\logs\`。
+- `src-tauri/src/logging/macros.rs` 提供 `log_error!` / `log_warn!` / `log_info!` / `log_debug!` / `log_trace!` 宏，自动注入 origin（`[RUST]·{source}`）、location（`{file}:{line}`）、thread_id 和 trace_id；DEBUG 级别自动注入 memory_kb。
+- `LogLevel::value()` 用于级别过滤（Error=0, Warn=1, Info=2, Debug=3, Trace=4），过滤在格式化之前执行。
+- `LogSettings` 存储在 `{app_config_dir()}/log_settings.json`，支持全局级别和模块级覆盖（如 `"morse": "debug"`）。
+- `TraceContext` 使用 `thread_local!` 管理 trace_id；Tauri Command 入口调用 `TraceContext::set(&trace_id)`，出口调用 `TraceContext::clear()`。
+- `session_id` 使用 `LazyLock` 在启动时生成 6 位小写字母数字短码，通过 `log_get_session_id` 命令暴露给前端。
+- 前端日志通过 `log_write_frontend` 命令写入后端统一文件；前端 `src/lib/logging.ts` 提供 `initLogging()`、`logFrontend()`、`generateTraceId()`、`setTraceId()`/`clearTraceId()` 和便捷 `log` 对象。
+- `main.tsx` 在初始化时调用 `initLogging()`；生产环境自动劫持 `console.log/warn/error` 同时写入日志文件。
+- 日志文件命名 `delta-{yyyyMMdd}.log`，每天轮转。
+- 修改日志命令时，同步更新 `src-tauri/src/lib.rs` 和 `src-tauri/capabilities/default.json`。
+
 ## Tauri 事件模式
 
 Morse 通过 Tauri events 通知前端（emit_to "main"）：
@@ -850,6 +878,7 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - `src/hooks/use-bootstrap-form-logic.test.ts` — Bootstrap/Form 双状态与 autosave 逻辑 hook 测试
 - `src/hooks/use-hotkey-recorder.test.ts` — 热键录制交互逻辑 hook 测试
 - `src/hooks/use-autosave.test.ts` — Autosave debounce 逻辑 hook 测试
+- `src/lib/logging.test.ts` — 前端日志接口测试（generateTraceId 格式/唯一性、setTraceId/clearTraceId 状态切换、logFrontend 参数序列化、非 native shell 不调用 invoke）
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
@@ -866,6 +895,9 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - `src-tauri/src/delta/storage/repo.rs` — 测试 upsert、list、delete、明文凭据迁移与加密读写（使用 tempfile）
 - `src-tauri/src/delta/utils/game.rs` — 测试 caliber 标准化、bind-role 解析、enrich_gun_detail
 - `src-tauri/src/delta/services/game.rs` — 核心测试文件，使用 `mockito` mock HTTP 服务端，覆盖所有 game API 端点
+- `src-tauri/src/logging/format.rs` — 测试格式化输出字段顺序、宽度、截断规则
+- `src-tauri/src/logging/writer.rs` — 测试按天轮转、清理策略（tempdir）、级别过滤和模块级覆盖
+- `src-tauri/src/logging/mod.rs` — 测试 session_id 生成一致性、TraceContext set/get/clear、FrontendLogRequest 反序列化、LogSettings 序列化往返
 
 ### GameService 测试模式
 

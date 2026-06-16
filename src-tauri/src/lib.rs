@@ -3,10 +3,11 @@ mod audio;
 mod counter;
 mod app_error;
 mod global_state;
-mod tool_base;
 mod hotkey_types;
 mod hotkeys;
 mod key_suppressor;
+mod tool_base;
+mod logging;
 mod morse;
 mod overlay_utils;
 mod rapidfire;
@@ -40,6 +41,7 @@ pub fn run() {
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
             let audio_state = audio::initialize(app.handle(), &hotkey_manager)?;
             let global_state = global_state::GlobalState::new(true);
+            let log_writer = logging::init_logger(app.handle())?;
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
@@ -47,6 +49,7 @@ pub fn run() {
             app.manage(rapidfire_state);
             app.manage(audio_state);
             app.manage(global_state);
+            app.manage(log_writer);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -64,6 +67,9 @@ pub fn run() {
                     let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else { return; };
                     hotkey_manager.clear_all_suppressions();
                     audio::shutdown(app, &hotkey_manager);
+                    if let Some(log_writer) = app.try_state::<logging::LogWriter>() {
+                        logging::shutdown(&log_writer);
+                    }
                     app.exit(0);
                 }
             }
@@ -124,6 +130,12 @@ pub fn run() {
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,
+
+            // ── logging ──
+            logging::log_write_frontend,
+            logging::log_get_session_id,
+            logging::log_get_level,
+            logging::log_set_level,
 
             // ── about ──
             about::about_get_bootstrap,
