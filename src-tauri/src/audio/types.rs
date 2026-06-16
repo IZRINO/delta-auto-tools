@@ -117,6 +117,7 @@ mod tests {
         assert_eq!(card.trigger_mode, AudioTriggerMode::Hotkey);
         assert_eq!(card.volume, 0.8);
         assert_eq!(card.cooldown_ms, 1000);
+        assert_eq!(card.watch_match_threshold, 0.75);
         assert!(!card.allow_simultaneous);
     }
 

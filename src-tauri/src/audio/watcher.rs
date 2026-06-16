@@ -294,3 +294,77 @@ pub(crate) fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -
     // ZNCC 范围 [-1, 1]，映射到 [0, 1]
     ((zncc + 1.0) / 2.0).clamp(0.0, 1.0)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
+
+    #[test]
+    fn same_image_returns_near_one() {
+        let img = RgbaImage::from_pixel(4, 4, Rgba([128, 64, 32, 255]));
+        let a = DynamicImage::ImageRgba8(img.clone());
+        let b = DynamicImage::ImageRgba8(img);
+        let score = compare_images(&a, &b);
+        assert!(score > 0.99, "同一图像 ZNCC 应接近 1.0，实际 {}", score);
+    }
+
+    #[test]
+    fn uniform_image_returns_one() {
+        let img = GrayImage::from_pixel(4, 4, Luma([100]));
+        let a = DynamicImage::ImageLuma8(img.clone());
+        let b = DynamicImage::ImageLuma8(img);
+        let score = compare_images(&a, &b);
+        assert_eq!(score, 1.0, "均匀图像应返回 1.0");
+    }
+
+    #[test]
+    fn different_images_returns_low() {
+        let mut a = RgbaImage::new(4, 4);
+        let mut b = RgbaImage::new(4, 4);
+        for (x, y, pixel) in a.enumerate_pixels_mut() {
+            *pixel = if y < 2 {
+                Rgba([255, 255, 255, 255])
+            } else {
+                Rgba([0, 0, 0, 255])
+            };
+        }
+        for (x, y, pixel) in b.enumerate_pixels_mut() {
+            *pixel = if y < 2 {
+                Rgba([0, 0, 0, 255])
+            } else {
+                Rgba([255, 255, 255, 255])
+            };
+        }
+        let score = compare_images(
+            &DynamicImage::ImageRgba8(a),
+            &DynamicImage::ImageRgba8(b),
+        );
+        assert!(score < 0.1, "反差图像相似度应很低，实际 {}", score);
+    }
+
+    #[test]
+    fn alpha_transparent_pixels_excluded() {
+        let mut reference = RgbaImage::new(4, 4);
+        for (x, y, pixel) in reference.enumerate_pixels_mut() {
+            if y < 2 {
+                *pixel = Rgba([0, 0, 0, 0]);
+            } else {
+                *pixel = Rgba([128, 128, 128, 255]);
+            }
+        }
+        let screenshot = RgbImage::from_pixel(4, 4, Rgb([128, 128, 128]));
+        let score = compare_images(
+            &DynamicImage::ImageRgba8(reference),
+            &DynamicImage::ImageRgb8(screenshot),
+        );
+        assert!(score > 0.99, "透明像素应被排除，剩余像素完全匹配，实际 {}", score);
+    }
+
+    #[test]
+    fn zero_width_returns_zero() {
+        let a = DynamicImage::ImageRgba8(RgbaImage::new(0, 4));
+        let b = DynamicImage::ImageRgba8(RgbaImage::new(0, 4));
+        let score = compare_images(&a, &b);
+        assert_eq!(score, 0.0, "零宽度应返回 0.0");
+    }
+}

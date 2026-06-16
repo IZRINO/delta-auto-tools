@@ -140,6 +140,7 @@ describe("audio-utils", () => {
             const card = createEmptyAudioCard();
             expect(card.name).toBe("");
             expect(card.volume).toBe(0.8);
+            expect(card.watchMatchThreshold).toBe(0.75);
             expect(card.id).toMatch(/^audio-/);
         });
     });
