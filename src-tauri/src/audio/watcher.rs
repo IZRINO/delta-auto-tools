@@ -321,14 +321,14 @@ mod tests {
     fn different_images_returns_low() {
         let mut a = RgbaImage::new(4, 4);
         let mut b = RgbaImage::new(4, 4);
-        for (x, y, pixel) in a.enumerate_pixels_mut() {
+        for (_x, y, pixel) in a.enumerate_pixels_mut() {
             *pixel = if y < 2 {
                 Rgba([255, 255, 255, 255])
             } else {
                 Rgba([0, 0, 0, 255])
             };
         }
-        for (x, y, pixel) in b.enumerate_pixels_mut() {
+        for (_x, y, pixel) in b.enumerate_pixels_mut() {
             *pixel = if y < 2 {
                 Rgba([0, 0, 0, 255])
             } else {
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn alpha_transparent_pixels_excluded() {
         let mut reference = RgbaImage::new(4, 4);
-        for (x, y, pixel) in reference.enumerate_pixels_mut() {
+        for (_x, y, pixel) in reference.enumerate_pixels_mut() {
             if y < 2 {
                 *pixel = Rgba([0, 0, 0, 0]);
             } else {
