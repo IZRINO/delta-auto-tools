@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
+import {open} from "@tauri-apps/plugin-dialog";
 import {AUDIO_EVENTS, listenEvent} from "@/lib/tauri-events";
-import {RiCheckLine, RiCloseLine, RiDeleteBinLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
+import {RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -181,6 +182,43 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         },
         [isNativeShell],
     );
+    const handlePickReferenceImage = useCallback(
+        async (index: number) => {
+            if (!isNativeShell) return;
+            try {
+                const path = await open({
+                    multiple: false,
+                    directory: false,
+                    filters: [{name: "图像文件", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"]}],
+                });
+                if (path && typeof path === "string") {
+                    handleUpdateCard(index, {watchReferenceImagePath: path});
+                }
+            } catch (error) {
+                toast.error(getErrorMessage(error));
+            }
+        },
+        [isNativeShell, handleUpdateCard],
+    );
+
+    const handlePickAudioFile = useCallback(
+        async (index: number) => {
+            if (!isNativeShell) return;
+            try {
+                const path = await open({
+                    multiple: false,
+                    directory: false,
+                    filters: [{name: "音频文件", extensions: ["mp3", "wav", "ogg", "flac", "aac", "m4a", "wma"]}],
+                });
+                if (path && typeof path === "string") {
+                    handleUpdateCard(index, {audioFilePath: path});
+                }
+            } catch (error) {
+                toast.error(getErrorMessage(error));
+            }
+        },
+        [isNativeShell, handleUpdateCard],
+    );
 
     const enabled = form?.audioEnabled ?? false;
     const cardCount = form?.cards.length ?? 0;
@@ -245,11 +283,14 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             key={card.id}
                             card={card}
                             index={index}
+                            isNativeShell={isNativeShell}
                             onUpdate={(patch) => handleUpdateCard(index, patch)}
                             onRemove={() => handleRemoveCard(index)}
                             onTestPlay={() => handleTestPlay(card.id)}
                             onTestMatch={() => handleTestMatch(card.id)}
                             onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
+                            onPickReferenceImage={() => handlePickReferenceImage(index)}
+                            onPickAudioFile={() => handlePickAudioFile(index)}
                         />
                     ))}
                     <AddCardButton
@@ -268,19 +309,25 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
 function AudioCardEditor({
                              card,
                              index,
+                             isNativeShell,
                              onUpdate,
                              onRemove,
                              onTestPlay,
                              onTestMatch,
                              onBeginRegionSelection,
+                             onPickReferenceImage,
+                             onPickAudioFile,
                          }: {
     card: AudioSettingsForm["cards"][number];
     index: number;
+    isNativeShell: boolean;
     onUpdate: (patch: Partial<AudioSettingsForm["cards"][number]>) => void;
     onRemove: () => void;
     onTestPlay: () => void;
     onTestMatch: () => void;
     onBeginRegionSelection: () => void;
+    onPickReferenceImage: () => void;
+    onPickAudioFile: () => void;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
     const isRegion = card.triggerMode === "regionWatch";
@@ -386,11 +433,25 @@ function AudioCardEditor({
                         <Field>
                             <FieldLabel>参考图像路径</FieldLabel>
                             <FieldContent>
-                                <Input
-                                    value={card.watchReferenceImagePath}
-                                    onChange={(e) => onUpdate({watchReferenceImagePath: e.target.value})}
-                                    placeholder="参考图像文件路径..."
-                                />
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        className="flex-1"
+                                        value={card.watchReferenceImagePath}
+                                        onChange={(e) => onUpdate({watchReferenceImagePath: e.target.value})}
+                                        placeholder="参考图像文件路径..."
+                                    />
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={onPickReferenceImage}
+                                        disabled={!isNativeShell}
+                                        title={isNativeShell ? "浏览图像文件" : "仅在桌面端可用"}
+                                        data-icon="inline-start"
+                                    >
+                                        <RiFolderOpenLine className="size-4" aria-hidden="true"/>
+                                        浏览...
+                                    </Button>
+                                </div>
                             </FieldContent>
                         </Field>
                         <Field>
@@ -427,11 +488,25 @@ function AudioCardEditor({
                     <Field>
                         <FieldLabel>音频文件路径</FieldLabel>
                         <FieldContent>
-                            <Input
-                                value={card.audioFilePath}
-                                onChange={(e) => onUpdate({audioFilePath: e.target.value})}
-                                placeholder="音频文件绝对路径..."
-                            />
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    className="flex-1"
+                                    value={card.audioFilePath}
+                                    onChange={(e) => onUpdate({audioFilePath: e.target.value})}
+                                    placeholder="音频文件绝对路径..."
+                                />
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={onPickAudioFile}
+                                    disabled={!isNativeShell}
+                                    title={isNativeShell ? "浏览音频文件" : "仅在桌面端可用"}
+                                    data-icon="inline-start"
+                                >
+                                    <RiFolderOpenLine className="size-4" aria-hidden="true"/>
+                                    浏览...
+                                </Button>
+                            </div>
                         </FieldContent>
                     </Field>
                     <Field>

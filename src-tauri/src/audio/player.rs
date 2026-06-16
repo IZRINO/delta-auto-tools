@@ -18,12 +18,13 @@ use rodio::{Decoder, OutputStream, Sink};
 pub enum AudioCommand {
     /// 播放音频（互斥模式：停止当前 primary sink 再播放）
     Play {
+        /// 音频文件路径
         path: String,
+        /// 播放音量
         volume: f32,
+        /// 是否独占（互斥）：true 时停止当前 primary sink 再播放
         exclusive: bool,
     },
-    /// 停止当前 primary sink
-    Stop,
     /// 关闭音频线程
     Shutdown,
 }
@@ -89,11 +90,6 @@ fn audio_thread_main(rx: mpsc::Receiver<AudioCommand>) {
                 }
                 // 清理已结束的 concurrent sinks
                 simultaneous_sinks.retain(|s| !s.empty());
-            }
-            AudioCommand::Stop => {
-                if let Some(sink) = primary_sink.take() {
-                    sink.stop();
-                }
             }
             AudioCommand::Shutdown => {
                 // 停止所有播放并退出

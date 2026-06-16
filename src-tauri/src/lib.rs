@@ -26,6 +26,7 @@ use tauri::{Manager, WindowEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
@@ -52,15 +53,15 @@ pub fn run() {
             if let WindowEvent::CloseRequested { .. } = event {
                 if timer::is_main_window_close(window.label()) {
                     let app = window.app_handle();
-                    let timer_state = app.state::<timer::TimerState>();
-                    let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
+                    let Some(timer_state) = app.try_state::<timer::TimerState>() else { return; };
+                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else { return; };
                     timer::shutdown(app, &timer_state, &hotkey_manager);
-                    let counter_state = app.state::<counter::CounterState>();
+                    let Some(counter_state) = app.try_state::<counter::CounterState>() else { return; };
                     counter::shutdown(app, &counter_state, &hotkey_manager);
-                    let rapidfire_state = app.state::<rapidfire::RapidfireState>();
+                    let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() else { return; };
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
-                    let _audio_state = app.state::<audio::AudioState>();
-                    let hotkey_manager = app.state::<hotkeys::HotkeyManager>();
+                    let Some(_audio_state) = app.try_state::<audio::AudioState>() else { return; };
+                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else { return; };
                     hotkey_manager.clear_all_suppressions();
                     audio::shutdown(app, &hotkey_manager);
                     app.exit(0);
