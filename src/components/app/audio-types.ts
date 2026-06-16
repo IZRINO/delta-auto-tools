@@ -57,7 +57,7 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     hotkey: null,
     watchRegion: null,
     watchReferenceImagePath: null,
-    watchMatchThreshold: 0.9,
+    watchMatchThreshold: 0.75,
     watchPollIntervalMs: 500,
     audioFilePath: "",
     volume: 0.8,

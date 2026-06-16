@@ -19,7 +19,7 @@ fn default_cooldown_ms() -> u32 {
 }
 
 fn default_watch_match_threshold() -> f32 {
-    0.9
+    0.75
 }
 
 fn default_watch_poll_interval_ms() -> u32 {

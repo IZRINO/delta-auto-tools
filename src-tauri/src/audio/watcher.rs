@@ -229,8 +229,9 @@ fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::Dyn
 }
 
 /// 比较两张图像的相似度（返回 0.0-1.0，1.0 表示完全相同）
+/// 使用灰度 ZNCC（归一化互相关）算法，对光照变化鲁棒。
+/// 参考图若含 Alpha 通道，透明像素（alpha < 128）不参与比较。
 fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -> f32 {
-    // 统一尺寸为最小尺寸
     let width = a.width().min(b.width());
     let height = a.height().min(b.height());
 
@@ -241,29 +242,55 @@ fn compare_images(a: &image::DynamicImage, b: &image::DynamicImage) -> f32 {
     let a_resized = a.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
     let b_resized = b.resize_exact(width, height, image::imageops::FilterType::Lanczos3);
 
-    let a_rgb = a_resized.to_rgb8();
-    let b_rgb = b_resized.to_rgb8();
+    let a_has_alpha = matches!(
+        a.color(),
+        image::ColorType::Rgba8 | image::ColorType::Rgba16 | image::ColorType::Rgba32F
+    );
 
-    let mut total_diff: u64 = 0;
-    let mut total_pixels: u64 = 0;
+    let a_rgba = a_resized.to_rgba8();
+    let b_rgba = b_resized.to_rgba8();
 
-    for (a_pixel, b_pixel) in a_rgb.pixels().zip(b_rgb.pixels()) {
-        let dr = (a_pixel[0] as i32 - b_pixel[0] as i32).abs() as u64;
-        let dg = (a_pixel[1] as i32 - b_pixel[1] as i32).abs() as u64;
-        let db = (a_pixel[2] as i32 - b_pixel[2] as i32).abs() as u64;
+    let mut a_vals: Vec<f32> = Vec::new();
+    let mut b_vals: Vec<f32> = Vec::new();
 
-        total_diff += dr + dg + db;
-        total_pixels += 1;
+    for (a_pixel, b_pixel) in a_rgba.pixels().zip(b_rgba.pixels()) {
+        if a_has_alpha && a_pixel[3] < 128 {
+            continue;
+        }
+        let a_gray =
+            0.299 * a_pixel[0] as f32 + 0.587 * a_pixel[1] as f32 + 0.114 * a_pixel[2] as f32;
+        let b_gray =
+            0.299 * b_pixel[0] as f32 + 0.587 * b_pixel[1] as f32 + 0.114 * b_pixel[2] as f32;
+        a_vals.push(a_gray);
+        b_vals.push(b_gray);
     }
 
-    if total_pixels == 0 {
+    let n = a_vals.len();
+    if n == 0 {
         return 0.0;
     }
 
-    // 最大可能差值 per pixel = 255 * 3 = 765
-    let max_diff = total_pixels * 765;
-    let normalized_diff = total_diff as f32 / max_diff as f32;
+    let mean_a: f32 = a_vals.iter().sum::<f32>() / n as f32;
+    let mean_b: f32 = b_vals.iter().sum::<f32>() / n as f32;
 
-    // 相似度 = 1 - 归一化差值
-    (1.0 - normalized_diff).clamp(0.0, 1.0)
+    let mut numerator: f32 = 0.0;
+    let mut denom_a: f32 = 0.0;
+    let mut denom_b: f32 = 0.0;
+
+    for i in 0..n {
+        let da = a_vals[i] - mean_a;
+        let db = b_vals[i] - mean_b;
+        numerator += da * db;
+        denom_a += da * da;
+        denom_b += db * db;
+    }
+
+    let denominator = (denom_a * denom_b).sqrt();
+    if denominator == 0.0 {
+        return if numerator == 0.0 { 1.0 } else { 0.0 };
+    }
+
+    let zncc = numerator / denominator;
+    // ZNCC 范围 [-1, 1]，映射到 [0, 1]
+    ((zncc + 1.0) / 2.0).clamp(0.0, 1.0)
 }
