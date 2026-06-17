@@ -1,7 +1,7 @@
 import type {AudioCard, AudioCardForm, AudioSettings, AudioSettingsForm, ColorProbe, ColorProbeForm,} from "@/components/app/audio-types";
 import {DEFAULT_AUDIO_CARD} from "@/components/app/audio-types";
 
-function rgbToHex(rgb: [number, number, number]): string {
+export function rgbToHex(rgb: [number, number, number]): string {
     const [r, g, b] = rgb;
     return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
