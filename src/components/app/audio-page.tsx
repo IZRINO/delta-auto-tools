@@ -23,12 +23,13 @@ import {
     SignalTile,
     TacticalCard,
 } from "@/components/app/app-ui";
-import type {AudioBootstrap, AudioCard, AudioSettings, AudioSettingsForm} from "@/components/app/audio-types";
+import type {AudioBootstrap, AudioCard, AudioSettings, AudioSettingsForm, ColorProbeForm} from "@/components/app/audio-types";
 import {AUDIO_AUTOSAVE_DELAY_MS} from "@/components/app/audio-types";
 import {
     createEmptyAudioCard,
     mergeAudioWatchRegionsIntoForm,
     parseSettingsForm,
+    rgbToHex,
     settingsToForm
 } from "@/components/app/audio-utils";
 import {getErrorMessage, getSelectionRect} from "@/components/app/morse-utils";
@@ -183,6 +184,87 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         },
         [isNativeShell],
     );
+
+    const handleTestColorMatch = useCallback(
+        async (cardId: string) => {
+            if (!isNativeShell) return;
+            type ColorProbeResult = {
+                matched: boolean;
+                sampledColor: [number, number, number];
+                distance: number;
+                targetColor: [number, number, number];
+                tolerance: number;
+            };
+            type ColorTestResult = {
+                triggered: boolean;
+                hitCount: number;
+                totalCount: number;
+                probes: ColorProbeResult[];
+            };
+            try {
+                const result = await invoke<ColorTestResult>("audio_test_color_match", {cardId});
+                const detail = result.probes
+                    .map((p, i) => `#${i + 1}: ${p.matched ? "命中" : "未中"} (采样 #${p.sampledColor.map((v) => v.toString(16).padStart(2, "0")).join("")} 距离 ${p.distance.toFixed(1)})`)
+                    .join("\n");
+                const summary = `识色: ${result.hitCount}/${result.totalCount} 命中 ${result.triggered ? "(已触发)" : "(未触发)"}`;
+                toast.success(`${summary}\n${detail}`, {duration: 6000});
+            } catch (error) {
+                toast.error(getErrorMessage(error));
+            }
+        },
+        [isNativeShell],
+    );
+
+    const handleAddColorProbe = useCallback(
+        (index: number) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[index];
+                if (!card) return current;
+                const newProbe: ColorProbeForm = {region: null, targetColor: "#ff0000", tolerance: "30"};
+                const nextCards = current.cards.map((c, i) =>
+                    i === index ? {...c, colorProbes: [...c.colorProbes, newProbe]} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
+    );
+
+    const handleRemoveColorProbe = useCallback(
+        (cardIndex: number, probeIndex: number) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[cardIndex];
+                if (!card) return current;
+                const nextProbes = card.colorProbes.filter((_, i) => i !== probeIndex);
+                const nextCards = current.cards.map((c, i) =>
+                    i === cardIndex ? {...c, colorProbes: nextProbes} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
+    );
+
+    const handleUpdateColorProbe = useCallback(
+        (cardIndex: number, probeIndex: number, patch: Partial<ColorProbeForm>) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[cardIndex];
+                if (!card) return current;
+                const nextProbes = card.colorProbes.map((p, i) =>
+                    i === probeIndex ? {...p, ...patch} : p,
+                );
+                const nextCards = current.cards.map((c, i) =>
+                    i === cardIndex ? {...c, colorProbes: nextProbes} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
+    );
+
     const handleLoadReferencePreview = useCallback(
         async (cardId: string): Promise<string | null> => {
             if (!isNativeShell) return null;
@@ -306,6 +388,10 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onPickReferenceImage={() => handlePickReferenceImage(index)}
                             onPickAudioFile={() => handlePickAudioFile(index)}
                             onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
+                            onTestColorMatch={() => handleTestColorMatch(card.id)}
+                            onAddColorProbe={() => handleAddColorProbe(index)}
+                            onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
+                            onUpdateColorProbe={(probeIndex, patch) => handleUpdateColorProbe(index, probeIndex, patch)}
                         />
                     ))}
                     <AddCardButton
@@ -333,6 +419,10 @@ function AudioCardEditor({
                              onPickReferenceImage,
                              onPickAudioFile,
                              onLoadReferencePreview,
+                             onTestColorMatch,
+                             onAddColorProbe,
+                             onRemoveColorProbe,
+                             onUpdateColorProbe,
                          }: {
     card: AudioSettingsForm["cards"][number];
     index: number;
@@ -345,9 +435,14 @@ function AudioCardEditor({
     onPickReferenceImage: () => void;
     onPickAudioFile: () => void;
     onLoadReferencePreview: () => Promise<string | null>;
+    onTestColorMatch: () => void;
+    onAddColorProbe: () => void;
+    onRemoveColorProbe: (probeIndex: number) => void;
+    onUpdateColorProbe: (probeIndex: number, patch: Partial<ColorProbeForm>) => void;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
     const isRegion = card.triggerMode === "regionWatch";
+    const isColor = card.triggerMode === "colorWatch";
 
     // 参考图像预览
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -413,13 +508,14 @@ function AudioCardEditor({
                         <FieldLabel>触发模式</FieldLabel>
                         <FieldContent>
                             <Select value={card.triggerMode}
-                                    onValueChange={(v) => onUpdate({triggerMode: v as "hotkey" | "regionWatch"})}>
+                                    onValueChange={(v) => onUpdate({triggerMode: v as "hotkey" | "regionWatch" | "colorWatch"})}>
                                 <SelectTrigger>
                                     <SelectValue/>
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="hotkey">快捷键触发</SelectItem>
                                     <SelectItem value="regionWatch">区域监听+图像匹配</SelectItem>
+                                    <SelectItem value="colorWatch">多区域识色</SelectItem>
                                 </SelectContent>
                             </Select>
                         </FieldContent>
@@ -533,6 +629,135 @@ function AudioCardEditor({
                     </FieldGroup>
                 )}
 
+                {isColor && (
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel>匹配模式</FieldLabel>
+                            <FieldContent>
+                                <Select
+                                    value={card.colorMatchMode}
+                                    onValueChange={(v) => onUpdate({colorMatchMode: v as "all" | "any"})}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">全部命中才触发</SelectItem>
+                                        <SelectItem value="any">任一命中即触发</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FieldContent>
+                        </Field>
+
+                        {card.colorProbes.map((probe, probeIndex) => (
+                            <div key={probeIndex} className="border border-[var(--seam)] p-2 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-mono text-xs font-bold text-[var(--amber)]">
+                                        探针 #{probeIndex + 1}
+                                    </span>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => onRemoveColorProbe(probeIndex)}
+                                        title="删除探针"
+                                        data-icon="inline-start"
+                                    >
+                                        <RiDeleteBinLine className="size-4 text-[var(--alert-red)]" aria-hidden="true"/>
+                                        删除
+                                    </Button>
+                                </div>
+                                <Field>
+                                    <FieldLabel>监听区域</FieldLabel>
+                                    <FieldContent>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={onBeginRegionSelection}
+                                                data-icon="inline-start"
+                                            >
+                                                <RiVolumeUpLine className="size-4" aria-hidden="true"/>
+                                                {probe.region ? "重新框选" : "框选区域"}
+                                            </Button>
+                                            {probe.region && (
+                                                <Badge variant="outline" className="font-mono text-xs">
+                                                    {probe.region.x},{probe.region.y} / {probe.region.width}x{probe.region.height}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </FieldContent>
+                                </Field>
+                                <Field>
+                                    <FieldLabel>目标颜色</FieldLabel>
+                                    <FieldContent>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="color"
+                                                value={probe.targetColor}
+                                                onChange={(e) => onUpdateColorProbe(probeIndex, {targetColor: e.target.value})}
+                                                className="h-9 w-12 cursor-pointer border border-[var(--seam)] bg-transparent p-0"
+                                                aria-label="目标颜色"
+                                            />
+                                            <Input
+                                                className="flex-1 font-mono"
+                                                value={probe.targetColor}
+                                                onChange={(e) => onUpdateColorProbe(probeIndex, {targetColor: e.target.value})}
+                                                placeholder="#RRGGBB"
+                                            />
+                                        </div>
+                                    </FieldContent>
+                                </Field>
+                                <Field>
+                                    <FieldLabel>颜色容差 (0-255)</FieldLabel>
+                                    <FieldContent>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={255}
+                                            step={1}
+                                            value={probe.tolerance}
+                                            onChange={(e) => onUpdateColorProbe(probeIndex, {tolerance: e.target.value})}
+                                            title="RGB 欧氏距离阈值，越小越严格"
+                                        />
+                                    </FieldContent>
+                                </Field>
+                            </div>
+                        ))}
+
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={onAddColorProbe}
+                            data-icon="inline-start"
+                        >
+                            <RiCheckLine className="size-4" aria-hidden="true"/>
+                            新增探针
+                        </Button>
+
+                        {card.colorProbes.length > 0 && (
+                            <Button variant="ghost" size="sm" onClick={onTestColorMatch} data-icon="inline-start">
+                                <RiPlayLine className="size-4" aria-hidden="true"/>
+                                实时识色测试
+                            </Button>
+                        )}
+
+                        <Field>
+                            <FieldLabel>检查间隔 (ms)</FieldLabel>
+                            <FieldContent>
+                                <Input
+                                    type="number"
+                                    min={100}
+                                    max={10000}
+                                    step={100}
+                                    value={card.watchPollIntervalMs}
+                                    onChange={(e) => onUpdate({watchPollIntervalMs: e.target.value})}
+                                    title="每隔多久截图比对一次"
+                                />
+                            </FieldContent>
+                        </Field>
+                    </FieldGroup>
+                )}
+
                 <FieldGroup>
                     <Field>
                         <FieldLabel>音频文件路径</FieldLabel>
@@ -616,6 +841,12 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
         allowSimultaneous: card.allowSimultaneous ?? false,
+        colorProbes: (card.colorProbes ?? []).map((p) => ({
+            region: p.region,
+            targetColor: rgbToHex(p.targetColor),
+            tolerance: String(p.tolerance),
+        })),
+        colorMatchMode: card.colorMatchMode ?? "all",
     };
 }
 
