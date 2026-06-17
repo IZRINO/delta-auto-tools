@@ -217,6 +217,17 @@ git tag -a v<version> -m "发布 v<version>"
 git push origin v<version>
 ```
 
+### 网络与代理
+
+`git push` 或 `gh release` 等操作访问 GitHub 时，如遇连接重置或超时（`Recv failure` / `Failed to connect`），可在命令前设置本地代理环境变量：
+
+```bash
+set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& git push origin master v<version>
+set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& gh release create ...
+```
+
+> **注意**：`&&` 前不要有空格，否则 Windows `set` 会将尾部空格带入变量值导致 `Unsupported proxy syntax` 错误。
+
 ### GitHub Release + 3 个资产上传
 
 每次版本发布必须创建 GitHub Release，并**同时上传 3 个资产**（缺一不可）：

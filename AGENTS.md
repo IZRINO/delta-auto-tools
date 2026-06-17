@@ -927,6 +927,12 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - 每次版本发布提交不能只写 `发布 v<version>`。发布 commit subject 使用 `发布 v<version>`，正文必须跟上本次变更摘要与验证结果，至少包含
   `变更：` 和 `验证：` 两段；变更项从本次实际 diff / Release notes 提炼，禁止写成泛泛的“更新版本”。推荐格式：
   `git commit -m "发布 v<version>" -m "变更：\n- ...\n- ...\n\n验证：\n- bun run test\n- bun run tauri build"`。
+- **网络与代理**：`git push` 或 `gh release` 等操作访问 GitHub 时，如遇连接重置或超时，可在命令前设置本地代理环境变量：
+  ```bash
+  set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& git push origin master v<version>
+  set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& gh release create ...
+  ```
+  注意 `&&` 前不要有空格，否则 Windows `set` 会将尾部空格带入变量值导致代理格式错误。
 - 每次版本发布必须创建并推送对应 `v<version>` Tag：`git tag -a v<version> -m "发布 v<version>"`，然后
   `git push origin v<version>`。
 - **生成 `latest.json`**：构建成功后必须运行 `scripts/generate-latest-json.ps1`，从 `*-setup.exe.sig` 签名文件生成

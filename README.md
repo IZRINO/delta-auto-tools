@@ -83,7 +83,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `scripts/setup-update-key.ps1` — 一次性脚本：调用 `bunx --offline tauri signer generate` 生成 Tauri 更新签名密钥对，私钥写入
   `$HOME/.tauri/delta-auto-tools.key`（**不入库**），公钥自动写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
 - `scripts/build-release.ps1` — 设置 `TAURI_SIGNING_PRIVATE_KEY` 环境变量后执行 `bun run tauri build`，产出带 `.sig` 签名的
-  MSI 与 NSIS 安装包
+  NSIS 安装包
 - `scripts/generate-latest-json.ps1` — 从 `*-setup.exe.sig` 签名文件生成 Tauri 更新器运行时拉取的 `latest.json`（必须上传到
   GitHub Release，应用内「检查更新」才能工作）
 - `scripts/wait-for-port.cjs` — PM2 启动 Tauri 前的端口等待脚本
