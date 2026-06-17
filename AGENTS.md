@@ -107,6 +107,10 @@ src/
 │       ├── rapidfire-page.tsx  # 连发器页面、透明窗口与位置设置 UI
 │       ├── rapidfire-types.ts  # 连发器前端 TypeScript 类型定义与常量
 │       ├── rapidfire-types.test.ts # 连发器前端测试文件
+│       ├── audio-page.tsx      # 音频页面容器：卡片配置、触发模式（快捷键/区域监听/多区域识色）、overlay 框选
+│       ├── audio-types.ts      # 音频前端 TypeScript 类型定义与常量（ColorProbe/ColorMatchMode/AudioTriggerMode）
+│       ├── audio-utils.ts      # 音频纯逻辑工具函数（转层、hex/rgb 转换、探针校验）
+│       ├── audio-utils.test.ts # 音频前端测试文件
 │       ├── strategy-page.tsx  # 攻略网站工作台：贴顶浏览器工具条 + 主窗口内嵌 WebView2 + 站点 Tab + 刷新档位
 │       ├── strategy-utils.ts  # 攻略网站纯逻辑工具（站点常量、刷新档位、localStorage 读写）
 │       ├── app-ui.tsx         # 桌面工作台共享视觉组件（PageHero/TacticalCard/SignalTile 等）
@@ -224,6 +228,14 @@ src-tauri/src/
 │   ├── types.rs                # RapidfireSettings/RapidfireCard/RapidfireBootstrap 等 DTO
 │   ├── events.rs               # Rapidfire 事件名字符串常量（state-changed/hotkey-error）
 │   └── settings.rs             # rapidfire_settings.json 持久化
+├── audio/
+│   ├── mod.rs                  # AudioState、命令注册、热键协调、播放器 worker 调度
+│   ├── types.rs                # Audio 数据结构（AudioSettings/AudioCard/ColorProbe/ColorMatchMode 等）
+│   ├── events.rs               # Audio 事件名字符串常量
+│   ├── watcher.rs              # 区域监听 watcher（图像模板匹配 NCC）+ 识色 watcher（RGB 欧氏距离聚合）
+│   ├── player.rs               # 音频播放 worker（rodio + 独立线程 + 互斥/并发控制）
+│   ├── overlay.rs              # overlay 框选会话（区域监听/识色探针共用 audio-overlay label）
+│   └── settings.rs             # audio_settings.json 持久化
 └── delta/
     ├── mod.rs                  # 模块声明 + initialize()
     ├── commands.rs             # 所有 Delta Tauri commands + DTO 定义；含 with_game_auth / with_game_service 宏
@@ -263,11 +275,11 @@ src-tauri/src/
 ```
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
-- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`timer::initialize()`、
+- `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`audio::initialize()`、`timer::initialize()`、
   `counter::initialize()`、`rapidfire::initialize()`、`global_state::GlobalState::new(true)` 和 `logging::init_logger()`，然后通过 `app.manage()`
   注册状态；关闭时调用 `logging::shutdown()` flush BufWriter
 - `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame /
-  游戏数据 / morse / timer / counter / rapidfire / strategy / global_state / logging / about），新增命令必须同步添加到这里和
+  游戏数据 / morse / timer / counter / rapidfire / audio / strategy / global_state / logging / about），新增命令必须同步添加到这里和
   `src-tauri/capabilities/default.json`
 
 ## Tauri commands
