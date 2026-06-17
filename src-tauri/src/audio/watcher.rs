@@ -12,6 +12,7 @@ use tokio::time::{interval, MissedTickBehavior};
 use crate::audio::events::REGION_MATCHED;
 use crate::audio::player;
 use crate::audio::types::AudioSettings;
+use crate::audio::types::{ColorMatchMode, ColorProbe};
 use tauri::{AppHandle, Emitter};
 
 /// 全局 watcher 状态：卡片 ID -> 取消标记
@@ -574,10 +575,86 @@ fn ncc_to_similarity(ncc: f32) -> f32 {
     ((ncc + 1.0) / 2.0).clamp(0.0, 1.0)
 }
 
+/// 颜色匹配结果
+#[derive(Debug, Clone)]
+pub(crate) struct ColorMatchResult {
+    /// 是否触发（按 mode 聚合后）
+    pub matched: bool,
+    /// 命中的 probe 数量
+    pub hit_count: usize,
+}
+
+/// 计算两个 RGB 颜色的欧氏距离
+pub(crate) fn color_distance(a: [u8; 3], b: [u8; 3]) -> f32 {
+    let dr = (a[0] as f32 - b[0] as f32).powi(2);
+    let dg = (a[1] as f32 - b[1] as f32).powi(2);
+    let db = (a[2] as f32 - b[2] as f32).powi(2);
+    (dr + dg + db).sqrt()
+}
+
+/// 取图像区域平均 RGB（alpha < 128 的透明像素不计入）
+pub(crate) fn average_region_rgb(img: &image::DynamicImage) -> [u8; 3] {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    if w == 0 || h == 0 {
+        return [0, 0, 0];
+    }
+    let mut sum_r: u64 = 0;
+    let mut sum_g: u64 = 0;
+    let mut sum_b: u64 = 0;
+    let mut n: u64 = 0;
+    for y in 0..h {
+        for x in 0..w {
+            let p = rgba.get_pixel(x, y);
+            if p[3] < 128 {
+                continue;
+            }
+            sum_r += p[0] as u64;
+            sum_g += p[1] as u64;
+            sum_b += p[2] as u64;
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return [0, 0, 0];
+    }
+    [
+        (sum_r / n) as u8,
+        (sum_g / n) as u8,
+        (sum_b / n) as u8,
+    ]
+}
+
+/// 对一组已截取的区域图像与对应探针做颜色匹配，按 mode 聚合
+pub(crate) fn match_color_probes(
+    screenshots: &[image::DynamicImage],
+    probes: &[ColorProbe],
+    mode: ColorMatchMode,
+) -> ColorMatchResult {
+    if probes.is_empty() || screenshots.len() < probes.len() {
+        return ColorMatchResult { matched: false, hit_count: 0 };
+    }
+    let mut hit_count = 0usize;
+    for (i, probe) in probes.iter().enumerate() {
+        let avg = average_region_rgb(&screenshots[i]);
+        let dist = color_distance(avg, probe.target_color);
+        if dist <= probe.tolerance as f32 {
+            hit_count += 1;
+        }
+    }
+    let matched = match mode {
+        ColorMatchMode::All => hit_count == probes.len(),
+        ColorMatchMode::Any => hit_count > 0,
+    };
+    ColorMatchResult { matched, hit_count }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
+    use crate::audio::types::{ColorMatchMode, ColorProbe};
+    use crate::morse::types::RegionRect;
 
     /// 辅助：取比较结果的 similarity
     fn score(a: &DynamicImage, b: &DynamicImage) -> f32 {
@@ -791,5 +868,102 @@ mod tests {
         assert_eq!(base64_encode(b"A"), "QQ==");
         // 2 bytes → 3 chars + "="
         assert_eq!(base64_encode(b"AB"), "QUI=");
+    }
+
+    #[test]
+    fn color_distance_zero_for_same_color() {
+        assert_eq!(color_distance([100, 100, 100], [100, 100, 100]), 0.0);
+    }
+
+    #[test]
+    fn color_distance_orthogonal_channels() {
+        // R 差 30 → 距离 30
+        assert!((color_distance([130, 100, 100], [100, 100, 100]) - 30.0).abs() < 0.01);
+        // 三轴各差 10 → 距离 sqrt(300) ≈ 17.32
+        let d = color_distance([110, 110, 110], [100, 100, 100]);
+        assert!((d - 17.32).abs() < 0.1, "实际 {}", d);
+    }
+
+    #[test]
+    fn average_region_rgb_uniform() {
+        let img = RgbaImage::from_pixel(3, 3, Rgba([10, 20, 30, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        assert_eq!(average_region_rgb(&dyn_img), [10, 20, 30]);
+    }
+
+    #[test]
+    fn average_region_rgb_mixed() {
+        // 2x2：四个角颜色平均
+        let mut img = RgbaImage::new(2, 2);
+        img.put_pixel(0, 0, Rgba([0, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([100, 0, 0, 255]));
+        img.put_pixel(0, 1, Rgba([0, 100, 0, 255]));
+        img.put_pixel(1, 1, Rgba([100, 100, 0, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        assert_eq!(average_region_rgb(&dyn_img), [50, 50, 0]);
+    }
+
+    #[test]
+    fn average_region_rgb_ignores_alpha() {
+        // alpha < 128 的像素直接跳过，不参与平均
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([200, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([0, 0, 0, 0])); // 完全透明，被跳过
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        // 只有不透明像素 [200,0,0] 计入
+        assert_eq!(average_region_rgb(&dyn_img), [200, 0, 0]);
+    }
+
+    #[test]
+    fn match_color_probes_all_mode_all_hit() {
+        // 两个 probe，截图颜色都匹配
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]))),
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([10, 20, 30, 255]))),
+        ];
+        let probes = vec![
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+        ];
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
+        assert!(result.matched, "All 模式全命中应触发");
+        assert_eq!(result.hit_count, 2);
+    }
+
+    #[test]
+    fn match_color_probes_all_mode_partial_miss() {
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]))),
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))), // 不匹配
+        ];
+        let probes = vec![
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+        ];
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
+        assert!(!result.matched, "All 模式部分未命中不应触发");
+        assert_eq!(result.hit_count, 1);
+    }
+
+    #[test]
+    fn match_color_probes_any_mode_one_hit() {
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]))),
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))),
+        ];
+        let probes = vec![
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+        ];
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any);
+        assert!(result.matched, "Any 模式任一命中即触发");
+        assert_eq!(result.hit_count, 1);
+    }
+
+    #[test]
+    fn match_color_probes_empty_returns_false() {
+        let result = match_color_probes(&[], &[], ColorMatchMode::All);
+        assert!(!result.matched, "无探针不应触发");
+        assert_eq!(result.hit_count, 0);
     }
 }
