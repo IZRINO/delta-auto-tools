@@ -918,12 +918,12 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
   `git push -u origin master` 推送主分支。
 - 更新版本号时必须同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json`；如
   `src-tauri/Cargo.lock` 中的本包版本随 Cargo 解析更新，也应一并提交。
-- 每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包。**构建必须在设置了 `TAURI_SIGNING_PRIVATE_KEY` 环境变量的情况下执行
+- 每次更新版本号后必须运行 `bun run tauri build` 完成桌面打包。**正式版构建必须在设置了 `TAURI_SIGNING_PRIVATE_KEY` 环境变量的情况下执行
   **（私钥内容或路径），否则不会生成 `.sig` 签名文件。推荐用 `scripts/build-release.ps1` 一键签名构建。打包成功后必须检查以下产物存在：
-    - `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi`
-    - `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig`
     - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
     - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
+- **Beta 版本构建不需要签名**：直接运行 `bun run tauri build` 即可（不设置 `TAURI_SIGNING_PRIVATE_KEY`），产物只有 `.exe` 安装包，
+  无 `.sig` 和 `latest.json`。Beta 版本不建立独立的自动更新通道，但可通过 stable 端点自动更新到更高版本号的正式版。
 - 每次版本发布提交不能只写 `发布 v<version>`。发布 commit subject 使用 `发布 v<version>`，正文必须跟上本次变更摘要与验证结果，至少包含
   `变更：` 和 `验证：` 两段；变更项从本次实际 diff / Release notes 提炼，禁止写成泛泛的“更新版本”。推荐格式：
   `git commit -m "发布 v<version>" -m "变更：\n- ...\n- ...\n\n验证：\n- bun run test\n- bun run tauri build"`。
@@ -932,18 +932,14 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - **生成 `latest.json`**：构建成功后必须运行 `scripts/generate-latest-json.ps1`，从 `*-setup.exe.sig` 签名文件生成
   `src-tauri/target/release/bundle/latest.json`。这是 Tauri 官方更新器运行时拉取的清单文件，**不生成且不上传会导致应用内「检查更新」失败
   **（错误：Could not fetch a valid release JSON from the remote）。
-- 每次版本发布必须创建 GitHub Release，**同时上传 5 个资产**（缺一不可）：
-    1. `delta-auto-tools_<version>_x64_en-US.msi`（MSI 安装包）
-    2. `delta-auto-tools_<version>_x64_en-US.msi.sig`（MSI 签名，供更新器验证）
-    3. `delta-auto-tools_<version>_x64-setup.exe`（NSIS 一键安装包）
-    4. `delta-auto-tools_<version>_x64-setup.exe.sig`（NSIS 签名）
-    5. **`latest.json`**（Tauri updater 静态端点文件，是 Tauri 官方更新器正常工作的必要条件）
+- 每次版本发布必须创建 GitHub Release，**同时上传 3 个资产**（缺一不可）：
+    1. `delta-auto-tools_<version>_x64-setup.exe`（NSIS 一键安装包）
+    2. `delta-auto-tools_<version>_x64-setup.exe.sig`（NSIS 签名）
+    3. **`latest.json`**（Tauri updater 静态端点文件，是 Tauri 官方更新器正常工作的必要条件）
 
   完整命令模板：
   ```bash
   gh release create v<version> \
-    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
-    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
     src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
     src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
     src-tauri/target/release/bundle/latest.json \
@@ -952,8 +948,6 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 
   # Release 已存在时覆盖上传
   gh release upload v<version> \
-    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
-    src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
     src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
     src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
     src-tauri/target/release/bundle/latest.json \
@@ -961,7 +955,32 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
   ```
 - Release 发布后必须用
   `gh release view v<version> --repo IZRINO/delta-auto-tools --json tagName,url,isDraft,isPrerelease,assets` 验证
-  Release 非 draft、非 prerelease，且**全部 5 个资产**状态均为 `uploaded`。
+  Release 非 draft、非 prerelease，且**全部 3 个资产**状态均为 `uploaded`。
+- **Beta 版本发布流程**：Beta 版本用于快速向测试用户推送未正式发布的功能，流程轻量，可随时发布。
+    - 版本号格式：SemVer pre-release `<major>.<minor>.<patch>-beta.<N>`（如 `0.17.0-beta.1`）。
+      更新逻辑**仅比较数值部分**（忽略 pre-release 后缀）：
+      `0.17.0-beta.5` → `0.17.0`：**不更新**（数值相同）；`0.17.0-beta.5` → `0.17.1`：**提供更新**（数值更高）。
+    - 同步更新版本号（三处：`package.json` / `Cargo.toml` / `tauri.conf.json`），版本号带 `-beta.N` 后缀。
+    - **不需要签名**：直接 `bun run tauri build`，不设置 `TAURI_SIGNING_PRIVATE_KEY`，无 `.sig` 文件。
+    - 只需上传 1 个资产：`delta-auto-tools_<version>_x64-setup.exe`。
+    - 不生成 `latest.json` 或 `latest-beta.json`（Beta 不走独立的自动更新通道）。
+    - 创建 GitHub Release 时加 `--prerelease` 标记（确保 `/releases/latest` 不解析 beta，stable 用户不受影响）。
+    - Beta 应用的「检查更新」走 stable 端点（`/releases/latest/download/latest.json`）：
+      无更新时显示"已是最新"；同数值正式版不更新；更高数值正式版发布后自动检测到并提示升级。
+      实现：`src-tauri/src/about/mod.rs` 的 `should_offer_update()` 仅比较版本号数值部分。
+    - 完整命令：
+      ```bash
+      gh release create v<version> \
+        src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+        --repo IZRINO/delta-auto-tools --target master \
+        --prerelease \
+        --title "delta-auto-tools <version>" --notes "<beta 发布说明>"
+
+      # Release 已存在时覆盖上传
+      gh release upload v<version> \
+        src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+        --repo IZRINO/delta-auto-tools --clobber
+      ```
 - **签名密钥流程**：首次接入自动更新前必须运行 `scripts/setup-update-key.ps1` 生成密钥对。脚本会在
   `$HOME/.tauri/delta-auto-tools.key` 生成私钥（**不入库**），并将公钥写入 `src-tauri/tauri.conf.json` 的
   `plugins.updater.pubkey`。`tauri.conf.json` 中 `pubkey` 是**公开的**（必须随代码发布，客户端用它验证签名），**不能用占位符替代

@@ -1,6 +1,6 @@
 # generate-latest-json.ps1
-# 从 tauri build 产物生成 latest.json，用于 Tauri updater 静态端点
-# 用法：在 bun run tauri build 成功后运行
+# 从 tauri build 产物生成 latest.json，用于 Tauri updater stable 通道静态端点
+# 用法：在签名构建（bun run tauri build + TAURI_SIGNING_PRIVATE_KEY）成功后运行
 # 发布时上传：gh release upload v<version> latest.json --repo IZRINO/delta-auto-tools --clobber
 
 param(
@@ -41,18 +41,6 @@ if (-not (Test-Path $nsisSigPath)) {
 
 $nsisSig = (Get-Content $nsisSigPath -Raw).Trim()
 
-# 读取 MSI 签名文件（可选）
-$msiFile = Get-ChildItem -Path $BundleDir\msi -Filter "delta-auto-tools_${Version}_x64_en-US.msi" | Select-Object -First 1
-$msiSig = ""
-$msiUrl = ""
-if ($msiFile) {
-    $msiSigPath = "$($msiFile.FullName).sig"
-    if (Test-Path $msiSigPath) {
-        $msiSig = (Get-Content $msiSigPath -Raw).Trim()
-        $msiUrl = "https://github.com/IZRINO/delta-auto-tools/releases/latest/download/$($msiFile.Name)"
-    }
-}
-
 $nsisFileName = $nsisExe.Name
 $nsisUrl = "https://github.com/IZRINO/delta-auto-tools/releases/latest/download/$nsisFileName"
 
@@ -63,17 +51,12 @@ $latest = @{
     version   = $Version
     notes     = "详见 $releaseUrl"
     pub_date  = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-    platforms = @{
+    platforms  = @{
         "windows-x86_64" = @{
             signature = $nsisSig
             url       = $nsisUrl
         }
     }
-}
-
-if ($msiSig -and $msiUrl) {
-    # Tauri v2 格式不支持同一平台多个 URL，NSIS 优先
-    # 如需 MSI 路径，请在 platforms 中添加额外条目
 }
 
 $json = $latest | ConvertTo-Json -Depth 5
