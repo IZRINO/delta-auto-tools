@@ -992,6 +992,7 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
   `plugins.updater.pubkey`。`tauri.conf.json` 中 `pubkey` 是**公开的**（必须随代码发布，客户端用它验证签名），**不能用占位符替代
   **。`TAURI_SIGNING_PRIVATE_KEY` 私钥内容**绝不能**提交到版本控制。
 - 处理 GitHub Issues 时，先回复处理结论、变更范围、验证方式和需要用户确认的功能点；**不要在回复后直接关闭 Issue**。
+- **Windows cmd 多行字符串截断**：`gh issue comment` / `gh release create` 等命令的 `--body` 参数在 Windows cmd.exe 中传递多行内容时会被截断为只发送第一行。**必须使用 `--body-file` 从文件读取**：先将内容写入临时文件（如 `temp/issue-reply.md`），然后 `gh issue comment <number> --body-file temp/issue-reply.md`。禁止在 cmd.exe 中直接用 `--body "多行内容"` 传多行字符串。
 - Issue 回复后应保持开放状态，等待提报者或维护者确认功能行为符合预期；只有收到明确确认、重复问题已被合并追踪，或维护者明确判定无需继续处理时，才关闭
   Issue。
 - 如果已提交修复但仍未确认，应在 Issue 中说明对应提交/版本与验证入口，并标记为待确认，而不是关闭。

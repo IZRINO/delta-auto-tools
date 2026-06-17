@@ -345,6 +345,8 @@ gh release view v<version> --repo IZRINO/delta-auto-tools \
 
 Issues 使用 GitHub Issues，通过 `gh` CLI 读写。详见 `docs/agents/issue-tracker.md`。
 
+> **Windows cmd 多行字符串截断**：`gh issue comment` / `gh release create` 等命令的 `--body` 参数在 Windows cmd.exe 中传递多行内容时会被截断为只发送第一行。**必须使用 `--body-file` 从文件读取**：先将内容写入临时文件（如 `temp/issue-reply.md`），然后 `gh issue comment <number> --body-file temp/issue-reply.md`。禁止在 cmd.exe 中直接用 `--body "多行内容"` 传多行字符串。
+
 ### Triage labels
 
 使用五级分流标签：needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix。详见
