@@ -1,5 +1,47 @@
-import type {AudioCard, AudioCardForm, AudioSettings, AudioSettingsForm,} from "@/components/app/audio-types";
+import type {AudioCard, AudioCardForm, AudioSettings, AudioSettingsForm, ColorProbe, ColorProbeForm,} from "@/components/app/audio-types";
 import {DEFAULT_AUDIO_CARD} from "@/components/app/audio-types";
+
+function rgbToHex(rgb: [number, number, number]): string {
+    const [r, g, b] = rgb;
+    return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+    const clean = hex.startsWith("#") ? hex.slice(1) : hex;
+    if (clean.length !== 6) {
+        throw new Error("颜色格式必须为 #RRGGBB。");
+    }
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    if ([r, g, b].some((v) => Number.isNaN(v) || v < 0 || v > 255)) {
+        throw new Error("颜色值必须在 00-FF 之间。");
+    }
+    return [r, g, b];
+}
+
+function probeToForm(probe: ColorProbe): ColorProbeForm {
+    return {
+        region: probe.region,
+        targetColor: rgbToHex(probe.targetColor),
+        tolerance: String(probe.tolerance),
+    };
+}
+
+function parseProbeForm(form: ColorProbeForm): ColorProbe {
+    if (!form.region) {
+        throw new Error("识色探针必须设置区域。");
+    }
+    const tolerance = parseInt(form.tolerance, 10);
+    if (Number.isNaN(tolerance) || tolerance < 0 || tolerance > 255) {
+        throw new Error("颜色容差必须在 0 到 255 之间。");
+    }
+    return {
+        region: form.region,
+        targetColor: hexToRgb(form.targetColor),
+        tolerance,
+    };
+}
 
 export function settingsToForm(settings: AudioSettings): AudioSettingsForm {
     return {
@@ -23,6 +65,8 @@ function cardToForm(card: AudioCard): AudioCardForm {
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
         allowSimultaneous: card.allowSimultaneous ?? false,
+        colorProbes: (card.colorProbes ?? []).map(probeToForm),
+        colorMatchMode: card.colorMatchMode ?? "all",
     };
 }
 
@@ -65,6 +109,14 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         throw new Error("快捷键模式下必须设置热键。");
     }
 
+    const colorProbes = form.triggerMode === "colorWatch"
+        ? form.colorProbes.map(parseProbeForm)
+        : [];
+    if (form.triggerMode === "colorWatch" && colorProbes.length === 0) {
+        throw new Error("识色模式下至少需要配置一个探针。");
+    }
+    const colorMatchMode = form.colorMatchMode ?? "all";
+
     return {
         id: form.id || generateCardId(),
         name,
@@ -79,6 +131,8 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         volume,
         cooldownMs,
         allowSimultaneous: form.allowSimultaneous ?? false,
+        colorProbes,
+        colorMatchMode,
     };
 }
 

@@ -66,6 +66,8 @@ describe("audio-utils", () => {
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
                     },
                 ],
             };
@@ -95,6 +97,8 @@ describe("audio-utils", () => {
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
                     },
                 ],
             };
@@ -119,6 +123,8 @@ describe("audio-utils", () => {
                         volume: "1.5",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
                     },
                 ],
             };
@@ -164,6 +170,8 @@ describe("audio-utils", () => {
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
                     },
                 ],
             };
@@ -184,6 +192,132 @@ describe("audio-utils", () => {
             expect(merged.cards[0].name).toBe("本地未保存名称");
             expect(merged.cards[0].audioFilePath).toBe("local.mp3");
             expect(merged.cards[0].watchRegion).toEqual({x: 10, y: 20, width: 30, height: 40});
+        });
+    });
+
+    describe("colorWatch settingsToForm", () => {
+        it("converts colorProbes to form with hex color string", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        ...DEFAULT_AUDIO_CARD,
+                        id: "c1",
+                        name: "识色",
+                        triggerMode: "colorWatch" as const,
+                        colorProbes: [
+                            {
+                                region: {x: 10, y: 20, width: 5, height: 5},
+                                targetColor: [200, 100, 50] as [number, number, number],
+                                tolerance: 40,
+                            },
+                        ],
+                        colorMatchMode: "any" as const,
+                    },
+                ],
+            };
+            const form = settingsToForm(settings);
+            expect(form.cards[0].colorProbes).toHaveLength(1);
+            expect(form.cards[0].colorProbes[0].targetColor).toBe("#c86432");
+            expect(form.cards[0].colorProbes[0].tolerance).toBe("40");
+            expect(form.cards[0].colorMatchMode).toBe("any");
+        });
+    });
+
+    describe("colorWatch parseSettingsForm", () => {
+        it("parses valid colorWatch form back to settings", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "识色",
+                        enabled: true,
+                        triggerMode: "colorWatch" as const,
+                        hotkey: "",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFilePath: "a.mp3",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [
+                            {
+                                region: {x: 10, y: 20, width: 5, height: 5},
+                                targetColor: "#c86432",
+                                tolerance: "40",
+                            },
+                        ],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            const settings = parseSettingsForm(form);
+            expect(settings.cards[0].triggerMode).toBe("colorWatch");
+            expect(settings.cards[0].colorProbes).toHaveLength(1);
+            expect(settings.cards[0].colorProbes[0].targetColor).toEqual([200, 100, 50]);
+            expect(settings.cards[0].colorProbes[0].tolerance).toBe(40);
+            expect(settings.cards[0].colorMatchMode).toBe("all");
+        });
+
+        it("throws when colorWatch has no probes", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "识色",
+                        enabled: true,
+                        triggerMode: "colorWatch" as const,
+                        hotkey: "",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFilePath: "a.mp3",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("识色模式下至少需要配置一个探针");
+        });
+
+        it("throws for invalid tolerance", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "识色",
+                        enabled: true,
+                        triggerMode: "colorWatch" as const,
+                        hotkey: "",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFilePath: "a.mp3",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [
+                            {
+                                region: {x: 10, y: 20, width: 5, height: 5},
+                                targetColor: "#c86432",
+                                tolerance: "300",
+                            },
+                        ],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("颜色容差必须在 0 到 255 之间");
         });
     });
 });
