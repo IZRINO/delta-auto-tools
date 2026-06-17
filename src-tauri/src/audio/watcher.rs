@@ -34,19 +34,28 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
         cancel.store(true, Ordering::SeqCst);
     }
 
-    // 为每张区域监听卡片启动 watcher
+    // 为每张区域监听 / 识色卡片启动 watcher
     for card in &settings.cards {
         if !card.enabled {
             continue;
         }
-        if card.trigger_mode != super::types::AudioTriggerMode::RegionWatch {
-            continue;
-        }
-
-        let Some(region) = &card.watch_region else { continue };
-        let Some(ref_path) = &card.watch_reference_image_path else { continue };
-        if ref_path.is_empty() || card.audio_file_path.is_empty() {
-            continue;
+        // 按触发模式校验必要字段，缺字段则跳过
+        match card.trigger_mode {
+            super::types::AudioTriggerMode::RegionWatch => {
+                let Some(ref_path) = &card.watch_reference_image_path else { continue };
+                if ref_path.is_empty() || card.audio_file_path.is_empty() {
+                    continue;
+                }
+                if card.watch_region.is_none() {
+                    continue;
+                }
+            }
+            super::types::AudioTriggerMode::ColorWatch => {
+                if card.color_probes.is_empty() || card.audio_file_path.is_empty() {
+                    continue;
+                }
+            }
+            super::types::AudioTriggerMode::Hotkey => continue,
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -55,33 +64,60 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
         let audio_path = card.audio_file_path.clone();
         let volume = card.volume;
         let cooldown_ms = card.cooldown_ms;
-        let threshold = card.watch_match_threshold;
         let poll_interval_ms = card.watch_poll_interval_ms;
-        let region_clone = region.clone();
-        let ref_path_clone = ref_path.clone();
-        let cancel_clone = Arc::clone(&cancel);
         let allow_simultaneous = card.allow_simultaneous;
         let playback_tx_clone = playback_tx.clone();
+        let cancel_clone = Arc::clone(&cancel);
 
         cancel_map.insert(card_id.clone(), cancel);
 
-        tauri::async_runtime::spawn(async move {
-            run_region_watcher(
-                app_clone,
-                card_id,
-                region_clone,
-                ref_path_clone,
-                audio_path,
-                volume,
-                allow_simultaneous,
-                playback_tx_clone,
-                cooldown_ms,
-                threshold,
-                poll_interval_ms,
-                cancel_clone,
-            )
-                .await;
-        });
+        match card.trigger_mode {
+            super::types::AudioTriggerMode::RegionWatch => {
+                let Some(region) = &card.watch_region else { continue };
+                let Some(ref_path) = &card.watch_reference_image_path else { continue };
+                let threshold = card.watch_match_threshold;
+                let region_clone = region.clone();
+                let ref_path_clone = ref_path.clone();
+                tauri::async_runtime::spawn(async move {
+                    run_region_watcher(
+                        app_clone,
+                        card_id,
+                        region_clone,
+                        ref_path_clone,
+                        audio_path,
+                        volume,
+                        allow_simultaneous,
+                        playback_tx_clone,
+                        cooldown_ms,
+                        threshold,
+                        poll_interval_ms,
+                        cancel_clone,
+                    )
+                        .await;
+                });
+            }
+            super::types::AudioTriggerMode::ColorWatch => {
+                let probes = card.color_probes.clone();
+                let match_mode = card.color_match_mode.clone();
+                tauri::async_runtime::spawn(async move {
+                    run_color_watcher(
+                        app_clone,
+                        card_id,
+                        probes,
+                        match_mode,
+                        audio_path,
+                        volume,
+                        allow_simultaneous,
+                        playback_tx_clone,
+                        cooldown_ms,
+                        poll_interval_ms,
+                        cancel_clone,
+                    )
+                        .await;
+                });
+            }
+            super::types::AudioTriggerMode::Hotkey => {}
+        }
     }
 
     Ok(())
@@ -163,6 +199,67 @@ async fn run_region_watcher(
             None => {
                 // 截图失败，静默跳过
             }
+        }
+    }
+}
+
+async fn run_color_watcher(
+    app: AppHandle,
+    card_id: String,
+    probes: Vec<crate::audio::types::ColorProbe>,
+    match_mode: crate::audio::types::ColorMatchMode,
+    audio_path: String,
+    volume: f32,
+    allow_simultaneous: bool,
+    playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
+    cooldown_ms: u32,
+    poll_interval_ms: u32,
+    cancel: Arc<AtomicBool>,
+) {
+    let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+    let mut last_triggered: Option<Instant> = None;
+
+    while !cancel.load(Ordering::SeqCst) {
+        ticker.tick().await;
+
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+
+        // 检查冷却
+        if let Some(last) = last_triggered {
+            if last.elapsed() < Duration::from_millis(cooldown_ms as u64) {
+                continue;
+            }
+        }
+
+        // 逐个截取 probe 区域
+        let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(probes.len());
+        let mut all_captured = true;
+        for probe in &probes {
+            match capture_region(&probe.region) {
+                Some(img) => screenshots.push(img),
+                None => {
+                    all_captured = false;
+                    break;
+                }
+            }
+        }
+
+        if !all_captured {
+            continue;
+        }
+
+        let result = match_color_probes(&screenshots, &probes, match_mode.clone());
+        if result.matched {
+            eprintln!("[音频 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes", result.hit_count, probes.len());
+            let _ = app.emit(REGION_MATCHED, &card_id);
+            let tx = playback_tx.clone();
+            let exclusive = !allow_simultaneous;
+            let _ = tx.send(player::AudioCommand::Play { path: audio_path.clone(), volume, exclusive });
+            last_triggered = Some(Instant::now());
         }
     }
 }
