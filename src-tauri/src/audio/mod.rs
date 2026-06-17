@@ -42,6 +42,34 @@ pub struct TestMatchResult {
     pub match_position: Option<MatchPosition>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorProbeTestResult {
+    /// 该 probe 是否命中
+    pub matched: bool,
+    /// 截取区域平均 RGB
+    pub sampled_color: [u8; 3],
+    /// 与目标颜色的距离
+    pub distance: f32,
+    /// 目标颜色
+    pub target_color: [u8; 3],
+    /// 容差
+    pub tolerance: u8,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorTestResult {
+    /// 是否触发（按 mode 聚合后）
+    pub triggered: bool,
+    /// 命中 probe 数量
+    pub hit_count: usize,
+    /// probe 总数
+    pub total_count: usize,
+    /// 每个 probe 的详细结果
+    pub probes: Vec<ColorProbeTestResult>,
+}
+
 // ---- State ----
 
 pub struct AudioLogic {
@@ -292,8 +320,14 @@ pub async fn audio_test_match(
             .find(|c| c.id == card_id)
             .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
 
-        if card.trigger_mode != types::AudioTriggerMode::RegionWatch {
-            return Err(AppError::from("只有区域监听模式卡片支持匹配测试".to_string()));
+        match card.trigger_mode {
+            types::AudioTriggerMode::RegionWatch => {}
+            types::AudioTriggerMode::ColorWatch => {
+                return Err(AppError::from("识色模式请使用 audio_test_color_match 命令".to_string()));
+            }
+            types::AudioTriggerMode::Hotkey => {
+                return Err(AppError::from("快捷键模式不支持匹配测试".to_string()));
+            }
         }
         let region = card.watch_region.clone().ok_or_else(|| AppError::from("未设置监听区域".to_string()))?;
         let ref_path = card.watch_reference_image_path.clone().ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
@@ -322,6 +356,66 @@ pub async fn audio_test_match(
             x: similarity.best_x,
             y: similarity.best_y,
         }),
+    })
+}
+
+#[tauri::command]
+pub async fn audio_test_color_match(
+    _app: tauri::AppHandle,
+    state: tauri::State<'_, AudioState>,
+    card_id: String,
+) -> Result<ColorTestResult, AppError> {
+    let (probes, match_mode) = {
+        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        let card = inner
+            .settings
+            .cards
+            .iter()
+            .find(|c| c.id == card_id)
+            .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
+
+        if card.trigger_mode != types::AudioTriggerMode::ColorWatch {
+            return Err(AppError::from("只有识色模式卡片支持识色测试".to_string()));
+        }
+        if card.color_probes.is_empty() {
+            return Err(AppError::from("未配置识色探针".to_string()));
+        }
+        (card.color_probes.clone(), card.color_match_mode.clone())
+    };
+
+    let mut probe_results: Vec<ColorProbeTestResult> = Vec::with_capacity(probes.len());
+    let mut hit_count = 0usize;
+
+    for probe in &probes {
+        let captured = match watcher::capture_region(&probe.region) {
+            Some(img) => img,
+            None => return Err(AppError::from("截图失败".to_string())),
+        };
+        let sampled = watcher::average_region_rgb(&captured);
+        let dist = watcher::color_distance(sampled, probe.target_color);
+        let matched = dist <= probe.tolerance as f32;
+        if matched {
+            hit_count += 1;
+        }
+        probe_results.push(ColorProbeTestResult {
+            matched,
+            sampled_color: sampled,
+            distance: dist,
+            target_color: probe.target_color,
+            tolerance: probe.tolerance,
+        });
+    }
+
+    let triggered = match match_mode {
+        types::ColorMatchMode::All => hit_count == probes.len(),
+        types::ColorMatchMode::Any => hit_count > 0,
+    };
+
+    Ok(ColorTestResult {
+        triggered,
+        hit_count,
+        total_count: probes.len(),
+        probes: probe_results,
     })
 }
 
