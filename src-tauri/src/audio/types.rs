@@ -26,6 +26,10 @@ fn default_watch_poll_interval_ms() -> u32 {
     500
 }
 
+fn default_color_tolerance() -> u8 {
+    30
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioSettings {
@@ -75,6 +79,12 @@ pub struct AudioCard {
     /// 允许此卡片的音频与其他卡片同时播放（默认互斥）
     #[serde(default)]
     pub allow_simultaneous: bool,
+    // 识色模式探针列表
+    #[serde(default)]
+    pub color_probes: Vec<ColorProbe>,
+    // 识色聚合模式
+    #[serde(default)]
+    pub color_match_mode: ColorMatchMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,12 +92,34 @@ pub struct AudioCard {
 pub enum AudioTriggerMode {
     Hotkey,
     RegionWatch,
+    ColorWatch,
 }
 
 impl Default for AudioTriggerMode {
     fn default() -> Self {
         Self::Hotkey
     }
+}
+
+/// 识色探针：一个矩形区域 + 目标颜色 + 容差
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorProbe {
+    pub region: RegionRect,
+    /// 目标 RGB 颜色 [R, G, B]，每通道 0-255
+    pub target_color: [u8; 3],
+    /// 颜色容差（RGB 欧氏距离阈值，0-255）
+    #[serde(default = "default_color_tolerance")]
+    pub tolerance: u8,
+}
+
+/// 多探针聚合模式：All = 全部命中才触发；Any = 任一命中即触发
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ColorMatchMode {
+    #[default]
+    All,
+    Any,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,5 +160,65 @@ mod tests {
         assert!(card.allow_simultaneous);
         let reserialized = serde_json::to_string(&card).unwrap();
         assert!(reserialized.contains("\"allowSimultaneous\":true"));
+    }
+
+    #[test]
+    fn color_probe_roundtrip() {
+        let json = r#"{"region":{"x":10,"y":20,"width":5,"height":5},"targetColor":[200,100,50],"tolerance":40}"#;
+        let probe: ColorProbe = serde_json::from_str(json).unwrap();
+        assert_eq!(probe.region.x, 10);
+        assert_eq!(probe.target_color, [200, 100, 50]);
+        assert_eq!(probe.tolerance, 40);
+        let reserialized = serde_json::to_string(&probe).unwrap();
+        assert!(reserialized.contains("\"targetColor\":[200,100,50]"));
+        assert!(reserialized.contains("\"tolerance\":40"));
+    }
+
+    #[test]
+    fn color_probe_default_tolerance_is_30() {
+        // 缺省 tolerance 应默认 30
+        let json = r#"{"region":{"x":0,"y":0,"width":3,"height":3},"targetColor":[0,0,0]}"#;
+        let probe: ColorProbe = serde_json::from_str(json).unwrap();
+        assert_eq!(probe.tolerance, 30);
+    }
+
+    #[test]
+    fn color_match_mode_default_is_all() {
+        // AudioCard 缺省 color_match_mode 应为 All
+        let json = r#"{"id":"c1","name":"测试","triggerMode":"colorWatch"}"#;
+        let card: AudioCard = serde_json::from_str(json).unwrap();
+        assert_eq!(card.color_match_mode, ColorMatchMode::All);
+        assert!(card.color_probes.is_empty());
+    }
+
+    #[test]
+    fn audio_card_with_color_watch_roundtrip() {
+        let card = AudioCard {
+            id: "c1".into(),
+            name: "识色卡".into(),
+            enabled: true,
+            trigger_mode: AudioTriggerMode::ColorWatch,
+            hotkey: None,
+            watch_region: None,
+            watch_reference_image_path: None,
+            watch_match_threshold: 0.75,
+            watch_poll_interval_ms: 500,
+            audio_file_path: "a.mp3".into(),
+            volume: 0.8,
+            cooldown_ms: 1000,
+            allow_simultaneous: false,
+            color_probes: vec![ColorProbe {
+                region: RegionRect { x: 1, y: 2, width: 3, height: 4 },
+                target_color: [10, 20, 30],
+                tolerance: 25,
+            }],
+            color_match_mode: ColorMatchMode::Any,
+        };
+        let json = serde_json::to_string(&card).unwrap();
+        let back: AudioCard = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.trigger_mode, AudioTriggerMode::ColorWatch);
+        assert_eq!(back.color_match_mode, ColorMatchMode::Any);
+        assert_eq!(back.color_probes.len(), 1);
+        assert_eq!(back.color_probes[0].target_color, [10, 20, 30]);
     }
 }

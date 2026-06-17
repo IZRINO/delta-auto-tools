@@ -185,8 +185,6 @@ Cargo 解析更新，也应一并提交。
 
 打包成功后必须检查以下产物存在：
 
-- `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi`
-- `src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig`
 - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
 - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
 
@@ -219,33 +217,38 @@ git tag -a v<version> -m "发布 v<version>"
 git push origin v<version>
 ```
 
-### GitHub Release + 5 个资产上传
+### 网络与代理
 
-每次版本发布必须创建 GitHub Release，并**同时上传 5 个资产**（缺一不可）：
+`git push` 或 `gh release` 等操作访问 GitHub 时，如遇连接重置或超时（`Recv failure` / `Failed to connect`），可在命令前设置本地代理环境变量：
+
+```bash
+set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& git push origin master v<version>
+set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& gh release create ...
+```
+
+> **注意**：`&&` 前不要有空格，否则 Windows `set` 会将尾部空格带入变量值导致 `Unsupported proxy syntax` 错误。
+
+### GitHub Release + 3 个资产上传
+
+每次版本发布必须创建 GitHub Release，并**同时上传 3 个资产**（缺一不可）：
 
 | 资产                                             | 作用                                   |
 |------------------------------------------------|--------------------------------------|
-| `delta-auto-tools_<version>_x64_en-US.msi`     | Windows MSI 安装包                      |
-| `delta-auto-tools_<version>_x64_en-US.msi.sig` | MSI 签名（更新器验证用）                       |
 | `delta-auto-tools_<version>_x64-setup.exe`     | NSIS 一键安装包                           |
 | `delta-auto-tools_<version>_x64-setup.exe.sig` | NSIS 签名                              |
 | **`latest.json`**                              | Tauri updater 静态端点文件（不传则应用内「检查更新」失败） |
 
 ```bash
-# 新建 Release 并上传 5 个资产
+# 新建 Release 并上传 3 个资产
 gh release create v<version> \
-  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
-  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
   src-tauri/target/release/bundle/latest.json \
   --repo IZRINO/delta-auto-tools --target master \
   --title "delta-auto-tools <version>" --notes "<发布说明>"
 
-# Release 已存在时覆盖上传（同样 5 个资产）
+# Release 已存在时覆盖上传（同样 3 个资产）
 gh release upload v<version> \
-  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi \
-  src-tauri/target/release/bundle/msi/delta-auto-tools_<version>_x64_en-US.msi.sig \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
   src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig \
   src-tauri/target/release/bundle/latest.json \
@@ -261,13 +264,88 @@ gh release view v<version> --repo IZRINO/delta-auto-tools \
   --json tagName,url,isDraft,isPrerelease,assets
 ```
 
-确认非 draft、非 prerelease，且**全部 5 个资产**状态均为 `uploaded`。
+确认非 draft、非 prerelease，且**全部 3 个资产**状态均为 `uploaded`。
+
+### Beta / 预发布版本
+
+Beta 版本用于快速向测试用户推送未正式发布的功能。**流程轻量，可随时发布**。
+
+#### 版本号格式
+
+Beta 版本号必须使用 **SemVer pre-release** 格式：`<major>.<minor>.<patch>-beta.<N>`
+
+```
+0.17.0-beta.1    ← 第 1 个 beta
+0.17.0-beta.2    ← 第 2 个 beta（修复）
+0.17.0           ← 正式发布（stable 通道自动检测到）
+```
+
+> **重要**：`0.17.0-beta.1 < 0.17.0`（SemVer 规则，pre-release 版本优先级低于对应正式版）。
+> 但本项目自定义更新逻辑**仅比较数值部分**（忽略 pre-release 后缀），因此：
+> - `0.17.0-beta.5` → `0.17.0`：**不更新**（数值 `0.17.0 == 0.17.0`，beta 含更新的代码不应降级）
+> - `0.17.0-beta.5` → `0.17.1`：**提供更新**（数值 `0.17.1 > 0.17.0`）
+
+#### 与正式版的关键差异
+
+| 项目         | 正式版（stable）                | Beta 版                             |
+|------------|---------------------------|-------------------------------------|
+| 构建签名      | ✅ 必须（`TAURI_SIGNING_PRIVATE_KEY`） | ❌ 不需要（不生成 `.sig`）                  |
+| 产物         | `.exe` + `.sig` + `latest.json` | 仅 `.exe`                            |
+| GitHub Release | 默认                       | `--prerelease` 标记                    |
+| 自动更新（beta→beta） | —                        | ❌ 不支持（无 beta 通道、无 `latest-beta.json`） |
+| 自动更新（beta→stable） | —                        | ✅ 仅数值部分更高时（如 `0.17.0-beta.5`→`0.17.1`）；同数值不更新（如 `0.17.0-beta.5`→`0.17.0`） |
+
+#### 自动更新机制
+
+Beta 版本**不建立独立的 beta 更新通道**，不需要 `latest-beta.json`。Beta 应用内的「检查更新」走 stable 端点
+（`/releases/latest/download/latest.json`），与正式版完全一致。因为 GitHub `/releases/latest` 只解析**非 prerelease**
+的 Release，所以：
+
+- 当前无更新时 → 显示"已是最新"
+- 正式版 `0.17.0` 发布后 → beta `0.17.0-beta.5` 检测到 `0.17.0` 但**不更新**（数值 `0.17.0 == 0.17.0`）
+- 正式版 `0.17.1` 发布后 → beta `0.17.0-beta.5` 检测到 `0.17.1` 并提示更新 → 下载签名安装包 → 自动更新到正式版
+
+> **实现**：`src-tauri/src/about/mod.rs` 中的 `should_offer_update()` 函数仅比较版本号数值部分
+> （`numeric_version_tuple`），忽略 pre-release 后缀。这覆盖了 `about_check_for_update` 和
+> `about_download_and_install` 两个命令。
+
+#### Beta 发布完整流程
+
+1. 同步更新版本号（三处：`package.json` / `Cargo.toml` / `tauri.conf.json`），版本号带 `-beta.N` 后缀
+2. **无签名构建**：`bun run tauri build`（不需要 `TAURI_SIGNING_PRIVATE_KEY`）
+3. 检查产物：`src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
+4. 提交 + Tag：`git commit` → `git tag -a v<version>` → `git push origin master v<version>`
+5. 创建 **prerelease** Release 并上传 1 个资产：
+
+```bash
+gh release create v<version> \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  --repo IZRINO/delta-auto-tools --target master \
+  --prerelease \
+  --title "delta-auto-tools <version>" --notes "<beta 发布说明>"
+
+# Release 已存在时覆盖上传
+gh release upload v<version> \
+  src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe \
+  --repo IZRINO/delta-auto-tools --clobber
+```
+
+6. 验证：
+
+```bash
+gh release view v<version> --repo IZRINO/delta-auto-tools \
+  --json tagName,url,isDraft,isPrerelease,assets
+```
+
+确认 `isPrerelease: true`，且 `.exe` 资产状态为 `uploaded`。
 
 ## Agent skills
 
 ### Issue tracker
 
 Issues 使用 GitHub Issues，通过 `gh` CLI 读写。详见 `docs/agents/issue-tracker.md`。
+
+> **Windows cmd 多行字符串截断**：`gh issue comment` / `gh release create` 等命令的 `--body` / `--notes` 参数在 Windows cmd.exe 中传递多行内容时会被截断为只发送第一行。**必须使用 `--body-file` / `--notes-file` 从文件读取**：先将内容写入临时文件（如 `temp/release-notes.md`），然后 `gh issue comment <number> --body-file temp/issue-reply.md` 或 `gh release create v<version> --notes-file temp/release-notes.md ...`。禁止在 cmd.exe 中直接用 `--body "多行内容"` 或 `--notes "多行内容"` 传多行字符串。
 
 ### Triage labels
 

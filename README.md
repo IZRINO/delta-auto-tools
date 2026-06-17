@@ -9,6 +9,8 @@
 - **摩斯识别工作台**：支持区域框选、快捷键触发识别、识别结果展示、历史记录和自动输入。
 - **计时\计数器工作台**：支持多计时器、多计数器、独立总开关、快捷键触发，以及置顶透明显示窗口。
 - **连发器工作台**：支持多组连发配置、组合触发键、按住连发、卡片级不追加补齐、卡片级按键最小间距 / 启动抖动策略，以及透明状态窗口。
+- **音频工作台**：支持多张音频卡片、音量 / 冷却 / 互斥播放控制，以及三种触发模式：快捷键触发、区域监听+图像模板匹配、多区域识色触发。
+  其中**多区域识色触发**：框选 3-4 个小区域并指定目标颜色 + 容差，所有 / 任一区域出现相似颜色时触发音频播放，性能与准确率均优于整图模板匹配。
 - **Delta 工具接口**：支持 QQ、微信、QQ 安全中心、Wegame 与先遣服相关登录流程、本地账号管理和游戏数据查询；账号凭据仅在 Rust
   侧持有，本地敏感字段使用系统凭据加密保存。
 - **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，以贴顶浏览器工具条集中管理内置 /
@@ -83,7 +85,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `scripts/setup-update-key.ps1` — 一次性脚本：调用 `bunx --offline tauri signer generate` 生成 Tauri 更新签名密钥对，私钥写入
   `$HOME/.tauri/delta-auto-tools.key`（**不入库**），公钥自动写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
 - `scripts/build-release.ps1` — 设置 `TAURI_SIGNING_PRIVATE_KEY` 环境变量后执行 `bun run tauri build`，产出带 `.sig` 签名的
-  MSI 与 NSIS 安装包
+  NSIS 安装包
 - `scripts/generate-latest-json.ps1` — 从 `*-setup.exe.sig` 签名文件生成 Tauri 更新器运行时拉取的 `latest.json`（必须上传到
   GitHub Release，应用内「检查更新」才能工作）
 - `scripts/wait-for-port.cjs` — PM2 启动 Tauri 前的端口等待脚本
@@ -101,6 +103,7 @@ src-tauri/src/morse/    # 摩斯识别流程
 src-tauri/src/timer/    # 计时器
 src-tauri/src/counter/  # 计数器（独立模块）
 src-tauri/src/rapidfire/# 连发器
+src-tauri/src/audio/    # 音频播放与触发（快捷键 / 区域图像匹配 / 多区域识色）
 src-tauri/src/delta/    # Delta 登录、账号与游戏数据接口
 src-tauri/src/strategy/ # 攻略网站子 WebView 与抓取
 src-tauri/src/about/    # 关于面板：版本信息、依赖致谢、官方更新器封装

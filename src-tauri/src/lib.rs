@@ -122,6 +122,8 @@ pub fn run() {
             audio::audio_overlay_cancel_selection,
             audio::audio_test_play,
             audio::audio_test_match,
+            audio::audio_read_reference_image,
+            audio::audio_test_color_match,
 
             // ── strategy ──
             strategy::webview::strategy_open_window,

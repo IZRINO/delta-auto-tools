@@ -145,9 +145,30 @@ pub fn about_get_bootstrap(app: AppHandle) -> AboutBootstrap {
     }
 }
 
+/// 提取版本号的数值部分元组 (major, minor, patch)，忽略 pre-release 后缀
+/// "0.17.0-beta.5" → (0, 17, 0)
+/// "0.17.1"        → (0, 17, 1)
+fn numeric_version_tuple(v: &str) -> (u64, u64, u64) {
+    let base = v.split_once('-').map_or(v, |(s, _)| s);
+    let parts: Vec<u64> = base.split('.').filter_map(|p| p.parse().ok()).collect();
+    match parts.as_slice() {
+        [a, b, c] => (*a, *b, *c),
+        _ => (0, 0, 0),
+    }
+}
+
+/// 比较版本号数值部分，判断是否应提供更新
+/// Beta 版本不会更新到同数值的正式版（0.17.0-beta.5 → 0.17.0 不更新），
+/// 但会更新到更高数值的正式版（0.17.0-beta.5 → 0.17.1 提供更新）。
+fn should_offer_update(current: &str, remote: &str) -> bool {
+    numeric_version_tuple(remote) > numeric_version_tuple(current)
+}
+
 #[tauri::command]
 pub async fn about_check_for_update(app: AppHandle) -> Result<UpdateInfo, String> {
     use tauri_plugin_updater::UpdaterExt;
+
+    let current_version = app.package_info().version.to_string();
 
     let update = app
         .updater()
@@ -157,13 +178,13 @@ pub async fn about_check_for_update(app: AppHandle) -> Result<UpdateInfo, String
         .map_err(|e| classify_check_error(&e))?;
 
     match update {
-        Some(update) => Ok(UpdateInfo {
+        Some(update) if should_offer_update(&current_version, &update.version) => Ok(UpdateInfo {
             available: true,
             version: Some(update.version.clone()),
             notes: update.body.clone(),
             pub_date: update.date.map(|d| d.to_string()),
         }),
-        None => Ok(UpdateInfo {
+        _ => Ok(UpdateInfo {
             available: false,
             version: None,
             notes: None,
@@ -178,6 +199,8 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
 
     let app_clone = app.clone();
     let _ = app_clone.emit_to("main", events::UPDATE_PROGRESS, UpdateProgress::Checking);
+
+    let current_version = app.package_info().version.to_string();
 
     let update = app
         .updater()
@@ -205,8 +228,8 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
         })?;
 
     let update = match update {
-        Some(u) => u,
-        None => {
+        Some(u) if should_offer_update(&current_version, &u.version) => u,
+        _ => {
             let app_na = app.clone();
             let _ = app_na.emit_to("main", events::UPDATE_PROGRESS, UpdateProgress::NotAvailable);
             return Ok(());
@@ -287,5 +310,54 @@ fn classify_check_error(e: &tauri_plugin_updater::Error) -> String {
         format!("网络连接失败: {msg}")
     } else {
         format!("检查更新失败: {msg}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numeric_version_tuple_parses_standard() {
+        assert_eq!(numeric_version_tuple("0.17.1"), (0, 17, 1));
+        assert_eq!(numeric_version_tuple("1.2.3"), (1, 2, 3));
+    }
+
+    #[test]
+    fn numeric_version_tuple_strips_prerelease() {
+        assert_eq!(numeric_version_tuple("0.17.0-beta.1"), (0, 17, 0));
+        assert_eq!(numeric_version_tuple("0.17.0-beta.5"), (0, 17, 0));
+        assert_eq!(numeric_version_tuple("1.0.0-alpha.99"), (1, 0, 0));
+    }
+
+    #[test]
+    fn numeric_version_tuple_handles_invalid() {
+        assert_eq!(numeric_version_tuple(""), (0, 0, 0));
+        assert_eq!(numeric_version_tuple("x.y.z"), (0, 0, 0));
+        assert_eq!(numeric_version_tuple("1"), (0, 0, 0));
+    }
+
+    #[test]
+    fn should_offer_update_beta_to_same_numeric_stable_is_false() {
+        // 0.17.0-beta.5 → 0.17.0：数值部分相同，不更新
+        assert!(!should_offer_update("0.17.0-beta.5", "0.17.0"));
+        assert!(!should_offer_update("0.17.0-beta.1", "0.17.0"));
+    }
+
+    #[test]
+    fn should_offer_update_beta_to_higher_numeric_stable_is_true() {
+        // 0.17.0-beta.5 → 0.17.1：数值部分更高，提供更新
+        assert!(should_offer_update("0.17.0-beta.5", "0.17.1"));
+        // 0.16.0-beta.1 → 0.17.0：数值部分更高，提供更新
+        assert!(should_offer_update("0.16.0-beta.1", "0.17.0"));
+    }
+
+    #[test]
+    fn should_offer_update_stable_to_stable_is_standard() {
+        // 正式版之间的标准比较
+        assert!(should_offer_update("0.16.3", "0.17.0"));
+        assert!(should_offer_update("0.17.0", "0.17.1"));
+        assert!(!should_offer_update("0.17.0", "0.17.0"));
+        assert!(!should_offer_update("0.17.1", "0.17.0"));
     }
 }
