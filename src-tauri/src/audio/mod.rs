@@ -29,9 +29,17 @@ const AUDIO_OVERLAY_LABEL: &str = "audio-overlay";
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MatchPosition {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestMatchResult {
     pub similarity: f32,
     pub triggered: bool,
+    pub match_position: Option<MatchPosition>,
 }
 
 // ---- State ----
@@ -305,12 +313,41 @@ pub async fn audio_test_match(
         .ok_or_else(|| AppError::from("无法加载参考图像".to_string()))?;
 
     let similarity = watcher::compare_images(&captured, &reference_image);
-    let triggered = similarity >= threshold;
+    let triggered = similarity.similarity >= threshold;
 
     Ok(TestMatchResult {
-        similarity,
+        similarity: similarity.similarity,
         triggered,
+        match_position: Some(MatchPosition {
+            x: similarity.best_x,
+            y: similarity.best_y,
+        }),
     })
+}
+
+/// 读取参考图像并返回 base64 PNG 数据 URL（供前端预览）
+#[tauri::command]
+pub fn audio_read_reference_image(
+    _app: tauri::AppHandle,
+    state: tauri::State<'_, AudioState>,
+    card_id: String,
+) -> Result<String, AppError> {
+    let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+    let card = inner
+        .settings
+        .cards
+        .iter()
+        .find(|c| c.id == card_id)
+        .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
+
+    let ref_path = card.watch_reference_image_path.clone()
+        .ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
+    if ref_path.is_empty() {
+        return Err(AppError::from("参考图像路径为空".to_string()));
+    }
+
+    watcher::read_reference_image_as_data_url(&ref_path)
+        .ok_or_else(|| AppError::from("无法读取参考图像".to_string()))
 }
 
 // ---- 热键 ----

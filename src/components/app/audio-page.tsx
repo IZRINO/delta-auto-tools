@@ -159,10 +159,11 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         async (cardId: string) => {
             if (!isNativeShell) return;
             try {
-                type TestMatchResult = { similarity: number; triggered: boolean };
+                type TestMatchResult = { similarity: number; triggered: boolean; matchPosition: { x: number; y: number } | null };
                 const result = await invoke<TestMatchResult>("audio_test_match", {cardId});
+                const pos = result.matchPosition ? ` (位置: ${result.matchPosition.x}, ${result.matchPosition.y})` : "";
                 toast.success(
-                    `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}`
+                    `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}${pos}`
                 );
             } catch (error) {
                 toast.error(getErrorMessage(error));
@@ -182,6 +183,19 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         },
         [isNativeShell],
     );
+    const handleLoadReferencePreview = useCallback(
+        async (cardId: string): Promise<string | null> => {
+            if (!isNativeShell) return null;
+            try {
+                const dataUrl = await invoke<string>("audio_read_reference_image", {cardId});
+                return dataUrl;
+            } catch {
+                return null;
+            }
+        },
+        [isNativeShell],
+    );
+
     const handlePickReferenceImage = useCallback(
         async (index: number) => {
             if (!isNativeShell) return;
@@ -291,6 +305,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
                             onPickReferenceImage={() => handlePickReferenceImage(index)}
                             onPickAudioFile={() => handlePickAudioFile(index)}
+                            onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
                         />
                     ))}
                     <AddCardButton
@@ -317,6 +332,7 @@ function AudioCardEditor({
                              onBeginRegionSelection,
                              onPickReferenceImage,
                              onPickAudioFile,
+                             onLoadReferencePreview,
                          }: {
     card: AudioSettingsForm["cards"][number];
     index: number;
@@ -328,9 +344,30 @@ function AudioCardEditor({
     onBeginRegionSelection: () => void;
     onPickReferenceImage: () => void;
     onPickAudioFile: () => void;
+    onLoadReferencePreview: () => Promise<string | null>;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
     const isRegion = card.triggerMode === "regionWatch";
+
+    // 参考图像预览
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
+    useEffect(() => {
+        if (!isRegion || !card.watchReferenceImagePath.trim() || !isNativeShell) {
+            setPreviewUrl(null);
+            return;
+        }
+        let disposed = false;
+        setPreviewLoading(true);
+        void onLoadReferencePreview().then((url) => {
+            if (!disposed) {
+                setPreviewUrl(url);
+                setPreviewLoading(false);
+            }
+        });
+        return () => { disposed = true; };
+    }, [card.watchReferenceImagePath, isRegion, isNativeShell, onLoadReferencePreview]);
 
     return (
         <div className="border-2 border-[var(--chalk)] bg-[var(--slate)]">
@@ -452,6 +489,18 @@ function AudioCardEditor({
                                         浏览...
                                     </Button>
                                 </div>
+                                {previewUrl && (
+                                    <div className="mt-2 border border-[var(--seam)] bg-[var(--slate)] p-1">
+                                        <img
+                                            src={previewUrl}
+                                            alt="参考图像预览"
+                                            className="max-h-32 max-w-48 object-contain"
+                                        />
+                                    </div>
+                                )}
+                                {previewLoading && (
+                                    <p className="mt-1 text-xs text-[var(--zinc)]">加载预览中...</p>
+                                )}
                             </FieldContent>
                         </Field>
                         <Field>
