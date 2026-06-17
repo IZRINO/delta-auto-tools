@@ -1,6 +1,20 @@
 import type {RegionRect} from "@/components/app/morse-types";
 
-export type AudioTriggerMode = "hotkey" | "regionWatch";
+export type ColorMatchMode = "all" | "any";
+
+export type ColorProbe = {
+    region: RegionRect;
+    targetColor: [number, number, number];
+    tolerance: number;
+};
+
+export type ColorProbeForm = {
+    region: RegionRect | null;
+    targetColor: string; // "#RRGGBB" 格式
+    tolerance: string;   // 数字字符串，0-255
+};
+
+export type AudioTriggerMode = "hotkey" | "regionWatch" | "colorWatch";
 
 export type AudioCard = {
     id: string;
@@ -16,6 +30,8 @@ export type AudioCard = {
     volume: number;
     cooldownMs: number;
     allowSimultaneous: boolean;
+    colorProbes: ColorProbe[];
+    colorMatchMode: ColorMatchMode;
 };
 
 export type AudioSettings = {
@@ -47,6 +63,8 @@ export type AudioCardForm = {
     volume: string;
     cooldownMs: string;
     allowSimultaneous: boolean;
+    colorProbes: ColorProbeForm[];
+    colorMatchMode: ColorMatchMode;
 };
 
 export const DEFAULT_AUDIO_CARD: AudioCard = {
@@ -63,6 +81,8 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     volume: 0.8,
     cooldownMs: 1000,
     allowSimultaneous: false,
+    colorProbes: [],
+    colorMatchMode: "all",
 };
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
