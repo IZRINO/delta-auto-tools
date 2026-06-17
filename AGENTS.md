@@ -329,6 +329,20 @@ src-tauri/src/
 | `strategy_fetch_page`  | 兼容/实验拉取目标攻略页面：带完整 Chrome 135 头 + JS 重定向跟随（含 `window.location.href`）+ CC check 嗅探；命中人机验证时 `challenge` 字段非空 |
 | `strategy_open_window` | 兼容入口：按 host 新建 / 复用 WebView2 子窗口直接打开外部 URL；主 UI 不依赖该命令                                                    |
 
+### 音频命令面
+
+| 命令                               | 说明                                                            |
+|----------------------------------|---------------------------------------------------------------|
+| `audio_get_bootstrap`            | 获取音频初始状态（settings + runs + hotkeyError）                       |
+| `audio_save_settings`            | 保存音频设置，总开关关闭时解绑快捷键并停止 watcher                                 |
+| `audio_begin_region_selection`   | 进入 overlay 框选模式（区域监听 / 识色探针共用同一 overlay label）                |
+| `audio_overlay_submit_selection` | overlay 提交框选结果                                                |
+| `audio_overlay_cancel_selection` | overlay 取消框选                                                 |
+| `audio_test_play`                | 测试播放指定卡片音频                                                   |
+| `audio_test_match`               | 区域监听模式实时匹配测试（仅 `RegionWatch`；`ColorWatch` 请用 `audio_test_color_match`） |
+| `audio_read_reference_image`     | 读取参考图像为 dataURL 供前端预览                                       |
+| `audio_test_color_match`         | 识色模式实时测试：截取每个 probe 区域、取平均色、与目标颜色比较，返回每个 probe 的命中状态、采样色、距离 |
+
 **账号与鉴权**：
 
 - `delta_list_accounts` / `delta_delete_account`
@@ -543,6 +557,27 @@ src-tauri/src/
   `fetch_with_redirect` 在 reqwest 的 `Jar` 上共享 cookie 状态，嗅探 `document.cookie = '...'; location.href = '...'` /
   `window.location.href = '...'` / `location.replace(...)` 后写入 cookie 并继续向同源跳转目标再发起一次请求，最多跟随
   `MAX_REDIRECT_DEPTH = 3` 次；命中 CC check 时返回 `challenge`，但主 UI 不再以代理 HTML 渲染作为默认路径。
+
+### 音频端
+
+- `src-tauri/src/audio/` 模块负责音频卡片配置、触发模式调度、播放器 worker 与区域 / 识色 watcher。前端入口为
+  `src/components/app/audio-page.tsx`，纯逻辑放 `audio-utils.ts`，类型放 `audio-types.ts`；overlay 框选复用 `?mode=audio-overlay`
+  与 Morse 同一套 overlay 框选交互（label `audio-overlay`）。
+- `AudioTriggerMode` 枚举三种变体：`Hotkey`（快捷键触发）、`RegionWatch`（区域监听 + 图像模板匹配）、`ColorWatch`（多区域识色）。
+- `AudioCard` 持有 `color_probes: Vec<ColorProbe>` 与 `color_match_mode: ColorMatchMode` 字段，两者均带 `#[serde(default)]`，
+  旧配置缺省时默认空探针列表 + `All` 聚合。`ColorProbe = { region, target_color: [u8;3], tolerance: u8 }`，
+  `ColorMatchMode` 为 `All`（全部命中才触发）/ `Any`（任一命中即触发），默认 `All`；`tolerance` 默认 30，范围 0-255。
+- **音频识色模式（ColorWatch）**：watcher 逐个截取 probe 区域、取平均 RGB（alpha < 128 的透明像素不计入），与 `target_color`
+  做欧氏距离 ≤ `tolerance` 判定，按 `color_match_mode` 聚合后决定是否触发播放。该模式不依赖参考图像，性能远优于整图模板匹配，
+  适合"多区域同时出现指定颜色"的判定场景。核心逻辑 `color_distance` / `average_region_rgb` / `match_color_probes` 位于
+  `src-tauri/src/audio/watcher.rs`，`run_color_watcher` 为识色 watcher 主循环（与 `run_region_watcher` 并列）。
+- `audio_test_color_match` 命令返回 `ColorTestResult { triggered, hitCount, totalCount, probes: [ColorProbeTestResult] }`，
+  每个 probe 携带 `matched / sampledColor / distance / targetColor / tolerance`，供前端调试识色命中情况。
+- 识色探针的 region 框选复用 `audio-overlay` label 与现有 overlay 框选流程，不新增窗口权限与 capabilities。
+- 前端转层：`ColorProbe` ↔ `ColorProbeForm`（`targetColor` 为 `#RRGGBB` 字符串、`tolerance` 为数字字符串），通过
+  `audio-utils.ts` 的 `rgbToHex` / `hexToRgb` / `probeToForm` / `parseProbeForm` 转换；`parseSettingsForm` 在
+  `colorWatch` 模式下校验探针非空与容差 0-255。
+- 修改音频命令或 watcher 字段时，同步更新 `src-tauri/src/lib.rs` 的 `generate_handler![]` 与 `src-tauri/capabilities/default.json`。
 
 ### Delta 端
 
