@@ -1,0 +1,181 @@
+import {describe, expect, it} from "vitest";
+
+import type {ThemeDefinition, ThemeTokenOverride} from "@/components/app/theme-types";
+import {
+    applyThemeTokens,
+    findTheme,
+    mergeThemeTokens,
+    normalizeHex,
+    parseImportedTheme,
+    serializeThemeForExport,
+} from "@/components/app/theme-utils";
+
+function makeTheme(id: string, tokens: Array<[string, string]>): ThemeDefinition {
+    return {
+        id,
+        name: id,
+        builtin: false,
+        tokens: tokens.map(([key, value]) => ({key, value})),
+    };
+}
+
+describe("mergeThemeTokens", () => {
+    it("无 overrides 时返回主题 tokens 副本", () => {
+        const theme = makeTheme("a", [["--x", "1"], ["--y", "2"]]);
+        const merged = mergeThemeTokens(theme, []);
+        expect(merged).toEqual(theme.tokens);
+        // 应是副本，修改不影响原主题
+        merged[0].value = "9";
+        expect(theme.tokens[0].value).toBe("1");
+    });
+
+    it("overrides 覆盖同 key 的基底值", () => {
+        const theme = makeTheme("a", [["--x", "1"], ["--y", "2"]]);
+        const merged = mergeThemeTokens(theme, [{key: "--x", value: "9"}]);
+        expect(merged).toEqual([
+            {key: "--x", value: "9"},
+            {key: "--y", value: "2"},
+        ]);
+    });
+
+    it("overrides 独有 key 追加到末尾", () => {
+        const theme = makeTheme("a", [["--x", "1"]]);
+        const merged = mergeThemeTokens(theme, [{key: "--z", value: "3"}]);
+        expect(merged).toEqual([
+            {key: "--x", value: "1"},
+            {key: "--z", value: "3"},
+        ]);
+    });
+
+    it("保留基底顺序", () => {
+        const theme = makeTheme("a", [["--a", "1"], ["--b", "2"], ["--c", "3"]]);
+        const merged = mergeThemeTokens(theme, [
+            {key: "--c", value: "30"},
+            {key: "--a", value: "10"},
+        ]);
+        expect(merged.map((t) => t.key)).toEqual(["--a", "--b", "--c"]);
+        expect(merged.map((t) => t.value)).toEqual(["10", "2", "30"]);
+    });
+});
+
+describe("findTheme", () => {
+    it("返回匹配项", () => {
+        const themes = [makeTheme("a", []), makeTheme("b", [])];
+        expect(findTheme(themes, "a")?.id).toBe("a");
+    });
+
+    it("未找到返回 undefined", () => {
+        const themes = [makeTheme("a", [])];
+        expect(findTheme(themes, "missing")).toBeUndefined();
+    });
+});
+
+describe("applyThemeTokens", () => {
+    function fakeElement(): HTMLElement {
+        const el = {style: new Map<string, string>()} as unknown as HTMLElement;
+        // 模拟 CSSStyleDeclaration 的 setProperty / removeProperty / getProperty
+        (el.style as unknown as {
+            setProperty: (k: string, v: string) => void;
+            removeProperty: (k: string) => void;
+        }).setProperty = (k: string, v: string) => {
+            (el.style as unknown as Map<string, string>).set(k, v);
+        };
+        (el.style as unknown as {
+            removeProperty: (k: string) => void;
+        }).removeProperty = (k: string) => {
+            (el.style as unknown as Map<string, string>).delete(k);
+        };
+        return el;
+    }
+
+    it("写入新 token", () => {
+        const el = fakeElement();
+        const tokens: ThemeTokenOverride[] = [{key: "--amber", value: "#E8A000"}];
+        applyThemeTokens(el, tokens, []);
+        expect((el.style as unknown as Map<string, string>).get("--amber")).toBe("#E8A000");
+    });
+
+    it("切换主题时清除旧 token", () => {
+        const el = fakeElement();
+        const old: ThemeTokenOverride[] = [{key: "--amber", value: "#E8A000"}];
+        const next: ThemeTokenOverride[] = [{key: "--carbon", value: "#000000"}];
+        applyThemeTokens(el, old, []);
+        applyThemeTokens(el, next, old);
+        const style = el.style as unknown as Map<string, string>;
+        expect(style.get("--amber")).toBeUndefined();
+        expect(style.get("--carbon")).toBe("#000000");
+    });
+
+    it("忽略非 -- 开头的 key", () => {
+        const el = fakeElement();
+        applyThemeTokens(el, [{key: "amber", value: "#E8A000"}], []);
+        expect((el.style as unknown as Map<string, string>).size).toBe(0);
+    });
+
+    it("target 为 null 时安全返回", () => {
+        expect(() => applyThemeTokens(null, [], [])).not.toThrow();
+    });
+});
+
+describe("parseImportedTheme", () => {
+    it("解析合法 JSON", () => {
+        const json = JSON.stringify({
+            id: "custom",
+            name: "自定义",
+            builtin: true,
+            tokens: [{key: "--amber", value: "#FF0000"}],
+        });
+        const theme = parseImportedTheme(json);
+        expect(theme.id).toBe("custom");
+        expect(theme.name).toBe("自定义");
+        // 导入后 builtin 强制为 false
+        expect(theme.builtin).toBe(false);
+        expect(theme.tokens).toEqual([{key: "--amber", value: "#FF0000"}]);
+    });
+
+    it("拒绝缺少 id 的 JSON", () => {
+        const json = JSON.stringify({name: "x", builtin: false, tokens: []});
+        expect(() => parseImportedTheme(json)).toThrow("id");
+    });
+
+    it("拒绝非 -- 开头的 token key", () => {
+        const json = JSON.stringify({
+            id: "x",
+            name: "x",
+            builtin: false,
+            tokens: [{key: "amber", value: "#FF0000"}],
+        });
+        expect(() => parseImportedTheme(json)).toThrow("--");
+    });
+
+    it("拒绝非对象输入", () => {
+        expect(() => parseImportedTheme("[]")).toThrow();
+        expect(() => parseImportedTheme('"string"')).toThrow();
+    });
+});
+
+describe("serializeThemeForExport", () => {
+    it("输出 pretty JSON 含全部字段", () => {
+        const theme = makeTheme("a", [["--amber", "#E8A000"]]);
+        const json = serializeThemeForExport(theme);
+        expect(JSON.parse(json)).toEqual(theme);
+        expect(json).toContain("\n");
+    });
+});
+
+describe("normalizeHex", () => {
+    it("规范 6 位 hex", () => {
+        expect(normalizeHex("#E8A000")).toBe("#e8a000");
+        expect(normalizeHex("E8A000")).toBe("#e8a000");
+    });
+
+    it("展开 3 位 hex", () => {
+        expect(normalizeHex("#fff")).toBe("#ffffff");
+        expect(normalizeHex("f00")).toBe("#ff0000");
+    });
+
+    it("非法输入原样返回", () => {
+        expect(normalizeHex("not-a-color")).toBe("not-a-color");
+        expect(normalizeHex("#12")).toBe("#12");
+    });
+});

@@ -6,6 +6,9 @@ mod settings;
 pub mod types;
 mod events;
 
+// 对外暴露核心类型，供 profile 模块跨工具打包快照用。
+pub use self::types::{MorseBootstrap, MorseSettings};
+
 use std::{
     collections::VecDeque,
     sync::Arc,
@@ -21,7 +24,7 @@ use crate::utils::now_ms;
 use self::{
     overlay::PendingSelection,
     types::{
-        HistoryEntry, MorseBootstrap, MorseRunResult, MorseSettings, RegionRect,
+        HistoryEntry, MorseRunResult, RegionRect,
         RegionSelectionOutcome, RegionSelectionProgress,
     },
 };
@@ -80,7 +83,7 @@ fn push_history_with_limit(
     }
 }
 
-fn restart_hotkey_listener(
+pub(crate) fn restart_hotkey_listener(
     state: &MorseState,
     app: &AppHandle,
     hotkey_manager: &HotkeyManager,
@@ -137,7 +140,7 @@ fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
     Ok(inner.settings.clone())
 }
 
-fn normalize_settings(mut settings_value: MorseSettings) -> Result<MorseSettings, String> {
+pub(crate) fn normalize_settings(mut settings_value: MorseSettings) -> Result<MorseSettings, String> {
     settings_value.hotkey = settings_value.hotkey.trim().to_string();
     if settings_value.hotkey.is_empty() {
         return Err("热键不能为空".to_string());

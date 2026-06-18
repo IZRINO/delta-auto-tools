@@ -1,0 +1,162 @@
+/**
+ * 主题引擎纯逻辑工具函数。
+ *
+ * 所有函数均不依赖 React / Tauri，可在 Node 测试环境直接调用。
+ */
+
+import type {ThemeDefinition, ThemeTokenOverride} from "@/components/app/theme-types";
+
+/**
+ * 把合并后的 token 列表写入目标元素的 inline style。
+ *
+ * inline style 优先级高于 `:root`，因此能覆盖 `App.css` 的默认值。
+ * 调用方传入 `document.documentElement` 即可全局换肤。
+ *
+ * 注意：切换主题时不会自动清除旧主题的 inline style。调用方应在写入新 token 前
+ * 先调用 `clearThemeTokens`，或使用 `applyThemeTokens` 帮你做这件事。
+ */
+export function setThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    tokens: readonly ThemeTokenOverride[],
+): void {
+    if (!target) return;
+    for (const token of tokens) {
+        if (!token.key.startsWith("--")) continue;
+        target.style.setProperty(token.key, token.value);
+    }
+}
+
+/**
+ * 清除目标元素上由主题注入的 inline style。
+ *
+ * 传入之前应用过的 token 列表，逐个 `removeProperty` 回落到 `:root` 默认值。
+ */
+export function clearThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    tokens: readonly ThemeTokenOverride[],
+): void {
+    if (!target) return;
+    for (const token of tokens) {
+        if (!token.key.startsWith("--")) continue;
+        target.style.removeProperty(token.key);
+    }
+}
+
+/**
+ * 原子化切换主题：先清旧 token，再写新 token。
+ *
+ * 返回新应用的 token 列表，调用方可保存下来供下次切换时清除用。
+ */
+export function applyThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    newTokens: readonly ThemeTokenOverride[],
+    previousTokens: readonly ThemeTokenOverride[] = [],
+): readonly ThemeTokenOverride[] {
+    clearThemeTokens(target, previousTokens);
+    setThemeTokens(target, newTokens);
+    return newTokens;
+}
+
+/** 在所有主题（内置 + 自定义）中按 id 查找主题定义。 */
+export function findTheme(
+    themes: readonly ThemeDefinition[],
+    id: string,
+): ThemeDefinition | undefined {
+    return themes.find((t) => t.id === id);
+}
+
+/**
+ * 合并主题 tokens 与 overrides（overrides 优先）。
+ *
+ * 与 Rust `apply::merge_theme_tokens` 语义一致：
+ * - 以主题 tokens 为基底；
+ * - overrides 中同 key 的项覆盖基底值；
+ * - overrides 中独有的 key 追加到末尾；
+ * - 保留基底顺序。
+ */
+export function mergeThemeTokens(
+    theme: ThemeDefinition,
+    overrides: readonly ThemeTokenOverride[],
+): ThemeTokenOverride[] {
+    const result: ThemeTokenOverride[] = [];
+    const consumedKeys = new Set<string>();
+
+    for (const tok of theme.tokens) {
+        const override = overrides.find((o) => o.key === tok.key);
+        if (override) {
+            result.push({...override});
+        } else {
+            result.push({...tok});
+        }
+        consumedKeys.add(tok.key);
+    }
+
+    for (const ov of overrides) {
+        if (!consumedKeys.has(ov.key)) {
+            result.push({...ov});
+            consumedKeys.add(ov.key);
+        }
+    }
+
+    return result;
+}
+
+/** 把 ThemeDefinition 序列化为可导入导出的 JSON 字符串（pretty）。 */
+export function serializeThemeForExport(theme: ThemeDefinition): string {
+    return JSON.stringify(theme, null, 2);
+}
+
+/** 解析导入的 JSON 为 ThemeDefinition，校验 token key 必须 `--` 开头。 */
+export function parseImportedTheme(json: string): ThemeDefinition {
+    const parsed = JSON.parse(json) as unknown;
+    if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("主题 JSON 必须是对象");
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.id !== "string") throw new Error("主题 id 必须是字符串");
+    if (typeof obj.name !== "string") throw new Error("主题 name 必须是字符串");
+    if (typeof obj.builtin !== "boolean") throw new Error("主题 builtin 必须是布尔值");
+    if (!Array.isArray(obj.tokens)) throw new Error("主题 tokens 必须是数组");
+
+    const tokens: ThemeTokenOverride[] = [];
+    for (const raw of obj.tokens) {
+        if (typeof raw !== "object" || raw === null) throw new Error("token 项必须是对象");
+        const tok = raw as Record<string, unknown>;
+        if (typeof tok.key !== "string" || typeof tok.value !== "string") {
+            throw new Error("token 项必须含 key 和 value 字符串");
+        }
+        if (!tok.key.startsWith("--")) {
+            throw new Error(`token key "${tok.key}" 必须以 -- 开头`);
+        }
+        tokens.push({key: tok.key, value: tok.value});
+    }
+
+    return {
+        id: obj.id,
+        name: obj.name,
+        builtin: false, // 导入的主题一律标记为非内置，避免被当成内置主题处理
+        tokens,
+    };
+}
+
+/**
+ * 把 hex 颜色（#RRGGBB / #RGB）规范化为 `#RRGGBB` 小写形式。
+ *
+ * 用于颜色选择器的 hex 输入框回填。非法输入原样返回。
+ */
+export function normalizeHex(value: string): string {
+    const trimmed = value.trim();
+    if (/^#?[0-9a-fA-F]{6}$/.test(trimmed)) {
+        const hex = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+        return `#${hex.toLowerCase()}`;
+    }
+    if (/^#?[0-9a-fA-F]{3}$/.test(trimmed)) {
+        const hex = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+        const expanded = hex
+            .split("")
+            .map((c) => c + c)
+            .join("");
+        return `#${expanded.toLowerCase()}`;
+    }
+    return trimmed;
+}

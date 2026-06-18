@@ -1,0 +1,188 @@
+import {
+    createContext,
+    type ReactNode,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+import {invoke} from "@tauri-apps/api/core";
+
+import {PROFILE_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {useNativeShell} from "@/hooks/use-native-shell";
+import type {Profile, ProfileBootstrap} from "@/components/app/profile-types";
+
+/** Profile Context 对外暴露的接口。 */
+type ProfileContextValue = {
+    /** 当前 bootstrap（含全部 Profile 列表与激活 id）。 */
+    bootstrap: ProfileBootstrap | null;
+    /** 是否正在加载初始 bootstrap。 */
+    loading: boolean;
+    /** 错误信息。 */
+    error: string | null;
+    /**
+     * 切换 Profile 后自增的 nonce。
+     *
+     * AppShell 用它作为工具页容器的 key：切换 Profile 后 nonce 变化 →
+     * 当前工具页 unmount（清掉挂起的 autosave timer）→ remount（重新拉 bootstrap）。
+     */
+    reloadNonce: number;
+    /** 把当前 5 份 settings 打包成新 Profile 并设为激活。 */
+    saveCurrentAs: (name: string) => Promise<Profile>;
+    /** 切换到指定 Profile：写盘 + reload 各工具 + 重置计数器运行值。 */
+    switchProfile: (id: string) => Promise<void>;
+    /** 删除 Profile（禁止删除当前激活的）。 */
+    deleteProfile: (id: string) => Promise<void>;
+    /** 重命名 Profile。 */
+    renameProfile: (id: string, name: string) => Promise<void>;
+};
+
+const ProfileContext = createContext<ProfileContextValue | null>(null);
+
+export function useProfile(): ProfileContextValue {
+    const ctx = useContext(ProfileContext);
+    if (!ctx) {
+        throw new Error("useProfile 必须在 ProfileProvider 内使用");
+    }
+    return ctx;
+}
+
+type ProfileProviderProps = {
+    children: ReactNode;
+};
+
+/**
+ * Profile Provider。
+ *
+ * - 浏览器预览模式：不调后端，直接结束 loading。
+ * - native shell：调 `profile_get_bootstrap` 拿真实配置；切换 Profile 后自增 reloadNonce
+ *   通知 AppShell 重新挂载工具页（清挂起 autosave + 重拉新配置）。
+ */
+export function ProfileProvider({children}: ProfileProviderProps) {
+    const isNativeShell = useNativeShell();
+    const [bootstrap, setBootstrap] = useState<ProfileBootstrap | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [reloadNonce, setReloadNonce] = useState(0);
+
+    // 初始化：拉取 bootstrap
+    useEffect(() => {
+        if (!isNativeShell) {
+            setLoading(false);
+            return;
+        }
+
+        let disposed = false;
+        void invoke<ProfileBootstrap>("profile_get_bootstrap")
+            .then((boot) => {
+                if (disposed) return;
+                setBootstrap(boot);
+            })
+            .catch((err: unknown) => {
+                if (!disposed) setError(String(err));
+            })
+            .finally(() => {
+                if (!disposed) setLoading(false);
+            });
+
+        return () => {
+            disposed = true;
+        };
+    }, [isNativeShell]);
+
+    // 监听 profile://changed 事件：其他窗口或后端推送的变更刷新列表
+    useEffect(() => {
+        if (!isNativeShell) return;
+
+        let disposed = false;
+        let unlisten: (() => void) | undefined;
+
+        void listenEvent(PROFILE_EVENTS.changed, (event) => {
+            if (disposed) return;
+            setBootstrap(event.payload);
+        }).then((dispose) => {
+            unlisten = dispose;
+        });
+
+        return () => {
+            disposed = true;
+            unlisten?.();
+        };
+    }, [isNativeShell]);
+
+    /** 切换后刷新本地 bootstrap + 自增 reloadNonce 触发工具页重挂载。 */
+    const refreshAfterSwitch = useCallback(async () => {
+        const boot = await invoke<ProfileBootstrap>("profile_get_bootstrap");
+        setBootstrap(boot);
+        setReloadNonce((n) => n + 1);
+    }, []);
+
+    const saveCurrentAs = useCallback(
+        async (name: string) => {
+            const profile = await invoke<Profile>("profile_save_current", {name});
+            const boot = await invoke<ProfileBootstrap>("profile_get_bootstrap");
+            setBootstrap(boot);
+            return profile;
+        },
+        [],
+    );
+
+    const switchProfile = useCallback(
+        async (id: string) => {
+            try {
+                await invoke("profile_apply", {id});
+                await refreshAfterSwitch();
+            } catch (err: unknown) {
+                setError(String(err));
+                throw err;
+            }
+        },
+        [refreshAfterSwitch],
+    );
+
+    const deleteProfile = useCallback(async (id: string) => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_delete", {id});
+            setBootstrap(boot);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const renameProfile = useCallback(async (id: string, name: string) => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_rename", {id, name});
+            setBootstrap(boot);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const value = useMemo<ProfileContextValue>(
+        () => ({
+            bootstrap,
+            loading,
+            error,
+            reloadNonce,
+            saveCurrentAs,
+            switchProfile,
+            deleteProfile,
+            renameProfile,
+        }),
+        [
+            bootstrap,
+            loading,
+            error,
+            reloadNonce,
+            saveCurrentAs,
+            switchProfile,
+            deleteProfile,
+            renameProfile,
+        ],
+    );
+
+    return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
+}

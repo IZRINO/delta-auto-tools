@@ -11,7 +11,7 @@ mod types;
 mod events;
 mod settings;
 mod player;
-mod watcher;
+pub(crate) mod watcher;
 
 pub use self::types::{
     AudioBootstrap, AudioSettings, AudioTriggerMode,
@@ -446,7 +446,7 @@ pub fn audio_read_reference_image(
 
 // ---- 热键 ----
 
-fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSettings) -> Result<(), String> {
+pub(crate) fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings: &AudioSettings) -> Result<(), String> {
     let _ = hotkey_manager.clear_scope("audio");
 
     if !settings.audio_enabled {
@@ -556,7 +556,7 @@ pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
 
 // ---- 设置规范化 ----
 
-fn normalize_settings(settings: AudioSettings) -> AudioSettings {
+pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
     let mut cards = settings.cards;
 
     // 确保每张卡片有唯一 ID

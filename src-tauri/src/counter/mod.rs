@@ -20,15 +20,18 @@ use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 use self::counter_state::CounterRunStateSnapshot;
 use self::types::{
-    CounterBootstrap, CounterDisplaySettings, CounterGroup, CounterItem, CounterRect,
-    CounterRunState, CounterSelectionKind, CounterSelectionOutcome, CounterSettings,
+    CounterDisplaySettings, CounterGroup, CounterRect,
+    CounterRunState, CounterSelectionKind, CounterSelectionOutcome,
     DEFAULT_COUNTER_GROUP_ID,
 };
 
-mod counter_state;
+pub(crate) mod counter_state;
 mod settings;
 mod types;
 mod events;
+
+// 对外暴露核心类型，供 profile 模块跨工具打包快照用。
+pub use self::types::{CounterBootstrap, CounterItem, CounterSettings};
 
 const COUNTER_DISPLAY_LABEL: &str = "counter-display";
 const COUNTER_POSITION_LABEL: &str = "counter-position";
@@ -107,7 +110,7 @@ impl ToolLogic for CounterLogic {
     }
 }
 
-fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<CounterLogic>) {
+pub(crate) fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<CounterLogic>) {
     let mut runs = std::collections::BTreeMap::new();
     for counter in &inner.settings.counters {
         if let Some(value) = inner.logic.runs.get(&counter.id) {
@@ -118,7 +121,25 @@ fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<CounterLogic>) {
     let _ = counter_state::save(app, &state);
 }
 
-fn emit_state(app: &AppHandle, bootstrap: CounterBootstrap) {
+/// 将所有 counter 运行值重置为其 `start_value` 并落盘到 `counter_state.json`。
+///
+/// 供 Profile 切换编排调用：切到新 Profile 时按用户决策「重置为 start_value」。
+/// 必须在 `inner.settings` 已替换为目标 Profile 的 counters 之后调用。
+pub(crate) fn reset_runs_to_start_values(app: &AppHandle, state: &CounterState) -> Result<(), String> {
+    let mut inner = state
+        .lock_inner()
+        .map_err(|_| "计数器状态已损坏".to_string())?;
+    inner.logic.runs = inner
+        .settings
+        .counters
+        .iter()
+        .map(|counter| (counter.id.clone(), counter.start_value))
+        .collect();
+    persist_counter_runs(app, &inner);
+    Ok(())
+}
+
+pub(crate) fn emit_state(app: &AppHandle, bootstrap: CounterBootstrap) {
     CounterLogic::emit_state(app, &bootstrap);
 }
 
@@ -252,7 +273,7 @@ fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
     })
 }
 
-fn normalize_settings(mut settings_value: CounterSettings) -> Result<CounterSettings, String> {
+pub(crate) fn normalize_settings(mut settings_value: CounterSettings) -> Result<CounterSettings, String> {
     if settings_value.enabled && !settings_value.counter_enabled {
         settings_value.counter_enabled = true;
     }
@@ -325,7 +346,7 @@ fn count_enabled_counters_by_group(counters: &[CounterItem]) -> HashMap<String, 
     map
 }
 
-fn restart_hotkey_listeners(
+pub(crate) fn restart_hotkey_listeners(
     state: &CounterState,
     hotkey_manager: &HotkeyManager,
     settings_value: &CounterSettings,
@@ -420,7 +441,7 @@ fn ensure_overlay_window(
     Ok(())
 }
 
-fn ensure_display_windows(app: &AppHandle, settings_value: &CounterSettings) -> Result<(), String> {
+pub(crate) fn ensure_display_windows(app: &AppHandle, settings_value: &CounterSettings) -> Result<(), String> {
     let mut active_labels = HashSet::new();
     for group in &settings_value.counter_groups {
         let label = display_label_for_group(&group.id);

@@ -10,7 +10,7 @@ pub struct RegionRect {
 }
 
 /// 点击区域配置，包含区域坐标和独立延迟
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ClickRegion {
     pub rect: RegionRect,
@@ -23,7 +23,7 @@ fn default_click_delay() -> u64 {
     500
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MorseSettings {
     pub hotkey: String,

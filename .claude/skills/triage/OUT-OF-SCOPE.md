@@ -3,8 +3,7 @@
 The `.out-of-scope/` directory in a repo stores persistent records of rejected feature requests. It serves two purposes:
 
 1. **Institutional memory** — why a feature was rejected, so the reasoning isn't lost when the issue is closed
-2. **Deduplication** — when a new issue comes in that matches a prior rejection, the skill can surface the previous
-   decision instead of re-litigating it
+2. **Deduplication** — when a new issue comes in that matches a prior rejection, the skill can surface the previous decision instead of re-litigating it
 
 ## Directory structure
 
@@ -19,9 +18,7 @@ One file per **concept**, not per issue. Multiple issues requesting the same thi
 
 ## File format
 
-The file should be written in a relaxed, readable style — more like a short design document than a database entry. Use
-paragraphs, code samples, and examples to make the reasoning clear and useful to someone encountering it for the first
-time.
+The file should be written in a relaxed, readable style — more like a short design document than a database entry. Use paragraphs, code samples, and examples to make the reasoning clear and useful to someone encountering it for the first time.
 
 ```markdown
 # Dark Mode
@@ -54,7 +51,6 @@ interface ThemeConfig {
 - #42 — "Add dark mode support"
 - #87 — "Night theme for accessibility"
 - #134 — "Dark theme option"
-
 ```
 
 ### Naming the file

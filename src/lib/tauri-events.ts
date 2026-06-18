@@ -4,6 +4,8 @@ import type {MorseRunResult, RegionSelectionProgress} from "@/components/app/mor
 import type {RapidfireBootstrap} from "@/components/app/rapidfire-types";
 import type {AudioBootstrap} from "@/components/app/audio-types";
 import type {UpdateProgress} from "@/components/app/about-types";
+import type {ThemeTokenOverride} from "@/components/app/theme-types";
+import type {ProfileBootstrap} from "@/components/app/profile-types";
 
 export const MORSE_EVENTS = {
     runFinished: {name: "morse://run-finished" as const, payload: null as unknown as MorseRunResult},
@@ -44,6 +46,14 @@ export const GLOBAL_EVENTS = {
 
 export const ABOUT_EVENTS = {
     updateProgress: {name: "about://update-progress" as const, payload: null as unknown as UpdateProgress},
+} as const;
+
+export const THEME_EVENTS = {
+    changed: {name: "theme://changed" as const, payload: null as unknown as ThemeTokenOverride[]},
+} as const;
+
+export const PROFILE_EVENTS = {
+    changed: {name: "profile://changed" as const, payload: null as unknown as ProfileBootstrap},
 } as const;
 
 export async function listenEvent<T extends { name: string; payload: unknown }>(

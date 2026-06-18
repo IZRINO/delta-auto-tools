@@ -23,14 +23,17 @@ use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
 
 use self::types::{
-    TimerBootstrap, TimerDirection, TimerDisplaySettings, TimerGroup, TimerItem, TimerRect,
-    TimerRunState, TimerRunStatus, TimerSelectionKind, TimerSelectionOutcome, TimerSettings,
+    TimerDirection, TimerDisplaySettings, TimerGroup, TimerRect,
+    TimerRunState, TimerRunStatus, TimerSelectionKind, TimerSelectionOutcome,
     TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
 };
 
 mod settings;
 mod types;
 mod events;
+
+// 对外暴露核心类型，供 profile 模块跨工具打包快照用。
+pub use self::types::{TimerBootstrap, TimerItem, TimerSettings};
 
 const TIMER_DISPLAY_LABEL: &str = "timer-display";
 const TIMER_POSITION_LABEL: &str = "timer-position";
@@ -286,7 +289,7 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
     })
 }
 
-fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings, String> {
+pub(crate) fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings, String> {
     if settings_value.enabled && !settings_value.timer_enabled {
         settings_value.timer_enabled = true;
     }
@@ -362,7 +365,7 @@ fn count_enabled_timers_by_group(timers: &[TimerItem]) -> HashMap<String, usize>
     map
 }
 
-fn restart_hotkey_listeners(
+pub(crate) fn restart_hotkey_listeners(
     state: &TimerState,
     hotkey_manager: &HotkeyManager,
     settings_value: &TimerSettings,
@@ -484,7 +487,7 @@ fn start_tick_task(state: &TimerState, app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn emit_state(app: &AppHandle, bootstrap: TimerBootstrap) {
+pub(crate) fn emit_state(app: &AppHandle, bootstrap: TimerBootstrap) {
     TimerLogic::emit_state(app, &bootstrap);
 }
 
@@ -534,7 +537,7 @@ fn ensure_overlay_window(
     Ok(())
 }
 
-fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
+pub(crate) fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
     let mut active_labels = HashSet::new();
 
     for group in &settings_value.timer_groups {

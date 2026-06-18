@@ -10,9 +10,11 @@ mod tool_base;
 mod logging;
 mod morse;
 mod overlay_utils;
+mod profile;
 mod rapidfire;
 mod settings;
 mod strategy;
+mod theme;
 mod timer;
 mod utils;
 
@@ -40,6 +42,8 @@ pub fn run() {
             let counter_state = counter::initialize(app.handle(), &hotkey_manager)?;
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
             let audio_state = audio::initialize(app.handle(), &hotkey_manager)?;
+            let theme_state = theme::initialize(app.handle())?;
+            let profile_state = profile::initialize(app.handle())?;
             let global_state = global_state::GlobalState::new(true);
             let log_writer = logging::init_logger(app.handle())?;
             app.manage(hotkey_manager);
@@ -48,6 +52,8 @@ pub fn run() {
             app.manage(counter_state);
             app.manage(rapidfire_state);
             app.manage(audio_state);
+            app.manage(theme_state);
+            app.manage(profile_state);
             app.manage(global_state);
             app.manage(log_writer);
             Ok(())
@@ -143,6 +149,19 @@ pub fn run() {
             about::about_get_bootstrap,
             about::about_check_for_update,
             about::about_download_and_install,
+
+            // ── theme ──
+            theme::theme_get_bootstrap,
+            theme::theme_save_settings,
+            theme::theme_export,
+            theme::theme_import,
+
+            // ── profile ──
+            profile::profile_get_bootstrap,
+            profile::profile_save_current,
+            profile::profile_apply,
+            profile::profile_delete,
+            profile::profile_rename,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

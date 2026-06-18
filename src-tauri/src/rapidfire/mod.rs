@@ -524,7 +524,7 @@ fn normalize_single_key(raw: &str) -> Result<String, String> {
     hotkey_types::hotkey_primary_label(trimmed).map_err(|_| format!("不支持: {trimmed}"))
 }
 
-fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<RapidfireSettings, String> {
+pub(crate) fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<RapidfireSettings, String> {
     if settings_value.cards.is_empty() {
         settings_value.cards.push(
             RapidfireSettings::default()
@@ -592,7 +592,7 @@ fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<Rapidfire
 
 // ---- Hotkey registration ----
 
-fn restart_hotkey_listeners(
+pub(crate) fn restart_hotkey_listeners(
     state: &RapidfireState,
     hotkey_manager: &HotkeyManager,
     settings_value: &RapidfireSettings,
@@ -1255,7 +1255,7 @@ fn emit_hotkey_error(app: &AppHandle, error: String) {
 
 // ---- Event emission ----
 
-fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
+pub(crate) fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
     RapidfireLogic::emit_state(app, &bootstrap);
 }
 
@@ -1265,7 +1265,7 @@ fn display_height(item_count: usize) -> i32 {
     RAPIDFIRE_DISPLAY_MIN_HEIGHT.max(32 + item_count.max(1) as i32 * 28)
 }
 
-fn ensure_overlay_window(
+pub(crate) fn ensure_overlay_window(
     app: &AppHandle,
     settings_value: &RapidfireSettings,
 ) -> Result<(), String> {

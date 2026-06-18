@@ -3,8 +3,8 @@ import {
     RiCompassDiscoverLine,
     RiCrosshair2Line,
     RiGamepadLine,
-    RiInformationLine,
     RiRadarLine,
+    RiSettings3Line,
     RiShutDownLine,
     RiSpeedUpLine,
     RiStarFill,
@@ -14,6 +14,8 @@ import {
 
 import {FavoritesProvider, useFavorites} from "@/hooks/use-favorites";
 import {GlobalEnabledProvider, useGlobalEnabled} from "@/hooks/use-global-enabled";
+import {ThemeProvider} from "@/hooks/use-theme";
+import {ProfileProvider, useProfile} from "@/hooks/use-profile";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {Switch} from "@/components/ui/switch";
 import {cn} from "@/lib/utils";
@@ -57,8 +59,8 @@ const AudioRegionOverlay = lazy(() =>
     import("@/components/app/audio-page").then((module) => ({default: module.AudioRegionOverlay})),
 );
 
-const AboutDialog = lazy(() =>
-    import("@/components/app/about-page").then((module) => ({default: module.AboutDialog})),
+const SettingsDialog = lazy(() =>
+    import("@/components/app/settings-page").then((module) => ({default: module.SettingsDialog})),
 );
 
 const tools = [
@@ -301,7 +303,11 @@ function App() {
     return (
         <FavoritesProvider>
             <GlobalEnabledProvider>
-                <AppShell/>
+                <ThemeProvider>
+                    <ProfileProvider>
+                        <AppShell/>
+                    </ProfileProvider>
+                </ThemeProvider>
             </GlobalEnabledProvider>
         </FavoritesProvider>
     );
@@ -315,8 +321,9 @@ function AppShell() {
     const [activeTool, setActiveTool] = useState<ToolId>("morse");
     const [highlightCardId, setHighlightCardId] = useState<ToolHighlight>(null);
     const highlightNonceRef = useRef(0);
-    const [aboutOpen, setAboutOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const favorites = useFavorites();
+    const {reloadNonce} = useProfile();
     const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
 
     const handleFavoritesNavigate = useCallback((kind: FavoriteCardKind, cardId: string) => {
@@ -503,24 +510,24 @@ function AppShell() {
                         </IndexRailSection>
                     </div>
 
-                    {/* 关于 / About — 固定在 Rail 底部 */}
+                    {/* 设置 — 固定在 Rail 底部（含主题/配置/关于） */}
                     <div className="border-t-2 border-[var(--chalk)] bg-[var(--carbon)]">
                         <button
                             className="group grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch text-left transition-colors hover:bg-[var(--slate)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]"
-                            onClick={() => setAboutOpen(true)}
+                            onClick={() => setSettingsOpen(true)}
                             type="button"
                         >
                             <span className="bg-[var(--amber)]" aria-hidden="true"/>
                             <span className="min-w-0 px-3 py-3">
-                <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">关于</span>
+                <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">设置</span>
                 <span
                     className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase group-hover:text-[var(--chalk)]">
-                  SYS / ABOUT
+                  SYS / SETTINGS
                 </span>
               </span>
                             <span
                                 className="flex items-center justify-center border-l border-[var(--chalk)] text-[var(--amber)]">
-                <RiInformationLine className="size-4" aria-hidden="true"/>
+                <RiSettings3Line className="size-4" aria-hidden="true"/>
               </span>
                         </button>
                     </div>
@@ -532,6 +539,7 @@ function AppShell() {
                     className="min-h-0 overflow-y-auto bg-transparent focus:outline-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                     <div
+                        key={reloadNonce}
                         className={cn("mx-auto min-h-full w-full px-2 py-2 xl:px-3 xl:py-3", activeTool === "strategy" ? "max-w-none" : "max-w-7xl")}>
                         <GlobalEnabledConsumer/>
                         <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
@@ -539,9 +547,9 @@ function AppShell() {
                 </main>
             </div>
 
-            {/* 关于面板 Dialog */}
+            {/* 统一设置 Dialog（主题 / 配置 / 关于） */}
             <ToolPageSuspense fallback={null}>
-                <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen}/>
+                <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}/>
             </ToolPageSuspense>
         </div>
     );

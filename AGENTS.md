@@ -77,7 +77,9 @@ src/
 │   ├── use-bootstrap-form-logic.test.ts # Bootstrap/Form 逻辑 hook 测试
 │   ├── use-hotkey-recorder.ts  # 热键录制交互逻辑 hook
 │   ├── use-hotkey-recorder.test.ts # 热键录制 hook 测试
-│   └── use-highlight-scroll.ts # 收藏页高亮滚动动画 hook
+│   ├── use-highlight-scroll.ts # 收藏页高亮滚动动画 hook
+│   ├── use-theme.tsx          # 主题 Context + Provider（localStorage + Tauri 双向同步 + CSS 变量注入）
+│   └── use-profile.tsx        # Profile Context + Provider（Rust 双向同步 + reloadNonce 触发工具页重挂载）
 ├── lib/
 │   ├── utils.ts                # tailwind-merge + clsx 工具函数
 │   ├── logging.ts             # 前端日志接口（initLogging、logFrontend、generateTraceId、便捷 log 对象）
@@ -130,10 +132,20 @@ src/
 │       ├── delta-account-selector.tsx # 账号选择器横条组件（按类型过滤）
 │       ├── delta-data-card.tsx      # 数据展示卡片组件（loading/error/retry 通用）
 │       └── delta-query-workbench.tsx # 查询工作台（6 种参数化 API 动态表单）
-│       ├── about-page.tsx       # 关于面板 Dialog（版本/协议/致谢/更新状态机）
+│       ├── about-page.tsx       # 关于面板（AboutPanel + AboutDialog 薄包装；版本/协议/致谢/更新状态机）
 │       ├── about-types.ts      # 关于面板 TypeScript 类型
 │       ├── about-deps.ts       # 开源库致谢列表常量
-│       └── about-deps.test.ts  # 致谢列表基础测试
+│       ├── about-deps.test.ts  # 致谢列表基础测试
+│       ├── settings-page.tsx   # 统一设置 Dialog（主题/配置/关于三 Tab，Rail 底部入口）
+│       ├── theme-panel.tsx     # 主题面板（预设/Tokens 编辑/导入导出）
+│       ├── theme-types.ts      # 主题前端类型与预设常量（BUILTIN_THEME_IDS/EDITABLE_TOKEN_KEYS/TOKEN_LABELS）
+│       ├── theme-utils.ts      # 主题纯逻辑（applyThemeTokens/mergeThemeTokens/parseImportedTheme/normalizeHex）
+│       ├── theme-utils.test.ts # 主题逻辑测试
+│       ├── theme-color-picker.tsx # 颜色选择器（Popover + react-colorful + hex 输入 + 原生色板）
+│       ├── profile-panel.tsx   # Profile 面板（列表/新建/切换/重命名/删除）
+│       ├── profile-types.ts    # Profile 前端类型（ToolSettingsSnapshot/Profile/ProfileBootstrap）
+│       ├── profile-utils.ts    # Profile 纯逻辑（formatProfileTimestamp/validateProfileName/snapshotTools）
+│       └── profile-utils.test.ts # Profile 逻辑测试
 ```
 
 ### 前端核心模式
@@ -180,6 +192,19 @@ src/
 - **Delta 账号选择器**：`DeltaAccountSelector` 按 `filterKinds` 过滤账号；当前实现会在选中账号不在过滤范围且存在匹配账号时自动切换到第一个匹配账号
 - **收藏系统**：`favorites-utils.ts` 提供 `localStorage` 收藏 ID 读写（前缀 `delta-auto-tools:favorites:<kind>`），支持
   timer/counter/rapidfire 三类卡片收藏；收藏页通过 `use-highlight-scroll` 高亮并滚动到目标卡片
+- **主题引擎**：Rust `theme/` 模块提供 5 套内置主题（industrial-light/industrial-dark/tactical-red/phosphor-green/paper-amber）
+  + 用户自定义主题 + 临时 overrides，持久化到 `theme_settings.json`；保存后 emit `theme://changed` 推送合并 token 列表。
+  前端 `useTheme()` Provider 在 native shell 调 `theme_get_bootstrap`，收到 mergedTokens 后用 `applyThemeTokens` 原子化写入
+  `document.documentElement.style`（inline style 优先级高于 `App.css` `:root`）。主题独立于 Profile，不打包进快照。
+  localStorage key `delta-auto-tools:theme:v1`。`App.css` `:root` 保持不变作为 fallback。
+- **多配置 Profile**：Rust `profile/` 模块把当前 5 份 `*_settings.json` 打包成 Profile 快照存到 `profile_settings.json`；
+  `profile_apply` 切换时先停所有运行态会话 → 写盘 5 份 settings → 逐工具 reload 内存状态（复用各工具 `pub(crate)` 的
+  `restart_hotkey_listeners`/`ensure_display_windows`/`emit_state`）→ 计数器运行值重置为 start_value 并落盘 counter_state.json
+  → 更新 active_profile_id。前端 `useProfile()` Provider 暴露 `reloadNonce`，`App.tsx` 用它作为工具页容器 `key`：
+  切换 Profile 后 nonce 自增 → 当前页 unmount（清挂起 autosave timer）→ remount（重拉新配置）。
+- **统一设置入口**：Rail 底部「关于」按钮改为「设置」（`RiSettings3Line`），打开 `SettingsDialog`（`settings-page.tsx`），
+  内含「主题 / 配置 / 关于」三 Tab。原 `AboutDialog` 重构为 `AboutPanel`（无 Dialog 包裹）+ 薄包装 `AboutDialog`，
+  `SettingsDialog` 的关于 Tab 直接复用 `AboutPanel`（props `{active: boolean}` 控制数据加载）。
 
 ## 原生代码结构
 
@@ -236,6 +261,17 @@ src-tauri/src/
 │   ├── player.rs               # 音频播放 worker（rodio + 独立线程 + 互斥/并发控制）
 │   ├── overlay.rs              # overlay 框选会话（区域监听/识色探针共用 audio-overlay label）
 │   └── settings.rs             # audio_settings.json 持久化
+├── theme/
+│   ├── mod.rs                  # ThemeState、命令注册、保存后 emit theme://changed
+│   ├── types.rs                # ThemeSettings/ThemeDefinition/ThemeTokenOverride/ThemeBootstrap 等 DTO
+│   ├── events.rs               # 主题事件名字符串常量（changed）
+│   ├── apply.rs                # 主题 token 合并纯函数（merge_theme_tokens/find_theme，供 cargo test）
+│   ├── builtins.rs             # 5 套内置主题常量（industrial-light/industrial-dark/tactical-red/phosphor-green/paper-amber）
+│   └── settings.rs             # theme_settings.json 持久化
+├── profile/
+│   ├── mod.rs                  # ProfileState、命令注册、apply_snapshot_to_tools 跨工具编排
+│   ├── types.rs                # ProfileSettings/Profile/ToolSettingsSnapshot/ProfileBootstrap 等 DTO
+│   └── settings.rs             # profile_settings.json 持久化
 └── delta/
     ├── mod.rs                  # 模块声明 + initialize()
     ├── commands.rs             # 所有 Delta Tauri commands + DTO 定义；含 with_game_auth / with_game_service 宏
@@ -276,10 +312,10 @@ src-tauri/src/
 
 - **原生入口链路**：`src-tauri/src/main.rs` → `src-tauri/src/lib.rs`
 - `lib.rs` 中的 `run()` 在 `setup` 回调中依次初始化 `morse::initialize()`、`delta::initialize()`、`audio::initialize()`、`timer::initialize()`、
-  `counter::initialize()`、`rapidfire::initialize()`、`global_state::GlobalState::new(true)` 和 `logging::init_logger()`，然后通过 `app.manage()`
+  `counter::initialize()`、`rapidfire::initialize()`、`theme::initialize()`、`profile::initialize()`、`global_state::GlobalState::new(true)` 和 `logging::init_logger()`，然后通过 `app.manage()`
   注册状态；关闭时调用 `logging::shutdown()` flush BufWriter
 - `lib.rs` 的 `generate_handler![]` 已按模块分组注释（delta / QQ鉴权 / 微信鉴权 / QQ安全中心 / 先遣服 / Wegame /
-  游戏数据 / morse / timer / counter / rapidfire / audio / strategy / global_state / logging / about），新增命令必须同步添加到这里和
+  游戏数据 / morse / timer / counter / rapidfire / audio / strategy / global_state / logging / about / theme / profile），新增命令必须同步添加到这里和
   `src-tauri/capabilities/default.json`
 
 ## Tauri commands
@@ -400,6 +436,25 @@ src-tauri/src/
 - `about_check_for_update` — 检查 GitHub Releases 是否有新版本
 - `about_download_and_install` — 下载并安装更新，通过 `about://update-progress` 事件推送进度
 
+**主题引擎**：
+
+| 命令                        | 说明                                                                                              |
+|---------------------------|-------------------------------------------------------------------------------------------------|
+| `theme_get_bootstrap`     | 获取主题初始状态（activeThemeId + builtinThemes + customThemes + overrides + mergedTokens）           |
+| `theme_save_settings`     | 保存主题设置，保存后立即 emit `theme://changed` 推送合并后的最终 token 列表给前端写入 CSS 变量              |
+| `theme_export`            | 导出指定主题为 JSON 字符串（前端用对话框保存文件）                                                      |
+| `theme_import`            | 解析导入的 JSON 为 ThemeDefinition（校验 token key 必须 `--` 开头，不直接保存，前端预览后决定）              |
+
+**多配置 Profile**：
+
+| 命令                     | 说明                                                                                        |
+|------------------------|-------------------------------------------------------------------------------------------|
+| `profile_get_bootstrap` | 获取 Profile 初始状态（profiles + activeProfileId）                                              |
+| `profile_save_current`  | 把当前 5 份 `*_settings.json` 打包成新 Profile，追加到 profiles 并设为 active                       |
+| `profile_apply`         | 切换到指定 Profile：写盘 5 份 settings → 逐工具 reload 内存状态 → 计数器运行值重置为 start_value → emit 状态 |
+| `profile_delete`        | 删除 Profile（禁止删除当前激活的）                                                              |
+| `profile_rename`        | 重命名 Profile                                                                              |
+
 **日志系统**：
 
 - `log_write_frontend` — 前端日志写入（接收 FrontendLogRequest）
@@ -448,7 +503,8 @@ src-tauri/src/
 - 透明窗口和位置设置窗口属于游戏叠加层，可以保留深色半透明 overlay 风格；不要套用主界面的白色卡片背景，也不要破坏无边框、透明、置顶、点击穿透约束。
 - 设计改动必须保持功能不变：不要为了重构 UI 改 Tauri command 名称、查询参数 mode、状态机、保存逻辑或原生窗口 label。
 - 新增复杂 UI 前先检查 `src/components/ui/*` 已安装组件和 `components.json` 配置；已有 shadcn/ui 组件能组合解决时，不新增第三方
-  UI 依赖。
+  UI 依赖。主题引擎的颜色选择器是已批准的例外：使用 `react-colorful`（~3KB，零样式依赖）+ `Popover` + 原生 `<input type="color">`
+  组合，封装在 `src/components/app/theme-color-picker.tsx`，不引入 shadcn 官方 color-picker。
 
 ## Frontend conventions
 
@@ -891,9 +947,17 @@ Morse 通过 Tauri events 通知前端（emit_to "main"）：
 - `"about://update-progress"` — 更新进度推送 `UpdateProgress`
   （checking/notAvailable/available/downloading/downloaded/installing/installed/error）
 
+主题引擎事件：
+
+- `"theme://changed"` — 保存主题设置后推送合并后的最终 token 列表（`ThemeTokenOverride[]`），前端 listener 收到后遍历 token 调用 `document.documentElement.style.setProperty` 覆盖 CSS 变量
+
+多配置 Profile 事件：
+
+- `"profile://changed"` — Profile 列表或激活 id 变更时推送 `ProfileBootstrap`（当前 Profile 模块未主动 emit，前端通过命令返回值刷新）
+
 前端通过 `listen()` from `@tauri-apps/api/event` 订阅这些事件。为避免事件名硬编码，后端在 `morse/events.rs`、
-`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义
-`MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` 和类型安全的 `listenEvent<T>`
+`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs`、`theme/events.rs` 定义字符串常量，前端在 `src/lib/tauri-events.ts` 定义
+`MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS` 和类型安全的 `listenEvent<T>`
 helper。
 
 ## Overlay 状态机
@@ -926,6 +990,8 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - `src/hooks/use-hotkey-recorder.test.ts` — 热键录制交互逻辑 hook 测试
 - `src/hooks/use-autosave.test.ts` — Autosave debounce 逻辑 hook 测试
 - `src/lib/logging.test.ts` — 前端日志接口测试（generateTraceId 格式/唯一性、setTraceId/clearTraceId 状态切换、logFrontend 参数序列化、非 native shell 不调用 invoke）
+- `src/components/app/theme-utils.test.ts` — 主题纯逻辑测试（mergeThemeTokens/findTheme/applyThemeTokens/parseImportedTheme/serializeThemeForExport/normalizeHex）
+- `src/components/app/profile-utils.test.ts` — Profile 纯逻辑测试（formatProfileTimestamp/validateProfileName/findProfile/snapshotTools/countIncludedTools/isActiveProfile）
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ### Rust 测试（cargo test）
@@ -945,6 +1011,14 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - `src-tauri/src/logging/format.rs` — 测试格式化输出字段顺序、宽度、截断规则
 - `src-tauri/src/logging/writer.rs` — 测试按天轮转、清理策略（tempdir）、级别过滤和模块级覆盖
 - `src-tauri/src/logging/mod.rs` — 测试 session_id 生成一致性、TraceContext set/get/clear、FrontendLogRequest 反序列化、LogSettings 序列化往返
+- `src-tauri/src/theme/types.rs` — 测试 ThemeSettings 默认值、camelCase 序列化、往返与缺字段回落
+- `src-tauri/src/theme/builtins.rs` — 测试内置主题数量为 5、id 唯一、token key 集合一致、industrial-light 与 App.css :root 一致、所有 key 以 `--` 开头
+- `src-tauri/src/theme/apply.rs` — 测试 merge_theme_tokens（无 overrides/覆盖/追加/保留顺序/重复 overrides 后写胜出）与 find_theme
+- `src-tauri/src/theme/mod.rs` — 测试 build_bootstrap（默认/应用 overrides/active_id 缺失回退）、theme_import（合法 JSON 与非法 key 拒绝）、export_theme
+- `src-tauri/src/theme/settings.rs` — 测试 load 缺失返回默认、读写往返
+- `src-tauri/src/profile/types.rs` — 测试 ToolSettingsSnapshot::empty、ProfileSettings 默认值、Profile camelCase 序列化、往返与缺字段默认
+- `src-tauri/src/profile/settings.rs` — 测试 load 缺失返回默认、读写往返
+- `src-tauri/src/profile/mod.rs` — 测试 generate_profile_id 唯一性、build_bootstrap 默认与含 profiles、empty snapshot
 
 ### GameService 测试模式
 
@@ -1058,7 +1132,9 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
 - `GameService` 的弹药/配件配置已内联在 `game_config.rs`，**不需要**仓库根目录下的 `ammo.php` / `accessory.php`
 - 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` + `delta-utils.ts` +
   `delta-types.ts` + `delta-login-utils.ts` + `delta-game-data-loader.ts` + `use-bootstrap-form-logic.ts` +
-  `use-hotkey-recorder.ts` + `use-autosave.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
+  `use-hotkey-recorder.ts` + `use-autosave.ts` + `theme-utils.ts` + `profile-utils.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
+- localStorage 偏好 key 统一前缀 `delta-auto-tools:`：`global-enabled` / `favorites:v1` / `strategy:*` /
+  `theme:v1`（主题 fallback）；Rust 持久化 `theme_settings.json` 与 `profile_settings.json` 在 `app_config_dir()`
 - 新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和
   `src-tauri/capabilities/default.json`
 - 仓库根目录的 `ammo.json` 和 `accessory.json`（`resources/` 下）为空数组，未被实际使用

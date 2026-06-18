@@ -17,12 +17,18 @@ import {useNativeShell} from "@/hooks/use-native-shell";
 import {cn} from "@/lib/utils";
 import {getLogSettings, setLogSettings as saveLogSettings, type LogSettings, type FrontendLogLevel} from "@/lib/logging";
 
-type AboutDialogProps = {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
+type AboutPanelProps = {
+    /** 是否处于激活状态（设置 Dialog 打开且当前 Tab 为「关于」）。激活时才拉取数据。 */
+    active: boolean;
 };
 
-export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
+/**
+ * 关于面板内容：版本 / 更新状态 / 日志级别 / 协议 / 致谢。
+ *
+ * 原 AboutDialog 的逻辑拆出，可在 SettingsDialog 的「关于」Tab 内复用，
+ * 也可被 AboutDialog 薄包装继续作为独立 Dialog 使用。
+ */
+export function AboutPanel({active}: AboutPanelProps) {
     const isNativeShell = useNativeShell();
     const [bootstrap, setBootstrap] = useState<AboutBootstrap | null>(null);
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -31,7 +37,7 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
     const [logSettings, setLogSettings] = useState<LogSettings | null>(null);
 
     useEffect(() => {
-        if (!open || !isNativeShell) return;
+        if (!active || !isNativeShell) return;
         let disposed = false;
         void invoke<AboutBootstrap>("about_get_bootstrap").then((data) => {
             if (disposed) return;
@@ -40,10 +46,10 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
         return () => {
             disposed = true;
         };
-    }, [open, isNativeShell]);
+    }, [active, isNativeShell]);
 
     useEffect(() => {
-        if (!open || !isNativeShell) return;
+        if (!active || !isNativeShell) return;
         let disposed = false;
         void getLogSettings().then((settings) => {
             if (disposed) return;
@@ -52,10 +58,10 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
         return () => {
             disposed = true;
         };
-    }, [open, isNativeShell]);
+    }, [active, isNativeShell]);
 
     useEffect(() => {
-        if (!open || !isNativeShell) return;
+        if (!active || !isNativeShell) return;
         let disposed = false;
         let unlisten: (() => void) | undefined;
         void listenEvent(ABOUT_EVENTS.updateProgress, (event) => {
@@ -68,7 +74,7 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
             disposed = true;
             unlisten?.();
         };
-    }, [open, isNativeShell]);
+    }, [active, isNativeShell]);
 
     const handleCheck = useCallback(async () => {
         if (!isNativeShell) return;
@@ -147,20 +153,10 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
     })();
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>
-                        {bootstrap ? bootstrap.name.toUpperCase() : "DELTA AUTO TOOLS"} / 关于
-                    </DialogTitle>
-                    <DialogDescription>
-                        软件版本、开源协议与更新信息
-                    </DialogDescription>
-                </DialogHeader>
-
-                {/* 版本信息 */}
-                <div className="grid gap-2 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3">
-                    <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col gap-3">
+            {/* 版本信息 */}
+            <div className="grid gap-2 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3">
+                <div className="flex flex-wrap items-center gap-3">
             <span
                 className="font-heading text-[clamp(1.5rem,4vw,3rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
               {bootstrap?.version ?? "—"}
@@ -337,6 +333,31 @@ export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
                         ))}
                     </div>
                 </FieldUnit>
+        </div>
+    );
+}
+
+type AboutDialogProps = {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+};
+
+/**
+ * 关于 Dialog：保留为独立入口（向后兼容），内部直接渲染 AboutPanel。
+ *
+ * 新的统一设置入口请使用 SettingsDialog（含主题/配置/关于三 Tab）。
+ */
+export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>关于</DialogTitle>
+                    <DialogDescription>
+                        软件版本、开源协议与更新信息
+                    </DialogDescription>
+                </DialogHeader>
+                <AboutPanel active={open}/>
             </DialogContent>
         </Dialog>
     );
