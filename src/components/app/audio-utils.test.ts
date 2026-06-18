@@ -193,6 +193,64 @@ describe("audio-utils", () => {
             expect(merged.cards[0].audioFilePath).toBe("local.mp3");
             expect(merged.cards[0].watchRegion).toEqual({x: 10, y: 20, width: 30, height: 40});
         });
+
+        it("merges backend color probe region without overwriting local color/tolerance", () => {
+            // 本地 form：探针已设颜色/容差但 region 尚未框选（null）
+            const current = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "识色",
+                        enabled: true,
+                        triggerMode: "colorWatch" as const,
+                        hotkey: "",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFilePath: "a.mp3",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [
+                            {
+                                region: null,
+                                targetColor: "#c86432",
+                                tolerance: "40",
+                            },
+                        ],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            // 后端：探针 region 已被框选提交（10,20,5x5）
+            const merged = mergeAudioWatchRegionsIntoForm(current, {
+                audioEnabled: true,
+                cards: [
+                    {
+                        ...DEFAULT_AUDIO_CARD,
+                        id: "c1",
+                        name: "识色",
+                        triggerMode: "colorWatch",
+                        colorProbes: [
+                            {
+                                region: {x: 10, y: 20, width: 5, height: 5},
+                                targetColor: [200, 100, 50] as [number, number, number],
+                                tolerance: 40,
+                            },
+                        ],
+                        colorMatchMode: "all",
+                    },
+                ],
+            });
+
+            // region 被后端回写
+            expect(merged.cards[0].colorProbes[0].region).toEqual({x: 10, y: 20, width: 5, height: 5});
+            // 本地草稿（颜色/容差）保留，不被后端覆盖
+            expect(merged.cards[0].colorProbes[0].targetColor).toBe("#c86432");
+            expect(merged.cards[0].colorProbes[0].tolerance).toBe("40");
+        });
     });
 
     describe("colorWatch settingsToForm", () => {

@@ -143,23 +143,46 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [setForm],
     );
 
+    // 操作前强制把当前 form 落盘到后端内存：避免「新建卡片/改字段后未等 400ms autosave 落地就调后端命令」
+    // 导致后端按 cardId 查不到卡或读到旧字段（「卡片不存在」/「只有识色模式才可测试」）。
+    // 直接 invoke save 命令、不经 useBootstrapForm.saveSettings，不重置前端 form 草稿；
+    // 失败（如必填项缺失）时 toast 提示并抛出带标记的 Error，让调用方中断后续命令且不重复弹窗。
+    const flushSettings = useCallback(async (): Promise<void> => {
+        if (!isNativeShell || !form) return;
+        try {
+            await invoke(AUDIO_BOOTSTRAP_SPEC.saveSettingsCommand, {
+                settingsValue: parseSettingsForm(form),
+            });
+        } catch (error) {
+            const message = getErrorMessage(error);
+            toast.error(`保存设置失败：${message}`);
+            // 用带标记的 Error 抛出，调用方通过 name 判定避免重复弹窗
+            const wrapped = new Error(message);
+            wrapped.name = "FlushSettingsError";
+            throw wrapped;
+        }
+    }, [isNativeShell, form]);
+
     const handleTestPlay = useCallback(
         async (cardId: string) => {
             if (!isNativeShell) return;
             try {
+                await flushSettings();
                 await invoke("audio_test_play", {cardId});
                 toast.success("播放测试已触发");
             } catch (error) {
+                if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell],
+        [isNativeShell, flushSettings],
     );
 
     const handleTestMatch = useCallback(
         async (cardId: string) => {
             if (!isNativeShell) return;
             try {
+                await flushSettings();
                 type TestMatchResult = { similarity: number; triggered: boolean; matchPosition: { x: number; y: number } | null };
                 const result = await invoke<TestMatchResult>("audio_test_match", {cardId});
                 const pos = result.matchPosition ? ` (位置: ${result.matchPosition.x}, ${result.matchPosition.y})` : "";
@@ -167,22 +190,25 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                     `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}${pos}`
                 );
             } catch (error) {
+                if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell],
+        [isNativeShell, flushSettings],
     );
 
     const handleBeginRegionSelection = useCallback(
-        async (cardId: string) => {
+        async (cardId: string, probeIndex?: number) => {
             if (!isNativeShell) return;
             try {
-                await invoke("audio_begin_region_selection", {cardId});
+                await flushSettings();
+                await invoke("audio_begin_region_selection", {cardId, probeIndex});
             } catch (error) {
+                if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell],
+        [isNativeShell, flushSettings],
     );
 
     const handleTestColorMatch = useCallback(
@@ -202,6 +228,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 probes: ColorProbeResult[];
             };
             try {
+                await flushSettings();
                 const result = await invoke<ColorTestResult>("audio_test_color_match", {cardId});
                 const detail = result.probes
                     .map((p, i) => `#${i + 1}: ${p.matched ? "命中" : "未中"} (采样 #${p.sampledColor.map((v) => v.toString(16).padStart(2, "0")).join("")} 距离 ${p.distance.toFixed(1)})`)
@@ -209,10 +236,11 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 const summary = `识色: ${result.hitCount}/${result.totalCount} 命中 ${result.triggered ? "(已触发)" : "(未触发)"}`;
                 toast.success(`${summary}\n${detail}`, {duration: 6000});
             } catch (error) {
+                if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell],
+        [isNativeShell, flushSettings],
     );
 
     const handleAddColorProbe = useCallback(
@@ -384,7 +412,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onRemove={() => handleRemoveCard(index)}
                             onTestPlay={() => handleTestPlay(card.id)}
                             onTestMatch={() => handleTestMatch(card.id)}
-                            onBeginRegionSelection={() => handleBeginRegionSelection(card.id)}
+                            onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
                             onPickReferenceImage={() => handlePickReferenceImage(index)}
                             onPickAudioFile={() => handlePickAudioFile(index)}
                             onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
@@ -431,7 +459,7 @@ function AudioCardEditor({
     onRemove: () => void;
     onTestPlay: () => void;
     onTestMatch: () => void;
-    onBeginRegionSelection: () => void;
+    onBeginRegionSelection: (probeIndex?: number) => void;
     onPickReferenceImage: () => void;
     onPickAudioFile: () => void;
     onLoadReferencePreview: () => Promise<string | null>;
@@ -543,7 +571,7 @@ function AudioCardEditor({
                             <FieldLabel>监听区域</FieldLabel>
                             <FieldContent>
                                 <div className="flex items-center gap-2">
-                                    <Button variant="secondary" size="sm" onClick={onBeginRegionSelection}
+                                    <Button variant="secondary" size="sm" onClick={() => onBeginRegionSelection()}
                                             data-icon="inline-start">
                                         <RiVolumeUpLine className="size-4" aria-hidden="true"/>
                                         {card.watchRegion ? "重新框选" : "框选区域"}
@@ -673,7 +701,7 @@ function AudioCardEditor({
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
-                                                onClick={onBeginRegionSelection}
+                                                onClick={() => onBeginRegionSelection(probeIndex)}
                                                 data-icon="inline-start"
                                             >
                                                 <RiVolumeUpLine className="size-4" aria-hidden="true"/>
@@ -853,6 +881,13 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
 export function AudioRegionOverlay() {
     const params = useMemo(() => new URLSearchParams(window.location.search), []);
     const cardId = params.get("audio_card") ?? "";
+    // 识色模式探针框选时透传的探针索引；区域监听模式为 null
+    const probeIndex = useMemo(() => {
+        const raw = params.get("probe_index");
+        if (raw === null) return undefined;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isNaN(parsed) ? undefined : parsed;
+    }, [params]);
 
     const [dragStart, setDragStart] = useState<Point | null>(null);
     const [dragCurrent, setDragCurrent] = useState<Point | null>(null);
@@ -894,12 +929,12 @@ export function AudioRegionOverlay() {
         setSubmitting(true);
         setStatusMessage("正在提交...");
         try {
-            await invoke("audio_overlay_submit_selection", {cardId, region: rect});
+            await invoke("audio_overlay_submit_selection", {cardId, probeIndex, region: rect});
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
             setSubmitting(false);
         }
-    }, [cardId, committedRect, submitting]);
+    }, [cardId, probeIndex, committedRect, submitting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

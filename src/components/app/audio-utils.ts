@@ -160,7 +160,19 @@ export function mergeAudioWatchRegionsIntoForm(
         ...current,
         cards: current.cards.map((card) => {
             const remote = byId.get(card.id);
-            return remote ? {...card, watchRegion: remote.watchRegion} : card;
+            if (!remote) {
+                return card;
+            }
+            // 识色探针区域回写：仅同步后端有值的探针 region 坐标，
+            // 本地 targetColor/tolerance 草稿保留不被覆盖。
+            const mergedProbes = card.colorProbes.map((probe, i) => {
+                const remoteProbe = remote.colorProbes[i];
+                if (remoteProbe && remoteProbe.region) {
+                    return {...probe, region: remoteProbe.region};
+                }
+                return probe;
+            });
+            return {...card, watchRegion: remote.watchRegion, colorProbes: mergedProbes};
         }),
     };
 }

@@ -160,6 +160,7 @@ pub async fn audio_begin_region_selection(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioState>,
     card_id: String,
+    probe_index: Option<usize>,
 ) -> Result<(), AppError> {
     let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
     if !inner.settings.audio_enabled {
@@ -176,6 +177,15 @@ pub async fn audio_begin_region_selection(
 
     if !card.enabled {
         return Err(AppError::from("卡片未启用".to_string()));
+    }
+
+    // 识色模式传了 probe_index 时，校验探针索引有效
+    if let Some(idx) = probe_index {
+        if matches!(card.trigger_mode, types::AudioTriggerMode::ColorWatch)
+            && idx >= card.color_probes.len()
+        {
+            return Err(AppError::from("探针索引越界".to_string()));
+        }
     }
     drop(inner);
 
@@ -200,16 +210,19 @@ pub async fn audio_begin_region_selection(
         })
         .unwrap_or((0, 0, 1920, 1080));
 
+    // 识色探针框选时把 probe_index 透传给 overlay，提交时回传定位探针
+    let mut url = format!(
+        "index.html?mode=audio-overlay&audio_card={}",
+        encoded_query_value(&card_id)
+    );
+    if let Some(idx) = probe_index {
+        url.push_str(&format!("&probe_index={idx}"));
+    }
+
     let window = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
-        tauri::WebviewUrl::App(
-            format!(
-                "index.html?mode=audio-overlay&audio_card={}",
-                encoded_query_value(&card_id)
-            )
-                .into(),
-        ),
+        tauri::WebviewUrl::App(url.into()),
     )
         .title("音频区域选择")
         .decorations(false)
@@ -237,6 +250,7 @@ pub async fn audio_overlay_submit_selection(
     state: tauri::State<'_, AudioState>,
     card_id: String,
     region: RegionRect,
+    probe_index: Option<usize>,
 ) -> Result<(), AppError> {
     // 关闭 overlay 窗口
     let overlay_label = format!("{}-{}", AUDIO_OVERLAY_LABEL, safe_label_component(&card_id));
@@ -248,7 +262,21 @@ pub async fn audio_overlay_submit_selection(
         let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
             return Err(AppError::from("卡片不存在".to_string()));
         };
-        card.watch_region = Some(region);
+
+        // 识色模式 + probe_index：写到指定探针的 region；否则写 watch_region（区域监听模式）
+        if let Some(idx) = probe_index {
+            if matches!(card.trigger_mode, types::AudioTriggerMode::ColorWatch) {
+                let probe = card
+                    .color_probes
+                    .get_mut(idx)
+                    .ok_or_else(|| AppError::from("探针已变更，请重新框选".to_string()))?;
+                probe.region = region;
+            } else {
+                card.watch_region = Some(region);
+            }
+        } else {
+            card.watch_region = Some(region);
+        }
         settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
         (inner.settings.clone(), AudioLogic::build_bootstrap(&inner), inner.logic.playback_tx.clone())
     };
