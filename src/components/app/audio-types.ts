@@ -16,6 +16,12 @@ export type ColorProbeForm = {
 
 export type AudioTriggerMode = "hotkey" | "regionWatch" | "colorWatch";
 
+/// 音频播放方式：叠加在触发模式之上的文件选择策略。
+/// - single：单文件
+/// - combo：连杀（窗口内按序递增，末首后保持，超时复位第一首）
+/// - random：随机（不重复上一次）
+export type AudioPlayMode = "single" | "combo" | "random";
+
 export type AudioCard = {
     id: string;
     name: string;
@@ -26,7 +32,9 @@ export type AudioCard = {
     watchReferenceImagePath: string | null;
     watchMatchThreshold: number;
     watchPollIntervalMs: number;
-    audioFilePath: string;
+    audioFiles: string[];
+    playMode: AudioPlayMode;
+    comboWindowMs: number;
     volume: number;
     cooldownMs: number;
     allowSimultaneous: boolean;
@@ -59,7 +67,9 @@ export type AudioCardForm = {
     watchReferenceImagePath: string;
     watchMatchThreshold: string;
     watchPollIntervalMs: string;
-    audioFilePath: string;
+    audioFiles: string[];
+    playMode: AudioPlayMode;
+    comboWindowMs: string;
     volume: string;
     cooldownMs: string;
     allowSimultaneous: boolean;
@@ -77,7 +87,9 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     watchReferenceImagePath: null,
     watchMatchThreshold: 0.75,
     watchPollIntervalMs: 500,
-    audioFilePath: "",
+    audioFiles: [],
+    playMode: "single",
+    comboWindowMs: 60000,
     volume: 0.8,
     cooldownMs: 1000,
     allowSimultaneous: false,

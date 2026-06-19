@@ -75,9 +75,89 @@ pub struct ColorTestResult {
 pub struct AudioLogic {
     /// 音频播放线程的命令发送端
     pub playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
+    /// 连杀/随机播放的 per-card 运行时状态（纯内存，重启归零，不持久化）。
+    pub play_states: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PlayState>>>,
 }
 
 pub type AudioState = ToolState<AudioLogic>;
+
+/// 连杀/随机播放的卡片级运行时状态。
+/// - current_index：连杀当前播放到第几个文件
+/// - last_trigger_at：上一次触发时刻（连杀窗口起算点）
+/// - last_random_index：随机上一次选中的索引（避免连续重复）
+#[derive(Debug, Clone, Default)]
+pub struct PlayState {
+    pub current_index: usize,
+    pub last_trigger_at: Option<std::time::Instant>,
+    pub last_random_index: Option<usize>,
+}
+
+/// 随机数抖动计数器（无依赖的轻量随机源，仿 rapidfire::press_jitter_duration_ms）。
+static AUDIO_RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// 在 [0, len) 范围内取一个伪随机索引，可排除 `exclude` 指定的索引。
+/// len==1 时直接返回 0（无法排除）。
+fn random_index(len: usize, exclude: Option<usize>) -> usize {
+    if len <= 1 {
+        return 0;
+    }
+    let counter = AUDIO_RANDOM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| u64::from(d.subsec_nanos()))
+        .unwrap_or(0);
+    let mut pick = ((nanos ^ counter.rotate_left(13)) as usize) % len;
+    if Some(pick) == exclude {
+        // 与上一次重复：顺移到下一个索引
+        pick = (pick + 1) % len;
+    }
+    pick
+}
+
+/// 按播放方式选择要播放的音频文件路径，并就地更新 PlayState。
+///
+/// - Single：直接返回 files[0]，不动 state。
+/// - Combo：距上次触发 < combo_window_ms → current_index+1（封顶末首）；否则复位 0。
+/// - Random：随机选一个，避免与上一次重复（记录 last_random_index）。
+///
+/// `now` 由调用方注入，便于单测控制时间。调用前应保证 files 非空。
+pub(crate) fn pick_audio_file(
+    files: &[String],
+    mode: types::PlayMode,
+    combo_window_ms: u32,
+    state: &mut PlayState,
+    now: std::time::Instant,
+) -> String {
+    if files.is_empty() {
+        return String::new();
+    }
+    if files.len() == 1 || mode == types::PlayMode::Single {
+        return files[0].clone();
+    }
+    match mode {
+        types::PlayMode::Single => files[0].clone(),
+        types::PlayMode::Combo => {
+            let last_index = files.len() - 1;
+            let in_window = match state.last_trigger_at {
+                Some(last) => now.duration_since(last) < std::time::Duration::from_millis(combo_window_ms as u64),
+                None => false, // 首次触发不在窗口内 → 走复位分支播第一首
+            };
+            if in_window {
+                state.current_index = (state.current_index + 1).min(last_index);
+            } else {
+                state.current_index = 0;
+            }
+            state.last_trigger_at = Some(now);
+            files[state.current_index].clone()
+        }
+        types::PlayMode::Random => {
+            let pick = random_index(files.len(), state.last_random_index);
+            state.last_random_index = Some(pick);
+            state.last_trigger_at = Some(now);
+            files[pick].clone()
+        }
+    }
+}
 
 impl ToolLogic for AudioLogic {
     type Settings = AudioSettings;
@@ -303,24 +383,11 @@ pub async fn audio_test_play(
     card_id: String,
 ) -> Result<(), AppError> {
     let (path, volume, allow_simultaneous, playback_tx) = {
-        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        let card = inner
-            .settings
-            .cards
-            .iter()
-            .find(|c| c.id == card_id)
-            .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
-
-        if card.audio_file_path.is_empty() {
-            return Err(AppError::from("未设置音频文件路径".to_string()));
-        }
-
-        (
-            card.audio_file_path.clone(),
-            card.volume,
-            card.allow_simultaneous,
-            inner.logic.playback_tx.clone(),
-        )
+        let inner = state.lock_inner().map_err(AppError::from)?;
+        let playback_tx = inner.logic.playback_tx.clone();
+        let resolved = resolve_audio_path(&inner, &card_id, std::time::Instant::now())
+            .map_err(AppError::from)?;
+        (resolved.path, resolved.volume, resolved.allow_simultaneous, playback_tx)
     };
 
     // 通过协调器播放音频
@@ -512,6 +579,67 @@ pub(crate) fn restart_hotkey_listeners(hotkey_manager: &HotkeyManager, settings:
     Ok(())
 }
 
+/// 一次解析播放的必要字段：选定的文件路径 + 卡片音量与并发策略。
+pub(crate) struct ResolvedPlay {
+    pub path: String,
+    pub volume: f32,
+    pub allow_simultaneous: bool,
+}
+
+/// 为指定卡片按播放方式（Single/Combo/Random）选出本次要播放的音频文件路径，
+/// 并就地更新 `play_states`。调用方需持 `AudioState` 的 inner 锁；本函数内部会再锁 play_states。
+///
+/// 锁序：先 inner（ToolStateInner），后 play_states —— 全路径一致，无反向加锁，无死锁风险。
+fn resolve_audio_path(
+    inner: &ToolStateInner<AudioLogic>,
+    card_id: &str,
+    now: std::time::Instant,
+) -> Result<ResolvedPlay, String> {
+    let card = inner
+        .settings
+        .cards
+        .iter()
+        .find(|c| c.id == card_id)
+        .ok_or_else(|| "卡片不存在".to_string())?
+        .clone();
+    if !card.enabled {
+        return Err("卡片未启用".to_string());
+    }
+    if card.audio_files.is_empty() {
+        return Err("未设置音频文件路径".to_string());
+    }
+    let path = {
+        let mut states = inner
+            .logic
+            .play_states
+            .lock()
+            .map_err(|e| e.to_string())?;
+        let state = states.entry(card_id.to_string()).or_default();
+        pick_audio_file(&card.audio_files, card.play_mode, card.combo_window_ms, state, now)
+    };
+    Ok(ResolvedPlay {
+        path,
+        volume: card.volume,
+        allow_simultaneous: card.allow_simultaneous,
+    })
+}
+
+/// watcher 命中时的播放解析入口：锁 AudioState inner 后调 resolve_audio_path，
+/// 选出本次要播放的文件并更新 play_states。命中失败（卡片禁用/空文件）时返回 None。
+///
+/// 锁序：先 inner（ToolStateInner），后 play_states —— 与 trigger_audio_play 一致。
+pub(crate) fn resolve_play_for_card(
+    app: &tauri::AppHandle,
+    card_id: &str,
+) -> Option<ResolvedPlay> {
+    let state = app.state::<AudioState>();
+    let inner = state.lock_inner().ok()?;
+    if !inner.settings.audio_enabled {
+        return None;
+    }
+    resolve_audio_path(&inner, card_id, std::time::Instant::now()).ok()
+}
+
 fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), String> {
     let state = app.state::<AudioState>();
     let inner = state.lock_inner()?;
@@ -520,23 +648,17 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
         return Ok(());
     }
 
-    let card = inner
-        .settings
-        .cards
-        .iter()
-        .find(|c| c.id == card_id)
-        .ok_or_else(|| "卡片不存在".to_string())?;
-
-    if !card.enabled || card.audio_file_path.is_empty() {
-        eprintln!("[音频] 触发播放跳过：卡片未启用或音频路径为空 (card_id={card_id})");
-        return Ok(());
-    }
-
-    let path = card.audio_file_path.clone();
-    let volume = card.volume;
-    let allow_simultaneous = card.allow_simultaneous;
     let playback_tx = inner.logic.playback_tx.clone();
+    let resolved = resolve_audio_path(&inner, card_id, std::time::Instant::now());
     drop(inner);
+
+    let ResolvedPlay { path, volume, allow_simultaneous } = match resolved {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[音频] 触发播放跳过：{e} (card_id={card_id})");
+            return Ok(());
+        }
+    };
 
     eprintln!("[音频] 快捷键触发播放: card_id={card_id}, path={path}, volume={volume}, simultaneous={allow_simultaneous}");
 
@@ -566,7 +688,12 @@ pub fn initialize(
     // 启动区域监听 watcher
     let _ = watcher::restart_watchers(app, &settings, playback_tx.clone());
 
-    let logic = AudioLogic { playback_tx };
+    let logic = AudioLogic {
+        playback_tx,
+        play_states: std::sync::Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
+    };
 
     Ok(AudioState::new(logic, settings))
 }
@@ -587,8 +714,8 @@ pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
 pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
     let mut cards = settings.cards;
 
-    // 确保每张卡片有唯一 ID
     for card in &mut cards {
+        // 确保每张卡片有唯一 ID
         if card.id.is_empty() {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -596,10 +723,231 @@ pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
                 .as_millis();
             card.id = format!("audio-{now}");
         }
+
+        // 迁移旧单值 audioFilePath → audio_files 单元素数组
+        if card.audio_files.is_empty() {
+            if let Some(legacy) = card.legacy_audio_file_path.take() {
+                if !legacy.is_empty() {
+                    card.audio_files = vec![legacy];
+                }
+            }
+        } else {
+            // 已有 audio_files 时清掉兼容字段（避免后续误用）
+            card.legacy_audio_file_path = None;
+        }
     }
 
     AudioSettings {
         audio_enabled: settings.audio_enabled,
         cards,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn files(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn pick_single_returns_first_file_unchanged() {
+        let f = files(&["a.mp3", "b.mp3"]);
+        let mut state = PlayState::default();
+        let now = Instant::now();
+        let path = pick_audio_file(&f, types::PlayMode::Single, 60000, &mut state, now);
+        assert_eq!(path, "a.mp3");
+        // Single 不更新连杀状态
+        assert_eq!(state.current_index, 0);
+        assert!(state.last_trigger_at.is_none());
+    }
+
+    #[test]
+    fn pick_single_with_single_file_returns_first() {
+        let f = files(&["only.mp3"]);
+        let mut state = PlayState::default();
+        let path = pick_audio_file(&f, types::PlayMode::Single, 60000, &mut state, Instant::now());
+        assert_eq!(path, "only.mp3");
+    }
+
+    #[test]
+    fn pick_combo_first_trigger_plays_first_file() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let mut state = PlayState::default();
+        let now = Instant::now();
+        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, now);
+        assert_eq!(path, "a.mp3");
+        assert_eq!(state.current_index, 0);
+        assert_eq!(state.last_trigger_at, Some(now));
+    }
+
+    #[test]
+    fn pick_combo_within_window_advances_index() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let t0 = Instant::now();
+        let mut state = PlayState::default();
+        // 第一次触发 → 第 0 首
+        pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0);
+        // 30s 后（窗口内）第二次 → 第 1 首
+        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(30));
+        assert_eq!(path, "b.mp3");
+        assert_eq!(state.current_index, 1);
+    }
+
+    #[test]
+    fn pick_combo_at_last_index_holds_within_window() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let t0 = Instant::now();
+        let mut state = PlayState::default();
+        state.current_index = 2; // 已在末首
+        state.last_trigger_at = Some(t0);
+        // 窗口内再触发 → 保持末首（不越界）
+        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(10));
+        assert_eq!(path, "c.mp3");
+        assert_eq!(state.current_index, 2);
+    }
+
+    #[test]
+    fn pick_combo_after_window_resets_to_first() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let t0 = Instant::now();
+        let mut state = PlayState::default();
+        state.current_index = 2; // 已在末首
+        state.last_trigger_at = Some(t0);
+        // 61s 后（超时）→ 复位第 0 首
+        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_millis(61000));
+        assert_eq!(path, "a.mp3");
+        assert_eq!(state.current_index, 0);
+    }
+
+    #[test]
+    fn pick_combo_full_sequence_advances_then_resets() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let mut state = PlayState::default();
+        let t0 = Instant::now();
+        let p1 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0);
+        let p2 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(10));
+        let p3 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(20));
+        let p4 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(30));
+        assert_eq!(p1, "a.mp3");
+        assert_eq!(p2, "b.mp3");
+        assert_eq!(p3, "c.mp3");
+        assert_eq!(p4, "c.mp3"); // 末首后窗口内保持
+        // 超时复位
+        let p5 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(100));
+        assert_eq!(p5, "a.mp3");
+    }
+
+    #[test]
+    fn pick_random_single_file_returns_only_file() {
+        let f = files(&["only.mp3"]);
+        let mut state = PlayState::default();
+        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        assert_eq!(path, "only.mp3");
+    }
+
+    #[test]
+    fn pick_random_does_not_repeat_last_index() {
+        let f = files(&["a.mp3", "b.mp3"]);
+        let mut state = PlayState::default();
+        // 上一次选了 0，下次必须不选 0 → 只能是 1
+        state.last_random_index = Some(0);
+        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        assert_eq!(path, "b.mp3");
+        assert_eq!(state.last_random_index, Some(1));
+    }
+
+    #[test]
+    fn pick_random_first_call_without_last_picks_any() {
+        let f = files(&["a.mp3", "b.mp3"]);
+        let mut state = PlayState::default();
+        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        assert!(path == "a.mp3" || path == "b.mp3");
+        assert!(state.last_random_index.is_some());
+        assert!(state.last_trigger_at.is_some());
+    }
+
+    #[test]
+    fn pick_random_three_files_never_consecutively_same() {
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let mut state = PlayState::default();
+        let mut last = None;
+        for _ in 0..20 {
+            let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+            if let Some(prev) = last {
+                assert_ne!(path, prev, "随机不应连续两次相同");
+            }
+            last = Some(path);
+        }
+    }
+
+    #[test]
+    fn pick_empty_files_returns_empty_string() {
+        let f: Vec<String> = vec![];
+        let mut state = PlayState::default();
+        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, Instant::now());
+        assert_eq!(path, "");
+    }
+
+    #[test]
+    fn normalize_migrates_legacy_audio_file_path_to_audio_files() {
+        let settings = AudioSettings {
+            audio_enabled: true,
+            cards: vec![types::AudioCard {
+                id: "c1".into(),
+                name: "旧卡".into(),
+                enabled: true,
+                trigger_mode: types::AudioTriggerMode::Hotkey,
+                hotkey: Some("Ctrl+F1".into()),
+                watch_region: None,
+                watch_reference_image_path: None,
+                watch_match_threshold: 0.75,
+                watch_poll_interval_ms: 500,
+                audio_files: vec![],
+                legacy_audio_file_path: Some("old.mp3".into()),
+                play_mode: types::PlayMode::Single,
+                combo_window_ms: 60000,
+                volume: 0.8,
+                cooldown_ms: 1000,
+                allow_simultaneous: false,
+                color_probes: vec![],
+                color_match_mode: types::ColorMatchMode::All,
+            }],
+        };
+        let normalized = normalize_settings(settings);
+        assert_eq!(normalized.cards[0].audio_files, vec!["old.mp3".to_string()]);
+        assert!(normalized.cards[0].legacy_audio_file_path.is_none());
+    }
+
+    #[test]
+    fn normalize_keeps_existing_audio_files_and_clears_legacy() {
+        let settings = AudioSettings {
+            audio_enabled: true,
+            cards: vec![types::AudioCard {
+                id: "c1".into(),
+                name: "新卡".into(),
+                enabled: true,
+                trigger_mode: types::AudioTriggerMode::Hotkey,
+                hotkey: None,
+                watch_region: None,
+                watch_reference_image_path: None,
+                watch_match_threshold: 0.75,
+                watch_poll_interval_ms: 500,
+                audio_files: vec!["a.mp3".into(), "b.mp3".into()],
+                legacy_audio_file_path: Some("ignored.mp3".into()),
+                play_mode: types::PlayMode::Combo,
+                combo_window_ms: 60000,
+                volume: 0.8,
+                cooldown_ms: 1000,
+                allow_simultaneous: false,
+                color_probes: vec![],
+                color_match_mode: types::ColorMatchMode::All,
+            }],
+        };
+        let normalized = normalize_settings(settings);
+        assert_eq!(normalized.cards[0].audio_files, vec!["a.mp3".to_string(), "b.mp3".to_string()]);
+        assert!(normalized.cards[0].legacy_audio_file_path.is_none());
     }
 }

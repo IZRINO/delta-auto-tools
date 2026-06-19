@@ -70,8 +70,19 @@ pub struct AudioCard {
     #[serde(default = "default_watch_poll_interval_ms")]
     pub watch_poll_interval_ms: u32,
     // 通用
+    /// 音频文件列表（按序）。连杀顺序=数组顺序；单文件时为单元素数组。
     #[serde(default)]
-    pub audio_file_path: String,
+    pub audio_files: Vec<String>,
+    /// 仅用于反序列化旧 JSON 的单值 audioFilePath 字段；normalize_settings 迁移进 audio_files 后清空。
+    /// 序列化时跳过，不输出到新 JSON。
+    #[serde(default, rename = "audioFilePath", skip_serializing)]
+    pub legacy_audio_file_path: Option<String>,
+    /// 播放方式：Single/Combo/Random
+    #[serde(default)]
+    pub play_mode: PlayMode,
+    /// 连杀窗口（毫秒），从上一次触发起算；超时复位第一首。默认 60000。
+    #[serde(default = "default_combo_window_ms")]
+    pub combo_window_ms: u32,
     #[serde(default = "default_volume")]
     pub volume: f32,
     #[serde(default = "default_cooldown_ms")]
@@ -99,6 +110,21 @@ impl Default for AudioTriggerMode {
     fn default() -> Self {
         Self::Hotkey
     }
+}
+
+/// 音频播放方式：叠加在触发模式之上的文件选择策略。
+/// Single=单文件；Combo=连杀（窗口内按序递增，末首后保持，超时复位）；Random=随机（不重复上一次）。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PlayMode {
+    #[default]
+    Single,
+    Combo,
+    Random,
+}
+
+fn default_combo_window_ms() -> u32 {
+    60000
 }
 
 /// 识色探针：一个矩形区域 + 目标颜色 + 容差
@@ -203,7 +229,10 @@ mod tests {
             watch_reference_image_path: None,
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
-            audio_file_path: "a.mp3".into(),
+            audio_files: vec!["a.mp3".into()],
+            legacy_audio_file_path: None,
+            play_mode: PlayMode::Combo,
+            combo_window_ms: 60000,
             volume: 0.8,
             cooldown_ms: 1000,
             allow_simultaneous: false,
@@ -215,10 +244,27 @@ mod tests {
             color_match_mode: ColorMatchMode::Any,
         };
         let json = serde_json::to_string(&card).unwrap();
+        // 序列化不应输出兼容字段 audioFilePath
+        assert!(!json.contains("audioFilePath"));
+        assert!(json.contains("\"audioFiles\""));
         let back: AudioCard = serde_json::from_str(&json).unwrap();
         assert_eq!(back.trigger_mode, AudioTriggerMode::ColorWatch);
         assert_eq!(back.color_match_mode, ColorMatchMode::Any);
         assert_eq!(back.color_probes.len(), 1);
         assert_eq!(back.color_probes[0].target_color, [10, 20, 30]);
+        assert_eq!(back.audio_files, vec!["a.mp3".to_string()]);
+        assert_eq!(back.play_mode, PlayMode::Combo);
+        assert_eq!(back.combo_window_ms, 60000);
+    }
+
+    #[test]
+    fn audio_card_legacy_audio_file_path_deserialized() {
+        // 旧 JSON 的 audioFilePath 单值字段应能被反序列化到 legacy_audio_file_path
+        let json = r#"{"id":"c1","name":"旧卡","audioFilePath":"old.mp3"}"#;
+        let card: AudioCard = serde_json::from_str(json).unwrap();
+        assert_eq!(card.legacy_audio_file_path, Some("old.mp3".to_string()));
+        assert!(card.audio_files.is_empty());
+        assert_eq!(card.play_mode, PlayMode::Single);
+        assert_eq!(card.combo_window_ms, 60000);
     }
 }

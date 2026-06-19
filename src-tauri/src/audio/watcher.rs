@@ -11,6 +11,7 @@ use tokio::time::{interval, MissedTickBehavior};
 
 use crate::audio::events::REGION_MATCHED;
 use crate::audio::player;
+use crate::audio::resolve_play_for_card;
 use crate::audio::types::AudioSettings;
 use crate::audio::types::{ColorMatchMode, ColorProbe};
 use tauri::{AppHandle, Emitter};
@@ -43,7 +44,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
         match card.trigger_mode {
             super::types::AudioTriggerMode::RegionWatch => {
                 let Some(ref_path) = &card.watch_reference_image_path else { continue };
-                if ref_path.is_empty() || card.audio_file_path.is_empty() {
+                if ref_path.is_empty() || card.audio_files.is_empty() {
                     continue;
                 }
                 if card.watch_region.is_none() {
@@ -51,7 +52,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                 }
             }
             super::types::AudioTriggerMode::ColorWatch => {
-                if card.color_probes.is_empty() || card.audio_file_path.is_empty() {
+                if card.color_probes.is_empty() || card.audio_files.is_empty() {
                     continue;
                 }
             }
@@ -61,11 +62,8 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
         let cancel = Arc::new(AtomicBool::new(false));
         let app_clone = app.clone();
         let card_id = card.id.clone();
-        let audio_path = card.audio_file_path.clone();
-        let volume = card.volume;
         let cooldown_ms = card.cooldown_ms;
         let poll_interval_ms = card.watch_poll_interval_ms;
-        let allow_simultaneous = card.allow_simultaneous;
         let playback_tx_clone = playback_tx.clone();
         let cancel_clone = Arc::clone(&cancel);
 
@@ -84,9 +82,6 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         card_id,
                         region_clone,
                         ref_path_clone,
-                        audio_path,
-                        volume,
-                        allow_simultaneous,
                         playback_tx_clone,
                         cooldown_ms,
                         threshold,
@@ -105,9 +100,6 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         card_id,
                         probes,
                         match_mode,
-                        audio_path,
-                        volume,
-                        allow_simultaneous,
                         playback_tx_clone,
                         cooldown_ms,
                         poll_interval_ms,
@@ -140,9 +132,6 @@ async fn run_region_watcher(
     card_id: String,
     region: crate::morse::types::RegionRect,
     reference_image_path: String,
-    audio_path: String,
-    volume: f32,
-    allow_simultaneous: bool,
     playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     threshold: f32,
@@ -188,12 +177,13 @@ async fn run_region_watcher(
                     // 触发音频播放
                     eprintln!("[音频 watcher] 卡片 {card_id}: 匹配成功 similarity={:.4} >= threshold={threshold} (位置: {},{})", result.similarity, result.best_x, result.best_y);
                     let _ = app.emit(REGION_MATCHED, &card_id);
-                    let path = audio_path.clone();
-                    let vol = volume;
-                    let tx = playback_tx.clone();
-                    let exclusive = !allow_simultaneous;
-                    let _ = tx.send(player::AudioCommand::Play { path, volume: vol, exclusive });
-                    last_triggered = Some(Instant::now());
+                    let resolved = resolve_play_for_card(&app, &card_id);
+                    if let Some(resolved) = resolved {
+                        let tx = playback_tx.clone();
+                        let exclusive = !resolved.allow_simultaneous;
+                        let _ = tx.send(player::AudioCommand::Play { path: resolved.path, volume: resolved.volume, exclusive });
+                        last_triggered = Some(Instant::now());
+                    }
                 }
             }
             None => {
@@ -208,9 +198,6 @@ async fn run_color_watcher(
     card_id: String,
     probes: Vec<crate::audio::types::ColorProbe>,
     match_mode: crate::audio::types::ColorMatchMode,
-    audio_path: String,
-    volume: f32,
-    allow_simultaneous: bool,
     playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     poll_interval_ms: u32,
@@ -256,10 +243,12 @@ async fn run_color_watcher(
         if result.matched {
             eprintln!("[音频 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes", result.hit_count, probes.len());
             let _ = app.emit(REGION_MATCHED, &card_id);
-            let tx = playback_tx.clone();
-            let exclusive = !allow_simultaneous;
-            let _ = tx.send(player::AudioCommand::Play { path: audio_path.clone(), volume, exclusive });
-            last_triggered = Some(Instant::now());
+            if let Some(resolved) = resolve_play_for_card(&app, &card_id) {
+                let tx = playback_tx.clone();
+                let exclusive = !resolved.allow_simultaneous;
+                let _ = tx.send(player::AudioCommand::Play { path: resolved.path, volume: resolved.volume, exclusive });
+                last_triggered = Some(Instant::now());
+            }
         }
     }
 }

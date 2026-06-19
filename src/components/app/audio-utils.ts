@@ -61,7 +61,9 @@ function cardToForm(card: AudioCard): AudioCardForm {
         watchReferenceImagePath: card.watchReferenceImagePath ?? "",
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
-        audioFilePath: card.audioFilePath,
+        audioFiles: card.audioFiles ?? [],
+        playMode: card.playMode ?? "single",
+        comboWindowMs: String(card.comboWindowMs ?? 60000),
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
         allowSimultaneous: card.allowSimultaneous ?? false,
@@ -117,6 +119,27 @@ function parseCardForm(form: AudioCardForm): AudioCard {
     }
     const colorMatchMode = form.colorMatchMode ?? "all";
 
+    // 播放方式校验
+    const playMode = form.playMode ?? "single";
+    const audioFiles = (form.audioFiles ?? [])
+        .map((f) => f.trim())
+        .filter((f) => f.length > 0);
+    if (audioFiles.length === 0) {
+        throw new Error("音频文件不能为空，请至少添加一个音频文件。");
+    }
+    if (playMode !== "single" && audioFiles.length < 2) {
+        throw new Error("连杀或随机播放至少需要添加 2 个音频文件。");
+    }
+
+    let comboWindowMs = 60000;
+    if (playMode === "combo") {
+        const parsed = parseInt(form.comboWindowMs, 10);
+        if (Number.isNaN(parsed) || parsed < 100 || parsed > 600000) {
+            throw new Error("连杀窗口时间必须在 100 到 600000 毫秒之间。");
+        }
+        comboWindowMs = parsed;
+    }
+
     return {
         id: form.id || generateCardId(),
         name,
@@ -127,7 +150,9 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         watchReferenceImagePath: form.triggerMode === "regionWatch" ? form.watchReferenceImagePath.trim() || null : null,
         watchMatchThreshold,
         watchPollIntervalMs,
-        audioFilePath: form.audioFilePath.trim(),
+        audioFiles,
+        playMode,
+        comboWindowMs,
         volume,
         cooldownMs,
         allowSimultaneous: form.allowSimultaneous ?? false,
@@ -200,6 +225,20 @@ export function getAudioCardFormErrors(form: AudioCardForm): Record<string, stri
 
     if (form.triggerMode === "regionWatch" && !form.watchRegion) {
         errors.watchRegion = "必须设置监听区域";
+    }
+
+    const audioFiles = (form.audioFiles ?? []).map((f) => f.trim()).filter((f) => f.length > 0);
+    if (audioFiles.length === 0) {
+        errors.audioFiles = "请至少添加一个音频文件";
+    } else if ((form.playMode === "combo" || form.playMode === "random") && audioFiles.length < 2) {
+        errors.audioFiles = "连杀或随机播放至少需要 2 个音频文件";
+    }
+
+    if (form.playMode === "combo") {
+        const comboWindowMs = parseInt(form.comboWindowMs, 10);
+        if (Number.isNaN(comboWindowMs) || comboWindowMs < 100 || comboWindowMs > 600000) {
+            errors.comboWindowMs = "连杀窗口必须在 100 到 600000 毫秒之间";
+        }
     }
 
     return errors;

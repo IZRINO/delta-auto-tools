@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 import {
     createEmptyAudioCard,
     generateCardId,
+    getAudioCardFormErrors,
     mergeAudioWatchRegionsIntoForm,
     parseSettingsForm,
     settingsToForm,
@@ -62,7 +63,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.9",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "test.mp3",
+                        audioFiles: ["test.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -93,7 +96,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.9",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "test.mp3",
+                        audioFiles: ["test.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -119,7 +124,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.9",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "test.mp3",
+                        audioFiles: ["test.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "1.5",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -166,7 +173,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "local.png",
                         watchMatchThreshold: "0.9",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "local.mp3",
+                        audioFiles: ["local.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -184,13 +193,13 @@ describe("audio-utils", () => {
                         name: "后端名称",
                         triggerMode: "regionWatch",
                         watchRegion: {x: 10, y: 20, width: 30, height: 40},
-                        audioFilePath: "remote.mp3",
+                        audioFiles: ["remote.mp3"],
                     },
                 ],
             });
 
             expect(merged.cards[0].name).toBe("本地未保存名称");
-            expect(merged.cards[0].audioFilePath).toBe("local.mp3");
+            expect(merged.cards[0].audioFiles).toEqual(["local.mp3"]);
             expect(merged.cards[0].watchRegion).toEqual({x: 10, y: 20, width: 30, height: 40});
         });
 
@@ -209,7 +218,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.75",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "a.mp3",
+                        audioFiles: ["a.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -297,7 +308,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.75",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "a.mp3",
+                        audioFiles: ["a.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -334,7 +347,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.75",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "a.mp3",
+                        audioFiles: ["a.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -360,7 +375,9 @@ describe("audio-utils", () => {
                         watchReferenceImagePath: "",
                         watchMatchThreshold: "0.75",
                         watchPollIntervalMs: "500",
-                        audioFilePath: "a.mp3",
+                        audioFiles: ["a.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -376,6 +393,196 @@ describe("audio-utils", () => {
                 ],
             };
             expect(() => parseSettingsForm(form)).toThrow("颜色容差必须在 0 到 255 之间");
+        });
+    });
+
+    describe("playMode / audioFiles", () => {
+        it("settingsToForm 直传 audioFiles 数组与 playMode/comboWindowMs", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        ...DEFAULT_AUDIO_CARD,
+                        id: "c1",
+                        name: "连杀卡",
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        audioFiles: ["a.mp3", "b.mp3", "c.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: 30000,
+                    },
+                ],
+            };
+            const form = settingsToForm(settings);
+            expect(form.cards[0].audioFiles).toEqual(["a.mp3", "b.mp3", "c.mp3"]);
+            expect(form.cards[0].playMode).toBe("combo");
+            expect(form.cards[0].comboWindowMs).toBe("30000");
+        });
+
+        it("parseSettingsForm 去除空字符串并回写 audioFiles 数组", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "测试",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3", "  ", ""],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            const settings = parseSettingsForm(form);
+            expect(settings.cards[0].audioFiles).toEqual(["a.mp3"]);
+            expect(settings.cards[0].playMode).toBe("single");
+            expect(settings.cards[0].comboWindowMs).toBe(60000);
+        });
+
+        it("parseSettingsForm combo 不足 2 个音频报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "连杀",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["only.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("连杀或随机播放至少需要添加 2 个音频文件");
+        });
+
+        it("parseSettingsForm random 不足 2 个音频报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "随机",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["only.mp3"],
+                        playMode: "random" as const,
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("连杀或随机播放至少需要添加 2 个音频文件");
+        });
+
+        it("parseSettingsForm 空音频文件报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "空文件",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: [],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("音频文件不能为空");
+        });
+
+        it("parseSettingsForm combo 窗口越界报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "连杀",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3", "b.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: "10",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("连杀窗口时间必须在 100 到 600000 毫秒之间");
+        });
+
+        it("getAudioCardFormErrors combo 文件不足标记 audioFiles 错误", () => {
+            const errors = getAudioCardFormErrors({
+                id: "c1",
+                name: "连杀",
+                enabled: true,
+                triggerMode: "hotkey",
+                hotkey: "Ctrl+F1",
+                watchRegion: null,
+                watchReferenceImagePath: "",
+                watchMatchThreshold: "0.9",
+                watchPollIntervalMs: "500",
+                audioFiles: ["only.mp3"],
+                playMode: "combo",
+                comboWindowMs: "60000",
+                volume: "0.8",
+                cooldownMs: "1000",
+                allowSimultaneous: false,
+                colorProbes: [],
+                colorMatchMode: "all",
+            });
+            expect(errors.audioFiles).toBe("连杀或随机播放至少需要 2 个音频文件");
         });
     });
 });

@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {open} from "@tauri-apps/plugin-dialog";
 import {AUDIO_EVENTS, listenEvent} from "@/lib/tauri-events";
-import {RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
+import {RiArrowDownLine, RiArrowUpLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -329,19 +329,65 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         async (index: number) => {
             if (!isNativeShell) return;
             try {
-                const path = await open({
-                    multiple: false,
+                const picked = await open({
+                    multiple: true,
                     directory: false,
                     filters: [{name: "音频文件", extensions: ["mp3", "wav", "ogg", "flac", "aac", "m4a", "wma"]}],
                 });
-                if (path && typeof path === "string") {
-                    handleUpdateCard(index, {audioFilePath: path});
-                }
+                if (!picked) return;
+                const newPaths = Array.isArray(picked) ? picked.filter((p): p is string => typeof p === "string") : [picked];
+                if (newPaths.length === 0) return;
+                setForm((current) => {
+                    if (!current) return current;
+                    const card = current.cards[index];
+                    if (!card) return current;
+                    const existing = card.audioFiles ?? [];
+                    const merged = [...existing, ...newPaths];
+                    const nextCards = current.cards.map((c, i) =>
+                        i === index ? {...c, audioFiles: merged} : c,
+                    );
+                    return {...current, cards: nextCards};
+                });
             } catch (error) {
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell, handleUpdateCard],
+        [isNativeShell, setForm],
+    );
+
+    const handleRemoveAudioFile = useCallback(
+        (cardIndex: number, fileIndex: number) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[cardIndex];
+                if (!card) return current;
+                const nextFiles = (card.audioFiles ?? []).filter((_, i) => i !== fileIndex);
+                const nextCards = current.cards.map((c, i) =>
+                    i === cardIndex ? {...c, audioFiles: nextFiles} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
+    );
+
+    const handleMoveAudioFile = useCallback(
+        (cardIndex: number, fileIndex: number, direction: -1 | 1) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[cardIndex];
+                if (!card) return current;
+                const files = [...(card.audioFiles ?? [])];
+                const target = fileIndex + direction;
+                if (target < 0 || target >= files.length) return current;
+                [files[fileIndex], files[target]] = [files[target], files[fileIndex]];
+                const nextCards = current.cards.map((c, i) =>
+                    i === cardIndex ? {...c, audioFiles: files} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
     );
 
     const enabled = form?.audioEnabled ?? false;
@@ -415,6 +461,8 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
                             onPickReferenceImage={() => handlePickReferenceImage(index)}
                             onPickAudioFile={() => handlePickAudioFile(index)}
+                            onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
+                            onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
                             onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
                             onTestColorMatch={() => handleTestColorMatch(card.id)}
                             onAddColorProbe={() => handleAddColorProbe(index)}
@@ -446,6 +494,8 @@ function AudioCardEditor({
                              onBeginRegionSelection,
                              onPickReferenceImage,
                              onPickAudioFile,
+                             onRemoveAudioFile,
+                             onMoveAudioFile,
                              onLoadReferencePreview,
                              onTestColorMatch,
                              onAddColorProbe,
@@ -462,6 +512,8 @@ function AudioCardEditor({
     onBeginRegionSelection: (probeIndex?: number) => void;
     onPickReferenceImage: () => void;
     onPickAudioFile: () => void;
+    onRemoveAudioFile: (fileIndex: number) => void;
+    onMoveAudioFile: (fileIndex: number, direction: -1 | 1) => void;
     onLoadReferencePreview: () => Promise<string | null>;
     onTestColorMatch: () => void;
     onAddColorProbe: () => void;
@@ -788,25 +840,105 @@ function AudioCardEditor({
 
                 <FieldGroup>
                     <Field>
-                        <FieldLabel>音频文件路径</FieldLabel>
+                        <FieldLabel>播放方式</FieldLabel>
                         <FieldContent>
-                            <div className="flex items-center gap-2">
+                            <Select
+                                value={card.playMode}
+                                onValueChange={(v) => onUpdate({playMode: v as AudioCard["playMode"]})}
+                            >
+                                <SelectTrigger className="w-full">
+                                    <SelectValue/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="single">单文件</SelectItem>
+                                    <SelectItem value="combo">连杀（窗口内顺序递增）</SelectItem>
+                                    <SelectItem value="random">随机（不重复上一次）</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FieldContent>
+                    </Field>
+                    {card.playMode === "combo" && (
+                        <Field>
+                            <FieldLabel>连杀窗口 (ms)</FieldLabel>
+                            <FieldContent>
                                 <Input
-                                    className="flex-1"
-                                    value={card.audioFilePath}
-                                    onChange={(e) => onUpdate({audioFilePath: e.target.value})}
-                                    placeholder="音频文件绝对路径..."
+                                    type="number"
+                                    min={100}
+                                    max={600000}
+                                    step={1000}
+                                    value={card.comboWindowMs}
+                                    onChange={(e) => onUpdate({comboWindowMs: e.target.value})}
+                                    title="距上次触发在此窗口内 → 播放下一个；超时 → 复位第一首"
                                 />
+                            </FieldContent>
+                        </Field>
+                    )}
+                    <Field>
+                        <FieldLabel>
+                            音频文件
+                            {card.playMode === "combo" && "（顺序即连杀顺序）"}
+                            {card.playMode === "random" && "（至少 2 个）"}
+                        </FieldLabel>
+                        <FieldContent>
+                            <div className="flex flex-col gap-2">
+                                {(card.audioFiles ?? []).length === 0 ? (
+                                    <p className="text-xs text-[var(--zinc)]">尚未添加音频文件。</p>
+                                ) : (
+                                    <ul className="flex flex-col gap-1">
+                                        {(card.audioFiles ?? []).map((file, fileIndex) => (
+                                            <li
+                                                key={`${file}-${fileIndex}`}
+                                                className="flex items-center gap-2 border border-[var(--seam)] bg-[var(--carbon)] px-2 py-1"
+                                            >
+                                                <span className="flex-1 truncate font-mono text-xs text-[var(--chalk)]" title={file}>
+                                                    {file}
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 w-7 p-0"
+                                                    onClick={() => onMoveAudioFile(fileIndex, -1)}
+                                                    disabled={fileIndex === 0}
+                                                    title="上移"
+                                                    data-icon="inline-start"
+                                                >
+                                                    <RiArrowUpLine className="size-4" aria-hidden="true"/>
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 w-7 p-0"
+                                                    onClick={() => onMoveAudioFile(fileIndex, 1)}
+                                                    disabled={fileIndex === (card.audioFiles ?? []).length - 1}
+                                                    title="下移"
+                                                    data-icon="inline-start"
+                                                >
+                                                    <RiArrowDownLine className="size-4" aria-hidden="true"/>
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 w-7 p-0"
+                                                    onClick={() => onRemoveAudioFile(fileIndex)}
+                                                    title="移除"
+                                                    data-icon="inline-start"
+                                                >
+                                                    <RiDeleteBinLine className="size-4" aria-hidden="true"/>
+                                                </Button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                                 <Button
                                     variant="secondary"
                                     size="sm"
                                     onClick={onPickAudioFile}
                                     disabled={!isNativeShell}
-                                    title={isNativeShell ? "浏览音频文件" : "仅在桌面端可用"}
+                                    title={isNativeShell ? "浏览并添加音频文件（可多选）" : "仅在桌面端可用"}
                                     data-icon="inline-start"
                                 >
                                     <RiFolderOpenLine className="size-4" aria-hidden="true"/>
-                                    浏览...
+                                    添加音频文件...
                                 </Button>
                             </div>
                         </FieldContent>
@@ -865,7 +997,9 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
         watchReferenceImagePath: card.watchReferenceImagePath ?? "",
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
-        audioFilePath: card.audioFilePath,
+        audioFiles: card.audioFiles ?? [],
+        playMode: card.playMode ?? "single",
+        comboWindowMs: String(card.comboWindowMs ?? 60000),
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
         allowSimultaneous: card.allowSimultaneous ?? false,
