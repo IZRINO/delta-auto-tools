@@ -1085,8 +1085,8 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
   Release 非 draft、非 prerelease，且**全部 3 个资产**状态均为 `uploaded`。
 - **Beta 版本发布流程**：Beta 版本用于快速向测试用户推送未正式发布的功能，流程轻量，可随时发布。
     - 版本号格式：SemVer pre-release `<major>.<minor>.<patch>-beta.<N>`（如 `0.17.0-beta.1`）。
-      更新逻辑**仅比较数值部分**（忽略 pre-release 后缀）：
-      `0.17.0-beta.5` → `0.17.0`：**不更新**（数值相同）；`0.17.0-beta.5` → `0.17.1`：**提供更新**（数值更高）。
+      更新逻辑遵循 SemVer 全序比较（数值部分 + pre-release）：
+      `0.17.0-beta.5` → `0.17.0`：**提供更新**（同数值正式版 > beta）；`0.17.0-beta.5` → `0.17.1`：**提供更新**（数值更高）；`0.17.0` → `0.17.0-beta.5`：**不更新**（正式版不降级到 beta）。
     - 同步更新版本号（三处：`package.json` / `Cargo.toml` / `tauri.conf.json`），版本号带 `-beta.N` 后缀。
     - **不需要签名**：直接 `bun run tauri build`，不设置 `TAURI_SIGNING_PRIVATE_KEY`，无 `.sig` 文件。
     - 只需上传 1 个资产：`delta-auto-tools_<version>_x64-setup.exe`。

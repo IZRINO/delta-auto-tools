@@ -281,9 +281,10 @@ Beta 版本号必须使用 **SemVer pre-release** 格式：`<major>.<minor>.<pat
 ```
 
 > **重要**：`0.17.0-beta.1 < 0.17.0`（SemVer 规则，pre-release 版本优先级低于对应正式版）。
-> 但本项目自定义更新逻辑**仅比较数值部分**（忽略 pre-release 后缀），因此：
-> - `0.17.0-beta.5` → `0.17.0`：**不更新**（数值 `0.17.0 == 0.17.0`，beta 含更新的代码不应降级）
+> 本项目更新逻辑遵循 SemVer 全序比较（数值部分 + pre-release），因此：
+> - `0.17.0-beta.5` → `0.17.0`：**提供更新**（同数值正式版 > beta，beta 升级到正式版）
 > - `0.17.0-beta.5` → `0.17.1`：**提供更新**（数值 `0.17.1 > 0.17.0`）
+> - `0.17.0` → `0.17.0-beta.5`：**不更新**（正式版不降级到同数值 beta）
 
 #### 与正式版的关键差异
 
@@ -293,7 +294,7 @@ Beta 版本号必须使用 **SemVer pre-release** 格式：`<major>.<minor>.<pat
 | 产物         | `.exe` + `.sig` + `latest.json` | 仅 `.exe`                            |
 | GitHub Release | 默认                       | `--prerelease` 标记                    |
 | 自动更新（beta→beta） | —                        | ❌ 不支持（无 beta 通道、无 `latest-beta.json`） |
-| 自动更新（beta→stable） | —                        | ✅ 仅数值部分更高时（如 `0.17.0-beta.5`→`0.17.1`）；同数值不更新（如 `0.17.0-beta.5`→`0.17.0`） |
+| 自动更新（beta→stable） | —                        | ✅ 同数值正式版即可更新（如 `0.17.0-beta.5`→`0.17.0`）；数值更高也更新（如 `0.17.0-beta.5`→`0.17.1`） |
 
 #### 自动更新机制
 
@@ -302,12 +303,12 @@ Beta 版本**不建立独立的 beta 更新通道**，不需要 `latest-beta.jso
 的 Release，所以：
 
 - 当前无更新时 → 显示"已是最新"
-- 正式版 `0.17.0` 发布后 → beta `0.17.0-beta.5` 检测到 `0.17.0` 但**不更新**（数值 `0.17.0 == 0.17.0`）
+- 正式版 `0.17.0` 发布后 → beta `0.17.0-beta.5` 检测到 `0.17.0` 并提示更新（同数值正式版 > beta）→ 下载签名安装包 → 自动更新到正式版
 - 正式版 `0.17.1` 发布后 → beta `0.17.0-beta.5` 检测到 `0.17.1` 并提示更新 → 下载签名安装包 → 自动更新到正式版
 
-> **实现**：`src-tauri/src/about/mod.rs` 中的 `should_offer_update()` 函数仅比较版本号数值部分
-> （`numeric_version_tuple`），忽略 pre-release 后缀。这覆盖了 `about_check_for_update` 和
-> `about_download_and_install` 两个命令。
+> **实现**：`src-tauri/src/about/mod.rs` 中的 `should_offer_update()` 函数按 SemVer 全序比较
+> （`version_rank`：数值部分 + 是否正式版 + pre-release 字符串），同数值正式版严格高于对应 beta。
+> 这覆盖了 `about_check_for_update` 和 `about_download_and_install` 两个命令。
 
 #### Beta 发布完整流程
 

@@ -157,11 +157,29 @@ fn numeric_version_tuple(v: &str) -> (u64, u64, u64) {
     }
 }
 
-/// 比较版本号数值部分，判断是否应提供更新
-/// Beta 版本不会更新到同数值的正式版（0.17.0-beta.5 → 0.17.0 不更新），
-/// 但会更新到更高数值的正式版（0.17.0-beta.5 → 0.17.1 提供更新）。
+/// 返回版本的可比较秩：(major, minor, patch, 是否正式版, pre-release 原始字符串)。
+/// 正式版（无 pre-release）秩高于同数值的 pre-release 版本，符合 SemVer
+/// （`0.17.0-beta.5 < 0.17.0`）。pre-release 之间仅按原始字符串字典序比较，
+/// 用于区分同一版本下不同 beta，不追求严格 SemVer 标识符排序。
+fn version_rank(v: &str) -> (u64, u64, u64, bool, &str) {
+    match v.split_once('-') {
+        Some((base, pre)) => {
+            let (a, b, c) = numeric_version_tuple(base);
+            (a, b, c, false, pre)
+        }
+        None => {
+            let (a, b, c) = numeric_version_tuple(v);
+            (a, b, c, true, "")
+        }
+    }
+}
+
+/// 判断是否应提供更新：remote 严格高于 current 时为 true。
+/// 遵循 SemVer：beta 会更新到同数值正式版（0.17.0-beta.5 → 0.17.0 提供更新），
+/// 也会更新到更高数值的正式版（0.17.0-beta.5 → 0.17.1 提供更新）；
+/// 正式版不会降级到同数值 beta。
 fn should_offer_update(current: &str, remote: &str) -> bool {
-    numeric_version_tuple(remote) > numeric_version_tuple(current)
+    version_rank(remote) > version_rank(current)
 }
 
 #[tauri::command]
@@ -338,10 +356,18 @@ mod tests {
     }
 
     #[test]
-    fn should_offer_update_beta_to_same_numeric_stable_is_false() {
-        // 0.17.0-beta.5 → 0.17.0：数值部分相同，不更新
-        assert!(!should_offer_update("0.17.0-beta.5", "0.17.0"));
-        assert!(!should_offer_update("0.17.0-beta.1", "0.17.0"));
+    fn should_offer_update_beta_to_same_numeric_stable_is_true() {
+        // 0.17.0-beta.5 → 0.17.0：beta 升级到同数值正式版（SemVer：pre-release 优先级低于正式版），提供更新
+        assert!(should_offer_update("0.17.0-beta.5", "0.17.0"));
+        assert!(should_offer_update("0.17.0-beta.1", "0.17.0"));
+        assert!(should_offer_update("0.17.0-beta.3", "0.17.0"));
+    }
+
+    #[test]
+    fn should_offer_update_stable_to_same_numeric_beta_is_false() {
+        // 0.17.0 → 0.17.0-beta.5：正式版不降级到同数值 beta，不更新
+        assert!(!should_offer_update("0.17.0", "0.17.0-beta.5"));
+        assert!(!should_offer_update("0.17.0", "0.17.0-beta.1"));
     }
 
     #[test]
