@@ -31,7 +31,7 @@ export function SettingsDialog({open, onOpenChange, initialTab = "theme"}: Setti
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-hidden">
+            <DialogContent className="flex flex-col sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-hidden">
                 <DialogHeader>
                     <DialogTitle>设置</DialogTitle>
                     <DialogDescription>
