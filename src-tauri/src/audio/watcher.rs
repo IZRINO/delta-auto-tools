@@ -55,6 +55,10 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                 if card.color_probes.is_empty() || card.audio_files.is_empty() {
                     continue;
                 }
+                // 含未框选（region=None）探针的卡片视为未就绪草稿，不启动 watcher
+                if card.color_probes.iter().any(|p| p.region.is_none()) {
+                    continue;
+                }
             }
             super::types::AudioTriggerMode::Hotkey => continue,
         }
@@ -222,11 +226,15 @@ async fn run_color_watcher(
             }
         }
 
-        // 逐个截取 probe 区域
+        // 逐个截取 probe 区域；region 缺失（None）的探针视为未就绪，跳过本轮
         let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(probes.len());
         let mut all_captured = true;
         for probe in &probes {
-            match capture_region(&probe.region) {
+            let Some(region) = probe.region.as_ref() else {
+                all_captured = false;
+                break;
+            };
+            match capture_region(region) {
                 Some(img) => screenshots.push(img),
                 None => {
                     all_captured = false;
@@ -1008,8 +1016,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([10, 20, 30, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
         assert!(result.matched, "All 模式全命中应触发");
@@ -1023,8 +1031,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))), // 不匹配
         ];
         let probes = vec![
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
         assert!(!result.matched, "All 模式部分未命中不应触发");
@@ -1038,8 +1046,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: RegionRect { x: 0, y: 0, width: 2, height: 2 }, target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any);
         assert!(result.matched, "Any 模式任一命中即触发");

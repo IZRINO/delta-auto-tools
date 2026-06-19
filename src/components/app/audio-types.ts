@@ -3,7 +3,7 @@ import type {RegionRect} from "@/components/app/morse-types";
 export type ColorMatchMode = "all" | "any";
 
 export type ColorProbe = {
-    region: RegionRect;
+    region: RegionRect | null;
     targetColor: [number, number, number];
     tolerance: number;
 };
@@ -34,7 +34,11 @@ export type AudioCard = {
     watchPollIntervalMs: number;
     audioFiles: string[];
     playMode: AudioPlayMode;
+    /// 卡片级默认连杀窗口（毫秒）。combo_windows 缺省 index 时回落使用。
     comboWindowMs: number;
+    /// 每段音频各自的连杀窗口（毫秒）。播完第 i 段后用 comboWindows[i] 判断是否进 i+1 段。
+    /// 空数组 = 全用卡片级默认 comboWindowMs（向后兼容）。
+    comboWindows: number[];
     volume: number;
     cooldownMs: number;
     allowSimultaneous: boolean;
@@ -70,6 +74,9 @@ export type AudioCardForm = {
     audioFiles: string[];
     playMode: AudioPlayMode;
     comboWindowMs: string;
+    /// 每段音频各自的连杀窗口（字符串形式），"" 表示该段用卡片级默认。
+    /// 可选：cardToForm（bootstrap→form）总产出等长数组；手写测试字面量可省略。
+    comboWindows?: string[];
     volume: string;
     cooldownMs: string;
     allowSimultaneous: boolean;
@@ -90,6 +97,7 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     audioFiles: [],
     playMode: "single",
     comboWindowMs: 60000,
+    comboWindows: [],
     volume: 0.8,
     cooldownMs: 1000,
     allowSimultaneous: false,

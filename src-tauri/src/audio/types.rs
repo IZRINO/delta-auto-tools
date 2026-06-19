@@ -81,8 +81,13 @@ pub struct AudioCard {
     #[serde(default)]
     pub play_mode: PlayMode,
     /// 连杀窗口（毫秒），从上一次触发起算；超时复位第一首。默认 60000。
+    /// 作为卡片级默认窗口，被 combo_windows 缺省 index 时回落使用。
     #[serde(default = "default_combo_window_ms")]
     pub combo_window_ms: u32,
+    /// 每段音频各自的连杀窗口（毫秒）。播完第 i 段后用 combo_windows[i] 判断是否进 i+1 段（Issue #62）。
+    /// 长度可小于 audio_files，缺省 index 回落到 combo_window_ms。空数组 = 全用卡片级默认窗口（向后兼容）。
+    #[serde(default)]
+    pub combo_windows: Vec<u32>,
     #[serde(default = "default_volume")]
     pub volume: f32,
     #[serde(default = "default_cooldown_ms")]
@@ -128,10 +133,15 @@ fn default_combo_window_ms() -> u32 {
 }
 
 /// 识色探针：一个矩形区域 + 目标颜色 + 容差
+///
+/// `region` 可为 None：用户刚新增探针、尚未框选区域的草稿态。
+/// watcher 启动时会跳过含 None 探针的卡片，使其能作为中间态被保存
+/// （Issue #61/#60：避免 autosave / flushSettings 因 region 缺失而整体失败）。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorProbe {
-    pub region: RegionRect,
+    #[serde(default)]
+    pub region: Option<RegionRect>,
     /// 目标 RGB 颜色 [R, G, B]，每通道 0-255
     pub target_color: [u8; 3],
     /// 颜色容差（RGB 欧氏距离阈值，0-255）
@@ -192,12 +202,34 @@ mod tests {
     fn color_probe_roundtrip() {
         let json = r#"{"region":{"x":10,"y":20,"width":5,"height":5},"targetColor":[200,100,50],"tolerance":40}"#;
         let probe: ColorProbe = serde_json::from_str(json).unwrap();
-        assert_eq!(probe.region.x, 10);
+        assert_eq!(probe.region.as_ref().unwrap().x, 10);
         assert_eq!(probe.target_color, [200, 100, 50]);
         assert_eq!(probe.tolerance, 40);
         let reserialized = serde_json::to_string(&probe).unwrap();
         assert!(reserialized.contains("\"targetColor\":[200,100,50]"));
         assert!(reserialized.contains("\"tolerance\":40"));
+    }
+
+    #[test]
+    fn color_probe_region_null_roundtrip() {
+        // Issue #61: 未框选探针 region=None 应能序列化往返（前端草稿态可保存）
+        let json = r#"{"region":null,"targetColor":[200,100,50],"tolerance":40}"#;
+        let probe: ColorProbe = serde_json::from_str(json).unwrap();
+        assert!(probe.region.is_none());
+        assert_eq!(probe.target_color, [200, 100, 50]);
+        let reserialized = serde_json::to_string(&probe).unwrap();
+        assert!(reserialized.contains("\"region\":null"), "region=None 应序列化为 null，实际 {reserialized}");
+        let back: ColorProbe = serde_json::from_str(&reserialized).unwrap();
+        assert!(back.region.is_none());
+    }
+
+    #[test]
+    fn color_probe_region_omitted_defaults_to_none() {
+        // 缺省 region 字段（旧/部分前端）应反序列化为 None，不报错
+        let json = r#"{"targetColor":[0,0,0],"tolerance":30}"#;
+        let probe: ColorProbe = serde_json::from_str(json).unwrap();
+        assert!(probe.region.is_none());
+        assert_eq!(probe.tolerance, 30);
     }
 
     #[test]
@@ -233,11 +265,12 @@ mod tests {
             legacy_audio_file_path: None,
             play_mode: PlayMode::Combo,
             combo_window_ms: 60000,
+            combo_windows: vec![],
             volume: 0.8,
             cooldown_ms: 1000,
             allow_simultaneous: false,
             color_probes: vec![ColorProbe {
-                region: RegionRect { x: 1, y: 2, width: 3, height: 4 },
+                region: Some(RegionRect { x: 1, y: 2, width: 3, height: 4 }),
                 target_color: [10, 20, 30],
                 tolerance: 25,
             }],

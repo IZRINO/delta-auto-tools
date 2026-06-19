@@ -117,13 +117,17 @@ fn random_index(len: usize, exclude: Option<usize>) -> usize {
 /// 按播放方式选择要播放的音频文件路径，并就地更新 PlayState。
 ///
 /// - Single：直接返回 files[0]，不动 state。
-/// - Combo：距上次触发 < combo_window_ms → current_index+1（封顶末首）；否则复位 0。
+/// - Combo：距上次触发 < 当前 index 的连杀窗口 → current_index+1（封顶末首）；否则复位 0。
+///   per-segment 窗口取自 `combo_windows`：用 `combo_windows[current_index]` 判断
+///   「播完第 i 段后用第 i 段窗口决定是否进 i+1 段」（Issue #62）。
+///   `combo_windows` 长度不足或缺省 index 时回落到 `combo_window_ms`（向后兼容旧数据）。
 /// - Random：随机选一个，避免与上一次重复（记录 last_random_index）。
 ///
 /// `now` 由调用方注入，便于单测控制时间。调用前应保证 files 非空。
 pub(crate) fn pick_audio_file(
     files: &[String],
     mode: types::PlayMode,
+    combo_windows: &[u32],
     combo_window_ms: u32,
     state: &mut PlayState,
     now: std::time::Instant,
@@ -138,8 +142,14 @@ pub(crate) fn pick_audio_file(
         types::PlayMode::Single => files[0].clone(),
         types::PlayMode::Combo => {
             let last_index = files.len() - 1;
+            // 取当前 index 的连杀窗口；缺省则回落到卡片级 combo_window_ms
+            let window_ms = combo_windows
+                .get(state.current_index)
+                .copied()
+                .unwrap_or(combo_window_ms)
+                .max(100);
             let in_window = match state.last_trigger_at {
-                Some(last) => now.duration_since(last) < std::time::Duration::from_millis(combo_window_ms as u64),
+                Some(last) => now.duration_since(last) < std::time::Duration::from_millis(window_ms as u64),
                 None => false, // 首次触发不在窗口内 → 走复位分支播第一首
             };
             if in_window {
@@ -350,7 +360,7 @@ pub async fn audio_overlay_submit_selection(
                     .color_probes
                     .get_mut(idx)
                     .ok_or_else(|| AppError::from("探针已变更，请重新框选".to_string()))?;
-                probe.region = region;
+                probe.region = Some(region);
             } else {
                 card.watch_region = Some(region);
             }
@@ -482,7 +492,10 @@ pub async fn audio_test_color_match(
     let mut hit_count = 0usize;
 
     for probe in &probes {
-        let captured = match watcher::capture_region(&probe.region) {
+        let region = probe.region.as_ref().ok_or_else(|| {
+            AppError::from("存在未框选区域的探针，请先框选再测试".to_string())
+        })?;
+        let captured = match watcher::capture_region(region) {
             Some(img) => img,
             None => return Err(AppError::from("截图失败".to_string())),
         };
@@ -615,7 +628,7 @@ fn resolve_audio_path(
             .lock()
             .map_err(|e| e.to_string())?;
         let state = states.entry(card_id.to_string()).or_default();
-        pick_audio_file(&card.audio_files, card.play_mode, card.combo_window_ms, state, now)
+        pick_audio_file(&card.audio_files, card.play_mode, &card.combo_windows, card.combo_window_ms, state, now)
     };
     Ok(ResolvedPlay {
         path,
@@ -757,7 +770,7 @@ mod tests {
         let f = files(&["a.mp3", "b.mp3"]);
         let mut state = PlayState::default();
         let now = Instant::now();
-        let path = pick_audio_file(&f, types::PlayMode::Single, 60000, &mut state, now);
+        let path = pick_audio_file(&f, types::PlayMode::Single, &[60000], 60000, &mut state, now);
         assert_eq!(path, "a.mp3");
         // Single 不更新连杀状态
         assert_eq!(state.current_index, 0);
@@ -768,7 +781,7 @@ mod tests {
     fn pick_single_with_single_file_returns_first() {
         let f = files(&["only.mp3"]);
         let mut state = PlayState::default();
-        let path = pick_audio_file(&f, types::PlayMode::Single, 60000, &mut state, Instant::now());
+        let path = pick_audio_file(&f, types::PlayMode::Single, &[60000], 60000, &mut state, Instant::now());
         assert_eq!(path, "only.mp3");
     }
 
@@ -777,7 +790,7 @@ mod tests {
         let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
         let mut state = PlayState::default();
         let now = Instant::now();
-        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, now);
+        let path = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, now);
         assert_eq!(path, "a.mp3");
         assert_eq!(state.current_index, 0);
         assert_eq!(state.last_trigger_at, Some(now));
@@ -789,9 +802,9 @@ mod tests {
         let t0 = Instant::now();
         let mut state = PlayState::default();
         // 第一次触发 → 第 0 首
-        pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0);
+        pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0);
         // 30s 后（窗口内）第二次 → 第 1 首
-        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(30));
+        let path = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(30));
         assert_eq!(path, "b.mp3");
         assert_eq!(state.current_index, 1);
     }
@@ -804,7 +817,7 @@ mod tests {
         state.current_index = 2; // 已在末首
         state.last_trigger_at = Some(t0);
         // 窗口内再触发 → 保持末首（不越界）
-        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(10));
+        let path = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(10));
         assert_eq!(path, "c.mp3");
         assert_eq!(state.current_index, 2);
     }
@@ -817,7 +830,7 @@ mod tests {
         state.current_index = 2; // 已在末首
         state.last_trigger_at = Some(t0);
         // 61s 后（超时）→ 复位第 0 首
-        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_millis(61000));
+        let path = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_millis(61000));
         assert_eq!(path, "a.mp3");
         assert_eq!(state.current_index, 0);
     }
@@ -827,24 +840,78 @@ mod tests {
         let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
         let mut state = PlayState::default();
         let t0 = Instant::now();
-        let p1 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0);
-        let p2 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(10));
-        let p3 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(20));
-        let p4 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(30));
+        let p1 = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0);
+        let p2 = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(10));
+        let p3 = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(20));
+        let p4 = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(30));
         assert_eq!(p1, "a.mp3");
         assert_eq!(p2, "b.mp3");
         assert_eq!(p3, "c.mp3");
         assert_eq!(p4, "c.mp3"); // 末首后窗口内保持
         // 超时复位
-        let p5 = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, t0 + Duration::from_secs(100));
+        let p5 = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, t0 + Duration::from_secs(100));
         assert_eq!(p5, "a.mp3");
+    }
+
+    // Issue #62: per-segment 连杀窗口。播完第 i 段后用第 i 段窗口判断是否进 i+1 段。
+    #[test]
+    fn pick_combo_per_segment_window_advances_by_current_index_window() {
+        // 三段文件，每段自己的窗口：A=500ms, B=800ms, C=1000ms
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let windows = [500, 800, 1000];
+        let mut state = PlayState::default();
+        let t0 = Instant::now();
+        // 触发 A（index 0），last_trigger_at = t0
+        let p1 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0);
+        assert_eq!(p1, "a.mp3");
+        // 400ms 后（< window[0]=500）→ 进 B
+        let p2 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400));
+        assert_eq!(p2, "b.mp3");
+        // 700ms 后（< window[1]=800）→ 进 C
+        let p3 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400 + 700));
+        assert_eq!(p3, "c.mp3");
+        // 900ms 后（< window[2]=1000）→ 保持末首 C
+        let p4 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400 + 700 + 900));
+        assert_eq!(p4, "c.mp3");
+    }
+
+    #[test]
+    fn pick_combo_per_segment_window_resets_when_current_window_exceeded() {
+        // 在 B（index 1，window[1]=800ms），超 800ms → 复位 A
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let windows = [500, 800, 1000];
+        let t0 = Instant::now();
+        let mut state = PlayState::default();
+        pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0); // → A
+        pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400)); // → B
+        assert_eq!(state.current_index, 1);
+        // 距上次触发 900ms（> window[1]=800）→ 复位 A
+        let p = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400 + 900));
+        assert_eq!(p, "a.mp3");
+        assert_eq!(state.current_index, 0);
+    }
+
+    #[test]
+    fn pick_combo_per_segment_window_falls_back_to_default_for_missing_index() {
+        // windows 长度 < 文件数：缺省 index 回落到 combo_window_ms（向后兼容旧数据）
+        let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
+        let windows = [500]; // 只配了 A 的窗口，B/C 缺省 → 用 60000
+        let t0 = Instant::now();
+        let mut state = PlayState::default();
+        pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0); // → A
+        // 400ms（< 500）→ 进 B
+        let p2 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400));
+        assert_eq!(p2, "b.mp3");
+        // B 的窗口缺省为 60000，10s 后仍在窗口内 → 进 C
+        let p3 = pick_audio_file(&f, types::PlayMode::Combo, &windows, 60000, &mut state, t0 + Duration::from_millis(400 + 10000));
+        assert_eq!(p3, "c.mp3");
     }
 
     #[test]
     fn pick_random_single_file_returns_only_file() {
         let f = files(&["only.mp3"]);
         let mut state = PlayState::default();
-        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        let path = pick_audio_file(&f, types::PlayMode::Random, &[60000], 60000, &mut state, Instant::now());
         assert_eq!(path, "only.mp3");
     }
 
@@ -854,7 +921,7 @@ mod tests {
         let mut state = PlayState::default();
         // 上一次选了 0，下次必须不选 0 → 只能是 1
         state.last_random_index = Some(0);
-        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        let path = pick_audio_file(&f, types::PlayMode::Random, &[60000], 60000, &mut state, Instant::now());
         assert_eq!(path, "b.mp3");
         assert_eq!(state.last_random_index, Some(1));
     }
@@ -863,7 +930,7 @@ mod tests {
     fn pick_random_first_call_without_last_picks_any() {
         let f = files(&["a.mp3", "b.mp3"]);
         let mut state = PlayState::default();
-        let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+        let path = pick_audio_file(&f, types::PlayMode::Random, &[60000], 60000, &mut state, Instant::now());
         assert!(path == "a.mp3" || path == "b.mp3");
         assert!(state.last_random_index.is_some());
         assert!(state.last_trigger_at.is_some());
@@ -875,7 +942,7 @@ mod tests {
         let mut state = PlayState::default();
         let mut last = None;
         for _ in 0..20 {
-            let path = pick_audio_file(&f, types::PlayMode::Random, 60000, &mut state, Instant::now());
+            let path = pick_audio_file(&f, types::PlayMode::Random, &[60000], 60000, &mut state, Instant::now());
             if let Some(prev) = last {
                 assert_ne!(path, prev, "随机不应连续两次相同");
             }
@@ -887,7 +954,7 @@ mod tests {
     fn pick_empty_files_returns_empty_string() {
         let f: Vec<String> = vec![];
         let mut state = PlayState::default();
-        let path = pick_audio_file(&f, types::PlayMode::Combo, 60000, &mut state, Instant::now());
+        let path = pick_audio_file(&f, types::PlayMode::Combo, &[60000], 60000, &mut state, Instant::now());
         assert_eq!(path, "");
     }
 
@@ -909,6 +976,7 @@ mod tests {
                 legacy_audio_file_path: Some("old.mp3".into()),
                 play_mode: types::PlayMode::Single,
                 combo_window_ms: 60000,
+                combo_windows: vec![],
                 volume: 0.8,
                 cooldown_ms: 1000,
                 allow_simultaneous: false,
@@ -939,6 +1007,7 @@ mod tests {
                 legacy_audio_file_path: Some("ignored.mp3".into()),
                 play_mode: types::PlayMode::Combo,
                 combo_window_ms: 60000,
+                combo_windows: vec![],
                 volume: 0.8,
                 cooldown_ms: 1000,
                 allow_simultaneous: false,

@@ -262,6 +262,54 @@ describe("audio-utils", () => {
             expect(merged.cards[0].colorProbes[0].targetColor).toBe("#c86432");
             expect(merged.cards[0].colorProbes[0].tolerance).toBe("40");
         });
+
+        it("不覆盖本地 comboWindows 草稿（Issue #62）", () => {
+            // 本地 combo 模式卡，用户已为每段设了窗口草稿
+            const current = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "连杀",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3", "b.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: "60000",
+                        comboWindows: ["500", ""],
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            // 后端推送的 settings 也含 comboWindows，但应被本地草稿优先（合并只覆盖 watchRegion/probe.region）
+            const merged = mergeAudioWatchRegionsIntoForm(current, {
+                audioEnabled: true,
+                cards: [
+                    {
+                        ...DEFAULT_AUDIO_CARD,
+                        id: "c1",
+                        name: "连杀",
+                        triggerMode: "hotkey",
+                        hotkey: "Ctrl+F1",
+                        audioFiles: ["a.mp3", "b.mp3"],
+                        playMode: "combo",
+                        comboWindowMs: 60000,
+                        comboWindows: [9999, 9999],
+                    },
+                ],
+            });
+            // 本地 comboWindows 草稿保留，不被后端的 9999 覆盖
+            expect(merged.cards[0].comboWindows).toEqual(["500", ""]);
+        });
     });
 
     describe("colorWatch settingsToForm", () => {
@@ -394,6 +442,48 @@ describe("audio-utils", () => {
             };
             expect(() => parseSettingsForm(form)).toThrow("颜色容差必须在 0 到 255 之间");
         });
+
+        // Issue #61: 新建探针 region 必为 null（用户尚未框选）。
+        // flushSettings / autosave 走 parseSettingsForm，若对 region=null 抛错则框选流程被拦在第一步、
+        // 且所有 autosave 失败导致「禁用卡片/关闭总开关」等变更无法落盘（Issue #60 下游）。
+        // 此处断言未框选探针可作为中间态保存，region 保留 null，颜色/容差仍校验。
+        it("允许未框选探针（region=null）保存为中间态", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "识色",
+                        enabled: true,
+                        triggerMode: "colorWatch" as const,
+                        hotkey: "",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.75",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3"],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [
+                            {
+                                region: null,
+                                targetColor: "#c86432",
+                                tolerance: "40",
+                            },
+                        ],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            const settings = parseSettingsForm(form);
+            expect(settings.cards[0].colorProbes).toHaveLength(1);
+            expect(settings.cards[0].colorProbes[0].region).toBeNull();
+            expect(settings.cards[0].colorProbes[0].targetColor).toEqual([200, 100, 50]);
+            expect(settings.cards[0].colorProbes[0].tolerance).toBe(40);
+        });
     });
 
     describe("playMode / audioFiles", () => {
@@ -436,6 +526,7 @@ describe("audio-utils", () => {
                         audioFiles: ["a.mp3", "  ", ""],
                         playMode: "single" as const,
                         comboWindowMs: "60000",
+                        comboWindows: [],
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -467,6 +558,7 @@ describe("audio-utils", () => {
                         audioFiles: ["only.mp3"],
                         playMode: "combo" as const,
                         comboWindowMs: "60000",
+                        comboWindows: [],
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -495,6 +587,7 @@ describe("audio-utils", () => {
                         audioFiles: ["only.mp3"],
                         playMode: "random" as const,
                         comboWindowMs: "60000",
+                        comboWindows: [],
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -523,6 +616,7 @@ describe("audio-utils", () => {
                         audioFiles: [],
                         playMode: "single" as const,
                         comboWindowMs: "60000",
+                        comboWindows: [],
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -551,6 +645,68 @@ describe("audio-utils", () => {
                         audioFiles: ["a.mp3", "b.mp3"],
                         playMode: "combo" as const,
                         comboWindowMs: "10",
+                        comboWindows: ["", ""],
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("连杀窗口时间必须在 100 到 600000 毫秒之间");
+        });
+
+        it("parseSettingsForm combo per-segment 窗口解析为等长数字数组（空段填默认）", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "连杀",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3", "b.mp3", "c.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: "60000",
+                        comboWindows: ["500", "", "1000"],
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                    },
+                ],
+            };
+            const settings = parseSettingsForm(form);
+            // 空段填卡片级默认 60000；数组与 audioFiles 等长
+            expect(settings.cards[0].comboWindows).toEqual([500, 60000, 1000]);
+            expect(settings.cards[0].comboWindowMs).toBe(60000);
+        });
+
+        it("parseSettingsForm combo per-segment 窗口越界报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "连杀",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["a.mp3", "b.mp3"],
+                        playMode: "combo" as const,
+                        comboWindowMs: "60000",
+                        comboWindows: ["10", ""],
                         volume: "0.8",
                         cooldownMs: "1000",
                         allowSimultaneous: false,
@@ -576,6 +732,7 @@ describe("audio-utils", () => {
                 audioFiles: ["only.mp3"],
                 playMode: "combo",
                 comboWindowMs: "60000",
+                comboWindows: [],
                 volume: "0.8",
                 cooldownMs: "1000",
                 allowSimultaneous: false,

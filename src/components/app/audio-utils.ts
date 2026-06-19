@@ -29,9 +29,9 @@ function probeToForm(probe: ColorProbe): ColorProbeForm {
 }
 
 function parseProbeForm(form: ColorProbeForm): ColorProbe {
-    if (!form.region) {
-        throw new Error("识色探针必须设置区域。");
-    }
+    // region 可为 null（用户刚新增探针、尚未框选区域的草稿态）。
+    // watcher 启动时会跳过含 null 探针的卡片，使其能作为中间态被保存
+    // （Issue #61/#60：避免 flushSettings / autosave 因 region 缺失而整体失败）。
     const tolerance = parseInt(form.tolerance, 10);
     if (Number.isNaN(tolerance) || tolerance < 0 || tolerance > 255) {
         throw new Error("颜色容差必须在 0 到 255 之间。");
@@ -64,6 +64,10 @@ function cardToForm(card: AudioCard): AudioCardForm {
         audioFiles: card.audioFiles ?? [],
         playMode: card.playMode ?? "single",
         comboWindowMs: String(card.comboWindowMs ?? 60000),
+        // 后端 combo_windows[i] 与 audioFiles[i] 对齐；前端逐段转字符串，空缺段补空串
+        comboWindows: (card.audioFiles ?? []).map((_, i) =>
+            String((card.comboWindows ?? [])[i] ?? card.comboWindowMs ?? 60000),
+        ),
         volume: String(card.volume),
         cooldownMs: String(card.cooldownMs),
         allowSimultaneous: card.allowSimultaneous ?? false,
@@ -140,6 +144,26 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         comboWindowMs = parsed;
     }
 
+    // Issue #62: combo 模式下每段音频各自的连杀窗口。
+    // 与 audioFiles 等长对齐：空段填卡片级 comboWindowMs；非空段解析并校验 100-600000。
+    // 非 combo 模式 → 空数组（后端不读）。
+    let comboWindows: number[] = [];
+    if (playMode === "combo") {
+        const formWindows = form.comboWindows ?? [];
+        comboWindows = audioFiles.map((_, i) => {
+            const raw = formWindows[i] ?? "";
+            const trimmed = raw.trim();
+            if (trimmed === "") {
+                return comboWindowMs;
+            }
+            const w = parseInt(trimmed, 10);
+            if (Number.isNaN(w) || w < 100 || w > 600000) {
+                throw new Error("连杀窗口时间必须在 100 到 600000 毫秒之间。");
+            }
+            return w;
+        });
+    }
+
     return {
         id: form.id || generateCardId(),
         name,
@@ -153,6 +177,7 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         audioFiles,
         playMode,
         comboWindowMs,
+        comboWindows,
         volume,
         cooldownMs,
         allowSimultaneous: form.allowSimultaneous ?? false,

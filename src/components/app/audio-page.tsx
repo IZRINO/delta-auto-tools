@@ -390,6 +390,25 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [setForm],
     );
 
+    // Issue #62: 单独设置某段音频的连杀窗口（"" 表示该段用卡片级默认）。
+    const handleUpdateComboWindow = useCallback(
+        (cardIndex: number, fileIndex: number, value: string) => {
+            setForm((current) => {
+                if (!current) return current;
+                const card = current.cards[cardIndex];
+                if (!card) return current;
+                const files = card.audioFiles ?? [];
+                const base = card.comboWindows ?? [];
+                const next = files.map((_, i) => (i === fileIndex ? value : String(base[i] ?? "")));
+                const nextCards = current.cards.map((c, i) =>
+                    i === cardIndex ? {...c, comboWindows: next} : c,
+                );
+                return {...current, cards: nextCards};
+            });
+        },
+        [setForm],
+    );
+
     const enabled = form?.audioEnabled ?? false;
     const cardCount = form?.cards.length ?? 0;
     const activeCards = form?.cards.filter((c) => c.enabled).length ?? 0;
@@ -463,6 +482,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onPickAudioFile={() => handlePickAudioFile(index)}
                             onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
                             onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
+                            onUpdateComboWindow={(fileIndex, value) => handleUpdateComboWindow(index, fileIndex, value)}
                             onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
                             onTestColorMatch={() => handleTestColorMatch(card.id)}
                             onAddColorProbe={() => handleAddColorProbe(index)}
@@ -496,6 +516,7 @@ function AudioCardEditor({
                              onPickAudioFile,
                              onRemoveAudioFile,
                              onMoveAudioFile,
+                             onUpdateComboWindow,
                              onLoadReferencePreview,
                              onTestColorMatch,
                              onAddColorProbe,
@@ -514,6 +535,7 @@ function AudioCardEditor({
     onPickAudioFile: () => void;
     onRemoveAudioFile: (fileIndex: number) => void;
     onMoveAudioFile: (fileIndex: number, direction: -1 | 1) => void;
+    onUpdateComboWindow: (fileIndex: number, value: string) => void;
     onLoadReferencePreview: () => Promise<string | null>;
     onTestColorMatch: () => void;
     onAddColorProbe: () => void;
@@ -859,7 +881,7 @@ function AudioCardEditor({
                     </Field>
                     {card.playMode === "combo" && (
                         <Field>
-                            <FieldLabel>连杀窗口 (ms)</FieldLabel>
+                            <FieldLabel>默认连杀窗口 (ms)</FieldLabel>
                             <FieldContent>
                                 <Input
                                     type="number"
@@ -868,7 +890,7 @@ function AudioCardEditor({
                                     step={1000}
                                     value={card.comboWindowMs}
                                     onChange={(e) => onUpdate({comboWindowMs: e.target.value})}
-                                    title="距上次触发在此窗口内 → 播放下一个；超时 → 复位第一首"
+                                    title="每段音频可在下方单独设置窗口；留空的段回退到此默认值"
                                 />
                             </FieldContent>
                         </Field>
@@ -893,6 +915,21 @@ function AudioCardEditor({
                                                 <span className="flex-1 truncate font-mono text-xs text-[var(--chalk)]" title={file}>
                                                     {file}
                                                 </span>
+                                                {card.playMode === "combo" && (
+                                                    <div className="flex items-center gap-1" title="播完此段后用此窗口判断是否播放下一段（空=用卡片默认窗口）">
+                                                        <span className="font-mono text-xs text-[var(--zinc)]">窗口</span>
+                                                        <Input
+                                                            type="number"
+                                                            min={100}
+                                                            max={600000}
+                                                            step={1000}
+                                                            className="h-7 w-24 font-mono text-xs"
+                                                            value={(card.comboWindows ?? [])[fileIndex] ?? ""}
+                                                            onChange={(e) => onUpdateComboWindow(fileIndex, e.target.value)}
+                                                            placeholder={card.comboWindowMs}
+                                                        />
+                                                    </div>
+                                                )}
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
