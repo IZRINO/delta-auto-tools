@@ -25,7 +25,7 @@ export function SyncCardList<T>({
                                     className,
                                 }: SyncCardListProps<T>) {
     return (
-        <section className={cn("@container col-span-12 grid min-h-0 gap-3 @xl:grid-cols-2", className)}>
+        <section className={cn("col-span-12 grid min-h-0 gap-3 xl:grid-cols-2", className)}>
             {items.map((item, index) => renderCard(item, index))}
             <AddCardButton
                 className="min-h-36"
