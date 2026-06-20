@@ -220,6 +220,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 distance: number;
                 targetColor: [number, number, number];
                 tolerance: number;
+                matchingPixelCount?: number;
             };
             type ColorTestResult = {
                 triggered: boolean;
@@ -231,7 +232,11 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 await flushSettings();
                 const result = await invoke<ColorTestResult>("audio_test_color_match", {cardId});
                 const detail = result.probes
-                    .map((p, i) => `#${i + 1}: ${p.matched ? "命中" : "未中"} (采样 #${p.sampledColor.map((v) => v.toString(16).padStart(2, "0")).join("")} 距离 ${p.distance.toFixed(1)})`)
+                    .map((p, i) => {
+                        const sample = p.sampledColor.map((v) => v.toString(16).padStart(2, "0")).join("");
+                        const count = p.matchingPixelCount && p.matchingPixelCount > 0 ? ` 命中${p.matchingPixelCount}px` : "";
+                        return `#${i + 1}: ${p.matched ? "命中" : "未中"} (采样 #${sample} 距离 ${p.distance.toFixed(1)}${count})`;
+                    })
                     .join("\n");
                 const summary = `识色: ${result.hitCount}/${result.totalCount} 命中 ${result.triggered ? "(已触发)" : "(未触发)"}`;
                 toast.success(`${summary}\n${detail}`, {duration: 6000});
@@ -734,7 +739,24 @@ function AudioCardEditor({
                 {isColor && (
                     <FieldGroup>
                         <Field>
-                            <FieldLabel>匹配模式</FieldLabel>
+                            <FieldLabel>匹配方式</FieldLabel>
+                            <FieldContent>
+                                <Select
+                                    value={card.colorMatchMethod}
+                                    onValueChange={(v) => onUpdate({colorMatchMethod: v as "average" | "anyPixel"})}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="average">识色1 · 区域平均色</SelectItem>
+                                        <SelectItem value="anyPixel">识色2 · 单像素命中</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FieldContent>
+                        </Field>
+                        <Field>
+                            <FieldLabel>聚合模式</FieldLabel>
                             <FieldContent>
                                 <Select
                                     value={card.colorMatchMode}
