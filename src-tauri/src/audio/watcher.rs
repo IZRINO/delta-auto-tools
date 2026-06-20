@@ -13,7 +13,7 @@ use crate::audio::events::REGION_MATCHED;
 use crate::audio::player;
 use crate::audio::resolve_play_for_card;
 use crate::audio::types::AudioSettings;
-use crate::audio::types::{ColorMatchMode, ColorProbe};
+use crate::audio::types::{ColorMatchMode, ColorMatchMethod, ColorProbe};
 use crate::global_state::GlobalState;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -103,12 +103,14 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
             super::types::AudioTriggerMode::ColorWatch => {
                 let probes = card.color_probes.clone();
                 let match_mode = card.color_match_mode.clone();
+                let match_method = card.color_match_method.clone();
                 tauri::async_runtime::spawn(async move {
                     run_color_watcher(
                         app_clone,
                         card_id,
                         probes,
                         match_mode,
+                        match_method,
                         playback_tx_clone,
                         cooldown_ms,
                         poll_interval_ms,
@@ -231,6 +233,7 @@ async fn run_color_watcher(
     card_id: String,
     probes: Vec<crate::audio::types::ColorProbe>,
     match_mode: crate::audio::types::ColorMatchMode,
+    match_method: crate::audio::types::ColorMatchMethod,
     playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     poll_interval_ms: u32,
@@ -282,7 +285,7 @@ async fn run_color_watcher(
             continue;
         }
 
-        let result = match_color_probes(&screenshots, &probes, match_mode.clone());
+        let result = match_color_probes(&screenshots, &probes, match_mode.clone(), match_method.clone());
         if result.matched {
             eprintln!("[音频 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes", result.hit_count, probes.len());
             let _ = app.emit(REGION_MATCHED, &card_id);
@@ -865,15 +868,14 @@ pub(crate) fn match_color_probes(
     screenshots: &[image::DynamicImage],
     probes: &[ColorProbe],
     mode: ColorMatchMode,
+    method: ColorMatchMethod,
 ) -> ColorMatchResult {
     if probes.is_empty() || screenshots.len() < probes.len() {
         return ColorMatchResult { matched: false, hit_count: 0 };
     }
     let mut hit_count = 0usize;
     for (i, probe) in probes.iter().enumerate() {
-        let avg = average_region_rgb(&screenshots[i]);
-        let dist = color_distance(avg, probe.target_color);
-        if dist <= probe.tolerance as f32 {
+        if probe_hit(&screenshots[i], probe, method.clone(), true).matched {
             hit_count += 1;
         }
     }
@@ -1182,7 +1184,7 @@ mod tests {
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(result.matched, "All 模式全命中应触发");
         assert_eq!(result.hit_count, 2);
     }
@@ -1197,7 +1199,7 @@ mod tests {
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All);
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(!result.matched, "All 模式部分未命中不应触发");
         assert_eq!(result.hit_count, 1);
     }
@@ -1212,16 +1214,64 @@ mod tests {
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
             ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any);
+        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::Average);
         assert!(result.matched, "Any 模式任一命中即触发");
         assert_eq!(result.hit_count, 1);
     }
 
     #[test]
     fn match_color_probes_empty_returns_false() {
-        let result = match_color_probes(&[], &[], ColorMatchMode::All);
+        let result = match_color_probes(&[], &[], ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(!result.matched, "无探针不应触发");
         assert_eq!(result.hit_count, 0);
+    }
+
+    #[test]
+    fn match_color_probes_any_pixel_method_hits() {
+        // 单探针：全黑图中央 1 红像素，average 未中、anyPixel 命中
+        let mut img = RgbaImage::new(3, 3);
+        for y in 0..3 {
+            for x in 0..3 {
+                img.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+            }
+        }
+        img.put_pixel(1, 1, Rgba([255, 0, 0, 255]));
+        let screenshots = vec![DynamicImage::ImageRgba8(img)];
+        let probes = vec![ColorProbe {
+            region: Some(RegionRect { x: 0, y: 0, width: 3, height: 3 }),
+            target_color: [255, 0, 0],
+            tolerance: 10,
+        }];
+        let avg = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        assert!(!avg.matched, "average 模式平均色为黑，距红远，未中");
+        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        assert!(any.matched, "anyPixel 模式存在红像素应命中");
+        assert_eq!(any.hit_count, 1);
+    }
+
+    #[test]
+    fn match_color_probes_any_pixel_combined_with_mode_all() {
+        // 两探针：第一命中、第二未中 → mode=All 不触发，mode=Any 触发
+        let mut img1 = RgbaImage::new(2, 2);
+        for y in 0..2 {
+            for x in 0..2 {
+                img1.put_pixel(x, y, Rgba([255, 0, 0, 255]));
+            }
+        }
+        let img2 = RgbaImage::from_pixel(2, 2, Rgba([0, 0, 0, 255]));
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(img1),
+            DynamicImage::ImageRgba8(img2),
+        ];
+        let probes = vec![
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [255, 0, 0], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [255, 0, 0], tolerance: 10 },
+        ];
+        let all = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        assert!(!all.matched, "mode=All 第二探针未中，不触发");
+        assert_eq!(all.hit_count, 1);
+        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::AnyPixel);
+        assert!(any.matched, "mode=Any 任一命中即触发");
     }
 
     // ---- scan_region_for_color (Task 2) ----
