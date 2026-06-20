@@ -101,6 +101,9 @@ pub struct AudioCard {
     // 识色聚合模式
     #[serde(default)]
     pub color_match_mode: ColorMatchMode,
+    // 识色匹配方式：Average=平均色判定；AnyPixel=单像素命中。缺省 Average（识色1，向后兼容）
+    #[serde(default)]
+    pub color_match_method: ColorMatchMethod,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -156,6 +159,17 @@ pub enum ColorMatchMode {
     #[default]
     All,
     Any,
+}
+
+/// 单个探针的匹配方式
+/// - Average（识色1）：取框选区域平均 RGB，与目标色距离 ≤ 容差即命中
+/// - AnyPixel（识色2）：框选区域内有任意一个像素与目标色距离 ≤ 容差即命中
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ColorMatchMethod {
+    #[default]
+    Average,
+    AnyPixel,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -275,6 +289,7 @@ mod tests {
                 tolerance: 25,
             }],
             color_match_mode: ColorMatchMode::Any,
+            color_match_method: ColorMatchMethod::Average,
         };
         let json = serde_json::to_string(&card).unwrap();
         // 序列化不应输出兼容字段 audioFilePath
@@ -299,5 +314,27 @@ mod tests {
         assert!(card.audio_files.is_empty());
         assert_eq!(card.play_mode, PlayMode::Single);
         assert_eq!(card.combo_window_ms, 60000);
+    }
+
+    #[test]
+    fn color_match_method_default_is_average() {
+        // AudioCard 缺省 color_match_method 应为 Average（向后兼容旧 JSON）
+        let json = r#"{"id":"c1","name":"测试","triggerMode":"colorWatch"}"#;
+        let card: AudioCard = serde_json::from_str(json).unwrap();
+        assert_eq!(card.color_match_method, ColorMatchMethod::Average);
+    }
+
+    #[test]
+    fn color_match_method_anypixel_roundtrip() {
+        let json = r#"{"id":"c1","name":"单像素","triggerMode":"colorWatch","colorMatchMethod":"anyPixel"}"#;
+        let card: AudioCard = serde_json::from_str(json).unwrap();
+        assert_eq!(card.color_match_method, ColorMatchMethod::AnyPixel);
+        let reserialized = serde_json::to_string(&card).unwrap();
+        assert!(reserialized.contains("\"colorMatchMethod\":\"anyPixel\""), "应序列化为 camelCase anyPixel，实际 {reserialized}");
+    }
+
+    #[test]
+    fn color_match_method_default_value_is_average_enum() {
+        assert_eq!(ColorMatchMethod::default(), ColorMatchMethod::Average);
     }
 }

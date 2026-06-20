@@ -982,6 +982,7 @@ mod tests {
                 allow_simultaneous: false,
                 color_probes: vec![],
                 color_match_mode: types::ColorMatchMode::All,
+                color_match_method: types::ColorMatchMethod::Average,
             }],
         };
         let normalized = normalize_settings(settings);
@@ -1013,6 +1014,7 @@ mod tests {
                 allow_simultaneous: false,
                 color_probes: vec![],
                 color_match_mode: types::ColorMatchMode::All,
+                color_match_method: types::ColorMatchMethod::Average,
             }],
         };
         let normalized = normalize_settings(settings);
