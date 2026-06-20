@@ -55,6 +55,8 @@ pub struct ColorProbeTestResult {
     pub target_color: [u8; 3],
     /// 容差
     pub tolerance: u8,
+    /// anyPixel 命中像素数；average 恒 0
+    pub matching_pixel_count: usize,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -470,7 +472,7 @@ pub async fn audio_test_color_match(
     state: tauri::State<'_, AudioState>,
     card_id: String,
 ) -> Result<ColorTestResult, AppError> {
-    let (probes, match_mode) = {
+    let (probes, match_mode, match_method) = {
         let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         let card = inner
             .settings
@@ -485,7 +487,7 @@ pub async fn audio_test_color_match(
         if card.color_probes.is_empty() {
             return Err(AppError::from("未配置识色探针".to_string()));
         }
-        (card.color_probes.clone(), card.color_match_mode.clone())
+        (card.color_probes.clone(), card.color_match_mode.clone(), card.color_match_method.clone())
     };
 
     let mut probe_results: Vec<ColorProbeTestResult> = Vec::with_capacity(probes.len());
@@ -499,18 +501,18 @@ pub async fn audio_test_color_match(
             Some(img) => img,
             None => return Err(AppError::from("截图失败".to_string())),
         };
-        let sampled = watcher::average_region_rgb(&captured);
-        let dist = watcher::color_distance(sampled, probe.target_color);
-        let matched = dist <= probe.tolerance as f32;
-        if matched {
+        // 复用统一判定：count_only=false → anyPixel 全扫拿命中数与最近像素
+        let hit = watcher::probe_hit(&captured, probe, match_method.clone(), false);
+        if hit.matched {
             hit_count += 1;
         }
         probe_results.push(ColorProbeTestResult {
-            matched,
-            sampled_color: sampled,
-            distance: dist,
+            matched: hit.matched,
+            sampled_color: hit.sampled_color,
+            distance: hit.distance,
             target_color: probe.target_color,
             tolerance: probe.tolerance,
+            matching_pixel_count: hit.matching_pixel_count,
         });
     }
 

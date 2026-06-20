@@ -289,7 +289,7 @@ mod tests {
                 tolerance: 25,
             }],
             color_match_mode: ColorMatchMode::Any,
-            color_match_method: ColorMatchMethod::Average,
+            color_match_method: ColorMatchMethod::AnyPixel,
         };
         let json = serde_json::to_string(&card).unwrap();
         // 序列化不应输出兼容字段 audioFilePath
@@ -298,6 +298,7 @@ mod tests {
         let back: AudioCard = serde_json::from_str(&json).unwrap();
         assert_eq!(back.trigger_mode, AudioTriggerMode::ColorWatch);
         assert_eq!(back.color_match_mode, ColorMatchMode::Any);
+        assert_eq!(back.color_match_method, ColorMatchMethod::AnyPixel);
         assert_eq!(back.color_probes.len(), 1);
         assert_eq!(back.color_probes[0].target_color, [10, 20, 30]);
         assert_eq!(back.audio_files, vec!["a.mp3".to_string()]);
