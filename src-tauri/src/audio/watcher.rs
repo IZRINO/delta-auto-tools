@@ -14,7 +14,8 @@ use crate::audio::player;
 use crate::audio::resolve_play_for_card;
 use crate::audio::types::AudioSettings;
 use crate::audio::types::{ColorMatchMode, ColorProbe};
-use tauri::{AppHandle, Emitter};
+use crate::global_state::GlobalState;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// 全局 watcher 状态：卡片 ID -> 取消标记
 static WATCHER_CANCEL_MAP: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
@@ -34,6 +35,9 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
     for (_, cancel) in cancel_map.drain() {
         cancel.store(true, Ordering::SeqCst);
     }
+
+    // watcher 启动时快照音频模块开关（全局开关由循环内 watcher_should_run 实时检查）
+    let audio_enabled = settings.audio_enabled;
 
     // 为每张区域监听 / 识色卡片启动 watcher
     for card in &settings.cards {
@@ -90,6 +94,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         cooldown_ms,
                         threshold,
                         poll_interval_ms,
+                        audio_enabled,
                         cancel_clone,
                     )
                         .await;
@@ -107,6 +112,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         playback_tx_clone,
                         cooldown_ms,
                         poll_interval_ms,
+                        audio_enabled,
                         cancel_clone,
                     )
                         .await;
@@ -131,6 +137,23 @@ pub fn stop_all_watchers(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 读取全局总开关当前状态。`GlobalState` 缺失时视为已启用，不阻断 watcher。
+fn global_enabled(app: &AppHandle) -> bool {
+    app.try_state::<GlobalState>()
+        .map(|state| state.enabled())
+        .unwrap_or(true)
+}
+
+/// watcher 每轮 tick 的执行门：全局总开关与音频模块开关均开启时才执行。
+///
+/// - `global_enabled`：实时读取 `GlobalState`。全局总开关切换不会触发 `restart_watchers`，
+///   故必须在 watcher 循环内实时检查（参考 `hotkeys.rs` 对热键的同类门控）。
+/// - `audio_enabled`：watcher 启动时（`restart_watchers`）快照传入。音频模块自身开关
+///   变更会触发 `restart_watchers` 重建 watcher，故启动快照即代表当前模块开关。
+pub(crate) fn watcher_should_run(global_enabled: bool, audio_enabled: bool) -> bool {
+    global_enabled && audio_enabled
+}
+
 async fn run_region_watcher(
     app: AppHandle,
     card_id: String,
@@ -140,6 +163,7 @@ async fn run_region_watcher(
     cooldown_ms: u32,
     threshold: f32,
     poll_interval_ms: u32,
+    audio_enabled: bool,
     cancel: Arc<AtomicBool>,
 ) {
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
@@ -164,6 +188,11 @@ async fn run_region_watcher(
 
         if cancel.load(Ordering::SeqCst) {
             break;
+        }
+
+        // 全局总开关 / 音频模块开关关闭时，跳过本轮截图与匹配（不触发播放）
+        if !watcher_should_run(global_enabled(&app), audio_enabled) {
+            continue;
         }
 
         // 检查冷却
@@ -205,6 +234,7 @@ async fn run_color_watcher(
     playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     poll_interval_ms: u32,
+    audio_enabled: bool,
     cancel: Arc<AtomicBool>,
 ) {
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
@@ -217,6 +247,11 @@ async fn run_color_watcher(
 
         if cancel.load(Ordering::SeqCst) {
             break;
+        }
+
+        // 全局总开关 / 音频模块开关关闭时，跳过本轮截图与匹配（不触发播放）
+        if !watcher_should_run(global_enabled(&app), audio_enabled) {
+            continue;
         }
 
         // 检查冷却
@@ -753,6 +788,28 @@ mod tests {
     /// 辅助：取比较结果的 similarity
     fn score(a: &DynamicImage, b: &DynamicImage) -> f32 {
         compare_images(a, b).similarity
+    }
+
+    // ---- 全局总开关门控（Issue #60：全局关闭时音频 watcher 不应执行）----
+
+    #[test]
+    fn watcher_should_run_enabled_when_both_on() {
+        assert!(watcher_should_run(true, true));
+    }
+
+    #[test]
+    fn watcher_should_run_disabled_when_global_off() {
+        assert!(!watcher_should_run(false, true));
+    }
+
+    #[test]
+    fn watcher_should_run_disabled_when_audio_off() {
+        assert!(!watcher_should_run(true, false));
+    }
+
+    #[test]
+    fn watcher_should_run_disabled_when_both_off() {
+        assert!(!watcher_should_run(false, false));
     }
 
     #[test]
