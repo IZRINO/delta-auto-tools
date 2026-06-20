@@ -196,16 +196,12 @@ Cargo 解析更新，也应一并提交。
 
 ### 发布 Commit
 
-发布 commit 不能只写 `发布 v<version>`。Subject 使用 `发布 v<version>`，正文必须包含变更摘要与验证结果，至少包含 `变更：` 和
-`验证：` 两段。变更项从本次实际 diff / Release notes 提炼，禁止泛泛"更新版本"。推荐格式：
+发布 commit 不能只写 `发布 v<version>`。Subject 使用 `发布 v<version>`，正文必须包含变更摘要，至少包含 `变更：` 段。变更项从本次实际 diff / Release notes 提炼，禁止泛泛"更新版本"。推荐格式：
 
 ```bash
 git commit -m "发布 v<version>" -m "变更：
 - ...
-
-验证：
-- bun run test
-- bun run tauri build"
+- ..."
 ```
 
 ### Tag

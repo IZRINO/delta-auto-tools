@@ -1045,9 +1045,9 @@ DPI/多显示器下不要绕过 `region_to_capture_bounds()`。
     - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
 - **Beta 版本构建不需要签名**：直接运行 `bun run tauri build` 即可（不设置 `TAURI_SIGNING_PRIVATE_KEY`），产物只有 `.exe` 安装包，
   无 `.sig` 和 `latest.json`。Beta 版本不建立独立的自动更新通道，但可通过 stable 端点自动更新到更高版本号的正式版。
-- 每次版本发布提交不能只写 `发布 v<version>`。发布 commit subject 使用 `发布 v<version>`，正文必须跟上本次变更摘要与验证结果，至少包含
-  `变更：` 和 `验证：` 两段；变更项从本次实际 diff / Release notes 提炼，禁止写成泛泛的“更新版本”。推荐格式：
-  `git commit -m "发布 v<version>" -m "变更：\n- ...\n- ...\n\n验证：\n- bun run test\n- bun run tauri build"`。
+- 每次版本发布提交不能只写 `发布 v<version>`。发布 commit subject 使用 `发布 v<version>`，正文必须跟上本次变更摘要，至少包含
+  `变更：` 段；变更项从本次实际 diff / Release notes 提炼，禁止写成泛泛的“更新版本”。推荐格式：
+  `git commit -m "发布 v<version>" -m "变更：\n- ...\n- ..."`。
 - **网络与代理**：`git push` 或 `gh release` 等操作访问 GitHub 时，如遇连接重置或超时，可在命令前设置本地代理环境变量：
   ```bash
   set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& git push origin master v<version>
