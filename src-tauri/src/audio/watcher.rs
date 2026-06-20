@@ -754,6 +754,112 @@ pub(crate) fn average_region_rgb(img: &image::DynamicImage) -> [u8; 3] {
     ]
 }
 
+/// 像素扫描结果
+#[derive(Debug, Clone)]
+pub(crate) struct PixelScanResult {
+    /// 命中像素数
+    pub matching_count: usize,
+    /// 最接近目标的像素色（无命中时为全图最近像素）
+    pub nearest_color: [u8; 3],
+    /// nearest_color 与目标的欧氏距离
+    pub nearest_distance: f32,
+}
+
+/// 扫描区域，返回命中像素数与最接近目标色的像素。
+///
+/// - `count_only=true`：命中首个像素即早退，`matching_count` 至多为 1（watcher 用，性能优先）。
+/// - `count_only=false`：全扫，`matching_count` 为真实命中数（test 用，调试优先）。
+///
+/// `nearest_color`/`nearest_distance` 始终为全图最接近目标的像素（命中时即目标色本身，距离 0）。
+/// alpha < 128 的透明像素跳过。
+pub(crate) fn scan_region_for_color(
+    img: &image::DynamicImage,
+    target: [u8; 3],
+    tolerance: f32,
+    count_only: bool,
+) -> PixelScanResult {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut matching_count: usize = 0;
+    let mut nearest_color: [u8; 3] = [0, 0, 0];
+    let mut nearest_distance: f32 = f32::INFINITY;
+
+    for y in 0..h {
+        for x in 0..w {
+            let p = rgba.get_pixel(x, y);
+            if p[3] < 128 {
+                continue;
+            }
+            let c = [p[0], p[1], p[2]];
+            let dist = color_distance(c, target);
+            if dist < nearest_distance {
+                nearest_distance = dist;
+                nearest_color = c;
+            }
+            if dist <= tolerance {
+                matching_count += 1;
+                if count_only {
+                    // 早退：nearest 已更新为目标色（距离 0）
+                    return PixelScanResult { matching_count, nearest_color, nearest_distance };
+                }
+            }
+        }
+    }
+
+    if nearest_distance == f32::INFINITY {
+        // 全透明或空图
+        nearest_distance = 0.0;
+    }
+
+    PixelScanResult { matching_count, nearest_color, nearest_distance }
+}
+
+/// 单探针判定结果
+#[derive(Debug, Clone)]
+pub(crate) struct ProbeHit {
+    /// 是否命中
+    pub matched: bool,
+    /// average:区域平均色；anyPixel:最近像素
+    pub sampled_color: [u8; 3],
+    /// sampled_color 与目标色的欧氏距离
+    pub distance: f32,
+    /// anyPixel 命中像素数；average 恒 0
+    pub matching_pixel_count: usize,
+}
+
+/// 单探针判定：按 method 计算 sampled 与目标色的距离，判定是否命中。
+///
+/// - `count_only=true`：anyPixel 命中即早退（watcher 用，性能优先）。
+/// - `count_only=false`：全扫拿真实命中数与最近像素（test 用，调试优先）。
+pub(crate) fn probe_hit(
+    screenshot: &image::DynamicImage,
+    probe: &crate::audio::types::ColorProbe,
+    method: crate::audio::types::ColorMatchMethod,
+    count_only: bool,
+) -> ProbeHit {
+    match method {
+        crate::audio::types::ColorMatchMethod::Average => {
+            let avg = average_region_rgb(screenshot);
+            let dist = color_distance(avg, probe.target_color);
+            ProbeHit {
+                matched: dist <= probe.tolerance as f32,
+                sampled_color: avg,
+                distance: dist,
+                matching_pixel_count: 0,
+            }
+        }
+        crate::audio::types::ColorMatchMethod::AnyPixel => {
+            let scan = scan_region_for_color(screenshot, probe.target_color, probe.tolerance as f32, count_only);
+            ProbeHit {
+                matched: scan.matching_count > 0,
+                sampled_color: scan.nearest_color,
+                distance: scan.nearest_distance,
+                matching_pixel_count: scan.matching_count,
+            }
+        }
+    }
+}
+
 /// 对一组已截取的区域图像与对应探针做颜色匹配，按 mode 聚合
 pub(crate) fn match_color_probes(
     screenshots: &[image::DynamicImage],
@@ -782,7 +888,7 @@ pub(crate) fn match_color_probes(
 mod tests {
     use super::*;
     use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
-    use crate::audio::types::{ColorMatchMode, ColorProbe};
+    use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe};
     use crate::morse::types::RegionRect;
 
     /// 辅助：取比较结果的 similarity
@@ -1116,5 +1222,96 @@ mod tests {
         let result = match_color_probes(&[], &[], ColorMatchMode::All);
         assert!(!result.matched, "无探针不应触发");
         assert_eq!(result.hit_count, 0);
+    }
+
+    // ---- scan_region_for_color (Task 2) ----
+
+    #[test]
+    fn any_pixel_hit_single_pixel() {
+        // 4×4 全黑，放 1 个目标色像素 → matching_count >= 1 且 nearest_color == 目标色
+        let mut img = RgbaImage::new(4, 4);
+        for y in 0..4 {
+            for x in 0..4 {
+                img.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+            }
+        }
+        img.put_pixel(2, 1, Rgba([200, 100, 50, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let result = scan_region_for_color(&dyn_img, [200, 100, 50], 10.0, false);
+        assert!(result.matching_count >= 1, "应至少命中 1 像素");
+        assert_eq!(result.nearest_color, [200, 100, 50], "最近像素应为目标色");
+    }
+
+    #[test]
+    fn any_pixel_no_hit_returns_nearest() {
+        // 全黑图，目标色为白 → 无命中，nearest 为全图最近像素（黑）
+        let img = RgbaImage::from_pixel(3, 3, Rgba([0, 0, 0, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let result = scan_region_for_color(&dyn_img, [255, 255, 255], 10.0, false);
+        assert_eq!(result.matching_count, 0, "无命中像素");
+        assert_eq!(result.nearest_color, [0, 0, 0], "最近像素为黑");
+    }
+
+    #[test]
+    fn any_pixel_early_exit_count_only() {
+        // 2×2 全为目标色，count_only=true → matching_count == 1（早退）
+        let img = RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let result = scan_region_for_color(&dyn_img, [200, 100, 50], 10.0, true);
+        assert_eq!(result.matching_count, 1, "count_only=true 命中后应早退，count 为 1");
+    }
+
+    #[test]
+    fn any_pixel_tolerance_boundary() {
+        // 像素距离恰等于容差 → 命中（<= 边界）
+        // 目标 [100,100,100]，像素 [110,100,100] 距离 10，容差 10 → 命中
+        let mut img = RgbaImage::new(2, 1);
+        img.put_pixel(0, 0, Rgba([110, 100, 100, 255]));
+        img.put_pixel(1, 0, Rgba([0, 0, 0, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let result = scan_region_for_color(&dyn_img, [100, 100, 100], 10.0, false);
+        assert!(result.matching_count >= 1, "距离恰等于容差应命中");
+    }
+
+    // ---- probe_hit (Task 2) ----
+
+    #[test]
+    fn probe_hit_average_uses_region_avg() {
+        // 2×2：一半红一半黑，平均色 ≈ [127,0,0]，目标 [127,0,0] 容差 5 → average 命中
+        let mut img = RgbaImage::new(2, 2);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([0, 0, 0, 255]));
+        img.put_pixel(0, 1, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let probe = ColorProbe {
+            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
+            target_color: [127, 0, 0],
+            tolerance: 5,
+        };
+        let hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
+        assert!(hit.matched, "average 模式平均色应命中");
+        assert_eq!(hit.matching_pixel_count, 0, "average 模式 matching_pixel_count 恒 0");
+    }
+
+    #[test]
+    fn probe_hit_any_pixel_finds_single_pixel() {
+        // 同一图：average 未中（平均色距目标远），anyPixel 命中（存在红像素）
+        let mut img = RgbaImage::new(2, 2);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 0, Rgba([0, 0, 0, 255]));
+        img.put_pixel(0, 1, Rgba([255, 0, 0, 255]));
+        img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
+        let dyn_img = DynamicImage::ImageRgba8(img);
+        let probe = ColorProbe {
+            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
+            target_color: [255, 0, 0],
+            tolerance: 10,
+        };
+        let avg_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
+        assert!(!avg_hit.matched, "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中");
+        let any_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::AnyPixel, false);
+        assert!(any_hit.matched, "anyPixel 模式存在红像素应命中");
+        assert!(any_hit.matching_pixel_count >= 1, "anyPixel 命中数应 >= 1");
     }
 }
