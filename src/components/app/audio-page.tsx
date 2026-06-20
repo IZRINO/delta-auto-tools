@@ -1046,6 +1046,7 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
             tolerance: String(p.tolerance),
         })),
         colorMatchMode: card.colorMatchMode ?? "all",
+        colorMatchMethod: card.colorMatchMethod ?? "average",
     };
 }
 

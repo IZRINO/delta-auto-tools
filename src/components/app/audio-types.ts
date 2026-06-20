@@ -2,6 +2,8 @@ import type {RegionRect} from "@/components/app/morse-types";
 
 export type ColorMatchMode = "all" | "any";
 
+export type ColorMatchMethod = "average" | "anyPixel";
+
 export type ColorProbe = {
     region: RegionRect | null;
     targetColor: [number, number, number];
@@ -44,6 +46,7 @@ export type AudioCard = {
     allowSimultaneous: boolean;
     colorProbes: ColorProbe[];
     colorMatchMode: ColorMatchMode;
+    colorMatchMethod: ColorMatchMethod;
 };
 
 export type AudioSettings = {
@@ -82,6 +85,7 @@ export type AudioCardForm = {
     allowSimultaneous: boolean;
     colorProbes: ColorProbeForm[];
     colorMatchMode: ColorMatchMode;
+    colorMatchMethod: ColorMatchMethod;
 };
 
 export const DEFAULT_AUDIO_CARD: AudioCard = {
@@ -103,6 +107,7 @@ export const DEFAULT_AUDIO_CARD: AudioCard = {
     allowSimultaneous: false,
     colorProbes: [],
     colorMatchMode: "all",
+    colorMatchMethod: "average",
 };
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {

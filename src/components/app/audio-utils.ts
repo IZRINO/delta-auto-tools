@@ -73,6 +73,7 @@ function cardToForm(card: AudioCard): AudioCardForm {
         allowSimultaneous: card.allowSimultaneous ?? false,
         colorProbes: (card.colorProbes ?? []).map(probeToForm),
         colorMatchMode: card.colorMatchMode ?? "all",
+        colorMatchMethod: card.colorMatchMethod ?? "average",
     };
 }
 
@@ -122,6 +123,7 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         throw new Error("识色模式下至少需要配置一个探针。");
     }
     const colorMatchMode = form.colorMatchMode ?? "all";
+    const colorMatchMethod = form.colorMatchMethod ?? "average";
 
     // 播放方式校验
     const playMode = form.playMode ?? "single";
@@ -183,6 +185,7 @@ function parseCardForm(form: AudioCardForm): AudioCard {
         allowSimultaneous: form.allowSimultaneous ?? false,
         colorProbes,
         colorMatchMode,
+        colorMatchMethod,
     };
 }
 

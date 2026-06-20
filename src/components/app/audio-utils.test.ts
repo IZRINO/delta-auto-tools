@@ -71,6 +71,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -104,6 +105,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -132,6 +134,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -181,6 +184,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -232,6 +236,7 @@ describe("audio-utils", () => {
                             },
                         ],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -287,6 +292,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -330,6 +336,7 @@ describe("audio-utils", () => {
                             },
                         ],
                         colorMatchMode: "any" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -370,6 +377,7 @@ describe("audio-utils", () => {
                             },
                         ],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -403,6 +411,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -437,6 +446,7 @@ describe("audio-utils", () => {
                             },
                         ],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -475,6 +485,7 @@ describe("audio-utils", () => {
                             },
                         ],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -532,6 +543,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -564,6 +576,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -593,6 +606,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -622,6 +636,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -651,6 +666,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -680,6 +696,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -712,6 +729,7 @@ describe("audio-utils", () => {
                         allowSimultaneous: false,
                         colorProbes: [],
                         colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
                     },
                 ],
             };
@@ -738,8 +756,77 @@ describe("audio-utils", () => {
                 allowSimultaneous: false,
                 colorProbes: [],
                 colorMatchMode: "all",
+                colorMatchMethod: "average",
             });
             expect(errors.audioFiles).toBe("连杀或随机播放至少需要 2 个音频文件");
+        });
+    });
+
+    describe("colorMatchMethod", () => {
+        it("cardToForm 透传 colorMatchMethod", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "识色卡",
+                    triggerMode: "colorWatch" as const,
+                    colorMatchMethod: "anyPixel" as const,
+                    colorProbes: [],
+                    audioFiles: ["a.mp3"],
+                }],
+            };
+            const form = settingsToForm(settings);
+            expect(form.cards[0].colorMatchMethod).toBe("anyPixel");
+        });
+
+        it("cardToForm 缺省 colorMatchMethod 回退 average", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "识色卡",
+                    triggerMode: "colorWatch" as const,
+                    audioFiles: ["a.mp3"],
+                }],
+            };
+            const form = settingsToForm(settings);
+            expect(form.cards[0].colorMatchMethod).toBe("average");
+        });
+
+        it("parseSettingsForm roundtrip 透传 colorMatchMethod", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "识色卡",
+                    triggerMode: "colorWatch" as const,
+                    colorProbes: [{
+                        region: {x: 0, y: 0, width: 2, height: 2},
+                        targetColor: "#ff0000",
+                        tolerance: "10",
+                    }],
+                    colorMatchMode: "all" as const,
+                    colorMatchMethod: "anyPixel" as const,
+                    audioFiles: ["a.mp3"],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    playMode: "single" as const,
+                    allowSimultaneous: false,
+                    enabled: true,
+                }],
+            };
+            const settings = parseSettingsForm(form);
+            expect(settings.cards[0].colorMatchMethod).toBe("anyPixel");
         });
     });
 });
