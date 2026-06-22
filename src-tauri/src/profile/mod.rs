@@ -64,6 +64,59 @@ fn generate_profile_id() -> String {
     format!("p{}{:02}", now_ms(), seq)
 }
 
+fn max_config_number(profiles: &[Profile]) -> u32 {
+    profiles
+        .iter()
+        .filter_map(|profile| profile.name.strip_prefix("配置"))
+        .filter_map(|suffix| suffix.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0)
+}
+
+fn reserve_config_name(settings: &mut ProfileSettings) -> String {
+    let mut number = settings
+        .next_profile_number
+        .max(max_config_number(&settings.profiles).saturating_add(1))
+        .max(1);
+
+    loop {
+        let name = format!("配置{number}");
+        settings.next_profile_number = number.saturating_add(1);
+        if !settings.profiles.iter().any(|profile| profile.name == name) {
+            return name;
+        }
+        number = number.saturating_add(1);
+    }
+}
+
+fn build_default_snapshot() -> types::ToolSettingsSnapshot {
+    types::ToolSettingsSnapshot {
+        morse: Some(morse::MorseSettings::default()),
+        timer: Some(timer::TimerSettings::default()),
+        counter: Some(counter::CounterSettings::default()),
+        rapidfire: Some(rapidfire::RapidfireSettings::default()),
+        audio: Some(audio::AudioSettings::default()),
+    }
+}
+
+fn append_profile(
+    settings: &mut ProfileSettings,
+    name: String,
+    snapshot: types::ToolSettingsSnapshot,
+) -> Profile {
+    let now = now_ms();
+    let profile = Profile {
+        id: generate_profile_id(),
+        name,
+        created_at: now,
+        updated_at: now,
+        snapshot,
+    };
+    settings.active_profile_id = profile.id.clone();
+    settings.profiles.push(profile.clone());
+    profile
+}
+
 /// 构建 Profile bootstrap。
 fn build_bootstrap(state: &ProfileState) -> ProfileBootstrap {
     let settings = state
@@ -77,7 +130,29 @@ fn build_bootstrap(state: &ProfileState) -> ProfileBootstrap {
 }
 
 #[tauri::command]
-pub fn profile_get_bootstrap(state: State<'_, ProfileState>) -> Result<ProfileBootstrap, String> {
+pub fn profile_get_bootstrap(
+    app: AppHandle,
+    state: State<'_, ProfileState>,
+) -> Result<ProfileBootstrap, String> {
+    let needs_default = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Profile 状态锁已损坏")?;
+        settings.profiles.is_empty()
+    };
+
+    if needs_default {
+        let snapshot = snapshot_current_settings(&app)?;
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Profile 状态锁已损坏")?;
+        let name = reserve_config_name(&mut settings);
+        append_profile(&mut settings, name, snapshot);
+        settings::save_settings(&app, &settings)?;
+    }
+
     Ok(build_bootstrap(&state))
 }
 
@@ -87,29 +162,50 @@ pub fn profile_save_current(
     state: State<'_, ProfileState>,
     name: String,
 ) -> Result<Profile, String> {
-    // 读取当前 5 份 settings 作为快照来源
     let snapshot = snapshot_current_settings(&app)?;
 
-    let now = now_ms();
-    let profile = Profile {
-        id: generate_profile_id(),
-        name: name.trim().to_string(),
-        created_at: now,
-        updated_at: now,
-        snapshot,
+    let profile = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Profile 状态锁已损坏")?;
+        let profile = append_profile(&mut settings, name.trim().to_string(), snapshot);
+        settings::save_settings(&app, &settings)?;
+        profile
     };
+
+    Ok(profile)
+}
+
+#[tauri::command]
+pub fn profile_create_default(
+    app: AppHandle,
+    state: State<'_, ProfileState>,
+) -> Result<ProfileBootstrap, String> {
+    let snapshot = build_default_snapshot();
+    let profile_id = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "Profile 状态锁已损坏")?;
+        let name = reserve_config_name(&mut settings);
+        let profile = append_profile(&mut settings, name, snapshot.clone());
+        settings::save_settings(&app, &settings)?;
+        profile.id
+    };
+
+    apply_snapshot_to_tools(&app, &snapshot)?;
 
     {
         let mut settings = state
             .settings
             .lock()
             .map_err(|_| "Profile 状态锁已损坏")?;
-        settings.profiles.push(profile.clone());
-        settings.active_profile_id = profile.id.clone();
+        settings.active_profile_id = profile_id;
         settings::save_settings(&app, &settings)?;
     }
 
-    Ok(profile)
+    Ok(build_bootstrap(&state))
 }
 
 #[tauri::command]
@@ -189,6 +285,53 @@ pub fn profile_rename(
         settings::save_settings(&app, &settings)?;
     }
     Ok(build_bootstrap(&state))
+}
+
+#[allow(dead_code)]
+pub(crate) enum ActiveProfileSnapshotPatch {
+    Morse(morse::MorseSettings),
+    Timer(timer::TimerSettings),
+    Counter(counter::CounterSettings),
+    Rapidfire(rapidfire::RapidfireSettings),
+    Audio(audio::AudioSettings),
+}
+
+#[allow(dead_code)]
+pub(crate) fn update_active_profile_snapshot(
+    app: &AppHandle,
+    patch: ActiveProfileSnapshotPatch,
+) -> Result<(), String> {
+    let Some(state) = app.try_state::<ProfileState>() else {
+        return Ok(());
+    };
+
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|_| "Profile 状态锁已损坏")?;
+
+    if settings.profiles.is_empty() || settings.active_profile_id.is_empty() {
+        return Ok(());
+    }
+
+    let active_id = settings.active_profile_id.clone();
+    let Some(profile) = settings
+        .profiles
+        .iter_mut()
+        .find(|profile| profile.id == active_id)
+    else {
+        return Ok(());
+    };
+
+    match patch {
+        ActiveProfileSnapshotPatch::Morse(value) => profile.snapshot.morse = Some(value),
+        ActiveProfileSnapshotPatch::Timer(value) => profile.snapshot.timer = Some(value),
+        ActiveProfileSnapshotPatch::Counter(value) => profile.snapshot.counter = Some(value),
+        ActiveProfileSnapshotPatch::Rapidfire(value) => profile.snapshot.rapidfire = Some(value),
+        ActiveProfileSnapshotPatch::Audio(value) => profile.snapshot.audio = Some(value),
+    }
+    profile.updated_at = now_ms();
+    settings::save_settings(app, &settings)
 }
 
 /// 读取当前 5 份 settings 作为快照。
@@ -536,12 +679,80 @@ mod tests {
                 snapshot: types::ToolSettingsSnapshot::empty(),
             }],
             active_profile_id: "p1".to_string(),
+            next_profile_number: 1,
         };
         let state = ProfileState::new(settings);
         let boot = build_bootstrap(&state);
         assert_eq!(boot.profiles.len(), 1);
         assert_eq!(boot.profiles[0].id, "p1");
         assert_eq!(boot.active_profile_id, "p1");
+    }
+
+    #[test]
+    fn reserve_config_name_starts_at_config_one() {
+        let mut settings = ProfileSettings::default();
+        let name = reserve_config_name(&mut settings);
+        assert_eq!(name, "配置1");
+        assert_eq!(settings.next_profile_number, 2);
+    }
+
+    #[test]
+    fn reserve_config_name_uses_existing_max_number() {
+        let mut settings = ProfileSettings {
+            profiles: vec![
+                Profile {
+                    id: "p1".to_string(),
+                    name: "配置1".to_string(),
+                    created_at: 1,
+                    updated_at: 1,
+                    snapshot: types::ToolSettingsSnapshot::empty(),
+                },
+                Profile {
+                    id: "p9".to_string(),
+                    name: "配置9".to_string(),
+                    created_at: 1,
+                    updated_at: 1,
+                    snapshot: types::ToolSettingsSnapshot::empty(),
+                },
+            ],
+            active_profile_id: "p1".to_string(),
+            next_profile_number: 2,
+        };
+
+        let name = reserve_config_name(&mut settings);
+
+        assert_eq!(name, "配置10");
+        assert_eq!(settings.next_profile_number, 11);
+    }
+
+    #[test]
+    fn reserve_config_name_skips_existing_manual_name() {
+        let mut settings = ProfileSettings {
+            profiles: vec![Profile {
+                id: "manual".to_string(),
+                name: "配置2".to_string(),
+                created_at: 1,
+                updated_at: 1,
+                snapshot: types::ToolSettingsSnapshot::empty(),
+            }],
+            active_profile_id: "manual".to_string(),
+            next_profile_number: 2,
+        };
+
+        let name = reserve_config_name(&mut settings);
+
+        assert_eq!(name, "配置3");
+        assert_eq!(settings.next_profile_number, 4);
+    }
+
+    #[test]
+    fn build_default_snapshot_includes_all_tools() {
+        let snapshot = build_default_snapshot();
+        assert!(snapshot.morse.is_some());
+        assert!(snapshot.timer.is_some());
+        assert!(snapshot.counter.is_some());
+        assert!(snapshot.rapidfire.is_some());
+        assert!(snapshot.audio.is_some());
     }
 
     #[test]

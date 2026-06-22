@@ -28,6 +28,7 @@ mod tests {
         let loaded = settings::load_settings::<ProfileSettings>(&path).unwrap();
         assert!(loaded.profiles.is_empty());
         assert_eq!(loaded.active_profile_id, "");
+        assert_eq!(loaded.next_profile_number, 1);
     }
 
     #[test]
@@ -43,6 +44,7 @@ mod tests {
                 snapshot: super::super::types::ToolSettingsSnapshot::empty(),
             }],
             active_profile_id: "p1".to_string(),
+            next_profile_number: 1,
         };
         settings::save_settings(&path, &s).unwrap();
         let loaded = settings::load_settings::<ProfileSettings>(&path).unwrap();

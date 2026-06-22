@@ -33,6 +33,7 @@ pub struct ToolSettingsSnapshot {
 
 impl ToolSettingsSnapshot {
     /// 创建空快照（5 个工具都为 None）。
+    #[allow(dead_code)]
     pub fn empty() -> Self {
         Self {
             morse: None,
@@ -70,6 +71,13 @@ pub struct ProfileSettings {
     /// 当前激活 Profile id。空串表示「默认」（未保存的现场）。
     #[serde(default)]
     pub active_profile_id: String,
+    /// 下一次自动创建 `配置N` 时使用的编号。
+    #[serde(default = "default_next_profile_number")]
+    pub next_profile_number: u32,
+}
+
+fn default_next_profile_number() -> u32 {
+    1
 }
 
 impl Default for ProfileSettings {
@@ -77,6 +85,7 @@ impl Default for ProfileSettings {
         Self {
             profiles: Vec::new(),
             active_profile_id: String::new(),
+            next_profile_number: default_next_profile_number(),
         }
     }
 }
@@ -113,6 +122,31 @@ mod tests {
     }
 
     #[test]
+    fn profile_settings_default_next_profile_number_is_one() {
+        let settings = ProfileSettings::default();
+        assert_eq!(settings.next_profile_number, 1);
+    }
+
+    #[test]
+    fn profile_settings_missing_next_profile_number_defaults_to_one() {
+        let json = r#"{"profiles":[],"activeProfileId":""}"#;
+        let loaded: ProfileSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(loaded.next_profile_number, 1);
+    }
+
+    #[test]
+    fn profile_settings_serializes_next_profile_number_camel_case() {
+        let settings = ProfileSettings {
+            profiles: Vec::new(),
+            active_profile_id: String::new(),
+            next_profile_number: 7,
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("\"nextProfileNumber\":7"));
+        assert!(!json.contains("next_profile_number"));
+    }
+
+    #[test]
     fn profile_serializes_camel_case() {
         let profile = Profile {
             id: "p1".to_string(),
@@ -143,6 +177,7 @@ mod tests {
                 snapshot: ToolSettingsSnapshot::empty(),
             }],
             active_profile_id: "p1".to_string(),
+            next_profile_number: 1,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let loaded: ProfileSettings = serde_json::from_str(&json).unwrap();
@@ -155,5 +190,6 @@ mod tests {
         let loaded: ProfileSettings = serde_json::from_str(json).unwrap();
         assert!(loaded.profiles.is_empty());
         assert_eq!(loaded.active_profile_id, "");
+        assert_eq!(loaded.next_profile_number, 1);
     }
 }

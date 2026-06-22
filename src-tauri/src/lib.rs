@@ -159,6 +159,7 @@ pub fn run() {
             // ── profile ──
             profile::profile_get_bootstrap,
             profile::profile_save_current,
+            profile::profile_create_default,
             profile::profile_apply,
             profile::profile_delete,
             profile::profile_rename,
