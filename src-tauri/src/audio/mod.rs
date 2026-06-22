@@ -45,16 +45,36 @@ pub struct TestMatchResult {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorProbeTestResult {
-    /// 该 probe 是否命中
+    /// 该 probe 是否命中（按 probe_match_mode 聚合后）
     pub matched: bool,
-    /// 截取区域平均 RGB
+    /// 截取区域采样色（average=区域平均色；anyPixel=最近像素）
     pub sampled_color: [u8; 3],
-    /// 与目标颜色的距离
+    /// 与最近目标的距离（聚合摘要）
     pub distance: f32,
+    /// 最近目标颜色（聚合摘要，取距离最小的目标）
+    pub target_color: [u8; 3],
+    /// 最近目标容差（聚合摘要）
+    pub tolerance: u8,
+    /// anyPixel 命中像素数（聚合摘要）；average 恒 0
+    pub matching_pixel_count: usize,
+    /// Issue #65：每个目标颜色的详细命中结果
+    pub targets: Vec<ColorTargetTestResult>,
+}
+
+/// 单个目标颜色的测试命中结果（Issue #65）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorTargetTestResult {
+    /// 该目标是否命中
+    pub matched: bool,
     /// 目标颜色
     pub target_color: [u8; 3],
     /// 容差
     pub tolerance: u8,
+    /// 采样色（average=区域平均色；anyPixel=最近像素）
+    pub sampled_color: [u8; 3],
+    /// 采样色与目标颜色的距离
+    pub distance: f32,
     /// anyPixel 命中像素数；average 恒 0
     pub matching_pixel_count: usize,
 }
@@ -499,20 +519,33 @@ pub async fn audio_test_color_match(
         })?;
         let captured = match watcher::capture_region(region) {
             Some(img) => img,
-            None => return Err(AppError::from("截图失败".to_string())),
+            None => return Err(AppError::from("截图失败".to_string()))?,
         };
-        // 复用统一判定：count_only=false → anyPixel 全扫拿命中数与最近像素
-        let hit = watcher::probe_hit(&captured, probe, match_method.clone(), false);
-        if hit.matched {
+        // Issue #65：对每个目标分别判定，返回每目标详情
+        let target_hits = watcher::probe_hit_targets(&captured, probe, match_method.clone(), false);
+        let probe_hit = watcher::aggregate_probe_hits_pub(&target_hits, probe.probe_match_mode.clone());
+        if probe_hit.matched {
             hit_count += 1;
         }
+        let targets: Vec<ColorTargetTestResult> = target_hits
+            .iter()
+            .map(|h| ColorTargetTestResult {
+                matched: h.matched,
+                target_color: h.target_color,
+                tolerance: h.tolerance,
+                sampled_color: h.sampled_color,
+                distance: h.distance,
+                matching_pixel_count: h.matching_pixel_count,
+            })
+            .collect();
         probe_results.push(ColorProbeTestResult {
-            matched: hit.matched,
-            sampled_color: hit.sampled_color,
-            distance: hit.distance,
-            target_color: probe.target_color,
-            tolerance: probe.tolerance,
-            matching_pixel_count: hit.matching_pixel_count,
+            matched: probe_hit.matched,
+            sampled_color: probe_hit.sampled_color,
+            distance: probe_hit.distance,
+            target_color: probe_hit.target_color,
+            tolerance: probe_hit.tolerance,
+            matching_pixel_count: probe_hit.matching_pixel_count,
+            targets,
         });
     }
 
@@ -749,6 +782,25 @@ pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
         } else {
             // 已有 audio_files 时清掉兼容字段（避免后续误用）
             card.legacy_audio_file_path = None;
+        }
+
+        // Issue #65：迁移旧 ColorProbe 单值 targetColor/tolerance → targets 单元素
+        for probe in &mut card.color_probes {
+            if probe.targets.is_empty() {
+                if let Some(tc) = probe.legacy_target_color.take() {
+                    let tol = probe.legacy_tolerance.take().unwrap_or(types::DEFAULT_COLOR_TOLERANCE);
+                    probe.targets.push(types::ColorTarget { color: tc, tolerance: tol });
+                }
+            } else {
+                // 已有 targets 时清掉兼容字段（避免后续误用）
+                probe.legacy_target_color = None;
+                probe.legacy_tolerance = None;
+            }
+            // 探针内聚合模式缺省回退为 Any
+            if probe.targets.is_empty() {
+                // 空探针视为草稿态，保留原样（watcher 启动会跳过）
+                // 但 probe_match_mode 仍需有值，serde default 已保证 Any
+            }
         }
     }
 

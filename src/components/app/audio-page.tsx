@@ -214,6 +214,14 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const handleTestColorMatch = useCallback(
         async (cardId: string) => {
             if (!isNativeShell) return;
+            type ColorTargetResult = {
+                matched: boolean;
+                targetColor: [number, number, number];
+                tolerance: number;
+                sampledColor: [number, number, number];
+                distance: number;
+                matchingPixelCount?: number;
+            };
             type ColorProbeResult = {
                 matched: boolean;
                 sampledColor: [number, number, number];
@@ -221,6 +229,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 targetColor: [number, number, number];
                 tolerance: number;
                 matchingPixelCount?: number;
+                targets: ColorTargetResult[];
             };
             type ColorTestResult = {
                 triggered: boolean;
@@ -254,7 +263,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 if (!current) return current;
                 const card = current.cards[index];
                 if (!card) return current;
-                const newProbe: ColorProbeForm = {region: null, targetColor: "#ff0000", tolerance: "30"};
+                const newProbe: ColorProbeForm = {region: null, targets: [{color: "#ff0000", tolerance: "30"}], probeMatchMode: "any"};
                 const nextCards = current.cards.map((c, i) =>
                     i === index ? {...c, colorProbes: [...c.colorProbes, newProbe]} : c,
                 );
@@ -811,38 +820,95 @@ function AudioCardEditor({
                                         </div>
                                     </FieldContent>
                                 </Field>
+                                {/* Issue #65：探针内多目标颜色子列表 */}
                                 <Field>
-                                    <FieldLabel>目标颜色</FieldLabel>
+                                    <FieldLabel>目标颜色（探针内聚合：{probe.probeMatchMode === "all" ? "全部命中" : "任一命中"}）</FieldLabel>
                                     <FieldContent>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="color"
-                                                value={probe.targetColor}
-                                                onChange={(e) => onUpdateColorProbe(probeIndex, {targetColor: e.target.value})}
-                                                className="h-9 w-12 cursor-pointer border border-[var(--seam)] bg-transparent p-0"
-                                                aria-label="目标颜色"
-                                            />
-                                            <Input
-                                                className="flex-1 font-mono"
-                                                value={probe.targetColor}
-                                                onChange={(e) => onUpdateColorProbe(probeIndex, {targetColor: e.target.value})}
-                                                placeholder="#RRGGBB"
-                                            />
+                                        <div className="space-y-2">
+                                            {probe.targets.map((target, targetIndex) => (
+                                                <div key={targetIndex} className="flex items-center gap-2">
+                                                    <input
+                                                        type="color"
+                                                        value={target.color}
+                                                        onChange={(e) => {
+                                                            const nextTargets = probe.targets.map((t, i) =>
+                                                                i === targetIndex ? {...t, color: e.target.value} : t
+                                                            );
+                                                            onUpdateColorProbe(probeIndex, {targets: nextTargets});
+                                                        }}
+                                                        className="h-9 w-12 cursor-pointer border border-[var(--seam)] bg-transparent p-0"
+                                                        aria-label="目标颜色"
+                                                    />
+                                                    <Input
+                                                        className="flex-1 font-mono"
+                                                        value={target.color}
+                                                        onChange={(e) => {
+                                                            const nextTargets = probe.targets.map((t, i) =>
+                                                                i === targetIndex ? {...t, color: e.target.value} : t
+                                                            );
+                                                            onUpdateColorProbe(probeIndex, {targets: nextTargets});
+                                                        }}
+                                                        placeholder="#RRGGBB"
+                                                    />
+                                                    <Input
+                                                        type="number"
+                                                        min={0}
+                                                        max={255}
+                                                        step={1}
+                                                        className="w-20 font-mono"
+                                                        value={target.tolerance}
+                                                        onChange={(e) => {
+                                                            const nextTargets = probe.targets.map((t, i) =>
+                                                                i === targetIndex ? {...t, tolerance: e.target.value} : t
+                                                            );
+                                                            onUpdateColorProbe(probeIndex, {targets: nextTargets});
+                                                        }}
+                                                        title="RGB 欧氏距离阈值，越小越严格"
+                                                    />
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            const nextTargets = probe.targets.filter((_, i) => i !== targetIndex);
+                                                            onUpdateColorProbe(probeIndex, {targets: nextTargets});
+                                                        }}
+                                                        title="删除此目标颜色"
+                                                        disabled={probe.targets.length <= 1}
+                                                    >
+                                                        <RiDeleteBinLine className="size-4 text-[var(--alert-red)]" aria-hidden="true"/>
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => {
+                                                    const nextTargets = [...probe.targets, {color: "#00ff00", tolerance: "30"}];
+                                                    onUpdateColorProbe(probeIndex, {targets: nextTargets});
+                                                }}
+                                                data-icon="inline-start"
+                                            >
+                                                <RiCheckLine className="size-4" aria-hidden="true"/>
+                                                添加颜色
+                                            </Button>
                                         </div>
                                     </FieldContent>
                                 </Field>
                                 <Field>
-                                    <FieldLabel>颜色容差 (0-255)</FieldLabel>
+                                    <FieldLabel>探针内聚合模式</FieldLabel>
                                     <FieldContent>
-                                        <Input
-                                            type="number"
-                                            min={0}
-                                            max={255}
-                                            step={1}
-                                            value={probe.tolerance}
-                                            onChange={(e) => onUpdateColorProbe(probeIndex, {tolerance: e.target.value})}
-                                            title="RGB 欧氏距离阈值，越小越严格"
-                                        />
+                                        <Select
+                                            value={probe.probeMatchMode}
+                                            onValueChange={(v) => onUpdateColorProbe(probeIndex, {probeMatchMode: v as "all" | "any"})}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="any">任一命中即触发</SelectItem>
+                                                <SelectItem value="all">全部命中才触发</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </FieldContent>
                                 </Field>
                             </div>
@@ -1064,8 +1130,11 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
         allowSimultaneous: card.allowSimultaneous ?? false,
         colorProbes: (card.colorProbes ?? []).map((p) => ({
             region: p.region,
-            targetColor: rgbToHex(p.targetColor),
-            tolerance: String(p.tolerance),
+            targets: (p.targets ?? []).map((t) => ({
+                color: rgbToHex(t.color),
+                tolerance: String(t.tolerance),
+            })),
+            probeMatchMode: p.probeMatchMode ?? "any",
         })),
         colorMatchMode: card.colorMatchMode ?? "all",
         colorMatchMethod: card.colorMatchMethod ?? "average",

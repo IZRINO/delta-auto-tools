@@ -4,16 +4,30 @@ export type ColorMatchMode = "all" | "any";
 
 export type ColorMatchMethod = "average" | "anyPixel";
 
+/// 识色探针内的单个目标颜色（含独立容差）。
+/// Issue #65：探针内支持多目标颜色，按 probeMatchMode（默认 any）聚合。
+export type ColorTarget = {
+    color: [number, number, number];
+    tolerance: number;
+};
+
+/// 探针表单中的单个目标颜色（字符串形式供输入框）。
+export type ColorTargetForm = {
+    color: string; // "#RRGGBB" 格式
+    tolerance: string; // 数字字符串，0-255
+};
+
 export type ColorProbe = {
     region: RegionRect | null;
-    targetColor: [number, number, number];
-    tolerance: number;
+    targets: ColorTarget[];
+    /// 探针内聚合模式：all=全部命中才视为探针命中；any=任一命中即视为命中。默认 any。
+    probeMatchMode: ColorMatchMode;
 };
 
 export type ColorProbeForm = {
     region: RegionRect | null;
-    targetColor: string; // "#RRGGBB" 格式
-    tolerance: string;   // 数字字符串，0-255
+    targets: ColorTargetForm[];
+    probeMatchMode: ColorMatchMode;
 };
 
 export type AudioTriggerMode = "hotkey" | "regionWatch" | "colorWatch";

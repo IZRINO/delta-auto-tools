@@ -820,17 +820,148 @@ pub(crate) fn scan_region_for_color(
 /// 单探针判定结果
 #[derive(Debug, Clone)]
 pub(crate) struct ProbeHit {
-    /// 是否命中
+    /// 是否命中（按 probe.probe_match_mode 聚合后）
     pub matched: bool,
-    /// average:区域平均色；anyPixel:最近像素
+    /// average:区域平均色；anyPixel:最近像素（取距离最小的目标对应的采样色）
     pub sampled_color: [u8; 3],
-    /// sampled_color 与目标色的欧氏距离
+    /// 采样色与最近目标的距离
     pub distance: f32,
-    /// anyPixel 命中像素数；average 恒 0
+    /// 最近目标颜色（聚合摘要）
+    pub target_color: [u8; 3],
+    /// 最近目标容差（聚合摘要）
+    pub tolerance: u8,
+    /// anyPixel 命中像素数（聚合摘要，取最近目标的）；average 恒 0
     pub matching_pixel_count: usize,
 }
 
-/// 单探针判定：按 method 计算 sampled 与目标色的距离，判定是否命中。
+/// 单个目标颜色的命中详情（供 test 命令与多目标聚合使用）
+#[derive(Debug, Clone)]
+pub(crate) struct TargetHit {
+    pub matched: bool,
+    pub target_color: [u8; 3],
+    pub tolerance: u8,
+    pub sampled_color: [u8; 3],
+    pub distance: f32,
+    pub matching_pixel_count: usize,
+}
+
+/// 单探针内多目标判定：对 `probe.targets` 每个目标分别按 method 判定，返回每个目标的命中详情。
+///
+/// - `count_only=true`：anyPixel 命中即早退（watcher 用，性能优先）。
+/// - `count_only=false`：全扫拿真实命中数与最近像素（test 用，调试优先）。
+///
+/// 返回值顺序与 `probe.targets` 一致。
+pub(crate) fn probe_hit_targets(
+    screenshot: &image::DynamicImage,
+    probe: &crate::audio::types::ColorProbe,
+    method: crate::audio::types::ColorMatchMethod,
+    count_only: bool,
+) -> Vec<TargetHit> {
+    probe
+        .targets
+        .iter()
+        .map(|target| {
+            let hit = probe_hit_single_target(screenshot, target, method.clone(), count_only);
+            TargetHit {
+                matched: hit.matched,
+                target_color: target.color,
+                tolerance: target.tolerance,
+                sampled_color: hit.sampled_color,
+                distance: hit.distance,
+                matching_pixel_count: hit.matching_pixel_count,
+            }
+        })
+        .collect()
+}
+
+/// 单探针对单个目标的判定结果（内部用）
+struct SingleTargetHit {
+    matched: bool,
+    sampled_color: [u8; 3],
+    distance: f32,
+    matching_pixel_count: usize,
+}
+
+/// 单探针对单个 `ColorTarget` 的判定：按 method 计算 sampled 与目标色的距离。
+fn probe_hit_single_target(
+    screenshot: &image::DynamicImage,
+    target: &crate::audio::types::ColorTarget,
+    method: crate::audio::types::ColorMatchMethod,
+    count_only: bool,
+) -> SingleTargetHit {
+    match method {
+        crate::audio::types::ColorMatchMethod::Average => {
+            let avg = average_region_rgb(screenshot);
+            let dist = color_distance(avg, target.color);
+            SingleTargetHit {
+                matched: dist <= target.tolerance as f32,
+                sampled_color: avg,
+                distance: dist,
+                matching_pixel_count: 0,
+            }
+        }
+        crate::audio::types::ColorMatchMethod::AnyPixel => {
+            let scan = scan_region_for_color(screenshot, target.color, target.tolerance as f32, count_only);
+            SingleTargetHit {
+                matched: scan.matching_count > 0,
+                sampled_color: scan.nearest_color,
+                distance: scan.nearest_distance,
+                matching_pixel_count: scan.matching_count,
+            }
+        }
+    }
+}
+
+/// 探针级聚合：对 `probe.targets` 的命中详情按 `probe.probe_match_mode` 聚合，返回探针级摘要。
+///
+/// - Any：任一目标命中即视为探针命中
+/// - All：所有目标都命中才视为探针命中
+///
+/// 聚合摘要字段（sampled_color/distance/target_color/tolerance/matching_pixel_count）
+/// 取距离最小（最接近命中）的目标作为代表。
+fn aggregate_probe_hits(
+    hits: &[TargetHit],
+    probe_match_mode: crate::audio::types::ColorMatchMode,
+) -> ProbeHit {
+    if hits.is_empty() {
+        return ProbeHit {
+            matched: false,
+            sampled_color: [0, 0, 0],
+            distance: f32::INFINITY,
+            target_color: [0, 0, 0],
+            tolerance: 0,
+            matching_pixel_count: 0,
+        };
+    }
+    let hit_count = hits.iter().filter(|h| h.matched).count();
+    let matched = match probe_match_mode {
+        ColorMatchMode::All => hit_count == hits.len(),
+        ColorMatchMode::Any => hit_count > 0,
+    };
+    // 取距离最小的目标作为摘要代表
+    let nearest = hits
+        .iter()
+        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap();
+    ProbeHit {
+        matched,
+        sampled_color: nearest.sampled_color,
+        distance: nearest.distance,
+        target_color: nearest.target_color,
+        tolerance: nearest.tolerance,
+        matching_pixel_count: nearest.matching_pixel_count,
+    }
+}
+
+/// pub(crate) wrapper：供 mod.rs 的 audio_test_color_match 命令复用
+pub(crate) fn aggregate_probe_hits_pub(
+    hits: &[TargetHit],
+    probe_match_mode: crate::audio::types::ColorMatchMode,
+) -> ProbeHit {
+    aggregate_probe_hits(hits, probe_match_mode)
+}
+
+/// 单探针判定：对 `probe.targets` 按 `probe.probe_match_mode` 聚合后返回探针级摘要。
 ///
 /// - `count_only=true`：anyPixel 命中即早退（watcher 用，性能优先）。
 /// - `count_only=false`：全扫拿真实命中数与最近像素（test 用，调试优先）。
@@ -840,27 +971,8 @@ pub(crate) fn probe_hit(
     method: crate::audio::types::ColorMatchMethod,
     count_only: bool,
 ) -> ProbeHit {
-    match method {
-        crate::audio::types::ColorMatchMethod::Average => {
-            let avg = average_region_rgb(screenshot);
-            let dist = color_distance(avg, probe.target_color);
-            ProbeHit {
-                matched: dist <= probe.tolerance as f32,
-                sampled_color: avg,
-                distance: dist,
-                matching_pixel_count: 0,
-            }
-        }
-        crate::audio::types::ColorMatchMethod::AnyPixel => {
-            let scan = scan_region_for_color(screenshot, probe.target_color, probe.tolerance as f32, count_only);
-            ProbeHit {
-                matched: scan.matching_count > 0,
-                sampled_color: scan.nearest_color,
-                distance: scan.nearest_distance,
-                matching_pixel_count: scan.matching_count,
-            }
-        }
-    }
+    let hits = probe_hit_targets(screenshot, probe, method, count_only);
+    aggregate_probe_hits(&hits, probe.probe_match_mode.clone())
 }
 
 /// 对一组已截取的区域图像与对应探针做颜色匹配，按 mode 聚合
@@ -890,7 +1002,7 @@ pub(crate) fn match_color_probes(
 mod tests {
     use super::*;
     use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
-    use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe};
+    use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
     use crate::morse::types::RegionRect;
 
     /// 辅助：取比较结果的 similarity
@@ -1181,8 +1293,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([10, 20, 30, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(result.matched, "All 模式全命中应触发");
@@ -1196,8 +1308,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))), // 不匹配
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(!result.matched, "All 模式部分未命中不应触发");
@@ -1211,8 +1323,8 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [200, 100, 50], tolerance: 10 },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [10, 20, 30], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
         ];
         let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::Average);
         assert!(result.matched, "Any 模式任一命中即触发");
@@ -1239,8 +1351,10 @@ mod tests {
         let screenshots = vec![DynamicImage::ImageRgba8(img)];
         let probes = vec![ColorProbe {
             region: Some(RegionRect { x: 0, y: 0, width: 3, height: 3 }),
-            target_color: [255, 0, 0],
-            tolerance: 10,
+            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
         }];
         let avg = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
         assert!(!avg.matched, "average 模式平均色为黑，距红远，未中");
@@ -1264,8 +1378,8 @@ mod tests {
             DynamicImage::ImageRgba8(img2),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [255, 0, 0], tolerance: 10 },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), target_color: [255, 0, 0], tolerance: 10 },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
         ];
         let all = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
         assert!(!all.matched, "mode=All 第二探针未中，不触发");
@@ -1336,8 +1450,10 @@ mod tests {
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
             region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            target_color: [127, 0, 0],
-            tolerance: 5,
+            targets: vec![ColorTarget { color: [127, 0, 0], tolerance: 5 }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
         };
         let hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
         assert!(hit.matched, "average 模式平均色应命中");
@@ -1355,8 +1471,10 @@ mod tests {
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
             region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            target_color: [255, 0, 0],
-            tolerance: 10,
+            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
         };
         let avg_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
         assert!(!avg_hit.matched, "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中");

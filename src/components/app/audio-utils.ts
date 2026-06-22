@@ -23,8 +23,11 @@ function hexToRgb(hex: string): [number, number, number] {
 function probeToForm(probe: ColorProbe): ColorProbeForm {
     return {
         region: probe.region,
-        targetColor: rgbToHex(probe.targetColor),
-        tolerance: String(probe.tolerance),
+        targets: probe.targets.map((t) => ({
+            color: rgbToHex(t.color),
+            tolerance: String(t.tolerance),
+        })),
+        probeMatchMode: probe.probeMatchMode ?? "any",
     };
 }
 
@@ -32,14 +35,23 @@ function parseProbeForm(form: ColorProbeForm): ColorProbe {
     // region 可为 null（用户刚新增探针、尚未框选区域的草稿态）。
     // watcher 启动时会跳过含 null 探针的卡片，使其能作为中间态被保存
     // （Issue #61/#60：避免 flushSettings / autosave 因 region 缺失而整体失败）。
-    const tolerance = parseInt(form.tolerance, 10);
-    if (Number.isNaN(tolerance) || tolerance < 0 || tolerance > 255) {
-        throw new Error("颜色容差必须在 0 到 255 之间。");
+    if (form.targets.length === 0) {
+        throw new Error("探针至少需要配置一个目标颜色。");
     }
+    const targets = form.targets.map((t) => {
+        const tolerance = parseInt(t.tolerance, 10);
+        if (Number.isNaN(tolerance) || tolerance < 0 || tolerance > 255) {
+            throw new Error("颜色容差必须在 0 到 255 之间。");
+        }
+        return {
+            color: hexToRgb(t.color),
+            tolerance,
+        };
+    });
     return {
         region: form.region,
-        targetColor: hexToRgb(form.targetColor),
-        tolerance,
+        targets,
+        probeMatchMode: form.probeMatchMode ?? "any",
     };
 }
 

@@ -30,6 +30,8 @@ fn default_color_tolerance() -> u8 {
     30
 }
 
+pub(crate) const DEFAULT_COLOR_TOLERANCE: u8 = 30;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioSettings {
@@ -135,21 +137,50 @@ fn default_combo_window_ms() -> u32 {
     60000
 }
 
-/// 识色探针：一个矩形区域 + 目标颜色 + 容差
+/// 识色探针内的单个目标颜色（含独立容差）。
+///
+/// 每个探针可配置多个目标颜色，探针内按 `probe_match_mode`（默认 Any）聚合：
+/// 任一目标命中即视为该探针命中（Any）；全部命中才视为命中（All）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ColorTarget {
+    /// 目标 RGB 颜色 [R, G, B]，每通道 0-255
+    pub color: [u8; 3],
+    /// 颜色容差（RGB 欧氏距离阈值，0-255）
+    #[serde(default = "default_color_tolerance")]
+    pub tolerance: u8,
+}
+
+fn default_probe_match_mode_any() -> ColorMatchMode {
+    ColorMatchMode::Any
+}
+
+/// 识色探针：一个矩形区域 + 多个目标颜色（每个含独立容差）+ 探针内聚合模式
 ///
 /// `region` 可为 None：用户刚新增探针、尚未框选区域的草稿态。
 /// watcher 启动时会跳过含 None 探针的卡片，使其能作为中间态被保存
 /// （Issue #61/#60：避免 autosave / flushSettings 因 region 缺失而整体失败）。
+///
+/// Issue #65：探针内支持多目标颜色。旧 JSON 的单值 `targetColor`/`tolerance`
+/// 在 `normalize_settings` 中迁移为单元素 `targets`；序列化只输出 `targets`。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ColorProbe {
     #[serde(default)]
     pub region: Option<RegionRect>,
-    /// 目标 RGB 颜色 [R, G, B]，每通道 0-255
-    pub target_color: [u8; 3],
-    /// 颜色容差（RGB 欧氏距离阈值，0-255）
-    #[serde(default = "default_color_tolerance")]
-    pub tolerance: u8,
+    /// 多目标颜色列表（Issue #65）。空列表时 watcher 视为未就绪。
+    #[serde(default)]
+    pub targets: Vec<ColorTarget>,
+    /// 探针内聚合模式：All = 所有目标都命中才视为探针命中；Any = 任一命中即视为命中。缺省 Any。
+    #[serde(default = "default_probe_match_mode_any")]
+    pub probe_match_mode: ColorMatchMode,
+    // ---- 旧字段：仅反序列化兼容，序列化时 skip ----
+    /// 旧单值目标颜色，反序列化旧 JSON 用；`normalize_settings` 迁移进 `targets` 后清空。
+    #[serde(default, rename = "targetColor", skip_serializing)]
+    pub legacy_target_color: Option<[u8; 3]>,
+    /// 旧单值容差，反序列化旧 JSON 用；`normalize_settings` 迁移进 `targets` 后清空。
+    #[serde(default, rename = "tolerance", skip_serializing)]
+    pub legacy_tolerance: Option<u8>,
 }
 
 /// 多探针聚合模式：All = 全部命中才触发；Any = 任一命中即触发
@@ -214,14 +245,19 @@ mod tests {
 
     #[test]
     fn color_probe_roundtrip() {
+        // Issue #65：旧 JSON 的 targetColor/tolerance 反序列化到 legacy_* 字段；
+        // 迁移到 targets 由 normalize_settings 完成（不在 serde 层）。
         let json = r#"{"region":{"x":10,"y":20,"width":5,"height":5},"targetColor":[200,100,50],"tolerance":40}"#;
         let probe: ColorProbe = serde_json::from_str(json).unwrap();
         assert_eq!(probe.region.as_ref().unwrap().x, 10);
-        assert_eq!(probe.target_color, [200, 100, 50]);
-        assert_eq!(probe.tolerance, 40);
+        assert_eq!(probe.legacy_target_color, Some([200, 100, 50]));
+        assert_eq!(probe.legacy_tolerance, Some(40));
+        assert!(probe.targets.is_empty(), "serde 层不做迁移，targets 应为空");
+        // 序列化只输出 targets（空数组），不输出 legacy 字段
         let reserialized = serde_json::to_string(&probe).unwrap();
-        assert!(reserialized.contains("\"targetColor\":[200,100,50]"));
-        assert!(reserialized.contains("\"tolerance\":40"));
+        assert!(!reserialized.contains("targetColor"), "旧字段应 skip_serializing，实际 {reserialized}");
+        assert!(!reserialized.contains("tolerance"), "旧字段应 skip_serializing，实际 {reserialized}");
+        assert!(reserialized.contains("\"targets\":[]"), "应输出空 targets，实际 {reserialized}");
     }
 
     #[test]
@@ -230,7 +266,7 @@ mod tests {
         let json = r#"{"region":null,"targetColor":[200,100,50],"tolerance":40}"#;
         let probe: ColorProbe = serde_json::from_str(json).unwrap();
         assert!(probe.region.is_none());
-        assert_eq!(probe.target_color, [200, 100, 50]);
+        assert_eq!(probe.legacy_target_color, Some([200, 100, 50]));
         let reserialized = serde_json::to_string(&probe).unwrap();
         assert!(reserialized.contains("\"region\":null"), "region=None 应序列化为 null，实际 {reserialized}");
         let back: ColorProbe = serde_json::from_str(&reserialized).unwrap();
@@ -243,15 +279,16 @@ mod tests {
         let json = r#"{"targetColor":[0,0,0],"tolerance":30}"#;
         let probe: ColorProbe = serde_json::from_str(json).unwrap();
         assert!(probe.region.is_none());
-        assert_eq!(probe.tolerance, 30);
+        assert_eq!(probe.legacy_tolerance, Some(30));
     }
 
     #[test]
     fn color_probe_default_tolerance_is_30() {
-        // 缺省 tolerance 应默认 30
+        // 缺省 tolerance 应默认 30（legacy_tolerance=None，serde 不迁移，normalize 迁移）
         let json = r#"{"region":{"x":0,"y":0,"width":3,"height":3},"targetColor":[0,0,0]}"#;
         let probe: ColorProbe = serde_json::from_str(json).unwrap();
-        assert_eq!(probe.tolerance, 30);
+        assert_eq!(probe.legacy_tolerance, None);
+        assert_eq!(probe.legacy_target_color, Some([0, 0, 0]));
     }
 
     #[test]
@@ -285,8 +322,10 @@ mod tests {
             allow_simultaneous: false,
             color_probes: vec![ColorProbe {
                 region: Some(RegionRect { x: 1, y: 2, width: 3, height: 4 }),
-                target_color: [10, 20, 30],
-                tolerance: 25,
+                targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 25 }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
             }],
             color_match_mode: ColorMatchMode::Any,
             color_match_method: ColorMatchMethod::AnyPixel,
@@ -300,7 +339,9 @@ mod tests {
         assert_eq!(back.color_match_mode, ColorMatchMode::Any);
         assert_eq!(back.color_match_method, ColorMatchMethod::AnyPixel);
         assert_eq!(back.color_probes.len(), 1);
-        assert_eq!(back.color_probes[0].target_color, [10, 20, 30]);
+        assert_eq!(back.color_probes[0].targets.len(), 1);
+        assert_eq!(back.color_probes[0].targets[0].color, [10, 20, 30]);
+        assert_eq!(back.color_probes[0].targets[0].tolerance, 25);
         assert_eq!(back.audio_files, vec!["a.mp3".to_string()]);
         assert_eq!(back.play_mode, PlayMode::Combo);
         assert_eq!(back.combo_window_ms, 60000);

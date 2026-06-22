@@ -231,8 +231,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: null,
-                                targetColor: "#c86432",
-                                tolerance: "40",
+                                targets: [{ color: "#c86432", tolerance: "40" }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "all" as const,
@@ -252,8 +252,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: {x: 10, y: 20, width: 5, height: 5},
-                                targetColor: [200, 100, 50] as [number, number, number],
-                                tolerance: 40,
+                                targets: [{ color: [200, 100, 50] as [number, number, number], tolerance: 40 }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "all",
@@ -264,8 +264,8 @@ describe("audio-utils", () => {
             // region 被后端回写
             expect(merged.cards[0].colorProbes[0].region).toEqual({x: 10, y: 20, width: 5, height: 5});
             // 本地草稿（颜色/容差）保留，不被后端覆盖
-            expect(merged.cards[0].colorProbes[0].targetColor).toBe("#c86432");
-            expect(merged.cards[0].colorProbes[0].tolerance).toBe("40");
+            expect(merged.cards[0].colorProbes[0].targets[0].color).toBe("#c86432");
+            expect(merged.cards[0].colorProbes[0].targets[0].tolerance).toBe("40");
         });
 
         it("不覆盖本地 comboWindows 草稿（Issue #62）", () => {
@@ -331,8 +331,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: {x: 10, y: 20, width: 5, height: 5},
-                                targetColor: [200, 100, 50] as [number, number, number],
-                                tolerance: 40,
+                                targets: [{ color: [200, 100, 50] as [number, number, number], tolerance: 40 }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "any" as const,
@@ -342,8 +342,8 @@ describe("audio-utils", () => {
             };
             const form = settingsToForm(settings);
             expect(form.cards[0].colorProbes).toHaveLength(1);
-            expect(form.cards[0].colorProbes[0].targetColor).toBe("#c86432");
-            expect(form.cards[0].colorProbes[0].tolerance).toBe("40");
+            expect(form.cards[0].colorProbes[0].targets[0].color).toBe("#c86432");
+            expect(form.cards[0].colorProbes[0].targets[0].tolerance).toBe("40");
             expect(form.cards[0].colorMatchMode).toBe("any");
         });
     });
@@ -372,8 +372,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: {x: 10, y: 20, width: 5, height: 5},
-                                targetColor: "#c86432",
-                                tolerance: "40",
+                                targets: [{ color: "#c86432", tolerance: "40" }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "all" as const,
@@ -384,8 +384,8 @@ describe("audio-utils", () => {
             const settings = parseSettingsForm(form);
             expect(settings.cards[0].triggerMode).toBe("colorWatch");
             expect(settings.cards[0].colorProbes).toHaveLength(1);
-            expect(settings.cards[0].colorProbes[0].targetColor).toEqual([200, 100, 50]);
-            expect(settings.cards[0].colorProbes[0].tolerance).toBe(40);
+            expect(settings.cards[0].colorProbes[0].targets[0].color).toEqual([200, 100, 50]);
+            expect(settings.cards[0].colorProbes[0].targets[0].tolerance).toBe(40);
             expect(settings.cards[0].colorMatchMode).toBe("all");
         });
 
@@ -441,8 +441,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: {x: 10, y: 20, width: 5, height: 5},
-                                targetColor: "#c86432",
-                                tolerance: "300",
+                                targets: [{ color: "#c86432", tolerance: "300" }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "all" as const,
@@ -480,8 +480,8 @@ describe("audio-utils", () => {
                         colorProbes: [
                             {
                                 region: null,
-                                targetColor: "#c86432",
-                                tolerance: "40",
+                                targets: [{ color: "#c86432", tolerance: "40" }],
+                                probeMatchMode: "any" as const,
                             },
                         ],
                         colorMatchMode: "all" as const,
@@ -492,8 +492,8 @@ describe("audio-utils", () => {
             const settings = parseSettingsForm(form);
             expect(settings.cards[0].colorProbes).toHaveLength(1);
             expect(settings.cards[0].colorProbes[0].region).toBeNull();
-            expect(settings.cards[0].colorProbes[0].targetColor).toEqual([200, 100, 50]);
-            expect(settings.cards[0].colorProbes[0].tolerance).toBe(40);
+            expect(settings.cards[0].colorProbes[0].targets[0].color).toEqual([200, 100, 50]);
+            expect(settings.cards[0].colorProbes[0].targets[0].tolerance).toBe(40);
         });
     });
 
@@ -805,8 +805,8 @@ describe("audio-utils", () => {
                     triggerMode: "colorWatch" as const,
                     colorProbes: [{
                         region: {x: 0, y: 0, width: 2, height: 2},
-                        targetColor: "#ff0000",
-                        tolerance: "10",
+                        targets: [{ color: "#ff0000", tolerance: "10" }],
+                        probeMatchMode: "any" as const,
                     }],
                     colorMatchMode: "all" as const,
                     colorMatchMethod: "anyPixel" as const,
