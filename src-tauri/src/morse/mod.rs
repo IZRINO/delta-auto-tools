@@ -19,6 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use crate::app_error::AppError;
 use crate::hotkey_types;
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
+use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::utils::now_ms;
 
 use self::{
@@ -297,9 +298,15 @@ pub fn morse_save_settings(
         .inner
         .lock()
         .map_err(|_| "摩斯状态已损坏".to_string())?;
-    inner.settings = settings_value;
+    inner.settings = settings_value.clone();
 
-    Ok(crate::tool_base::ToolLogic::build_bootstrap(&inner))
+    let bootstrap = crate::tool_base::ToolLogic::build_bootstrap(&inner);
+    drop(inner);
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Morse(settings_value),
+    )?;
+    Ok(bootstrap)
 }
 
 #[tauri::command]
@@ -342,6 +349,10 @@ pub fn morse_overlay_submit_selection(
             inner.settings.clone()
         };
         settings::save_settings(&app, &settings_snapshot)?;
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Morse(settings_snapshot),
+        )?;
     }
 
     let _ = app.emit_to("main", events::SELECTION_PROGRESS, progress.clone());
@@ -373,6 +384,10 @@ pub fn morse_overlay_finish_early(
         inner.settings.clone()
     };
     settings::save_settings(&app, &settings_snapshot)?;
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Morse(settings_snapshot),
+    )?;
     Ok(())
 }
 

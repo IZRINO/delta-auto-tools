@@ -5,6 +5,7 @@ use tauri::{Emitter, Manager};
 use crate::app_error::AppError;
 use crate::hotkey_types::ConflictPolicy;
 use crate::hotkeys::HotkeyManager;
+use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 mod types;
@@ -264,6 +265,10 @@ pub fn audio_save_settings(
     inner.hotkey_error = None;
     let bootstrap = AudioLogic::build_bootstrap(&inner);
     AudioLogic::emit_state(&app, &bootstrap);
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Audio(bootstrap.settings.clone()),
+    )?;
     Ok(bootstrap)
 }
 
@@ -395,6 +400,10 @@ pub async fn audio_overlay_submit_selection(
 
     watcher::restart_watchers(&app, &settings_snapshot, playback_tx).map_err(AppError::from)?;
     AudioLogic::emit_state(&app, &bootstrap);
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Audio(settings_snapshot),
+    )?;
     Ok(())
 }
 

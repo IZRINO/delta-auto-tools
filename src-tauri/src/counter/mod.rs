@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 use crate::app_error::AppError;
 use crate::hotkey_types::{ConflictPolicy, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
+use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
@@ -701,6 +702,10 @@ pub fn counter_save_settings(
 
     ensure_display_windows(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
+    )?;
     Ok(bootstrap)
 }
 
@@ -898,6 +903,10 @@ pub fn counter_position_commit(
     destroy_window(&app, &position_label_for_group(&group_id));
     ensure_display_windows(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
+    )?;
     Ok(bootstrap)
 }
 

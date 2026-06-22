@@ -32,6 +32,7 @@ use crate::{
     hotkey_types,
     hotkeys::HotkeyManager,
     overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
+    profile::{self, ActiveProfileSnapshotPatch},
 };
 
 const RAPIDFIRE_DISPLAY_LABEL: &str = "rapidfire-display";
@@ -1511,6 +1512,10 @@ pub fn rapidfire_save_settings(
 
     ensure_overlay_window(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
+    )?;
     Ok(bootstrap)
 }
 
@@ -1693,6 +1698,10 @@ pub fn rapidfire_position_commit(
     destroy_window(&app, &position_label_for_group(&group_id));
     ensure_overlay_window(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
+    profile::update_active_profile_snapshot(
+        &app,
+        ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
+    )?;
     Ok(bootstrap)
 }
 
