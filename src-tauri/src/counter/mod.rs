@@ -591,13 +591,12 @@ pub fn shutdown(app: &AppHandle, state: &CounterState, hotkey_manager: &HotkeyMa
 
 pub fn stop_all(app: &AppHandle, state: &CounterState) {
     let bootstrap = {
-        let Ok(mut inner) = state.lock_inner() else {
+        let Ok(inner) = state.lock_inner() else {
             return;
         };
-        inner.logic.runs.clear();
-        persist_counter_runs(app, &inner);
         CounterLogic::build_bootstrap(&inner)
     };
+    destroy_display_windows(app);
     emit_state(app, bootstrap);
 }
 
@@ -1020,5 +1019,29 @@ mod tests {
         settings.counters[0].hotkey = "   ".to_string();
         let error = normalize_settings(settings).unwrap_err();
         assert!(error.contains("快捷键不能为空"));
+    }
+
+    #[test]
+    fn counter_run_states_reflects_accumulated_runs() {
+        // 守卫 #64 回归：stop_all 不再清空 runs，因此 counter_run_states
+        // 必须能反映 runs 中累积的值，而非始终回落到 start_value。
+        let counter = sample_counter("c", "F3");
+        let settings = CounterSettings {
+            counters: vec![counter],
+            ..CounterSettings::default()
+        };
+        let mut logic = CounterLogic {
+            runs: HashMap::new(),
+            pending_position: None,
+        };
+        logic.runs.insert("c".to_string(), 42);
+        let inner = ToolStateInner {
+            settings,
+            logic,
+            hotkey_error: None,
+        };
+        let states = counter_run_states(&inner);
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].value, 42, "累积值应被保留而非回落到 start_value");
     }
 }
