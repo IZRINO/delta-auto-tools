@@ -904,6 +904,8 @@ pub fn stop_all(app: &AppHandle, state: &TimerState) {
         inner.logic.runs.clear();
         TimerLogic::build_bootstrap(&inner)
     };
+    // 统一关闭：全局开关关闭时销毁计时器透明窗口，与计数器/连发器保持一致（Issue #64）。
+    destroy_display_windows(app);
     emit_state(app, bootstrap);
 }
 

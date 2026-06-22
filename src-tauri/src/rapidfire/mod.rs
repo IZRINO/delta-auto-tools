@@ -1398,6 +1398,8 @@ pub fn stop_all(app: &AppHandle, state: &RapidfireState, hotkey_manager: Option<
         hm.clear_all_suppressions();
         let _ = hm.stop_suppressor();
     }
+    // 统一关闭：全局开关关闭时销毁连发器透明窗口，与计数器/计时器保持一致（Issue #64）。
+    destroy_display_windows(app);
     emit_state(app, bootstrap);
 }
 
