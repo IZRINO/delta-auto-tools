@@ -17,6 +17,10 @@ use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
 };
+use crate::sync_tool::{
+    count_enabled_items_by_group, group_enabled, normalize_sync_settings, SyncGroup, SyncItem,
+    SyncSettings,
+};
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 use self::counter_state::CounterRunStateSnapshot;
@@ -171,7 +175,7 @@ fn default_group(id: &str, name: &str, display: CounterDisplaySettings) -> Count
     }
 }
 
-fn normalize_groups(
+fn normalize_counter_groups(
     mut groups: Vec<CounterGroup>,
     default_group_id: &str,
     legacy_display: CounterDisplaySettings,
@@ -221,14 +225,6 @@ fn normalize_groups(
     Ok(normalized)
 }
 
-fn group_enabled(groups: &[CounterGroup], group_id: &str) -> bool {
-    groups
-        .iter()
-        .find(|group| group.id == group_id)
-        .map(|group| group.enabled)
-        .unwrap_or(false)
-}
-
 fn group_display<'a>(
     groups: &'a [CounterGroup],
     default_group_id: &str,
@@ -253,6 +249,105 @@ fn enabled_counter_count_for_group(settings_value: &CounterSettings, group_id: &
         .count()
 }
 
+impl SyncItem for CounterItem {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn group_id(&self) -> &str {
+        &self.group_id
+    }
+
+    fn set_group_id(&mut self, group_id: String) {
+        self.group_id = group_id;
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncGroup for CounterGroup {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncSettings for CounterSettings {
+    type Item = CounterItem;
+    type Group = CounterGroup;
+
+    const DEFAULT_GROUP_ID: &'static str = DEFAULT_COUNTER_GROUP_ID;
+    const DUPLICATE_ITEM_MESSAGE_PREFIX: &'static str = "计数器 ID 重复";
+
+    fn sync_legacy_enabled(&mut self) {
+        if self.enabled && !self.counter_enabled {
+            self.counter_enabled = true;
+        }
+        self.enabled = self.counter_enabled;
+    }
+
+    fn items(&self) -> &[Self::Item] {
+        &self.counters
+    }
+
+    fn items_mut(&mut self) -> &mut Vec<Self::Item> {
+        &mut self.counters
+    }
+
+    fn replace_items(&mut self, items: Vec<Self::Item>) {
+        self.counters = items;
+    }
+
+    fn groups(&self) -> &[Self::Group] {
+        &self.counter_groups
+    }
+
+    fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
+        let legacy_display = self.display.clone();
+        let counter_count_by_group = count_enabled_items_by_group(&self.counters);
+        normalize_counter_groups(
+            self.counter_groups.clone(),
+            DEFAULT_COUNTER_GROUP_ID,
+            legacy_display,
+            &counter_count_by_group,
+        )
+    }
+
+    fn replace_groups(&mut self, groups: Vec<Self::Group>) {
+        self.counter_groups = groups;
+    }
+
+    fn default_item(&self) -> Self::Item {
+        CounterItem {
+            id: format!("counter-{}", crate::utils::now_ms()),
+            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+            name: "计数器 1".to_string(),
+            start_value: 0,
+            hotkey: "F3".to_string(),
+            enabled: true,
+        }
+    }
+
+    fn normalize_item(&self, item: &Self::Item) -> Result<Self::Item, String> {
+        normalize_counter(item)
+    }
+
+    fn after_groups_normalized(&mut self) {
+        self.display = group_display(
+            &self.counter_groups,
+            DEFAULT_COUNTER_GROUP_ID,
+            DEFAULT_COUNTER_GROUP_ID,
+        )
+        .cloned()
+        .unwrap_or_default();
+    }
+}
+
 fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
     let name = counter.name.trim();
     if name.is_empty() {
@@ -274,77 +369,8 @@ fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
     })
 }
 
-pub(crate) fn normalize_settings(mut settings_value: CounterSettings) -> Result<CounterSettings, String> {
-    if settings_value.enabled && !settings_value.counter_enabled {
-        settings_value.counter_enabled = true;
-    }
-    settings_value.enabled = settings_value.counter_enabled;
-    let legacy_display = settings_value.display.clone();
-
-    if settings_value.counters.is_empty() {
-        settings_value.counters.push(CounterItem {
-            id: format!("counter-{}", crate::utils::now_ms()),
-            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
-            name: "计数器 1".to_string(),
-            start_value: 0,
-            hotkey: "F3".to_string(),
-            enabled: true,
-        });
-    }
-
-    let raw_group_ids = group_id_set(&settings_value.counter_groups, DEFAULT_COUNTER_GROUP_ID);
-
-    let mut seen_ids = HashMap::new();
-    let mut counters = Vec::with_capacity(settings_value.counters.len());
-    for counter in &settings_value.counters {
-        let mut normalized = normalize_counter(counter)?;
-        if !raw_group_ids.contains_key(&normalized.group_id) {
-            normalized.group_id = DEFAULT_COUNTER_GROUP_ID.to_string();
-        }
-        if seen_ids.insert(normalized.id.clone(), true).is_some() {
-            return Err(format!("计数器 ID 重复: {}", normalized.id));
-        }
-        counters.push(normalized);
-    }
-
-    settings_value.counters = counters;
-    let counter_count_by_group = count_enabled_counters_by_group(&settings_value.counters);
-    settings_value.counter_groups = normalize_groups(
-        settings_value.counter_groups,
-        DEFAULT_COUNTER_GROUP_ID,
-        legacy_display,
-        &counter_count_by_group,
-    )?;
-    settings_value.display = group_display(
-        &settings_value.counter_groups,
-        DEFAULT_COUNTER_GROUP_ID,
-        DEFAULT_COUNTER_GROUP_ID,
-    )
-        .cloned()
-        .unwrap_or_default();
-    Ok(settings_value)
-}
-
-fn group_id_set(groups: &[CounterGroup], default_group_id: &str) -> HashMap<String, bool> {
-    let mut map = HashMap::new();
-    map.insert(default_group_id.to_string(), true);
-    for group in groups {
-        let id = group.id.trim();
-        if !id.is_empty() {
-            map.insert(id.to_string(), true);
-        }
-    }
-    map
-}
-
-fn count_enabled_counters_by_group(counters: &[CounterItem]) -> HashMap<String, usize> {
-    let mut map = HashMap::new();
-    for counter in counters {
-        if counter.enabled {
-            *map.entry(counter.group_id.clone()).or_insert(0) += 1;
-        }
-    }
-    map
+pub(crate) fn normalize_settings(settings_value: CounterSettings) -> Result<CounterSettings, String> {
+    normalize_sync_settings(settings_value)
 }
 
 pub(crate) fn restart_hotkey_listeners(
@@ -1028,6 +1054,33 @@ mod tests {
         settings.counters[0].hotkey = "   ".to_string();
         let error = normalize_settings(settings).unwrap_err();
         assert!(error.contains("快捷键不能为空"));
+    }
+
+    #[test]
+    fn counter_normalize_moves_unknown_group_to_default() {
+        let mut settings = CounterSettings::default();
+        settings.counters[0].group_id = "missing".to_string();
+
+        let normalized = normalize_settings(settings).expect("计数器配置应规范化");
+
+        assert_eq!(normalized.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);
+    }
+
+    #[test]
+    fn counter_normalize_rejects_duplicate_counter_ids() {
+        let mut settings = CounterSettings::default();
+        settings.counters.push(CounterItem {
+            id: settings.counters[0].id.clone(),
+            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+            name: "重复计数器".to_string(),
+            start_value: 0,
+            hotkey: "F4".to_string(),
+            enabled: true,
+        });
+
+        let error = normalize_settings(settings).expect_err("重复 ID 应报错");
+
+        assert_eq!(error, "计数器 ID 重复: counter-1");
     }
 
     #[test]
