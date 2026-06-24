@@ -10,7 +10,7 @@ use tauri::{
 use tokio::sync::oneshot;
 
 use crate::app_error::AppError;
-use crate::hotkey_types::{ConflictPolicy, HotkeyAction};
+use crate::hotkey_types::HotkeyAction;
 use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::overlay_utils::{
@@ -18,8 +18,8 @@ use crate::overlay_utils::{
     hide_window, safe_label_component,
 };
 use crate::sync_tool::{
-    count_enabled_items_by_group, group_enabled, normalize_sync_settings, SyncGroup, SyncItem,
-    SyncSettings,
+    count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
+    SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
@@ -112,6 +112,50 @@ impl ToolLogic for CounterLogic {
                 (*bootstrap).clone(),
             );
         }
+    }
+}
+
+impl SyncToolLogic for CounterLogic {
+    const SCOPE: &'static str = "counter";
+    const SCOPE_LABEL: &'static str = "计数器";
+
+    fn tool_enabled(settings: &CounterSettings) -> bool {
+        settings.counter_enabled
+    }
+
+    fn build_hotkey_bindings(settings: &CounterSettings) -> Result<HotkeyBindingSet, String> {
+        let mut by_hotkey: HashMap<String, Vec<String>> = HashMap::new();
+        for counter in &settings.counters {
+            if !counter.enabled || !group_enabled(&settings.counter_groups, &counter.group_id) {
+                continue;
+            }
+            by_hotkey
+                .entry(counter.hotkey.trim().to_string())
+                .or_default()
+                .push(counter.id.clone());
+        }
+
+        let mut bindings = HotkeyBindingSet::empty();
+        for (hotkey, counter_ids) in by_hotkey {
+            let action: HotkeyAction = std::sync::Arc::new(move |app_handle| {
+                let targets = counter_ids.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = trigger_hotkey_targets(&app_handle, targets) {
+                        let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
+                    }
+                });
+            });
+            bindings.normal.push((hotkey, action));
+        }
+        Ok(bindings)
+    }
+
+    fn stop_all(app: &AppHandle) -> Result<(), String> {
+        let Some(state) = app.try_state::<CounterState>() else {
+            return Ok(());
+        };
+        stop_all(app, &state);
+        Ok(())
     }
 }
 
@@ -378,48 +422,7 @@ pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
     settings_value: &CounterSettings,
 ) -> Result<(), String> {
-    if !settings_value.counter_enabled {
-        hotkey_manager.clear_scope("counter")?;
-        return Ok(());
-    }
-
-    let mut by_hotkey: HashMap<String, Vec<String>> = HashMap::new();
-    for counter in &settings_value.counters {
-        if !counter.enabled || !group_enabled(&settings_value.counter_groups, &counter.group_id) {
-            continue;
-        }
-        by_hotkey
-            .entry(counter.hotkey.trim().to_string())
-            .or_default()
-            .push(counter.id.clone());
-    }
-
-    let mut normal_bindings: Vec<(String, HotkeyAction)> = Vec::new();
-    for (hotkey, counter_ids) in by_hotkey {
-        let action: HotkeyAction = std::sync::Arc::new(move |app_handle| {
-            let ids = counter_ids.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = trigger_hotkey_targets(&app_handle, ids) {
-                    let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
-                }
-            });
-        });
-        normal_bindings.push((hotkey, action));
-    }
-
-    hotkey_manager.clear_scope("counter")?;
-    if !normal_bindings.is_empty() {
-        hotkey_manager.replace_scope(
-            "counter",
-            normal_bindings,
-            "计数器".to_string(),
-            ConflictPolicy::AllowHold,
-        )?;
-    }
-    if let Ok(mut inner) = state.lock_inner() {
-        inner.hotkey_error = None;
-    }
-    Ok(())
+    state.tool.restart_sync_hotkeys(hotkey_manager, settings_value)
 }
 
 fn ensure_overlay_window(
@@ -1081,6 +1084,27 @@ mod tests {
         let error = normalize_settings(settings).expect_err("重复 ID 应报错");
 
         assert_eq!(error, "计数器 ID 重复: counter-1");
+    }
+
+    #[test]
+    fn counter_build_hotkey_bindings_groups_same_hotkey() {
+        let mut settings = CounterSettings::default();
+        settings.counter_enabled = true;
+        settings.enabled = true;
+        settings.counters.push(CounterItem {
+            id: "counter-2".to_string(),
+            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+            name: "计数器 2".to_string(),
+            start_value: 5,
+            hotkey: "F3".to_string(),
+            enabled: true,
+        });
+
+        let bindings = CounterLogic::build_hotkey_bindings(&settings).expect("绑定构建应成功");
+
+        assert_eq!(bindings.normal.len(), 1);
+        assert!(bindings.hold.is_empty());
+        assert_eq!(bindings.normal[0].0, "F3");
     }
 
     #[test]
