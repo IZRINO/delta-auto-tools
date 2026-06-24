@@ -13,12 +13,16 @@ use tokio::{
 };
 
 use crate::app_error::AppError;
-use crate::hotkey_types::{ConflictPolicy, HoldAction, HoldActionCallback, HotkeyAction};
+use crate::hotkey_types::{HoldAction, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
+};
+use crate::sync_tool::{
+    count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
+    SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
@@ -146,6 +150,166 @@ impl ToolLogic for TimerLogic {
     }
 }
 
+impl SyncItem for TimerItem {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn group_id(&self) -> &str {
+        &self.group_id
+    }
+    fn set_group_id(&mut self, group_id: String) {
+        self.group_id = group_id;
+    }
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncGroup for TimerGroup {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncSettings for TimerSettings {
+    type Item = TimerItem;
+    type Group = TimerGroup;
+
+    const DEFAULT_GROUP_ID: &'static str = DEFAULT_TIMER_GROUP_ID;
+    const DUPLICATE_ITEM_MESSAGE_PREFIX: &'static str = "计时器 ID 重复";
+
+    fn sync_legacy_enabled(&mut self) {
+        if self.enabled && !self.timer_enabled {
+            self.timer_enabled = true;
+        }
+        self.enabled = self.timer_enabled;
+    }
+
+    fn items(&self) -> &[Self::Item] {
+        &self.timers
+    }
+    fn items_mut(&mut self) -> &mut Vec<Self::Item> {
+        &mut self.timers
+    }
+    fn replace_items(&mut self, items: Vec<Self::Item>) {
+        self.timers = items;
+    }
+    fn groups(&self) -> &[Self::Group] {
+        &self.timer_groups
+    }
+    fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
+        let legacy_display = self.display.clone();
+        let timer_count_by_group = count_enabled_items_by_group(&self.timers);
+        normalize_timer_groups(
+            self.timer_groups.clone(),
+            DEFAULT_TIMER_GROUP_ID,
+            legacy_display,
+            &timer_count_by_group,
+        )
+    }
+    fn replace_groups(&mut self, groups: Vec<Self::Group>) {
+        self.timer_groups = groups;
+    }
+    fn default_item(&self) -> Self::Item {
+        TimerItem {
+            id: format!("timer-{}", now_ms()),
+            group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
+            name: "计时器 1".to_string(),
+            duration_seconds: 30,
+            hotkey: "F2".to_string(),
+            direction: TimerDirection::Countdown,
+            trigger_mode: TimerTriggerMode::Press,
+            enabled: true,
+            ignore_running: true,
+            segment_count: None,
+        }
+    }
+    fn normalize_item(&self, item: &Self::Item) -> Result<Self::Item, String> {
+        normalize_timer(item)
+    }
+    fn after_groups_normalized(&mut self) {
+        self.display = group_display(
+            &self.timer_groups,
+            DEFAULT_TIMER_GROUP_ID,
+            DEFAULT_TIMER_GROUP_ID,
+        )
+        .cloned()
+        .unwrap_or_default();
+    }
+}
+
+impl SyncToolLogic for TimerLogic {
+    const SCOPE: &'static str = "timer";
+    const SCOPE_LABEL: &'static str = "计时器";
+
+    fn tool_enabled(settings: &TimerSettings) -> bool {
+        settings.timer_enabled
+    }
+
+    fn build_hotkey_bindings(settings: &TimerSettings) -> Result<HotkeyBindingSet, String> {
+        let mut by_hotkey: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+        for timer in &settings.timers {
+            if !timer.enabled || !group_enabled(&settings.timer_groups, &timer.group_id) {
+                continue;
+            }
+            let entry = by_hotkey
+                .entry(timer.hotkey.trim().to_string())
+                .or_insert_with(|| (Vec::new(), Vec::new()));
+            match timer.trigger_mode {
+                TimerTriggerMode::Press => entry.0.push(timer.id.clone()),
+                TimerTriggerMode::Release => entry.1.push(timer.id.clone()),
+            }
+        }
+
+        let mut bindings = HotkeyBindingSet::empty();
+        for (hotkey, (press_timer_ids, release_timer_ids)) in by_hotkey {
+            if !release_timer_ids.is_empty() {
+                let press_targets = press_timer_ids.clone();
+                let release_targets = release_timer_ids.clone();
+                let hold_callback: HoldActionCallback = std::sync::Arc::new(move |app_handle, action| {
+                    let targets = match action {
+                        HoldAction::Down => press_targets.clone(),
+                        HoldAction::Up => release_targets.clone(),
+                    };
+                    if targets.is_empty() {
+                        return;
+                    }
+                    let app = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) = trigger_hotkey_targets(&app, targets) {
+                            let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
+                        }
+                    });
+                });
+                bindings.hold.push((hotkey, hold_callback));
+            } else {
+                let targets = press_timer_ids.clone();
+                let action: HotkeyAction = std::sync::Arc::new(move |app_handle| {
+                    let targets = targets.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(error) = trigger_hotkey_targets(&app_handle, targets) {
+                            let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
+                        }
+                    });
+                });
+                bindings.normal.push((hotkey, action));
+            }
+        }
+        Ok(bindings)
+    }
+
+    fn stop_all(app: &AppHandle) -> Result<(), String> {
+        let Some(state) = app.try_state::<TimerState>() else {
+            return Ok(());
+        };
+        stop_all(app, &state);
+        Ok(())
+    }
+}
+
 fn display_height(item_count: usize) -> i32 {
     TIMER_DISPLAY_MIN_HEIGHT.max(48 + item_count.max(1) as i32 * 30)
 }
@@ -173,7 +337,7 @@ fn default_group(id: &str, name: &str, display: TimerDisplaySettings) -> TimerGr
     }
 }
 
-fn normalize_groups(
+fn normalize_timer_groups(
     mut groups: Vec<TimerGroup>,
     default_group_id: &str,
     legacy_display: TimerDisplaySettings,
@@ -221,14 +385,6 @@ fn normalize_groups(
     }
 
     Ok(normalized)
-}
-
-fn group_enabled(groups: &[TimerGroup], group_id: &str) -> bool {
-    groups
-        .iter()
-        .find(|group| group.id == group_id)
-        .map(|group| group.enabled)
-        .unwrap_or(false)
 }
 
 fn group_display<'a>(
@@ -290,80 +446,8 @@ fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
     })
 }
 
-pub(crate) fn normalize_settings(mut settings_value: TimerSettings) -> Result<TimerSettings, String> {
-    if settings_value.enabled && !settings_value.timer_enabled {
-        settings_value.timer_enabled = true;
-    }
-    settings_value.enabled = settings_value.timer_enabled;
-    let legacy_display = settings_value.display.clone();
-
-    if settings_value.timers.is_empty() {
-        settings_value.timers.push(TimerItem {
-            id: format!("timer-{}", crate::utils::now_ms()),
-            group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
-            name: "计时器 1".to_string(),
-            duration_seconds: 30,
-            hotkey: "F2".to_string(),
-            direction: TimerDirection::Countdown,
-            trigger_mode: TimerTriggerMode::Press,
-            enabled: true,
-            ignore_running: true,
-            segment_count: None,
-        });
-    }
-
-    let raw_timer_group_ids = group_id_set(&settings_value.timer_groups, DEFAULT_TIMER_GROUP_ID);
-    let mut seen_ids = HashMap::new();
-    let mut timers = Vec::with_capacity(settings_value.timers.len());
-    for timer in &settings_value.timers {
-        let mut normalized = normalize_timer(timer)?;
-        if !raw_timer_group_ids.contains_key(&normalized.group_id) {
-            normalized.group_id = DEFAULT_TIMER_GROUP_ID.to_string();
-        }
-        if seen_ids.insert(normalized.id.clone(), true).is_some() {
-            return Err(format!("计时器 ID 重复: {}", normalized.id));
-        }
-        timers.push(normalized);
-    }
-
-    settings_value.timers = timers;
-    let timer_count_by_group = count_enabled_timers_by_group(&settings_value.timers);
-    settings_value.timer_groups = normalize_groups(
-        settings_value.timer_groups,
-        DEFAULT_TIMER_GROUP_ID,
-        legacy_display,
-        &timer_count_by_group,
-    )?;
-    settings_value.display = group_display(
-        &settings_value.timer_groups,
-        DEFAULT_TIMER_GROUP_ID,
-        DEFAULT_TIMER_GROUP_ID,
-    )
-        .cloned()
-        .unwrap_or_default();
-    Ok(settings_value)
-}
-
-fn group_id_set(groups: &[TimerGroup], default_group_id: &str) -> HashMap<String, bool> {
-    let mut map = HashMap::new();
-    map.insert(default_group_id.to_string(), true);
-    for group in groups {
-        let id = group.id.trim();
-        if !id.is_empty() {
-            map.insert(id.to_string(), true);
-        }
-    }
-    map
-}
-
-fn count_enabled_timers_by_group(timers: &[TimerItem]) -> HashMap<String, usize> {
-    let mut map = HashMap::new();
-    for timer in timers {
-        if timer.enabled {
-            *map.entry(timer.group_id.clone()).or_insert(0) += 1;
-        }
-    }
-    map
+pub(crate) fn normalize_settings(settings_value: TimerSettings) -> Result<TimerSettings, String> {
+    normalize_sync_settings(settings_value)
 }
 
 pub(crate) fn restart_hotkey_listeners(
@@ -371,88 +455,7 @@ pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
     settings_value: &TimerSettings,
 ) -> Result<(), String> {
-    if !settings_value.timer_enabled {
-        hotkey_manager.clear_scope("timer")?;
-        return hotkey_manager.clear_hold_scope("timer");
-    }
-
-    let mut by_hotkey: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
-    // (press_timer_ids, release_timer_ids)
-
-    for timer in &settings_value.timers {
-        if !timer.enabled || !group_enabled(&settings_value.timer_groups, &timer.group_id) {
-            continue;
-        }
-        let entry = by_hotkey
-            .entry(timer.hotkey.trim().to_string())
-            .or_insert_with(|| (Vec::new(), Vec::new()));
-        match timer.trigger_mode {
-            TimerTriggerMode::Press => entry.0.push(timer.id.clone()),
-            TimerTriggerMode::Release => entry.1.push(timer.id.clone()),
-        }
-    }
-
-    let mut normal_bindings: Vec<(String, HotkeyAction)> = Vec::new();
-    let mut hold_bindings: Vec<(String, HoldActionCallback)> = Vec::new();
-
-    for (hotkey, (press_timer_ids, release_timer_ids)) in by_hotkey {
-        if !release_timer_ids.is_empty() {
-            let press_targets = press_timer_ids.clone();
-            let release_targets = release_timer_ids.clone();
-            let hold_callback: HoldActionCallback = std::sync::Arc::new(move |app_handle, action| {
-                let targets = match action {
-                    HoldAction::Down => press_targets.clone(),
-                    HoldAction::Up => release_targets.clone(),
-                };
-                if targets.is_empty() {
-                    return;
-                }
-                let app = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(error) = trigger_hotkey_targets(&app, targets) {
-                        let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
-                    }
-                });
-            });
-            hold_bindings.push((hotkey, hold_callback));
-        } else {
-            let targets = press_timer_ids.clone();
-            let action: HotkeyAction = std::sync::Arc::new(move |app_handle| {
-                let targets = targets.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(error) = trigger_hotkey_targets(&app_handle, targets) {
-                        let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
-                    }
-                });
-            });
-            normal_bindings.push((hotkey, action));
-        }
-    }
-
-    hotkey_manager.clear_scope("timer")?;
-    hotkey_manager.clear_hold_scope("timer")?;
-
-    if !normal_bindings.is_empty() {
-        hotkey_manager.replace_scope(
-            "timer",
-            normal_bindings,
-            "计时器".to_string(),
-            ConflictPolicy::AllowHold,
-        )?;
-    }
-
-    if !hold_bindings.is_empty() {
-        hotkey_manager.replace_hold_scope(
-            "timer",
-            hold_bindings,
-            "计时器".to_string(),
-            ConflictPolicy::AllowHold,
-        )?;
-    }
-    if let Ok(mut inner) = state.lock_inner() {
-        inner.hotkey_error = None;
-    }
-    Ok(())
+    state.tool.restart_sync_hotkeys(hotkey_manager, settings_value)
 }
 
 fn stop_tick_task(state: &TimerState) -> Result<(), String> {
