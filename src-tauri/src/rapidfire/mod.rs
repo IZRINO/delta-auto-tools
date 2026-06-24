@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -17,9 +17,9 @@ use tokio::sync::oneshot;
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use tauri::Runtime;
 
+mod events;
 mod settings;
 mod types;
-mod events;
 
 pub use self::types::{
     RapidfireBootstrap, RapidfireCard, RapidfireGroup, RapidfireRect, RapidfireRunState,
@@ -31,7 +31,10 @@ use crate::{
     app_error::AppError,
     hotkey_types,
     hotkeys::HotkeyManager,
-    overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
+    overlay_utils::{
+        destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
+        hide_window, safe_label_component,
+    },
     profile::{self, ActiveProfileSnapshotPatch},
     sync_tool::{
         group_enabled, normalize_sync_settings, HotkeyBindingSet, SyncGroup, SyncItem,
@@ -110,7 +113,8 @@ pub(crate) struct PendingRapidfirePosition {
 }
 
 fn run_states(inner: &ToolStateInner<RapidfireLogic>) -> Vec<RapidfireRunState> {
-    inner.settings
+    inner
+        .settings
         .cards
         .iter()
         .map(|card| {
@@ -322,9 +326,7 @@ fn target_fire_plan(
         .transpose()?
         .map(|key| parse_target_key(&key).ok_or_else(|| format!("不支持的触发键: {key}")))
         .transpose()?;
-    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| {
-        trigger_key == &target_key
-    });
+    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
     // 当触发键与目标键相同时，enigo 仍需先 Release 触发键再 Press 目标键
     // （物理上同键按住时 Press 不会生效）。
     // ignore_trigger_key 的按键抑制由 KeySuppressor 在钩子层处理，不再需要
@@ -631,7 +633,9 @@ fn normalize_single_key(raw: &str) -> Result<String, String> {
     hotkey_types::hotkey_primary_label(trimmed).map_err(|_| format!("不支持: {trimmed}"))
 }
 
-pub(crate) fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<RapidfireSettings, String> {
+pub(crate) fn normalize_settings(
+    mut settings_value: RapidfireSettings,
+) -> Result<RapidfireSettings, String> {
     settings_value.overlay_width = settings_value
         .overlay_width
         .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
@@ -688,7 +692,8 @@ pub(crate) fn restart_hotkey_listeners(
     // 检查当前内存中的绑定映射是否与新的映射一致；若一致则跳过 replace_hold_scope，
     // 避免打断正在进行的 hold 回调（如用户正按住触发键时 autosave 触发了保存）。
     let previous_by_key = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
         for card in &inner.settings.cards {
@@ -726,7 +731,8 @@ async fn handle_hold_event(
 async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
     let sessions_to_spawn = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
 
         if !inner.settings.rapidfire_enabled {
@@ -851,7 +857,9 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             let hotkey_manager = app.state::<HotkeyManager>();
             for trigger_key in &trigger_keys {
                 match hotkey_manager.suppress_key(trigger_key) {
-                    Ok(was_new) => eprintln!("[连发器] suppress_key({trigger_key}) -> was_new={was_new}"),
+                    Ok(was_new) => {
+                        eprintln!("[连发器] suppress_key({trigger_key}) -> was_new={was_new}")
+                    }
                     Err(e) => eprintln!("[连发器] suppress_key({trigger_key}) 失败: {e}"),
                 }
             }
@@ -867,7 +875,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 
     if spawned_count > 0 {
         let bootstrap = {
-            let inner = state.lock_inner()
+            let inner = state
+                .lock_inner()
                 .map_err(|_| "连发器状态已损坏".to_string())?;
             RapidfireLogic::build_bootstrap(&inner)
         };
@@ -879,7 +888,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
 async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
     let stopped_count = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
 
         if !inner.settings.rapidfire_enabled {
@@ -889,7 +899,10 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
         let mut stopped_count = 0usize;
 
         // Phase 1: 从设置中收集需要取消抑制的触发键（不可变借用）
-        let ignore_trigger_keys: Vec<String> = inner.settings.cards.iter()
+        let ignore_trigger_keys: Vec<String> = inner
+            .settings
+            .cards
+            .iter()
             .filter(|c| card_ids.contains(&c.id) && c.ignore_trigger_key)
             .map(|c| c.trigger_key.clone())
             .collect();
@@ -906,17 +919,25 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
         // Phase 3: 检查每个需要取消抑制的触发键：如果该键下不再有任何 ignore 卡片的活跃 session，
         // 则取消抑制（不可变借用）
         for trigger_key in &ignore_trigger_keys {
-            let has_active_ignore_session = inner.settings.cards.iter()
+            let has_active_ignore_session = inner
+                .settings
+                .cards
+                .iter()
                 .filter(|c| c.trigger_key == *trigger_key && c.ignore_trigger_key && c.enabled)
                 .any(|c| {
-                    inner.logic.runs.get(&c.id)
+                    inner
+                        .logic
+                        .runs
+                        .get(&c.id)
                         .map(|run| !run.sessions.is_empty())
                         .unwrap_or(false)
                 });
             if !has_active_ignore_session {
                 let hotkey_manager = app.state::<HotkeyManager>();
                 match hotkey_manager.unsuppress_key(trigger_key) {
-                    Ok(was_suppressed) => eprintln!("[连发器] unsuppress_key({trigger_key}) -> was_suppressed={was_suppressed}"),
+                    Ok(was_suppressed) => eprintln!(
+                        "[连发器] unsuppress_key({trigger_key}) -> was_suppressed={was_suppressed}"
+                    ),
                     Err(e) => eprintln!("[连发器] unsuppress_key({trigger_key}) 失败: {e}"),
                 }
             }
@@ -927,7 +948,8 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
 
     if stopped_count > 0 {
         emit_state(app, {
-            let inner = state.lock_inner()
+            let inner = state
+                .lock_inner()
                 .map_err(|_| "连发器状态已损坏".to_string())?;
             RapidfireLogic::build_bootstrap(&inner)
         });
@@ -1364,19 +1386,19 @@ fn ensure_overlay_window_for_group(
             format!("index.html?mode=rapidfire-display&groupId={group_query_id}").into(),
         ),
     )
-        .title(format!("连发器透明窗口 - {}", group.name))
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(true)
-        .resizable(false)
-        .inner_size(width as f64, height as f64)
-        .position(pos.0 as f64, pos.1 as f64)
-        .build()
-        .map_err(|error| format!("创建连发器透明窗口失败: {error}"))?;
+    .title(format!("连发器透明窗口 - {}", group.name))
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .visible(true)
+    .resizable(false)
+    .inner_size(width as f64, height as f64)
+    .position(pos.0 as f64, pos.1 as f64)
+    .build()
+    .map_err(|error| format!("创建连发器透明窗口失败: {error}"))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
@@ -1484,7 +1506,8 @@ pub fn initialize(
 pub fn rapidfire_get_bootstrap(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, AppError> {
-    let inner = state.lock_inner()
+    let inner = state
+        .lock_inner()
         .map_err(|_| "连发器状态已损坏".to_string())?;
     Ok(RapidfireLogic::build_bootstrap(&inner))
 }
@@ -1498,7 +1521,8 @@ pub fn rapidfire_save_settings(
 ) -> Result<RapidfireBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
     let previous_settings = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.settings.clone()
     };
@@ -1508,14 +1532,16 @@ pub fn rapidfire_save_settings(
     if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value, false) {
         let _ = settings::save_settings(&app, &previous_settings);
         let _ = restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings, true);
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.hotkey_error = Some(error.clone());
         return Err(AppError::from(error));
     }
 
     let bootstrap = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
@@ -1534,13 +1560,21 @@ pub fn rapidfire_save_settings(
         let should_suppress: std::collections::HashSet<String> = settings_value
             .cards
             .iter()
-            .filter(|c| c.enabled && c.ignore_trigger_key && group_enabled(&settings_value.groups, &c.group_id))
+            .filter(|c| {
+                c.enabled
+                    && c.ignore_trigger_key
+                    && group_enabled(&settings_value.groups, &c.group_id)
+            })
             .map(|c| c.trigger_key.clone())
             .collect();
         let previous_should_suppress: std::collections::HashSet<String> = previous_settings
             .cards
             .iter()
-            .filter(|c| c.enabled && c.ignore_trigger_key && group_enabled(&previous_settings.groups, &c.group_id))
+            .filter(|c| {
+                c.enabled
+                    && c.ignore_trigger_key
+                    && group_enabled(&previous_settings.groups, &c.group_id)
+            })
             .map(|c| c.trigger_key.clone())
             .collect();
 
@@ -1580,7 +1614,8 @@ pub fn rapidfire_stop(
     hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<RapidfireBootstrap, AppError> {
     let bootstrap = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
         inner.logic.runs.clear();
@@ -1603,11 +1638,14 @@ pub async fn rapidfire_begin_position_selection(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_RAPIDFIRE_GROUP_ID.to_string());
     let position = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
 
         if inner.logic.pending_position.is_some() {
-            return Err(AppError::Message("当前已有一个位置设置流程在进行中".to_string()));
+            return Err(AppError::Message(
+                "当前已有一个位置设置流程在进行中".to_string(),
+            ));
         }
 
         let pos = inner
@@ -1632,7 +1670,8 @@ pub async fn rapidfire_begin_position_selection(
     destroy_window(&app, &position_label);
 
     let display_width = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         inner
             .settings
@@ -1643,7 +1682,8 @@ pub async fn rapidfire_begin_position_selection(
             .unwrap_or(inner.settings.overlay_width)
     };
     let display_height = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
         display_height(
             inner
@@ -1663,19 +1703,19 @@ pub async fn rapidfire_begin_position_selection(
             format!("index.html?mode=rapidfire-position&groupId={group_query_id}").into(),
         ),
     )
-        .title("设置连发器位置")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(true)
-        .visible(true)
-        .resizable(false)
-        .inner_size(display_width as f64, display_height as f64)
-        .position(position.x as f64, position.y as f64)
-        .build()
-        .map_err(|error| format!("创建连发器位置设置窗口失败: {error}"))?;
+    .title("设置连发器位置")
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(true)
+    .visible(true)
+    .resizable(false)
+    .inner_size(display_width as f64, display_height as f64)
+    .position(position.x as f64, position.y as f64)
+    .build()
+    .map_err(|error| format!("创建连发器位置设置窗口失败: {error}"))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {
@@ -1701,7 +1741,8 @@ pub async fn rapidfire_begin_position_selection(
     destroy_window(&app, &position_label);
 
     let position = {
-        let inner = state.lock_inner()
+        let inner = state
+            .lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         inner
             .settings
@@ -1726,10 +1767,13 @@ pub fn rapidfire_position_commit(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireBootstrap, AppError> {
     let (sender, group_id, bootstrap) = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         let group_id = pending.group_id.clone();
@@ -1745,7 +1789,11 @@ pub fn rapidfire_position_commit(
             inner.settings.overlay_position = Some(pending.staged_position.clone());
         }
         settings::save_settings(&app, &inner.settings)?;
-        (pending.sender, group_id, RapidfireLogic::build_bootstrap(&inner))
+        (
+            pending.sender,
+            group_id,
+            RapidfireLogic::build_bootstrap(&inner),
+        )
     };
 
     let _ = sender.send(RapidfireSelectionKind::Selected);
@@ -1765,10 +1813,13 @@ pub fn rapidfire_position_cancel(
     state: State<'_, RapidfireState>,
 ) -> Result<(), AppError> {
     let (sender, group_id, _original_position) = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         let original = pending.original_position.clone();
@@ -1800,10 +1851,13 @@ pub fn rapidfire_position_moved(
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireRect, AppError> {
     let (rect, group_id) = {
-        let mut inner = state.lock_inner()
+        let mut inner = state
+            .lock_inner()
             .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.as_mut() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         pending.staged_position.x = x;
@@ -2072,7 +2126,6 @@ mod tests {
             vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
         );
     }
-
 
     #[test]
     fn press_jitter_stays_within_custom_range() {

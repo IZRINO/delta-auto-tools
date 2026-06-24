@@ -175,14 +175,8 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PositionEvent<R> {
-    Begin {
-        group_id: String,
-        rect: R,
-    },
-    Moved {
-        x: i32,
-        y: i32,
-    },
+    Begin { group_id: String, rect: R },
+    Moved { x: i32, y: i32 },
     Commit,
     Cancel,
     Closed,

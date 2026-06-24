@@ -12,29 +12,28 @@ use tokio::sync::oneshot;
 use crate::app_error::AppError;
 use crate::hotkey_types::HotkeyAction;
 use crate::hotkeys::HotkeyManager;
-use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
 };
+use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
-    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, SyncGroup, SyncItem,
-    SyncRect, SyncSettings, SyncToolLogic,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, SyncGroup, SyncItem, SyncRect,
+    SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 use self::counter_state::CounterRunStateSnapshot;
 use self::types::{
-    CounterDisplaySettings, CounterGroup, CounterRect,
-    CounterRunState, CounterSelectionKind, CounterSelectionOutcome,
-    DEFAULT_COUNTER_GROUP_ID,
+    CounterDisplaySettings, CounterGroup, CounterRect, CounterRunState, CounterSelectionKind,
+    CounterSelectionOutcome, DEFAULT_COUNTER_GROUP_ID,
 };
 
 pub(crate) mod counter_state;
+mod events;
 mod settings;
 mod types;
-mod events;
 
 // 对外暴露核心类型，供 profile 模块跨工具打包快照用。
 pub use self::types::{CounterBootstrap, CounterItem, CounterSettings};
@@ -68,7 +67,10 @@ pub(crate) struct PendingCounterPosition {
 
 fn pending_counter_to_sync(
     pending: PendingCounterPosition,
-) -> (PendingPosition<CounterRect>, oneshot::Sender<CounterSelectionKind>) {
+) -> (
+    PendingPosition<CounterRect>,
+    oneshot::Sender<CounterSelectionKind>,
+) {
     (
         PendingPosition {
             group_id: pending.group_id,
@@ -225,7 +227,10 @@ pub(crate) fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<Count
 ///
 /// 供 Profile 切换编排调用：切到新 Profile 时按用户决策「重置为 start_value」。
 /// 必须在 `inner.settings` 已替换为目标 Profile 的 counters 之后调用。
-pub(crate) fn reset_runs_to_start_values(app: &AppHandle, state: &CounterState) -> Result<(), String> {
+pub(crate) fn reset_runs_to_start_values(
+    app: &AppHandle,
+    state: &CounterState,
+) -> Result<(), String> {
     let mut inner = state
         .lock_inner()
         .map_err(|_| "计数器状态已损坏".to_string())?;
@@ -464,7 +469,9 @@ fn normalize_counter(counter: &CounterItem) -> Result<CounterItem, String> {
     })
 }
 
-pub(crate) fn normalize_settings(settings_value: CounterSettings) -> Result<CounterSettings, String> {
+pub(crate) fn normalize_settings(
+    settings_value: CounterSettings,
+) -> Result<CounterSettings, String> {
     normalize_sync_settings(settings_value)
 }
 
@@ -473,7 +480,9 @@ pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
     settings_value: &CounterSettings,
 ) -> Result<(), String> {
-    state.tool.restart_sync_hotkeys(hotkey_manager, settings_value)
+    state
+        .tool
+        .restart_sync_hotkeys(hotkey_manager, settings_value)
 }
 
 fn ensure_overlay_window(
@@ -504,25 +513,28 @@ fn ensure_overlay_window(
         label,
         WebviewUrl::App(format!("index.html?mode={query_mode}").into()),
     )
-        .title(title)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(true)
-        .resizable(false)
-        .inner_size(rect.width as f64, rect.height as f64)
-        .position(rect.x as f64, rect.y as f64)
-        .build()
-        .map_err(|error| format!("创建{}透明窗口失败: {}", title, error))?;
+    .title(title)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .visible(true)
+    .resizable(false)
+    .inner_size(rect.width as f64, rect.height as f64)
+    .position(rect.x as f64, rect.y as f64)
+    .build()
+    .map_err(|error| format!("创建{}透明窗口失败: {}", title, error))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
 }
 
-pub(crate) fn ensure_display_windows(app: &AppHandle, settings_value: &CounterSettings) -> Result<(), String> {
+pub(crate) fn ensure_display_windows(
+    app: &AppHandle,
+    settings_value: &CounterSettings,
+) -> Result<(), String> {
     let mut active_labels = HashSet::new();
     for group in &settings_value.counter_groups {
         let label = display_label_for_group(&group.id);
@@ -591,25 +603,8 @@ fn rect_for_group(settings_value: &CounterSettings, group_id: &str) -> CounterRe
         DEFAULT_COUNTER_GROUP_ID,
         group_id,
     )
-        .map(|display| display.rect.clone())
-        .unwrap_or_else(|| settings_value.display.rect.clone())
-}
-
-fn set_rect_for_group(
-    settings_value: &mut CounterSettings,
-    group_id: &str,
-    rect: CounterRect,
-) {
-    if let Some(group) = settings_value
-        .counter_groups
-        .iter_mut()
-        .find(|group| group.id == group_id)
-    {
-        group.display.rect = rect.clone();
-    }
-    if group_id == DEFAULT_COUNTER_GROUP_ID {
-        settings_value.display.rect = rect;
-    }
+    .map(|display| display.rect.clone())
+    .unwrap_or_else(|| settings_value.display.rect.clone())
 }
 
 fn trigger_hotkey_targets(
@@ -685,10 +680,7 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     CounterLogic::stop_all(app)
 }
 
-pub fn initialize(
-    app: &AppHandle,
-    hotkey_manager: &HotkeyManager,
-) -> Result<CounterState, String> {
+pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<CounterState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
     let counter_state = counter_state::load(app);
     let mut runs: HashMap<String, i64> = HashMap::new();
@@ -721,9 +713,7 @@ pub fn initialize(
 }
 
 #[tauri::command]
-pub fn counter_get_bootstrap(
-    state: State<'_, CounterState>,
-) -> Result<CounterBootstrap, AppError> {
+pub fn counter_get_bootstrap(state: State<'_, CounterState>) -> Result<CounterBootstrap, AppError> {
     let inner = state
         .lock_inner()
         .map_err(|_| "计数器状态已损坏".to_string())?;
@@ -802,10 +792,7 @@ pub fn counter_trigger(
 }
 
 #[tauri::command]
-pub fn counter_reset(
-    counter_id: String,
-    app: AppHandle,
-) -> Result<CounterBootstrap, AppError> {
+pub fn counter_reset(counter_id: String, app: AppHandle) -> Result<CounterBootstrap, AppError> {
     let state = app.state::<CounterState>();
     let bootstrap = {
         let mut inner = state
@@ -907,23 +894,21 @@ pub async fn counter_begin_position_selection(
     let window = WebviewWindowBuilder::new(
         &app,
         &label,
-        WebviewUrl::App(
-            format!("index.html?mode={}", position_mode_for_group(&group_id)).into(),
-        ),
+        WebviewUrl::App(format!("index.html?mode={}", position_mode_for_group(&group_id)).into()),
     )
-        .title("设置计数器位置")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(true)
-        .visible(true)
-        .resizable(false)
-        .inner_size(rect.width as f64, rect.height as f64)
-        .position(rect.x as f64, rect.y as f64)
-        .build()
-        .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
+    .title("设置计数器位置")
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(true)
+    .visible(true)
+    .resizable(false)
+    .inner_size(rect.width as f64, rect.height as f64)
+    .position(rect.x as f64, rect.y as f64)
+    .build()
+    .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {

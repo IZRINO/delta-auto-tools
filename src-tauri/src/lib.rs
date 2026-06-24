@@ -1,12 +1,11 @@
 mod about;
+mod app_error;
 mod audio;
 mod counter;
-mod app_error;
 mod global_state;
 mod hotkey_types;
 mod hotkeys;
 mod key_suppressor;
-mod tool_base;
 mod logging;
 mod morse;
 mod overlay_utils;
@@ -17,6 +16,7 @@ mod strategy;
 mod sync_tool;
 mod theme;
 mod timer;
+mod tool_base;
 mod utils;
 
 // 让 lib 单元测试也带上 Tauri 生成的 Windows manifest，避免旧版 comctl32 缺少 TaskDialogIndirect。
@@ -35,7 +35,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             #[cfg(desktop)]
-            let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
+            let _ = app
+                .handle()
+                .plugin(tauri_plugin_updater::Builder::new().build());
 
             let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
@@ -68,15 +70,27 @@ pub fn run() {
             if let WindowEvent::CloseRequested { .. } = event {
                 if timer::is_main_window_close(window.label()) {
                     let app = window.app_handle();
-                    let Some(timer_state) = app.try_state::<timer::TimerState>() else { return; };
-                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else { return; };
+                    let Some(timer_state) = app.try_state::<timer::TimerState>() else {
+                        return;
+                    };
+                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else {
+                        return;
+                    };
                     timer::shutdown(app, &timer_state, &hotkey_manager);
-                    let Some(counter_state) = app.try_state::<counter::CounterState>() else { return; };
+                    let Some(counter_state) = app.try_state::<counter::CounterState>() else {
+                        return;
+                    };
                     counter::shutdown(app, &counter_state, &hotkey_manager);
-                    let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() else { return; };
+                    let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() else {
+                        return;
+                    };
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
-                    let Some(_audio_state) = app.try_state::<audio::AudioState>() else { return; };
-                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else { return; };
+                    let Some(_audio_state) = app.try_state::<audio::AudioState>() else {
+                        return;
+                    };
+                    let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else {
+                        return;
+                    };
                     hotkey_manager.clear_all_suppressions();
                     audio::shutdown(app, &hotkey_manager);
                     if let Some(log_writer) = app.try_state::<logging::LogWriter>() {
@@ -96,7 +110,6 @@ pub fn run() {
             morse::morse_overlay_cancel_selection,
             morse::morse_overlay_finish_early,
             morse::morse_run_recognition,
-
             // ── timer ──
             timer::timer_get_bootstrap,
             timer::timer_save_settings,
@@ -105,7 +118,6 @@ pub fn run() {
             timer::timer_position_commit,
             timer::timer_position_cancel,
             timer::timer_position_moved,
-
             // ── counter ──
             counter::counter_get_bootstrap,
             counter::counter_save_settings,
@@ -116,7 +128,6 @@ pub fn run() {
             counter::counter_position_commit,
             counter::counter_position_cancel,
             counter::counter_position_moved,
-
             // ── rapidfire ──
             rapidfire::rapidfire_get_bootstrap,
             rapidfire::rapidfire_save_settings,
@@ -125,7 +136,6 @@ pub fn run() {
             rapidfire::rapidfire_position_commit,
             rapidfire::rapidfire_position_cancel,
             rapidfire::rapidfire_position_moved,
-
             // ── audio ──
             audio::audio_get_bootstrap,
             audio::audio_save_settings,
@@ -136,32 +146,26 @@ pub fn run() {
             audio::audio_test_match,
             audio::audio_read_reference_image,
             audio::audio_test_color_match,
-
             // ── strategy ──
             strategy::webview::strategy_open_window,
             strategy::fetch::strategy_fetch_page,
-
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,
-
             // ── logging ──
             logging::log_write_frontend,
             logging::log_get_session_id,
             logging::log_get_level,
             logging::log_set_level,
-
             // ── about ──
             about::about_get_bootstrap,
             about::about_check_for_update,
             about::about_download_and_install,
-
             // ── theme ──
             theme::theme_get_bootstrap,
             theme::theme_save_settings,
             theme::theme_export,
             theme::theme_import,
-
             // ── profile ──
             profile::profile_get_bootstrap,
             profile::profile_save_current,

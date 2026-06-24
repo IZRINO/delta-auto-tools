@@ -15,11 +15,11 @@ use tokio::{
 use crate::app_error::AppError;
 use crate::hotkey_types::{HoldAction, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
-use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value,
     hide_window, safe_label_component,
 };
+use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
     SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
@@ -28,14 +28,13 @@ use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
 
 use self::types::{
-    TimerDirection, TimerDisplaySettings, TimerGroup, TimerRect,
-    TimerRunState, TimerRunStatus, TimerSelectionKind, TimerSelectionOutcome,
-    TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
+    TimerDirection, TimerDisplaySettings, TimerGroup, TimerRect, TimerRunState, TimerRunStatus,
+    TimerSelectionKind, TimerSelectionOutcome, TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
 };
 
+mod events;
 mod settings;
 mod types;
-mod events;
 
 // 对外暴露核心类型，供 profile 模块跨工具打包快照用。
 pub use self::types::{TimerBootstrap, TimerItem, TimerSettings};
@@ -269,21 +268,22 @@ impl SyncToolLogic for TimerLogic {
             if !release_timer_ids.is_empty() {
                 let press_targets = press_timer_ids.clone();
                 let release_targets = release_timer_ids.clone();
-                let hold_callback: HoldActionCallback = std::sync::Arc::new(move |app_handle, action| {
-                    let targets = match action {
-                        HoldAction::Down => press_targets.clone(),
-                        HoldAction::Up => release_targets.clone(),
-                    };
-                    if targets.is_empty() {
-                        return;
-                    }
-                    let app = app_handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Err(error) = trigger_hotkey_targets(&app, targets) {
-                            let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
+                let hold_callback: HoldActionCallback =
+                    std::sync::Arc::new(move |app_handle, action| {
+                        let targets = match action {
+                            HoldAction::Down => press_targets.clone(),
+                            HoldAction::Up => release_targets.clone(),
+                        };
+                        if targets.is_empty() {
+                            return;
                         }
+                        let app = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(error) = trigger_hotkey_targets(&app, targets) {
+                                let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
+                            }
+                        });
                     });
-                });
                 bindings.hold.push((hotkey, hold_callback));
             } else {
                 let targets = press_timer_ids.clone();
@@ -314,10 +314,7 @@ fn display_height(item_count: usize) -> i32 {
     TIMER_DISPLAY_MIN_HEIGHT.max(48 + item_count.max(1) as i32 * 30)
 }
 
-fn normalize_display(
-    display: &mut TimerDisplaySettings,
-    item_count: usize,
-) -> Result<(), String> {
+fn normalize_display(display: &mut TimerDisplaySettings, item_count: usize) -> Result<(), String> {
     display.rect.width = display.rect.width.max(TIMER_DISPLAY_WIDTH);
     display.rect.height = display_height(item_count);
 
@@ -455,7 +452,9 @@ pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
     settings_value: &TimerSettings,
 ) -> Result<(), String> {
-    state.tool.restart_sync_hotkeys(hotkey_manager, settings_value)
+    state
+        .tool
+        .restart_sync_hotkeys(hotkey_manager, settings_value)
 }
 
 fn stop_tick_task(state: &TimerState) -> Result<(), String> {
@@ -523,25 +522,28 @@ fn ensure_overlay_window(
         label,
         WebviewUrl::App(format!("index.html?mode={query_mode}").into()),
     )
-        .title(title)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(true)
-        .resizable(false)
-        .inner_size(rect.width as f64, rect.height as f64)
-        .position(rect.x as f64, rect.y as f64)
-        .build()
-        .map_err(|error| format!("创建{title}透明窗口失败: {error}"))?;
+    .title(title)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .visible(true)
+    .resizable(false)
+    .inner_size(rect.width as f64, rect.height as f64)
+    .position(rect.x as f64, rect.y as f64)
+    .build()
+    .map_err(|error| format!("创建{title}透明窗口失败: {error}"))?;
 
     let _ = window.set_ignore_cursor_events(true);
     Ok(())
 }
 
-pub(crate) fn ensure_display_windows(app: &AppHandle, settings_value: &TimerSettings) -> Result<(), String> {
+pub(crate) fn ensure_display_windows(
+    app: &AppHandle,
+    settings_value: &TimerSettings,
+) -> Result<(), String> {
     let mut active_labels = HashSet::new();
 
     for group in &settings_value.timer_groups {
@@ -813,7 +815,11 @@ fn trigger_hotkey_targets(
             }
 
             let is_running = matches!(
-                inner.logic.runs.get(&timer_id).map(|runtime| &runtime.status),
+                inner
+                    .logic
+                    .runs
+                    .get(&timer_id)
+                    .map(|runtime| &runtime.status),
                 Some(TimerRunStatus::Running)
             );
 
@@ -857,24 +863,17 @@ fn trigger_hotkey_targets(
     Ok(bootstrap)
 }
 
-fn rect_for_group(
-    settings_value: &TimerSettings,
-    group_id: &str,
-) -> TimerRect {
+fn rect_for_group(settings_value: &TimerSettings, group_id: &str) -> TimerRect {
     group_display(
         &settings_value.timer_groups,
         DEFAULT_TIMER_GROUP_ID,
         group_id,
     )
-        .map(|display| display.rect.clone())
-        .unwrap_or_else(|| settings_value.display.rect.clone())
+    .map(|display| display.rect.clone())
+    .unwrap_or_else(|| settings_value.display.rect.clone())
 }
 
-fn set_rect_for_group(
-    settings_value: &mut TimerSettings,
-    group_id: &str,
-    rect: TimerRect,
-) {
+fn set_rect_for_group(settings_value: &mut TimerSettings, group_id: &str, rect: TimerRect) {
     if let Some(group) = settings_value
         .timer_groups
         .iter_mut()
@@ -991,7 +990,10 @@ pub fn timer_save_settings(
             .filter(|t| t.enabled && group_enabled(&settings_value.timer_groups, &t.group_id))
             .map(|t| t.id.clone())
             .collect();
-        inner.logic.runs.retain(|id, _| enabled_timer_ids.contains(id));
+        inner
+            .logic
+            .runs
+            .retain(|id, _| enabled_timer_ids.contains(id));
         TimerLogic::build_bootstrap(&inner)
     };
 
@@ -1046,23 +1048,21 @@ pub async fn timer_begin_position_selection(
     let window = WebviewWindowBuilder::new(
         &app,
         &label,
-        WebviewUrl::App(
-            format!("index.html?mode={}", position_mode_for_group(&group_id)).into(),
-        ),
+        WebviewUrl::App(format!("index.html?mode={}", position_mode_for_group(&group_id)).into()),
     )
-        .title("设置计时器位置")
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(true)
-        .visible(true)
-        .resizable(false)
-        .inner_size(rect.width as f64, rect.height as f64)
-        .position(rect.x as f64, rect.y as f64)
-        .build()
-        .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
+    .title("设置计时器位置")
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(true)
+    .visible(true)
+    .resizable(false)
+    .inner_size(rect.width as f64, rect.height as f64)
+    .position(rect.x as f64, rect.y as f64)
+    .build()
+    .map_err(|error| format!("创建位置设置窗口失败: {}", error))?;
 
     let close_app = app.clone();
     window.on_window_event(move |event| {
@@ -1109,7 +1109,9 @@ pub fn timer_position_commit(
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         let group_id = pending.group_id.clone();
@@ -1134,16 +1136,15 @@ pub fn timer_position_commit(
 }
 
 #[tauri::command]
-pub fn timer_position_cancel(
-    app: AppHandle,
-    state: State<'_, TimerState>,
-) -> Result<(), AppError> {
+pub fn timer_position_cancel(app: AppHandle, state: State<'_, TimerState>) -> Result<(), AppError> {
     let (sender, group_id) = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         let group_id = pending.group_id.clone();
@@ -1168,7 +1169,9 @@ pub fn timer_position_moved(
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
         let Some(pending) = inner.logic.pending_position.as_mut() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
+            return Err(AppError::Message(
+                "当前没有等待中的位置设置流程".to_string(),
+            ));
         };
 
         pending.staged_rect.x = x;
