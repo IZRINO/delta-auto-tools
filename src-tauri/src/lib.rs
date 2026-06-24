@@ -14,6 +14,7 @@ mod profile;
 mod rapidfire;
 mod settings;
 mod strategy;
+mod sync_tool;
 mod theme;
 mod timer;
 mod utils;
