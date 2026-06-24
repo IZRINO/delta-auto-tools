@@ -13,11 +13,11 @@ use tauri::{AppHandle, Runtime};
 /// 共享字段（settings、hotkey_error）放在 `ToolStateInner` 中。
 pub trait ToolLogic: Send + 'static {
     type Settings: serde::Serialize
-    + for<'de> serde::Deserialize<'de>
-    + Default
-    + Clone
-    + Send
-    + 'static;
+        + for<'de> serde::Deserialize<'de>
+        + Default
+        + Clone
+        + Send
+        + 'static;
     type Bootstrap: serde::Serialize + Send + 'static;
 
     const NAME: &'static str;

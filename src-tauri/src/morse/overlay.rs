@@ -218,7 +218,7 @@ pub async fn begin_region_selection(
                 .collect::<Vec<_>>()
                 .join(",")
         )
-            .into(),
+        .into(),
     );
     let builder = WebviewWindowBuilder::new(app, OVERLAY_LABEL, overlay_url)
         .title("选择摩斯区域")
@@ -304,7 +304,8 @@ pub fn prepare_selection(
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .logic.pending_selection
+        .logic
+        .pending_selection
         .as_ref()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -325,7 +326,8 @@ pub fn commit_selection(
             .map_err(|_| "区域选择状态已损坏".to_string())?;
 
         let pending = inner
-            .logic.pending_selection
+            .logic
+            .pending_selection
             .as_ref()
             .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -342,7 +344,8 @@ pub fn commit_selection(
 
         if prepared.is_complete {
             let pending = inner
-                .logic.pending_selection
+                .logic
+                .pending_selection
                 .take()
                 .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
             let is_click = pending.target == "click";
@@ -398,7 +401,8 @@ pub fn finish_early(app: &AppHandle, state: &State<'_, MorseState>) -> Result<()
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .logic.pending_selection
+        .logic
+        .pending_selection
         .take()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 
@@ -433,7 +437,8 @@ pub fn cancel_selection(
         .map_err(|_| "区域选择状态已损坏".to_string())?;
 
     let pending = inner
-        .logic.pending_selection
+        .logic
+        .pending_selection
         .take()
         .ok_or_else(|| "当前没有等待中的区域选择流程".to_string())?;
 

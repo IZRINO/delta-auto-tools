@@ -255,9 +255,18 @@ mod tests {
         assert!(probe.targets.is_empty(), "serde 层不做迁移，targets 应为空");
         // 序列化只输出 targets（空数组），不输出 legacy 字段
         let reserialized = serde_json::to_string(&probe).unwrap();
-        assert!(!reserialized.contains("targetColor"), "旧字段应 skip_serializing，实际 {reserialized}");
-        assert!(!reserialized.contains("tolerance"), "旧字段应 skip_serializing，实际 {reserialized}");
-        assert!(reserialized.contains("\"targets\":[]"), "应输出空 targets，实际 {reserialized}");
+        assert!(
+            !reserialized.contains("targetColor"),
+            "旧字段应 skip_serializing，实际 {reserialized}"
+        );
+        assert!(
+            !reserialized.contains("tolerance"),
+            "旧字段应 skip_serializing，实际 {reserialized}"
+        );
+        assert!(
+            reserialized.contains("\"targets\":[]"),
+            "应输出空 targets，实际 {reserialized}"
+        );
     }
 
     #[test]
@@ -268,7 +277,10 @@ mod tests {
         assert!(probe.region.is_none());
         assert_eq!(probe.legacy_target_color, Some([200, 100, 50]));
         let reserialized = serde_json::to_string(&probe).unwrap();
-        assert!(reserialized.contains("\"region\":null"), "region=None 应序列化为 null，实际 {reserialized}");
+        assert!(
+            reserialized.contains("\"region\":null"),
+            "region=None 应序列化为 null，实际 {reserialized}"
+        );
         let back: ColorProbe = serde_json::from_str(&reserialized).unwrap();
         assert!(back.region.is_none());
     }
@@ -321,8 +333,16 @@ mod tests {
             cooldown_ms: 1000,
             allow_simultaneous: false,
             color_probes: vec![ColorProbe {
-                region: Some(RegionRect { x: 1, y: 2, width: 3, height: 4 }),
-                targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 25 }],
+                region: Some(RegionRect {
+                    x: 1,
+                    y: 2,
+                    width: 3,
+                    height: 4,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 25,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
@@ -372,7 +392,10 @@ mod tests {
         let card: AudioCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.color_match_method, ColorMatchMethod::AnyPixel);
         let reserialized = serde_json::to_string(&card).unwrap();
-        assert!(reserialized.contains("\"colorMatchMethod\":\"anyPixel\""), "应序列化为 camelCase anyPixel，实际 {reserialized}");
+        assert!(
+            reserialized.contains("\"colorMatchMethod\":\"anyPixel\""),
+            "应序列化为 camelCase anyPixel，实际 {reserialized}"
+        );
     }
 
     #[test]

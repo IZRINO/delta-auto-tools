@@ -26,7 +26,10 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
         let loaded = settings::load_settings::<ThemeSettings>(&path).unwrap();
-        assert_eq!(loaded.active_theme_id, ThemeSettings::default().active_theme_id);
+        assert_eq!(
+            loaded.active_theme_id,
+            ThemeSettings::default().active_theme_id
+        );
         assert!(loaded.custom_themes.is_empty());
     }
 

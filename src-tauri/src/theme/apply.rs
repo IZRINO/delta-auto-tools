@@ -48,10 +48,7 @@ pub fn merge_theme_tokens(
 }
 
 /// 在所有主题（内置 + 自定义）中按 id 查找主题定义。
-pub fn find_theme<'a>(
-    themes: &'a [ThemeDefinition],
-    id: &str,
-) -> Option<&'a ThemeDefinition> {
+pub fn find_theme<'a>(themes: &'a [ThemeDefinition], id: &str) -> Option<&'a ThemeDefinition> {
     themes.iter().find(|t| t.id == id)
 }
 
@@ -113,10 +110,7 @@ mod tests {
     #[test]
     fn merge_last_override_wins_for_duplicate_override_keys() {
         let t = theme("a", vec![("--x", "1")]);
-        let merged = merge_theme_tokens(
-            &t,
-            &[override_("--x", "9"), override_("--x", "8")],
-        );
+        let merged = merge_theme_tokens(&t, &[override_("--x", "9"), override_("--x", "8")]);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].value, "8");
     }

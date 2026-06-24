@@ -429,11 +429,8 @@ mod tests {
     fn every_builtin_theme_defines_same_token_keys() {
         // 5 套主题必须定义相同的 key 集合，否则切换主题时会出现 token 残留
         let themes = builtin_themes();
-        let baseline: std::collections::HashSet<String> = themes[0]
-            .tokens
-            .iter()
-            .map(|t| t.key.clone())
-            .collect();
+        let baseline: std::collections::HashSet<String> =
+            themes[0].tokens.iter().map(|t| t.key.clone()).collect();
         for theme in &themes {
             let keys: std::collections::HashSet<String> =
                 theme.tokens.iter().map(|t| t.key.clone()).collect();

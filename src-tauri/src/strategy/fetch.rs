@@ -231,7 +231,9 @@ pub async fn strategy_fetch_page(url: String) -> Result<StrategyFetchResponse, A
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败：{e}"))?;
 
-    fetch_with_redirect(&client, &jar, &url, 0).await.map_err(AppError::from)
+    fetch_with_redirect(&client, &jar, &url, 0)
+        .await
+        .map_err(AppError::from)
 }
 
 #[cfg(test)]

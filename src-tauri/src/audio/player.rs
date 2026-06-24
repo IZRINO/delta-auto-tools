@@ -30,7 +30,10 @@ pub enum AudioCommand {
 }
 
 /// 启动专用音频线程，返回命令发送端
-pub fn start_audio_thread() -> (mpsc::Sender<AudioCommand>, Option<std::thread::JoinHandle<()>>) {
+pub fn start_audio_thread() -> (
+    mpsc::Sender<AudioCommand>,
+    Option<std::thread::JoinHandle<()>>,
+) {
     let (tx, rx) = mpsc::channel();
     let builder = std::thread::Builder::new().name("audio-playback".to_string());
     let worker = builder.spawn(move || audio_thread_main(rx)).ok();
@@ -125,8 +128,8 @@ pub fn play_audio_file(path: &str, volume: f32) -> Result<(), String> {
     }
 
     let file = File::open(path).map_err(|e| format!("打开音频文件失败: {e}"))?;
-    let source = Decoder::new(BufReader::new(file))
-        .map_err(|e| format!("解码音频文件失败: {e}"))?;
+    let source =
+        Decoder::new(BufReader::new(file)).map_err(|e| format!("解码音频文件失败: {e}"))?;
 
     let (_stream, stream_handle) =
         OutputStream::try_default().map_err(|e| format!("初始化音频输出失败: {e}"))?;

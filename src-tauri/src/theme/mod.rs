@@ -45,14 +45,8 @@ pub fn initialize(app: &AppHandle) -> Result<ThemeState, String> {
 }
 
 /// 构建主题 bootstrap：合并内置 + 自定义主题列表，计算当前激活主题的最终 token 列表。
-fn build_bootstrap(
-    state: &ThemeState,
-    builtin_themes: Vec<ThemeDefinition>,
-) -> ThemeBootstrap {
-    let settings = state
-        .settings
-        .lock()
-        .expect("主题状态锁被污染");
+fn build_bootstrap(state: &ThemeState, builtin_themes: Vec<ThemeDefinition>) -> ThemeBootstrap {
+    let settings = state.settings.lock().expect("主题状态锁被污染");
 
     let custom_themes = settings.custom_themes.clone();
     let overrides = settings.overrides.clone();
@@ -93,10 +87,7 @@ fn all_themes(settings: &ThemeSettings) -> Vec<ThemeDefinition> {
 
 /// 读取当前激活主题的最终 token 列表（供命令侧主动 emit）。
 fn current_merged_tokens(state: &ThemeState) -> Vec<ThemeTokenOverride> {
-    let settings = state
-        .settings
-        .lock()
-        .expect("主题状态锁被污染");
+    let settings = state.settings.lock().expect("主题状态锁被污染");
     let themes = all_themes(&settings);
     let active_id = if settings.active_theme_id.is_empty() {
         builtins::INDUSTRIAL_LIGHT_ID.to_string()
@@ -111,9 +102,7 @@ fn current_merged_tokens(state: &ThemeState) -> Vec<ThemeTokenOverride> {
 }
 
 #[tauri::command]
-pub fn theme_get_bootstrap(
-    state: State<'_, ThemeState>,
-) -> Result<ThemeBootstrap, String> {
+pub fn theme_get_bootstrap(state: State<'_, ThemeState>) -> Result<ThemeBootstrap, String> {
     let builtin = builtins::builtin_themes();
     Ok(build_bootstrap(&state, builtin))
 }
@@ -125,10 +114,7 @@ pub fn theme_save_settings(
     settings_value: ThemeSettings,
 ) -> Result<ThemeBootstrap, String> {
     {
-        let mut current = state
-            .settings
-            .lock()
-            .map_err(|_| "主题状态锁已损坏")?;
+        let mut current = state.settings.lock().map_err(|_| "主题状态锁已损坏")?;
         *current = settings_value;
     }
 
@@ -149,29 +135,22 @@ pub fn theme_save_settings(
 }
 
 #[tauri::command]
-pub fn theme_export(
-    state: State<'_, ThemeState>,
-    id: String,
-) -> Result<String, String> {
-    let settings = state
-        .settings
-        .lock()
-        .map_err(|_| "主题状态锁已损坏")?;
+pub fn theme_export(state: State<'_, ThemeState>, id: String) -> Result<String, String> {
+    let settings = state.settings.lock().map_err(|_| "主题状态锁已损坏")?;
     export_theme(&settings, &id)
 }
 
 /// 导出指定主题为 JSON 字符串的纯函数（供命令与测试复用）。
 pub fn export_theme(settings: &ThemeSettings, id: &str) -> Result<String, String> {
     let themes = all_themes(settings);
-    let theme = apply::find_theme(&themes, id)
-        .ok_or_else(|| format!("找不到主题: {id}"))?;
+    let theme = apply::find_theme(&themes, id).ok_or_else(|| format!("找不到主题: {id}"))?;
     serde_json::to_string_pretty(theme).map_err(|e| format!("导出失败: {e}"))
 }
 
 #[tauri::command]
 pub fn theme_import(json: String) -> Result<ThemeDefinition, String> {
-    let theme: ThemeDefinition = serde_json::from_str(&json)
-        .map_err(|e| format!("主题 JSON 解析失败: {e}"))?;
+    let theme: ThemeDefinition =
+        serde_json::from_str(&json).map_err(|e| format!("主题 JSON 解析失败: {e}"))?;
     // 校验 token key 必须以 -- 开头
     for tok in &theme.tokens {
         if !tok.key.starts_with("--") {

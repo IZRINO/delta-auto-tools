@@ -62,7 +62,8 @@ impl KeySuppressor {
                 #[cfg(target_os = "windows")]
                 {
                     // Windows 线程 ID 来自 GetCurrentThreadId
-                    let win_tid = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
+                    let win_tid =
+                        unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
                     let _ = tid_tx.send(win_tid);
                 }
                 let _ = (); // suppress unused variable warning on non-windows
@@ -403,8 +404,8 @@ fn run_suppressor_hook(
     use std::ptr;
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG,
-        WH_KEYBOARD_LL, WM_KEYUP, WM_SYSKEYUP,
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, MSG, WH_KEYBOARD_LL,
+        WM_KEYUP, WM_SYSKEYUP,
     };
 
     // KBDLLHOOKSTRUCT 不在 windows-sys 的默认 feature 中，手动定义
@@ -433,11 +434,7 @@ fn run_suppressor_hook(
     SUPPRESSED_KEYS.get_or_init(|| suppressed_keys);
     EVENT_SENDER.get_or_init(|| event_sender);
 
-    unsafe extern "system" fn hook_callback(
-        code: i32,
-        w_param: usize,
-        l_param: isize,
-    ) -> isize {
+    unsafe extern "system" fn hook_callback(code: i32, w_param: usize, l_param: isize) -> isize {
         if code < 0 {
             return CallNextHookEx(ptr::null_mut(), code, w_param, l_param);
         }
@@ -476,7 +473,14 @@ fn run_suppressor_hook(
     }
 
     // 安装钩子
-    let hook_handle = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL as i32, Some(hook_callback), ptr::null_mut(), 0) };
+    let hook_handle = unsafe {
+        SetWindowsHookExW(
+            WH_KEYBOARD_LL as i32,
+            Some(hook_callback),
+            ptr::null_mut(),
+            0,
+        )
+    };
 
     if hook_handle.is_null() {
         let error_code = unsafe { GetLastError() };

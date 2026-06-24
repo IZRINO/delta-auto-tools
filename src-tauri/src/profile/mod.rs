@@ -119,10 +119,7 @@ fn append_profile(
 
 /// 构建 Profile bootstrap。
 fn build_bootstrap(state: &ProfileState) -> ProfileBootstrap {
-    let settings = state
-        .settings
-        .lock()
-        .expect("Profile 状态锁被污染");
+    let settings = state.settings.lock().expect("Profile 状态锁被污染");
     ProfileBootstrap {
         profiles: settings.profiles.clone(),
         active_profile_id: settings.active_profile_id.clone(),
@@ -135,19 +132,13 @@ pub fn profile_get_bootstrap(
     state: State<'_, ProfileState>,
 ) -> Result<ProfileBootstrap, String> {
     let needs_default = {
-        let settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         settings.profiles.is_empty()
     };
 
     if needs_default {
         let snapshot = snapshot_current_settings(&app)?;
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         let name = reserve_config_name(&mut settings);
         append_profile(&mut settings, name, snapshot);
         settings::save_settings(&app, &settings)?;
@@ -165,10 +156,7 @@ pub fn profile_save_current(
     let snapshot = snapshot_current_settings(&app)?;
 
     let profile = {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         let profile = append_profile(&mut settings, name.trim().to_string(), snapshot);
         settings::save_settings(&app, &settings)?;
         profile
@@ -184,10 +172,7 @@ pub fn profile_create_default(
 ) -> Result<ProfileBootstrap, String> {
     let snapshot = build_default_snapshot();
     let profile_id = {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         let name = reserve_config_name(&mut settings);
         let profile = append_profile(&mut settings, name, snapshot.clone());
         settings::save_settings(&app, &settings)?;
@@ -197,10 +182,7 @@ pub fn profile_create_default(
     apply_snapshot_to_tools(&app, &snapshot)?;
 
     {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         settings.active_profile_id = profile_id;
         settings::save_settings(&app, &settings)?;
     }
@@ -216,10 +198,7 @@ pub fn profile_apply(
 ) -> Result<(), String> {
     // 先取出目标 Profile 快照（不持有锁做 IO）
     let snapshot = {
-        let settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         let profile = settings
             .profiles
             .iter()
@@ -232,10 +211,7 @@ pub fn profile_apply(
 
     // 更新 active_profile_id 并持久化
     {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         settings.active_profile_id = id;
         settings::save_settings(&app, &settings)?;
     }
@@ -250,10 +226,7 @@ pub fn profile_delete(
     id: String,
 ) -> Result<ProfileBootstrap, String> {
     {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         if settings.active_profile_id == id {
             return Err("不能删除当前激活的配置".to_string());
         }
@@ -271,10 +244,7 @@ pub fn profile_rename(
     name: String,
 ) -> Result<ProfileBootstrap, String> {
     {
-        let mut settings = state
-            .settings
-            .lock()
-            .map_err(|_| "Profile 状态锁已损坏")?;
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
         let profile = settings
             .profiles
             .iter_mut()
@@ -305,10 +275,7 @@ pub(crate) fn update_active_profile_snapshot(
         return Ok(());
     };
 
-    let mut settings = state
-        .settings
-        .lock()
-        .map_err(|_| "Profile 状态锁已损坏")?;
+    let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
 
     if settings.profiles.is_empty() || settings.active_profile_id.is_empty() {
         return Ok(());
@@ -443,8 +410,16 @@ fn apply_snapshot_to_tools(
     // 3. 逐工具 reload 内存状态
     apply_morse_settings(app, &snapshot.morse, hotkey_manager.as_ref().map(|v| &**v))?;
     apply_timer_settings(app, &snapshot.timer, hotkey_manager.as_ref().map(|v| &**v))?;
-    apply_counter_settings(app, &snapshot.counter, hotkey_manager.as_ref().map(|v| &**v))?;
-    apply_rapidfire_settings(app, &snapshot.rapidfire, hotkey_manager.as_ref().map(|v| &**v))?;
+    apply_counter_settings(
+        app,
+        &snapshot.counter,
+        hotkey_manager.as_ref().map(|v| &**v),
+    )?;
+    apply_rapidfire_settings(
+        app,
+        &snapshot.rapidfire,
+        hotkey_manager.as_ref().map(|v| &**v),
+    )?;
     apply_audio_settings(app, &snapshot.audio, hotkey_manager.as_ref().map(|v| &**v))?;
 
     // 4. counter 运行值重置为目标 Profile 的 start_value 并落盘

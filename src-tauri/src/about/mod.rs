@@ -75,11 +75,27 @@ fn built_in_dependencies() -> Vec<Dependency> {
         ("React 19", "MIT", "https://react.dev"),
         ("Vite 7", "MIT", "https://vite.dev"),
         ("@remixicon/react", "Apache-2.0", "https://remixicon.com"),
-        ("@fontsource-variable/jetbrains-mono", "OFL-1.1", "https://fontsource.org/fonts/jetbrains-mono"),
+        (
+            "@fontsource-variable/jetbrains-mono",
+            "OFL-1.1",
+            "https://fontsource.org/fonts/jetbrains-mono",
+        ),
         ("@tauri-apps/api", "MIT/Apache-2.0", "https://tauri.app"),
-        ("@tauri-apps/plugin-opener", "MIT/Apache-2.0", "https://tauri.app"),
-        ("@tauri-apps/plugin-updater", "MIT/Apache-2.0", "https://tauri.app"),
-        ("@tauri-apps/plugin-process", "MIT/Apache-2.0", "https://tauri.app"),
+        (
+            "@tauri-apps/plugin-opener",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
+        (
+            "@tauri-apps/plugin-updater",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
+        (
+            "@tauri-apps/plugin-process",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
         ("radix-ui", "MIT", "https://www.radix-ui.com"),
         ("shadcn/ui", "MIT", "https://ui.shadcn.com"),
         ("tailwindcss 4", "MIT", "https://tailwindcss.com"),
@@ -98,24 +114,68 @@ fn built_in_dependencies() -> Vec<Dependency> {
     // ── Rust 运行时 ──
     let runtime: Vec<(&str, &str, &str)> = vec![
         ("tauri", "MIT/Apache-2.0", "https://tauri.app"),
-        ("tauri-plugin-updater", "MIT/Apache-2.0", "https://tauri.app"),
+        (
+            "tauri-plugin-updater",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
         ("tauri-plugin-opener", "MIT/Apache-2.0", "https://tauri.app"),
-        ("tauri-plugin-window-state", "MIT/Apache-2.0", "https://tauri.app"),
-        ("tauri-plugin-process", "MIT/Apache-2.0", "https://tauri.app"),
-        ("reqwest", "MIT/Apache-2.0", "https://github.com/seanmonstar/reqwest"),
+        (
+            "tauri-plugin-window-state",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
+        (
+            "tauri-plugin-process",
+            "MIT/Apache-2.0",
+            "https://tauri.app",
+        ),
+        (
+            "reqwest",
+            "MIT/Apache-2.0",
+            "https://github.com/seanmonstar/reqwest",
+        ),
         ("enigo", "MIT", "https://github.com/enigo-rs/enigo"),
         ("willhook", "MIT", "https://github.com/2hndr/willhook"),
         ("xcap", "MIT", "https://github.com/nicedoc/xcap"),
-        ("image", "MIT/Apache-2.0", "https://github.com/image-rs/image"),
-        ("rodio", "MIT/Apache-2.0", "https://github.com/RustAudio/rodio"),
+        (
+            "image",
+            "MIT/Apache-2.0",
+            "https://github.com/image-rs/image",
+        ),
+        (
+            "rodio",
+            "MIT/Apache-2.0",
+            "https://github.com/RustAudio/rodio",
+        ),
         ("tokio", "MIT", "https://tokio.rs"),
         ("serde", "MIT/Apache-2.0", "https://serde.rs"),
-        ("serde_json", "MIT/Apache-2.0", "https://github.com/serde-rs/json"),
-        ("regex", "MIT/Apache-2.0", "https://github.com/rust-lang/regex"),
-        ("thiserror", "MIT/Apache-2.0", "https://github.com/dtolnay/thiserror"),
-        ("crossbeam-channel", "MIT/Apache-2.0", "https://github.com/crossbeam-rs/crossbeam"),
+        (
+            "serde_json",
+            "MIT/Apache-2.0",
+            "https://github.com/serde-rs/json",
+        ),
+        (
+            "regex",
+            "MIT/Apache-2.0",
+            "https://github.com/rust-lang/regex",
+        ),
+        (
+            "thiserror",
+            "MIT/Apache-2.0",
+            "https://github.com/dtolnay/thiserror",
+        ),
+        (
+            "crossbeam-channel",
+            "MIT/Apache-2.0",
+            "https://github.com/crossbeam-rs/crossbeam",
+        ),
         ("url", "MIT/Apache-2.0", "https://github.com/servo/rust-url"),
-        ("windows-sys", "MIT/Apache-2.0", "https://github.com/microsoft/windows-rs"),
+        (
+            "windows-sys",
+            "MIT/Apache-2.0",
+            "https://github.com/microsoft/windows-rs",
+        ),
     ];
     for (name, license, url) in runtime {
         deps.push(Dependency {
@@ -228,7 +288,9 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
             let _ = app_err.emit_to(
                 "main",
                 events::UPDATE_PROGRESS,
-                UpdateProgress::Error { message: msg.clone() },
+                UpdateProgress::Error {
+                    message: msg.clone(),
+                },
             );
             msg
         })?
@@ -240,7 +302,9 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
             let _ = app_err.emit_to(
                 "main",
                 events::UPDATE_PROGRESS,
-                UpdateProgress::Error { message: msg.clone() },
+                UpdateProgress::Error {
+                    message: msg.clone(),
+                },
             );
             msg
         })?;
@@ -249,7 +313,11 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
         Some(u) if should_offer_update(&current_version, &u.version) => u,
         _ => {
             let app_na = app.clone();
-            let _ = app_na.emit_to("main", events::UPDATE_PROGRESS, UpdateProgress::NotAvailable);
+            let _ = app_na.emit_to(
+                "main",
+                events::UPDATE_PROGRESS,
+                UpdateProgress::NotAvailable,
+            );
             return Ok(());
         }
     };
@@ -286,8 +354,16 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
             {
                 let app_done = app.clone();
                 move || {
-                    let _ = app_done.emit_to("main", events::UPDATE_PROGRESS, UpdateProgress::Downloaded);
-                    let _ = app_done.emit_to("main", events::UPDATE_PROGRESS, UpdateProgress::Installing);
+                    let _ = app_done.emit_to(
+                        "main",
+                        events::UPDATE_PROGRESS,
+                        UpdateProgress::Downloaded,
+                    );
+                    let _ = app_done.emit_to(
+                        "main",
+                        events::UPDATE_PROGRESS,
+                        UpdateProgress::Installing,
+                    );
                 }
             },
         )
@@ -298,7 +374,9 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
             let _ = app_err.emit_to(
                 "main",
                 events::UPDATE_PROGRESS,
-                UpdateProgress::Error { message: msg.clone() },
+                UpdateProgress::Error {
+                    message: msg.clone(),
+                },
             );
             msg
         })?;
@@ -324,7 +402,11 @@ fn classify_check_error(e: &tauri_plugin_updater::Error) -> String {
     let msg = e.to_string();
     if msg.contains("Could not fetch") || msg.contains("release JSON") || msg.contains("404") {
         "暂无可用更新文件，请前往 GitHub Release 页面手动检查".to_string()
-    } else if msg.contains("network") || msg.contains("timeout") || msg.contains("connect") || msg.contains("dns") {
+    } else if msg.contains("network")
+        || msg.contains("timeout")
+        || msg.contains("connect")
+        || msg.contains("dns")
+    {
         format!("网络连接失败: {msg}")
     } else {
         format!("检查更新失败: {msg}")

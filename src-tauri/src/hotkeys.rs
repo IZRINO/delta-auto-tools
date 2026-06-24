@@ -20,12 +20,11 @@ use willhook::{
 use crossbeam_channel::Receiver;
 
 use crate::global_state::GlobalState;
-use crate::hotkey_types::{
-    self as types, HotkeyBinding, ModifierKey, PrimaryKey,
-};
+use crate::hotkey_types::{self as types, HotkeyBinding, ModifierKey, PrimaryKey};
 
 pub use crate::hotkey_types::{
-    ConflictPolicy, HoldAction, HoldActionCallback, HoldRegistration, HotkeyAction, HotkeyRegistration,
+    ConflictPolicy, HoldAction, HoldActionCallback, HoldRegistration, HotkeyAction,
+    HotkeyRegistration,
 };
 
 pub struct HotkeyManager {
@@ -137,7 +136,9 @@ impl HotkeyManager {
     /// 懒加载启动 KeySuppressor（仅在有 ignore_trigger_key 卡片启用时调用）
     #[cfg(target_os = "windows")]
     pub fn start_suppressor(&self) -> Result<(), String> {
-        let mut suppressor_guard = self.key_suppressor.lock()
+        let mut suppressor_guard = self
+            .key_suppressor
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if suppressor_guard.is_some() {
             return Ok(()); // 已经启动
@@ -148,11 +149,15 @@ impl HotkeyManager {
 
         *suppressor_guard = Some(suppressor);
 
-        let mut rx_guard = self.suppressed_rx.lock()
+        let mut rx_guard = self
+            .suppressed_rx
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         *rx_guard = Some(rx);
 
-        let mut vk_guard = self.suppressed_vk_set.lock()
+        let mut vk_guard = self
+            .suppressed_vk_set
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         *vk_guard = Some(vk_set);
 
@@ -162,7 +167,9 @@ impl HotkeyManager {
     /// 停止 KeySuppressor（当所有抑制需求消失时调用）
     #[cfg(target_os = "windows")]
     pub fn stop_suppressor(&self) -> Result<(), String> {
-        let mut suppressor_guard = self.key_suppressor.lock()
+        let mut suppressor_guard = self
+            .key_suppressor
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if suppressor_guard.is_none() {
             return Ok(()); // 已经停止
@@ -173,11 +180,15 @@ impl HotkeyManager {
             suppressor.clear_all();
         }
 
-        let mut rx_guard = self.suppressed_rx.lock()
+        let mut rx_guard = self
+            .suppressed_rx
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         *rx_guard = None;
 
-        let mut vk_guard = self.suppressed_vk_set.lock()
+        let mut vk_guard = self
+            .suppressed_vk_set
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         *vk_guard = None;
 
@@ -190,7 +201,9 @@ impl HotkeyManager {
         // 确保 suppressor 已启动
         self.start_suppressor()?;
 
-        let guard = self.key_suppressor.lock()
+        let guard = self
+            .key_suppressor
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if let Some(ref suppressor) = *guard {
             let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
@@ -204,7 +217,9 @@ impl HotkeyManager {
     /// 取消抑制指定按键
     #[cfg(target_os = "windows")]
     pub fn unsuppress_key(&self, key: &str) -> Result<bool, String> {
-        let guard = self.key_suppressor.lock()
+        let guard = self
+            .key_suppressor
+            .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if let Some(ref suppressor) = *guard {
             let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
@@ -284,7 +299,7 @@ impl HotkeyManager {
                         && registration.scope != scope
                         && registration.binding == *new_binding
                         && !(conflict_policy == ConflictPolicy::AllowHold
-                        && registration.conflict_policy == ConflictPolicy::AllowHold)
+                            && registration.conflict_policy == ConflictPolicy::AllowHold)
                 }) {
                     return Err(format!(
                         "快捷键 {} 与{}的触发键冲突",
@@ -313,7 +328,7 @@ impl HotkeyManager {
                     && registration.scope != scope
                     && registration.binding == *new_binding
                     && !(registration.conflict_policy == ConflictPolicy::AllowHold
-                    && conflict_policy == ConflictPolicy::AllowHold)
+                        && conflict_policy == ConflictPolicy::AllowHold)
             }) {
                 return Err(format!(
                     "触发键 {} 与{}的快捷键冲突",
@@ -471,12 +486,8 @@ fn is_event_suppressed(
         .ok()
         .and_then(|guard| {
             guard.as_ref().and_then(|vk_set| {
-                keyboard_event_to_vk(event).map(|vk| {
-                    vk_set
-                        .lock()
-                        .map(|set| set.contains(&vk))
-                        .unwrap_or(false)
-                })
+                keyboard_event_to_vk(event)
+                    .map(|vk| vk_set.lock().map(|set| set.contains(&vk)).unwrap_or(false))
             })
         })
         .unwrap_or(false)
@@ -540,7 +551,7 @@ fn run_listener(
         // 2. 处理 KeySuppressor 转发的被抑制事件
         //    这些事件已被 WH_KEYBOARD_LL 钩子吞噬，不会到达前台应用，
         //    但热键回调仍需正常触发
-        if let Some(rx) = suppressed_rx.lock().ok().and_then(|mut g| g.take() ) {
+        if let Some(rx) = suppressed_rx.lock().ok().and_then(|mut g| g.take()) {
             while let Ok(suppressed_event) = rx.try_recv() {
                 let global_enabled = app
                     .try_state::<GlobalState>()
@@ -1147,7 +1158,9 @@ mod tests {
     fn suppressed_willhook_event_is_detected_without_consuming_loop() {
         use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
-        let suppressed = Arc::new(Mutex::new(Some(Arc::new(Mutex::new(HashSet::from([0x70]))))));
+        let suppressed = Arc::new(Mutex::new(Some(Arc::new(Mutex::new(HashSet::from([
+            0x70,
+        ]))))));
         let event = keyboard_event(KeyboardKey::F1, KeyPress::Down(IsSystemKeyPress::Normal));
         let other_event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
 
@@ -1231,7 +1244,7 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         )
-            .is_empty());
+        .is_empty());
 
         let down_actions = hold_actions_for_event(
             &hold_registrations,
@@ -1309,7 +1322,7 @@ mod tests {
             &mut active_hold_keys,
             &mut active_hold_modifiers,
         )
-            .is_empty());
+        .is_empty());
 
         let down_actions = hold_actions_for_event(
             &hold_registrations,

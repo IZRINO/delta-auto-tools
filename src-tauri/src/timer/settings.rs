@@ -19,8 +19,8 @@ pub fn save_settings(app: &AppHandle, settings_value: &TimerSettings) -> Result<
 mod tests {
     use super::*;
     use crate::timer::types::{
-        TimerDirection, TimerDisplaySettings, TimerGroup, TimerItem, TimerRect,
-        TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
+        TimerDirection, TimerDisplaySettings, TimerGroup, TimerItem, TimerRect, TimerTriggerMode,
+        DEFAULT_TIMER_GROUP_ID,
     };
 
     fn sample_settings() -> TimerSettings {

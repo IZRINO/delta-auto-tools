@@ -13,7 +13,7 @@ use crate::audio::events::REGION_MATCHED;
 use crate::audio::player;
 use crate::audio::resolve_play_for_card;
 use crate::audio::types::AudioSettings;
-use crate::audio::types::{ColorMatchMode, ColorMatchMethod, ColorProbe};
+use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe};
 use crate::global_state::GlobalState;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -21,7 +21,11 @@ use tauri::{AppHandle, Emitter, Manager};
 static WATCHER_CANCEL_MAP: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
 /// 启动/重启所有区域监听 watcher
-pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: std::sync::mpsc::Sender<player::AudioCommand>) -> Result<(), String> {
+pub fn restart_watchers(
+    app: &AppHandle,
+    settings: &AudioSettings,
+    playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
+) -> Result<(), String> {
     if !settings.audio_enabled {
         return stop_all_watchers(app);
     }
@@ -47,7 +51,9 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
         // 按触发模式校验必要字段，缺字段则跳过
         match card.trigger_mode {
             super::types::AudioTriggerMode::RegionWatch => {
-                let Some(ref_path) = &card.watch_reference_image_path else { continue };
+                let Some(ref_path) = &card.watch_reference_image_path else {
+                    continue;
+                };
                 if ref_path.is_empty() || card.audio_files.is_empty() {
                     continue;
                 }
@@ -79,8 +85,12 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
 
         match card.trigger_mode {
             super::types::AudioTriggerMode::RegionWatch => {
-                let Some(region) = &card.watch_region else { continue };
-                let Some(ref_path) = &card.watch_reference_image_path else { continue };
+                let Some(region) = &card.watch_region else {
+                    continue;
+                };
+                let Some(ref_path) = &card.watch_reference_image_path else {
+                    continue;
+                };
                 let threshold = card.watch_match_threshold;
                 let region_clone = region.clone();
                 let ref_path_clone = ref_path.clone();
@@ -97,7 +107,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         audio_enabled,
                         cancel_clone,
                     )
-                        .await;
+                    .await;
                 });
             }
             super::types::AudioTriggerMode::ColorWatch => {
@@ -117,7 +127,7 @@ pub fn restart_watchers(app: &AppHandle, settings: &AudioSettings, playback_tx: 
                         audio_enabled,
                         cancel_clone,
                     )
-                        .await;
+                    .await;
                 });
             }
             super::types::AudioTriggerMode::Hotkey => {}
@@ -176,7 +186,11 @@ async fn run_region_watcher(
     // 加载参考图像
     let reference_image = match load_reference_image(&reference_image_path) {
         Some(img) => {
-            eprintln!("[音频 watcher] 卡片 {card_id}: 参考图像加载成功 ({reference_image_path}), {}x{}", img.width(), img.height());
+            eprintln!(
+                "[音频 watcher] 卡片 {card_id}: 参考图像加载成功 ({reference_image_path}), {}x{}",
+                img.width(),
+                img.height()
+            );
             img
         }
         None => {
@@ -216,7 +230,11 @@ async fn run_region_watcher(
                     if let Some(resolved) = resolved {
                         let tx = playback_tx.clone();
                         let exclusive = !resolved.allow_simultaneous;
-                        let _ = tx.send(player::AudioCommand::Play { path: resolved.path, volume: resolved.volume, exclusive });
+                        let _ = tx.send(player::AudioCommand::Play {
+                            path: resolved.path,
+                            volume: resolved.volume,
+                            exclusive,
+                        });
                         last_triggered = Some(Instant::now());
                     }
                 }
@@ -285,14 +303,27 @@ async fn run_color_watcher(
             continue;
         }
 
-        let result = match_color_probes(&screenshots, &probes, match_mode.clone(), match_method.clone());
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            match_mode.clone(),
+            match_method.clone(),
+        );
         if result.matched {
-            eprintln!("[音频 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes", result.hit_count, probes.len());
+            eprintln!(
+                "[音频 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes",
+                result.hit_count,
+                probes.len()
+            );
             let _ = app.emit(REGION_MATCHED, &card_id);
             if let Some(resolved) = resolve_play_for_card(&app, &card_id) {
                 let tx = playback_tx.clone();
                 let exclusive = !resolved.allow_simultaneous;
-                let _ = tx.send(player::AudioCommand::Play { path: resolved.path, volume: resolved.volume, exclusive });
+                let _ = tx.send(player::AudioCommand::Play {
+                    path: resolved.path,
+                    volume: resolved.volume,
+                    exclusive,
+                });
                 last_triggered = Some(Instant::now());
             }
         }
@@ -350,20 +381,19 @@ fn base64_encode(data: &[u8]) -> String {
 }
 
 /// 截取屏幕区域（使用 xcap）
-pub(crate) fn capture_region(region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage> {
+pub(crate) fn capture_region(
+    region: &crate::morse::types::RegionRect,
+) -> Option<image::DynamicImage> {
     #[cfg(target_os = "windows")]
     {
-        use xcap::Monitor;
         use crate::morse::recognition::region_to_capture_bounds;
+        use xcap::Monitor;
 
         let monitors = Monitor::all().ok()?;
         for monitor in monitors {
-            let (Ok(monitor_left), Ok(monitor_top), Ok(monitor_width), Ok(monitor_height)) = (
-                monitor.x(),
-                monitor.y(),
-                monitor.width(),
-                monitor.height(),
-            ) else {
+            let (Ok(monitor_left), Ok(monitor_top), Ok(monitor_width), Ok(monitor_height)) =
+                (monitor.x(), monitor.y(), monitor.width(), monitor.height())
+            else {
                 continue;
             };
             let scale_factor = monitor.scale_factor().unwrap_or(1.0);
@@ -423,19 +453,30 @@ pub(crate) struct CompareResult {
 ///
 /// 参考图若含 Alpha 通道，透明像素（alpha < 128）不参与比较。
 /// 多尺度加速：大图先在低分辨率粗搜索，再在最佳位置附近精搜索。
-pub(crate) fn compare_images(screenshot: &image::DynamicImage, reference: &image::DynamicImage) -> CompareResult {
+pub(crate) fn compare_images(
+    screenshot: &image::DynamicImage,
+    reference: &image::DynamicImage,
+) -> CompareResult {
     let sw = screenshot.width();
     let sh = screenshot.height();
     let rw = reference.width();
     let rh = reference.height();
 
     if sw == 0 || sh == 0 || rw == 0 || rh == 0 {
-        return CompareResult { similarity: 0.0, best_x: 0, best_y: 0 };
+        return CompareResult {
+            similarity: 0.0,
+            best_x: 0,
+            best_y: 0,
+        };
     }
 
     // 参考图比截图大，不可能匹配
     if rw > sw || rh > sh {
-        return CompareResult { similarity: 0.0, best_x: 0, best_y: 0 };
+        return CompareResult {
+            similarity: 0.0,
+            best_x: 0,
+            best_y: 0,
+        };
     }
 
     // 同尺寸：直接比较
@@ -445,7 +486,11 @@ pub(crate) fn compare_images(screenshot: &image::DynamicImage, reference: &image
         let r_has_alpha = has_alpha_channel(reference);
         let ncc = compute_ncc_rgb(&s_rgba, &r_rgba, r_has_alpha, 0, 0, rw, rh);
         let score = ncc_to_similarity(ncc);
-        return CompareResult { similarity: score, best_x: 0, best_y: 0 };
+        return CompareResult {
+            similarity: score,
+            best_x: 0,
+            best_y: 0,
+        };
     }
 
     // 参考图比截图小：模板匹配
@@ -453,7 +498,10 @@ pub(crate) fn compare_images(screenshot: &image::DynamicImage, reference: &image
 }
 
 /// 滑动窗口模板匹配（含多尺度加速）
-fn template_match(screenshot: &image::DynamicImage, reference: &image::DynamicImage) -> CompareResult {
+fn template_match(
+    screenshot: &image::DynamicImage,
+    reference: &image::DynamicImage,
+) -> CompareResult {
     let sw = screenshot.width();
     let sh = screenshot.height();
     let rw = reference.width();
@@ -467,7 +515,19 @@ fn template_match(screenshot: &image::DynamicImage, reference: &image::DynamicIm
         // 直接全分辨率搜索
         let s_rgba = screenshot.to_rgba8();
         let r_rgba = reference.to_rgba8();
-        let (best_ncc, best_x, best_y) = sliding_search(&s_rgba, &r_rgba, r_has_alpha, sw, sh, rw, rh, 0, 0, sw - rw, sh - rh);
+        let (best_ncc, best_x, best_y) = sliding_search(
+            &s_rgba,
+            &r_rgba,
+            r_has_alpha,
+            sw,
+            sh,
+            rw,
+            rh,
+            0,
+            0,
+            sw - rw,
+            sh - rh,
+        );
         return CompareResult {
             similarity: ncc_to_similarity(best_ncc),
             best_x,
@@ -482,11 +542,29 @@ fn template_match(screenshot: &image::DynamicImage, reference: &image::DynamicIm
     let new_rh = (rh as f32 / scale as f32).round() as u32;
 
     // 确保缩放后尺寸有效
-    if new_sw == 0 || new_sh == 0 || new_rw == 0 || new_rh == 0 || new_rw > new_sw || new_rh > new_sh {
+    if new_sw == 0
+        || new_sh == 0
+        || new_rw == 0
+        || new_rh == 0
+        || new_rw > new_sw
+        || new_rh > new_sh
+    {
         // 退化到全分辨率
         let s_rgba = screenshot.to_rgba8();
         let r_rgba = reference.to_rgba8();
-        let (best_ncc, best_x, best_y) = sliding_search(&s_rgba, &r_rgba, r_has_alpha, sw, sh, rw, rh, 0, 0, sw - rw, sh - rh);
+        let (best_ncc, best_x, best_y) = sliding_search(
+            &s_rgba,
+            &r_rgba,
+            r_has_alpha,
+            sw,
+            sh,
+            rw,
+            rh,
+            0,
+            0,
+            sw - rw,
+            sh - rh,
+        );
         return CompareResult {
             similarity: ncc_to_similarity(best_ncc),
             best_x,
@@ -494,10 +572,26 @@ fn template_match(screenshot: &image::DynamicImage, reference: &image::DynamicIm
         };
     }
 
-    let s_small = screenshot.resize_exact(new_sw, new_sh, image::imageops::FilterType::Lanczos3).to_rgba8();
-    let r_small = reference.resize_exact(new_rw, new_rh, image::imageops::FilterType::Lanczos3).to_rgba8();
+    let s_small = screenshot
+        .resize_exact(new_sw, new_sh, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+    let r_small = reference
+        .resize_exact(new_rw, new_rh, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
     // 缩放后参考图不再有有意义的 alpha，按无 alpha 处理
-    let (_, coarse_x, coarse_y) = sliding_search(&s_small, &r_small, false, new_sw, new_sh, new_rw, new_rh, 0, 0, new_sw - new_rw, new_sh - new_rh);
+    let (_, coarse_x, coarse_y) = sliding_search(
+        &s_small,
+        &r_small,
+        false,
+        new_sw,
+        new_sh,
+        new_rw,
+        new_rh,
+        0,
+        0,
+        new_sw - new_rw,
+        new_sh - new_rh,
+    );
 
     // 将粗搜索位置映射回全分辨率
     let fine_cx = (coarse_x as f32 * scale as f32).round() as u32;
@@ -512,7 +606,19 @@ fn template_match(screenshot: &image::DynamicImage, reference: &image::DynamicIm
 
     let s_rgba = screenshot.to_rgba8();
     let r_rgba = reference.to_rgba8();
-    let (best_ncc, best_x, best_y) = sliding_search(&s_rgba, &r_rgba, r_has_alpha, sw, sh, rw, rh, x_start, y_start, x_end, y_end);
+    let (best_ncc, best_x, best_y) = sliding_search(
+        &s_rgba,
+        &r_rgba,
+        r_has_alpha,
+        sw,
+        sh,
+        rw,
+        rh,
+        x_start,
+        y_start,
+        x_end,
+        y_end,
+    );
 
     CompareResult {
         similarity: ncc_to_similarity(best_ncc),
@@ -680,21 +786,33 @@ fn compute_ncc_rgb(
     let ncc_r = if denom_ra > 0.0 && denom_rb > 0.0 {
         num_r / (denom_ra * denom_rb).sqrt()
     } else if denom_ra < 1e-10 && denom_rb < 1e-10 {
-        if (mean_ra - mean_rb).abs() < 1.0 { 1.0 } else { 0.0 }
+        if (mean_ra - mean_rb).abs() < 1.0 {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
     let ncc_g = if denom_ga > 0.0 && denom_gb > 0.0 {
         num_g / (denom_ga * denom_gb).sqrt()
     } else if denom_ga < 1e-10 && denom_gb < 1e-10 {
-        if (mean_ga - mean_gb).abs() < 1.0 { 1.0 } else { 0.0 }
+        if (mean_ga - mean_gb).abs() < 1.0 {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
     let ncc_b = if denom_ba > 0.0 && denom_bb > 0.0 {
         num_b / (denom_ba * denom_bb).sqrt()
     } else if denom_ba < 1e-10 && denom_bb < 1e-10 {
-        if (mean_ba - mean_bb).abs() < 1.0 { 1.0 } else { 0.0 }
+        if (mean_ba - mean_bb).abs() < 1.0 {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         0.0
     };
@@ -750,11 +868,7 @@ pub(crate) fn average_region_rgb(img: &image::DynamicImage) -> [u8; 3] {
     if n == 0 {
         return [0, 0, 0];
     }
-    [
-        (sum_r / n) as u8,
-        (sum_g / n) as u8,
-        (sum_b / n) as u8,
-    ]
+    [(sum_r / n) as u8, (sum_g / n) as u8, (sum_b / n) as u8]
 }
 
 /// 像素扫描结果
@@ -803,7 +917,11 @@ pub(crate) fn scan_region_for_color(
                 matching_count += 1;
                 if count_only {
                     // 早退：nearest 已更新为目标色（距离 0）
-                    return PixelScanResult { matching_count, nearest_color, nearest_distance };
+                    return PixelScanResult {
+                        matching_count,
+                        nearest_color,
+                        nearest_distance,
+                    };
                 }
             }
         }
@@ -814,7 +932,11 @@ pub(crate) fn scan_region_for_color(
         nearest_distance = 0.0;
     }
 
-    PixelScanResult { matching_count, nearest_color, nearest_distance }
+    PixelScanResult {
+        matching_count,
+        nearest_color,
+        nearest_distance,
+    }
 }
 
 /// 单探针判定结果
@@ -901,7 +1023,12 @@ fn probe_hit_single_target(
             }
         }
         crate::audio::types::ColorMatchMethod::AnyPixel => {
-            let scan = scan_region_for_color(screenshot, target.color, target.tolerance as f32, count_only);
+            let scan = scan_region_for_color(
+                screenshot,
+                target.color,
+                target.tolerance as f32,
+                count_only,
+            );
             SingleTargetHit {
                 matched: scan.matching_count > 0,
                 sampled_color: scan.nearest_color,
@@ -941,7 +1068,11 @@ fn aggregate_probe_hits(
     // 取距离最小的目标作为摘要代表
     let nearest = hits
         .iter()
-        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .unwrap();
     ProbeHit {
         matched,
@@ -983,7 +1114,10 @@ pub(crate) fn match_color_probes(
     method: ColorMatchMethod,
 ) -> ColorMatchResult {
     if probes.is_empty() || screenshots.len() < probes.len() {
-        return ColorMatchResult { matched: false, hit_count: 0 };
+        return ColorMatchResult {
+            matched: false,
+            hit_count: 0,
+        };
     }
     let mut hit_count = 0usize;
     for (i, probe) in probes.iter().enumerate() {
@@ -1001,9 +1135,9 @@ pub(crate) fn match_color_probes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
     use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
     use crate::morse::types::RegionRect;
+    use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
 
     /// 辅助：取比较结果的 similarity
     fn score(a: &DynamicImage, b: &DynamicImage) -> f32 {
@@ -1068,10 +1202,7 @@ mod tests {
                 Rgba([255, 255, 255, 255])
             };
         }
-        let s = score(
-            &DynamicImage::ImageRgba8(a),
-            &DynamicImage::ImageRgba8(b),
-        );
+        let s = score(&DynamicImage::ImageRgba8(a), &DynamicImage::ImageRgba8(b));
         assert!(s < 0.1, "反差图像相似度应很低，实际 {}", s);
     }
 
@@ -1105,8 +1236,10 @@ mod tests {
 
     #[test]
     fn reference_larger_than_screenshot_returns_zero() {
-        let screenshot = DynamicImage::ImageRgba8(RgbaImage::from_pixel(10, 10, Rgba([100, 100, 100, 255])));
-        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 20, Rgba([100, 100, 100, 255])));
+        let screenshot =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(10, 10, Rgba([100, 100, 100, 255])));
+        let reference =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(20, 20, Rgba([100, 100, 100, 255])));
         let result = compare_images(&screenshot, &reference);
         assert_eq!(result.similarity, 0.0, "参考图比截图大应返回 0.0");
     }
@@ -1144,10 +1277,22 @@ mod tests {
             &DynamicImage::ImageRgb8(screenshot),
             &DynamicImage::ImageRgb8(reference),
         );
-        assert!(result.similarity > 0.9, "模板匹配应找到偏移的参考图，实际 {}", result.similarity);
+        assert!(
+            result.similarity > 0.9,
+            "模板匹配应找到偏移的参考图，实际 {}",
+            result.similarity
+        );
         // 允许 ±3 像素误差（多尺度搜索精度）
-        assert!((result.best_x as i32 - 30).abs() <= 3, "最佳匹配 X 坐标应接近 30，实际 {}", result.best_x);
-        assert!((result.best_y as i32 - 20).abs() <= 3, "最佳匹配 Y 坐标应接近 20，实际 {}", result.best_y);
+        assert!(
+            (result.best_x as i32 - 30).abs() <= 3,
+            "最佳匹配 X 坐标应接近 30，实际 {}",
+            result.best_x
+        );
+        assert!(
+            (result.best_y as i32 - 20).abs() <= 3,
+            "最佳匹配 Y 坐标应接近 20，实际 {}",
+            result.best_y
+        );
     }
 
     #[test]
@@ -1171,10 +1316,7 @@ mod tests {
                 *pixel = Rgba([200, 50, 200, 255]);
             }
         }
-        let s = score(
-            &DynamicImage::ImageRgba8(a),
-            &DynamicImage::ImageRgba8(b),
-        );
+        let s = score(&DynamicImage::ImageRgba8(a), &DynamicImage::ImageRgba8(b));
         // RGB NCC 应能区分不同颜色排列
         assert!(s < 0.7, "RGB NCC 应能区分不同颜色排列，实际 {}", s);
     }
@@ -1185,7 +1327,11 @@ mod tests {
         let a = DynamicImage::ImageRgb8(img.clone());
         let b = DynamicImage::ImageRgb8(img);
         let result = compare_images(&a, &b);
-        assert!(result.similarity > 0.99, "同尺寸同图像 RGB NCC 应接近 1.0，实际 {}", result.similarity);
+        assert!(
+            result.similarity > 0.99,
+            "同尺寸同图像 RGB NCC 应接近 1.0，实际 {}",
+            result.similarity
+        );
     }
 
     #[test]
@@ -1220,7 +1366,11 @@ mod tests {
             &DynamicImage::ImageRgba8(reference),
         );
         // Alpha mask 模板匹配应找到正确位置
-        assert!(result.similarity > 0.8, "Alpha mask 模板匹配应能找到目标，实际 {}", result.similarity);
+        assert!(
+            result.similarity > 0.8,
+            "Alpha mask 模板匹配应能找到目标，实际 {}",
+            result.similarity
+        );
     }
 
     #[test]
@@ -1293,10 +1443,43 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([10, 20, 30, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(result.matched, "All 模式全命中应触发");
         assert_eq!(result.hit_count, 2);
     }
@@ -1308,10 +1491,43 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))), // 不匹配
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(!result.matched, "All 模式部分未命中不应触发");
         assert_eq!(result.hit_count, 1);
     }
@@ -1323,10 +1539,43 @@ mod tests {
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([255, 255, 255, 255]))),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::Any,
+            ColorMatchMethod::Average,
+        );
         assert!(result.matched, "Any 模式任一命中即触发");
         assert_eq!(result.hit_count, 1);
     }
@@ -1350,15 +1599,33 @@ mod tests {
         img.put_pixel(1, 1, Rgba([255, 0, 0, 255]));
         let screenshots = vec![DynamicImage::ImageRgba8(img)];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 3, height: 3 }),
-            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 3,
+                height: 3,
+            }),
+            targets: vec![ColorTarget {
+                color: [255, 0, 0],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         }];
-        let avg = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let avg = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(!avg.matched, "average 模式平均色为黑，距红远，未中");
-        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        let any = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(any.matched, "anyPixel 模式存在红像素应命中");
         assert_eq!(any.hit_count, 1);
     }
@@ -1378,13 +1645,51 @@ mod tests {
             DynamicImage::ImageRgba8(img2),
         ];
         let probes = vec![
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
-            ColorProbe { region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }), targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }], probe_match_mode: ColorMatchMode::Any, legacy_target_color: None, legacy_tolerance: None },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [255, 0, 0],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
+            ColorProbe {
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [255, 0, 0],
+                    tolerance: 10,
+                }],
+                probe_match_mode: ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            },
         ];
-        let all = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        let all = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(!all.matched, "mode=All 第二探针未中，不触发");
         assert_eq!(all.hit_count, 1);
-        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::AnyPixel);
+        let any = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::Any,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(any.matched, "mode=Any 任一命中即触发");
     }
 
@@ -1422,7 +1727,10 @@ mod tests {
         let img = RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let result = scan_region_for_color(&dyn_img, [200, 100, 50], 10.0, true);
-        assert_eq!(result.matching_count, 1, "count_only=true 命中后应早退，count 为 1");
+        assert_eq!(
+            result.matching_count, 1,
+            "count_only=true 命中后应早退，count 为 1"
+        );
     }
 
     #[test]
@@ -1449,15 +1757,26 @@ mod tests {
         img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            targets: vec![ColorTarget { color: [127, 0, 0], tolerance: 5 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            }),
+            targets: vec![ColorTarget {
+                color: [127, 0, 0],
+                tolerance: 5,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         };
         let hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
         assert!(hit.matched, "average 模式平均色应命中");
-        assert_eq!(hit.matching_pixel_count, 0, "average 模式 matching_pixel_count 恒 0");
+        assert_eq!(
+            hit.matching_pixel_count, 0,
+            "average 模式 matching_pixel_count 恒 0"
+        );
     }
 
     #[test]
@@ -1470,14 +1789,25 @@ mod tests {
         img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            }),
+            targets: vec![ColorTarget {
+                color: [255, 0, 0],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         };
         let avg_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
-        assert!(!avg_hit.matched, "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中");
+        assert!(
+            !avg_hit.matched,
+            "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中"
+        );
         let any_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::AnyPixel, false);
         assert!(any_hit.matched, "anyPixel 模式存在红像素应命中");
         assert!(any_hit.matching_pixel_count >= 1, "anyPixel 命中数应 >= 1");

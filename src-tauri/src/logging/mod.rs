@@ -202,8 +202,10 @@ pub fn log_write(
 
 #[cfg(target_os = "windows")]
 fn get_process_memory_kb() -> Result<u64, String> {
-    use windows_sys::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
     use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
 
     let process: HANDLE = unsafe { windows_sys::Win32::System::Threading::GetCurrentProcess() };
     let mut counters: PROCESS_MEMORY_COUNTERS = unsafe { std::mem::zeroed() };
@@ -249,7 +251,9 @@ pub fn init_logger(app_handle: &tauri::AppHandle) -> Result<LogWriter, String> {
         "--",
         session_id(),
         &format!("日志目录: {}", log_dir.display()),
-        Some(&serde_json::json!({"msg": format!("日志目录: {}", log_dir.display()), "log_dir": log_dir.display().to_string()})),
+        Some(
+            &serde_json::json!({"msg": format!("日志目录: {}", log_dir.display()), "log_dir": log_dir.display().to_string()}),
+        ),
     );
     writer.write(LogLevel::Info, "[RUST]·logging", &line);
 
@@ -286,13 +290,11 @@ fn save_log_settings(app_handle: &tauri::AppHandle, settings: &LogSettings) -> R
         .path()
         .app_config_dir()
         .map_err(|e| format!("无法获取配置目录: {}", e))?;
-    std::fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("无法创建配置目录: {}", e))?;
+    std::fs::create_dir_all(&config_dir).map_err(|e| format!("无法创建配置目录: {}", e))?;
     let settings_path = config_dir.join("log_settings.json");
-    let json = serde_json::to_string_pretty(settings)
-        .map_err(|e| format!("无法序列化日志配置: {}", e))?;
-    std::fs::write(&settings_path, json)
-        .map_err(|e| format!("无法写入日志配置: {}", e))
+    let json =
+        serde_json::to_string_pretty(settings).map_err(|e| format!("无法序列化日志配置: {}", e))?;
+    std::fs::write(&settings_path, json).map_err(|e| format!("无法写入日志配置: {}", e))
 }
 
 // ── Tauri Commands ──
@@ -345,10 +347,7 @@ pub fn log_get_session_id() -> String {
 
 /// 更新日志级别设置
 #[tauri::command]
-pub fn log_set_level(
-    app_handle: tauri::AppHandle,
-    settings: LogSettings,
-) -> Result<(), String> {
+pub fn log_set_level(app_handle: tauri::AppHandle, settings: LogSettings) -> Result<(), String> {
     // 保存到文件
     save_log_settings(&app_handle, &settings)?;
 
@@ -462,9 +461,6 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let parsed: LogSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.global_level, LogLevel::Info);
-        assert_eq!(
-            parsed.module_levels.get("morse"),
-            Some(&LogLevel::Debug)
-        );
+        assert_eq!(parsed.module_levels.get("morse"), Some(&LogLevel::Debug));
     }
 }
