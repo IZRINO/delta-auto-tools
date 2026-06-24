@@ -33,6 +33,10 @@ use crate::{
     hotkeys::HotkeyManager,
     overlay_utils::{destroy_stale_windows, destroy_window, destroy_windows_with_prefix, encoded_query_value, hide_window, safe_label_component},
     profile::{self, ActiveProfileSnapshotPatch},
+    sync_tool::{
+        group_enabled, normalize_sync_settings, HotkeyBindingSet, SyncGroup, SyncItem,
+        SyncSettings, SyncToolLogic,
+    },
 };
 
 const RAPIDFIRE_DISPLAY_LABEL: &str = "rapidfire-display";
@@ -152,6 +156,128 @@ impl ToolLogic for RapidfireLogic {
                 (*bootstrap).clone(),
             );
         }
+    }
+}
+
+impl SyncItem for RapidfireCard {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn group_id(&self) -> &str {
+        &self.group_id
+    }
+    fn set_group_id(&mut self, group_id: String) {
+        self.group_id = group_id;
+    }
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncGroup for RapidfireGroup {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+impl SyncSettings for RapidfireSettings {
+    type Item = RapidfireCard;
+    type Group = RapidfireGroup;
+
+    const DEFAULT_GROUP_ID: &'static str = DEFAULT_RAPIDFIRE_GROUP_ID;
+    const DUPLICATE_ITEM_MESSAGE_PREFIX: &'static str = "连发器卡片 ID 重复";
+
+    fn sync_legacy_enabled(&mut self) {}
+
+    fn items(&self) -> &[Self::Item] {
+        &self.cards
+    }
+    fn items_mut(&mut self) -> &mut Vec<Self::Item> {
+        &mut self.cards
+    }
+    fn replace_items(&mut self, items: Vec<Self::Item>) {
+        self.cards = items;
+    }
+    fn groups(&self) -> &[Self::Group] {
+        &self.groups
+    }
+    fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
+        normalize_groups(self)
+    }
+    fn replace_groups(&mut self, groups: Vec<Self::Group>) {
+        self.groups = groups;
+    }
+    fn default_item(&self) -> Self::Item {
+        RapidfireSettings::default()
+            .cards
+            .into_iter()
+            .next()
+            .expect("默认连发器配置必须包含一张卡片")
+    }
+    fn normalize_item(&self, item: &Self::Item) -> Result<Self::Item, String> {
+        normalize_card(item)
+    }
+    fn after_groups_normalized(&mut self) {
+        if let Some(default_group) = self
+            .groups
+            .iter()
+            .find(|group| group.id == DEFAULT_RAPIDFIRE_GROUP_ID)
+        {
+            self.show_overlay = default_group.show_overlay;
+            self.overlay_position = default_group.overlay_position.clone();
+            self.overlay_width = default_group.overlay_width;
+        }
+    }
+}
+
+impl SyncToolLogic for RapidfireLogic {
+    const SCOPE: &'static str = "rapidfire";
+    const SCOPE_LABEL: &'static str = "连发器";
+
+    fn tool_enabled(settings: &RapidfireSettings) -> bool {
+        settings.rapidfire_enabled
+    }
+
+    fn build_hotkey_bindings(settings: &RapidfireSettings) -> Result<HotkeyBindingSet, String> {
+        let mut by_key: HashMap<String, Vec<String>> = HashMap::new();
+        for card in &settings.cards {
+            if !card.enabled || !group_enabled(&settings.groups, &card.group_id) {
+                continue;
+            }
+            by_key
+                .entry(card.trigger_key.clone())
+                .or_default()
+                .push(card.id.clone());
+        }
+
+        let mut bindings = HotkeyBindingSet::empty();
+        for (trigger_key, card_ids) in by_key {
+            let key_for_tuple = trigger_key.clone();
+            let callback: hotkey_types::HoldActionCallback = Arc::new(move |app_handle, action| {
+                let card_ids = card_ids.clone();
+                let app = app_handle.clone();
+                let hold_action = action.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = handle_hold_event(&app, card_ids, hold_action).await {
+                        let _ = app.emit_to("main", events::HOTKEY_ERROR, error);
+                    }
+                });
+            });
+            bindings.hold.push((key_for_tuple, callback));
+        }
+        Ok(bindings)
+    }
+
+    fn stop_all(app: &AppHandle) -> Result<(), String> {
+        let Some(state) = app.try_state::<RapidfireState>() else {
+            return Ok(());
+        };
+        let hotkey_manager = app.try_state::<HotkeyManager>();
+        stop_all(app, &state, hotkey_manager.as_ref().map(|v| &**v));
+        Ok(())
     }
 }
 
@@ -492,26 +618,6 @@ fn normalize_groups(settings_value: &RapidfireSettings) -> Result<Vec<RapidfireG
     Ok(normalized)
 }
 
-fn group_enabled(groups: &[RapidfireGroup], group_id: &str) -> bool {
-    groups
-        .iter()
-        .find(|group| group.id == group_id)
-        .map(|group| group.enabled)
-        .unwrap_or(false)
-}
-
-fn group_id_set(groups: &[RapidfireGroup]) -> HashMap<String, bool> {
-    let mut map = HashMap::new();
-    map.insert(DEFAULT_RAPIDFIRE_GROUP_ID.to_string(), true);
-    for group in groups {
-        let id = group.id.trim();
-        if !id.is_empty() {
-            map.insert(id.to_string(), true);
-        }
-    }
-    map
-}
-
 fn normalize_single_key(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -526,22 +632,10 @@ fn normalize_single_key(raw: &str) -> Result<String, String> {
 }
 
 pub(crate) fn normalize_settings(mut settings_value: RapidfireSettings) -> Result<RapidfireSettings, String> {
-    if settings_value.cards.is_empty() {
-        settings_value.cards.push(
-            RapidfireSettings::default()
-                .cards
-                .into_iter()
-                .next()
-                .unwrap(),
-        );
-    }
-
     settings_value.overlay_width = settings_value
         .overlay_width
         .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
         .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
-    let groups = normalize_groups(&settings_value)?;
-    let group_ids = group_id_set(&groups);
     if settings_value.compensation_delay_min_ms > settings_value.compensation_delay_max_ms {
         return Err("补齐延迟最小值不能大于最大值".to_string());
     }
@@ -565,30 +659,7 @@ pub(crate) fn normalize_settings(mut settings_value: RapidfireSettings) -> Resul
         .trigger_jitter_max_ms
         .min(RAPIDFIRE_TRIGGER_JITTER_MAX_MS);
 
-    let mut seen_ids = HashMap::new();
-    let mut cards = Vec::with_capacity(settings_value.cards.len());
-    for card in &settings_value.cards {
-        let mut normalized = normalize_card(card)?;
-        if !group_ids.contains_key(&normalized.group_id) {
-            normalized.group_id = DEFAULT_RAPIDFIRE_GROUP_ID.to_string();
-        }
-        if seen_ids.insert(normalized.id.clone(), true).is_some() {
-            return Err(format!("连发器卡片 ID 重复: {}", normalized.id));
-        }
-        cards.push(normalized);
-    }
-    settings_value.groups = groups;
-    if let Some(default_group) = settings_value
-        .groups
-        .iter()
-        .find(|group| group.id == DEFAULT_RAPIDFIRE_GROUP_ID)
-    {
-        settings_value.show_overlay = default_group.show_overlay;
-        settings_value.overlay_position = default_group.overlay_position.clone();
-        settings_value.overlay_width = default_group.overlay_width;
-    }
-    settings_value.cards = cards;
-    Ok(settings_value)
+    normalize_sync_settings(settings_value)
 }
 
 // ---- Hotkey registration ----
@@ -636,35 +707,7 @@ pub(crate) fn restart_hotkey_listeners(
         return Ok(());
     }
 
-    let bindings = new_by_key
-        .into_iter()
-        .map(|(key, card_ids)| {
-            let action: hotkey_types::HoldActionCallback = Arc::new(move |app_handle, hold_action| {
-                let card_ids = card_ids.clone();
-                let hold_action = hold_action.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(error) = handle_hold_event(&app_handle, card_ids, hold_action).await
-                    {
-                        let _ = app_handle.emit_to("main", events::HOTKEY_ERROR, error);
-                    }
-                });
-            });
-            (key, action)
-        })
-        .collect::<Vec<_>>();
-
-    let result = hotkey_manager.replace_hold_scope(
-        "rapidfire",
-        bindings,
-        "连发器".to_string(),
-        hotkey_types::ConflictPolicy::AllowHold,
-    );
-    if result.is_ok() {
-        if let Ok(mut inner) = state.lock_inner() {
-            inner.hotkey_error = None;
-        }
-    }
-    result
+    state.restart_sync_hotkeys(hotkey_manager, settings_value)
 }
 
 // ---- Core state machine ----
