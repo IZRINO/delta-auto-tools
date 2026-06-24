@@ -16,6 +16,7 @@ import {FavoritesProvider, useFavorites} from "@/hooks/use-favorites";
 import {GlobalEnabledProvider, useGlobalEnabled} from "@/hooks/use-global-enabled";
 import {ThemeProvider} from "@/hooks/use-theme";
 import {ProfileProvider, useProfile} from "@/hooks/use-profile";
+import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {Switch} from "@/components/ui/switch";
 import {cn} from "@/lib/utils";
@@ -453,6 +454,7 @@ function AppShell() {
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
+                        <ProfileSwitcher/>
                         <GlobalSwitch/>
                         <div
                             className="hidden items-center border-2 border-[var(--chalk)] bg-[var(--chalk)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--carbon)] uppercase sm:flex">

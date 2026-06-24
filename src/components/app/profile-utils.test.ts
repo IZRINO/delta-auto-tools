@@ -5,7 +5,10 @@ import {
     countIncludedTools,
     findProfile,
     formatProfileTimestamp,
+    getActiveProfile,
+    getProfileDisplayName,
     isActiveProfile,
+    sortProfilesForSwitcher,
     snapshotTools,
     validateProfileName,
 } from "@/components/app/profile-utils";
@@ -121,5 +124,57 @@ describe("isActiveProfile", () => {
 
     it("bootstrap 为 null 时返回 false", () => {
         expect(isActiveProfile(null, "a")).toBe(false);
+    });
+});
+
+describe("getActiveProfile", () => {
+    it("返回当前激活配置", () => {
+        const boot: ProfileBootstrap = {
+            profiles: [makeProfile("a", "配置1"), makeProfile("b", "配置2")],
+            activeProfileId: "b",
+        };
+        expect(getActiveProfile(boot)?.name).toBe("配置2");
+    });
+
+    it("无 bootstrap 返回 null", () => {
+        expect(getActiveProfile(null)).toBeNull();
+    });
+
+    it("未命中 activeProfileId 返回 null", () => {
+        const boot: ProfileBootstrap = {
+            profiles: [makeProfile("a")],
+            activeProfileId: "missing",
+        };
+        expect(getActiveProfile(boot)).toBeNull();
+    });
+});
+
+describe("getProfileDisplayName", () => {
+    it("无 bootstrap 时显示配置1", () => {
+        expect(getProfileDisplayName(null)).toBe("配置1");
+    });
+
+    it("空 profiles 时显示配置1", () => {
+        expect(getProfileDisplayName({profiles: [], activeProfileId: ""})).toBe("配置1");
+    });
+
+    it("有激活配置时显示配置名称", () => {
+        const boot: ProfileBootstrap = {
+            profiles: [makeProfile("a", "配置A")],
+            activeProfileId: "a",
+        };
+        expect(getProfileDisplayName(boot)).toBe("配置A");
+    });
+});
+
+describe("sortProfilesForSwitcher", () => {
+    it("当前配置排在第一位，其余保持原顺序", () => {
+        const profiles = [makeProfile("a"), makeProfile("b"), makeProfile("c")];
+        expect(sortProfilesForSwitcher(profiles, "b").map((p) => p.id)).toEqual(["b", "a", "c"]);
+    });
+
+    it("未命中 activeId 时保持原顺序", () => {
+        const profiles = [makeProfile("a"), makeProfile("b")];
+        expect(sortProfilesForSwitcher(profiles, "missing").map((p) => p.id)).toEqual(["a", "b"]);
     });
 });

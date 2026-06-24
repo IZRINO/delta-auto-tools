@@ -56,3 +56,26 @@ export function countIncludedTools(profile: Profile): number {
 export function isActiveProfile(boot: ProfileBootstrap | null, id: string): boolean {
     return Boolean(boot && boot.activeProfileId === id);
 }
+
+/** 获取当前激活的 Profile 对象。无 bootstrap 或未命中时返回 null。 */
+export function getActiveProfile(boot: ProfileBootstrap | null): Profile | null {
+    if (!boot) return null;
+    return boot.profiles.find((p) => p.id === boot.activeProfileId) ?? null;
+}
+
+/** 获取顶栏显示名；无激活配置时回退为"配置1"。 */
+export function getProfileDisplayName(boot: ProfileBootstrap | null): string {
+    return getActiveProfile(boot)?.name ?? "配置1";
+}
+
+/**
+ * 按 Switcher 下拉需求排序：当前激活配置排在首位，其余保持原顺序。
+ */
+export function sortProfilesForSwitcher(
+    profiles: readonly Profile[],
+    activeProfileId: string,
+): Profile[] {
+    const active = profiles.find((p) => p.id === activeProfileId);
+    const rest = profiles.filter((p) => p.id !== activeProfileId);
+    return active ? [active, ...rest] : [...profiles];
+}

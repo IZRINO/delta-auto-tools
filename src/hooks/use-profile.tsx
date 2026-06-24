@@ -12,11 +12,19 @@ import {invoke} from "@tauri-apps/api/core";
 import {PROFILE_EVENTS, listenEvent} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import type {Profile, ProfileBootstrap} from "@/components/app/profile-types";
+import {
+    getActiveProfile,
+    getProfileDisplayName,
+} from "@/components/app/profile-utils";
 
 /** Profile Context 对外暴露的接口。 */
 type ProfileContextValue = {
     /** 当前 bootstrap（含全部 Profile 列表与激活 id）。 */
     bootstrap: ProfileBootstrap | null;
+    /** 当前激活配置对象。 */
+    activeProfile: Profile | null;
+    /** 顶栏显示名；无 bootstrap 时回退为"配置1"。 */
+    activeProfileName: string;
     /** 是否正在加载初始 bootstrap。 */
     loading: boolean;
     /** 错误信息。 */
@@ -28,12 +36,10 @@ type ProfileContextValue = {
      * 当前工具页 unmount（清掉挂起的 autosave timer）→ remount（重新拉 bootstrap）。
      */
     reloadNonce: number;
-    /** 把当前 5 份 settings 打包成新 Profile 并设为激活。 */
-    saveCurrentAs: (name: string) => Promise<Profile>;
+    /** 新建一个全默认配置并立即切换过去。 */
+    createDefaultProfile: () => Promise<void>;
     /** 切换到指定 Profile：写盘 + reload 各工具 + 重置计数器运行值。 */
     switchProfile: (id: string) => Promise<void>;
-    /** 删除 Profile（禁止删除当前激活的）。 */
-    deleteProfile: (id: string) => Promise<void>;
     /** 重命名 Profile。 */
     renameProfile: (id: string, name: string) => Promise<void>;
 };
@@ -118,16 +124,6 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         setReloadNonce((n) => n + 1);
     }, []);
 
-    const saveCurrentAs = useCallback(
-        async (name: string) => {
-            const profile = await invoke<Profile>("profile_save_current", {name});
-            const boot = await invoke<ProfileBootstrap>("profile_get_bootstrap");
-            setBootstrap(boot);
-            return profile;
-        },
-        [],
-    );
-
     const switchProfile = useCallback(
         async (id: string) => {
             try {
@@ -141,16 +137,6 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         [refreshAfterSwitch],
     );
 
-    const deleteProfile = useCallback(async (id: string) => {
-        try {
-            const boot = await invoke<ProfileBootstrap>("profile_delete", {id});
-            setBootstrap(boot);
-        } catch (err: unknown) {
-            setError(String(err));
-            throw err;
-        }
-    }, []);
-
     const renameProfile = useCallback(async (id: string, name: string) => {
         try {
             const boot = await invoke<ProfileBootstrap>("profile_rename", {id, name});
@@ -161,25 +147,41 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         }
     }, []);
 
+    const createDefaultProfile = useCallback(async () => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_create_default");
+            setBootstrap(boot);
+            setReloadNonce((n) => n + 1);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const activeProfile = useMemo(() => getActiveProfile(bootstrap), [bootstrap]);
+    const activeProfileName = useMemo(() => getProfileDisplayName(bootstrap), [bootstrap]);
+
     const value = useMemo<ProfileContextValue>(
         () => ({
             bootstrap,
+            activeProfile,
+            activeProfileName,
             loading,
             error,
             reloadNonce,
-            saveCurrentAs,
+            createDefaultProfile,
             switchProfile,
-            deleteProfile,
             renameProfile,
         }),
         [
             bootstrap,
+            activeProfile,
+            activeProfileName,
             loading,
             error,
             reloadNonce,
-            saveCurrentAs,
+            createDefaultProfile,
             switchProfile,
-            deleteProfile,
             renameProfile,
         ],
     );
