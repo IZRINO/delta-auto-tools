@@ -906,8 +906,9 @@ pub fn stop_all(app: &AppHandle, state: &TimerState) {
         inner.logic.runs.clear();
         TimerLogic::build_bootstrap(&inner)
     };
-    // 统一关闭：全局开关关闭时销毁计时器透明窗口，与计数器/连发器保持一致（Issue #64）。
-    destroy_display_windows(app);
+    // 全局开关关闭时只隐藏透明窗口（不销毁），重新打开时 ensure_display_windows 直接 show 恢复，
+    // 避免窗口重建导致的 label 冲突与加载空白。
+    crate::overlay_utils::hide_windows_with_prefix(app, TIMER_DISPLAY_LABEL);
     emit_state(app, bootstrap);
 }
 

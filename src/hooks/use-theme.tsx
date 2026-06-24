@@ -41,6 +41,11 @@ type ThemeContextValue = {
     deleteCustomTheme: (themeId: string) => Promise<void>;
     /** 重命名自定义主题。 */
     renameCustomTheme: (themeId: string, name: string) => Promise<void>;
+    /**
+     * 实时预览：将指定 token 列表写入 documentElement（不持久化）。
+     * 主题面板用此接口预览颜色变更，避免自己操作 CSS 变量导致与 Provider 不同步。
+     */
+    previewTokens: (tokens: readonly ThemeTokenOverride[]) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -163,14 +168,19 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             }
             const next = mutator(bootstrap);
             try {
-                await invoke<ThemeBootstrap>("theme_save_settings", {settingsValue: next});
-                // 事件监听会刷新 bootstrap 与 CSS 变量
+                // save_settings 返回最新的 ThemeBootstrap（含合并后的 mergedTokens），
+                // 立即用它更新 bootstrap 与 CSS 变量，不必等待 theme://changed 事件。
+                // 这样 ThemePanel unmount cleanup 时 bootstrapRef.current 已是最新值，
+                // 不会用过时的 mergedTokens 覆盖已保存的自定义颜色。
+                const returned = await invoke<ThemeBootstrap>("theme_save_settings", {settingsValue: next});
+                setBootstrap(returned);
+                applyTokens(returned.mergedTokens);
             } catch (err: unknown) {
                 setError(String(err));
                 throw err;
             }
         },
-        [isNativeShell, bootstrap],
+        [isNativeShell, bootstrap, applyTokens],
     );
 
     const saveSettings = useCallback(
@@ -241,6 +251,15 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         [persistSettings],
     );
 
+    /** 预览 token：直接写入 CSS 变量但不持久化。面板卸载后由 Provider 统一恢复。 */
+    const previewTokens = useCallback((tokens: readonly ThemeTokenOverride[]) => {
+        appliedTokensRef.current = applyThemeTokens(
+            document.documentElement,
+            tokens,
+            appliedTokensRef.current,
+        );
+    }, []);
+
     const value = useMemo<ThemeContextValue>(
         () => ({
             bootstrap,
@@ -252,6 +271,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             addCustomTheme,
             deleteCustomTheme,
             renameCustomTheme,
+            previewTokens,
         }),
         [
             bootstrap,
@@ -263,6 +283,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             addCustomTheme,
             deleteCustomTheme,
             renameCustomTheme,
+            previewTokens,
         ],
     );
 

@@ -270,9 +270,9 @@ function GlobalDisabledBanner() {
     );
 }
 
-function GlobalEnabledConsumer() {
+function GlobalEnabledConsumer({activeTool}: { activeTool: ToolId }) {
     const {globalEnabled} = useGlobalEnabled();
-    if (globalEnabled) return null;
+    if (globalEnabled || activeTool === "strategy") return null;
     return <GlobalDisabledBanner/>;
 }
 
@@ -543,7 +543,7 @@ function AppShell() {
                     <div
                         key={reloadNonce}
                         className={cn("mx-auto min-h-full w-full px-2 py-2 xl:px-3 xl:py-3", activeTool === "strategy" ? "max-w-none" : "max-w-7xl")}>
-                        <GlobalEnabledConsumer/>
+                        <GlobalEnabledConsumer activeTool={activeTool}/>
                         <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
                     </div>
                 </main>

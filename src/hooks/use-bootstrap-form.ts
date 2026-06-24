@@ -248,6 +248,28 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         };
     }, [isNativeShell, skipInitialLoad, syncBootstrap, previewStatusMessage, readyStatusMessage]);
 
+    // 若工具事件先于初始 load 完成写入 bootstrap/form，兜底恢复加载状态与初始就绪文案。
+    useEffect(() => {
+        if (skipInitialLoad || !isNativeShell || !bootstrap || !form) {
+            return;
+        }
+
+        if (loading) {
+            setLoading(false);
+        }
+        setStatusMessage((current) =>
+            current === loadStatusMessage ? readyStatusMessage : current,
+        );
+    }, [
+        bootstrap,
+        form,
+        isNativeShell,
+        skipInitialLoad,
+        loading,
+        loadStatusMessage,
+        readyStatusMessage,
+    ]);
+
     return {
         bootstrap,
         setBootstrap,

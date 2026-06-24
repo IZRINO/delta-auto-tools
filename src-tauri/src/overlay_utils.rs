@@ -34,6 +34,23 @@ pub fn destroy_window(app: &AppHandle, label: &str) {
     }
 }
 
+/// 隐藏所有以 `base_label` 为前缀（含 base_label 本身）的窗口。
+///
+/// 与 `destroy_windows_with_prefix` 不同，只隐藏不销毁，
+/// 便于全局开关重新打开时直接 show 恢复，避免窗口重建的时序问题与加载空白。
+pub fn hide_windows_with_prefix(app: &AppHandle, base_label: &str) {
+    let prefix = format!("{base_label}-");
+    let labels = app
+        .webview_windows()
+        .keys()
+        .filter(|label| *label == base_label || label.starts_with(&prefix))
+        .cloned()
+        .collect::<Vec<_>>();
+    for label in labels {
+        hide_window(app, &label);
+    }
+}
+
 /// 销毁所有以 `base_label` 为前缀（含 base_label 本身）的窗口。
 pub fn destroy_windows_with_prefix(app: &AppHandle, base_label: &str) {
     let prefix = format!("{base_label}-");

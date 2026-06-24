@@ -672,7 +672,7 @@ pub fn stop_all(app: &AppHandle, state: &CounterState) {
         };
         CounterLogic::build_bootstrap(&inner)
     };
-    destroy_display_windows(app);
+    crate::overlay_utils::hide_windows_with_prefix(app, COUNTER_DISPLAY_LABEL);
     emit_state(app, bootstrap);
 }
 

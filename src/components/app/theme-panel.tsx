@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from "react";
-import {RiDownloadLine, RiUploadLine, RiCheckLine} from "@remixicon/react";
+import {RiDownloadLine, RiUploadLine, RiCheckLine, RiPaletteLine} from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
@@ -13,7 +13,6 @@ import {
     TOKEN_LABELS,
 } from "@/components/app/theme-types";
 import {
-    applyThemeTokens,
     mergeThemeTokens,
     parseImportedTheme,
     serializeThemeForExport,
@@ -26,12 +25,22 @@ import {ThemeColorPicker} from "@/components/app/theme-color-picker";
  *
  * 复用 `useTheme()` 拿到的状态与保存函数，自身只维护「编辑中的 overrides」本地态。
  * 切换预设会清空 overrides；保存时调 `setOverrides` 或 `setActiveTheme` 落盘。
+ *
+ * CSS 变量预览统一通过 `previewTokens` 由 ThemeProvider 管理，
+ * 面板卸载时 Provider 自动恢复到上次持久化的 mergedTokens，不会出现不同步。
  */
 export function ThemePanel() {
-    const {bootstrap, loading, error, setActiveTheme, setOverrides, addCustomTheme} = useTheme();
+    const {bootstrap, loading, error, setActiveTheme, setOverrides, addCustomTheme, previewTokens} = useTheme();
+
+    // 保持最新 bootstrap 引用供 unmount cleanup 使用
+    const bootstrapRef = useRef(bootstrap);
+    bootstrapRef.current = bootstrap;
 
     // 本地编辑态：当前激活主题 + overrides 的合并结果，用于颜色选择器实时预览
-    const [localOverrides, setLocalOverrides] = useState<ThemeTokenOverride[]>([]);
+    // 用 bootstrap.overrides 做初始值，避免 mount 时空数组被 preview 写入 CSS 导致颜色闪烁回预设主题
+    const [localOverrides, setLocalOverrides] = useState<ThemeTokenOverride[]>(
+        () => bootstrap?.overrides ?? [],
+    );
 
     // 当前激活主题定义（自定义 + 内置中查找）
     const activeTheme = useMemo<ThemeDefinition | undefined>(() => {
@@ -45,14 +54,23 @@ export function ThemePanel() {
         setLocalOverrides(bootstrap?.overrides ?? []);
     }, [bootstrap]);
 
-    // 实时预览：localOverrides 或 activeTheme 变化时立即写入 documentElement
-    const previewTokensRef = useRef<readonly ThemeTokenOverride[]>([]);
+    // 实时预览：localOverrides 或 activeTheme 变化时通过 ThemeProvider 统一写入 CSS 变量
     useEffect(() => {
         if (!activeTheme) return;
         const merged = mergeThemeTokens(activeTheme, localOverrides);
-        applyThemeTokens(document.documentElement, merged, previewTokensRef.current);
-        previewTokensRef.current = merged;
-    }, [activeTheme, localOverrides]);
+        previewTokens(merged);
+    }, [activeTheme, localOverrides, previewTokens]);
+
+    // 面板卸载时恢复 ThemeProvider 上次持久化的 CSS 变量
+    useEffect(() => {
+        return () => {
+            const boot = bootstrapRef.current;
+            if (boot?.mergedTokens) {
+                previewTokens(boot.mergedTokens);
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 unmount 时执行清理
+    }, []);
 
     // 找到某个 editable token 在 previewTokens 中的当前值（fallback 到 activeTheme 原值）
     const tokenValue = (key: string): string => {
@@ -156,9 +174,17 @@ export function ThemePanel() {
             <div className="flex flex-col gap-4 pr-3">
                 {/* 预设区 */}
                 <FieldUnit header="[ PRESET / 预设主题 ]">
+                    {/* 当存在自定义 overrides 时显示「已自定义」状态条，预设均不选中 */}
+                    {bootstrap.overrides.length > 0 && (
+                        <div className="mb-2 flex items-center gap-1.5 border-2 border-[var(--amber)] bg-[var(--amber)]/10 px-2 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.12em] text-[var(--amber)] uppercase">
+                            <RiPaletteLine className="size-3" aria-hidden="true"/>
+                            CUSTOMIZED // 点击预设可恢复原主题配色
+                        </div>
+                    )}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {allThemes.map((theme) => {
-                            const isActive = theme.id === bootstrap.activeThemeId;
+                            // 存在自定义 overrides 时不选中任何预设，避免误点击导致 overrides 被清空
+                            const isActive = theme.id === bootstrap.activeThemeId && bootstrap.overrides.length === 0;
                             // 用主题前 4 个语义色做缩略预览
                             const swatches = ["--carbon", "--chalk", "--amber", "--alert-red"]
                                 .map((k) => theme.tokens.find((t) => t.key === k)?.value ?? "")
