@@ -18,8 +18,9 @@ use crate::overlay_utils::{
     hide_window, safe_label_component,
 };
 use crate::sync_tool::{
-    count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
-    SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
+    apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, SyncGroup, SyncItem,
+    SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
@@ -63,6 +64,31 @@ pub(crate) struct PendingCounterPosition {
     original_rect: CounterRect,
     staged_rect: CounterRect,
     sender: oneshot::Sender<CounterSelectionKind>,
+}
+
+fn pending_counter_to_sync(
+    pending: PendingCounterPosition,
+) -> (PendingPosition<CounterRect>, oneshot::Sender<CounterSelectionKind>) {
+    (
+        PendingPosition {
+            group_id: pending.group_id,
+            original_rect: pending.original_rect,
+            staged_rect: pending.staged_rect,
+        },
+        pending.sender,
+    )
+}
+
+fn pending_counter_from_sync(
+    pending: PendingPosition<CounterRect>,
+    sender: oneshot::Sender<CounterSelectionKind>,
+) -> PendingCounterPosition {
+    PendingCounterPosition {
+        group_id: pending.group_id,
+        original_rect: pending.original_rect,
+        staged_rect: pending.staged_rect,
+        sender,
+    }
 }
 
 fn counter_run_states(inner: &ToolStateInner<CounterLogic>) -> Vec<CounterRunState> {
@@ -156,6 +182,31 @@ impl SyncToolLogic for CounterLogic {
         };
         stop_all(app, &state);
         Ok(())
+    }
+}
+
+impl SyncRect for CounterRect {
+    fn with_position(&self, x: i32, y: i32) -> Self {
+        Self {
+            x,
+            y,
+            width: self.width,
+            height: self.height,
+        }
+    }
+}
+
+impl PositionKinds for CounterSelectionKind {
+    fn selected() -> Self {
+        Self::Selected
+    }
+
+    fn cancelled() -> Self {
+        Self::Cancelled
+    }
+
+    fn closed() -> Self {
+        Self::Closed
     }
 }
 
@@ -910,26 +961,62 @@ pub fn counter_position_commit(
     app: AppHandle,
     state: State<'_, CounterState>,
 ) -> Result<CounterBootstrap, AppError> {
-    let (sender, group_id, bootstrap) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
-        };
+        inner.logic.pending_position.take()
+    };
+    let Some(pending) = pending else {
+        return Err(AppError::Message("没有正在进行的位置设置".to_string()));
+    };
+    let (sync_pending, sender) = pending_counter_to_sync(pending);
+    let staged_rect = sync_pending.staged_rect.clone();
+    let group_id = sync_pending.group_id.clone();
+    let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
+        Some(sync_pending),
+        PositionEvent::Commit,
+    )?;
 
-        let group_id = pending.group_id.clone();
-        set_rect_for_group(&mut inner.settings, &group_id, pending.staged_rect.clone());
-        settings::save_settings(&app, &inner.settings)?;
-        (
-            pending.sender,
-            group_id,
-            CounterLogic::build_bootstrap(&inner),
+    if decision.save {
+        let mut inner = state
+            .lock_inner()
+            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+        if let Some(group) = inner
+            .settings
+            .counter_groups
+            .iter_mut()
+            .find(|group| group.id == group_id)
+        {
+            group.display.rect = staged_rect.clone();
+        }
+        if group_id == DEFAULT_COUNTER_GROUP_ID {
+            inner.settings.display.rect = staged_rect;
+        }
+        inner.settings.display = group_display(
+            &inner.settings.counter_groups,
+            DEFAULT_COUNTER_GROUP_ID,
+            DEFAULT_COUNTER_GROUP_ID,
         )
+        .cloned()
+        .unwrap_or_default();
+        settings::save_settings(&app, &inner.settings)?;
+    }
+
+    if let Some(kind) = decision.send {
+        let _ = sender.send(kind);
+    }
+    if decision.destroy_window {
+        destroy_window(&app, &position_label_for_group(&group_id));
+    }
+
+    let bootstrap = {
+        let inner = state
+            .lock_inner()
+            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+        CounterLogic::build_bootstrap(&inner)
     };
 
-    let _ = sender.send(CounterSelectionKind::Selected);
-    destroy_window(&app, &position_label_for_group(&group_id));
     ensure_display_windows(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
     profile::update_active_profile_snapshot(
@@ -944,21 +1031,28 @@ pub fn counter_position_cancel(
     app: AppHandle,
     state: State<'_, CounterState>,
 ) -> Result<(), AppError> {
-    let (sender, group_id) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
-        };
-
-        let group_id = pending.group_id.clone();
-        set_rect_for_group(&mut inner.settings, &group_id, pending.original_rect);
-        (pending.sender, group_id)
+        inner.logic.pending_position.take()
     };
+    let Some(pending) = pending else {
+        return Err(AppError::Message("没有正在进行的位置设置".to_string()));
+    };
+    let (sync_pending, sender) = pending_counter_to_sync(pending);
+    let group_id = sync_pending.group_id.clone();
+    let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
+        Some(sync_pending),
+        PositionEvent::Cancel,
+    )?;
 
-    let _ = sender.send(CounterSelectionKind::Cancelled);
-    destroy_window(&app, &position_label_for_group(&group_id));
+    if let Some(kind) = decision.send {
+        let _ = sender.send(kind);
+    }
+    if decision.destroy_window {
+        destroy_window(&app, &position_label_for_group(&group_id));
+    }
     Ok(())
 }
 
@@ -969,24 +1063,36 @@ pub fn counter_position_moved(
     app: AppHandle,
     state: State<'_, CounterState>,
 ) -> Result<CounterRect, AppError> {
-    let (rect, group_id) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.as_mut() else {
-            return Err(AppError::Message("当前没有等待中的位置设置流程".to_string()));
-        };
-
-        pending.staged_rect.x = x;
-        pending.staged_rect.y = y;
-        (pending.staged_rect.clone(), pending.group_id.clone())
+        inner.logic.pending_position.take()
     };
+    let Some(pending) = pending else {
+        return Err(AppError::Message("没有正在进行的位置设置".to_string()));
+    };
+    let (sync_pending, sender) = pending_counter_to_sync(pending);
+    let group_id = sync_pending.group_id.clone();
+    let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
+        Some(sync_pending),
+        PositionEvent::Moved { x, y },
+    )?;
+    if let Some(next_pending) = decision.pending {
+        let mut inner = state
+            .lock_inner()
+            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+        inner.logic.pending_position = Some(pending_counter_from_sync(next_pending, sender));
+    }
+    let staged_rect = decision
+        .move_window_to
+        .ok_or_else(|| "位置设置移动结果缺失".to_string())?;
 
     if let Some(window) = app.get_webview_window(&position_label_for_group(&group_id)) {
-        let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
+        let _ = window.set_position(PhysicalPosition::new(staged_rect.x, staged_rect.y));
     }
 
-    Ok(rect)
+    Ok(staged_rect)
 }
 
 #[cfg(test)]
@@ -1105,6 +1211,37 @@ mod tests {
         assert_eq!(bindings.normal.len(), 1);
         assert!(bindings.hold.is_empty());
         assert_eq!(bindings.normal[0].0, "F3");
+    }
+
+    #[test]
+    fn counter_position_transition_cancel_does_not_save() {
+        use crate::sync_tool::{apply_position_event, PendingPosition, PositionEvent};
+
+        let pending = Some(PendingPosition {
+            group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+            original_rect: CounterRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 96,
+            },
+            staged_rect: CounterRect {
+                x: 50,
+                y: 60,
+                width: 320,
+                height: 96,
+            },
+        });
+
+        let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
+            pending,
+            PositionEvent::Cancel,
+        )
+        .expect("取消位置设置应成功");
+
+        assert!(!decision.save);
+        assert_eq!(decision.send, Some(CounterSelectionKind::Cancelled));
+        assert!(decision.destroy_window);
     }
 
     #[test]
