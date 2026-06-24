@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::hotkey_types::{ConflictPolicy, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
@@ -29,7 +29,6 @@ pub trait SyncSettings: Clone {
     fn items(&self) -> &[Self::Item];
     fn items_mut(&mut self) -> &mut Vec<Self::Item>;
     fn replace_items(&mut self, items: Vec<Self::Item>);
-    fn groups(&self) -> &[Self::Group];
     fn normalize_groups(&self) -> Result<Vec<Self::Group>, String>;
     fn replace_groups(&mut self, groups: Vec<Self::Group>);
     fn default_item(&self) -> Self::Item;
@@ -174,12 +173,10 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PositionEvent<R> {
-    Begin { group_id: String, rect: R },
+pub enum PositionEvent {
     Moved { x: i32, y: i32 },
     Commit,
     Cancel,
-    Closed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,34 +202,17 @@ pub trait SyncRect: Clone {
 pub trait PositionKinds: Clone {
     fn selected() -> Self;
     fn cancelled() -> Self;
-    fn closed() -> Self;
 }
 
 pub fn apply_position_event<R, K>(
     pending: Option<PendingPosition<R>>,
-    event: PositionEvent<R>,
+    event: PositionEvent,
 ) -> Result<PositionDecision<R, K>, String>
 where
     R: SyncRect,
     K: PositionKinds,
 {
     match event {
-        PositionEvent::Begin { group_id, rect } => {
-            if pending.is_some() {
-                return Err("位置设置已在进行中".to_string());
-            }
-            Ok(PositionDecision {
-                pending: Some(PendingPosition {
-                    group_id,
-                    original_rect: rect.clone(),
-                    staged_rect: rect,
-                }),
-                save: false,
-                send: None,
-                destroy_window: false,
-                move_window_to: None,
-            })
-        }
         PositionEvent::Moved { x, y } => {
             let Some(mut current) = pending else {
                 return Err("没有正在进行的位置设置".to_string());
@@ -270,18 +250,6 @@ where
                 move_window_to: None,
             })
         }
-        PositionEvent::Closed => {
-            let Some(_current) = pending else {
-                return Err("没有正在进行的位置设置".to_string());
-            };
-            Ok(PositionDecision {
-                pending: None,
-                save: false,
-                send: Some(K::closed()),
-                destroy_window: true,
-                move_window_to: None,
-            })
-        }
     }
 }
 
@@ -307,6 +275,7 @@ impl SyncToolRegistry {
         errors
     }
 
+    #[cfg(test)]
     pub fn registered_names(&self) -> Vec<&'static str> {
         self.handlers.iter().map(|(name, _)| *name).collect()
     }
@@ -379,9 +348,6 @@ mod tests {
         }
         fn replace_items(&mut self, items: Vec<Self::Item>) {
             self.items = items;
-        }
-        fn groups(&self) -> &[Self::Group] {
-            &self.groups
         }
         fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
             let mut groups = self.groups.clone();
@@ -498,7 +464,6 @@ mod tests {
     enum TestKind {
         Selected,
         Cancelled,
-        Closed,
     }
 
     impl PositionKinds for TestKind {
@@ -507,9 +472,6 @@ mod tests {
         }
         fn cancelled() -> Self {
             Self::Cancelled
-        }
-        fn closed() -> Self {
-            Self::Closed
         }
     }
 

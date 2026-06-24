@@ -129,7 +129,9 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             errors.push(format!("连发器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
-            if let Err(e) = rapidfire::restart_hotkey_listeners(&rapidfire_state, &**hm, &settings, false) {
+            if let Err(e) =
+                rapidfire::restart_hotkey_listeners(&rapidfire_state, &**hm, &settings, false)
+            {
                 errors.push(format!("连发器热键: {e}"));
             }
         }

@@ -205,9 +205,6 @@ impl SyncSettings for RapidfireSettings {
     fn replace_items(&mut self, items: Vec<Self::Item>) {
         self.cards = items;
     }
-    fn groups(&self) -> &[Self::Group] {
-        &self.groups
-    }
     fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
         normalize_groups(self)
     }

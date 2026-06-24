@@ -196,9 +196,6 @@ impl SyncSettings for TimerSettings {
     fn replace_items(&mut self, items: Vec<Self::Item>) {
         self.timers = items;
     }
-    fn groups(&self) -> &[Self::Group] {
-        &self.timer_groups
-    }
     fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
         let legacy_display = self.display.clone();
         let timer_count_by_group = count_enabled_items_by_group(&self.timers);

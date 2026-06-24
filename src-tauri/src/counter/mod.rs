@@ -206,10 +206,6 @@ impl PositionKinds for CounterSelectionKind {
     fn cancelled() -> Self {
         Self::Cancelled
     }
-
-    fn closed() -> Self {
-        Self::Closed
-    }
 }
 
 pub(crate) fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<CounterLogic>) {
@@ -401,10 +397,6 @@ impl SyncSettings for CounterSettings {
 
     fn replace_items(&mut self, items: Vec<Self::Item>) {
         self.counters = items;
-    }
-
-    fn groups(&self) -> &[Self::Group] {
-        &self.counter_groups
     }
 
     fn normalize_groups(&self) -> Result<Vec<Self::Group>, String> {
