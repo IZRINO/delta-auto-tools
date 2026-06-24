@@ -1403,6 +1403,15 @@ pub fn stop_all(app: &AppHandle, state: &RapidfireState, hotkey_manager: Option<
     emit_state(app, bootstrap);
 }
 
+pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<RapidfireState>() else {
+        return Ok(());
+    };
+    let hotkey_manager = app.try_state::<HotkeyManager>();
+    stop_all(app, &state, hotkey_manager.as_ref().map(|v| &**v));
+    Ok(())
+}
+
 pub fn initialize(
     app: &AppHandle,
     hotkey_manager: &HotkeyManager,

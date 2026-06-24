@@ -52,20 +52,12 @@ pub fn global_set_enabled(
 }
 
 fn stop_active_sessions(app: &AppHandle) {
-    use crate::hotkeys::HotkeyManager;
-    use crate::counter;
-    use crate::rapidfire;
-    use crate::timer;
+    let Some(registry) = app.try_state::<crate::sync_tool::SyncToolRegistry>() else {
+        return;
+    };
 
-    let hotkey_manager = app.try_state::<HotkeyManager>();
-    if let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() {
-        rapidfire::stop_all(app, &rapidfire_state, hotkey_manager.as_ref().map(|v| &**v));
-    }
-    if let Some(timer_state) = app.try_state::<timer::TimerState>() {
-        timer::stop_all(app, &timer_state);
-    }
-    if let Some(counter_state) = app.try_state::<counter::CounterState>() {
-        counter::stop_all(app, &counter_state);
+    for error in registry.stop_all(app) {
+        eprintln!("停止同步工具失败: {error}");
     }
 }
 

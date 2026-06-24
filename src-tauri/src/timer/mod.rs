@@ -909,6 +909,14 @@ pub fn stop_all(app: &AppHandle, state: &TimerState) {
     emit_state(app, bootstrap);
 }
 
+pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<TimerState>() else {
+        return Ok(());
+    };
+    stop_all(app, &state);
+    Ok(())
+}
+
 pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<TimerState, String> {
     let settings = normalize_settings(settings::load_settings(app)?)?;
     let logic = TimerLogic {

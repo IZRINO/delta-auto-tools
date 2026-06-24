@@ -681,6 +681,10 @@ pub fn stop_all(app: &AppHandle, state: &CounterState) {
     emit_state(app, bootstrap);
 }
 
+pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
+    CounterLogic::stop_all(app)
+}
+
 pub fn initialize(
     app: &AppHandle,
     hotkey_manager: &HotkeyManager,

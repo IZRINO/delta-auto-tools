@@ -47,6 +47,10 @@ pub fn run() {
             let profile_state = profile::initialize(app.handle())?;
             let global_state = global_state::GlobalState::new(true);
             let log_writer = logging::init_logger(app.handle())?;
+            let mut sync_tool_registry = sync_tool::SyncToolRegistry::default();
+            sync_tool_registry.register("counter", counter::stop_registered);
+            sync_tool_registry.register("timer", timer::stop_registered);
+            sync_tool_registry.register("rapidfire", rapidfire::stop_registered);
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
@@ -56,6 +60,7 @@ pub fn run() {
             app.manage(theme_state);
             app.manage(profile_state);
             app.manage(global_state);
+            app.manage(sync_tool_registry);
             app.manage(log_writer);
             Ok(())
         })
