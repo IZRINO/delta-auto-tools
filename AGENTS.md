@@ -6,6 +6,25 @@
 
 开发环境：Windows，仓库路径 `D:/code/ai/sjz/delta-auto-tools`，所有命令在 Windows + Bun 下测试通过。
 
+## Wiki Documentation (droid-wiki/)
+
+`droid-wiki/` 是项目自维护的结构化文档（36 个页面），覆盖架构、各功能模块、底层系统、开发流程、约定和发布。**当不确定某模块如何工作、某约定是什么、某流程怎么走时，优先查阅 `droid-wiki/` 下的对应文档，而不是凭记忆猜测。**
+
+文档结构：
+
+| 目录 | 内容 |
+|------|------|
+| `overview/` | 项目概览、系统架构、快速开始、术语表 |
+| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / audio / strategy / about） |
+| `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
+| `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
+| `reference/` | 配置项与依赖参考 |
+| `deployment.md` | 部署与发布流程 |
+
+入口：`droid-wiki/overview/index.md`。`droid-wiki/.wiki-meta.json` 记录生成时间、commit、页面清单。
+
+> Wiki 与 codegraph 互补：wiki 适合理解「为什么这样设计」和「整体流程」，codegraph 适合查「符号定义在哪、谁调用了谁」。
+
 ## Code Navigation: Use Codegraph MCP
 
 本项目已建立 codegraph 索引（229 文件 / 4392 节点 / 9598 边）。**探索代码时优先使用 codegraph MCP，不要手动 grep 逐文件翻阅**：
@@ -199,3 +218,15 @@ set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& g
 - 新的开发脚本
 - 路由系统或新的应用壳层
 - 新的项目级 skills / agents / OMP 扩展目录约定
+
+### Wiki 文档同步
+
+修改代码时，如果改动涉及 `droid-wiki/` 已记录的内容，必须在同一轮改动里更新对应的 wiki 页面，避免文档与代码漂移：
+
+- 改动工具模块行为 → 更新 `droid-wiki/features/<tool>.md` 或 `droid-wiki/systems/<system>.md`
+- 新增/移除 Tauri command 或事件 → 更新对应 feature/system 页面
+- 改动架构、基座、约定 → 更新 `droid-wiki/overview/architecture.md` 或 `droid-wiki/how-to-contribute/patterns-and-conventions.md`
+- 改动配置项或依赖 → 更新 `droid-wiki/reference/configuration.md` 或 `droid-wiki/reference/dependencies.md`
+- 改动发布流程 → 更新 `droid-wiki/deployment.md`
+
+纯文案或纯重构（不改变行为和接口）无需更新 wiki。

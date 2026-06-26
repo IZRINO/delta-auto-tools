@@ -32,6 +32,23 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 
 文档与代码不一致时以当前实现为准。
 
+## Wiki 文档优先 (droid-wiki/)
+
+`droid-wiki/` 是项目自维护的结构化文档（36 个页面），覆盖项目概览、系统架构、各功能模块、底层系统、开发流程、约定、配置参考和发布流程。**当不确定某模块如何工作、某约定是什么、某流程怎么走时，优先查阅 `droid-wiki/` 下的对应文档，不要凭记忆猜测。**
+
+文档结构：
+
+| 目录/文件 | 内容 |
+|----------|------|
+| `overview/` | 项目概览、系统架构、快速开始、术语表 |
+| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / audio / strategy / about） |
+| `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
+| `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
+| `reference/` | 配置项与依赖参考 |
+| `deployment.md` | 部署与发布流程 |
+
+入口：`droid-wiki/overview/index.md`。
+
 ## AI 输出规范
 
 所有 AI 输出必须使用中文，技术术语保持英文原名。代码中的字符串、错误信息、UI 文案使用中文。Commit message 使用中文。
@@ -363,3 +380,4 @@ Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agen
   `use-hotkey-recorder.ts` + `use-autosave.ts` + `about-deps.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
 - `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
+- 修改代码时，如果改动涉及 `droid-wiki/` 已记录的内容，必须同步更新对应 wiki 页面（改动工具模块行为→`features/<tool>.md`/`systems/<system>.md`；改动架构/约定→`overview/architecture.md`/`how-to-contribute/patterns-and-conventions.md`；改动配置/依赖→`reference/`；改动发布流程→`deployment.md`）；纯文案或纯重构无需更新
