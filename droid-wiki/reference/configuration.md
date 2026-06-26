@@ -1,67 +1,67 @@
-# Configuration
+# 配置
 
-## Settings files
+## 设置文件
 
-All settings are JSON files stored in the Tauri app config directory. Each tool has its own file.
+所有设置为 JSON 文件，存储在 Tauri app config 目录（`%APPDATA%/org.izrino.delta-auto-tools/`）。每个工具有自己的文件。
 
-| File | Tool | Contents |
-|------|------|----------|
-| `morse_settings.json` | Morse | Hotkey, regions, auto-type, auto-click chain settings |
-| `timer_settings.json` | Timer | `timer_enabled`, timers array (duration, direction, hotkey), display settings |
-| `counter_settings.json` | Counter | `counter_enabled`, counters array (start_value, hotkey), display settings |
-| `rapidfire_settings.json` | Rapidfire | `rapidfire_enabled`, cards array (trigger, target, interval, jitter, spacing, no-append), compensation delay |
-| `audio_settings.json` | Audio | `audio_enabled`, cards array (trigger mode, files, volume, cooldown, probes) |
-| `theme_settings.json` | Theme | `activeThemeId`, custom themes, token overrides |
-| `profile_settings.json` | Profile | `profiles` array, `activeProfileId` |
-| `counter_state.json` | Counter (runtime) | Accumulated counter values (separate from config) |
-| `log_settings.json` | Logging | Global log level, per-module overrides |
+| 文件 | 工具 | 内容 |
+|------|------|------|
+| `morse_settings.json` | Morse | 热键、区域、自动输入、自动点击链设置 |
+| `timer_settings.json` | 计时器 | `timerEnabled`、timers 数组（duration、direction、hotkey）、display 设置 |
+| `counter_settings.json` | 计数器 | `counterEnabled`、counters 数组（startValue、hotkey）、display 设置 |
+| `rapidfire_settings.json` | 连发器 | `rapidfireEnabled`、cards 数组（trigger、target、interval、jitter、spacing、no-append）、compensation delay |
+| `audio_settings.json` | 音频 | `audioEnabled`、cards 数组（trigger mode、files、volume、cooldown、probes） |
+| `theme_settings.json` | 主题 | `activeThemeId`、custom themes、token overrides |
+| `profile_settings.json` | 配置 | `profiles` 数组、`activeProfileId` |
+| `counter_state.json` | 计数器（运行态） | 累积计数器值（独立于配置） |
+| `log_settings.json` | 日志 | 全局日志级别、按模块覆盖 |
 
-## Tauri configuration
+## Tauri 配置
 
-`src-tauri/tauri.conf.json` contains:
+`src-tauri/tauri.conf.json` 包含：
 
-- `productName`: `delta-auto-tools`
-- `identifier`: `org.izrino.delta-auto-tools`
-- Window: 1280x800, min 1280x800
-- Bundle target: `nsis`
-- Updater: GitHub Releases endpoint, `installMode: "passive"`, `pubkey` (public signing key)
-- CSP: null (no content security policy restriction)
-- `createUpdaterArtifacts: true` (generates .sig files on build)
+- `productName`：`delta-auto-tools`
+- `identifier`：`org.izrino.delta-auto-tools`
+- 窗口：1280x800，最小 1280x800
+- Bundle target：`nsis`
+- Updater：GitHub Releases 端点，`installMode: "passive"`，`pubkey`（公开签名密钥）
+- CSP：null（无内容安全策略限制）
+- `createUpdaterArtifacts: true`（构建时生成 .sig 文件）
 
 ## Capabilities
 
-`src-tauri/capabilities/default.json` defines which Tauri commands the frontend may invoke. Every new command must be added here or `invoke()` will fail.
+`src-tauri/capabilities/default.json` 定义前端可调用的 Tauri 命令。新增命令必须添加到此处，否则 `invoke()` 会失败。
 
-## Environment variables
+## 环境变量
 
-| Variable | Purpose |
-|----------|---------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Private key content for signing stable builds (required for .sig generation) |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Optional password for the signing key |
-| `TAURI_SIGNING_PRIVATE_KEY_PATH` | Alternative: path to key file instead of content |
-| `HTTP_PROXY` / `HTTPS_PROXY` | Local proxy for git push / gh release when GitHub is slow |
+| 变量 | 用途 |
+|------|------|
+| `TAURI_SIGNING_PRIVATE_KEY` | 签名正式版构建的私钥内容（生成 .sig 必需） |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 签名密钥的可选密码 |
+| `TAURI_SIGNING_PRIVATE_KEY_PATH` | 替代方案：密钥文件路径而非内容 |
+| `HTTP_PROXY` / `HTTPS_PROXY` | GitHub 慢时的本地代理（用于 git push / gh release） |
 
-## Theme CSS tokens
+## 主题 CSS token
 
-Defined in `src/App.css` under `@theme inline` and `:root`:
+定义在 `src/App.css` 的 `@theme inline` 和 `:root` 中：
 
-| Token | Color | Role |
-|-------|-------|------|
-| `--carbon` | `#0C0C0B` | Main background |
-| `--slate` | `#171715` | Secondary panel |
-| `--iron` | `#232320` | Card surface |
-| `--chalk` | `#D8D4CC` | Primary text, borders |
-| `--zinc` | `#807C74` | Secondary text |
-| `--dust` | `#545250` | Meta info |
-| `--seam` | `#2A2926` | Grid lines |
-| `--amber` | `#E8A000` | Single accent color |
-| `--rust` | `#C85400` | Warning/danger |
-| `--moss` | `#3F8A30` | Success/valid |
-| `--void` | `#050504` | Data wells, JSON display |
-| `--alert-red` | `#E11919` | Current selection, danger (light theme variant) |
+| Token | 颜色 | 角色 |
+|-------|------|------|
+| `--carbon` | `#0C0C0B` | 主背景 |
+| `--slate` | `#171715` | 次级面板 |
+| `--iron` | `#232320` | 卡片表面 |
+| `--chalk` | `#D8D4CC` | 主文字、边框 |
+| `--zinc` | `#807C74` | 次级文字 |
+| `--dust` | `#545250` | 元信息 |
+| `--seam` | `#2A2926` | 网格线 |
+| `--amber` | `#E8A000` | 唯一强调色 |
+| `--rust` | `#C85400` | 警告/危险 |
+| `--moss` | `#3F8A30` | 成功/有效 |
+| `--void` | `#050504` | 数据井、JSON 显示 |
+| `--alert-red` | `#E11919` | 当前选择、危险（亮色主题变体） |
 
-Global `--radius: 0` enforces 90-degree corners.
+全局 `--radius: 0` 强制 90 度直角。
 
 ## PM2
 
-`ecosystem.config.cjs` defines two processes: `delta-auto-tools-vite` (Vite dev server) and `delta-auto-tools-tauri` (Tauri dev). The Tauri process waits for port 1420 via `scripts/wait-for-port.cjs`.
+`ecosystem.config.cjs` 定义两个进程：`delta-auto-tools-vite`（Vite 开发服务器）和 `delta-auto-tools-tauri`（Tauri 开发）。Tauri 进程通过 `scripts/wait-for-port.cjs` 等待端口 1420。

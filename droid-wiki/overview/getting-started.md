@@ -1,90 +1,90 @@
-# Getting started
+# 快速开始
 
-## Prerequisites
+## 前置条件
 
-- Windows 10 or 11 (the app uses Windows-only keyboard hooks via `willhook` and screen capture via `xcap`; other platforms are not supported for the native features).
-- [Bun](https://bun.sh/) for the frontend package manager and scripts.
-- [Rust](https://rustup.rs/) toolchain (stable).
-- [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) - on Windows this means the WebView2 runtime and the MSVC build tools.
+- Windows 10 或 11（应用使用 Windows 专有的 willhook 键盘钩子和 xcap 截屏，其他平台不支持原生功能）
+- [Bun](https://bun.sh/) 用于前端包管理和脚本
+- [Rust](https://rustup.rs/) 工具链（stable）
+- [Tauri 2 前置条件](https://v2.tauri.app/start/prerequisites/)：Windows 上需要 WebView2 运行时和 MSVC 构建工具
 
-## Install
+## 安装
 
 ```bash
 bun install
 ```
 
-This installs all frontend dependencies from `package.json`.
+安装 `package.json` 中的所有前端依赖。
 
-## Run
+## 运行
 
-### Frontend-only dev server
+### 仅前端开发服务器
 
 ```bash
 bun run dev
 ```
 
-Starts Vite on `http://localhost:1420` (strictPort). Useful for UI work in a browser, but all Tauri commands will be disabled (the app detects the missing `__TAURI_INTERNALS__` and shows placeholders).
+启动 Vite 于 `http://localhost:1420`（strictPort）。适合在浏览器中做 UI 开发，但所有 Tauri 命令会被禁用（应用检测到缺少 `__TAURI_INTERNALS__` 后显示占位提示）。
 
-### Full desktop dev
+### 完整桌面开发
 
 ```bash
 bun run tauri dev
 ```
 
-Starts Vite first, then launches the Tauri window. This is the mode where native features (hotkeys, screen capture, overlays) actually work.
+先启动 Vite，再启动 Tauri 窗口。这是原生功能（热键、截屏、透明窗口）实际可用的模式。
 
-### PM2 orchestration
+### PM2 编排
 
-The repo has an `ecosystem.config.cjs` that splits Vite and Tauri into two PM2 processes. The Tauri process waits for port 1420 before starting.
+仓库有 `ecosystem.config.cjs`，将 Vite 和 Tauri 拆为两个 PM2 进程。Tauri 进程会等待端口 1420 可用后启动。
 
-## Build
+## 构建
 
-### Frontend build
+### 前端构建
 
 ```bash
 bun run build
 ```
 
-Runs `tsc && vite build`, producing `dist/`.
+执行 `tsc && vite build`，产物在 `dist/`。
 
-### Desktop build (NSIS installer)
+### 桌面构建（NSIS 安装包）
 
 ```bash
 bun run tauri build
 ```
 
-Produces `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`.
+产物为 `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`。
 
-For signed releases (required for the auto-updater), set the `TAURI_SIGNING_PRIVATE_KEY` environment variable to the private key content before building, or use `scripts/build-release.ps1` which wraps the whole flow. After a signed build, run `scripts/generate-latest-json.ps1` to produce `latest.json` (the Tauri updater manifest).
+签名构建（自动更新器必需）：构建前设置 `TAURI_SIGNING_PRIVATE_KEY` 环境变量为私钥内容，或使用 `scripts/build-release.ps1` 一键签名构建。签名构建后运行 `scripts/generate-latest-json.ps1` 生成 `latest.json`（Tauri 更新器清单文件）。
 
-## Test
+## 测试
 
-### Frontend tests
+### 前端测试
 
 ```bash
-bun run test              # all Vitest tests
-bun run test:coverage     # with coverage (currently scoped to morse-utils.ts)
+bun run test              # 全部 Vitest 测试
+bun run test:coverage     # 带覆盖率（目前仅覆盖 morse-utils.ts）
 ```
 
-Run a single file:
+运行单个文件：
 
 ```bash
 bunx vitest run src/components/app/morse-utils.test.ts
 ```
 
-### Rust tests
+### Rust 测试
 
 ```bash
-cargo check --manifest-path src-tauri/Cargo.toml    # compile check
-cargo test --manifest-path src-tauri/Cargo.toml     # unit tests
+cargo check --manifest-path src-tauri/Cargo.toml    # 编译检查
+cargo test --manifest-path src-tauri/Cargo.toml     # 单元测试
 ```
 
-Run a single test:
+运行单个测试：
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 ```
 
-## Version sync
+## 版本号同步
 
-When bumping the version, update all three files in lockstep: `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`. If `Cargo.lock` updates the local crate version, commit that too.
+更新版本号时必须同步修改三个文件：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。如 `Cargo.lock` 中本包版本随解析更新，也应一并提交。

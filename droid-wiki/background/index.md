@@ -1,59 +1,59 @@
-# Background
+# 背景与设计决策
 
-Design decisions, pitfalls, and migration context for Delta Auto Tools.
+Delta Auto Tools 的设计决策、陷阱与迁移背景。
 
-## Design decisions
+## 设计决策
 
-### Why Tauri instead of Electron
+### 为什么用 Tauri 而非 Electron
 
-The app needs low-level Windows keyboard hooks (`WH_KEYBOARD_LL` via `willhook`), screen capture (`xcap`), and simulated keyboard input (`enigo`). These require native access that Rust provides directly. Tauri 2 gives a small binary, native performance, and a real WebView2 renderer without the Electron overhead.
+应用需要底层 Windows 键盘钩子（通过 `willhook` 的 `WH_KEYBOARD_LL`）、截屏（`xcap`）和模拟键盘输入（`enigo`）。这些需要 Rust 直接提供的原生访问。Tauri 2 提供小体积二进制、原生性能和真正的 WebView2 渲染器，没有 Electron 的开销。
 
-### Why a single shared keyboard hook
+### 为什么用单一共享键盘钩子
 
-Multiple keyboard hooks compete and can cause installation failures on Windows. The `HotkeyManager` installs one `willhook::keyboard_hook()` at startup and distributes events to all tool scopes. This avoids the "second hook fails to install" problem and centralizes conflict detection.
+多个键盘钩子会竞争，可能导致 Windows 上安装失败。`HotkeyManager` 在启动时安装一个 `willhook::keyboard_hook()`，将事件分发给所有工具 scope。这避免了「第二个钩子安装失败」问题，并集中了冲突检测。
 
-### Why `?mode=` instead of routing
+### 为什么用 `?mode=` 而非路由
 
-Overlay windows (transparent, click-through, always-on-top) are separate Tauri windows that load the same frontend bundle with different query parameters. Using `?mode=overlay` / `?mode=timer-display` etc. lets each window render different content without a router. This is a hard constraint that cannot be replaced by client-side routing.
+透明窗口（透明、点击穿透、置顶）是独立的 Tauri 窗口，加载相同的前端 bundle 但使用不同的查询参数。使用 `?mode=overlay` / `?mode=timer-display` 等让每个窗口渲染不同内容而无需路由器。这是无法被客户端路由替代的硬约束。
 
-### Why the bootstrap/form dual-state pattern
+### 为什么用 bootstrap/form 双状态模式
 
-The frontend needs to show Rust's canonical state (for display) while allowing local edits (for the form). Keeping them as separate objects with `JSON.stringify` dirty detection is simpler and more reliable than diffing individual fields. The 400ms autosave debounce with version guards prevents stale saves when the user types quickly.
+前端需要显示 Rust 的规范态（用于展示）同时允许本地编辑（用于表单）。将它们保持为独立对象，用 `JSON.stringify` 脏检测，比逐字段 diff 更简单可靠。400ms autosave 防抖加版本守卫防止用户快速输入时的陈旧保存。
 
-### Why counter run-state is persisted separately
+### 为什么计数器运行态独立持久化
 
-Counter values accumulate over time and should survive app restarts, but they are not user configuration. Storing them in `counter_state.json` (separate from `counter_settings.json`) means changing `start_value` or hotkey does not reset accumulated counts, and profile switching can reset counts without touching config.
+计数器值随时间累积，应在应用重启后存活，但它们不是用户配置。存储在 `counter_state.json`（独立于 `counter_settings.json`）意味着修改 `start_value` 或热键不会重置累积计数，profile 切换可以重置计数而不触碰配置。
 
-### Why the design is dark-only
+### 为什么策略网站用内嵌 WebView 而非 iframe/代理
 
-The industrial-brutalist aesthetic ("Swiss Industrial Print x Declassified Tactical Control Board") uses a dark carbon base with chalk structural lines and a single amber accent. A light mode would undermine the contrast and the "declassified tactical" feel. There is a `light` theme in the theme engine, but the default and primary experience is dark.
+iframe 被大多数攻略站点阻止（X-Frame-Options）。代理 HTML 会丢失 cookie、JavaScript 和 CAPTCHA 处理。主窗口内的真实 WebView2 子窗口提供完整浏览器能力（cookie、JS、localStorage、同源 API），同时留在应用壳层内。
 
-### Why strategy uses an embedded WebView, not iframe/proxy
+### 为什么引入同步工具基座
 
-iframes are blocked by most guide sites (X-Frame-Options). Proxying HTML loses cookies, JavaScript, and CAPTCHA handling. A real WebView2 sub-window inside the main window gives full browser capability (cookies, JS, localStorage, same-origin APIs) while staying within the app shell.
+计时器、计数器、连发器三个工具共享相同的生命周期模式：分组/条目规范化、热键重启、位置状态机、全局停止。v0.17.5 将这些重复实现提取到 `sync_tool.rs` 的 `SyncToolLogic` trait 中，减少了代码重复并确保行为一致。
 
-## Pitfalls
+## 陷阱
 
-### AGENTS.md is stale
+### AGENTS.md 已过时
 
-AGENTS.md and CLAUDE.md extensively document a `delta/` module that no longer exists in the codebase. Anyone reading these files will be confused by commands, types, and frontend pages that are not present. Trust the code and `lib.rs` over the docs when they disagree.
+AGENTS.md 和 CLAUDE.md 大量记录了一个已不存在的 `delta/` 模块。阅读这些文件的人会被不存在的命令、类型和前端页面困惑。文档与代码不一致时以代码和 `lib.rs` 为准。
 
-### Glob patterns in capabilities
+### capabilities 中的 glob 模式
 
-The `src-tauri/capabilities/default.json` file lists which Tauri commands the frontend is allowed to invoke. Forgetting to add a new command here causes `invoke()` to silently fail or throw a permission error that is hard to trace.
+`src-tauri/capabilities/default.json` 列出前端允许调用的 Tauri 命令。忘记在此添加新命令会导致 `invoke()` 静默失败或抛出难以追踪的权限错误。
 
-### Hotkey conflict edge cases
+### 热键冲突边界情况
 
-The `AllowHold` policy only works between timer/counter normal scopes and rapidfire hold scope. Morse with `Strict` will reject any key that any other scope uses. When adding a new tool scope, decide its conflict policy carefully and add tests in `hotkeys.rs`.
+`AllowHold` 策略仅在计时器/计数器普通 scope 和连发器 hold scope 之间有效。Morse 使用 `Strict` 会拒绝任何其他 scope 使用的按键。新增工具 scope 时需仔细决定冲突策略并在 `hotkeys.rs` 中添加测试。
 
-### Transparent window rendering
+### 透明窗口渲染
 
-Transparent overlay windows must not inherit the main window's dark paper CSS. The `data-overlay-mode` attribute on `document.body` is used to switch styles. Applying main-window backgrounds to overlays makes them opaque and blocks the game view.
+透明叠加窗口不能继承主窗口的深色纸面 CSS。`document.body` 上的 `data-overlay-mode` 属性用于切换样式。将主窗口背景应用到 overlay 会使它们不透明并阻挡游戏视图。
 
-### Serialized legacy fields
+### 序列化的旧字段
 
-Several structs have `legacy_*` fields with `#[serde(skip_serializing)]` that exist only for backward-compatible deserialization. `normalize_settings` migrates these into modern fields. If you add a new field that replaces an old one, follow this pattern or old JSON files will fail to load.
+多个结构体有 `legacy_*` 字段（`#[serde(skip_serializing)]`），仅用于向后兼容反序列化。`normalize_settings` 将它们迁移到新字段。新增替换旧字段的字段时，遵循此模式否则旧 JSON 文件会加载失败。
 
-## Migration context
+## 迁移背景
 
-The delta module removal is the largest migration in the project's history. It removed an entire backend subsystem (auth, game data, storage, encryption) and corresponding frontend pages. The documentation has not caught up. When working in this codebase, always verify that a command or page mentioned in AGENTS.md actually exists in `lib.rs` or `App.tsx` before relying on it.
+Delta 模块移除是项目历史上最大的迁移。它移除了整个后端子系统（鉴权、游戏数据、存储、加密）和对应的前端页面。文档尚未跟上。在此代码库中工作时，始终验证 AGENTS.md 中提到的命令或页面是否实际存在于 `lib.rs` 或 `App.tsx` 中。

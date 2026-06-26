@@ -1,90 +1,97 @@
-# Hotkeys
+# 热键系统
 
-The hotkey system in `src-tauri/src/hotkeys.rs` and `src-tauri/src/hotkey_types.rs` provides a single shared global keyboard hook that all tools register with. It uses the `willhook` crate to install a `WH_KEYBOARD_LL` hook on Windows and distributes key events to registered scopes based on binding matches.
+`src-tauri/src/hotkeys.rs` 和 `src-tauri/src/hotkey_types.rs` 中的热键系统提供单一共享全局键盘钩子，所有工具向其注册。它使用 `willhook` crate 在 Windows 上安装 `WH_KEYBOARD_LL` 钩子，按绑定匹配将按键事件分发到已注册的 scope。
 
-## Key abstractions
+## 用途
 
-| Type | File | Description |
-|------|------|-------------|
-| `HotkeyManager` | `src-tauri/src/hotkeys.rs` | The shared manager; owns the willhook hook, the worker thread, and all registrations |
-| `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | A parsed key binding: `primary: PrimaryKey` + `modifiers: HashSet<ModifierKey>` |
-| `HotkeyRegistration` | `src-tauri/src/hotkey_types.rs` | A registered normal-scope hotkey: scope, binding, enabled flag, action callback, conflict policy |
-| `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | A registered hold-scope hotkey (rapidfire): fires Down on key-down, Up on key-up |
-| `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict` (no cross-scope reuse) or `AllowHold` (allows coexistence with hold scopes) |
-| `HotkeyAction` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle) + Send + Sync>` - the callback for normal hotkeys |
-| `HoldActionCallback` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync>` - the callback for hold hotkeys |
-| `HoldAction` | `src-tauri/src/hotkey_types.rs` | Enum: `Down` or `Up` |
-| `PrimaryKey` | `src-tauri/src/hotkey_types.rs` | Letters, digits, function keys, named keys (Space, Enter, etc.), symbols |
-| `ModifierKey` | `src-tauri/src/hotkey_types.rs` | Ctrl, Alt, Shift, Win |
+- 统一管理所有工具的全局热键，避免每个工具各自安装键盘钩子
+- 支持 scope 注册与冲突检测，防止不同工具的热键互相干扰
+- 支持普通热键（按下触发）和 hold 热键（按下/松开双向回调，供连发器使用）
 
-## How it works
+## 关键抽象
 
-One `HotkeyManager` is created at startup via `HotkeyManager::start(app)`. It installs a single `willhook::keyboard_hook()` and spawns a worker thread (`run_listener`) that polls the hook channel every 1ms.
+| 类型 | 文件 | 说明 |
+|------|------|------|
+| `HotkeyManager` | `src-tauri/src/hotkeys.rs` | 共享管理器，持有 willhook 钩子、worker 线程和所有注册项 |
+| `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | 解析后的按键绑定：`primary: PrimaryKey` + `modifiers: HashSet<ModifierKey>` |
+| `HotkeyRegistration` | `src-tauri/src/hotkey_types.rs` | 普通 scope 热键注册项：scope、binding、enabled、action 回调、冲突策略 |
+| `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | hold scope 热键注册项（连发器专用）：按下触发 Down，松开触发 Up |
+| `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict`（禁止跨 scope 复用）或 `AllowHold`（允许与 hold scope 共存） |
+| `HotkeyAction` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle) + Send + Sync>`，普通热键回调 |
+| `HoldActionCallback` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync>`，hold 热键回调 |
+| `PrimaryKey` | `src-tauri/src/hotkey_types.rs` | 字母、数字、功能键、命名键（Space/Enter 等）、符号键 |
+| `ModifierKey` | `src-tauri/src/hotkey_types.rs` | Ctrl、Alt、Shift、Super(Win) |
+
+## 工作原理
+
+启动时通过 `HotkeyManager::start(app)` 创建唯一 `HotkeyManager`。它安装一个 `willhook::keyboard_hook()`，并启动 worker 线程（`run_listener`）每 1ms 轮询钩子通道。
 
 ```mermaid
 graph TD
-    Hook["willhook WH_KEYBOARD_LL"] -->|InputEvent::Keyboard| Listener["run_listener worker thread"]
-    Listener -->|check global enabled| Global["GlobalState"]
-    Listener -->|filter suppressed| Suppress["KeySuppressor VK set"]
-    Listener -->|match hold bindings| HoldApps["HoldAction callbacks"]
+    Hook["willhook WH_KEYBOARD_LL"] -->|InputEvent::Keyboard| Listener["run_listener worker 线程"]
+    Listener -->|检查全局开关| Global["GlobalState"]
+    Listener -->|过滤已抑制按键| Suppress["KeySuppressor VK 集合"]
+    Listener -->|匹配 hold 绑定| HoldApps["HoldAction 回调"]
     Listener -->|HotkeyMatcher| Match["KeyState"]
-    Match -->|match normal bindings| NormalApps["HotkeyAction callbacks"]
+    Match -->|匹配普通绑定| NormalApps["HotkeyAction 回调"]
 ```
 
-The listener processes two event sources: normal willhook events and suppressed-key events forwarded by the [key suppressor](key-suppressor.md). For each keyboard event:
+监听线程处理两个事件源：普通 willhook 事件和 [按键抑制器](key-suppressor.md) 转发的已抑制事件。对每个键盘事件：
 
-1. Check `GlobalState::enabled()` - skip all callbacks if the global switch is off.
-2. Check if the key is being suppressed by the KeySuppressor - skip the willhook event (it will arrive via the suppressed channel instead).
-3. Match hold bindings and fire `HoldAction::Down` or `Up` callbacks.
-4. Feed the event to `HotkeyMatcher`, which tracks modifier state and fires normal hotkey callbacks on primary key-down.
+1. 检查 `GlobalState::enabled()`，全局开关关闭时跳过所有回调
+2. 检查按键是否被 KeySuppressor 抑制，跳过 willhook 事件（已抑制事件会通过抑制通道到达）
+3. 匹配 hold 绑定，触发 `HoldAction::Down` 或 `Up` 回调
+4. 将事件送入 `HotkeyMatcher`，它跟踪修饰键状态，在主键按下时触发普通热键回调
 
-### Scope registration
+### Scope 注册
 
-Tools register their hotkeys by scope name:
+工具通过 scope 名称注册热键：
 
-- `replace_scope(scope, bindings, display_name, conflict_policy)` - Normal hotkeys. Replaces all existing registrations for that scope.
-- `replace_hold_scope(scope, bindings, display_name, conflict_policy)` - Hold hotkeys (rapidfire only).
-- `clear_scope(scope)` / `clear_hold_scope(scope)` - Remove all registrations for a scope.
-- `set_scope_enabled(scope, enabled)` - Temporarily disable a scope (used during hotkey recording).
+- `replace_scope(scope, bindings, display_name, conflict_policy)`：普通热键，替换该 scope 的所有现有注册
+- `replace_hold_scope(scope, bindings, display_name, conflict_policy)`：hold 热键（仅连发器使用）
+- `clear_scope(scope)` / `clear_hold_scope(scope)`：清除该 scope 的所有注册
+- `set_scope_enabled(scope, enabled)`：临时禁用 scope（热键录制时使用）
 
-### Conflict detection
+### 冲突检测
 
-Before registering, `validate_scope_conflicts` and `validate_hold_scope_conflicts` check the new bindings against all other enabled scopes. The policy matrix:
+注册前，`validate_scope_conflicts` 和 `validate_hold_scope_conflicts` 检查新绑定与所有其他已启用 scope 的冲突。策略矩阵：
 
-| Scope A | Scope B | Allowed? |
-|---------|---------|----------|
-| Morse (Strict) | any other scope, same key | No |
-| Timer/Counter (AllowHold) | Rapidfire hold (AllowHold), same key | Yes |
-| Timer/Counter (AllowHold) | other normal scope, same key | No |
-| Rapidfire hold (AllowHold) | Timer/Counter normal (AllowHold), same key | Yes |
+| Scope A | Scope B | 允许？ |
+|---------|---------|--------|
+| Morse（Strict） | 任何其他 scope，同键 | 否 |
+| Timer/Counter（AllowHold） | Rapidfire hold（AllowHold），同键 | 是 |
+| Timer/Counter（AllowHold） | 其他普通 scope，同键 | 否 |
+| Rapidfire hold（AllowHold） | Timer/Counter 普通（AllowHold），同键 | 是 |
 
-At runtime, when the same key triggers both a hold and a normal binding, hold Down/Up fires first, then the normal hotkey fires. This lets a single key start a rapidfire session and trigger a timer simultaneously.
+运行时，同一按键同时触发 hold 和普通绑定时，先分发 hold Down/Up，再分发普通热键。这样单个按键可以同时启动连发器会话和触发计时器。
 
-### Combined modifier keys
+### 组合修饰键
 
-The hold matcher handles combined trigger keys (e.g. `Shift+-`). Pressing `Shift+1` fires both the `Shift+1` binding and the bare `1` binding. Releasing Shift only stops the `Shift+1` session; the bare `1` session continues. Pressing `1` first then Shift only adds the `Shift+1` session without restarting the bare one.
+hold 匹配器处理组合触发键（如 `Shift+-`）。按下 `Shift+1` 会同时触发 `Shift+1` 绑定和裸 `1` 绑定。松开 Shift 只停止 `Shift+1` 会话，裸 `1` 会话继续。先按 `1` 再按 Shift 只新增 `Shift+1` 会话，不重启裸 `1`。
 
-### HotkeyMatcher
+### HotkeyBinding 解析
 
-The `HotkeyMatcher` struct tracks pressed modifiers and the active primary key. It only fires a normal hotkey on the primary key's Down event (not auto-repeat, not Up). This prevents double-firing.
+`HotkeyBinding::parse` 解析字符串如 `"Ctrl+Shift+F2"`、`"Alt+Space"`、裸 `"Alt"`。修饰键顺序规范化为 Ctrl > Alt > Shift > Super。
 
-## Integration points
+## 集成点
 
-- Every tool module calls `replace_scope` or `replace_hold_scope` during `save_settings`.
-- [Morse](../features/morse.md) uses scope `"morse"` with `Strict` policy.
-- [Timer](../features/timer.md) and [Counter](../features/counter.md) use scopes `"timer"`/`"counter"` with `AllowHold`.
-- [Rapidfire](../features/rapidfire.md) uses hold scope `"rapidfire"` with `AllowHold`.
-- [Audio](../features/audio.md) uses scope `"audio"`.
-- [Global state](global-state.md) - The listener checks `GlobalState::enabled()` on every event.
-- [Key suppressor](key-suppressor.md) - Shares the VK set to filter duplicate events.
+- 每个工具模块在 `save_settings` 时调用 `replace_scope` 或 `replace_hold_scope`
+- [Morse](../features/morse.md) 使用 scope `"morse"`，策略 `Strict`
+- [计时器](../features/timer.md) 和 [计数器](../features/counter.md) 使用 scope `"timer"`/`"counter"`，策略 `AllowHold`
+- [连发器](../features/rapidfire.md) 使用 hold scope `"rapidfire"`，策略 `AllowHold`
+- [音频触发器](../features/audio.md) 使用 scope `"audio"`
+- [全局总开关](global-state.md)：监听线程每个事件都检查 `GlobalState::enabled()`
+- [按键抑制器](key-suppressor.md)：共享 VK 集合过滤重复事件
 
-## Entry points for modification
+## 修改入口
 
-To add a new tool scope, call `replace_scope` (or `replace_hold_scope` for hold-based tools) from the tool's `save_settings` handler. To change conflict rules, modify `validate_scope_conflicts` / `validate_hold_scope_conflicts` in `src-tauri/src/hotkeys.rs`. To support a new key, extend `to_primary_key` / `to_modifier_key` in `src-tauri/src/hotkey_types.rs`.
+- 新增工具 scope：在工具的 `save_settings` 中调用 `replace_scope`（或 hold 工具调用 `replace_hold_scope`）
+- 修改冲突规则：修改 `src-tauri/src/hotkeys.rs` 中的 `validate_scope_conflicts` / `validate_hold_scope_conflicts`
+- 支持新按键：扩展 `src-tauri/src/hotkey_types.rs` 中的 `to_primary_key` / `to_modifier_key`
 
-## Key source files
+## 关键源文件
 
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/hotkeys.rs` | `HotkeyManager`, worker thread, conflict detection, hold matching |
-| `src-tauri/src/hotkey_types.rs` | `HotkeyBinding`, `PrimaryKey`, `ModifierKey`, `ConflictPolicy`, registration structs, parser |
+| 文件 | 用途 |
+|------|------|
+| `src-tauri/src/hotkeys.rs` | `HotkeyManager`、worker 线程、冲突检测、hold 匹配 |
+| `src-tauri/src/hotkey_types.rs` | `HotkeyBinding`、`PrimaryKey`、`ModifierKey`、`ConflictPolicy`、注册结构体、解析器 |

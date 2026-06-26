@@ -1,144 +1,95 @@
-# About and updater
+# 关于与更新
 
-The About module (`src-tauri/src/about/`) is the surface that shows the app's version, license and dependency attribution, and it hosts the integrated Tauri auto-updater flow. It is exposed to the frontend through three commands and one progress event, and rendered by `AboutPanel` inside the unified `SettingsDialog`.
+关于模块（`src-tauri/src/about/`）展示应用版本、许可证和依赖致谢，并承载集成的 Tauri 自动更新器流程。通过 3 个命令和 1 个进度事件暴露给前端，由 `SettingsDialog` 中的 `AboutPanel` 渲染。
 
-## Purpose
+## 用途
 
-- Provide a single bootstrap payload (`AboutBootstrap`) carrying version, identifier, license text, repository URL and a hardcoded dependency acknowledgment list.
-- Drive the official `tauri-plugin-updater` check → download → install pipeline entirely from Rust, streaming progress to the frontend via `about://update-progress`.
-- Implement a SemVer full-order comparison (`should_offer_update`) so beta builds correctly upgrade to the same-numeric stable, but stable builds never downgrade to a beta.
-- Offer a graceful fallback ("open GitHub Release page") when the updater is not configured (missing pubkey) or the release JSON cannot be fetched.
+- 提供单一 bootstrap payload（`AboutBootstrap`），携带版本、标识符、许可证文本、仓库 URL 和硬编码依赖致谢列表
+- 从 Rust 驱动官方 `tauri-plugin-updater` 的检查 -> 下载 -> 安装管线，通过 `about://update-progress` 流式推送进度
+- 实现 SemVer 全序比较（`should_offer_update`），使 beta 版本可正确升级到同数值正式版，但正式版不降级到 beta
+- 更新器未配置（缺少 pubkey）或无法获取 release JSON 时，优雅降级为「打开 GitHub Release 页面」
 
-## Directory layout
+## 目录结构
 
 ```
 src-tauri/src/about/
-├── mod.rs          # AboutState-less module: commands, UpdateProgress enum, SemVer helpers, dependency list, error classification
-└── events.rs       # UPDATE_PROGRESS event name constant ("about://update-progress")
+├── mod.rs          # 命令、UpdateProgress 枚举、SemVer 辅助、依赖列表、错误分类
+└── events.rs       # UPDATE_PROGRESS 事件名常量
 
 src/components/app/
-├── about-page.tsx     # AboutPanel (version/update/log-level/license/attributions) + AboutDialog thin wrapper
-├── about-types.ts     # AboutBootstrap, UpdateInfo, UpdateProgress, Dependency TypeScript types
-├── about-deps.ts      # DEPENDENCIES constant mirroring Rust built_in_dependencies() (frontend fallback)
-└── settings-page.tsx  # SettingsDialog: theme / profile / about tabs (AboutPanel reused in about tab)
-
-src/lib/tauri-events.ts  # ABOUT_EVENTS.updateProgress + listenEvent<T> helper
+├── about-page.tsx     # AboutPanel（版本/更新/日志级别/许可证/致谢）
+├── about-types.ts     # TS 类型
+├── about-deps.ts      # DEPENDENCIES 常量（前端回退，镜像 Rust 列表）
+└── settings-page.tsx  # SettingsDialog：主题/配置/关于 Tab
 ```
 
-## Key abstractions
+## 关键抽象
 
-| Abstraction | Path | Role |
-|---|---|---|
-| `AboutBootstrap` | `src-tauri/src/about/mod.rs` | One-shot payload: name, version, identifier, target, tauriVersion, license, licenseUrl, repositoryUrl, dependencies[]. Returned by `about_get_bootstrap`. |
-| `UpdateInfo` | `src-tauri/src/about/mod.rs` | Result of `about_check_for_update`: `{ available, version?, notes?, pubDate? }`. |
-| `UpdateProgress` | `src-tauri/src/about/mod.rs` | Tagged enum (`#[serde(tag = "phase")]`) streamed via `about://update-progress`. Phases: `checking`, `notAvailable`, `available`, `downloading` (downloaded/total), `downloaded`, `installing`, `installed`, `error`. |
-| `Dependency` | `src-tauri/src/about/mod.rs` | `{ name, kind ("frontend"|"runtime"), license, url }` — hardcoded acknowledgement list. |
-| `should_offer_update` | `src-tauri/src/about/mod.rs` | Pure SemVer comparison: `version_rank(remote) > version_rank(current)`. |
-| `version_rank` | `src-tauri/src/about/mod.rs` | `(major, minor, patch, is_stable, pre_release_str)` — stable ranks higher than same-numeric beta. |
-| `AboutPanel` | `src/components/app/about-page.tsx` | React panel; activates data fetch only when `active` prop is true (lazy inside SettingsDialog about tab). |
-| `SettingsDialog` | `src/components/app/settings-page.tsx` | Unified entry: theme / profile / about tabs; opens AboutPanel with `active={open && tab === "about"}`. |
+| 抽象 | 路径 | 角色 |
+|------|------|------|
+| `AboutBootstrap` | `src-tauri/src/about/mod.rs` | 一次性 payload：name、version、identifier、license、dependencies 等 |
+| `UpdateInfo` | `src-tauri/src/about/mod.rs` | `about_check_for_update` 的结果：`{ available, version?, notes?, pubDate? }` |
+| `UpdateProgress` | `src-tauri/src/about/mod.rs` | 标签枚举（`#[serde(tag = "phase")]`），通过事件流式推送。阶段：checking、notAvailable、available、downloading、downloaded、installing、installed、error |
+| `should_offer_update` | `src-tauri/src/about/mod.rs` | 纯 SemVer 比较：`version_rank(remote) > version_rank(current)` |
+| `version_rank` | `src-tauri/src/about/mod.rs` | `(major, minor, patch, is_stable, pre_release_str)`，正式版高于同数值 beta |
 
-## How it works
+## 工作原理
 
-### Bootstrap
+### 更新检查
 
-`about_get_bootstrap` is a synchronous command. It pulls `app.package_info()` for name/version, embeds `LICENSE` at compile time via `include_str!("../../../LICENSE")`, and returns `built_in_dependencies()` — a hardcoded `Vec<Dependency>` covering ~13 frontend deps (React, Vite, remixicon, tauri plugins, radix, shadcn, tailwind, sonner, date-fns) and ~19 Rust runtime deps (tauri, reqwest, enigo, willhook, xcap, image, rodio, tokio, serde, etc.). The frontend mirrors this list in `src/components/app/about-deps.ts` (`DEPENDENCIES`) as a fallback for browser preview mode; both lists must be kept in sync manually.
+`about_check_for_update` 使用 `tauri_plugin_updater::UpdaterExt` 查询配置的 GitHub Releases 端点。它不盲信更新器自身的可用性判断，而是用 `should_offer_update(current, remote)` 在 Rust 侧强制 SemVer 排序。
 
-### Update check
+### SemVer 比较
 
-`about_check_for_update` uses `tauri_plugin_updater::UpdaterExt` to query the configured GitHub Releases endpoint. Crucially, it does **not** trust the updater's own availability verdict blindly — it wraps the result with `should_offer_update(current, remote)` so the SemVer ordering is enforced on the Rust side:
+`version_rank` 将版本拆分为数值元组 `(major, minor, patch)` 加 `is_stable` 布尔值和 pre-release 字符串：
 
-```mermaid
-flowchart TD
-    A[about_check_for_update] --> B[app.updater().check]
-    B -->|err| C[classify_check_error → Chinese msg]
-    B -->|Some update| D{should_offer_update current, remote}
-    D -->|true| E[UpdateInfo available=true, version, notes, pubDate]
-    D -->|false| F[UpdateInfo available=false]
-    B -->|None| F
-```
+- `0.17.0-beta.5` -> `(0, 17, 0, false, "beta.5")`
+- `0.17.0` -> `(0, 17, 0, true, "")`
 
-### SemVer comparison
+因 `true > false`，同数值正式版高于其 beta。三种结果：
 
-`should_offer_update(current, remote)` returns true only when `version_rank(remote) > version_rank(current)`. `version_rank` splits the version into the numeric tuple `(major, minor, patch)` (pre-release suffix stripped via `numeric_version_tuple`) plus an `is_stable` boolean and the raw pre-release string:
+| 当前 | 远程 | 提供更新？ | 原因 |
+|------|------|-----------|------|
+| `0.17.0-beta.5` | `0.17.0` | 是 | 正式版 > beta（同数值） |
+| `0.17.0-beta.5` | `0.17.1` | 是 | 数值更高 |
+| `0.17.0` | `0.17.0-beta.5` | 否 | 正式版不降级到 beta |
+| `0.17.0` | `0.17.1` | 是 | 数值更高 |
 
-- `0.17.0-beta.5` → `(0, 17, 0, false, "beta.5")`
-- `0.17.0` → `(0, 17, 0, true, "")`
+### 下载与安装
 
-Because `true > false`, the same-numeric stable ranks higher than its beta. This yields the three required outcomes:
+`about_download_and_install` 是流式管线，在每个阶段向 `main` 窗口 emit `UpdateProgress`，再次调用 `should_offer_update`（防御性），然后 `update.download_and_install(progress_cb, on_done_cb)`。成功后 emit `Installed`，前端提示用户通过 `@tauri-apps/plugin-process` 的 `relaunch()` 重启。
 
-| Current | Remote | Offer? | Reason |
-|---|---|---|---|
-| `0.17.0-beta.5` | `0.17.0` | yes | stable > beta (same numeric) |
-| `0.17.0-beta.5` | `0.17.1` | yes | numeric higher |
-| `0.17.0` | `0.17.0-beta.5` | no | stable never downgrades to beta |
-| `0.17.0` | `0.17.1` | yes | numeric higher |
+### Beta 与正式版端点
 
-### Download and install
+Beta 版本不建立独立更新通道，查询与正式版相同的 stable 端点（`/releases/latest/download/latest.json`）。因 GitHub `/releases/latest` 仅解析非 prerelease Release，beta 用户在更高正式版发布前看到「已是最新」，正式版发布后 `should_offer_update` 返回 true 并下载签名安装包。
 
-`about_download_and_install` is the streaming pipeline. It emits `UpdateProgress` to the `main` window at each phase, calls `should_offer_update` again (defensive), then `update.download_and_install(progress_cb, on_done_cb)`. On success it emits `Installed`; the frontend then prompts the user to `relaunch()` via `@tauri-apps/plugin-process`.
+### 错误分类
 
-```mermaid
-sequenceDiagram
-    participant FE as Frontend (AboutPanel)
-    participant RUST as about_download_and_install
-    participant UP as tauri-plugin-updater
-    FE->>RUST: invoke("about_download_and_install")
-    RUST->>FE: emit Checking
-    RUST->>UP: updater().check()
-    RUST->>RUST: should_offer_update(current, remote)
-    alt not offered
-        RUST->>FE: emit NotAvailable
-    else offered
-        RUST->>FE: emit Available {version, notes}
-        loop chunks
-            UP->>RUST: chunk_length, content_length
-            RUST->>FE: emit Downloading {downloaded, total}
-        end
-        RUST->>FE: emit Downloaded
-        RUST->>FE: emit Installing
-        UP-->>RUST: install complete
-        RUST->>FE: emit Installed
-        FE->>FE: relaunch() via plugin-process
-    end
-```
+两个 helper 函数将更新器错误翻译为用户可读的中文：
+- `classify_updater_error`：pubkey/签名错误 -> 「自动更新未配置签名密钥，请前往 GitHub Release 页面手动下载更新」
+- `classify_check_error`：获取/release JSON/404 错误 -> 「暂无可用更新文件...」；网络/超时/DNS 错误 -> 「网络连接失败: ...」
 
-### Error classification
+## 集成点
 
-Two helper functions translate updater errors into user-facing Chinese strings:
-- `classify_updater_error` — pubkey/signature errors become "自动更新未配置签名密钥，请前往 GitHub Release 页面手动下载更新".
-- `classify_check_error` — fetch/release JSON/404 errors become "暂无可用更新文件…"; network/timeout/DNS errors become "网络连接失败: …".
+- `src-tauri/src/lib.rs`：3 个命令注册到 `generate_handler![]`
+- `src-tauri/tauri.conf.json`：`plugins.updater` 配置 GitHub 端点、`installMode: "passive"`、`pubkey`。pubkey 为空时前端降级为「打开 GitHub Release 页面」
+- `src/lib/tauri-events.ts`：`ABOUT_EVENTS.updateProgress` 集中事件名
+- [日志系统](../systems/logging.md)：`AboutPanel` 还渲染日志级别单选组，调用 `log_get_level` / `log_set_level`
 
-Both also emit an `UpdateProgress::Error` event so the frontend can show the failure inline.
+## 修改入口
 
-### Beta vs stable endpoints
+- 新增依赖致谢：同时添加到 `built_in_dependencies()` 和 `about-deps.ts` 的 `DEPENDENCIES`，保持同步
+- 修改更新端点/pubkey：编辑 `tauri.conf.json` 的 `plugins.updater`，通过 `scripts/setup-update-key.ps1` 重新生成密钥
+- 新增 `UpdateProgress` 阶段：扩展枚举和前端 `UpdateProgress` 类型，在 `AboutPanel` 的状态切换中处理
+- 修改 SemVer 规则：编辑 `should_offer_update` / `version_rank`，更新测试
 
-Beta builds do **not** get a separate update channel. They query the same stable endpoint (`/releases/latest/download/latest.json`). Because GitHub's `/releases/latest` only resolves non-prerelease releases, a beta user sees "已是最新" until a higher stable is published, at which point `should_offer_update` returns true and the signed stable installer is downloaded. See the release workflow in `CLAUDE.md` for the full asset matrix (`setup.exe` + `.sig` + `latest.json` for stable; `setup.exe` only for beta).
+## 关键源文件
 
-## Integration points
-
-- **`src-tauri/src/lib.rs`** — `about_get_bootstrap`, `about_check_for_update`, `about_download_and_install` must be registered in `generate_handler![]` (under the `about` group).
-- **`src-tauri/capabilities/default.json`** — commands must be permitted.
-- **`tauri.conf.json`** — `plugins.updater` configures the GitHub endpoint, `installMode: "passive"`, and `pubkey`. An empty `pubkey` causes `about_check_for_update` to return the pubkey error string; the frontend then degrades to "open GitHub Release page".
-- **`src/lib/tauri-events.ts`** — `ABOUT_EVENTS.updateProgress` centralizes the event name; `AboutPanel` subscribes via `listenEvent`.
-- **`src/hooks/use-native-shell.ts`** — `AboutPanel` gates all `invoke` calls behind `isNativeShell`; browser preview shows "更新功能仅在桌面端可用".
-- **Logging** — `AboutPanel` also renders a log-level radio group that calls `getLogSettings`/`setLogSettings` from `src/lib/logging.ts` (see `../systems/logging.md`).
-
-## Entry points for modification
-
-- **Add a dependency to the acknowledgment list**: add to `built_in_dependencies()` in `src-tauri/src/about/mod.rs` **and** to `DEPENDENCIES` in `src/components/app/about-deps.ts`. Both must stay in sync.
-- **Change update endpoint / pubkey**: edit `tauri.conf.json` `plugins.updater`; regenerate keys via `scripts/setup-update-key.ps1`.
-- **Add a new `UpdateProgress` phase**: extend the enum in `src-tauri/src/about/mod.rs` (it uses `#[serde(tag = "phase")]`) and the `UpdateProgress` discriminated union in `src/components/app/about-types.ts`, then handle it in `AboutPanel`'s `statusItems` switch.
-- **Change SemVer rules**: edit `should_offer_update` / `version_rank` and update the tests in `src-tauri/src/about/mod.rs` `#[cfg(test)]`.
-
-## Key source files
-
-| File | Purpose |
-|---|---|
-| `src-tauri/src/about/mod.rs` | Commands, `AboutBootstrap`, `UpdateProgress`, SemVer helpers, dependency list, error classification, unit tests. |
-| `src-tauri/src/about/events.rs` | `UPDATE_PROGRESS = "about://update-progress"` constant. |
-| `src/components/app/about-page.tsx` | `AboutPanel` (version/update/log-level/license/attributions UI) + `AboutDialog` thin wrapper. |
-| `src/components/app/about-types.ts` | `AboutBootstrap`, `UpdateInfo`, `UpdateProgress`, `Dependency` TypeScript types. |
-| `src/components/app/about-deps.ts` | `DEPENDENCIES` constant mirroring Rust list (frontend fallback). |
-| `src/components/app/settings-page.tsx` | `SettingsDialog` with theme/profile/about tabs; about tab lazily mounts `AboutPanel`. |
-| `src/lib/tauri-events.ts` | `ABOUT_EVENTS` + `listenEvent<T>` helper. |
+| 文件 | 用途 |
+|------|------|
+| `src-tauri/src/about/mod.rs` | 命令、`AboutBootstrap`、`UpdateProgress`、SemVer 辅助、依赖列表、错误分类 |
+| `src-tauri/src/about/events.rs` | `UPDATE_PROGRESS` 事件名常量 |
+| `src/components/app/about-page.tsx` | `AboutPanel`（版本/更新/日志级别/许可证/致谢 UI） |
+| `src/components/app/about-types.ts` | TS 类型 |
+| `src/components/app/about-deps.ts` | `DEPENDENCIES` 常量（前端回退） |
+| `src/components/app/settings-page.tsx` | `SettingsDialog`，关于 Tab 懒加载 `AboutPanel` |

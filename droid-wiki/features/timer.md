@@ -1,168 +1,198 @@
-# Timer board
+# 计时器
 
-## Purpose
+> 多计时器系统，每个分组拥有独立的透明叠加显示窗口。250ms tick 循环驱动倒计时/正计时，支持多段计时与按下/释放两种触发模式。
 
-The timer board is a multi-timer task sequencing panel. It lets players define any number of timer cards, each with its own hotkey, duration, direction (countdown or countup), and optional multi-segment recovery mode. Triggering a hotkey starts (or restarts) the matching timers; the progress is rendered on a transparent, always-on-top, click-through overlay window that sits over the game so the player never has to alt-tab.
+## 用途
 
-Timers sharing the same hotkey are grouped into one hotkey action and fire together. A running single-segment timer ignores repeat hotkey triggers until it finishes (or, if `ignoreRunning` is off, restarts from the beginning). Multi-segment timers consume one segment worth of the remaining recovery pool on each trigger instead of restarting.
+计时器模块为《三角洲行动》玩家提供游戏内倒计时/正计时辅助。典型场景包括技能冷却、复活倒计时、物资刷新等。计时器以透明叠加窗形式覆盖在游戏画面之上，保持置顶与点击穿透，不干扰游戏操作。
 
-## Directory layout
+核心能力：
 
-Backend (Rust):
+- **多计时器**：不限数量的计时器条目，按分组组织，每个分组拥有独立的透明显示窗口。
+- **双向计时**：`Countdown`（倒计时）与 `Countup`（正计时）两种方向。
+- **多段计时**：通过 `segmentCount` 将单个计时器拆分为多个等长时段，每次触发推进一段，剩余时段池随时间恢复。
+- **双触发模式**：`Press`（按下触发）与 `Release`（释放触发，需按住热键，配合 hold scope）。
+- **热键驱动**：每个计时器绑定独立热键，支持跨 scope 共享按键（详见 [热键系统](../systems/hotkeys.md)）。
+- **位置校准**：每个分组可通过独立的位置设置窗口拖拽定位透明显示窗。
+
+> 计时器与计数器原为同一工具，于 v0.15.3（2026-06-15）拆分为两个独立工具，各自拥有独立页面与独立的状态管理。
+
+## 目录结构
 
 ```
 src-tauri/src/timer/
-├── mod.rs          # TimerState, TimerLogic, tick loop, transparent/position windows, commands, stop_all, shutdown, initialize
-├── types.rs        # TimerSettings, TimerItem, TimerGroup, TimerDisplaySettings, TimerBootstrap, TimerRunState, enums, selection outcome
-├── events.rs       # event name string constants (STATE_CHANGED, HOTKEY_TRIGGERED, HOTKEY_ERROR)
-└── settings.rs     # timer_settings.json load/save helpers
-```
+├── mod.rs          # 模块入口：状态、tick 循环、commands、透明窗口管理
+├── types.rs        # TimerSettings / TimerItem / TimerGroup / TimerRuntime / TimerRunState 等类型
+├── settings.rs     # load_settings / save_settings（持久化到 timer_settings.json）
+└── events.rs       # 事件名常量
 
-Frontend (React/TypeScript):
-
-```
 src/components/app/
-├── timer-page.tsx           # Timer page container: bootstrap/form state, autosave, card list, display/position UI
-├── timer-types.ts            # Frontend type definitions + constants (TIMER_DISPLAY_WIDTH, DEFAULT_TIMER_GROUP_ID, etc.)
-├── timer-utils.ts            # settingsToForm/parseForm, progress calc, countdown formatting, overlay bootstrap hook, moveTimerItem
-├── sync-overlay-window.tsx   # Shared TimerDisplayOverlay + TimerPositionOverlay components (also used by counter)
-└── sync-card-list.tsx        # Shared card list layout with AddCardButton + drag reorder section grid
+├── timer-page.tsx          # 计时器页面组件（配置、运行态、透明窗预览）
+├── timer-types.ts          # 前端 TypeScript 类型（含计数器类型）
+└── timer-utils.ts          # settingsToForm / parseSettingsForm 等表单转换
 ```
 
-Persistence:
+## 关键抽象
 
-```
-<app_config_dir>/timer_settings.json   # user config: timer cards, groups, display rect, font opacity, master switch
-```
+| 抽象 | 定义位置 | 职责 |
+|------|----------|------|
+| `TimerSettings` | `timer/types.rs` | 顶层配置：总开关、显示设置、分组列表、计时器列表 |
+| `TimerItem` | `timer/types.rs` | 单个计时器配置：duration、hotkey、direction、triggerMode、segmentCount |
+| `TimerGroup` | `timer/types.rs` | 计时器分组：id、name、enabled、display（独立透明窗位置与透明度） |
+| `TimerDirection` | `timer/types.rs` | 计时方向枚举：`Countdown` / `Countup` |
+| `TimerTriggerMode` | `timer/types.rs` | 触发模式枚举：`Press` / `Release` |
+| `TimerRuntime` | `timer/mod.rs` | 运行态（非序列化）：started_at_ms、ends_at_ms、current_seconds、remaining_seconds、status、多段池 |
+| `TimerRunState` | `timer/types.rs` | 序列化的运行态快照：随 Bootstrap 返回前端 |
+| `TimerRunStatus` | `timer/types.rs` | 运行状态枚举：`Running` / `Finished` |
+| `TimerLogic` | `timer/mod.rs` | `SyncToolLogic` 实现，持有 `runs: HashMap<String, TimerRuntime>` 与位置设置会话 |
+| `TimerState` | `timer/mod.rs` | 顶层状态：`ToolState<TimerLogic>` + tick 任务句柄 |
+| `TimerBootstrap` | `timer/types.rs` | 前端拉取的完整快照：settings + runs + hotkey_error |
 
-## Key abstractions
+## 工作原理
 
-| Abstraction | Location | Description |
-|-------------|----------|-------------|
-| `TimerState` | `src-tauri/src/timer/mod.rs` | Wraps `ToolState<TimerLogic>` and holds the `tick_task` (250ms loop handle). |
-| `TimerLogic` | `src-tauri/src/timer/mod.rs` | Implements `ToolLogic`; owns `runs: HashMap<String, TimerRuntime>` and `pending_position`. |
-| `TimerRuntime` | `src-tauri/src/timer/mod.rs` | Per-timer running state: started/ends timestamps, current/remaining seconds, direction, status, multi-segment pool. |
-| `TimerSettings` | `src-tauri/src/timer/types.rs` | Root config: `timer_enabled`, `display`, `timer_groups`, `timers`. |
-| `TimerItem` | `src-tauri/src/timer/types.rs` | One timer card: `id`, `group_id`, `name`, `duration_seconds`, `hotkey`, `direction`, `trigger_mode`, `enabled`, `ignore_running`, `segment_count`. |
-| `TimerGroup` | `src-tauri/src/timer/types.rs` | A display group with its own `display` rect/opacity; multiple groups get separate overlay windows. |
-| `TimerBootstrap` | `src-tauri/src/timer/types.rs` | Snapshot sent to frontend: `settings` + `runs` + `hotkey_error`. |
-| `TimerRunState` | `src-tauri/src/timer/types.rs` | Read-only run snapshot for a single timer, emitted to frontend and overlay windows. |
-| `TimerDirection` | `src-tauri/src/timer/types.rs` | `Countdown` (duration → 0) or `Countup` (0 → duration). |
-| `TimerTriggerMode` | `src-tauri/src/timer/types.rs` | `Press` (fire on key down) or `Release` (fire on key up; uses the hold mechanism). |
-| `TimerSelectionOutcome` | `src-tauri/src/timer/types.rs` | Result of a position-selection flow: `Selected` / `Cancelled` / `Closed` + `rect` + `group_id`. |
-
-## How it works
-
-### Initialization and the tick loop
-
-`initialize()` (`src-tauri/src/timer/mod.rs`) loads and normalizes settings, registers hotkey listeners (if `timer_enabled`), ensures display windows exist, and starts a 250ms tick task. The tick task calls `tick()` which locks the inner state, advances every running `TimerRuntime` via `update_timer_runtime()`, and if anything changed, rebuilds the bootstrap and emits `timer://state-changed` to both the `main` window and every group's display window.
+### 生命周期
 
 ```mermaid
-sequenceDiagram
-    participant App as lib.rs setup
-    participant TS as TimerState
-    participant HK as HotkeyManager
-    participant Tick as tick_task (250ms)
-    participant FE as Frontend / Overlay
+flowchart TD
+    A[initialize] --> B[load_settings + normalize]
+    B --> C{timer_enabled?}
+    C -- 是 --> D[restart_hotkey_listeners]
+    C -- 是 --> E[ensure_display_windows]
+    C -- 否 --> F[跳过热键与窗口]
+    D --> G[start_tick_task 250ms]
+    E --> G
 
-    App->>TS: initialize(app, hotkey_manager)
-    TS->>TS: load + normalize_settings
-    TS->>HK: restart_hotkey_listeners (scope "timer")
-    TS->>TS: ensure_display_windows
-    TS->>Tick: start_tick_task
-    loop every 250ms
-        Tick->>TS: tick(app)
-        TS->>TS: update_timer_runtime for each run
-        TS->>FE: emit timer://state-changed (main + group labels)
-    end
+    G --> H{每 250ms tick}
+    H --> I[update_timer_runtime 每个 runtime]
+    I --> J{有变化?}
+    J -- 是 --> K[build_bootstrap + emit_state]
+    J -- 否 --> H
+
+    L[热键触发] --> M[trigger_hotkey_targets]
+    M --> N{多段计时?}
+    N -- 是 --> O[trigger_multisegment_runtime]
+    N -- 否 --> P[常规计时器启动/停止]
+    O --> K
+    P --> K
+    K --> Q[ensure_display_windows]
 ```
 
-### Hotkey trigger flow
+### Tick 循环
 
-`restart_hotkey_listeners()` groups enabled timers by hotkey string. Timers with `trigger_mode = Press` become normal `HotkeyAction` bindings; timers with `trigger_mode = Release` become hold bindings (`HoldAction::Down` fires the press-group, `HoldAction::Up` fires the release-group). Both use `ConflictPolicy::AllowHold` so they can coexist with counter and rapidfire scopes.
+`start_tick_task` 启动一个 250ms 间隔的 tokio 定时任务。每次 tick：
 
-When a hotkey fires, `trigger_hotkey_targets()` locks the inner state and for each target timer:
+1. 锁定 `ToolStateInner`，对每个 `TimerRuntime` 调用 `update_timer_runtime`。
+2. 单段计时器：根据 `started_at_ms` 与 `ends_at_ms` 计算 `current_seconds` / `remaining_seconds`，归零时标记 `Finished`。
+3. 多段计时器：根据 `recovery_start_pool` + 已经过的秒数计算恢复后的池值。
+4. 若任一 runtime 发生变化，构建新的 Bootstrap 并 `emit_state` 推送到主窗口与各分组显示窗口。
 
-- **Single-segment**: if already running and `ignore_running` is true, the trigger is skipped. If `ignore_running` is false, the existing run is removed and a fresh run starts. A new `TimerRuntime` is inserted with `ends_at_ms = now + duration * 1000`.
-- **Multi-segment** (`segment_count >= 2`): `trigger_multisegment_runtime()` first normalizes the recovered pool (advancing `current_seconds` by elapsed time since `started_at_ms`), then deducts one segment duration from the pool. If the pool is exhausted the trigger is skipped. This allows repeated hotkey presses to "consume" segments of the total duration without restarting.
+### 多段计时（Segment）
 
-After mutation the bootstrap is emitted and `ensure_display_windows()` is called. `timer://hotkey-triggered` is emitted with the list of triggered timer IDs.
+当 `TimerItem.segmentCount >= 2` 时，计时器进入多段模式：
 
-```mermaid
-flowchart TB
-    A[Hotkey pressed/released] --> B{trigger_mode?}
-    B -- Press --> C[Normal HotkeyAction]
-    B -- Release --> D[HoldAction Down/Up]
-    C --> E[trigger_hotkey_targets]
-    D --> E
-    E --> F{segment_count >= 2?}
-    F -- Yes --> G[Normalize recovered pool]
-    G --> H[Deduct one segment]
-    H --> I{Pool exhausted?}
-    I -- Yes --> J[Skip trigger]
-    I -- No --> K[Insert/replace TimerRuntime]
-    F -- No --> L{Already running?}
-    L -- Yes --> M{ignore_running?}
-    M -- Yes --> J
-    M -- No --> N[Remove old run]
-    N --> K
-    L -- No --> K
-    K --> O[emit timer://state-changed + hotkey-triggered]
-    O --> P[ensure_display_windows]
-```
+- **总时长** = `segmentCount * durationSeconds`
+- **段时长** = `durationSeconds`
+- 每次热键触发从总池中扣除一段 `segment_duration`，启动一段新的倒计时/正计时。
+- 剩余池值随时间恢复（`recovery_start_pool` + 经过秒数），模拟「技能充能」机制。
+- `deduct_multisegment_pool` 在扣除前先归一化已恢复的池值，保留亚秒级余量，避免 backend tick 之间触发导致的精度丢失。
 
-### Transparent overlay windows
+### 热键绑定
 
-Each timer group gets its own display window. The label is `timer-display` for the default group (`DEFAULT_TIMER_GROUP_ID = "default-timer-group"`) and `timer-display-<groupId>` for custom groups. The query mode is `timer-display&groupId=<encoded>`. Windows are created borderless, transparent, always-on-top, click-through (`set_ignore_cursor_events(true)`), skipped from the taskbar, and non-focused. Minimum width is 320px (`TIMER_DISPLAY_WIDTH`); height is computed by `display_height(item_count)` = `max(96, 48 + max(1, count) * 30)`.
+`SyncToolLogic::build_hotkey_bindings` 按 `triggerMode` 分流：
 
-`ensure_display_windows()` destroys stale display windows (labels no longer matching any group) via `destroy_stale_windows`.
+- **Press 模式**：注册为普通 scope 快捷键（`bindings.normal`），按下即触发。
+- **Release 模式**：注册为 hold scope（`bindings.hold`），按下时触发 Down（Press 列表），释放时触发 Up（Release 列表）。
 
-Position setting uses a separate window with label `timer-position` (or `timer-position-<groupId>`), mode `timer-position&groupId=<encoded>`. It is created focused and visible, uses a `oneshot` channel to communicate the outcome back to `timer_begin_position_selection`, and commits via `timer_position_commit` / cancels via `timer_position_cancel`. Drag updates flow through `timer_position_moved`.
+冲突策略为 `ConflictPolicy::AllowHold`（`SyncToolLogic` 默认值），允许计时器普通 scope 与计数器普通 scope、连发器 hold scope 共享同一热键。详见 [热键系统](../systems/hotkeys.md)。
 
-See `../systems/overlay-windows.md` for the shared overlay/position window infrastructure.
+### 透明显示窗口
 
-### Master switch and shutdown
+每个启用的分组拥有独立的透明显示窗口：
 
-`timer_save_settings()` normalizes and saves settings, restarts hotkey listeners, retains only enabled timers' runs, and if `timer_enabled` is false clears all runs and hides display windows. It also pushes the new settings to the active profile snapshot via `profile::update_active_profile_snapshot`.
+- 窗口 label：默认分组为 `timer-display`，其他分组为 `timer-display-{groupId}`。
+- 窗口属性：无边框（`decorations(false)`）、透明（`transparent(true)`）、置顶（`always_on_top(true)`）、点击穿透（`set_ignore_cursor_events(true)`）、跳过任务栏。
+- 查询参数：`?mode=timer-display&groupId={groupId}`，前端据此渲染对应分组的计时器列表。
+- `ensure_display_windows` 在每次状态变更后同步窗口位置、大小与可见性，并销毁已不存在的分组窗口。
 
-`stop_all()` clears all runs and emits state (does not destroy windows). `shutdown()` clears hotkey scopes, stops the tick task, and destroys all position and display windows.
+### 位置校准
 
-### Multi-segment recovery pool
+`timer_begin_position_selection` 启动一个独立的校准窗口（`timer-position` label），用户拖拽定位后：
 
-Multi-segment timers track a `recovery_start_pool` (seconds already consumed from the total `segment_count * duration_seconds` pool). Between backend ticks (250ms), the frontend overlay uses `requestAnimationFrame` to interpolate a smooth display value and progress bar based on `recovery_start_pool * 1000 + (now - started_at_ms)`, capped at the total duration. This avoids the seconds counter jumping in 250ms steps.
+- `timer_position_moved`：实时更新 `staged_rect` 并移动校准窗口。
+- `timer_position_commit`：将 `staged_rect` 写入分组 display 配置并持久化，关闭校准窗口。
+- `timer_position_cancel`：回滚到 `original_rect`，关闭校准窗口。
+- 窗口被关闭（非正常流程）时通过 `on_window_event` 发送 `Closed` 信号。
 
-## Integration points
+计时器模块自行实现位置状态机（`PendingTimerPosition`），未使用 `apply_position_event`（计数器模块使用了该共享函数）。
 
-- **ToolBase** (`../systems/tool-base.md`): `TimerLogic` implements `ToolLogic`; shared `settings` and `hotkey_error` live in `ToolStateInner<TimerLogic>`.
-- **Hotkeys** (`../systems/hotkeys.md`): Registers scope `"timer"` with `ConflictPolicy::AllowHold`. Release-trigger timers use the hold mechanism (`replace_hold_scope`). Conflicts with counter and rapidfire scopes are allowed; conflicts with morse (Strict) are rejected.
-- **Overlay windows** (`../systems/overlay-windows.md`): Display and position windows use the shared helpers in `src-tauri/src/overlay_utils.rs` (`destroy_stale_windows`, `destroy_window`, `hide_window`, `safe_label_component`, `encoded_query_value`).
-- **Profile** (`src-tauri/src/profile/`): `timer_save_settings` and `timer_position_commit` push `ActiveProfileSnapshotPatch::Timer` to keep the active profile snapshot in sync.
-- **GlobalState** (`src-tauri/src/global_state.rs`): Disabling the global switch calls `timer::stop_all`, which clears all running timers.
-- **Frontend events** (`src/lib/tauri-events.ts`): `TIMER_EVENTS.stateChanged`, `.hotkeyTriggered`, `.hotkeyError` centralize the event names from `src-tauri/src/timer/events.rs`.
+### 全局开关行为
 
-## Entry points for modification
+全局开关关闭时，`stop_all` 清空所有 `TimerRuntime`（计时器运行态不持久化），并通过 `hide_windows_with_prefix` **隐藏**（而非销毁）透明窗口。重新打开时 `ensure_display_windows` 直接 `show` 恢复，避免窗口重建导致的 label 冲突与加载空白。
 
-| Task | Start here |
-|------|-----------|
-| Add a new timer field | `TimerItem` in `src-tauri/src/timer/types.rs` → `normalize_timer` / `normalize_settings` in `src-tauri/src/timer/mod.rs` → `timer-types.ts` + `timer-utils.ts` (settingsToForm/parseForm) → `timer-page.tsx` UI |
-| Change tick interval or logic | `start_tick_task` / `tick` / `update_timer_runtime` in `src-tauri/src/timer/mod.rs` |
-| Change transparent window creation | `ensure_overlay_window` / `ensure_display_windows` in `src-tauri/src/timer/mod.rs` |
-| Change overlay rendering | `TimerDisplayOverlay` in `src/components/app/sync-overlay-window.tsx` |
-| Add a new Tauri command | Define in `src-tauri/src/timer/mod.rs` → register in `lib.rs` `generate_handler![]` → add to `src-tauri/capabilities/default.json` |
-| Change position window behavior | `timer_begin_position_selection` / `timer_position_commit` / `timer_position_cancel` / `timer_position_moved` + `PositionOverlay` in `src/components/ui/position-overlay.tsx` |
-| Change hotkey conflict policy | `restart_hotkey_listeners` in `src-tauri/src/timer/mod.rs` (see `../systems/hotkeys.md`) |
+## 集成点
 
-## Key source files
+| 集成方 | 关系 |
+|--------|------|
+| [工具基座](../systems/tool-base.md) | `TimerLogic` 实现 `ToolLogic` trait，复用 `ToolState<T>` / `ToolStateInner<T>` / `get_bootstrap` 泛型基座 |
+| [同步工具基座](../systems/sync-tool.md) | `TimerLogic` 实现 `SyncToolLogic`，复用 `normalize_sync_settings`、`restart_sync_hotkeys`；`TimerSettings` 实现 `SyncSettings`，`TimerItem`/`TimerGroup` 实现 `SyncItem`/`SyncGroup` |
+| [热键系统](../systems/hotkeys.md) | scope 名 `"timer"`，冲突策略 `AllowHold`；Press 模式用普通 scope，Release 模式用 hold scope |
+| [透明叠加窗](../systems/overlay-windows.md) | 每个分组一个透明显示窗 + 位置校准窗，均无边框/透明/置顶/点击穿透 |
+| Profile | `ActiveProfileSnapshotPatch::Timer` 在保存设置时同步到当前 Profile 快照 |
 
-| File | Role |
+### 持久化
+
+| 文件 | 内容 |
 |------|------|
-| `src-tauri/src/timer/mod.rs` | Core state machine, tick loop, hotkey registration, transparent/position windows, all Tauri commands, `initialize`/`shutdown`/`stop_all` |
-| `src-tauri/src/timer/types.rs` | All DTOs and enums with `#[serde(rename_all = "camelCase")]` |
-| `src-tauri/src/timer/events.rs` | Event name constants: `STATE_CHANGED`, `HOTKEY_TRIGGERED`, `HOTKEY_ERROR` |
-| `src-tauri/src/timer/settings.rs` | `timer_settings.json` load/save via shared `settings` helpers |
-| `src/components/app/timer-page.tsx` | Frontend container: bootstrap/form dual-state, autosave, card list, display/position UI |
-| `src/components/app/timer-types.ts` | Frontend TypeScript types + constants |
-| `src/components/app/timer-utils.ts` | Settings↔form conversion, progress %, countdown formatting, overlay bootstrap hook, `moveTimerItem`, dirty check |
-| `src/components/app/sync-overlay-window.tsx` | Shared `TimerDisplayOverlay` (with smooth `requestAnimationFrame` interpolation) and `TimerPositionOverlay` |
-| `src/components/app/sync-card-list.tsx` | Shared card list section grid with `AddCardButton` |
-| `src/lib/tauri-events.ts` | `TIMER_EVENTS` constant object + `listenEvent<T>` helper |
+| `timer_settings.json` | 完整配置（总开关、分组、计时器列表、显示位置） |
+
+> 计时器运行态（`TimerRuntime`）**不持久化**，应用重启后所有计时器归零。这与计数器不同（计数器运行态独立持久化到 `counter_state.json`）。
+
+## Tauri Commands
+
+| Command | 签名 | 说明 |
+|---------|------|------|
+| `timer_get_bootstrap` | `() -> TimerBootstrap` | 拉取完整快照（settings + runs + hotkey_error） |
+| `timer_save_settings` | `(settings: TimerSettings) -> TimerBootstrap` | 规范化并保存配置，重启热键监听，刷新透明窗口 |
+| `timer_trigger` | `(timerIds: string[]) -> TimerBootstrap` | 手动/热键触发指定计时器 |
+| `timer_begin_position_selection` | `(groupId?: string) -> TimerSelectionOutcome` | 启动位置校准流程（async） |
+| `timer_position_commit` | `() -> TimerBootstrap` | 提交校准位置并持久化 |
+| `timer_position_cancel` | `() -> void` | 取消校准，回滚位置 |
+| `timer_position_moved` | `(x, y) -> TimerRect` | 校准过程中实时更新暂存位置 |
+
+## 事件
+
+| 事件名 | 常量 | Payload | 说明 |
+|--------|------|---------|------|
+| `timer://state-changed` | `events::STATE_CHANGED` | `TimerBootstrap` | 状态变更（tick 更新、触发、保存）广播到主窗口与各显示窗口 |
+| `timer://hotkey-error` | `events::HOTKEY_ERROR` | `String` | 热键触发执行失败时的错误信息 |
+| `timer://hotkey-triggered` | `events::HOTKEY_TRIGGERED` | `string[]` | 成功触发的计时器 ID 列表 |
+
+前端通过 `src/lib/tauri-events.ts` 的 `TIMER_EVENTS` 常量与 `listenEvent<T>` helper 订阅。
+
+## 修改入口
+
+| 需求 | 修改位置 |
+|------|----------|
+| 新增计时器配置字段 | `timer/types.rs`（`TimerItem`）+ `timer/mod.rs`（`normalize_timer`、`trigger_hotkey_targets`）+ `timer-types.ts` + `timer-utils.ts` |
+| 调整 tick 频率 | `timer/mod.rs` 的 `start_tick_task`（`Duration::from_millis(250)`） |
+| 修改多段计时逻辑 | `timer/mod.rs` 的 `update_timer_runtime`、`multisegment_pool_ms`、`deduct_multisegment_pool`、`trigger_multisegment_runtime` |
+| 新增透明窗口行为 | `timer/mod.rs` 的 `ensure_overlay_window` / `ensure_display_windows` |
+| 新增 Tauri command | `timer/mod.rs`（`#[tauri::command]`）+ `src-tauri/src/lib.rs`（`generate_handler!`）+ `src-tauri/capabilities/default.json` |
+| 新增事件 | `timer/events.rs`（常量）+ `src/lib/tauri-events.ts`（`TIMER_EVENTS`） |
+
+## 关键源文件
+
+| 文件 | 路径 |
+|------|------|
+| 模块入口 | `src-tauri/src/timer/mod.rs` |
+| 类型定义 | `src-tauri/src/timer/types.rs` |
+| 设置持久化 | `src-tauri/src/timer/settings.rs` |
+| 事件常量 | `src-tauri/src/timer/events.rs` |
+| 同步工具基座 | `src-tauri/src/sync_tool.rs` |
+| 工具泛型基座 | `src-tauri/src/tool_base.rs` |
+| 热键管理 | `src-tauri/src/hotkeys.rs` |
+| 叠加窗工具 | `src-tauri/src/overlay_utils.rs` |
+| 前端页面 | `src/components/app/timer-page.tsx` |
+| 前端类型 | `src/components/app/timer-types.ts` |
+| 前端表单转换 | `src/components/app/timer-utils.ts` |
+| 事件订阅 | `src/lib/tauri-events.ts` |

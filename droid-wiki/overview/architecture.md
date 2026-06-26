@@ -1,84 +1,139 @@
-# Architecture
+# 系统架构
 
-Delta Auto Tools is a single Tauri 2 desktop application with a React 19 frontend and a Rust backend. The two halves communicate exclusively through Tauri's IPC layer: the frontend invokes Rust commands and subscribes to Rust-emitted events. There is no HTTP server, no separate database process, and no web API.
+Delta Auto Tools 采用 Tauri 2 桌面架构：Rust 后端处理原生能力（截屏、输入模拟、键盘钩子、窗口管理），React 前端通过 Tauri IPC 调用命令并监听事件。所有状态在 Rust 侧管理，前端通过 `invoke` 获取 bootstrap 数据、通过 `listen` 接收状态变更事件。
 
-## High-level structure
+## 整体架构
 
 ```mermaid
 graph TD
-    subgraph Frontend["Frontend (React 19 + TypeScript)"]
-        App["App.tsx<br/>shell + mode branching"]
-        Pages["Tool pages<br/>morse/timer/counter/rapidfire/audio/strategy"]
-        Hooks["Hooks<br/>autosave/bootstrap-form/hotkey-recorder"]
-        UI["shadcn/ui + app-ui.tsx"]
+    subgraph 前端 React
+        App[App.tsx 应用壳层]
+        Pages[工具页面组件]
+        Hooks[共享 Hooks]
+        UI[工业风 UI 组件]
     end
 
-    subgraph Backend["Backend (Rust + Tauri 2)"]
-        Lib["lib.rs<br/>Builder + generate_handler!"]
-        Tools["Tool modules<br/>morse/timer/counter/rapidfire/audio/strategy/about/theme/profile"]
-        Base["tool_base.rs<br/>ToolState generic layer"]
-        HK["hotkeys.rs<br/>HotkeyManager (willhook)"]
-        Global["global_state.rs<br/>on/off switch"]
-        Logging["logging/<br/>file logger + session id"]
+    subgraph Rust 后端
+        Lib[lib.rs run 入口]
+        ToolBase[ToolBase 泛型基座]
+        SyncTool[SyncTool 同步基座]
+        Modules[工具模块]
+        Hotkeys[热键系统]
+        Overlay[透明窗口管理]
     end
 
-    App -->|invoke commands| Lib
-    Lib --> Tools
-    Tools --> Base
-    Tools --> HK
-    Tools --> Global
-    Tools -->|emit events| App
-    Pages --> Hooks
-    Pages --> UI
-    HK -->|keyboard events| Tools
+    App -->|invoke 命令| Lib
+    Lib --> Modules
+    Modules --> ToolBase
+    Timer[计时器] --> SyncTool
+    Counter[计数器] --> SyncTool
+    Rapidfire[连发器] --> SyncTool
+    Modules -->|emit 事件| App
+    Hotkeys -->|触发回调| Modules
+    Modules --> Overlay
 ```
 
-## Frontend entry chain
+## 前端入口链路
 
-`index.html` -> `src/main.tsx` -> `src/App.tsx`. App.tsx does not use a router. It switches tools via `useState<ToolId>` and branches into overlay windows via `?mode=` query parameters (`overlay`, `timer-display`, `timer-position`, `counter-display`, `counter-position`, `rapidfire-display`, `rapidfire-position`, `audio-overlay`). These modes early-return separate window contents and must not be replaced by routing.
+`index.html` -> `src/main.tsx` -> `src/App.tsx`
 
-The desktop shell is a three-part mechanical interface: a 48px Top Manifest Bar, a 240px Left Index Rail, and a Main Work Grid. On screens under 1024px the rail collapses into a top tab bar.
+App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明窗口和区域选择通过 `?mode=` 查询参数分支进入以下模式：
 
-## Backend entry chain
+| 模式 | 用途 |
+|------|------|
+| `overlay` | Morse 区域框选 |
+| `timer-display` | 计时器透明显示 |
+| `timer-position` | 计时器位置校准 |
+| `counter-display` | 计数器透明显示 |
+| `counter-position` | 计数器位置校准 |
+| `rapidfire-display` | 连发器透明显示 |
+| `rapidfire-position` | 连发器位置校准 |
+| `audio-overlay` | 音频识色区域框选 |
 
-`src-tauri/src/main.rs` -> `src-tauri/src/lib.rs::run()`. The `setup` callback initializes every tool module (`morse::initialize`, `timer::initialize`, `counter::initialize`, `rapidfire::initialize`, `audio::initialize`, `theme::initialize`, `profile::initialize`), creates the shared `HotkeyManager`, the `GlobalState`, and the logger, then registers them all via `app.manage()`. The `generate_handler![]` macro registers every Tauri command, grouped by module.
+### Bootstrap/Form 双状态模式
 
-On window close, `on_window_event` triggers a shutdown sequence that stops all running sessions, clears key suppressions, and flushes the log writer.
+每个工具页遵循同一状态模式：
 
-## Tool base generic layer
+- **bootstrap**：Rust 返回的不可变规范态，包含 settings + 运行态数据
+- **form**：本地可编辑草稿，脏检测通过 `JSON.stringify` 往返比较
+- **Autosave**：表单变更后 debounce 400ms 调用 `xxx_save_settings`，`autosaveVersionRef` 防止陈旧保存覆盖
 
-All tools that persist settings and expose a bootstrap follow the same generic pattern defined in `src-tauri/src/tool_base.rs`:
+共享 hooks 在 `src/hooks/` 中实现：
+- `useBootstrapForm`（`src/hooks/use-bootstrap-form.ts`）：管理 bootstrap + form 双状态、syncBootstrap、saveSettings（含 stale guard）
+- `useAutosave`（`src/hooks/use-autosave.ts`）：debounce + versionRef 防陈旧覆盖 + 卸载清理
+- `useHotkeyRecorder`（`src/hooks/use-hotkey-recorder.ts`）：热键录制循环
+- `useNativeShell`（`src/hooks/use-native-shell.ts`）：检测 `__TAURI_INTERNALS__`，浏览器预览模式禁用原生命令
 
-- `ToolLogic` trait - each tool implements `load_settings`, `save_settings`, `build_bootstrap`, `emit_state`, plus an associated `Settings` and `Bootstrap` type and a `NAME` constant.
-- `ToolState<T: ToolLogic>` - wraps `Arc<Mutex<ToolStateInner<T>>>`.
-- `ToolStateInner<T>` - holds `logic: T` (tool-specific fields), `settings: T::Settings`, `hotkey_error: Option<String>`.
-- `get_bootstrap<T>` - generic command implementation; each module provides a thin `#[tauri::command]` wrapper.
+## Rust 后端模块
 
-This eliminates per-module boilerplate for the settings/bootstrap/error-handling cycle.
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| tool_base | `src-tauri/src/tool_base.rs` | 工具模块共享泛型基座：ToolLogic trait、ToolState<T> |
+| sync_tool | `src-tauri/src/sync_tool.rs` | 同步工具基座：分组/条目规范化、热键重启、位置状态机、全局停止注册表 |
+| global_state | `src-tauri/src/global_state.rs` | 全局总开关与 enabled-changed 事件 |
+| morse | `src-tauri/src/morse/` | 截屏 -> 二值化 -> 轮廓检测 -> 摩斯解码 -> 自动输入 |
+| timer | `src-tauri/src/timer/` | 多计时器，250ms tick 循环，透明窗口 |
+| counter | `src-tauri/src/counter/` | 多计数器，运行态独立持久化 |
+| rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程 |
+| audio | `src-tauri/src/audio/` | 快捷键/区域监听/识色三种触发模式播放音频 |
+| strategy | `src-tauri/src/strategy/` | 攻略网站 WebView2 嵌入与 HTTP 抓取 |
+| hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，冲突检测 |
+| key_suppressor | `src-tauri/src/key_suppressor.rs` | WH_KEYBOARD_LL 钩子吞噬指定按键 |
+| theme | `src-tauri/src/theme/` | 5 套内置主题 + 自定义 + token override |
+| profile | `src-tauri/src/profile/` | 多配置快照切换（5 份工具 settings） |
+| logging | `src-tauri/src/logging/` | 混合格式日志 + 按天轮转 + 链路追踪 |
+| about | `src-tauri/src/about/` | 关于面板 + Tauri 官方更新器 |
 
-## IPC and events
+### 工具基座层级
 
-Frontend calls Rust via `invoke<Bootstrap>("tool_action", { params })`. Rust pushes updates to the frontend via `app.emit_to("main", event_name, payload)`. Event names are string constants defined per module in `events.rs` files and mirrored in `src/lib/tauri-events.ts` (`MORSE_EVENTS`, `TIMER_EVENTS`, `COUNTER_EVENTS`, `RAPIDFIRE_EVENTS`, `GLOBAL_EVENTS`, `THEME_EVENTS`, `PROFILE_EVENTS`). The frontend uses a typed `listenEvent<T>` helper to subscribe.
+```mermaid
+graph TD
+    ToolLogic[ToolLogic trait] --> ToolState[ToolState T]
+    ToolState --> MorseState[MorseState]
+    ToolState --> TimerState[TimerState]
+    ToolState --> CounterState[CounterState]
+    ToolState --> RapidfireState[RapidfireState]
+    ToolState --> AudioState[AudioState]
+    SyncToolLogic[SyncToolLogic trait] --> ToolState
+    SyncToolLogic --> TimerLogic
+    SyncToolLogic --> CounterLogic
+    SyncToolLogic --> RapidfireLogic
+```
 
-Overlay display windows also receive events (e.g. `timer://state-changed` is emitted to both `main` and `timer-display`).
+`ToolLogic` trait（`src-tauri/src/tool_base.rs`）定义了所有工具共享的 Settings 持久化、Bootstrap 构建、事件 emit 和运行时锁检查。`SyncToolLogic` trait（`src-tauri/src/sync_tool.rs`）在此基础上扩展了分组/条目规范化、热键重启、位置状态机和全局停止注册表，供计时器、计数器、连发器复用。
 
-## Bootstrap/form dual-state pattern
+## Tauri IPC 模式
 
-Every tool page maintains two state objects:
+- **命令调用**：`invoke<XxxBootstrap>("tool_action", { params })`
+- **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`
+- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `AUDIO_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS` 和 `listenEvent<T>` helper 订阅
 
-- `bootstrap` - the immutable canonical state returned by Rust (`xxx_get_bootstrap`).
-- `form` - the local editable draft.
+## 设置持久化
 
-Dirty detection compares the two via `JSON.stringify`. When the form changes, a 400ms debounced autosave fires `xxx_save_settings`. An `autosaveVersionRef` guards against stale saves overwriting newer state. The hooks `use-bootstrap-form-logic` and `use-autosave` in `src/hooks/` implement this.
+所有工具设置以 JSON 文件保存在 Tauri app config 目录（`%APPDATA%/org.izrino.delta-auto-tools/`）：
 
-## Persistence
+| 文件 | 内容 |
+|------|------|
+| `morse_settings.json` | 摩斯识别配置 |
+| `timer_settings.json` | 计时器配置 |
+| `counter_settings.json` | 计数器配置 |
+| `counter_state.json` | 计数器运行态（独立持久化） |
+| `rapidfire_settings.json` | 连发器配置 |
+| `audio_settings.json` | 音频触发器配置 |
+| `theme_settings.json` | 主题配置 |
+| `profile_settings.json` | 配置快照元数据 |
 
-Each tool persists settings to a JSON file in the Tauri app config dir: `morse_settings.json`, `timer_settings.json`, `counter_settings.json`, `rapidfire_settings.json`, `audio_settings.json`, `theme_settings.json`, `profile_settings.json`. The counter additionally persists run-state separately in `counter_state.json` so user config and accumulated counts are decoupled. Log settings live in `log_settings.json`.
+通用读写逻辑在 `src-tauri/src/settings.rs` 中实现。
 
-## Native shell detection
+## 透明窗口系统
 
-`useNativeShell()` checks for `__TAURI_INTERNALS__`. In browser preview mode (running Vite without Tauri), all native commands are disabled and the UI shows a placeholder notice. This lets the frontend be developed in a plain browser without the Rust backend.
+两类机制：
 
-## Language breakdown
+1. **同窗口 overlay**（Morse 区域框选、音频识色框选）：`?mode=overlay` / `?mode=audio-overlay` -> 全屏透明拖拽框选，坐标通过对应命令提交
+2. **独立窗口 overlay**（Timer/Counter/Rapidfire 透明显示与位置设置）：各自有 display 和 position 两种模式，position 模式拖拽定位坐标提交
 
-The codebase is roughly two languages: TypeScript/TSX for the frontend and Rust for the backend. See [by the numbers](../by-the-numbers.md) for exact counts.
+透明窗口必须无边框、透明、置顶、点击穿透。位置设置窗口可保留校准靶风格。窗口管理工具函数在 `src-tauri/src/overlay_utils.rs` 中。
+
+## 设计方向
+
+UI 采用 Swiss Industrial Print x Declassified Tactical Control Board 风格（详见 `DESIGN.md`）。主基底 Carbon `#0C0C0B` / Slate `#171715`，Chalk `#D8D4CC` 粗粉笔结构线，Amber `#E8A000` 仅占 3-8% 画面。90 度直角，禁止圆角卡片、柔和阴影、玻璃态、渐变。通过 5 套内置主题可切换亮/暗/红/绿/琥珀配色，主题切换通过 CSS 变量覆盖实现。

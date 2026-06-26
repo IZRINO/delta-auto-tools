@@ -1,42 +1,61 @@
-# Global state
+# 全局总开关
 
-The global state in `src-tauri/src/global_state.rs` is a single `AtomicBool` on/off switch. When off, all hotkey callbacks are suspended, all running sessions are stopped, and all key suppressions are cleared.
+`src-tauri/src/global_state.rs` 中的全局总开关是一个 `AtomicBool` 开关。关闭时，所有热键回调暂停，所有运行态会话停止，所有按键抑制清除。v0.17.5 起关闭时改为隐藏窗口而非销毁，重开时恢复热键监听并推送状态。
 
-## How it works
+## 工作原理
 
 ```mermaid
 graph TD
-    Switch["global_set_enabled(false)"] --> Store["AtomicBool = false"]
+    SwitchOff["global_set_enabled(false)"] --> Store["AtomicBool = false"]
     Store --> Emit["emit global://enabled-changed"]
-    Emit --> Frontend["Frontend shows disabled banner"]
-    Switch --> Stop["stop_active_sessions"]
-    Stop --> RF["rapidfire::stop_all"]
-    Stop --> T["timer::stop_all"]
-    Stop --> C["counter::stop_all"]
+    Emit --> Frontend["前端显示关闭横幅"]
+    SwitchOff --> Stop["stop_active_sessions<br/>SyncToolRegistry.stop_all"]
+    Stop --> RF["rapidfire::stop_registered"]
+    Stop --> T["timer::stop_registered"]
+    Stop --> C["counter::stop_registered"]
     Stop --> Clear["clear_all_suppressions"]
 ```
 
-The `HotkeyManager` listener checks `GlobalState::enabled()` on every keyboard event. When false, it skips all callback dispatch. This means hotkeys do not fire at all when the global switch is off, rather than firing and then being rejected downstream.
+`HotkeyManager` 监听线程在每个键盘事件上检查 `GlobalState::enabled()`。为 false 时跳过所有回调分发。这意味着全局开关关闭时热键完全不触发，而非触发后在下游被拒绝。
 
-## Commands
+### 关闭与恢复
 
-| Command | Description |
-|---------|-------------|
-| `global_get_enabled` | Returns the current boolean |
-| `global_set_enabled(enabled)` | Sets the switch, emits `global://enabled-changed`, and stops all sessions if turning off |
+关闭时（`enabled = false`）：
+- 调用 `SyncToolRegistry.stop_all()` 停止所有同步工具运行态会话
+- 调用 `clear_all_suppressions()` 清除所有按键抑制
+- 隐藏所有透明显示窗口（v0.17.5 起改为隐藏而非销毁）
 
-## Event
+重新打开时（`enabled = true`）：
+- 调用各工具的 `ensure_display_windows` / `ensure_overlay_window` 恢复透明窗口
+- 调用各工具的 `restart_hotkey_listeners` 重启热键监听
+- 向前端推送最新状态
 
-`global://enabled-changed` is emitted to the `main` window with a boolean payload. The frontend `useGlobalEnabled` hook (`src/hooks/use-global-enabled.tsx`) subscribes and updates the UI. When disabled, a red banner appears: "[ 全局总开关已关闭 ] 所有自动化功能与热键均已暂停".
+## 命令
 
-## Frontend integration
+| 命令 | 说明 |
+|------|------|
+| `global_get_enabled` | 返回当前布尔值 |
+| `global_set_enabled(enabled)` | 设置开关，emit `global://enabled-changed`，关闭时停止所有会话 |
 
-The `GlobalEnabledProvider` in `src/hooks/use-global-enabled.tsx` wraps the app. The Top Manifest Bar shows a switch with green (enabled) or red (disabled) styling. The `GlobalDisabledBanner` component renders the warning text when disabled.
+## 事件
 
-## Key source files
+`global://enabled-changed` emit 到 `main` 窗口，payload 为布尔值。前端 `useGlobalEnabled` hook（`src/hooks/use-global-enabled.tsx`）订阅并更新 UI。关闭时显示红色横幅：「[ 全局总开关已关闭 ] 所有自动化功能与热键均已暂停」。
 
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/global_state.rs` | `GlobalState` struct, `global_get_enabled` / `global_set_enabled` commands |
-| `src/hooks/use-global-enabled.tsx` | Frontend provider and hook |
-| `src/App.tsx` | `GlobalSwitch` and `GlobalDisabledBanner` components |
+## 前端集成
+
+`GlobalEnabledProvider`（`src/hooks/use-global-enabled.tsx`）包裹整个应用。顶栏显示带绿色（开启）或红色（关闭）样式的开关组件。`GlobalDisabledBanner` 组件在关闭时渲染警告文本。攻略网站页面不受全局开关影响。
+
+## 集成点
+
+- [热键系统](hotkeys.md) 监听线程每个事件检查 `GlobalState::enabled()`
+- [同步工具基座](sync-tool.md) 的 `SyncToolRegistry` 提供全局停止入口
+- [按键抑制器](key-suppressor.md) 的 `clear_all_suppressions` 在关闭时调用
+- [计时器](../features/timer.md)、[计数器](../features/counter.md)、[连发器](../features/rapidfire.md) 在恢复时重建窗口和热键
+
+## 关键源文件
+
+| 文件 | 用途 |
+|------|------|
+| `src-tauri/src/global_state.rs` | `GlobalState` 结构体、`global_get_enabled` / `global_set_enabled` 命令、`restore_active_windows` |
+| `src/hooks/use-global-enabled.tsx` | 前端 Provider 和 hook |
+| `src/App.tsx` | `GlobalSwitch` 和 `GlobalDisabledBanner` 组件 |

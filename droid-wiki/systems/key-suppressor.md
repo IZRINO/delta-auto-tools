@@ -1,41 +1,57 @@
-# Key suppressor
+# 按键抑制器
 
-The key suppressor in `src-tauri/src/key_suppressor.rs` is a second `WH_KEYBOARD_LL` hook that swallows physical key events so they do not reach the foreground application, while still allowing hotkey callbacks to fire. It is used by the rapidfire module when a card has `ignore_trigger_key` enabled.
+`src-tauri/src/key_suppressor.rs` 中的按键抑制器是第二个 `WH_KEYBOARD_LL` 钩子，用于吞噬物理按键事件使其不到达前台应用，同时仍允许热键回调触发。连发器模块在卡片启用 `ignore_trigger_key` 时使用。
 
-## How it works
+## 用途
 
-The `HotkeyManager` owns an optional `KeySuppressor` that is lazily started only when at least one card needs key suppression. It installs a second low-level keyboard hook that intercepts specified virtual key codes and returns non-zero from the hook procedure (swallowing the event), then forwards the event via a `crossbeam-channel` to the hotkey listener so callbacks still fire.
+解决物理按键自动重复问题。当用户物理按住触发键且启用 `ignore_trigger_key` 时，Windows 会每约 30ms 产生自动重复 KEYDOWN。仅通过 enigo 合成 Release 无法解决，因为物理按住时系统持续产生事件。按键抑制器在事件到达前台应用前将其吞噬（return 1），同时通过 crossbeam channel 将事件转发给热键监听线程，使热键回调仍能正常触发。
+
+## 工作原理
 
 ```mermaid
 graph TD
-    PhysKey["Physical key press"] --> Hk1["willhook hook"]
-    PhysKey --> Hk2["KeySuppressor hook"]
-    Hk2 -->|swallow VK| Swallow["Event does not reach foreground app"]
-    Hk2 -->|forward| Chan["crossbeam channel"]
-    Chan --> Listener["run_listener suppressed_rx loop"]
-    Listener -->|fire callbacks| Apps["Hotkey/Hold callbacks"]
-    Hk1 -->|filtered out| Skip["is_event_suppressed check skips this"]
+    PhysKey["物理按键事件"] --> LLHook["WH_KEYBOARD_LL 钩子<br/>(key-suppressor 线程)"]
+    LLHook -->|VK 在 suppressed_keys 中？| Check{"是"}
+    Check -->|是| Swallow["return 1 吞噬事件<br/>不传递给前台应用"]
+    Check -->|否| Pass["return 0 放行"]
+    Swallow --> Forward["通过 crossbeam channel<br/>转发 SuppressedKeyboardEvent"]
+    Forward --> HotkeyListener["shared-hotkey-listener 线程<br/>处理热键回调"]
 ```
 
-Without this deduplication, the same physical key press would be processed twice: once by willhook and once by the suppressor's forwarded channel. The `is_event_suppressed` function checks the shared VK set and tells the willhook path to skip events that the suppressor is handling.
+### 懒加载
 
-## Lifecycle
+KeySuppressor 不在启动时安装。仅当连发器卡片启用 `ignore_trigger_key` 时，`HotkeyManager` 才懒加载创建 KeySuppressor：
 
-- `start_suppressor()` - Lazily installs the hook on first use. Idempotent.
-- `suppress_key(key)` - Adds a VK to the suppressed set. Ensures the suppressor is started.
-- `unsuppress_key(key)` - Removes a VK from the suppressed set.
-- `stop_suppressor()` - Removes all keys and drops the hook.
-- `clear_all_suppressions()` - Clears all VKs (called on app shutdown and global switch off).
+1. 将目标 VK 加入 `suppressed_keys` 集合
+2. 如果 KeySuppressor 尚未启动，启动 worker 线程安装第二个 `WH_KEYBOARD_LL` 钩子
+3. worker 线程将吞噬的事件通过 crossbeam channel 转发给热键监听线程
+4. 热键监听线程通过 `suppressed_vk_set` 过滤 willhook 的重复事件（同一物理事件不会被两个钩子各处理一次）
 
-## Integration points
+### 清理
 
-- [Hotkeys](hotkeys.md) - `HotkeyManager` owns the suppressor and checks `is_event_suppressed` in its listener loop.
-- [Rapidfire](../features/rapidfire.md) - Calls `suppress_key` when a card enables `ignore_trigger_key`, so the trigger key does not also type into the game while rapidfire is active.
-- [Global state](global-state.md) - `clear_all_suppressions` is called when the global switch turns off.
+当所有 `ignore_trigger_key` 卡片被禁用或删除时，`clear_all_suppressions()` 清空 `suppressed_keys` 集合。KeySuppressor worker 线程在应用关闭时停止。
 
-## Key source files
+## 关键抽象
 
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/key_suppressor.rs` | `KeySuppressor`, VK conversion, hook installation, channel forwarding |
-| `src-tauri/src/hotkeys.rs` | `is_event_suppressed`, `start_suppressor`/`stop_suppressor`/`suppress_key`/`unsuppress_key` wrappers on `HotkeyManager` |
+| 类型 | 文件 | 说明 |
+|------|------|------|
+| `KeySuppressor` | `src-tauri/src/key_suppressor.rs` | 抑制器主体，持有 `suppressed_keys`、worker 线程句柄、事件发送端 |
+| `SuppressedKeyboardEvent` | `src-tauri/src/key_suppressor.rs` | 被抑制的键盘事件：`vk_code`、`scan_code`、`is_key_up`、`is_injected` |
+
+## 集成点
+
+- [热键系统](hotkeys.md) 的 `HotkeyManager` 懒加载管理 KeySuppressor 生命周期
+- [连发器](../features/rapidfire.md) 通过 `ignore_trigger_key` 卡片选项触发抑制
+- [全局总开关](global-state.md) 关闭时调用 `clear_all_suppressions()` 清除所有抑制
+
+## 修改入口
+
+- 修改抑制的按键范围：调整 `suppressed_keys` 集合的添加/移除逻辑
+- 修改事件转发：调整 crossbeam channel 的发送/接收逻辑
+- 新增使用抑制器的工具：在 `HotkeyManager` 中调用抑制器的 `add` / `remove` 方法
+
+## 关键源文件
+
+| 文件 | 用途 |
+|------|------|
+| `src-tauri/src/key_suppressor.rs` | `KeySuppressor`、`SuppressedKeyboardEvent`、worker 线程、`WH_KEYBOARD_LL` 回调 |

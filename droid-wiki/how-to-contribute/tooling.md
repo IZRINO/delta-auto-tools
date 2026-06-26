@@ -1,59 +1,59 @@
-# Tooling
+# 工具链
 
-## Build tools
+## 构建工具
 
 ### Vite
 
-The frontend uses Vite 7 with `@vitejs/plugin-react`. The dev server runs on port 1420 (strictPort - if taken, it fails rather than incrementing). The config is in `vite.config.ts` (not shown in the root listing but present). Tailwind v4 is integrated via `@tailwindcss/vite`.
+前端使用 Vite 7 + `@vitejs/plugin-react`。开发服务器运行在端口 1420（strictPort，被占用则失败而非递增）。配置在 `vite.config.ts`。Tailwind v4 通过 `@tailwindcss/vite` 集成。
 
 ### TypeScript
 
-TypeScript 5.8 with strict settings. `bun run build` runs `tsc && vite build`. Path aliases: `@/components`, `@/components/ui`, `@/lib`, `@/hooks` (configured in tsconfig and vite).
+TypeScript 5.8，strict 模式。`bun run build` 执行 `tsc && vite build`。路径别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`（在 tsconfig 和 vite 中配置）。
 
 ### Tailwind CSS v4
 
-CSS-first configuration - there is no `tailwind.config.js`. Theme tokens are defined in `src/App.css` under `@theme inline`. Global `--radius: 0` for 90-degree corners.
+CSS-first 配置，不存在 `tailwind.config.js`。主题 token 在 `src/App.css` 的 `@theme inline` 中定义。全局 `--radius: 0` 保证 90 度直角。
 
 ### Bun
 
-Bun is the package manager and script runner. Do not use npm/pnpm/yarn. `bun install` reads `bun.lock`.
+Bun 是包管理器和脚本运行器。不要使用 npm/pnpm/yarn。`bun install` 读取 `bun.lock`。
 
 ### Tauri 2
 
-Tauri CLI is available via `bun run tauri`. The config is in `src-tauri/tauri.conf.json`. Capabilities (permissions) are in `src-tauri/capabilities/default.json`.
+Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`。权限在 `src-tauri/capabilities/default.json`。
 
-## Rust tooling
+## Rust 工具链
 
 ### Cargo
 
-`src-tauri/Cargo.toml` is the manifest. The crate is named `delta-auto-tools` with library name `delta_auto_tools_lib`. Build with `cargo check --manifest-path src-tauri/Cargo.toml`. Test with `cargo test --manifest-path src-tauri/Cargo.toml`.
+`src-tauri/Cargo.toml` 是 manifest。crate 名为 `delta-auto-tools`，库名为 `delta_auto_tools_lib`。编译检查用 `cargo check --manifest-path src-tauri/Cargo.toml`。测试用 `cargo test --manifest-path src-tauri/Cargo.toml`。
 
-### Key Rust dependencies
+### 关键 Rust 依赖
 
-- `willhook` - Global keyboard hook (WH_KEYBOARD_LL)
-- `xcap` - Screen capture
-- `enigo` - Keyboard input simulation
-- `rodio` - Audio playback
-- `image` - Image processing (template matching, color sampling)
-- `tauri` 2 with plugins: dialog, opener, window-state, updater, process
+- `willhook`：全局键盘钩子（WH_KEYBOARD_LL）
+- `xcap`：截屏
+- `enigo`：键盘输入模拟
+- `rodio`：音频播放
+- `image`：图像处理（模板匹配、颜色采样）
+- `tauri` 2 及插件：dialog、opener、window-state、updater、process
 
 ## PM2
 
-`ecosystem.config.cjs` splits Vite and Tauri into two PM2 processes. The Tauri process waits for port 1420 before starting (via `scripts/wait-for-port.cjs`). Useful for keeping both running in the background during development.
+`ecosystem.config.cjs` 将 Vite 和 Tauri 拆为两个 PM2 进程。Tauri 进程通过 `scripts/wait-for-port.cjs` 等待端口 1420 可用后启动。适合开发时在后台同时运行两者。
 
-## Release scripts
+## 发布脚本
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/build-release.ps1` | One-click signed build: sets TAURI_SIGNING_PRIVATE_KEY, runs tauri build, generates .sig |
-| `scripts/generate-latest-json.ps1` | Generates `latest.json` from the .sig file for the Tauri updater |
-| `scripts/setup-update-key.ps1` | Generates the Tauri signing key pair (first-time setup) |
-| `scripts/wait-for-port.cjs` | Waits for port 1420 to be available (used by PM2) |
+| 脚本 | 用途 |
+|------|------|
+| `scripts/build-release.ps1` | 一键签名构建：设置 TAURI_SIGNING_PRIVATE_KEY，执行 tauri build，生成 .sig |
+| `scripts/generate-latest-json.ps1` | 从 .sig 文件生成 `latest.json`（Tauri 更新器清单） |
+| `scripts/setup-update-key.ps1` | 生成 Tauri 签名密钥对（首次设置） |
+| `scripts/wait-for-port.cjs` | 等待端口 1420 可用（PM2 使用） |
 
 ## shadcn/ui
 
-The project uses shadcn/ui (v4.11.0) with `components.json` configuration. Base components are in `src/components/ui/` (~60 components). The style is "radix-vega" with remixicon icons. To add a component, use `bunx shadcn add <component>`.
+项目使用 shadcn/ui（v4.11.0），配置在 `components.json`。基础组件在 `src/components/ui/`。风格为 radix-vega，图标用 remixicon。添加组件用 `bunx shadcn add <component>`。
 
 ## Codegraph
 
-The repo has a `.codegraph/` directory, indicating the codegraph MCP server can be used for symbol search and dependency exploration during development.
+仓库有 `.codegraph/` 目录，表示 codegraph MCP 服务器可用于开发期间的符号搜索和依赖探索。

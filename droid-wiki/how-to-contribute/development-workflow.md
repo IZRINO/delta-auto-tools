@@ -1,41 +1,41 @@
-# Development workflow
+# 开发流程
 
-## Branch and code cycle
+## 分支与编码循环
 
-1. `git checkout master && git pull` to start from the latest.
-2. Create a feature branch: `git checkout -b <topic>`.
-3. Code your change. Follow the [patterns and conventions](patterns-and-conventions.md).
-4. Test locally:
-   - `bun run test` for frontend Vitest tests.
-   - `cargo check --manifest-path src-tauri/Cargo.toml` for Rust compile check.
-   - `cargo test --manifest-path src-tauri/Cargo.toml` for Rust unit tests.
-5. For UI work, `bun run dev` gives a browser-only preview (native commands disabled). For full integration testing, `bun run tauri dev`.
+1. `git checkout master; git pull` 从最新代码开始
+2. 创建 feature 分支：`git checkout -b <topic>`
+3. 编码改动，遵循 [模式与约定](patterns-and-conventions.md)
+4. 本地测试：
+   - `bun run test` 前端 Vitest 测试
+   - `cargo check --manifest-path src-tauri/Cargo.toml` Rust 编译检查
+   - `cargo test --manifest-path src-tauri/Cargo.toml` Rust 单元测试
+5. UI 开发用 `bun run dev` 获取浏览器预览（原生命令禁用）。完整集成测试用 `bun run tauri dev`。
 
-## Tauri command checklist
+## Tauri command 检查清单
 
-When adding or changing a Tauri command, update all three:
+新增或修改 Tauri command 时，三处都要更新：
 
-1. Define the `#[tauri::command]` function in the module.
-2. Register it in `src-tauri/src/lib.rs` under `generate_handler![]` (grouped by module comment).
-3. Add the permission in `src-tauri/capabilities/default.json`.
+1. 在模块中定义 `#[tauri::command]` 函数
+2. 在 `src-tauri/src/lib.rs` 的 `generate_handler![]` 中注册（按模块注释分组）
+3. 在 `src-tauri/capabilities/default.json` 中添加权限
 
-Missing any of these causes the frontend `invoke()` to fail at runtime.
+遗漏任何一处都会导致前端 `invoke()` 运行时失败。
 
-## Settings changes
+## Settings 变更
 
-When modifying a tool's settings struct:
+修改工具 settings 结构时：
 
-1. Add the field with `#[serde(default = "fn")]` for backward-compatible deserialization.
-2. Use `#[serde(rename_all = "camelCase")]` on the struct (required for all frontend-facing structs).
-3. Update the frontend types in the corresponding `*-types.ts`.
-4. Update the `settingsToForm()` / `parseSettingsForm()` conversion in `*-utils.ts`.
-5. If the field needs to trigger hotkey re-registration or watcher restart, handle it in the module's `save_settings` handler.
+1. 添加字段时使用 `#[serde(default = "fn")]` 保证向后兼容反序列化
+2. 结构体使用 `#[serde(rename_all = "camelCase")]`（所有面向前端的结构体必须）
+3. 更新对应 `*-types.ts` 中的前端类型
+4. 更新 `*-utils.ts` 中的 `settingsToForm()` / `parseSettingsForm()` 转换
+5. 如字段需要触发热键重注册或 watcher 重启，在模块的 `save_settings` 中处理
 
-## Commit conventions
+## Commit 约定
 
-- Commit messages in Chinese (per AGENTS.md).
-- For version releases, the subject is `发布 v<version>` and the body must include a `变更：` section with actual change items. See the [deployment](../deployment.md) page for the full release process.
+- Commit message 使用中文（遵循 AGENTS.md）
+- 版本发布时 subject 为 `发布 v<version>`，正文必须包含 `变更：` 段，列出实际变更项。完整发布流程见 [部署与发布](../deployment.md)。
 
-## Version sync
+## 版本号同步
 
-When bumping the version, update all three in lockstep: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`. If `Cargo.lock` updates the local crate version, commit that too.
+更新版本号时必须同步修改三个文件：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。如 `Cargo.lock` 中本包版本随解析更新，也应一并提交。

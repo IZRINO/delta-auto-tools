@@ -1,166 +1,227 @@
-# Rapidfire
+# 连发器
 
-## Purpose
+## 用途
 
-The Rapidfire feature auto-fires a configured target key while the user holds down a trigger key. It is designed for Delta Force players who need to repeatedly press a key (for example, an in-game fire or interact key) at a configurable cadence. Each rapidfire **card** is an independent configuration channel with its own trigger key, target key, interval, jitter, minimum press spacing, and compensation policy. Cards are organized into **groups**, and each group can own a separate transparent overlay window.
+连发器模块用于在用户按住触发键时，以可配置的间隔高速连发目标键。松开触发键后，若连发次数为奇数，会自动补发一次使总次数为偶数（除非开启 `skip_compensation`）。每张卡片可独立配置触发键、目标键、间隔、抖动、间距等参数，并通过分组系统管理各自的透明显示窗口。
 
-The feature is built on the shared [`HotkeyManager`](../systems/hotkeys.md) hold mechanism: a trigger key is registered as a *hold* binding (not a tap hotkey), so `HoldAction::Down` starts firing and `HoldAction::Up` stops it. Each trigger-down event spawns an independent **session** on its own OS worker thread, so pressing the same trigger key rapidly never cancels or aborts the previous session. This per-session isolation is the defining property of the rapidfire state machine.
+该模块基于 [同步工具基座](../systems/sync-tool.md) 实现（`RapidfireLogic` 实现 `SyncToolLogic` trait），使用 `ConflictPolicy::AllowHold` 热键冲突策略，可与计时器/计数器的普通 scope 共享热键，详见 [热键系统](../systems/hotkeys.md)。透明显示窗口与位置校准遵循 [透明叠加窗](../systems/overlay-windows.md) 约束。
 
-## Directory layout
+## 目录结构
 
-```
+```text
 src-tauri/src/rapidfire/
-├── mod.rs          # RapidfireState = ToolState<RapidfireLogic>, session state machine, hold callbacks, worker threads, transparent & position windows, stop_all
-├── types.rs        # RapidfireSettings, RapidfireCard, RapidfireGroup, RapidfireBootstrap, RapidfireRunState, RapidfireRunStatus, RapidfireRect, selection outcome
-├── events.rs       # event name constants: STATE_CHANGED, HOTKEY_ERROR
-└── settings.rs     # rapidfire_settings.json load/save
+├── mod.rs           # 模块入口、Tauri command、状态、session 管理、热键回调、worker 线程
+├── types.rs         # RapidfireSettings / RapidfireCard / RapidfireGroup / RapidfireBootstrap 等
+├── settings.rs      # 设置加载与持久化（rapidfire_settings.json）
+└── events.rs        # 事件名常量
 
 src/components/app/
-├── rapidfire-page.tsx   # frontend container: workbench, display overlay, position overlay, card config, drag reorder
-└── rapidfire-types.ts   # frontend types, constants, settings<->form conversion, validation, status helpers
+├── rapidfire-page.tsx   # 前端页面（Bootstrap/Form 双状态 + autosave）
+└── rapidfire-types.ts   # 前端 TypeScript 类型与转换函数
 ```
 
-## Key abstractions
+## 关键源文件
 
-| Abstraction | Rust / TS location | Role |
-|---|---|---|
-| `RapidfireState` | `src-tauri/src/rapidfire/mod.rs` (`RapidfireState = ToolState<RapidfireLogic>`) | Generic ToolBase state holding settings + per-card runtimes. See [../systems/tool-base.md](../systems/tool-base.md). |
-| `RapidfireLogic` | `src-tauri/src/rapidfire/mod.rs` | ToolLogic impl. Owns `runs: HashMap<cardId, CardRuntime>` and `pending_position`. |
-| `CardRuntime` | `src-tauri/src/rapidfire/mod.rs` | Per-card aggregate of all active sessions + a shared `last_press_at` for min-spacing enforcement. |
-| `RapidfireSessionRuntime` | `src-tauri/src/rapidfire/mod.rs` | One firing session: `count`, `status`, an `mpsc::Sender<SessionControl>` control channel, and a `compensate_now` flag. |
-| `RapidfireSessionWorker` | `src-tauri/src/rapidfire/mod.rs` | Snapshot of card parameters carried into the OS worker thread; owns the `control_rx` end of the channel. |
-| `RapidfireSettings` | `src-tauri/src/rapidfire/types.rs` | Top-level persisted config: master switch, groups, cards, global compensation delay, legacy-global defaults. Persisted to `rapidfire_settings.json`. |
-| `RapidfireCard` | `src-tauri/src/rapidfire/types.rs` | Per-channel config: trigger/target key, interval, press jitter range, min press spacing, trigger jitter, cancel-on-release, skip-compensation, ignore-trigger-key, enabled. |
-| `RapidfireGroup` | `src-tauri/src/rapidfire/types.rs` | Group of cards sharing one transparent overlay window (id/name/enabled/showOverlay/overlayPosition/overlayWidth). |
-| `RapidfireRunState` | `src-tauri/src/rapidfire/types.rs` | Frontend-facing per-card run snapshot: `cardId`, `status` (Idle/Firing/PendingCompensation), `count`. |
-| `RapidfireBootstrap` | `src-tauri/src/rapidfire/types.rs` | Full state snapshot returned by `rapidfire_get_bootstrap`: settings + runs + hotkey_error. |
-| `ConflictPolicy::AllowHold` | `src-tauri/src/hotkey_types.rs` | The rapidfire hold scope declares AllowHold so it can coexist with timer/counter normal hotkey scopes on the same key. See [../systems/hotkeys.md](../systems/hotkeys.md). |
-| `SessionControl` | `src-tauri/src/rapidfire/mod.rs` | `StopWithCompensation` vs `Cancel` control message sent from the main thread to the worker. |
-| `WorkerDecision` | `src-tauri/src/rapidfire/mod.rs` | Worker loop decision: `Fire { stop_after_fire }`, `Stop`, or `Cancel`. |
-| `TargetFirePlan` | `src-tauri/src/rapidfire/mod.rs` | Resolved plan for one target-key press: whether to release the held trigger first (same-key case) then Press + Release the target. |
-| KeySuppressor | `src-tauri/src/hotkeys.rs` via `HotkeyManager::suppress_key` | When `ignore_trigger_key` is set, the physical trigger key is swallowed at the WH_KEYBOARD_LL hook so it never reaches the foreground app, while the hold callback still fires. See [../systems/key-suppressor.md](../systems/key-suppressor.md). |
-| Transparent overlay window | `src-tauri/src/rapidfire/mod.rs` + `src-tauri/src/overlay_utils.rs` | Per-group borderless, transparent, always-on-top, click-through window showing trigger->target mapping and live count. See [../systems/overlay-windows.md](../systems/overlay-windows.md). |
+| 文件 | 说明 |
+|------|------|
+| `src-tauri/src/rapidfire/mod.rs` | 模块入口，定义 `RapidfireLogic`、`RapidfireState`、`SyncToolLogic` 实现、所有 `#[tauri::command]`、session worker 线程、热键 hold 回调、透明窗口管理 |
+| `src-tauri/src/rapidfire/types.rs` | 所有对外序列化结构体（均使用 `#[serde(rename_all = "camelCase")]`），含旧配置兼容反序列化逻辑 |
+| `src-tauri/src/rapidfire/settings.rs` | `load_settings` / `save_settings`，持久化到 `rapidfire_settings.json`，空卡片时自动补默认卡片 |
+| `src-tauri/src/rapidfire/events.rs` | 事件名常量 `STATE_CHANGED` / `HOTKEY_ERROR` |
+| `src/components/app/rapidfire-page.tsx` | 前端页面，使用 `useBootstrapForm` + autosave + 拖拽排序 |
+| `src/components/app/rapidfire-types.ts` | 前端类型、`rapidfireSettingsToForm` / `parseRapidfireSettingsForm` 转换、键位归一化、状态徽章文案 |
 
-## How it works
+## 关键抽象
 
-### Hold mechanism and scope registration
+| 抽象 | 定义位置 | 说明 |
+|------|----------|------|
+| `RapidfireLogic` | `mod.rs` | 实现 `SyncToolLogic` trait 的逻辑层，持有 `runs`（每张卡片的运行态）与 `pending_position` |
+| `RapidfireState` | `mod.rs` | `ToolState<RapidfireLogic>` 别名 |
+| `RapidfireSettings` | `types.rs` | 持久化设置：总开关、分组列表、卡片列表、补齐延迟、透明窗口配置、旧全局兼容字段 |
+| `RapidfireCard` | `types.rs` | 单张连发器卡片配置：触发键、目标键、间隔、按下抖动、间距、触发抖动、补齐/忽略开关 |
+| `RapidfireGroup` | `types.rs` | 分组：id、名称、启用、透明窗口显示/位置/宽度 |
+| `RapidfireBootstrap` | `types.rs` | 初始规范态：settings + runs（每卡片运行状态）+ hotkey_error |
+| `CardRuntime` | `mod.rs` | 单张卡片的运行态：多 session map、活跃 session id 栈、`last_press_at` 间距锁 |
+| `RapidfireSessionRuntime` | `mod.rs` | 单个 session 运行态：count、status、control_tx、compensate_now |
+| `RapidfireSessionWorker` | `mod.rs` | worker 线程参数包：卡片配置快照 + mpsc 控制通道 + 间距锁 |
+| `PendingRapidfirePosition` | `mod.rs` | 位置设置会话状态：group_id、原始位置、暂存位置、oneshot sender |
 
-Rapidfire does **not** use tap hotkeys. It registers a single hold scope named `"rapidfire"` on the shared `HotkeyManager` via `replace_hold_scope` / `clear_hold_scope` (see [../systems/hotkeys.md](../systems/hotkeys.md)). Each binding maps a trigger-key string to a list of enabled card IDs sharing that trigger key. The conflict policy is `ConflictPolicy::AllowHold`, which permits the rapidfire hold scope to coexist on the same physical key with timer/counter *normal* scopes (the runtime dispatches hold Down/Up first, then the normal tap hotkey). Morse uses `ConflictPolicy::Strict` and is therefore rejected if it conflicts.
+> **serde 约定**：`types.rs` 中所有对外序列化的结构体均使用 `#[serde(rename_all = "camelCase")]`，前端 TypeScript 类型字段名必须匹配 camelCase（如 `rapidfireEnabled`、`triggerKey`、`targetKey`、`intervalMs`、`pressJitterMinMs`、`skipCompensation`、`ignoreTriggerKey`）。
 
-When the keyboard hook fires:
-- `HoldAction::Down` -> `handle_key_down` creates a new session per matching card and spawns a worker thread per session.
-- `HoldAction::Up` -> `handle_key_up` stops the *latest active* session for each matching card with `SessionControl::StopWithCompensation`.
+## 工作原理
 
-`restart_hotkey_listeners` is idempotent: it compares the new trigger-key-to-card-IDs map against the in-memory previous map and skips `replace_hold_scope` when unchanged, so an autosave while the user is holding a key does not disrupt the active hold callback.
-
-### Combined trigger keys
-
-A trigger key may be a single key (`F1`) or a combination including Ctrl/Alt/Shift/Win (`Shift+-`). The willhook hold mechanism dispatches by physical key state, which produces an important co-firing behavior:
-
-- Pressing the **modified** binding (e.g. `Shift+1`) also triggers the **bare** binding (e.g. `1`) if both are registered, creating a session for each card. Releasing the modifier only stops the modified session; the bare-key session continues firing until its own Up event.
-- Pressing the bare key first and then the modifier only **adds** the modified session; it does not restart or abort the already-running bare session.
-
-This is intentional and tested: each Down event is an independent session. The bare and modified bindings are independent hold entries that happen to share a primary key.
-
-### Session lifecycle (per trigger Down)
-
-Each trigger Down creates a brand-new session. Old sessions are **never cancelled or aborted** by a new Down. They run to completion, exiting on their own Up event and applying their card's compensation policy. This is the core invariant that makes rapidfire safe under rapid re-pressing.
+### 按住触发连发流程
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Idle: no active sessions
-    Idle --> Firing: trigger Down (new session)
-    Firing --> Firing: each interval tick fires target key
-    Firing --> Stopping: trigger Up (StopWithCompensation) or stop_all
-    Stopping --> Compensating: count is odd AND !skip_compensation
-    Stopping --> Finished: count is even OR skip_compensation
-    Compensating --> Finished: compensation delay elapsed (or compensated early)
-    Finished --> [*]: session removed from CardRuntime
-    note right of Firing
-        Multiple Firing sessions can coexist
-        on the same card (independent OS threads).
-        New Down does not touch old sessions.
-    end note
+flowchart TD
+    A[用户按住触发键] --> B[HotkeyManager hold Down 回调]
+    B --> C[handle_key_down]
+    C --> D{总开关开启?}
+    D -- 否 --> E[结束]
+    D -- 是 --> F[收集该触发键下所有启用卡片]
+    F --> G[为每张卡片创建 session]
+    G --> H[插入 CardRuntime.sessions]
+    H --> I{批次中有 ignore_trigger_key 卡片?}
+    I -- 是 --> J[HotkeyManager.suppress_key 抑制触发键]
+    I -- 否 --> K
+    J --> K[spawn_session_worker 每卡片独立 OS 线程]
+    K --> L[emit rapidfire://state-changed]
+    L --> M[worker: 首次开火前 INITIAL_SETTLE_MS 稳定延迟]
+    M --> N{trigger_jitter_max_ms > 0?}
+    N -- 是 --> O[抖动等待期]
+    O --> P{抖动期间松手且 cancel_jitter_on_release?}
+    P -- 是 --> Q[立即触发一次 count=1 进入补齐判断]
+    P -- 否 --> R[继续等待抖动到期]
+    N -- 否 --> S
+    R --> S[主循环: 按 interval_ms 间隔连发]
+    S --> T[ensure_press_spacing 最小间距节流]
+    T --> U[press_release_target_key enigo 按下/抬起目标键]
+    U --> V[count += 1, emit state-changed]
+    V --> W{收到 StopWithCompensation?}
+    W -- 否 --> S
+    W -- 是 --> X
+    Q --> X
+    X{count 奇数且未 skip_compensation?}
+    X -- 是 --> Y[等待 compensation_delay 随机延迟]
+    X -- 否 --> Z[finish_session]
+    Y --> AA[补发一次使总数为偶数]
+    AA --> Z
 ```
 
-The worker thread (`run_session_worker`) executes this sequence:
+### 松开触发键流程
 
-1. **Initial settle delay** (`RAPIDFIRE_INITIAL_SETTLE_MS` = 8ms): lets the physical trigger-key event reach the foreground app before the first synthetic target-key press, avoiding an input ordering race where enigo's SendInput target key arrives before the trigger key.
-2. **Trigger jitter window** (`trigger_jitter_max_ms`): if non-zero, the worker waits up to this duration before the first fire. If `cancel_jitter_on_release` is true and the user releases during this window, the worker fires once immediately and jumps to the compensation stage. If `cancel_jitter_on_release` is false, the release is ignored and the jitter continues.
-3. **Main firing loop**: every `interval_ms` it calls `ensure_press_spacing` (per-card `min_press_spacing_ms`, enforced via a shared `last_press_at` `Arc<Mutex<Instant>>`) then performs one `Press -> press_jitter_duration_ms(press_jitter_min_ms, press_jitter_max_ms) -> Release` cycle of the target key using enigo. It listens on `control_rx` for `StopWithCompensation` or `Cancel` between ticks. If `StopWithCompensation` arrives when `count == 0`, it fires exactly once (`stop_after_fire`) so the user always gets at least one press.
-4. **Compensation stage**: after the loop exits, if `should_compensate_count(count, skip_compensation)` is true (i.e. count is odd and `skip_compensation` is false), the worker waits a random `compensation_delay_min_ms..=compensation_delay_max_ms` (polling `compensate_now` every 10ms so an external force can short-circuit), then fires one extra target key to make the total even. If `skip_compensation` is true, the session exits with the odd count as-is.
-5. **Finish**: `finish_session` removes the session from `CardRuntime`. If the card has no remaining sessions, the `CardRuntime` entry is dropped, returning the card to `Idle`.
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant HM as HotkeyManager
+    participant HK as handle_key_up
+    participant S as Session Worker
+    participant ST as RapidfireState
 
-> **enigo note**: The target key is driven with a real `Direction::Press` followed by a jittered sleep then `Direction::Release`. It never uses `Direction::Click`. When the trigger key and target key are the same physical key, enigo first releases the held trigger key (`ReleaseHeldTrigger`) with a `RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS` (2ms) settle, then presses and releases the target, because a held physical key will not produce a fresh Press event.
+    U->>HM: 松开触发键 (hold Up)
+    HM->>HK: HoldAction::Up(card_ids)
+    HK->>ST: stop_latest_active_session(StopWithCompensation)
+    ST->>S: control_tx.send(StopWithCompensation)
+    HK->>ST: 检查 ignore_trigger_key 是否还需抑制
+    alt 无活跃 ignore session
+        HM->>HM: unsuppress_key(触发键)
+    end
+    HK-->>HK: emit rapidfire://state-changed
+    S->>S: 主循环退出
+    alt count 奇数且未 skip
+        S->>S: 等待 compensation_delay
+        S->>S: press_release_target_key 补发一次
+    end
+    S->>ST: finish_session 移除 session
+    ST-->>ST: emit rapidfire://state-changed
+```
 
-### Per-card fields vs legacy global fields
+### Session 模型
 
-The card owns the authoritative per-channel timing:
+每次按住触发键会为每张匹配卡片创建一个独立的 OS worker 线程（`thread::Builder::new().spawn`），同一张卡片可同时存在多个 session（如快速重复按压）。Session 通过 `mpsc::channel` 接收控制信号：
 
-| Field | Default | Range / rule | Role |
-|---|---|---|---|
-| `interval_ms` | 100 | min 1 (`RAPIDFIRE_MIN_INTERVAL_MS`) | Firing cadence. |
-| `press_jitter_min_ms` / `press_jitter_max_ms` | 8 / 12 | 1..=2000; min <= max | Duration each target-key press is held. |
-| `min_press_spacing_ms` | 80 | 0..=10000 | Minimum spacing between consecutive target-key presses on this card; enforced via shared `last_press_at`. |
-| `trigger_jitter_max_ms` | 0 | 0..=99999; 0 disables | Startup jitter: max wait after trigger Down before first fire. |
-| `cancel_jitter_on_release` | true | bool | If true, releasing during the trigger-jitter window fires once and jumps to compensation. |
-| `skip_compensation` | false | bool | If true, odd-count compensation is disabled; the session exits with the raw count. |
-| `ignore_trigger_key` | false | bool | If true, the physical trigger key is swallowed at the WH_KEYBOARD_LL hook via `HotkeyManager::suppress_key` so it does not reach the foreground app. See [../systems/key-suppressor.md](../systems/key-suppressor.md). |
+- `StopWithCompensation`：停止连发，进入补齐判断（奇数次数补发一次）
+- `Cancel`：立即取消，不补齐
 
-`RapidfireSettings.min_press_spacing_ms`, `trigger_jitter_max_ms`, and `cancel_jitter_on_release` at the settings level are **legacy global defaults only**. During deserialization (`RapidfireCard::deserialize`), any card field that is absent inherits from these global values, then the global values are kept purely for backwards-compatible deserialization. New saves always write per-card values; the settings-level copies are mirrored back from the default group on save.
+`NEXT_RAPIDFIRE_SESSION_ID`（`AtomicU64`）为每个 session 分配全局唯一 id。`CardRuntime` 用 `active_session_ids` 栈记录活跃 session，`stop_latest_active_session` 只停止最近一个。
 
-### Stop semantics
+### 关键参数
 
-- `rapidfire_stop` and the global master switch (`global_set_enabled(false)` -> `rapidfire::stop_all`) send `SessionControl::Cancel` to every active session. Cancel exits the worker immediately without compensation and without a final fire.
-- `handle_key_up` (the natural trigger release) sends `StopWithCompensation` to the *latest* active session only (`stop_latest_active_session` walks `active_session_ids` from the top). Older sessions that are still firing are untouched; they continue until their own Up arrives.
-- `stop_all_sessions` (used by `stop_all` and `shutdown`) clears `active_session_ids` and sends the control message to every session.
-- `stop_removed_or_disabled_sessions` (called on save) cancels sessions for cards that were removed or disabled in the new settings.
+| 参数 | 字段 | 默认值 | 范围 | 说明 |
+|------|------|--------|------|------|
+| 连发间隔 | `intervalMs` | 100 | >= 1 | 每次连发的间隔毫秒数 |
+| 按下抖动下限 | `pressJitterMinMs` | 8 | 1-2000 | 目标键按下保持时间抖动下限 |
+| 按下抖动上限 | `pressJitterMaxMs` | 12 | 1-2000 | 目标键按下保持时间抖动上限 |
+| 最小间距 | `minPressSpacingMs` | 80 | 0-10000 | 同卡片目标键最小触发间距（跨 session 节流） |
+| 触发抖动上限 | `triggerJitterMaxMs` | 0 | 0-99999 | 按下触发键后启动延迟上限，0=关闭 |
+| 抖动松手触发 | `cancelJitterOnRelease` | true | bool | 抖动期间松手是否立即触发一次 |
+| 跳过补齐 | `skipCompensation` | false | bool | 松开时不补齐奇数次数 |
+| 忽略触发键 | `ignoreTriggerKey` | false | bool | 阻止触发键同步输入到前台应用 |
+| 补齐延迟下限 | `compensationDelayMinMs` | 100 | 0-10000 | 补发前的随机等待下限 |
+| 补齐延迟上限 | `compensationDelayMaxMs` | 150 | 0-10000 | 补发前的随机等待上限 |
 
-### Key suppression lifecycle
+### 触发键与目标键
 
-When at least one card in a trigger-key batch has `ignore_trigger_key` enabled, `handle_key_down` calls `HotkeyManager::suppress_key` for each distinct trigger key in the batch. The suppression installs a WH_KEYBOARD_LL hook that swallows the physical key. On `handle_key_up`, suppression is removed only when no remaining `ignore_trigger_key` card has an active session for that key. On save, suppression state is reconciled: trigger keys that no longer have any enabled ignore-card are unsuppressed, and if no ignore-cards remain the entire KeySuppressor hook is stopped.
+- **触发键**（`triggerKey`）：支持单键或组合键（如 `F1`、`Shift+-`、`Alt`），通过 `normalize_trigger_key` 归一化
+- **目标键**（`targetKey`）：必须是单键，通过 `normalize_single_key` 归一化，支持字母、数字、功能键、符号键、方向键等
+- 当触发键与目标键主键相同时，`target_fire_plan` 会先 Release 物理按住的触发键再 Press 目标键（enigo 合成）
+- `ignore_trigger_key` 开启时，通过 `HotkeyManager::suppress_key` 在 WH_KEYBOARD_LL 钩子层吞噬物理触发键事件，使其不到达前台应用，但热键回调仍正常触发
 
-### Transparent and position windows
+### 分组与透明窗口
 
-- **Display window** label: `rapidfire-display` (default group) or `rapidfire-display-<sanitized-group-id>` for custom groups. Created borderless, transparent, always-on-top, click-through (`set_ignore_cursor_events(true)`), `skip_taskbar`, not focused. Width is per-group, clamped to 320..=800px; height is computed from enabled card count. URL: `index.html?mode=rapidfire-display&groupId=<encoded>`.
-- **Position window** label: `rapidfire-position` (or `rapidfire-position-<group-id>`). A draggable calibration overlay opened by `rapidfire_begin_position_selection`. The position is staged via `rapidfire_position_moved` and committed with `rapidfire_position_commit` (Enter) or cancelled with `rapidfire_position_cancel` (Esc). Window destruction sends `RapidfireSelectionKind::Closed`.
+卡片通过 `groupId` 归属到 `RapidfireGroup`，每个分组独立配置透明显示窗口：
 
-Both window types follow the shared overlay conventions in [../systems/overlay-windows.md](../systems/overlay-windows.md).
+- `showOverlay`：是否显示透明窗口
+- `overlayPosition`：窗口位置 `{x, y}`
+- `overlayWidth`：窗口宽度（320-800，默认 400）
+- 窗口高度根据该分组启用卡片数动态计算（`display_height`）
 
-### Frontend
+窗口 label 按分组 id 区分：默认分组为 `rapidfire-display`，其他分组为 `rapidfire-display-{safe_id}`。位置设置窗口同理（`rapidfire-position` / `rapidfire-position-{safe_id}`）。`ensure_overlay_window` 会清理不再活跃的窗口（`destroy_stale_windows`）。
 
-`RapidfirePage` (`src/components/app/rapidfire-page.tsx`) branches on `?mode=rapidfire-display` / `?mode=rapidfire-position` to render the overlay/position components, otherwise it renders the workbench. The workbench uses the standard bootstrap/form dual-state pattern with autosave (400ms debounce) via `rapidfire_save_settings`. Cards support drag reorder using pointer events (`pointerdown` on a drag handle starts a drag, `pointerenter` on another card reorders immediately, a global `pointerup` ends the drag); `moveRapidfireCard` performs the array reorder. Up/down buttons remain as an accessibility fallback.
+## 集成点
 
-The display overlay subscribes to `RAPIDFIRE_EVENTS.stateChanged` and renders one row per enabled card showing `triggerKey -> targetKey`, the card name, and the live `count`.
+### 同步工具基座
 
-## Integration points
+`RapidfireLogic` 实现 `SyncToolLogic` trait（[同步工具基座](../systems/sync-tool.md)）：
 
-| Integration | How |
-|---|---|
-| [../systems/tool-base.md](../systems/tool-base.md) | `RapidfireState = ToolState<RapidfireLogic>`; `RapidfireLogic` implements `ToolLogic` (`load_settings`, `save_settings`, `build_bootstrap`, `emit_state`). Shared `settings` + `hotkey_error` live in `ToolStateInner`; tool-specific `runs` and `pending_position` live in `RapidfireLogic`. |
-| [../systems/hotkeys.md](../systems/hotkeys.md) | Registers the `"rapidfire"` hold scope with `ConflictPolicy::AllowHold`. Coexists with timer/counter normal scopes; conflicts with Morse Strict scopes. `restart_hotkey_listeners` is idempotent and skips re-registration when the binding map is unchanged. |
-| [../systems/key-suppressor.md](../systems/key-suppressor.md) | `ignore_trigger_key` per-card triggers `HotkeyManager::suppress_key` / `unsuppress_key` / `stop_suppressor`. Suppression is reconciled on every save and on every Up event. |
-| [../systems/overlay-windows.md](../systems/overlay-windows.md) | Per-group display windows and per-group position windows. Shared `overlay_utils` helpers (`destroy_stale_windows`, `destroy_windows_with_prefix`, `safe_label_component`, `encoded_query_value`) handle label sanitization and cleanup. |
-| Global state (`src-tauri/src/global_state.rs`) | `global_set_enabled(false)` calls `rapidfire::stop_all`, which cancels every session, clears all suppressions, stops the suppressor hook, and emits the idle bootstrap. |
-| Profile system (`src-tauri/src/profile/mod.rs`) | `rapidfire_save_settings` calls `profile::update_active_profile_snapshot` with `ActiveProfileSnapshotPatch::Rapidfire` so the active profile snapshot stays in sync. Profile apply reuses `restart_hotkey_listeners`, `ensure_overlay_window`, and `emit_state`. |
-| Frontend events | Emits `rapidfire://state-changed` (to `main` and each group display label) and `rapidfire://hotkey-error` (to `main`). Constants in `src/lib/tauri-events.ts` as `RAPIDFIRE_EVENTS`. |
+- `const SCOPE = "rapidfire"` / `const SCOPE_LABEL = "连发器"`
+- `tool_enabled` 读取 `settings.rapidfire_enabled`
+- `build_hotkey_bindings` 按触发键聚合启用卡片，构建 `HotkeyBindingSet`（全部为 hold 绑定）
+- `stop_all` 停止所有 session 并清理抑制状态
+- `RapidfireCard` 实现 `SyncItem`，`RapidfireGroup` 实现 `SyncGroup`，`RapidfireSettings` 实现 `SyncSettings`
+- `normalize_settings` 最终委托 `normalize_sync_settings` 完成分组/卡片归一化、去重、默认分组补齐
 
-## Entry points for modification
+### 热键系统
 
-- **Add a new per-card timing field**: extend `RapidfireCard` in `src-tauri/src/rapidfire/types.rs` (with a `#[serde(default)]` via `RapidfireCardInput`), thread it through `normalize_card` and `RapidfireSessionWorker`, then mirror it in `src/components/app/rapidfire-types.ts` (`RapidfireCard` + `RapidfireCardForm`), `parseRapidfireSettingsForm`, and `rapidfireSettingsToForm`. Add a UI control in `RapidfireCardEditor`.
-- **Change the compensation policy**: edit `should_compensate_count` and the compensation stage in `run_session_worker` in `src-tauri/src/rapidfire/mod.rs`.
-- **Change hold registration behavior**: edit `restart_hotkey_listeners` in `src-tauri/src/rapidfire/mod.rs`; the conflict policy is `ConflictPolicy::AllowHold`. Cross-scope rules live in [../systems/hotkeys.md](../systems/hotkeys.md).
-- **Change transparent window geometry**: edit `RAPIDFIRE_DISPLAY_MIN_WIDTH` / `RAPIDFIRE_DISPLAY_MAX_WIDTH` / `display_height` and `ensure_overlay_window_for_group` in `src-tauri/src/rapidfire/mod.rs`; mirror the width constants in `src/components/app/rapidfire-types.ts`.
-- **Add a new Tauri command**: register it in `generate_handler![]` in `src-tauri/src/lib.rs` (under the rapidfire group) and, if it performs privileged native operations, add the capability in `src-tauri/capabilities/default.json`.
+- 使用 `HotkeyManager` 的 hold scope（`replace_hold_scope`），冲突策略为 `ConflictPolicy::AllowHold`
+- 可与计时器/计数器的普通 scope 共享热键（双方均用 `AllowHold`），运行时先分发连发器 hold Down/Up，再分发计时器/计数器普通快捷键
+- 保存设置时通过 `restart_hotkey_listeners` 智能跳过：若新旧绑定映射一致则不重建 scope，避免打断正在进行的 hold 回调
+- 详见 [热键系统](../systems/hotkeys.md)
 
-## Key source files
+### Profile 快照
 
-| File | Purpose |
-|---|---|
-| `src-tauri/src/rapidfire/mod.rs` | State, session state machine, hold callbacks, worker threads, window management, all Tauri commands, stop_all/shutdown, tests. |
-| `src-tauri/src/rapidfire/types.rs` | Settings/card/group/bootstrap/run-state/rect DTOs, serde camelCase, legacy-global-to-card default migration, defaults tests. |
-| `src-tauri/src/rapidfire/events.rs` | `STATE_CHANGED` and `HOTKEY_ERROR` event name constants. |
-| `src-tauri/src/rapidfire/settings.rs` | `rapidfire_settings.json` load/save via shared `settings` helpers. |
-| `src/components/app/rapidfire-page.tsx` | Workbench, display overlay, position overlay, card editor with drag reorder, hotkey recording, autosave wiring. |
-| `src/components/app/rapidfire-types.ts` | Frontend types, constants, `rapidfireSettingsToForm` / `parseRapidfireSettingsForm`, key normalization, status helpers, `moveRapidfireCard`. |
-| `src/lib/tauri-events.ts` | `RAPIDFIRE_EVENTS` constant object and `listenEvent<T>` helper. |
+`rapidfire_save_settings` 与 `rapidfire_position_commit` 成功后调用 `profile::update_active_profile_snapshot` 写入 `ActiveProfileSnapshotPatch::Rapidfire`。
+
+### 全局总开关
+
+全局总开关关闭时调用 `stop_all`：停止所有 session（`Cancel`）、清理所有按键抑制、隐藏（不销毁）透明窗口，重新开启时 `ensure_overlay_window` 直接 show 恢复。
+
+### 前端模式分支
+
+`?mode=rapidfire-display&groupId=...` 进入透明显示模式，`?mode=rapidfire-position&groupId=...` 进入位置校准模式，不可用路由替代。
+
+## 修改入口
+
+| 需求 | 修改位置 |
+|------|----------|
+| 调整连发/补齐/抖动算法 | `mod.rs` 的 `run_session_worker` / `wait_for_next_fire` / `should_compensate_count` / `press_jitter_duration_ms` / `ensure_press_spacing` |
+| 调整常量约束（间隔/抖动/间距范围） | `mod.rs` 的 `RAPIDFIRE_*` 常量 + `normalize_card` / `normalize_settings` |
+| 新增/修改卡片字段 | `types.rs` 的 `RapidfireCard` + `RapidfireCardInput`（含旧配置兼容默认值）+ `normalize_card`（`mod.rs`）+ 前端 `rapidfire-types.ts` 的 `RapidfireCard` / `RapidfireCardForm` + `parseRapidfireSettingsForm` |
+| 新增/修改分组字段 | `types.rs` 的 `RapidfireGroup` + `normalize_groups`（`mod.rs`）+ 前端 `RapidfireGroup` / `RapidfireGroupForm` |
+| 新增 Tauri command | `mod.rs` 定义 `#[tauri::command]` + 注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` + `src-tauri/capabilities/default.json` |
+| 新增事件 | `events.rs` 定义常量 + 前端 `src/lib/tauri-events.ts` 的 `RAPIDFIRE_EVENTS` |
+| 调整透明窗口管理 | `mod.rs` 的 `ensure_overlay_window` / `ensure_overlay_window_for_group` / `display_label_for_group` / `display_height` |
+| 调整位置设置流程 | `mod.rs` 的 `PendingRapidfirePosition` / `rapidfire_begin_position_selection` / `rapidfire_position_commit` / `rapidfire_position_cancel` / `rapidfire_position_moved` |
+| 调整按键映射 | `mod.rs` 的 `parse_target_key` / `target_fire_plan` / `press_release_target_key` |
+| 调整按键抑制 | `mod.rs` 的 `handle_key_down` / `handle_key_up` 中的 `suppress_key` / `unsuppress_key` / `stop_suppressor` 逻辑 |
+
+## Tauri Command 清单
+
+| Command | 说明 |
+|---------|------|
+| `rapidfire_get_bootstrap` | 返回 `RapidfireBootstrap`（settings + runs + hotkey_error） |
+| `rapidfire_save_settings` | 归一化并保存设置，重启热键监听，停止已移除/禁用卡片的 session，清理抑制状态，更新透明窗口，同步 profile 快照 |
+| `rapidfire_stop` | 停止所有 session（Cancel），清理抑制，返回新 bootstrap |
+| `rapidfire_begin_position_selection` | 启动位置设置会话，创建位置校准窗口，返回 `RapidfireSelectionOutcome` |
+| `rapidfire_position_commit` | 提交暂存位置，持久化设置，销毁位置窗口，同步 profile 快照 |
+| `rapidfire_position_cancel` | 取消位置设置，恢复原始位置，销毁位置窗口 |
+| `rapidfire_position_moved` | 位置设置窗口拖动时实时更新暂存位置与窗口坐标 |
+
+## 事件清单
+
+| 事件名 | 触发时机 | 载荷 |
+|--------|----------|------|
+| `rapidfire://state-changed` | session 创建/计数更新/结束、设置保存、停止 | `RapidfireBootstrap` |
+| `rapidfire://hotkey-error` | 热键回调执行失败、worker 线程启动失败 | `String`（错误信息） |
+
+> `rapidfire://state-changed` 会同时 emit 到 `main` 窗口与各分组的 display 窗口（`emit_to(display_label_for_group)`），确保透明窗口实时刷新。

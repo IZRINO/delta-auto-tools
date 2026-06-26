@@ -1,30 +1,30 @@
-# How to contribute
+# 如何贡献
 
-## Work pickup
+## 工作认领
 
-Issues are tracked on GitHub Issues using the `gh` CLI. The project uses a five-level triage label system: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md` for label definitions.
+Issues 使用 GitHub Issues 跟踪，通过 `gh` CLI 读写。项目使用五级分流标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。标签定义见 `docs/agents/triage-labels.md`。
 
-When picking up work, look for issues labeled `ready-for-agent` or `ready-for-human`. Read the issue fully before starting, and comment that you are picking it up.
+认领工作时，查找标记为 `ready-for-agent` 或 `ready-for-human` 的 issue。开始前完整阅读 issue，并评论说明你正在认领。
 
-## PR process
+## PR 流程
 
-1. Branch from `master` (the default branch).
-2. Make focused commits with Chinese commit messages (per project convention).
-3. Run `bun run test`, `cargo check --manifest-path src-tauri/Cargo.toml`, and `cargo test --manifest-path src-tauri/Cargo.toml` before requesting review.
-4. Open a PR against `master`. Summarize what changed and why.
-5. Address review feedback. Do not squash until merge is approved.
+1. 从 `master`（默认分支）创建分支
+2. 提交聚焦的 commit，commit message 使用中文（遵循项目约定）
+3. 请求 review 前运行 `bun run test`、`cargo check --manifest-path src-tauri/Cargo.toml`、`cargo test --manifest-path src-tauri/Cargo.toml`
+4. 向 `master` 发起 PR，概述改了什么以及为什么
+5. 处理 review 反馈，合并批准前不要 squash
 
-## Definition of done
+## 完成定义
 
-- All tests pass (Vitest + cargo test).
-- `cargo check` and `bun run build` (tsc + vite build) succeed with no errors.
-- If you added a Tauri command, it is registered in both `src-tauri/src/lib.rs` `generate_handler![]` and `src-tauri/capabilities/default.json`.
-- If you changed settings structures, serde still uses `#[serde(rename_all = "camelCase")]` and the frontend types match.
-- UI changes follow the industrial-brutalist design system (no rounded cards, no soft shadows, amber accent only).
+- 所有测试通过（Vitest + cargo test）
+- `cargo check` 和 `bun run build`（tsc + vite build）无错误
+- 新增 Tauri command 时，同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和 `src-tauri/capabilities/default.json`
+- 修改 settings 结构时，serde 仍使用 `#[serde(rename_all = "camelCase")]`，前端类型匹配
+- UI 改动遵循工业粗粝设计系统（无圆角卡片、无柔和阴影、Amber 仅作强调色）
 
-See also:
-- [Development workflow](development-workflow.md)
-- [Testing](testing.md)
-- [Debugging](debugging.md)
-- [Patterns and conventions](patterns-and-conventions.md)
-- [Tooling](tooling.md)
+参见：
+- [开发流程](development-workflow.md)
+- [测试](testing.md)
+- [调试](debugging.md)
+- [模式与约定](patterns-and-conventions.md)
+- [工具链](tooling.md)

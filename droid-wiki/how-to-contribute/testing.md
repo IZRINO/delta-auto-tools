@@ -1,77 +1,72 @@
-# Testing
+# 测试
 
-## Frontend tests (Vitest)
+## 前端测试（Vitest）
 
-Frontend tests live alongside the source in `src/` and use Vitest. Run all tests with `bun run test`, or with coverage via `bun run test:coverage` (coverage is currently scoped to `morse-utils.ts` only).
+前端测试与源文件同目录放在 `src/` 下，使用 Vitest。运行全部测试用 `bun run test`，带覆盖率用 `bun run test:coverage`（覆盖率目前仅覆盖 `morse-utils.ts`）。
 
-Run a single file:
+运行单个文件：
 
 ```bash
 bunx vitest run src/components/app/morse-utils.test.ts
 ```
 
-### What is tested
+### 测试覆盖
 
-| Test file | Scope |
-|-----------|-------|
-| `src/components/app/morse-utils.test.ts` | Morse serialization, formatting, hotkey parsing |
-| `src/components/app/timer-utils.test.ts` | Timer settings conversion, progress calc, countdown formatting |
-| `src/components/app/counter-utils.test.ts` | Counter settings conversion |
-| `src/components/app/favorites-utils.test.ts` | Favorites ID read/write, card filtering |
-| `src/components/app/rapidfire-types.test.ts` | Rapidfire type constants |
-| `src/components/app/audio-utils.test.ts` | Audio color conversion, probe form parsing |
-| `src/components/app/strategy-utils.test.ts` | Strategy site constants, refresh tiers |
-| `src/components/app/theme-utils.test.ts` | Theme token merge, apply, import, hex normalization |
-| `src/components/app/profile-utils.test.ts` | Profile timestamp format, name validation, snapshot helpers |
-| `src/components/app/about-deps.test.ts` | Dependency list basics |
-| `src/hooks/use-autosave.test.ts` | Autosave debounce logic |
-| `src/hooks/use-bootstrap-form-logic.test.ts` | Bootstrap/form dual-state dirty detection |
-| `src/hooks/use-hotkey-recorder.test.ts` | Hotkey recording interaction logic |
-| `src/lib/logging.test.ts` | TraceId generation, setTraceId/clearTraceId, logFronted serialization |
+| 测试文件 | 范围 |
+|----------|------|
+| `src/components/app/morse-utils.test.ts` | Morse 序列化、格式化、热键解析 |
+| `src/components/app/timer-utils.test.ts` | 计时器 settings 转换、进度计算、倒计时格式化 |
+| `src/components/app/counter-utils.test.ts` | 计数器 settings 转换 |
+| `src/components/app/favorites-utils.test.ts` | 收藏 ID 读写、卡片过滤 |
+| `src/components/app/rapidfire-types.test.ts` | 连发器类型常量 |
+| `src/components/app/audio-utils.test.ts` | 音频颜色转换、探针表单解析 |
+| `src/components/app/strategy-utils.test.ts` | 攻略站点常量、刷新档位 |
+| `src/components/app/theme-utils.test.ts` | 主题 token 合并、应用、导入、hex 规范化 |
+| `src/components/app/profile-utils.test.ts` | 配置时间戳格式、名称验证、快照助手 |
+| `src/components/app/about-deps.test.ts` | 依赖列表基础 |
+| `src/hooks/use-autosave.test.ts` | Autosave 防抖逻辑 |
+| `src/hooks/use-bootstrap-form-logic.test.ts` | Bootstrap/form 双状态脏检测 |
+| `src/hooks/use-hotkey-recorder.test.ts` | 热键录制交互逻辑 |
+| `src/lib/logging.test.ts` | TraceId 生成、setTraceId/clearTraceId、日志序列化 |
 
-### Pattern
+### 模式
 
-Frontend tests focus on pure logic functions in `*-utils.ts` files and hook behavior. They do not test Tauri command invocation directly; instead, `useNativeShell()` returns false in the test environment, and tests assert that `invoke` is not called or that the hook degrades gracefully.
+前端测试聚焦 `*-utils.ts` 中的纯逻辑函数和 hook 行为。不直接测试 Tauri command 调用；测试环境中 `useNativeShell()` 返回 false，测试断言 `invoke` 未被调用或 hook 优雅降级。
 
-## Rust tests (cargo test)
+## Rust 测试（cargo test）
 
-Rust tests are inline `#[cfg(test)] mod tests` blocks within each module. Run with:
+Rust 测试是各模块内的内联 `#[cfg(test)] mod tests` 块。运行：
 
 ```bash
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-Run a single test:
+运行单个测试：
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 ```
 
-### What is tested
+### 测试覆盖
 
-- `src-tauri/src/hotkey_types.rs` / `hotkeys.rs` - Hotkey parsing, conflict detection (Strict vs AllowHold), hold matching, combined modifier keys, timer+rapidfire co-firing.
-- `src-tauri/src/morse/decoder.rs` - Morse decode for digits 0-9, unknown pattern errors.
-- `src-tauri/src/morse/recognition.rs` - DPI/multi-monitor region coordinate conversion.
-- `src-tauri/src/morse/mod.rs` - History push limit.
-- `src-tauri/src/morse/types.rs` - Settings defaults.
-- `src-tauri/src/timer/types.rs` / `settings.rs` - Timer defaults, settings read/write round-trip.
-- `src-tauri/src/timer/mod.rs` - Transparent window size calculation, settings validation.
-- `src-tauri/src/audio/types.rs` - Audio card deserialization with defaults, legacy field migration, color probe round-trip.
-- `src-tauri/src/theme/apply.rs` - `merge_theme_tokens` (override, append, order, dedup), `find_theme`.
-- `src-tauri/src/theme/builtins.rs` - 5 built-in themes, unique IDs, token key consistency.
-- `src-tauri/src/theme/mod.rs` - `build_bootstrap`, `theme_import` (valid/invalid key rejection), export.
-- `src-tauri/src/theme/settings.rs` - Load missing returns default, round-trip.
-- `src-tauri/src/theme/types.rs` - Defaults, camelCase serialization, missing-field fallback.
-- `src-tauri/src/profile/types.rs` / `settings.rs` / `mod.rs` - Snapshot empty, defaults, camelCase, round-trip, profile_id uniqueness.
-- `src-tauri/src/logging/format.rs` / `writer.rs` / `mod.rs` - Format field order, rotation, cleanup (tempdir), level filtering, session_id, TraceContext.
+- `hotkey_types.rs` / `hotkeys.rs`：热键解析、冲突检测（Strict vs AllowHold）、hold 匹配、组合修饰键、计时器+连发器同键共触
+- `morse/decoder.rs`：数字 0-9 摩斯解码、未知模式报错
+- `morse/recognition.rs`：DPI/多显示器区域坐标转换
+- `morse/mod.rs`：历史记录上限
+- `morse/types.rs`：Settings 默认值
+- `timer/types.rs` / `settings.rs`：计时器默认值、settings 读写往返
+- `timer/mod.rs`：透明窗口尺寸计算、settings 验证
+- `audio/types.rs`：音频卡片反序列化默认值、旧字段迁移、识色探针往返
+- `theme/apply.rs`：`merge_theme_tokens`（覆盖、追加、顺序、去重）、`find_theme`
+- `theme/builtins.rs`：5 套内置主题、唯一 ID、token key 一致性
+- `theme/mod.rs`：`build_bootstrap`、`theme_import`（合法/非法 key 拒绝）、导出
+- `profile/types.rs` / `settings.rs` / `mod.rs`：快照空、默认值、camelCase、往返、profile_id 唯一性
+- `logging/format.rs` / `writer.rs` / `mod.rs`：格式字段顺序、轮转、清理（tempdir）、级别过滤、session_id、TraceContext
+- `sync_tool.rs`：`normalize_sync_settings`（默认条目插入、孤儿分组重分配、重复 ID 拒绝）、`apply_position_event`（移动/提交/取消）、`SyncToolRegistry`
 
-### GameService test note
+## 添加测试
 
-AGENTS.md references `src-tauri/src/delta/services/game.rs` tests using mockito. The delta module has been removed from the current codebase. Any references to those tests are historical.
-
-## Adding tests
-
-- New pure logic functions should have corresponding `*.test.ts` files.
-- New Rust types should have round-trip serde tests and default-value tests.
-- Hotkey conflict rules are guarded by tests in `hotkeys.rs`; if you change conflict policy, update those tests.
+- 新增纯逻辑函数应有对应 `*.test.ts` 文件
+- 新增 Rust 类型应有 serde 往返测试和默认值测试
+- 热键冲突规则由 `hotkeys.rs` 中的测试守护；修改冲突策略时更新这些测试

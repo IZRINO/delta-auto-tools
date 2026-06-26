@@ -1,54 +1,113 @@
-# Lore
+# 项目历史
 
-The story of how Delta Auto Tools evolved, derived from git history and code structure.
+Delta Auto Tools 是面向《三角洲行动》玩家的 Tauri 2 + React 19 + Rust 桌面工具。本文按时间线梳理项目从 2026-04-18 首次提交到当前 v0.17.5（共 235 次提交、63 个 tag）的演进历程。
 
-## Eras
+> 说明：以下叙述以 git 提交记录为准；对动机与影响的推断使用「大概」「似乎」等模糊措辞标注。
 
-### Founding era (early 2026)
+---
 
-The project began as a Tauri 2 + React desktop tool for the game Delta Force. The initial architecture established the three-segment industrial shell (Top Manifest Bar, Left Index Rail, Main Work Grid), the `?mode=` overlay window system, and the ToolBase generic layer. The first tools were Morse code recognition, timer, and counter - the three originally documented in CLAUDE.md.
+## 时代划分
 
-### Tool expansion (mid 2026)
+### 一、起源期 · 摩斯工作流（2026-04）
 
-Rapidfire was added as the fourth native tool, introducing the hold-hotkey mechanism and per-session OS worker threads. This required the `ConflictPolicy::AllowHold` exception so rapidfire's hold scope could coexist with timer and counter normal scopes on the same key. The audio module followed, initially with hotkey triggering only, then expanded to RegionWatch (image template matching) and ColorWatch (RGB distance).
+项目以一个极小的核心起步：用桌面截屏 + 二值化 + 轮廓检测来自动破译游戏内的摩斯密码谜题。
 
-### Strategy browser integration
+- **2026-04-18**：首次提交 `feat: initial commit`，确立 Morse 桌面工作流。`morse/decoder.rs` 与 `hotkeys.rs` 在此刻就已存在，并一路存活至今（见下方「最古老的存活代码」）。
+- **2026-04-19**：发布 v0.2.0，项目第一个有记录的版本节点。
 
-The strategy browser was originally designed with a separate `strategy-browser` window and HTML proxy rendering via `strategy_fetch_page`. This was later replaced by an embedded WebView2 sub-window (`strategy-content`) inside the main window, which provides real browser rendering without proxying. The `strategy_fetch_page` and `strategy_open_window` commands remain as compat/experimental entries.
+这一阶段代码体量很小，主要围绕「截屏 → 识别 → 自动输入」单链路打磨，工具化的雏形已现。
 
-### Delta module era and removal
+### 二、Delta 整合期 · 账号与游戏数据（2026-04 末 — 2026-05 中）
 
-The project once included a large `delta/` Rust module (visible throughout AGENTS.md and CLAUDE.md) providing QQ/WeChat/Wegame/Pioneer authentication, game data via the Tencent IDE gateway, SQLite account storage with DPAPI encryption, and corresponding frontend pages (accounts, game data, toolbox). This module was removed from the codebase. `lib.rs` no longer imports or initializes `delta`, the `generate_handler![]` has no delta commands, and `App.tsx` has no delta tool entries. The `deltaTools` array in App.tsx now only contains `morse`. AGENTS.md and CLAUDE.md have not been fully updated to reflect this removal, which is why they still describe delta commands and frontend pages in detail.
+项目开始向「账号凭据 + 游戏数据查询」方向扩展，引入了相当重的后端基础设施。
 
-### Theme and profile systems (June 2026)
+- **2026-04-21**：新增 Delta Wegame 鉴权与游戏数据接口。这一改动带来了 SQLite 账号存储、DPAPI 加密、IDE 网关查询等一系列子系统。
+- 此后约一个月内，Delta 模块成为代码库中最复杂、依赖最重的一块。
 
-Two cross-cutting systems were added: a theme engine (`src-tauri/src/theme/`) with 5 built-in themes, custom themes, and CSS variable overrides, and a multi-config profile system (`src-tauri/src/profile/`) that snapshots all tool settings. The settings dialog was unified into a three-tab Dialog (theme / config / about).
+这一时期的项目形态接近「游戏外挂工具箱 + 账号管家」的混合体，但也为日后的「大瘦身」埋下了伏笔。
 
-### Audio ColorWatch expansion (June 17, 2026)
+### 三、工具扩张期 · 计时 / 计数 / 连发（2026-05）
 
-Based on the plan in `docs/superpowers/plans/2026-06-17-audio-color-watch.md`, the audio module gained the ColorWatch trigger mode with multi-probe color matching, the `AnyPixel` match method, and per-probe multi-target color support (Issue #65). This is documented in the specs under `docs/superpowers/`.
+继 Morse 之后，三个新的原生能力模块相继落地，工具属性显著增强。
 
-### Rapidfire redesign (June 20, 2026)
+- **2026-05-17**：v0.4 发布，引入计时器（Timer）与计数器（Counter）功能。
+- **2026-05-20**：新增连发器（Rapidfire），按住触发键自动连发目标键，每 session 独立 OS worker 线程。
+- **2026-05-21**：v0.6.1，进行了一次 UI 重设计。
 
-A significant rapidfire redesign (`docs/superpowers/plans/2026-06-20-连发器卡片级配置-redesign.md`) moved interval, jitter, and no-append settings from global to per-card fields, with old global fields serving only as deserialization defaults. The key suppressor was added to support `ignore_trigger_key`.
+到这一阶段，四大原生工具（Morse / Timer / Counter / Rapidfire）的骨架已基本成型，透明 overlay 窗口体系也开始建立。
 
-### Profile switcher (June 22, 2026)
+### 四、加固与工作台期 · 凭据边界与攻略站（2026-05 末 — 2026-06 初）
 
-The profile system was finalized per `docs/superpowers/plans/2026-06-22-profile-switcher.md`, including the cross-tool apply orchestration and counter run-value reset.
+重心从「加功能」转向「加固边界」与「补齐外围体验」。
 
-## Longest-standing features
+- **2026-05-30**：v0.10.0，硬化后端凭据边界与热键流程，明确前端只接收 `DeltaAccountView`，不得回传 cookie / token 等敏感字段。
+- **2026-06-01**：新增攻略网站工作台（issues #5–#9），主窗口内嵌子 WebView；同期实现计数器运行态独立持久化。
+- **2026-06-02**：v0.10.8，加入收藏功能，并整合攻略站与连发器拖拽排序。
 
-The Morse recognition pipeline (`src-tauri/src/morse/recognition.rs`) and the hotkey system (`src-tauri/src/hotkeys.rs`) are the oldest and most central components. The binary `HotkeyManager` with its single willhook hook and scope-based registration has survived every refactor and is still the backbone of all native automation.
+这一时期的工程纪律明显提升：凭据边界、热键冲突策略（`ConflictPolicy`）、overlay 透明窗口约束等约定在此固化。
 
-## Deprecated features
+### 五、重构与统一期 · 共享基座与暗色工业风（2026-06 中）
 
-- **Delta module** (accounts, game data, toolbox, QQ/WeChat/Wegame/Pioneer auth, IDE gateway, SQLite storage, DPAPI encryption) - Removed. The `src-tauri/src/delta/` directory no longer exists in the active codebase. AGENTS.md still documents it extensively.
-- **`strategy-browser` window** - Replaced by the embedded `strategy-content` sub-WebView.
-- **`timer/counter_state.rs` in `timer/`** - Marked as deprecated; counter logic migrated to `counter/counter_state.rs`.
-- **Global rapidfire settings** (`min_press_spacing_ms`, `trigger_jitter_max_ms`, `cancel_jitter_on_release` at the settings level) - Superseded by per-card fields; old settings-level fields are deserialization defaults only.
-- **Single-value `audioFilePath`** on AudioCard - Migrated to `audio_files` array by `normalize_settings`.
-- **Single-value `targetColor`/`tolerance`** on ColorProbe - Migrated to `targets` array (Issue #65).
+这是项目迄今为止最密集的一轮重构，视觉与代码结构同步重做。
 
-## Growth trajectory
+- **2026-06-08**：v0.12.0，战术卡片视觉统一。
+- **2026-06-12**：**v0.13.0 重大重构**。抽取 `useAutosave`、`useBootstrapForm`、`useHotkeyRecorder` 共享 hooks，抽出 `PositionOverlay` 组件与 `overlay_utils.rs`，统一 `AppError`。同日落地暗色工业风配色重设计（Carbon / Chalk / Amber 三色体系，见 `DESIGN.md`）。
+- **2026-06-13 — 2026-06-14**：v0.14.x，引入全局总开关、UI 亮度调整、窗口状态记忆。
+- **2026-06-14**：**v0.15.0 —— Delta 模块整体移除**（详见下方「已废弃功能」），同期新增音频播放功能（#54）。
+- **2026-06-15**：v0.15.3 / v0.16.0，计时器与计数器拆分为两个独立工具页，并引入 Beta 发布流程。
 
-The project grew from 3 tools (morse, timer, counter) to 7 (adding rapidfire, audio, strategy) plus cross-cutting systems (theme, profile, logging, about/updater). The frontend shadcn/ui component library grew to ~60 base components. The codebase is approximately 37,000 lines across ~184 files, developed over 219 commits by a small team with AI assistance.
+这一轮重构确立了两件事：一是「工具模块共享泛型基座」的代码组织方式，二是 Swiss Industrial Print × Declassified Tactical Control Board 的视觉语言。
+
+### 六、主题与音频成熟期 · 个性化与识色（2026-06 中 — 2026-06 末）
+
+最近的阶段围绕「主题/配置个性化」与「音频触发能力深化」展开，并最终回归到生命周期基座的统一。
+
+- **2026-06-16 — 2026-06-17**：音频图像匹配从 ZNCC 切换为滑动窗口 RGB NCC；引入混合格式日志系统；新增识色（color watch）模式，发布 v0.17.0-beta.1。
+- **2026-06-18**：v0.17.0 正式版，加入主题引擎（5 套内置主题 + 自定义 + token override）与 Profile 多配置快照系统。
+- **2026-06-19**：音频新增组合 / 随机播放模式，v0.17.0 stable 收尾。
+- **2026-06-20**：音频识色匹配新增 AnyPixel 单像素命中方法。
+- **2026-06-22**：音频多目标颜色探针；Profile 槽位；修复全局开关下的窗口隐藏/恢复。
+- **2026-06-24**：**v0.17.5 —— 同步工具生命周期基座**，将 timer / counter / rapidfire 的共享生命周期代码整合到 `sync_tool`，收束了本轮重构。
+
+---
+
+## 最古老的存活代码
+
+以下子系统从起源期一路存活，经历了多轮重构仍保留核心形态：
+
+- **Morse 识别核心（`morse/decoder.rs` + `morse/recognition.rs`）**：`decoder.rs` 自 2026-04-18 首次提交即存在，至今仍是一份极简的纯数字摩斯码表（仅 33 行），堪称项目最古老的存活代码。`recognition.rs`（约 518 行）承担截屏→二值化→轮廓检测→解码的编排，链路结构自起源期延续至今。
+- **热键系统（`hotkeys.rs`）**：同样自首次提交存活至今（现约 1363 行）。全局共享 willhook 键盘钩子、scope 注册、普通/hold 两种绑定、跨 scope 冲突检测（`ConflictPolicy`）等核心抽象，大概在 v0.10.0 加固期就已定型，此后主要是扩展而非重写。
+- **`tool_base` 泛型基座（`tool_base.rs`）**：`ToolLogic` trait、`ToolState<T>`、`ToolStateInner<T>`、`get_bootstrap<T>` 这一套共享泛型基座，是各工具模块共用的骨架。它在 v0.13.0 重构期被进一步强化，并在 v0.17.5 的 `sync_tool` 整合中得到统一，可以说是贯穿后端的核心抽象。
+
+---
+
+## 已废弃功能
+
+- **Delta 模块（账号鉴权 / 游戏数据 / SQLite / DPAPI）**：2026-04-21 引入，2026-06-14 在 v0.15.0 **整体移除**。这是项目历史上最大规模的一次功能删减，涉及 6 种账号鉴权流程（QQ / 微信 / QQ安全中心 / Wegame / 先遣服）、SQLite 账号存储、DPAPI 加密、IDE 网关游戏数据查询。移除后前端凭据边界约定（`DeltaAccountView`）也随之作废。从引入到移除约 54 天，大概是项目里「来去最匆匆」的重量级子系统。
+- **MSI 安装包**：曾作为 Windows 分发格式之一，后被移除，统一保留 NSIS 一键安装包（`*-setup.exe`）。
+- **OpenCode 配置**：早期仓库中存在 OpenCode 相关配置，后已移除。
+
+> 关于废弃原因：git 记录只显示「移除」这一事实，具体动机（合规、维护成本、方向调整等）属推断，本文不臆测。
+
+---
+
+## 重大重写
+
+- **v0.13.0 共享 hook 抽取（2026-06-12）**：把各工具页重复的 autosave、bootstrap/form 双状态、热键录制逻辑抽取为 `useAutosave` / `useBootstrapForm` / `useHotkeyRecorder` 共享 hooks，并抽出 `PositionOverlay` 组件与 `overlay_utils.rs`、统一 `AppError`。这是前端代码组织方式的一次系统性收敛。
+- **暗色工业风 UI 重设计（2026-06-12）**：与 v0.13.0 同期落地，确立 Carbon `#0C0C0B` / Slate / Chalk `#D8D4CC` / Amber `#E8A000` 的三色体系与「Swiss Industrial Print × Declassified Tactical Control Board」视觉语言（见 `DESIGN.md`）。按设计文档要求，这不是「在旧 UI 上换色」，而是从 shell 骨架开始重建。
+- **v0.15.0 Delta 模块移除（2026-06-14）**：见上方「已废弃功能」。这次删减大幅缩减了后端依赖面与凭据风险面，也使项目定位从「账号管家 + 工具箱」收敛为纯工具集。
+- **v0.17.5 `sync_tool` 整合（2026-06-24）**：将 timer / counter / rapidfire 的共享生命周期代码整合到 `sync_tool.rs`（约 484 行），收束了自 v0.13.0 起的工具基座重构线，使三大工具的生命周期管理趋于一致。
+
+---
+
+## 成长轨迹
+
+从代码体量与模块数的变化，可以大致看出项目的扩张曲线：
+
+- **起源期（2026-04）**：单一 Morse 工作流，后端文件屈指可数。
+- **扩张期（2026-05）**：四大原生工具齐备，透明 overlay 窗口体系建立，后端模块数翻倍。
+- **加固期（2026-05 末 — 06 初）**：凭据边界、热键冲突策略、攻略站工作台等外围补齐，工程纪律成型。
+- **重构期（2026-06 中）**：功能数并未大增，但共享基座与视觉体系被重做，代码「密度」提升。
+- **成熟期（2026-06 末）**：主题引擎、Profile、音频识色等个性化与高级触发能力补齐；最终 v0.17.5 以 `sync_tool` 统一生命周期收尾。
+
+截至当前 v0.17.5，仓库共 235 次提交、63 个 tag，最大的单文件是 `rapidfire/mod.rs`（约 2106 行，见「趣闻」页）。整体来看，项目的成长轨迹呈现「先横向铺功能、再纵向收抽象」的典型节奏，而 v0.13.0 与 v0.17.5 两次重构是其中的两个收敛拐点。

@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-06-23T12:00:00Z",
-  "commitHash": "119379fe448f57c5593aac82b8904b19d8a3ab57",
+  "generatedAt": "2026-06-26T00:00:00Z",
+  "commitHash": "dc65efde96d739ce6a760028443e7baa4678c76f",
   "branch": "master",
-  "pageCount": 38,
+  "pageCount": 36,
   "topLevelSections": [
     "overview",
     "by-the-numbers",
@@ -39,6 +39,7 @@
     "features/about.md",
     "systems/index.md",
     "systems/tool-base.md",
+    "systems/sync-tool.md",
     "systems/hotkeys.md",
     "systems/key-suppressor.md",
     "systems/overlay-windows.md",

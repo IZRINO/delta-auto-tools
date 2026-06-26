@@ -1,83 +1,83 @@
-# Logging
+# 日志系统
 
-The logging system in `src-tauri/src/logging/` provides file-based logging with daily rotation, automatic cleanup, level filtering, trace context, and a session ID. Both Rust and frontend logs write to the same files.
+`src-tauri/src/logging/` 中的日志系统提供文件日志，支持按天轮转、自动清理、级别过滤、链路追踪和 session ID。Rust 和前端日志写入同一批文件。
 
-## Directory layout
+## 目录结构
 
 ```
 src-tauri/src/logging/
-├── mod.rs      # LogLevel, LogSettings, FrontendLogRequest, TraceContext, session_id, commands
-├── format.rs   # Log line formatting (human-readable | JSON structured)
-├── writer.rs   # LogWriter: BufWriter + Mutex + daily rotation + cleanup + level filter
-└── macros.rs   # log_error! / log_warn! / log_info! / log_debug! / log_trace! macros
+├── mod.rs      # LogLevel、LogSettings、FrontendLogRequest、TraceContext、session_id、命令
+├── format.rs   # 日志行格式化（人类可读 | JSON 结构化）
+├── writer.rs   # LogWriter：BufWriter + Mutex + 按天轮转 + 清理 + 级别过滤
+└── macros.rs   # log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏
 ```
 
-## Key abstractions
+## 关键抽象
 
-| Type | File | Description |
-|------|------|-------------|
-| `LogLevel` | `src-tauri/src/logging/mod.rs` | Error/Warn/Info/Debug/Trace with `value()` for filtering (Error=0 ... Trace=4) |
-| `LogSettings` | `src-tauri/src/logging/mod.rs` | Global level + per-module overrides, persisted to log_settings.json |
-| `LogWriter` | `src-tauri/src/logging/writer.rs` | BufWriter + Mutex, daily rotation, 30-day cleanup, 100MB cap |
-| `TraceContext` | `src-tauri/src/logging/mod.rs` | Thread-local trace_id for request correlation |
-| `FrontendLogRequest` | `src-tauri/src/logging/mod.rs` | DTO for frontend log submissions |
-| `session_id` | `src-tauri/src/logging/mod.rs` | 6-char alphanumeric, generated once at startup via LazyLock |
+| 类型 | 文件 | 说明 |
+|------|------|------|
+| `LogLevel` | `src-tauri/src/logging/mod.rs` | Error/Warn/Info/Debug/Trace，`value()` 用于过滤（Error=0 ... Trace=4） |
+| `LogSettings` | `src-tauri/src/logging/mod.rs` | 全局级别 + 按模块覆盖，持久化到 log_settings.json |
+| `LogWriter` | `src-tauri/src/logging/writer.rs` | BufWriter + Mutex，按天轮转，30 天清理，100MB 上限 |
+| `TraceContext` | `src-tauri/src/logging/mod.rs` | 线程局部 trace_id，用于请求关联 |
+| `FrontendLogRequest` | `src-tauri/src/logging/mod.rs` | 前端日志提交 DTO |
+| `session_id` | `src-tauri/src/logging/mod.rs` | 6 字符字母数字，启动时通过 LazyLock 生成一次 |
 
-## How it works
+## 工作原理
 
 ```mermaid
 graph TD
-    Rust["Rust code<br/>log_info! macro"] --> Writer["LogWriter"]
-    Frontend["Frontend<br/>logFrontend()"] -->|invoke log_write_frontend| Cmd["log_write_frontend command"]
+    Rust["Rust 代码<br/>log_info! 宏"] --> Writer["LogWriter"]
+    Frontend["前端<br/>logFrontend()"] -->|invoke log_write_frontend| Cmd["log_write_frontend 命令"]
     Cmd --> Writer
-    Writer -->|format line| Format["format.rs<br/>human | JSON"]
+    Writer -->|格式化行| Format["format.rs<br/>人类可读 | JSON"]
     Format --> File["logs/delta-{yyyyMMdd}.log"]
-    File -->|daily rotation| Rotate["new file each day"]
-    Rotate --> Cleanup["delete > 30 days old<br/>or > 100MB total"]
+    File -->|按天轮转| Rotate["每天新文件"]
+    Rotate --> Cleanup["删除 > 30 天<br/>或 > 100MB 总量"]
 ```
 
-### Log format
+### 日志格式
 
-Each line has a hybrid format: a human-readable prefix followed by a JSON payload. Fields in order: timestamp, level, origin, location, trace, session, message, json_payload. The `format.rs` module handles width padding and truncation.
+每行采用混合格式：人类可读前缀 + JSON payload。字段顺序：时间戳、级别、来源、位置、trace、session、消息、json_payload。`format.rs` 模块处理宽度填充和截断。
 
-### Macros
+### 宏
 
-The macros in `macros.rs` (`log_error!`, `log_warn!`, `log_info!`, `log_debug!`, `log_trace!`) auto-inject origin (`[RUST]·{source}`), location (`{file}:{line}`), thread_id, and trace_id. Debug level also injects `memory_kb`.
+`macros.rs` 中的宏（`log_error!` 到 `log_trace!`）自动注入来源（`[RUST]·{source}`）、位置（`{file}:{line}`）、thread_id 和 trace_id。Debug 级别还注入 `memory_kb`。
 
-### Frontend logging
+### 前端日志
 
-The frontend `src/lib/logging.ts` provides `initLogging()`, `logFrontend()`, `generateTraceId()`, `setTraceId()`/`clearTraceId()`, and a convenience `log` object. `src/main.tsx` calls `initLogging()` on startup. In production, `console.log/warn/error` are hijacked to also write to the log file via `log_write_frontend`.
+前端 `src/lib/logging.ts` 提供 `initLogging()`、`logFrontend()`、`generateTraceId()`、`setTraceId()`/`clearTraceId()` 和便捷 `log` 对象。`src/main.tsx` 启动时调用 `initLogging()`。生产环境下 `console.log/warn/error` 被劫持，同时通过 `log_write_frontend` 写入日志文件。
 
-### Level filtering
+### 级别过滤
 
-`LogSettings` stores a global level and optional per-module overrides (e.g. `"morse": "debug"`). Filtering happens before formatting. The `log_set_level` command updates both the in-memory threshold and the persisted JSON. The `log_get_level` command returns current settings.
+`LogSettings` 存储全局级别和可选的按模块覆盖（如 `"morse": "debug"`）。过滤在格式化之前进行。`log_set_level` 命令同时更新内存阈值和持久化 JSON。`log_get_level` 命令返回当前设置。
 
-### File location
+### 文件位置
 
-Logs go to `{install_dir}/logs/` first, falling back to `%LocalAppData%\org.izrino.delta-auto-tools\logs\`. Files are named `delta-{yyyyMMdd}.log`.
+日志首先写入 `{install_dir}/logs/`，回退到 `%LocalAppData%\org.izrino.delta-auto-tools\logs\`。文件命名为 `delta-{yyyyMMdd}.log`。
 
-## Commands
+## 命令
 
-| Command | Description |
-|---------|-------------|
-| `log_write_frontend` | Receives a `FrontendLogRequest` and writes it |
-| `log_get_session_id` | Returns the 6-char session ID |
-| `log_get_level` | Returns current `LogSettings` |
-| `log_set_level` | Updates level settings (persisted + in-memory) |
+| 命令 | 说明 |
+|------|------|
+| `log_write_frontend` | 接收 `FrontendLogRequest` 并写入 |
+| `log_get_session_id` | 返回 6 字符 session ID |
+| `log_get_level` | 返回当前 `LogSettings` |
+| `log_set_level` | 更新级别设置（持久化 + 内存） |
 
-## Integration points
+## 集成点
 
-- Every Rust module can use the `log_*!` macros.
-- `src/main.tsx` initializes frontend logging and hijacks console in production.
-- Tauri command entry points set `TraceContext` on entry and clear on exit.
-- App shutdown calls `logging::shutdown()` to flush the BufWriter.
+- 每个 Rust 模块可使用 `log_*!` 宏
+- `src/main.tsx` 初始化前端日志并在生产环境劫持 console
+- Tauri command 入口设置 `TraceContext`，退出时清除
+- 应用关闭时调用 `logging::shutdown()` 刷新 BufWriter
 
-## Key source files
+## 关键源文件
 
-| File | Purpose |
-|------|---------|
-| `src-tauri/src/logging/mod.rs` | Public API, types, commands, session_id, TraceContext |
-| `src-tauri/src/logging/format.rs` | Line formatting with width/truncation rules |
-| `src-tauri/src/logging/writer.rs` | LogWriter with rotation, cleanup, level filtering |
-| `src-tauri/src/logging/macros.rs` | `log_error!` through `log_trace!` macros |
-| `src/lib/logging.ts` | Frontend logging interface |
+| 文件 | 用途 |
+|------|------|
+| `src-tauri/src/logging/mod.rs` | 公共 API、类型、命令、session_id、TraceContext |
+| `src-tauri/src/logging/format.rs` | 行格式化，含宽度/截断规则 |
+| `src-tauri/src/logging/writer.rs` | LogWriter，含轮转、清理、级别过滤 |
+| `src-tauri/src/logging/macros.rs` | `log_error!` 到 `log_trace!` 宏 |
+| `src/lib/logging.ts` | 前端日志接口 |

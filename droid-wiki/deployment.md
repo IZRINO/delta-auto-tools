@@ -1,77 +1,77 @@
-# Deployment
+# 部署与发布
 
-Delta Auto Tools is a Windows desktop application distributed as an NSIS installer via GitHub Releases. There is no server deployment, no Docker, and no CI/CD pipeline that auto-builds. Releases are built locally and uploaded manually.
+Delta Auto Tools 是 Windows 桌面应用，通过 GitHub Releases 以 NSIS 安装包分发。无服务器部署、无 Docker、无自动构建的 CI/CD 管线。Release 在本地构建后手动上传。
 
-## Build
+## 构建
 
-### Prerequisites
+### 前置条件
 
-- The Tauri signing key pair must exist. Run `scripts/setup-update-key.ps1` once to generate it. The private key is saved to `$HOME/.tauri/delta-auto-tools.key` (not committed). The public key is written to `tauri.conf.json` `plugins.updater.pubkey`.
+Tauri 签名密钥对必须存在。运行 `scripts/setup-update-key.ps1` 一次生成。私钥保存到 `$HOME/.tauri/delta-auto-tools.key`（不入库），公钥写入 `tauri.conf.json` 的 `plugins.updater.pubkey`。
 
-### Signed stable build
+### 签名正式版构建
 
 ```bash
-# Set the signing key (content, not path)
-$env:TAURI_SIGNING_PRIVATE_KEY = "<private key content>"
-# Optional: $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<password>"
+# 设置签名密钥（内容，非路径）
+$env:TAURI_SIGNING_PRIVATE_KEY = "<私钥内容>"
+# 可选：$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<密码>"
 
 bun run tauri build
 ```
 
-Or use the one-click script:
+或使用一键脚本：
 
 ```bash
 scripts/build-release.ps1
 ```
 
-This produces:
+产物：
 - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
 - `src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe.sig`
 
-### Beta build (unsigned)
+### Beta 构建（无签名）
 
-Beta versions do not need signing:
+Beta 版本不需要签名：
 
 ```bash
 bun run tauri build
 ```
 
-Produces only the `.exe` (no `.sig`).
+仅产出 `.exe`（无 `.sig`）。
 
 ### latest.json
 
-After a signed build, run `scripts/generate-latest-json.ps1` to produce `latest.json` from the `.sig` file. This is the Tauri updater manifest that the app fetches at runtime.
+签名构建后运行 `scripts/generate-latest-json.ps1`，从 `.sig` 文件生成 `latest.json`。这是 Tauri 更新器运行时拉取的清单文件。
 
-## Version numbering
+## 版本编号
 
-Versions follow SemVer. Beta versions use `<major>.<minor>.<patch>-beta.<N>` (e.g. `0.17.0-beta.1`). The updater does SemVer full-order comparison: same-number stable > beta, higher number > lower, stable never downgrades to beta.
+版本遵循 SemVer。Beta 版本使用 `<major>.<minor>.<patch>-beta.<N>`（如 `0.17.0-beta.1`）。更新器做 SemVer 全序比较：同数值正式版 > beta，更高数值 > 更低数值，正式版不降级到 beta。
 
-All three version sources must be in sync: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
+三个版本源必须同步：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。
 
-## Release process
+## 发布流程
 
-1. Update version in all three files.
-2. Build (signed for stable, unsigned for beta).
-3. Commit with subject `发布 v<version>` and body containing `变更：` section with actual changes.
-4. Tag: `git tag -a v<version> -m "发布 v<version>"` and push.
-5. Create GitHub Release and upload assets:
-   - **Stable**: 3 assets - `.exe`, `.sig`, `latest.json`
-   - **Beta**: 1 asset - `.exe` only, with `--prerelease` flag
-6. Verify with `gh release view v<version> --json tagName,isDraft,isPrerelease,assets`.
+1. 更新三个文件中的版本号
+2. 构建（正式版签名，Beta 版无签名）
+3. 提交，subject 为 `发布 v<version>`，正文包含 `变更：` 段列出实际变更
+4. 打 Tag：`git tag -a v<version> -m "发布 v<version>"` 并推送
+5. 创建 GitHub Release 并上传资产：
+   - **正式版**：3 个资产 - `.exe`、`.sig`、`latest.json`
+   - **Beta**：1 个资产 - 仅 `.exe`，加 `--prerelease` 标记
+6. 验证：`gh release view v<version> --json tagName,isDraft,isPrerelease,assets`
 
-## Auto-update mechanism
+## 自动更新机制
 
-The app checks `https://github.com/IZRINO/delta-auto-tools/releases/latest/download/latest.json` for updates. GitHub's `/releases/latest` endpoint only resolves non-prerelease releases, so beta users are not offered other betas; they update to the next stable when it ships.
+应用检查 `https://github.com/IZRINO/delta-auto-tools/releases/latest/download/latest.json` 获取更新。GitHub 的 `/releases/latest` 端点仅解析非 prerelease Release，因此 beta 用户不会被推送其他 beta；他们在下一个正式版发布时更新。
 
-Beta builds use the same stable endpoint. Because `0.17.0-beta.5 < 0.17.0` in SemVer, a beta user will be offered the update to `0.17.0` when it releases.
+Beta 构建使用与正式版相同的 stable 端点。因 `0.17.0-beta.5 < 0.17.0`（SemVer），beta 用户在 `0.17.0` 发布时会收到更新提示。
 
-## Network and proxy
+## 网络与代理
 
-If `git push` or `gh release` fails with connection errors, set local proxy environment variables:
+如 `git push` 或 `gh release` 因连接错误失败，设置本地代理环境变量：
 
 ```bash
 $env:HTTP_PROXY = "http://127.0.0.1:7897"
 $env:HTTPS_PROXY = "http://127.0.0.1:7897"
 ```
 
-Do not leave a trailing space after the value in `set` commands (Windows cmd includes it in the variable).
+`set` 命令中值后面不要留尾随空格（Windows cmd 会将其带入变量）。
