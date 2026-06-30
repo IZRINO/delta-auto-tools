@@ -50,7 +50,10 @@ fn build_bootstrap(state: &ThemeState, builtin_themes: Vec<ThemeDefinition>) -> 
 
     let custom_themes = settings.custom_themes.clone();
     let overrides = settings.overrides.clone();
-    let active_theme_id = if settings.active_theme_id.is_empty() {
+    let custom_mode = settings.active_theme_id.is_empty() && !overrides.is_empty();
+    let active_theme_id = if custom_mode {
+        String::new()
+    } else if settings.active_theme_id.is_empty() {
         builtins::INDUSTRIAL_LIGHT_ID.to_string()
     } else {
         settings.active_theme_id.clone()
@@ -64,9 +67,13 @@ fn build_bootstrap(state: &ThemeState, builtin_themes: Vec<ThemeDefinition>) -> 
         .cloned()
         .or_else(|| builtin_themes.first().cloned());
 
-    let merged_tokens = match active_theme {
-        Some(ref theme) => apply::merge_theme_tokens(theme, &overrides),
-        None => Vec::new(),
+    let merged_tokens = if custom_mode {
+        overrides.clone()
+    } else {
+        match active_theme {
+            Some(ref theme) => apply::merge_theme_tokens(theme, &overrides),
+            None => Vec::new(),
+        }
     };
 
     ThemeBootstrap {
@@ -89,6 +96,10 @@ fn all_themes(settings: &ThemeSettings) -> Vec<ThemeDefinition> {
 fn current_merged_tokens(state: &ThemeState) -> Vec<ThemeTokenOverride> {
     let settings = state.settings.lock().expect("主题状态锁被污染");
     let themes = all_themes(&settings);
+    if settings.active_theme_id.is_empty() && !settings.overrides.is_empty() {
+        return settings.overrides.clone();
+    }
+
     let active_id = if settings.active_theme_id.is_empty() {
         builtins::INDUSTRIAL_LIGHT_ID.to_string()
     } else {
@@ -199,6 +210,44 @@ mod tests {
         assert_eq!(amber.value, "#FF0000");
     }
 
+
+    #[test]
+    fn build_bootstrap_uses_overrides_when_no_theme_selected() {
+        let settings = ThemeSettings {
+            active_theme_id: String::new(),
+            custom_themes: Vec::new(),
+            overrides: vec![
+                ThemeTokenOverride {
+                    key: "--carbon".to_string(),
+                    value: "#111111".to_string(),
+                },
+                ThemeTokenOverride {
+                    key: "--amber".to_string(),
+                    value: "#FF0000".to_string(),
+                },
+            ],
+        };
+        let expected = settings.overrides.clone();
+        let state = ThemeState::new(settings);
+        let boot = build_bootstrap(&state, builtins::builtin_themes());
+        assert_eq!(boot.active_theme_id, "");
+        assert_eq!(boot.merged_tokens, expected);
+    }
+
+    #[test]
+    fn current_merged_tokens_uses_overrides_when_no_theme_selected() {
+        let settings = ThemeSettings {
+            active_theme_id: String::new(),
+            custom_themes: Vec::new(),
+            overrides: vec![ThemeTokenOverride {
+                key: "--chalk".to_string(),
+                value: "#EEEEEE".to_string(),
+            }],
+        };
+        let expected = settings.overrides.clone();
+        let state = ThemeState::new(settings);
+        assert_eq!(current_merged_tokens(&state), expected);
+    }
     #[test]
     fn build_bootstrap_falls_back_to_first_builtin_when_active_id_missing() {
         let mut settings = ThemeSettings::default();

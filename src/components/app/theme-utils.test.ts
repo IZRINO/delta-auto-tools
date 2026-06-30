@@ -3,10 +3,15 @@ import {describe, expect, it} from "vitest";
 import type {ThemeDefinition, ThemeTokenOverride} from "@/components/app/theme-types";
 import {
     applyThemeTokens,
+    applyPersistedThemeTokens,
+    buildCustomOverrideSettings,
     findTheme,
+    materializeCustomOverrides,
     mergeThemeTokens,
     normalizeHex,
     parseImportedTheme,
+    previewThemeTokens,
+    restorePersistedThemeTokens,
     serializeThemeForExport,
 } from "@/components/app/theme-utils";
 
@@ -70,6 +75,85 @@ describe("findTheme", () => {
     });
 });
 
+describe("materializeCustomOverrides", () => {
+    it("保存自定义颜色时把当前主题合并成完整 token 集", () => {
+        const theme = makeTheme("industrial-dark", [
+            ["--carbon", "#0c0c0b"],
+            ["--amber", "#e8a000"],
+            ["--chalk", "#d8d4cc"],
+        ]);
+        const overrides: ThemeTokenOverride[] = [{key: "--amber", value: "#ff0000"}];
+
+        const tokens = materializeCustomOverrides(
+            {
+                activeThemeId: "industrial-dark",
+                builtinThemes: [theme],
+                customThemes: [],
+                overrides: [],
+                mergedTokens: theme.tokens,
+            },
+            overrides,
+        );
+
+        expect(tokens).toEqual([
+            {key: "--carbon", value: "#0c0c0b"},
+            {key: "--amber", value: "#ff0000"},
+            {key: "--chalk", value: "#d8d4cc"},
+        ]);
+    });
+
+    it("自定义模式下继续保存时保留完整自定义 token 集", () => {
+        const customTokens: ThemeTokenOverride[] = [
+            {key: "--carbon", value: "#111111"},
+            {key: "--amber", value: "#ff0000"},
+        ];
+
+        const tokens = materializeCustomOverrides(
+            {
+                activeThemeId: "",
+                builtinThemes: [makeTheme("industrial-light", [["--carbon", "#ffffff"]])],
+                customThemes: [],
+                overrides: customTokens,
+                mergedTokens: customTokens,
+            },
+            customTokens,
+        );
+
+        expect(tokens).toEqual(customTokens);
+        expect(tokens).not.toBe(customTokens);
+    });
+});
+
+describe("buildCustomOverrideSettings", () => {
+    it("保存自定义颜色时取消选中主题并保留自定义主题列表", () => {
+        const builtin = makeTheme("industrial-dark", [
+            ["--carbon", "#0c0c0b"],
+            ["--amber", "#e8a000"],
+        ]);
+        const customTheme = makeTheme("custom-1", [["--amber", "#00ff00"]]);
+
+        const settings = buildCustomOverrideSettings(
+            {
+                activeThemeId: "industrial-dark",
+                builtinThemes: [builtin],
+                customThemes: [customTheme],
+                overrides: [],
+                mergedTokens: builtin.tokens,
+            },
+            [{key: "--amber", value: "#ff0000"}],
+        );
+
+        expect(settings).toEqual({
+            activeThemeId: "",
+            customThemes: [customTheme],
+            overrides: [
+                {key: "--carbon", value: "#0c0c0b"},
+                {key: "--amber", value: "#ff0000"},
+            ],
+        });
+    });
+});
+
 describe("applyThemeTokens", () => {
     function fakeElement(): HTMLElement {
         const el = {style: new Map<string, string>()} as unknown as HTMLElement;
@@ -114,6 +198,56 @@ describe("applyThemeTokens", () => {
 
     it("target 为 null 时安全返回", () => {
         expect(() => applyThemeTokens(null, [], [])).not.toThrow();
+    });
+});
+
+describe("theme token session", () => {
+    function fakeElement(): HTMLElement {
+        const el = {style: new Map<string, string>()} as unknown as HTMLElement;
+        (el.style as unknown as {
+            setProperty: (k: string, v: string) => void;
+            removeProperty: (k: string) => void;
+        }).setProperty = (k: string, v: string) => {
+            (el.style as unknown as Map<string, string>).set(k, v);
+        };
+        (el.style as unknown as {
+            removeProperty: (k: string) => void;
+        }).removeProperty = (k: string) => {
+            (el.style as unknown as Map<string, string>).delete(k);
+        };
+        return el;
+    }
+
+    it("普通预览关闭后恢复到已持久化 token", () => {
+        const el = fakeElement();
+        let session = applyPersistedThemeTokens(el, [{key: "--amber", value: "#e8a000"}], {
+            appliedTokens: [],
+            persistedTokens: [],
+        });
+
+        session = previewThemeTokens(el, [{key: "--amber", value: "#ff0000"}], session);
+        expect((el.style as unknown as Map<string, string>).get("--amber")).toBe("#ff0000");
+
+        session = restorePersistedThemeTokens(el, session);
+        expect((el.style as unknown as Map<string, string>).get("--amber")).toBe("#e8a000");
+    });
+
+    it("标记为关闭后保留的预览不会被恢复成旧主题", () => {
+        const el = fakeElement();
+        let session = applyPersistedThemeTokens(el, [{key: "--amber", value: "#e8a000"}], {
+            appliedTokens: [],
+            persistedTokens: [],
+        });
+
+        session = previewThemeTokens(
+            el,
+            [{key: "--amber", value: "#ff0000"}],
+            session,
+            {persistOnClose: true},
+        );
+        session = restorePersistedThemeTokens(el, session);
+
+        expect((el.style as unknown as Map<string, string>).get("--amber")).toBe("#ff0000");
     });
 });
 

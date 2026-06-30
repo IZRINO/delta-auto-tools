@@ -4,7 +4,12 @@
  * 所有函数均不依赖 React / Tauri，可在 Node 测试环境直接调用。
  */
 
-import type {ThemeDefinition, ThemeTokenOverride} from "@/components/app/theme-types";
+import type {
+    ThemeBootstrap,
+    ThemeDefinition,
+    ThemeSettings,
+    ThemeTokenOverride,
+} from "@/components/app/theme-types";
 
 /**
  * 把合并后的 token 列表写入目标元素的 inline style。
@@ -57,6 +62,51 @@ export function applyThemeTokens(
     return newTokens;
 }
 
+export type ThemeTokenSession = {
+    appliedTokens: readonly ThemeTokenOverride[];
+    persistedTokens: readonly ThemeTokenOverride[];
+};
+
+export function applyPersistedThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    tokens: readonly ThemeTokenOverride[],
+    session: ThemeTokenSession,
+): ThemeTokenSession {
+    const appliedTokens = applyThemeTokens(target, tokens, session.appliedTokens);
+    return {
+        appliedTokens,
+        persistedTokens: appliedTokens,
+    };
+}
+
+export function previewThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    tokens: readonly ThemeTokenOverride[],
+    session: ThemeTokenSession,
+    options?: {persistOnClose?: boolean},
+): ThemeTokenSession {
+    const appliedTokens = applyThemeTokens(target, tokens, session.appliedTokens);
+    return {
+        appliedTokens,
+        persistedTokens: options?.persistOnClose ? appliedTokens : session.persistedTokens,
+    };
+}
+
+export function restorePersistedThemeTokens(
+    target: HTMLElement | SVGElement | null,
+    session: ThemeTokenSession,
+): ThemeTokenSession {
+    const appliedTokens = applyThemeTokens(
+        target,
+        session.persistedTokens,
+        session.appliedTokens,
+    );
+    return {
+        appliedTokens,
+        persistedTokens: session.persistedTokens,
+    };
+}
+
 /** 在所有主题（内置 + 自定义）中按 id 查找主题定义。 */
 export function findTheme(
     themes: readonly ThemeDefinition[],
@@ -99,6 +149,48 @@ export function mergeThemeTokens(
     }
 
     return result;
+}
+
+/**
+ * 把用户编辑中的颜色转成完整自定义 token 集。
+ *
+ * 保存自定义颜色后 `activeThemeId` 会置空，因此必须把当前主题基底一并固化，
+ * 避免关闭设置或重启后只剩少量覆盖项而回落到默认 CSS 变量。
+ */
+export function materializeCustomOverrides(
+    bootstrap: ThemeBootstrap,
+    overrides: readonly ThemeTokenOverride[],
+): ThemeTokenOverride[] {
+    if (bootstrap.activeThemeId === "") {
+        return overrides.map((token) => ({...token}));
+    }
+
+    const activeTheme = findTheme(
+        [...bootstrap.customThemes, ...bootstrap.builtinThemes],
+        bootstrap.activeThemeId,
+    );
+
+    return mergeThemeTokens(
+        activeTheme ?? {
+            id: "__current__",
+            name: "当前配色",
+            builtin: false,
+            tokens: bootstrap.mergedTokens,
+        },
+        overrides,
+    );
+}
+
+/** 构造保存自定义颜色所需的设置：取消主题选中，并保存完整 token 集。 */
+export function buildCustomOverrideSettings(
+    bootstrap: ThemeBootstrap,
+    overrides: readonly ThemeTokenOverride[],
+): ThemeSettings {
+    return {
+        activeThemeId: "",
+        customThemes: bootstrap.customThemes,
+        overrides: materializeCustomOverrides(bootstrap, overrides),
+    };
 }
 
 /** 把 ThemeDefinition 序列化为可导入导出的 JSON 字符串（pretty）。 */

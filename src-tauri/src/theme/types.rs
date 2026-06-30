@@ -36,13 +36,13 @@ pub struct ThemeDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeSettings {
-    /// 当前激活主题 id。空串表示使用第一个内置主题（`industrial-light`）作为默认。
+    /// 当前激活主题 id。空串且 overrides 非空表示自定义配色模式；空串且 overrides 为空时使用默认内置主题。
     #[serde(default)]
     pub active_theme_id: String,
     /// 用户自定义主题列表。
     #[serde(default)]
     pub custom_themes: Vec<ThemeDefinition>,
-    /// 对当前激活主题的临时覆盖（实时调色未保存现场）。
+    /// 主题 token 覆盖；自定义配色模式下保存完整 token 集。
     #[serde(default)]
     pub overrides: Vec<ThemeTokenOverride>,
 }
@@ -61,13 +61,13 @@ impl Default for ThemeSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeBootstrap {
-    /// 当前激活主题 id。
+    /// 当前激活主题 id。空串且 overrides 非空表示自定义配色模式。
     pub active_theme_id: String,
     /// 内置主题列表（5 套）。
     pub builtin_themes: Vec<ThemeDefinition>,
     /// 自定义主题列表。
     pub custom_themes: Vec<ThemeDefinition>,
-    /// 当前临时覆盖。
+    /// 当前 token 覆盖。
     pub overrides: Vec<ThemeTokenOverride>,
     /// 合并后的最终 token 列表（内置/自定义主题 tokens + overrides），前端直接写入 CSS 变量。
     pub merged_tokens: Vec<ThemeTokenOverride>,

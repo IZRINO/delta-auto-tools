@@ -25,14 +25,16 @@ export interface ThemeDefinition {
 
 /** 主题持久化设置，对应后端 `theme_settings.json`。 */
 export interface ThemeSettings {
+    /** 当前激活主题 id。空串且 overrides 非空时表示自定义配色模式。 */
     activeThemeId: string;
     customThemes: ThemeDefinition[];
-    /** 对当前激活主题的临时覆盖（实时调色未保存现场）。 */
+    /** 主题 token 覆盖；自定义配色模式下保存完整 token 集。 */
     overrides: ThemeTokenOverride[];
 }
 
 /** 主题 bootstrap：一次性返回前端所需的全部主题信息。 */
 export interface ThemeBootstrap {
+    /** 当前激活主题 id。空串且 overrides 非空时表示自定义配色模式。 */
     activeThemeId: string;
     builtinThemes: ThemeDefinition[];
     customThemes: ThemeDefinition[];

@@ -19,7 +19,13 @@ import {
     type ThemeTokenOverride,
     THEME_STORAGE_KEY,
 } from "@/components/app/theme-types";
-import {applyThemeTokens} from "@/components/app/theme-utils";
+import {
+    applyPersistedThemeTokens,
+    buildCustomOverrideSettings,
+    previewThemeTokens,
+    restorePersistedThemeTokens,
+    type ThemeTokenSession,
+} from "@/components/app/theme-utils";
 
 /** 主题 Context 对外暴露的接口。 */
 type ThemeContextValue = {
@@ -33,7 +39,7 @@ type ThemeContextValue = {
     saveSettings: (settings: ThemeSettings) => Promise<void>;
     /** 仅切换激活主题（不动 customThemes/overrides）。 */
     setActiveTheme: (themeId: string) => Promise<void>;
-    /** 仅更新 overrides（实时调色）。 */
+    /** 保存自定义配色，并取消当前预设主题选中态。 */
     setOverrides: (overrides: ThemeTokenOverride[]) => Promise<void>;
     /** 把自定义主题加入列表并设为激活。 */
     addCustomTheme: (theme: ThemeDefinition) => Promise<void>;
@@ -45,7 +51,9 @@ type ThemeContextValue = {
      * 实时预览：将指定 token 列表写入 documentElement（不持久化）。
      * 主题面板用此接口预览颜色变更，避免自己操作 CSS 变量导致与 Provider 不同步。
      */
-    previewTokens: (tokens: readonly ThemeTokenOverride[]) => void;
+    previewTokens: (tokens: readonly ThemeTokenOverride[], options?: {persistOnClose?: boolean}) => void;
+    /** 恢复到最近一次已持久化的 token 列表。 */
+    restorePersistedTokens: () => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -79,15 +87,18 @@ export function ThemeProvider({children}: ThemeProviderProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // 记录上一次应用到 documentElement 的 token 列表，用于切换时清除
-    const appliedTokensRef = useRef<readonly ThemeTokenOverride[]>([]);
+    // 记录上一次应用和持久化的 token 列表，用于预览/恢复
+    const tokenSessionRef = useRef<ThemeTokenSession>({
+        appliedTokens: [],
+        persistedTokens: [],
+    });
 
     // 把 mergedTokens 写入 documentElement 的 inline style
     const applyTokens = useCallback((tokens: readonly ThemeTokenOverride[]) => {
-        appliedTokensRef.current = applyThemeTokens(
+        tokenSessionRef.current = applyPersistedThemeTokens(
             document.documentElement,
             tokens,
-            appliedTokensRef.current,
+            tokenSessionRef.current,
         );
     }, []);
 
@@ -170,8 +181,8 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             try {
                 // save_settings 返回最新的 ThemeBootstrap（含合并后的 mergedTokens），
                 // 立即用它更新 bootstrap 与 CSS 变量，不必等待 theme://changed 事件。
-                // 这样 ThemePanel unmount cleanup 时 bootstrapRef.current 已是最新值，
-                // 不会用过时的 mergedTokens 覆盖已保存的自定义颜色。
+                // 这样面板关闭时可恢复到最新持久化 token，
+                // 不会用过时的主题色覆盖已保存的自定义颜色。
                 const returned = await invoke<ThemeBootstrap>("theme_save_settings", {settingsValue: next});
                 setBootstrap(returned);
                 applyTokens(returned.mergedTokens);
@@ -203,11 +214,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
 
     const setOverrides = useCallback(
         async (overrides: ThemeTokenOverride[]) => {
-            await persistSettings((current) => ({
-                activeThemeId: current.activeThemeId,
-                customThemes: current.customThemes,
-                overrides,
-            }));
+            await persistSettings((current) => buildCustomOverrideSettings(current, overrides));
         },
         [persistSettings],
     );
@@ -252,11 +259,22 @@ export function ThemeProvider({children}: ThemeProviderProps) {
     );
 
     /** 预览 token：直接写入 CSS 变量但不持久化。面板卸载后由 Provider 统一恢复。 */
-    const previewTokens = useCallback((tokens: readonly ThemeTokenOverride[]) => {
-        appliedTokensRef.current = applyThemeTokens(
+    const previewTokens = useCallback((
+        tokens: readonly ThemeTokenOverride[],
+        options?: {persistOnClose?: boolean},
+    ) => {
+        tokenSessionRef.current = previewThemeTokens(
             document.documentElement,
             tokens,
-            appliedTokensRef.current,
+            tokenSessionRef.current,
+            options,
+        );
+    }, []);
+
+    const restorePersistedTokens = useCallback(() => {
+        tokenSessionRef.current = restorePersistedThemeTokens(
+            document.documentElement,
+            tokenSessionRef.current,
         );
     }, []);
 
@@ -272,6 +290,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             deleteCustomTheme,
             renameCustomTheme,
             previewTokens,
+            restorePersistedTokens,
         }),
         [
             bootstrap,
@@ -284,6 +303,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             deleteCustomTheme,
             renameCustomTheme,
             previewTokens,
+            restorePersistedTokens,
         ],
     );
 

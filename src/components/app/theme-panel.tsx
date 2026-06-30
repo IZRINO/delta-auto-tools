@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {RiDownloadLine, RiUploadLine, RiCheckLine, RiPaletteLine} from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
@@ -9,10 +9,12 @@ import {cn} from "@/lib/utils";
 import {
     EDITABLE_TOKEN_KEYS,
     type ThemeDefinition,
+    type ThemeSettings,
     type ThemeTokenOverride,
     TOKEN_LABELS,
 } from "@/components/app/theme-types";
 import {
+    buildCustomOverrideSettings,
     mergeThemeTokens,
     parseImportedTheme,
     serializeThemeForExport,
@@ -27,24 +29,75 @@ import {ThemeColorPicker} from "@/components/app/theme-color-picker";
  * 切换预设会清空 overrides；保存时调 `setOverrides` 或 `setActiveTheme` 落盘。
  *
  * CSS 变量预览统一通过 `previewTokens` 由 ThemeProvider 管理，
- * 面板卸载时 Provider 自动恢复到上次持久化的 mergedTokens，不会出现不同步。
+ * 面板卸载时 Provider 自动恢复到最近一次持久化的 token，不会出现不同步。
  */
 export function ThemePanel() {
-    const {bootstrap, loading, error, setActiveTheme, setOverrides, addCustomTheme, previewTokens} = useTheme();
-
-    // 保持最新 bootstrap 引用供 unmount cleanup 使用
-    const bootstrapRef = useRef(bootstrap);
-    bootstrapRef.current = bootstrap;
+    const {
+        bootstrap,
+        loading,
+        error,
+        saveSettings,
+        setActiveTheme,
+        setOverrides,
+        addCustomTheme,
+        previewTokens,
+        restorePersistedTokens,
+    } = useTheme();
 
     // 本地编辑态：当前激活主题 + overrides 的合并结果，用于颜色选择器实时预览
     // 用 bootstrap.overrides 做初始值，避免 mount 时空数组被 preview 写入 CSS 导致颜色闪烁回预设主题
     const [localOverrides, setLocalOverrides] = useState<ThemeTokenOverride[]>(
         () => bootstrap?.overrides ?? [],
     );
+    const pendingSettingsRef = useRef<ThemeSettings | null>(null);
+    const saveTimeoutRef = useRef<number | null>(null);
+    const saveSettingsRef = useRef(saveSettings);
+
+    useEffect(() => {
+        saveSettingsRef.current = saveSettings;
+    }, [saveSettings]);
+
+    const flushPendingSettings = useCallback(() => {
+        if (saveTimeoutRef.current !== null) {
+            window.clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+        const pending = pendingSettingsRef.current;
+        pendingSettingsRef.current = null;
+        if (pending) {
+            void saveSettingsRef.current(pending);
+        }
+    }, []);
+
+    const scheduleCustomSettingsSave = useCallback((settings: ThemeSettings) => {
+        pendingSettingsRef.current = settings;
+        if (saveTimeoutRef.current !== null) {
+            window.clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = window.setTimeout(() => {
+            flushPendingSettings();
+        }, 250);
+    }, [flushPendingSettings]);
+
+    const cancelPendingSettingsSave = useCallback(() => {
+        if (saveTimeoutRef.current !== null) {
+            window.clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+        pendingSettingsRef.current = null;
+    }, []);
 
     // 当前激活主题定义（自定义 + 内置中查找）
     const activeTheme = useMemo<ThemeDefinition | undefined>(() => {
         if (!bootstrap) return undefined;
+        if (bootstrap.activeThemeId === "") {
+            return {
+                id: "__custom__",
+                name: "自定义配色",
+                builtin: false,
+                tokens: bootstrap.overrides.length > 0 ? bootstrap.overrides : bootstrap.mergedTokens,
+            };
+        }
         const all = [...bootstrap.customThemes, ...bootstrap.builtinThemes];
         return all.find((t) => t.id === bootstrap.activeThemeId);
     }, [bootstrap]);
@@ -61,16 +114,13 @@ export function ThemePanel() {
         previewTokens(merged);
     }, [activeTheme, localOverrides, previewTokens]);
 
-    // 面板卸载时恢复 ThemeProvider 上次持久化的 CSS 变量
+    // 面板卸载时恢复 ThemeProvider 最近一次持久化的 CSS 变量
     useEffect(() => {
         return () => {
-            const boot = bootstrapRef.current;
-            if (boot?.mergedTokens) {
-                previewTokens(boot.mergedTokens);
-            }
+            flushPendingSettings();
+            restorePersistedTokens();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 unmount 时执行清理
-    }, []);
+    }, [flushPendingSettings, restorePersistedTokens]);
 
     // 找到某个 editable token 在 previewTokens 中的当前值（fallback 到 activeTheme 原值）
     const tokenValue = (key: string): string => {
@@ -81,14 +131,25 @@ export function ThemePanel() {
     };
 
     const updateToken = (key: string, value: string) => {
+        if (!activeTheme || !bootstrap) return;
         setLocalOverrides((prev) => {
             const without = prev.filter((o) => o.key !== key);
-            return [...without, {key, value}];
+            const next = [...without, {key, value}];
+            previewTokens(mergeThemeTokens(activeTheme, next), {persistOnClose: true});
+            scheduleCustomSettingsSave(buildCustomOverrideSettings(bootstrap, next));
+            return next;
         });
     };
 
     const handlePresetClick = async (themeId: string) => {
+        if (!bootstrap) return;
         // 切换预设：清空 overrides 并保存
+        cancelPendingSettingsSave();
+        const all = [...bootstrap.customThemes, ...bootstrap.builtinThemes];
+        const nextTheme = all.find((theme) => theme.id === themeId);
+        if (nextTheme) {
+            previewTokens(nextTheme.tokens, {persistOnClose: true});
+        }
         setLocalOverrides([]);
         await setActiveTheme(themeId);
     };
@@ -98,6 +159,10 @@ export function ThemePanel() {
     };
 
     const handleDiscardOverrides = () => {
+        cancelPendingSettingsSave();
+        if (bootstrap?.mergedTokens) {
+            previewTokens(bootstrap.mergedTokens, {persistOnClose: true});
+        }
         setLocalOverrides(bootstrap?.overrides ?? []);
     };
 
