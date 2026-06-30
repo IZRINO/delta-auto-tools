@@ -233,8 +233,8 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
             return false;
         }
-        // ponytail: detect click vs sampling by slot range
-        const target = slots.length > REGION_LABELS.length ? "click" : "sampling";
+        // ponytail: any slot ≥3 means click mode (sampling has only 0-2)
+        const target = slots.some((s) => s >= REGION_LABELS.length) ? "click" : "sampling";
         const actualSlots = target === "click"
             ? slots.filter((s) => s < CLICK_REGION_LABELS.length)
             : slots;
@@ -565,7 +565,11 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                                         <Button
                                                             className="rounded-none"
                                                             disabled={isBusy}
-                                                            onClick={() => void performSelectionSession([0, 1, 2, 3, 4, 5, 6])}
+                                                            onClick={() => {
+                                                                const empty = (form?.clickRegions ?? []).findIndex((r) => !r.rect);
+                                                                if (empty === -1) return;
+                                                                void performSelectionSession([empty]);
+                                                            }}
                                                             type="button"
                                                             variant="outline"
                                                         >
