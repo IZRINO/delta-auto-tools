@@ -1,6 +1,6 @@
 import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {RiCheckboxCircleLine, RiHistoryLine, RiRefreshLine,} from "@remixicon/react";
+import {RiCheckboxCircleLine, RiHistoryLine, RiLayoutGridLine, RiRefreshLine,} from "@remixicon/react";
 
 import {listenEvent, MORSE_EVENTS} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
@@ -11,6 +11,7 @@ import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Switch} from "@/components/ui/switch";
 import {
@@ -33,11 +34,13 @@ import {
     type MorseRunResult,
     type MorseSettings,
     type MorseSettingsForm,
+    CLICK_REGION_LABELS,
     REGION_LABELS,
     type RegionSelectionOutcome,
     type VerificationStatus,
 } from "@/components/app/morse-types";
 import {
+    clickRegionRows,
     formatRecordedHotkey,
     formatRegion,
     formatTimestamp,
@@ -230,20 +233,27 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
             return false;
         }
-        setSelectingSlot(slots.length === 1 ? slots[0] : -1);
+        // ponytail: detect click vs sampling by slot range
+        const target = slots.length > REGION_LABELS.length ? "click" : "sampling";
+        const actualSlots = target === "click"
+            ? slots.filter((s) => s < CLICK_REGION_LABELS.length)
+            : slots;
+        setSelectingSlot(actualSlots.length === 1 ? actualSlots[0] : -1);
         setStatusMessage(
-            slots.length === REGION_LABELS.length
-                ? "请在悬浮层中依次完成 3 个区域框选。"
-                : `请在悬浮层中框选 ${REGION_LABELS[slots[0]]}。`
+            target === "click"
+                ? "请在悬浮层中框选点击区域。"
+                : actualSlots.length === REGION_LABELS.length
+                    ? "请在悬浮层中依次完成 3 个区域框选。"
+                    : `请在悬浮层中框选 ${REGION_LABELS[actualSlots[0]]}。`
         );
         try {
             const outcome = await invoke<RegionSelectionOutcome>("morse_begin_region_selection", {
-                slots,
-                target: "sampling"
+                slots: actualSlots,
+                target,
             });
-            await syncBootstrap({syncMode: "regions"});
+            await syncBootstrap({syncMode: target === "click" ? "full" : "regions"});
             if (outcome.kind === "selected") {
-                setStatusMessage(slots.length === REGION_LABELS.length ? "3 个区域已全部更新。" : `${REGION_LABELS[slots[0]]} 已更新。`);
+                setStatusMessage(target === "click" ? "点击区域已更新。" : actualSlots.length === REGION_LABELS.length ? "3 个区域已全部更新。" : `${REGION_LABELS[actualSlots[0]]} 已更新。`);
                 return true;
             }
             if (outcome.kind === "cancelled") {
@@ -482,6 +492,92 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                         className="font-mono text-xs font-black tracking-[0.18em] uppercase">自动点击链路</span>
                                     <HelpHint content="识别成功后按设定顺序执行点击。"/>
                                 </div>
+                                {form?.autoClickEnabled && (
+                                    <div className="space-y-3 px-3 pb-3">
+                                        <ConfigRow
+                                            label="点击完成后按键"
+                                            value={
+                                                <Input
+                                                    className="border-2 border-[var(--chalk)] font-mono text-xs"
+                                                    placeholder="留空不执行，例如 F4"
+                                                    onChange={(e) => updateForm("afterClickHotkey", e.currentTarget.value)}
+                                                    value={form?.afterClickHotkey ?? ""}
+                                                />
+                                            }
+                                            state={form?.afterClickHotkey ? "valid" : "idle"}
+                                        />
+                                        <Collapsible className="border-2 border-[var(--chalk)] bg-[var(--carbon)]">
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    className="h-auto w-full justify-between rounded-none px-3 py-2 font-mono text-xs font-black tracking-[0.18em]"
+                                                    type="button" variant="ghost">
+                                                    点击区域配置
+                                                    <Badge variant="outline">{(form?.clickRegions ?? []).filter((r) => r.rect).length}/7</Badge>
+                                                </Button>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent className="border-t-2 border-[var(--chalk)] px-3 py-3">
+                                                <div className="flex flex-col gap-2">
+                                                    {clickRegionRows(form?.clickRegions ?? []).map((cr) => (
+                                                        <div key={cr.slotIndex}
+                                                             className="flex items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2">
+                                                            <Badge variant={cr.rect ? "default" : "outline"}
+                                                                   className="shrink-0">
+                                                                {cr.slotIndex + 1}
+                                                            </Badge>
+                                                            <span
+                                                                className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-[var(--zinc)]">
+                                                                {formatRegion(cr.rect)}
+                                                            </span>
+                                                            <Input
+                                                                className="w-20 border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono text-xs"
+                                                                inputMode="numeric"
+                                                                min="0"
+                                                                value={cr.delayMs}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form?.clickRegions ?? [])];
+                                                                    next[cr.slotIndex] = {
+                                                                        ...next[cr.slotIndex],
+                                                                        delayMs: e.currentTarget.value
+                                                                    };
+                                                                    updateForm("clickRegions", next);
+                                                                }}
+                                                            />
+                                                            <span className="text-xs text-[var(--dust)]">ms</span>
+                                                            <Button
+                                                                className="h-7 w-7 shrink-0 rounded-none px-0"
+                                                                disabled={isBusy}
+                                                                onClick={() => {
+                                                                    const next = [...(form?.clickRegions ?? [])];
+                                                                    next[cr.slotIndex] = {
+                                                                        ...next[cr.slotIndex],
+                                                                        rect: null
+                                                                    };
+                                                                    updateForm("clickRegions", next);
+                                                                }}
+                                                                type="button"
+                                                                variant="ghost"
+                                                            >
+                                                                ×
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                    {(form?.clickRegions ?? []).filter((r) => r.rect).length < 7 && (
+                                                        <Button
+                                                            className="rounded-none"
+                                                            disabled={isBusy}
+                                                            onClick={() => void performSelectionSession([0, 1, 2, 3, 4, 5, 6])}
+                                                            type="button"
+                                                            variant="outline"
+                                                        >
+                                                            <RiLayoutGridLine data-icon="inline-start"/>
+                                                            添加点击区域
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </CollapsibleContent>
+                                        </Collapsible>
+                                    </div>
+                                )}
                             </div>
                             <div className="space-y-3">
                                 <div className="border-2 border-[var(--chalk)] p-3">
