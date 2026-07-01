@@ -1,6 +1,6 @@
 # 配置系统
 
-多配置 Profile 系统（`src-tauri/src/profile/` + `src/hooks/use-profile.tsx` + `src/components/app/profile-*.tsx`）允许用户将全部 5 个工具的 settings 快照为命名配置并在运行时切换。切换 profile 时写入 5 份 settings JSON 文件到磁盘，重载各工具内存状态（复用各工具的 `pub(crate)` 热键/窗口/emit 函数），重置计数器运行值，更新 `active_profile_id`。前端使用 `reloadNonce` 强制重挂载当前工具页，清除待处理的 autosave 定时器并重新获取配置。
+多配置 Profile 系统（`src-tauri/src/profile/` + `src/hooks/use-profile.tsx` + `src/components/app/profile-*.tsx`）允许用户将全部 5 个工具的 settings 快照为命名配置并在运行时切换。切换 profile 时写入 5 份 settings JSON 文件到磁盘，重载各工具内存状态（复用各工具的 `pub(crate)` 热键/窗口/emit 函数），重置计数器运行值，更新 `active_profile_id`。写命令执行成功后 emit `profile://changed` 事件到 main 窗口，前端 `ProfileProvider` 监听该事件刷新 bootstrap。前端使用 `reloadNonce` 强制重挂载当前工具页，清除待处理的 autosave 定时器并重新获取配置。
 
 ## 用途
 
@@ -14,6 +14,7 @@
 ```
 src-tauri/src/profile/
 ├── mod.rs       # ProfileState、命令、apply_snapshot_to_tools 跨工具编排
+├── events.rs    # profile://changed 事件名常量
 ├── types.rs     # ToolSettingsSnapshot、Profile、ProfileSettings、ProfileBootstrap
 └── settings.rs  # profile_settings.json 读写
 
@@ -35,6 +36,7 @@ src/components/app/
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` |
 | `apply_snapshot_to_tools` | `src-tauri/src/profile/mod.rs` | 核心编排：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 |
+| `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
 | `ProfileProvider` | `src/hooks/use-profile.tsx` | React context：bootstrap、事件监听、`reloadNonce` |
 | `reloadNonce` | `src/hooks/use-profile.tsx` | 切换 profile 后递增，`App.tsx` 用作工具页容器 `key` |
@@ -85,6 +87,14 @@ sequenceDiagram
 
 `profile_get_bootstrap` 首次调用时如 `profiles` 为空，会快照当前 settings 创建 `配置1` profile。`profile_create_default` 使用 `Default` 值创建工厂默认配置。
 
+### 写命令 emit profile://changed
+
+5 个写命令（`save_current` / `create_default` / `apply` / `delete` / `rename`）执行成功后，调用 `emit_profile_changed(app, &build_bootstrap(&state))`，向 main 窗口 emit `profile://changed` 事件，payload 为最新 `ProfileBootstrap`。前端 `ProfileProvider` 监听该事件并刷新 bootstrap。
+
+只读命令 `get_bootstrap` 不 emit，避免噪声事件。
+
+事件名常量定义在 `events.rs`：`CHANGED = "profile://changed"`，与前端 `tauri-events.ts` 的 `PROFILE_EVENTS.changed.name` 一致。
+
 ### 名称预留
 
 `reserve_config_name` 生成 `配置N`，其中 `N = max(next_profile_number, max_existing + 1, 1)`，跳过已存在的名称。
@@ -106,7 +116,8 @@ sequenceDiagram
 
 | 文件 | 用途 |
 |------|------|
-| `src-tauri/src/profile/mod.rs` | `ProfileState`、6 个命令、`apply_snapshot_to_tools`、各工具 `apply_*_settings` |
+| `src-tauri/src/profile/mod.rs` | `ProfileState`、6 个命令、`apply_snapshot_to_tools`、各工具 `apply_*_settings`、`emit_profile_changed` |
+| `src-tauri/src/profile/events.rs` | `profile://changed` 事件名常量 |
 | `src-tauri/src/profile/types.rs` | `ToolSettingsSnapshot`、`Profile`、`ProfileSettings`、`ProfileBootstrap` |
 | `src-tauri/src/profile/settings.rs` | `profile_settings.json` 读写 |
 | `src/hooks/use-profile.tsx` | `ProfileProvider`：bootstrap、事件监听、`reloadNonce` |
