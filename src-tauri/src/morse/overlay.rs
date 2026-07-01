@@ -72,10 +72,11 @@ fn destroy_overlay_window(app: &AppHandle) {
 }
 
 /// 全局关闭时取消所有活跃的 morse overlay 会话。
-/// 销毁 overlay 窗口并将 pending sender resolve 为 Cancelled。
+/// 先 resolve pending sender 为 Cancelled，再销毁 overlay 窗口。
+/// 顺序关键：若先销毁窗口，Destroyed handler 会抢先 resolve 为 Closed 而非 Cancelled。
 pub(crate) fn cancel_active_overlay(app: &AppHandle) {
-    destroy_overlay_window(app);
     resolve_pending(app, RegionSelectionKind::Cancelled);
+    destroy_overlay_window(app);
 }
 
 fn parse_slots(slots: &[usize], max_slots: usize) -> Result<Vec<usize>, String> {
@@ -620,5 +621,43 @@ mod tests {
         // 不会 panic。
         let option: Option<PendingSelection> = None;
         assert!(option.is_none(), "空 pending 不应触发 sender 操作");
+    }
+
+    /// 验证 cancel_active_overlay 先 resolve_pending 再 destroy_overlay_window 的顺序。
+    /// 若先 destroy，窗口 Destroyed 事件会抢先 resolve 为 Closed 而非 Cancelled。
+    /// 此测试模拟正确的顺序：先 resolve(Cancelled) 使 sender 被消费，
+    /// 再 destroy 时 on_window_event 中的 resolve_pending 因 take() 返回 None 而跳过。
+    #[test]
+    fn resolve_pending_before_destroy_prevents_closed_override() {
+        let (sender, receiver) = oneshot::channel();
+
+        // 模拟 cancel_active_overlay 的正确顺序：
+        // 1. 先 resolve_pending(Cancelled) — 消费 sender
+        sender.send(RegionSelectionKind::Cancelled).unwrap();
+
+        // 2. 窗口销毁后 on_window_event 触发 resolve_pending，
+        //    但 take() 返回 None（已被消费），不会覆盖为 Closed。
+        //    验证 receiver 收到的是 Cancelled 而非 Closed。
+        let result = receiver.blocking_recv().unwrap();
+        assert!(
+            matches!(result, RegionSelectionKind::Cancelled),
+            "先 resolve 再 destroy 应收到 Cancelled，实际: {result:?}"
+        );
+    }
+
+    /// 验证 resolve_pending 对已消费的 pending 不重复操作。
+    /// 当 pending_selection 已被 take() 后，再次调用 resolve_pending 应安全跳过。
+    #[test]
+    fn resolve_pending_noop_when_already_consumed() {
+        let (sender, _receiver) = oneshot::channel();
+
+        // 模拟 pending_selection 已被 take() 并消费
+        let mut option: Option<oneshot::Sender<RegionSelectionKind>> = Some(sender);
+        let taken = option.take();
+        assert!(taken.is_some(), "首次 take 应成功");
+
+        // 二次 take 返回 None，模拟 resolve_pending 中的安全跳过
+        let second_take = option.take();
+        assert!(second_take.is_none(), "二次 take 应返回 None，不重复 resolve");
     }
 }

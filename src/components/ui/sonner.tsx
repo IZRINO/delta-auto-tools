@@ -10,6 +10,7 @@ import {
 const Toaster = ({...props}: ToasterProps) => {
     return (
         <Sonner
+            {...props}
             theme="dark"
             className="toaster group"
             icons={{
