@@ -26,6 +26,12 @@ use self::{
     },
 };
 
+/// 全局关闭时取消所有活跃的 morse overlay 会话。
+/// 销毁 overlay 窗口并将 pending sender resolve 为 Cancelled。
+pub(crate) fn cancel_active_overlay(app: &AppHandle) {
+    overlay::cancel_active_overlay(app);
+}
+
 pub struct MorseLogic {
     pub history: VecDeque<HistoryEntry>,
     pub latest_run: Option<MorseRunResult>,

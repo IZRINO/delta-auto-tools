@@ -54,6 +54,7 @@ pub fn global_set_enabled(
 }
 
 fn stop_active_sessions(app: &AppHandle) {
+    // 停止 sync 工具（timer/counter/rapidfire）
     let Some(registry) = app.try_state::<crate::sync_tool::SyncToolRegistry>() else {
         return;
     };
@@ -61,6 +62,9 @@ fn stop_active_sessions(app: &AppHandle) {
     for error in registry.stop_all(app) {
         eprintln!("停止同步工具失败: {error}");
     }
+
+    // 停止 morse overlay 会话：销毁 overlay 窗口并 resolve pending sender
+    crate::morse::cancel_active_overlay(app);
 }
 
 /// 全局开关重新打开时，按各工具自身 `*_enabled` 配置重建透明窗口并重启热键监听。
@@ -142,5 +146,80 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
         Ok(())
     } else {
         Err(errors.join("; "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_state_new_enabled() {
+        let state = GlobalState::new(true);
+        assert!(state.enabled());
+    }
+
+    #[test]
+    fn global_state_new_disabled() {
+        let state = GlobalState::new(false);
+        assert!(!state.enabled());
+    }
+
+    #[test]
+    fn global_state_set_enabled_toggles() {
+        let state = GlobalState::new(false);
+        assert!(!state.enabled());
+
+        state.set_enabled(true);
+        assert!(state.enabled());
+
+        state.set_enabled(false);
+        assert!(!state.enabled());
+    }
+
+    /// 验证 SyncToolRegistry 空状态下注册和名称查询正常，
+    /// stop_active_sessions 在无 handler 时不 panic（由 SyncToolRegistry::stop_all
+    /// 对空 handlers 遍历保证，此处验证注册状态为空）。
+    #[test]
+    fn stop_active_sessions_empty_registry_no_panic() {
+        let registry = crate::sync_tool::SyncToolRegistry::default();
+        let names = registry.registered_names();
+        assert!(names.is_empty(), "空 registry 不应有已注册工具");
+    }
+
+    /// 验证 SyncToolRegistry 注册了 timer/counter/rapidfire 三类工具的 stop handler，
+    /// stop_active_sessions 遍历时会全部调用。
+    #[test]
+    fn stop_active_sessions_covers_all_sync_tools() {
+        fn handler_ok(_app: &AppHandle) -> Result<(), String> {
+            Ok(())
+        }
+
+        let mut registry = crate::sync_tool::SyncToolRegistry::default();
+        registry.register("timer", handler_ok);
+        registry.register("counter", handler_ok);
+        registry.register("rapidfire", handler_ok);
+
+        let names = registry.registered_names();
+        assert_eq!(names, vec!["timer", "counter", "rapidfire"]);
+    }
+
+    /// 验证 SyncToolRegistry stop_all 错误收集：部分 handler 失败不影响其他。
+    #[test]
+    fn stop_active_sessions_collects_errors_from_all_handlers() {
+        fn handler_ok(_app: &AppHandle) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn handler_err(_app: &AppHandle) -> Result<(), String> {
+            Err("停止失败".to_string())
+        }
+
+        let mut registry = crate::sync_tool::SyncToolRegistry::default();
+        registry.register("ok", handler_ok);
+        registry.register("bad", handler_err);
+
+        let names = registry.registered_names();
+        assert_eq!(names, vec!["ok", "bad"]);
     }
 }

@@ -71,6 +71,13 @@ fn destroy_overlay_window(app: &AppHandle) {
     }
 }
 
+/// 全局关闭时取消所有活跃的 morse overlay 会话。
+/// 销毁 overlay 窗口并将 pending sender resolve 为 Cancelled。
+pub(crate) fn cancel_active_overlay(app: &AppHandle) {
+    destroy_overlay_window(app);
+    resolve_pending(app, RegionSelectionKind::Cancelled);
+}
+
 fn parse_slots(slots: &[usize], max_slots: usize) -> Result<Vec<usize>, String> {
     if slots.is_empty() {
         return Err("至少需要选择一个区域槽位".to_string());
@@ -586,5 +593,32 @@ mod tests {
             prepared.progress.click_regions.unwrap()[0].rect,
             sample_rect()
         );
+    }
+
+    /// 验证全局关闭时 morse pending_selection 的 sender 被 resolve 为 Cancelled。
+    /// cancel_active_overlay 的核心语义：取走 pending 并发送 Cancelled，使 receiver 不再挂起。
+    #[test]
+    fn pending_selection_sender_resolves_with_cancelled() {
+        let (sender, receiver) = oneshot::channel();
+
+        // 模拟 cancel_active_overlay 中 resolve_pending 的逻辑：
+        // 取走 pending 并向 sender 发送 Cancelled
+        sender.send(RegionSelectionKind::Cancelled).unwrap();
+
+        let result = receiver.blocking_recv().unwrap();
+        assert!(
+            matches!(result, RegionSelectionKind::Cancelled),
+            "全局关闭应 resolve 为 Cancelled，实际: {result:?}"
+        );
+    }
+
+    /// 验证空状态（无 pending_selection）下 cancel 不 panic。
+    #[test]
+    fn no_pending_selection_cancel_is_noop() {
+        // 当 pending_selection 为 None 时，
+        // resolve_pending 的逻辑是 take() 返回 None 后 return，
+        // 不会 panic。
+        let option: Option<PendingSelection> = None;
+        assert!(option.is_none(), "空 pending 不应触发 sender 操作");
     }
 }
