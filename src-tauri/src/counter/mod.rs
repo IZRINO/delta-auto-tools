@@ -749,20 +749,6 @@ pub fn counter_save_settings(
                 .entry(counter.id.clone())
                 .or_insert(counter.start_value);
         }
-        if !settings_value.counter_enabled {
-            inner.logic.runs = settings_value
-                .counters
-                .iter()
-                .map(|counter| (counter.id.clone(), counter.start_value))
-                .collect();
-        }
-        let enabled_ids: Vec<String> = settings_value
-            .counters
-            .iter()
-            .filter(|c| c.enabled && group_enabled(&settings_value.counter_groups, &c.group_id))
-            .map(|c| c.id.clone())
-            .collect();
-        inner.logic.runs.retain(|id, _| enabled_ids.contains(id));
         CounterLogic::build_bootstrap(&inner)
     };
 
@@ -1247,5 +1233,95 @@ mod tests {
         let states = counter_run_states(&inner);
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].value, 42, "累积值应被保留而非回落到 start_value");
+    }
+
+    /// 模拟 counter_save_settings 中对 runs 的收窄逻辑：
+    /// 1. retain(id ∈ settings.counters) — 孤儿清理
+    /// 2. entry(id).or_insert(start_value) — 缺失补齐
+    /// 不重置、不按 enabled 清理。
+    fn sync_runs_with_settings(
+        runs: &mut HashMap<String, i64>,
+        settings: &CounterSettings,
+    ) {
+        runs.retain(|id, _| settings.counters.iter().any(|c| c.id == *id));
+        for counter in &settings.counters {
+            runs.entry(counter.id.clone()).or_insert(counter.start_value);
+        }
+    }
+
+    #[test]
+    fn test_counter_save_removes_orphan_runs() {
+        // 孤儿 runs（settings.counters 中不存在的 id）被清理
+        let mut runs = HashMap::new();
+        runs.insert("orphan-99".to_string(), 100);
+        runs.insert("c".to_string(), 42);
+
+        let counter = sample_counter("c", "F3");
+        let settings = CounterSettings {
+            counters: vec![counter],
+            ..CounterSettings::default()
+        };
+
+        sync_runs_with_settings(&mut runs, &settings);
+
+        assert!(!runs.contains_key("orphan-99"), "孤儿 runs 应被清理");
+        assert_eq!(runs.get("c"), Some(&42), "有效计数器 runs 应保留");
+    }
+
+    #[test]
+    fn test_counter_save_inserts_missing_runs() {
+        // settings.counters 中存在但 runs 中缺失的 id 被补齐为 start_value
+        let mut runs = HashMap::new();
+
+        let mut counter = sample_counter("c", "F3");
+        counter.start_value = 7;
+        let settings = CounterSettings {
+            counters: vec![counter],
+            ..CounterSettings::default()
+        };
+
+        sync_runs_with_settings(&mut runs, &settings);
+
+        assert_eq!(runs.get("c"), Some(&7), "缺失计数器应补齐为 start_value");
+    }
+
+    #[test]
+    fn test_counter_save_retains_disabled_counter_runs() {
+        // 禁用计数器（enabled=false）的 runs 保留累积值，不被清除
+        let mut runs = HashMap::new();
+        runs.insert("a".to_string(), 10); // 启用计数器
+        runs.insert("b".to_string(), 20); // 禁用计数器
+
+        let counter_a = sample_counter("a", "F3");
+        let mut counter_b = sample_counter("b", "F4");
+        counter_b.enabled = false;
+
+        let settings = CounterSettings {
+            counters: vec![counter_a, counter_b],
+            ..CounterSettings::default()
+        };
+
+        sync_runs_with_settings(&mut runs, &settings);
+
+        assert_eq!(runs.get("a"), Some(&10), "启用计数器 runs 应保留");
+        assert_eq!(runs.get("b"), Some(&20), "禁用计数器 runs 应保留");
+    }
+
+    #[test]
+    fn test_counter_save_disabled_keeps_runs() {
+        // 全局关闭（counter_enabled=false）时 runs 保留累积值，不重置为 start_value
+        let mut runs = HashMap::new();
+        runs.insert("c".to_string(), 42);
+
+        let counter = sample_counter("c", "F3");
+        let settings = CounterSettings {
+            counter_enabled: false,
+            counters: vec![counter],
+            ..CounterSettings::default()
+        };
+
+        sync_runs_with_settings(&mut runs, &settings);
+
+        assert_eq!(runs.get("c"), Some(&42), "全局关闭时 runs 应保留累积值，不重置为 start_value");
     }
 }
