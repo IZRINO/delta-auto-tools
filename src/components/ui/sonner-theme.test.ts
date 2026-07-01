@@ -25,4 +25,12 @@ describe("sonner Toaster theme", () => {
         // 源码中不应有从 next-themes 导入的 useTheme
         expect(sonnerSource).not.toContain("useTheme");
     });
+
+    it("{...props} JSX spread 只出现一次，防止底部 spread 覆盖 theme='dark'", () => {
+        // 统计源码中 JSX {...props} spread 出现次数
+        // 排除函数参数解构 ({...props}: ToasterProps)，只匹配 JSX 属性 spread
+        const jsxSpreadMatches = sonnerSource.match(/<(?:Sonner|\w)[^>]*\{...\w+\}/gs);
+        expect(jsxSpreadMatches).not.toBeNull();
+        expect(jsxSpreadMatches!.length).toBe(1);
+    });
 });

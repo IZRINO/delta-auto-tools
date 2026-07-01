@@ -1,7 +1,7 @@
 mod decoder;
 mod events;
 mod input;
-mod overlay;
+pub(crate) mod overlay;
 pub mod recognition;
 mod settings;
 pub mod types;

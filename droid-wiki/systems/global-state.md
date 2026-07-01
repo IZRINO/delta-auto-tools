@@ -13,6 +13,7 @@ graph TD
     Stop --> RF["rapidfire::stop_registered"]
     Stop --> T["timer::stop_registered"]
     Stop --> C["counter::stop_registered"]
+    Stop --> MorseCancel["morse::cancel_active_overlay<br/>resolve pending → Cancelled<br/>destroy overlay window"]
     Stop --> Clear["clear_all_suppressions"]
 ```
 
@@ -22,6 +23,7 @@ graph TD
 
 关闭时（`enabled = false`）：
 - 调用 `SyncToolRegistry.stop_all()` 停止所有同步工具运行态会话
+- 调用 `cancel_active_overlay()` 销毁 morse overlay 窗口并将 pending sender resolve 为 Cancelled
 - 调用 `clear_all_suppressions()` 清除所有按键抑制
 - 隐藏所有透明显示窗口（v0.17.5 起改为隐藏而非销毁）
 

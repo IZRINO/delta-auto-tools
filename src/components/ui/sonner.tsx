@@ -43,7 +43,6 @@ const Toaster = ({...props}: ToasterProps) => {
                     toast: "cn-toast",
                 },
             }}
-            {...props}
         />
     )
 }
