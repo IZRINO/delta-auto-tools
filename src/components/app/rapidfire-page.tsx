@@ -161,6 +161,8 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
         return () => window.removeEventListener("pointerup", handlePointerUp);
     }, [isNativeShell]);
 
+    const [activeTab, setActiveTab] = useState<"cards" | "global" | "display">("cards");
+
     const beforeUpdateFormRef = useRef<() => void>(() => {
     });
 
@@ -563,199 +565,225 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             <div className="col-span-12">
                 <ChannelTabs
                     tabs={[
-                        {id: "cards", label: "通道", active: true},
-                        {id: "global", label: "全局", active: false},
-                        {id: "display", label: "显示", active: false},
+                        {id: "cards", label: "通道", active: activeTab === "cards"},
+                        {id: "global", label: "全局", active: activeTab === "global"},
+                        {id: "display", label: "显示", active: activeTab === "display"},
                     ]}
-                    onTabChange={() => {
-                    }}
+                    onTabChange={(id) => setActiveTab(id as "cards" | "global" | "display")}
                 />
             </div>
 
-            <TacticalCard className="col-span-12 xl:col-span-7">
-                <SectionHeader
-                    eyebrow="主控排程"
-                    icon={<RiPulseLine/>}
-                    title="全局发射设定"
-                    description="总开关、透明窗口与补齐延时写入同一主控档；单卡片节奏参数在各通道单元中独立校准。"
-                />
-                <CardBody className="grid gap-3">
-                    <FieldGroup className="grid gap-3 md:grid-cols-3">
-                        <ControlTile className="bg-[var(--carbon)]">
-                            <Field orientation="horizontal">
-                                <Switch
-                                    id="rapidfireEnabled"
-                                    checked={form.rapidfireEnabled}
-                                    disabled={controlsDisabled}
-                                    onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
-                                />
-                                <span
-                                    className={cn(
-                                        "font-mono text-xs font-medium tracking-[0.12em] uppercase",
-                                        form.rapidfireEnabled ? "text-[var(--amber)]" : "text-[var(--zinc)]",
-                                    )}
-                                >
-                  {form.rapidfireEnabled ? "ARMED" : "DISARMED"}
-                </span>
-                                <FieldContent>
-                                    <FieldLabel htmlFor="rapidfireEnabled">连发器总开关</FieldLabel>
-                                    <FieldDescription>断开后立即解绑触发键，并同步关闭透明窗口。</FieldDescription>
-                                </FieldContent>
-                            </Field>
-                        </ControlTile>
-                        <ControlTile className="bg-[var(--carbon)]">
-                            <Field orientation="horizontal">
-                                <Switch
-                                    id="showOverlay"
-                                    checked={form.showOverlay}
-                                    disabled={controlsDisabled}
-                                    onCheckedChange={(checked) => updateForm("showOverlay", checked)}
-                                />
-                                <FieldContent>
-                                    <FieldLabel htmlFor="showOverlay">透明窗口</FieldLabel>
-                                    <FieldDescription>游戏内仅投送启用通道与当前发射计数。</FieldDescription>
-                                </FieldContent>
-                            </Field>
-                        </ControlTile>
-                        <ControlTile className="bg-[var(--carbon)]">
-                            <Field>
-                                <FieldLabel htmlFor="overlayWidth">透明窗口宽度</FieldLabel>
-                                <Input
-                                    id="overlayWidth"
-                                    className="max-w-32 bg-[var(--carbon)] font-mono"
-                                    type="number"
-                                    min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
-                                    max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
-                                    value={form.overlayWidth}
-                                    disabled={controlsDisabled}
-                                    onChange={(event) => updateForm("overlayWidth", event.target.value)}
-                                />
-                                <FieldDescription>{RAPIDFIRE_DISPLAY_MIN_WIDTH}-{RAPIDFIRE_DISPLAY_MAX_WIDTH}px。</FieldDescription>
-                            </Field>
-                        </ControlTile>
-                    </FieldGroup>
-                    <FieldGroup className="grid gap-3 md:grid-cols-2">
-                        <ControlTile className="bg-[var(--carbon)]">
-                            <Field>
-                                <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        id="compensationDelayMinMs"
-                                        className="w-28 bg-[var(--carbon)] font-mono"
-                                        type="number"
-                                        min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                                        max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                                        value={form.compensationDelayMinMs}
+            {activeTab === "global" && (
+                <TacticalCard className="col-span-12 xl:col-span-7">
+                    <SectionHeader
+                        eyebrow="主控排程"
+                        icon={<RiPulseLine/>}
+                        title="全局发射设定"
+                        description="总开关与补齐延时写入同一主控档；单卡片节奏参数在各通道单元中独立校准。"
+                    />
+                    <CardBody className="grid gap-3">
+                        <FieldGroup className="grid gap-3 md:grid-cols-2">
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Field orientation="horizontal">
+                                    <Switch
+                                        id="rapidfireEnabled"
+                                        checked={form.rapidfireEnabled}
                                         disabled={controlsDisabled}
-                                        onChange={(event) => updateForm("compensationDelayMinMs", event.target.value)}
+                                        onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
                                     />
-                                    <FieldTitle>ms</FieldTitle>
-                                </div>
-                                <FieldDescription>执行奇数补齐前的随机等待下限。</FieldDescription>
-                            </Field>
-                        </ControlTile>
-                        <ControlTile className="bg-[var(--carbon)]">
-                            <Field>
-                                <FieldLabel htmlFor="compensationDelayMaxMs">补齐延迟上限</FieldLabel>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        id="compensationDelayMaxMs"
-                                        className="w-28 bg-[var(--carbon)] font-mono"
-                                        type="number"
-                                        min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                                        max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                                        value={form.compensationDelayMaxMs}
-                                        disabled={controlsDisabled}
-                                        onChange={(event) => updateForm("compensationDelayMaxMs", event.target.value)}
-                                    />
-                                    <FieldTitle>ms</FieldTitle>
-                                </div>
-                                <FieldDescription>下限不得大于上限。</FieldDescription>
-                            </Field>
-                        </ControlTile>
-                    </FieldGroup>
-                </CardBody>
-            </TacticalCard>
-
-            <TacticalCard className="col-span-12 xl:col-span-5">
-                <SectionHeader
-                    eyebrow="分组母线"
-                    icon={<RiPulseLine/>}
-                    title="通道分组矩阵"
-                    description="每个分组维护独立透明窗口；总开关、分组开关与卡片开关同时接通时才响应触发键。"
-                    actions={
-                        <Button type="button" variant="outline" size="sm" disabled={controlsDisabled}
-                                onClick={addGroup}>
-                            <RiAddLine data-icon="inline-start"/>
-                            新增分组
-                        </Button>
-                    }
-                />
-                <CardBody className="grid gap-3">
-                    {form.groups.map((group, index) => (
-                        <ControlTile key={group.id} className="flex flex-col gap-4 bg-[var(--carbon)]">
-                            <div
-                                className="flex items-start justify-between gap-3 border-b-2 border-[var(--chalk)] pb-3">
-                                <div className="min-w-0">
-                                    <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--amber)] uppercase">
-                                        第 {String(index + 1).padStart(2, "0")} 组
-                                    </p>
-                                    <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
-                                    <p className="mt-1 font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground">
-                                        {rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片
-                                    </p>
-                                </div>
-                                <Switch checked={group.enabled} disabled={controlsDisabled}
-                                        onCheckedChange={(checked) => updateGroup(group.id, {enabled: checked})}/>
-                            </div>
-                            <FieldGroup className="grid gap-3 md:grid-cols-2">
-                                <Field>
-                                    <FieldLabel>分组名称</FieldLabel>
-                                    <Input className="bg-[var(--carbon)]" disabled={controlsDisabled} value={group.name}
-                                           onChange={(event) => updateGroup(group.id, {name: event.currentTarget.value})}/>
-                                </Field>
-                                <Field>
-                                    <FieldLabel>透明窗口宽度</FieldLabel>
-                                    <Input
-                                        className="bg-[var(--carbon)] font-mono"
-                                        disabled={controlsDisabled || !group.enabled}
-                                        max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
-                                        min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
-                                        onChange={(event) => updateGroup(group.id, {overlayWidth: event.currentTarget.value})}
-                                        type="number"
-                                        value={group.overlayWidth}
-                                    />
-                                </Field>
-                            </FieldGroup>
-                            <div className="flex flex-wrap items-center gap-2 border-t-2 border-[var(--chalk)] pt-3">
-                                <ControlTile className="flex items-center gap-2 bg-[var(--slate)] px-3 py-2">
-                                    <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled}
-                                            onCheckedChange={(checked) => updateGroup(group.id, {showOverlay: checked})}/>
                                     <span
-                                        className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">透明窗口</span>
-                                </ControlTile>
-                                <Button type="button" variant="outline" size="sm"
-                                        disabled={controlsDisabled || !group.enabled}
-                                        onClick={() => void beginPositionSelection(group.id)}>
+                                        className={cn(
+                                            "font-mono text-xs font-medium tracking-[0.12em] uppercase",
+                                            form.rapidfireEnabled ? "text-[var(--amber)]" : "text-[var(--zinc)]",
+                                        )}
+                                    >
+                                        {form.rapidfireEnabled ? "ARMED" : "DISARMED"}
+                                    </span>
+                                    <FieldContent>
+                                        <FieldLabel htmlFor="rapidfireEnabled">连发器总开关</FieldLabel>
+                                        <FieldDescription>断开后立即解绑触发键，并同步关闭透明窗口。</FieldDescription>
+                                    </FieldContent>
+                                </Field>
+                            </ControlTile>
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Field>
+                                    <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            id="compensationDelayMinMs"
+                                            className="w-28 bg-[var(--carbon)] font-mono"
+                                            type="number"
+                                            min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                                            max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                                            value={form.compensationDelayMinMs}
+                                            disabled={controlsDisabled}
+                                            onChange={(event) => updateForm("compensationDelayMinMs", event.target.value)}
+                                        />
+                                        <FieldTitle>ms</FieldTitle>
+                                    </div>
+                                    <FieldDescription>执行奇数补齐前的随机等待下限。</FieldDescription>
+                                </Field>
+                            </ControlTile>
+                        </FieldGroup>
+                        <FieldGroup className="grid gap-3 md:grid-cols-2">
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Field>
+                                    <FieldLabel htmlFor="compensationDelayMaxMs">补齐延迟上限</FieldLabel>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            id="compensationDelayMaxMs"
+                                            className="w-28 bg-[var(--carbon)] font-mono"
+                                            type="number"
+                                            min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                                            max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                                            value={form.compensationDelayMaxMs}
+                                            disabled={controlsDisabled}
+                                            onChange={(event) => updateForm("compensationDelayMaxMs", event.target.value)}
+                                        />
+                                        <FieldTitle>ms</FieldTitle>
+                                    </div>
+                                    <FieldDescription>下限不得大于上限。</FieldDescription>
+                                </Field>
+                            </ControlTile>
+                        </FieldGroup>
+                    </CardBody>
+                </TacticalCard>
+            )}
+
+            {activeTab === "global" && (
+                <TacticalCard className="col-span-12 xl:col-span-5">
+                    <SectionHeader
+                        eyebrow="分组母线"
+                        icon={<RiPulseLine/>}
+                        title="通道分组矩阵"
+                        description="每个分组维护独立透明窗口；总开关、分组开关与卡片开关同时接通时才响应触发键。"
+                        actions={
+                            <Button type="button" variant="outline" size="sm" disabled={controlsDisabled}
+                                    onClick={addGroup}>
+                                <RiAddLine data-icon="inline-start"/>
+                                新增分组
+                            </Button>
+                        }
+                    />
+                    <CardBody className="grid gap-3">
+                        {form.groups.map((group, index) => (
+                            <ControlTile key={group.id} className="flex flex-col gap-4 bg-[var(--carbon)]">
+                                <div
+                                    className="flex items-start justify-between gap-3 border-b-2 border-[var(--chalk)] pb-3">
+                                    <div className="min-w-0">
+                                        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--amber)] uppercase">
+                                            第 {String(index + 1).padStart(2, "0")} 组
+                                        </p>
+                                        <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
+                                        <p className="mt-1 font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground">
+                                            {rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片
+                                        </p>
+                                    </div>
+                                    <Switch checked={group.enabled} disabled={controlsDisabled}
+                                            onCheckedChange={(checked) => updateGroup(group.id, {enabled: checked})}/>
+                                </div>
+                                <FieldGroup className="grid gap-3 md:grid-cols-2">
+                                    <Field>
+                                        <FieldLabel>分组名称</FieldLabel>
+                                        <Input className="bg-[var(--carbon)]" disabled={controlsDisabled} value={group.name}
+                                               onChange={(event) => updateGroup(group.id, {name: event.currentTarget.value})}/>
+                                    </Field>
+                                    <Field>
+                                        <FieldLabel>透明窗口宽度</FieldLabel>
+                                        <Input
+                                            className="bg-[var(--carbon)] font-mono"
+                                            disabled={controlsDisabled || !group.enabled}
+                                            max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
+                                            min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
+                                            onChange={(event) => updateGroup(group.id, {overlayWidth: event.currentTarget.value})}
+                                            type="number"
+                                            value={group.overlayWidth}
+                                        />
+                                    </Field>
+                                </FieldGroup>
+                                <div className="flex flex-wrap items-center gap-2 border-t-2 border-[var(--chalk)] pt-3">
+                                    <ControlTile className="flex items-center gap-2 bg-[var(--slate)] px-3 py-2">
+                                        <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled}
+                                                onCheckedChange={(checked) => updateGroup(group.id, {showOverlay: checked})}/>
+                                        <span
+                                            className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">透明窗口</span>
+                                    </ControlTile>
+                                    <Button type="button" variant="outline" size="sm"
+                                            disabled={controlsDisabled || !group.enabled}
+                                            onClick={() => void beginPositionSelection(group.id)}>
+                                        <RiMapPinLine data-icon="inline-start"/>
+                                        校准位置
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={controlsDisabled || form.groups.length <= 1 || form.cards.some((card) => card.groupId === group.id)}
+                                        onClick={() => removeGroup(group.id)}
+                                    >
+                                        <RiDeleteBinLine data-icon="inline-start"/>
+                                        删除空分组
+                                    </Button>
+                                </div>
+                            </ControlTile>
+                        ))}
+                    </CardBody>
+                </TacticalCard>
+            )}
+
+            {activeTab === "display" && (
+                <TacticalCard className="col-span-12">
+                    <SectionHeader
+                        eyebrow="显示配置"
+                        icon={<RiPulseLine/>}
+                        title="透明窗口与显示设定"
+                        description="控制连发器透明窗口的开关、宽度与位置校准；游戏内仅投送启用通道与当前发射计数。"
+                    />
+                    <CardBody className="grid gap-3">
+                        <FieldGroup className="grid gap-3 md:grid-cols-3">
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Field orientation="horizontal">
+                                    <Switch
+                                        id="showOverlay"
+                                        checked={form.showOverlay}
+                                        disabled={controlsDisabled}
+                                        onCheckedChange={(checked) => updateForm("showOverlay", checked)}
+                                    />
+                                    <FieldContent>
+                                        <FieldLabel htmlFor="showOverlay">透明窗口</FieldLabel>
+                                        <FieldDescription>游戏内仅投送启用通道与当前发射计数。</FieldDescription>
+                                    </FieldContent>
+                                </Field>
+                            </ControlTile>
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Field>
+                                    <FieldLabel htmlFor="overlayWidth">透明窗口宽度</FieldLabel>
+                                    <Input
+                                        id="overlayWidth"
+                                        className="max-w-32 bg-[var(--carbon)] font-mono"
+                                        type="number"
+                                        min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
+                                        max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
+                                        value={form.overlayWidth}
+                                        disabled={controlsDisabled}
+                                        onChange={(event) => updateForm("overlayWidth", event.target.value)}
+                                    />
+                                    <FieldDescription>{RAPIDFIRE_DISPLAY_MIN_WIDTH}-{RAPIDFIRE_DISPLAY_MAX_WIDTH}px。</FieldDescription>
+                                </Field>
+                            </ControlTile>
+                            <ControlTile className="bg-[var(--carbon)]">
+                                <Button variant="outline" size="sm" disabled={controlsDisabled}
+                                        onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
                                     <RiMapPinLine data-icon="inline-start"/>
                                     校准位置
                                 </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={controlsDisabled || form.groups.length <= 1 || form.cards.some((card) => card.groupId === group.id)}
-                                    onClick={() => removeGroup(group.id)}
-                                >
-                                    <RiDeleteBinLine data-icon="inline-start"/>
-                                    删除空分组
-                                </Button>
-                            </div>
-                        </ControlTile>
-                    ))}
-                </CardBody>
-            </TacticalCard>
+                            </ControlTile>
+                        </FieldGroup>
+                    </CardBody>
+                </TacticalCard>
+            )}
 
+            {activeTab === "cards" && (
             <section className="col-span-12 grid min-h-0 gap-4 xl:grid-cols-2">
                 {form.cards.map((card, index) => {
                     const run = runsById.get(card.id);
@@ -793,6 +821,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                 <AddCardButton className="min-h-36" disabled={controlsDisabled} title="新增通道单元"
                                description="建立新的触发键、目标键与节奏配置。" onClick={addCard}/>
             </section>
+            )}
         </AppPage>
     );
 }
