@@ -42,6 +42,8 @@ type ProfileContextValue = {
     switchProfile: (id: string) => Promise<void>;
     /** 重命名 Profile。 */
     renameProfile: (id: string, name: string) => Promise<void>;
+    /** 另存为：将当前运行时设置快照保存为新 Profile。 */
+    saveCurrentProfile: (name: string) => Promise<void>;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -147,6 +149,19 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         }
     }, []);
 
+    const saveCurrentProfile = useCallback(
+        async (name: string) => {
+            try {
+                await invoke<Profile>("profile_save_current", {name});
+                await refreshAfterSwitch();
+            } catch (err: unknown) {
+                setError(String(err));
+                throw err;
+            }
+        },
+        [refreshAfterSwitch],
+    );
+
     const createDefaultProfile = useCallback(async () => {
         try {
             const boot = await invoke<ProfileBootstrap>("profile_create_default");
@@ -172,6 +187,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             createDefaultProfile,
             switchProfile,
             renameProfile,
+            saveCurrentProfile,
         }),
         [
             bootstrap,
@@ -183,6 +199,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             createDefaultProfile,
             switchProfile,
             renameProfile,
+            saveCurrentProfile,
         ],
     );
 

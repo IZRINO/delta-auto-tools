@@ -4,6 +4,7 @@ import {
     RiArrowDownSLine,
     RiCheckLine,
     RiEditLine,
+    RiSave2Line,
 } from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
@@ -31,12 +32,15 @@ export function ProfileSwitcher() {
         createDefaultProfile,
         switchProfile,
         renameProfile,
+        saveCurrentProfile,
     } = useProfile();
     const [open, setOpen] = useState(false);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [message, setMessage] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [saveAsOpen, setSaveAsOpen] = useState(false);
+    const [saveAsName, setSaveAsName] = useState("");
 
     const profiles = useMemo(
         () => sortProfilesForSwitcher(bootstrap?.profiles ?? [], bootstrap?.activeProfileId ?? ""),
@@ -88,6 +92,25 @@ export function ProfileSwitcher() {
         try {
             await createDefaultProfile();
             setOpen(false);
+            setMessage(null);
+        } catch (err) {
+            setMessage(String(err));
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleSaveAs = async () => {
+        const validation = validateProfileName(saveAsName);
+        if (validation) {
+            setMessage(validation);
+            return;
+        }
+        setBusy(true);
+        try {
+            await saveCurrentProfile(saveAsName.trim());
+            setSaveAsOpen(false);
+            setSaveAsName("");
             setMessage(null);
         } catch (err) {
             setMessage(String(err));
@@ -206,6 +229,47 @@ export function ProfileSwitcher() {
                     <RiAddLine className="size-4" data-icon="inline-start" aria-hidden="true"/>
                     新增配置
                 </Button>
+
+                {saveAsOpen ? (
+                    <div className="flex items-center gap-1">
+                        <Input
+                            value={saveAsName}
+                            onChange={(event) => setSaveAsName(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") void handleSaveAs();
+                                if (event.key === "Escape") {
+                                    setSaveAsOpen(false);
+                                    setSaveAsName("");
+                                }
+                            }}
+                            placeholder="配置名称"
+                            className="h-7 flex-1"
+                            autoFocus
+                            spellCheck={false}
+                        />
+                        <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => void handleSaveAs()}
+                            disabled={busy}
+                            aria-label="确认另存为"
+                        >
+                            <RiCheckLine className="size-3.5" aria-hidden="true"/>
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setSaveAsOpen(true)}
+                        disabled={busy || loading}
+                    >
+                        <RiSave2Line className="size-4" data-icon="inline-start" aria-hidden="true"/>
+                        另存为
+                    </Button>
+                )}
             </PopoverContent>
         </Popover>
     );
