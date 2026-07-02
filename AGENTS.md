@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、音频触发器、Delta 账号与游戏数据接口、攻略网站工作台。
+**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、音频触发器、攻略网站工作台。
 
 开发环境：Windows，仓库路径 `D:/code/ai/sjz/delta-auto-tools`，所有命令在 Windows + Bun 下测试通过。
 
@@ -43,7 +43,7 @@
 
 **以下信息不再在本文档中重复维护**，请通过 codegraph 查询：
 - 前端与 Rust 后端完整文件树 → `codegraph_files`
-- 各工具的 Tauri command 清单与签名 → `codegraph_search("morse_")` / `codegraph_search("delta_")` 等
+- 各工具的 Tauri command 清单与签名 → `codegraph_search("morse_")` / `codegraph_search("timer_")` 等
 - Tauri 事件名常量 → `codegraph_explore("events.rs")`
 - 各模块数据结构定义 → `codegraph_search("Settings")` / `codegraph_search("Bootstrap")`
 - 测试文件分布 → `codegraph_files(pattern="*.test.*")`
@@ -96,14 +96,6 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 所有对外序列化的 Rust 结构体**必须**使用 `#[serde(rename_all = "camelCase")]`。前端 TypeScript 类型必须匹配 camelCase 字段名。
 
-### Delta 凭据边界
-
-前端只收到 `DeltaAccountView`（id / kind / uinOrOpenid / hasAccessToken / expiresAt / capabilities）。**不得向前端返回** cookie、access_token、openid、ticket 或 code。游戏数据命令从 `accountId` 解析后端凭据。
-
-- Delta 命令返回 `Result<ApiResponse<T>, DeltaError>`（`code=0` 为成功）
-- Morse 等其他命令返回 `Result<T, String>`（中文错误字符串）
-- `AccountKind` 序列化为 camelCase：`QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`、`WegameWechat`→`"wegameWechat"`、`Pioneer`→`"pioneer"`
-
 ### 热键冲突规则
 
 `ConflictPolicy` 枚举：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
@@ -149,7 +141,6 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `counter/` — 多计数器，运行态独立持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程
 - `audio/` — 快捷键/区域监听/识色三种触发模式
-- `delta/` — 6 种账号鉴权 + SQLite 存储 + DPAPI 加密 + IDE 网关游戏数据
 - `strategy/` — 攻略网站 WebView2 嵌入
 - `theme/` — 5 套内置主题 + 自定义 + token override
 - `profile/` — 多配置快照切换
@@ -160,7 +151,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 ## Testing
 
 - **前端**：Vitest，测试文件 `*.test.ts` 紧邻源文件。运行 `bun run test`
-- **Rust**：`cargo test`，测试内联在模块中。GameService 测试使用 `mockito` mock HTTP。运行 `cargo test --manifest-path src-tauri/Cargo.toml`
+- **Rust**：`cargo test`，测试内联在模块中。运行 `cargo test --manifest-path src-tauri/Cargo.toml`
 - Vitest coverage 配置只包含 `morse-utils.ts`
 
 ## Commit Guidelines
@@ -205,7 +196,6 @@ set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& g
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
 - `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
 - 忽略：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`temp/`、`test-results/`
-- `src-tauri/src/delta/resources/ammo.json` 和 `accessory.json` 为空数组，未使用；实际配置在 `game_config.rs` 内联常量
 - localStorage 偏好 key 统一前缀 `delta-auto-tools:`
 - GitHub 远端：`https://github.com/IZRINO/delta-auto-tools`
 - Issue 处理：先回复处理结论，不要在回复后直接关闭 Issue，等待确认后再关

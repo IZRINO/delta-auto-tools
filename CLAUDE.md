@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。四个原生能力模块：Morse
-摩斯识别、计时器、计数器、连发器、Delta 账号与游戏数据接口。外加攻略网站工作台。
+摩斯识别、计时器、计数器、连发器。外加攻略网站工作台。
 
 ## Commands
 
@@ -143,7 +143,6 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | timer        | `src-tauri/src/timer/`          | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic>                                     |
 | counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，计数器运行态独立持久化；CounterState 包装 ToolState<CounterLogic>                                   |
 | rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距；RapidfireState = ToolState<RapidfireLogic>       |
-| delta        | `src-tauri/src/delta/`          | 6 种账号鉴权流程（QQ/微信/QQ安全中心/Wegame/先遣服），SQLite 账号存储，DPAPI 加密，IDE 网关游戏数据查询；GameService 缓存于 DeltaState |
 | hotkeys      | `src-tauri/src/hotkeys.rs`      | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy）                           |
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |
 | strategy     | `src-tauri/src/strategy/`       | 兼容入口：`strategy_open_window` 创建子 WebView，`strategy_fetch_page` Chrome 头抓取+JS 重定向跟随               |
@@ -191,18 +190,7 @@ Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9
 
 ### Rust serde
 
-所有对外序列化的 Rust 结构体**必须**使用 `#[serde(rename_all = "camelCase")]`。Delta 端 `AccountKind` 序列化为 camelCase（
-`QqSafe`→`"qqSafe"`、`WegameQq`→`"wegameQq"`），前端必须匹配。
-
-### Delta 凭据边界
-
-前端只收到 `DeltaAccountView`（id/kind/uinOrOpenid/hasAccessToken/expiresAt/capabilities）。不得向前端返回
-cookie、access_token、openid、ticket 或 code。游戏数据命令从 `accountId` 解析后端凭据。
-
-### Morse/Delta 返回差异
-
-- Morse 命令返回 `Result<T, String>`（中文错误字符串）
-- Delta 命令返回 `Result<ApiResponse<T>, DeltaError>`（`code=0` 为成功）
+所有对外序列化的 Rust 结构体**必须**使用 `#[serde(rename_all = "camelCase")]`。前端必须匹配。
 
 ### 热键冲突规则
 
@@ -417,9 +405,8 @@ Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agen
 
 - 使用 **Bun**，不要切换到 npm/pnpm/yarn
 - 不存在 `tailwind.config.js`
-- `src-tauri/src/delta/resources/ammo.json` 和 `accessory.json` 为空数组，未使用；实际配置在 `game_config.rs` 内联常量
-- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` + `delta-utils.ts` +
-  `delta-types.ts` + `delta-login-utils.ts` + `delta-game-data-loader.ts` + `use-bootstrap-form-logic.ts` +
+- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` +
+  `use-bootstrap-form-logic.ts` +
   `use-hotkey-recorder.ts` + `use-autosave.ts` + `about-deps.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
 - `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
