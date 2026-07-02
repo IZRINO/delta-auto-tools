@@ -36,7 +36,7 @@
 | 查看某函数调用者 | `codegraph_callers` | `codegraph_callers("timer_save_settings")` |
 | 查看某函数调用了什么 | `codegraph_callees` | `codegraph_callees("run_recognition_flow")` |
 | 评估改动影响范围 | `codegraph_impact` | `codegraph_impact("ToolLogic")` |
-| 获取单个符号完整源码 | `codegraph_node` | `codegraph_node("GameService", includeCode=true)` |
+| 获取单个符号完整源码 | `codegraph_node` | `codegraph_node("TimerLogic", includeCode=true)` |
 | 浏览文件树 | `codegraph_files` | `codegraph_files(format="tree")` |
 
 典型探索流程：`codegraph_explore("keyword")` 获取相关源码 → `codegraph_callers`/`callees` 追踪调用链 → `codegraph_impact` 评估改动影响。
