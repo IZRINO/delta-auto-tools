@@ -90,6 +90,8 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         let disposed = false;
         let unlistenStateChanged: (() => void) | undefined;
         let unlistenHotkeyError: (() => void) | undefined;
+        let unlistenHotkeyTriggered: (() => void) | undefined;
+        let unlistenRegionMatched: (() => void) | undefined;
 
         void listenEvent(AUDIO_EVENTS.stateChanged, (event) => {
             if (disposed) return;
@@ -110,10 +112,28 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenHotkeyError = dispose;
         });
 
+        void listenEvent(AUDIO_EVENTS.hotkeyTriggered, (event) => {
+            if (disposed) return;
+            toast.info(`快捷键触发：卡片 ${event.payload}`);
+            setStatusMessage(`快捷键触发：卡片 ${event.payload}`);
+        }).then((dispose) => {
+            unlistenHotkeyTriggered = dispose;
+        });
+
+        void listenEvent(AUDIO_EVENTS.regionMatched, (event) => {
+            if (disposed) return;
+            toast.info(`区域匹配触发：卡片 ${event.payload}`);
+            setStatusMessage(`区域匹配触发：卡片 ${event.payload}`);
+        }).then((dispose) => {
+            unlistenRegionMatched = dispose;
+        });
+
         return () => {
             disposed = true;
             unlistenStateChanged?.();
             unlistenHotkeyError?.();
+            unlistenHotkeyTriggered?.();
+            unlistenRegionMatched?.();
         };
     }, [isNativeShell, setBootstrap, setForm, setPageError, setStatusMessage]);
 
