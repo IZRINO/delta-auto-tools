@@ -53,6 +53,17 @@ pub fn run() {
             sync_tool_registry.register("counter", counter::stop_registered);
             sync_tool_registry.register("timer", timer::stop_registered);
             sync_tool_registry.register("rapidfire", rapidfire::stop_registered);
+            let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
+            lifecycle_registry.register("timer", Box::new(|app: &tauri::AppHandle| timer::stop_registered(app)));
+            lifecycle_registry.register("counter", Box::new(|app: &tauri::AppHandle| counter::stop_registered(app)));
+            lifecycle_registry.register("rapidfire", Box::new(|app: &tauri::AppHandle| rapidfire::stop_registered(app)));
+            lifecycle_registry.register("morse", Box::new(|app: &tauri::AppHandle| {
+                crate::morse::cancel_active_overlay(app);
+                Ok(())
+            }));
+            lifecycle_registry.register("audio", Box::new(|app: &tauri::AppHandle| {
+                crate::audio::watcher::stop_all_watchers(app)
+            }));
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
@@ -63,6 +74,7 @@ pub fn run() {
             app.manage(profile_state);
             app.manage(global_state);
             app.manage(sync_tool_registry);
+            app.manage(lifecycle_registry);
             app.manage(log_writer);
             Ok(())
         })

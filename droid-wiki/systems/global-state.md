@@ -9,11 +9,12 @@ graph TD
     SwitchOff["global_set_enabled(false)"] --> Store["AtomicBool = false"]
     Store --> Emit["emit global://enabled-changed"]
     Emit --> Frontend["前端显示关闭横幅"]
-    SwitchOff --> Stop["stop_active_sessions<br/>SyncToolRegistry.stop_all"]
-    Stop --> RF["rapidfire::stop_registered"]
+    SwitchOff --> Stop["stop_active_sessions<br/>ToolLifecycleRegistry.stop_all"]
     Stop --> T["timer::stop_registered"]
     Stop --> C["counter::stop_registered"]
+    Stop --> RF["rapidfire::stop_registered"]
     Stop --> MorseCancel["morse::cancel_active_overlay<br/>resolve pending → Cancelled<br/>destroy overlay window"]
+    Stop --> Audio["audio::stop_all_watchers<br/>stop watchers + stop playback"]
     Stop --> Clear["clear_all_suppressions"]
 ```
 
@@ -22,8 +23,10 @@ graph TD
 ### 关闭与恢复
 
 关闭时（`enabled = false`）：
-- 调用 `SyncToolRegistry.stop_all()` 停止所有同步工具运行态会话
-- 调用 `cancel_active_overlay()` 销毁 morse overlay 窗口并将 pending sender resolve 为 Cancelled
+- 调用 `ToolLifecycleRegistry.stop_all()` 统一停止所有工具运行态会话
+  - timer/counter/rapidfire: 各自 `stop_registered` 停止运行态会话
+  - morse: `cancel_active_overlay` 销毁 overlay 窗口并将 pending sender resolve 为 Cancelled
+  - audio: `stop_all_watchers` 停止所有区域监听 watcher
 - 调用 `clear_all_suppressions()` 清除所有按键抑制
 - 隐藏所有透明显示窗口（v0.17.5 起改为隐藏而非销毁）
 
@@ -50,7 +53,7 @@ graph TD
 ## 集成点
 
 - [热键系统](hotkeys.md) 监听线程每个事件检查 `GlobalState::enabled()`
-- [同步工具基座](sync-tool.md) 的 `SyncToolRegistry` 提供全局停止入口
+- [同步工具基座](sync-tool.md) 的 `SyncToolRegistry` 提供同步工具管理，`ToolLifecycleRegistry` 提供全局停止入口
 - [按键抑制器](key-suppressor.md) 的 `clear_all_suppressions` 在关闭时调用
 - [计时器](../features/timer.md)、[计数器](../features/counter.md)、[连发器](../features/rapidfire.md) 在恢复时重建窗口和热键
 

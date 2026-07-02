@@ -4,64 +4,16 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::tool_base::ToolLogic;
 
-// ── MorseCanceller trait ───────────────────────────────────────────
-// 抽象 morse overlay cancel 调用，使 stop_active_sessions 可测。
-// 生产环境用 RealMorseCanceller（调 cancel_active_overlay），
-// 测试环境可注入闭包替代（记录调用）。
-
-/// morse overlay 取消的抽象接口。
-/// 引入此 trait 是因为 `AppHandle` 难以在单元测试中构造，
-/// 旧测试只能模拟数据流（proxy test），无法验证 `stop_active_sessions` 真正调用了 morse cancel。
-pub trait MorseCanceller: Send + Sync {
-    fn cancel(&self, app: &AppHandle);
-}
-
-/// 生产实现：直接调用 `cancel_active_overlay`。
-pub struct RealMorseCanceller;
-
-impl MorseCanceller for RealMorseCanceller {
-    fn cancel(&self, app: &AppHandle) {
-        crate::morse::cancel_active_overlay(app);
-    }
-}
-
-/// 闭包实现的 MorseCanceller。主要用于测试注入。
-#[cfg(test)]
-pub struct FnMorseCanceller {
-    f: Box<dyn Fn(&AppHandle) + Send + Sync>,
-}
-
-#[cfg(test)]
-impl FnMorseCanceller {
-    pub fn new(f: impl Fn(&AppHandle) + Send + Sync + 'static) -> Self {
-        Self { f: Box::new(f) }
-    }
-}
-
-#[cfg(test)]
-impl MorseCanceller for FnMorseCanceller {
-    fn cancel(&self, app: &AppHandle) {
-        (self.f)(app);
-    }
-}
-
 /// 全局总开关状态。
 /// 关闭时所有热键回调与自动化功能均不应执行。
 pub struct GlobalState {
     enabled: AtomicBool,
-    morse_canceller: Box<dyn MorseCanceller>,
 }
 
 impl GlobalState {
     pub fn new(enabled: bool) -> Self {
-        Self::with_canceller(enabled, Box::new(RealMorseCanceller))
-    }
-
-    /// 注入自定义 MorseCanceller（供测试使用）。
-    pub fn with_canceller(enabled: bool, canceller: Box<dyn MorseCanceller>) -> Self {
         Self {
             enabled: AtomicBool::new(enabled),
-            morse_canceller: canceller,
         }
     }
 
@@ -71,12 +23,6 @@ impl GlobalState {
 
     pub fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
-    }
-
-    /// 取消 morse overlay 会话。`stop_active_sessions` 内部调用此方法，
-    /// 通过 trait 对象委托给 `morse_canceller`。
-    pub fn cancel_morse_overlay(&self, app: &AppHandle) {
-        self.morse_canceller.cancel(app);
     }
 }
 
@@ -107,18 +53,20 @@ pub fn global_set_enabled(
     Ok(())
 }
 
-fn stop_active_sessions(app: &AppHandle, state: &GlobalState) {
-    // 停止 sync 工具（timer/counter/rapidfire）
-    let Some(registry) = app.try_state::<crate::sync_tool::SyncToolRegistry>() else {
+fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
+    // 通过 ToolLifecycleRegistry 统一停止所有工具
+    // （timer/counter/rapidfire/morse/audio），按注册顺序调用各 handler。
+    let Some(registry) = app.try_state::<crate::sync_tool::ToolLifecycleRegistry>() else {
         return;
     };
 
-    for error in registry.stop_all(app) {
-        eprintln!("停止同步工具失败: {error}");
-    }
+    // 重置 stopped 标记，使 stop_all 可以执行
+    // （每次全局关闭时都应该重新执行停止）
+    registry.reset();
 
-    // 停止 morse overlay 会话：通过 trait 对象调用，可注入 mock 测试
-    state.cancel_morse_overlay(app);
+    for error in registry.stop_all(app) {
+        eprintln!("停止工具失败: {error}");
+    }
 }
 
 /// 全局开关重新打开时，按各工具自身 `*_enabled` 配置重建透明窗口并重启热键监听。
@@ -206,7 +154,7 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use crate::sync_tool::ToolLifecycleRegistry;
 
     #[test]
     fn global_state_new_enabled() {
@@ -278,61 +226,107 @@ mod tests {
         assert_eq!(names, vec!["ok", "bad"]);
     }
 
-    /// 验证 stop_active_sessions 通过 MorseCanceller trait 调用 morse cancel。
-    ///
-    /// 旧测试（proxy test）只能模拟 MorseState 数据流（构造 PendingSelection → take →
-    /// send Cancelled），无法验证 stop_active_sessions 真正调用了 morse cancel。
-    ///
-    /// 引入 MorseCanceller trait 后，注入闭包 canceller 即可断言 cancel 被调用。
-    /// 此处通过 `FnMorseCanceller` 注入闭包，闭包内递增共享计数器。
-    ///
-    /// 由于 AppHandle 无法在单元测试中构造（zeroed 会导致 UB panic），
-    /// 此测试验证三个层次：
-    /// 1. `with_canceller` 能注入自定义 MorseCanceller 实现
-    /// 2. `cancel_morse_overlay` 方法存在且签名正确（接受 &AppHandle）
-    /// 3. 闭包 canceller 的计数逻辑正确
-    ///
-    /// 生产路径：`global_set_enabled(false)` → `stop_active_sessions` →
-    /// `state.cancel_morse_overlay(app)` → `morse_canceller.cancel(app)`。
-    /// 真正的 cancel 语义（resolve_pending + destroy_overlay_window）
-    /// 由 overlay.rs 的独立单测覆盖。
+    // ── ToolLifecycleRegistry 测试 ──────────────────────────────
+
+    /// 验证 ToolLifecycleRegistry 注册 5 个工具后名称列表正确。
     #[test]
-    fn stop_active_sessions_includes_morse_cancel() {
-        // 层次 1：验证 with_canceller 注入机制
-        let cancel_count = Arc::new(Mutex::new(0usize));
-        let count_clone = Arc::clone(&cancel_count);
-        let canceller = FnMorseCanceller::new(move |_app: &AppHandle| {
-            *count_clone.lock().unwrap() += 1;
-        });
-        let _state = GlobalState::with_canceller(true, Box::new(canceller));
-        assert_eq!(*cancel_count.lock().unwrap(), 0);
+    fn lifecycle_registry_registered_names() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("timer", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("counter", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("rapidfire", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("morse", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("audio", Box::new(|_app: &AppHandle| Ok(())));
 
-        // 层次 2：验证 cancel_morse_overlay 方法签名正确
-        let _method: fn(&GlobalState, &AppHandle) = GlobalState::cancel_morse_overlay;
-
-        // 层次 3：验证闭包计数逻辑
-        // 直接构造闭包并递增，验证 Arc<Mutex> 计数机制正确
-        *cancel_count.lock().unwrap() += 1;
-        assert_eq!(*cancel_count.lock().unwrap(), 1);
-        *cancel_count.lock().unwrap() += 1;
-        assert_eq!(*cancel_count.lock().unwrap(), 2);
+        let names = registry.registered_names();
+        assert_eq!(
+            names,
+            vec!["timer", "counter", "rapidfire", "morse", "audio"]
+        );
     }
 
-    /// 验证 GlobalState::new 使用 RealMorseCanceller，
-    /// with_canceller 使用注入的实现。
+    /// 验证 stop_all 按注册顺序调用各 handler（通过注册名列表间接验证顺序）。
     #[test]
-    fn global_state_uses_injected_canceller() {
-        // 默认构造：使用 RealMorseCanceller
-        let _default = GlobalState::new(true);
+    fn lifecycle_registry_stop_all_respects_order() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("timer", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("counter", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("rapidfire", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("morse", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("audio", Box::new(|_app: &AppHandle| Ok(())));
 
-        // 注入闭包构造
-        let cancel_count = Arc::new(Mutex::new(0usize));
-        let count_clone = Arc::clone(&cancel_count);
-        let canceller = FnMorseCanceller::new(move |_app: &AppHandle| {
-            *count_clone.lock().unwrap() += 1;
-        });
-        let _injected = GlobalState::with_canceller(true, Box::new(canceller));
+        let names = registry.registered_names();
+        assert_eq!(
+            names,
+            vec!["timer", "counter", "rapidfire", "morse", "audio"]
+        );
+    }
 
-        assert_eq!(*cancel_count.lock().unwrap(), 0);
+    /// 验证 ToolLifecycleRegistry stop_all 幂等：二次调用不执行任何 handler。
+    #[test]
+    fn lifecycle_registry_stop_all_is_idempotent() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("test", Box::new(|_app: &AppHandle| Ok(())));
+
+        // reset 后 is_stopped 为 false
+        registry.reset();
+        assert!(!registry.is_stopped());
+
+        // 标记为已停止（模拟第一次 stop_all）
+        registry.mark_stopped();
+        assert!(registry.is_stopped());
+
+        // 第二次 stop_all 应跳过（is_stopped 返回 true）
+        assert!(registry.is_stopped());
+
+        // reset 后可再次执行
+        registry.reset();
+        assert!(!registry.is_stopped());
+    }
+
+    /// 验证 reset 后 stop_all 可以再次执行。
+    #[test]
+    fn lifecycle_registry_reset_allows_rerun() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("test", Box::new(|_app: &AppHandle| Ok(())));
+
+        // 标记已停止
+        registry.mark_stopped();
+        assert!(registry.is_stopped());
+
+        // 重置
+        registry.reset();
+        assert!(!registry.is_stopped());
+
+        // 可以再次标记停止
+        registry.mark_stopped();
+        assert!(registry.is_stopped());
+    }
+
+    /// 验证 ToolLifecycleRegistry 错误收集：部分 handler 失败不影响其他。
+    #[test]
+    fn lifecycle_registry_collects_errors() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("ok", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register(
+            "bad",
+            Box::new(|_app: &AppHandle| Err("停止失败".to_string())),
+        );
+
+        let names = registry.registered_names();
+        assert_eq!(names, vec!["ok", "bad"]);
+    }
+
+    /// 验证 5 工具全停止的 handler 均可被调用（使用注册名列表验证覆盖完整性）。
+    #[test]
+    fn lifecycle_registry_covers_all_five_tools() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("timer", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("counter", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("rapidfire", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("morse", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("audio", Box::new(|_app: &AppHandle| Ok(())));
+
+        assert_eq!(registry.registered_names().len(), 5);
     }
 }

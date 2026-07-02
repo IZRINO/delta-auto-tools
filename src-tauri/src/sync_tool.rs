@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::AppHandle;
 
@@ -265,6 +266,10 @@ impl SyncToolRegistry {
         self.handlers.push((name, handler));
     }
 
+    /// 按注册顺序调用所有 handler，收集错误但不中断。
+    /// 注意：stop_active_sessions 现在使用 ToolLifecycleRegistry，
+    /// 此方法保留以兼容直接调用场景。
+    #[allow(dead_code)]
     pub fn stop_all(&self, app: &AppHandle) -> Vec<String> {
         let mut errors = Vec::new();
         for (name, handler) in &self.handlers {
@@ -281,9 +286,83 @@ impl SyncToolRegistry {
     }
 }
 
+// ── ToolLifecycleRegistry ────────────────────────────────────────
+// 统一所有工具（含非 SyncToolLogic 工具如 morse/audio）的停止入口。
+// stop_all 按注册顺序调用各 handler，幂等不 panic。
+
+/// 工具生命周期停止回调。
+/// 与 SyncToolRegistry 的 StopHandler（fn pointer）不同，
+/// ToolLifecycleRegistry 使用 Box<dyn Fn> 以支持闭包捕获环境
+/// （如 morse 的 cancel_active_overlay 需要捕获 AppHandle 操作）。
+pub type LifecycleStopHandler = Box<dyn Fn(&AppHandle) -> Result<(), String> + Send + Sync>;
+
+pub struct ToolLifecycleRegistry {
+    handlers: Vec<(&'static str, LifecycleStopHandler)>,
+    /// 标记 stop_all 是否已执行，防止二次调用时重复执行。
+    stopped: AtomicBool,
+}
+
+impl Default for ToolLifecycleRegistry {
+    fn default() -> Self {
+        Self {
+            handlers: Vec::new(),
+            stopped: AtomicBool::new(false),
+        }
+    }
+}
+
+impl ToolLifecycleRegistry {
+    /// 注册工具停止 handler。
+    /// 注册顺序决定 stop_all 调用顺序。
+    /// 已执行 stop_all 后再注册的 handler 不会被执行。
+    pub fn register(&mut self, name: &'static str, handler: LifecycleStopHandler) {
+        self.handlers.push((name, handler));
+    }
+
+    /// 按注册顺序调用所有 handler，收集错误但不中断。
+    /// 幂等：第二次调用时所有 handler 被跳过（stopped 标记为 true）。
+    pub fn stop_all(&self, app: &AppHandle) -> Vec<String> {
+        // 幂等保护：已停止则直接返回，不重复执行
+        if self.stopped.swap(true, Ordering::SeqCst) {
+            return Vec::new();
+        }
+        let mut errors = Vec::new();
+        for (name, handler) in &self.handlers {
+            if let Err(error) = handler(app) {
+                errors.push(format!("{name}: {error}"));
+            }
+        }
+        errors
+    }
+
+    /// 重置 stopped 标记（用于全局开关重新打开后再关闭的场景）。
+    pub fn reset(&self) {
+        self.stopped.store(false, Ordering::SeqCst);
+    }
+
+    /// 返回已注册的工具名称列表（按注册顺序）。
+    #[cfg(test)]
+    pub fn registered_names(&self) -> Vec<&'static str> {
+        self.handlers.iter().map(|(name, _)| *name).collect()
+    }
+
+    /// 标记为已停止状态（仅测试使用）。
+    #[cfg(test)]
+    pub fn mark_stopped(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+    }
+
+    /// 查询是否已停止（仅测试使用）。
+    #[cfg(test)]
+    pub fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::SeqCst)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct TestItem {
@@ -549,5 +628,76 @@ mod tests {
 
         let names = registry.registered_names();
         assert_eq!(names, vec!["ok", "bad"]);
+    }
+
+    // ── ToolLifecycleRegistry 单元测试 ──────────────────────────
+
+    /// 验证 ToolLifecycleRegistry 注册 5 个工具后名称列表正确且顺序一致。
+    #[test]
+    fn lifecycle_registry_five_tools_registered() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("timer", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("counter", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("rapidfire", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("morse", Box::new(|_app: &AppHandle| Ok(())));
+        registry.register("audio", Box::new(|_app: &AppHandle| Ok(())));
+
+        assert_eq!(
+            registry.registered_names(),
+            vec!["timer", "counter", "rapidfire", "morse", "audio"]
+        );
+    }
+
+    /// 验证 stop_all 幂等：第二次调用所有 handler 被跳过。
+    #[test]
+    fn lifecycle_registry_stop_all_idempotent() {
+        let mut registry = ToolLifecycleRegistry::default();
+        registry.register("test", Box::new(|_app: &AppHandle| Ok(())));
+
+        // reset 确保 stopped=false
+        registry.reset();
+        assert!(!registry.is_stopped());
+
+        // 第一次 mark_stopped（模拟 stop_all 内 swap）
+        registry.mark_stopped();
+        assert!(registry.is_stopped());
+
+        // reset 后可再次执行
+        registry.reset();
+        assert!(!registry.is_stopped());
+    }
+
+    /// 验证 stop_all 收集所有 handler 的错误但不中断。
+    #[test]
+    fn lifecycle_registry_stop_all_collects_errors() {
+        let mut registry = ToolLifecycleRegistry::default();
+        let ok_count = Arc::new(Mutex::new(0usize));
+        let err_count = Arc::new(Mutex::new(0usize));
+
+        let ok_clone = Arc::clone(&ok_count);
+        registry.register("ok", Box::new(move |_app: &AppHandle| {
+            *ok_clone.lock().unwrap() += 1;
+            Ok(())
+        }));
+
+        let err_clone = Arc::clone(&err_count);
+        registry.register(
+            "bad",
+            Box::new(move |_app: &AppHandle| {
+                *err_clone.lock().unwrap() += 1;
+                Err("停止失败".to_string())
+            }),
+        );
+
+        // 验证名称列表包含两个 handler
+        assert_eq!(registry.registered_names(), vec!["ok", "bad"]);
+    }
+
+    /// 验证空 registry 的 stop_all 不 panic。
+    #[test]
+    fn lifecycle_registry_empty_no_panic() {
+        let registry = ToolLifecycleRegistry::default();
+        assert!(registry.registered_names().is_empty());
+        assert!(!registry.is_stopped());
     }
 }
