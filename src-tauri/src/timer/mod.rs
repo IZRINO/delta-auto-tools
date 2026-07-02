@@ -22,7 +22,7 @@ use crate::overlay_utils::{
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
-    SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
+    RunsSync, SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
@@ -304,6 +304,40 @@ impl SyncToolLogic for TimerLogic {
         };
         stop_all(app, &state);
         Ok(())
+    }
+}
+
+impl RunsSync for TimerLogic {
+    type Runs = HashMap<String, TimerRuntime>;
+
+    fn sync_runs_with_settings(runs: &mut Self::Runs, settings: &Self::Settings) {
+        // 1. retain(id ∈ settings.timers) — 孤儿清理
+        runs.retain(|id, _| settings.timers.iter().any(|t| t.id == *id));
+        // 2. 缺失补齐 — 新计时器插入 Finished 状态的 idle runtime
+        // 不重置、不按 enabled 清理、不按 timer_enabled 清空
+        for timer in &settings.timers {
+            if !runs.contains_key(&timer.id) {
+                let cur = match timer.direction {
+                    TimerDirection::Countdown => timer.duration_seconds,
+                    TimerDirection::Countup => 0,
+                };
+                runs.insert(
+                    timer.id.clone(),
+                    TimerRuntime {
+                        started_at_ms: 0,
+                        ends_at_ms: None,
+                        current_seconds: cur,
+                        remaining_seconds: timer.duration_seconds,
+                        duration_seconds: timer.duration_seconds,
+                        direction: timer.direction.clone(),
+                        status: TimerRunStatus::Finished,
+                        segment_count: 1,
+                        segment_duration: timer.duration_seconds,
+                        recovery_start_pool: 0,
+                    },
+                );
+            }
+        }
     }
 }
 
@@ -975,23 +1009,7 @@ pub fn timer_save_settings(
             .map_err(|_| "计时器状态已损坏".to_string())?;
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
-        inner
-            .logic
-            .runs
-            .retain(|id, _| settings_value.timers.iter().any(|timer| timer.id == *id));
-        if !settings_value.timer_enabled {
-            inner.logic.runs.clear();
-        }
-        let enabled_timer_ids: Vec<String> = settings_value
-            .timers
-            .iter()
-            .filter(|t| t.enabled && group_enabled(&settings_value.timer_groups, &t.group_id))
-            .map(|t| t.id.clone())
-            .collect();
-        inner
-            .logic
-            .runs
-            .retain(|id, _| enabled_timer_ids.contains(id));
+        TimerLogic::sync_runs_with_settings(&mut inner.logic.runs, &settings_value);
         TimerLogic::build_bootstrap(&inner)
     };
 
@@ -1464,5 +1482,164 @@ mod tests {
         assert_eq!(next.recovery_start_pool, 120);
         assert_eq!(next.started_at_ms, 60_000);
         assert_eq!(multisegment_pool_ms(Some(&next), 60_999, 300), 120_999);
+    }
+
+    // ── sync_runs_with_settings 4 场景单测 ───────────────────────
+    // 对齐 counter 的 4 场景：孤儿清理、缺失补齐、禁用保留、全局关闭保留。
+
+    #[test]
+    fn test_timer_save_removes_orphan_runs() {
+        // 孤儿 runs（settings.timers 中不存在的 id）被清理
+        let mut runs = HashMap::new();
+        runs.insert(
+            "orphan-99".to_string(),
+            TimerRuntime {
+                started_at_ms: 0,
+                ends_at_ms: None,
+                current_seconds: 30,
+                remaining_seconds: 30,
+                duration_seconds: 30,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Finished,
+                segment_count: 1,
+                segment_duration: 30,
+                recovery_start_pool: 0,
+            },
+        );
+        runs.insert(
+            "t".to_string(),
+            TimerRuntime {
+                started_at_ms: 0,
+                ends_at_ms: None,
+                current_seconds: 30,
+                remaining_seconds: 30,
+                duration_seconds: 30,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Running,
+                segment_count: 1,
+                segment_duration: 30,
+                recovery_start_pool: 0,
+            },
+        );
+
+        let timer = sample_timer("t", "F2");
+        let settings = TimerSettings {
+            timers: vec![timer],
+            ..TimerSettings::default()
+        };
+
+        TimerLogic::sync_runs_with_settings(&mut runs, &settings);
+
+        assert!(!runs.contains_key("orphan-99"), "孤儿 runs 应被清理");
+        assert!(runs.contains_key("t"), "有效计时器 runs 应保留");
+    }
+
+    #[test]
+    fn test_timer_save_inserts_missing_runs() {
+        // settings.timers 中存在但 runs 中缺失的 id 被补齐
+        let mut runs = HashMap::new();
+
+        let mut timer = sample_timer("t", "F2");
+        timer.duration_seconds = 60;
+        let settings = TimerSettings {
+            timers: vec![timer],
+            ..TimerSettings::default()
+        };
+
+        TimerLogic::sync_runs_with_settings(&mut runs, &settings);
+
+        assert!(runs.contains_key("t"), "缺失计时器应补齐");
+        let runtime = runs.get("t").unwrap();
+        assert_eq!(runtime.duration_seconds, 60);
+        assert_eq!(runtime.status, TimerRunStatus::Finished, "补齐的运行应为 Finished 状态");
+    }
+
+    #[test]
+    fn test_timer_save_retains_disabled_timer_runs() {
+        // 禁用计时器（enabled=false）的 runs 保留累积值，不被清除
+        let mut runs = HashMap::new();
+        runs.insert(
+            "a".to_string(),
+            TimerRuntime {
+                started_at_ms: 1000,
+                ends_at_ms: None,
+                current_seconds: 10,
+                remaining_seconds: 20,
+                duration_seconds: 30,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Running,
+                segment_count: 1,
+                segment_duration: 30,
+                recovery_start_pool: 0,
+            },
+        );
+        runs.insert(
+            "b".to_string(),
+            TimerRuntime {
+                started_at_ms: 2000,
+                ends_at_ms: None,
+                current_seconds: 5,
+                remaining_seconds: 25,
+                duration_seconds: 30,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Running,
+                segment_count: 1,
+                segment_duration: 30,
+                recovery_start_pool: 0,
+            },
+        );
+
+        let timer_a = sample_timer("a", "F2");
+        let mut timer_b = sample_timer("b", "F3");
+        timer_b.enabled = false;
+
+        let settings = TimerSettings {
+            timers: vec![timer_a, timer_b],
+            ..TimerSettings::default()
+        };
+
+        TimerLogic::sync_runs_with_settings(&mut runs, &settings);
+
+        assert_eq!(runs.get("a").unwrap().remaining_seconds, 20, "启用计时器 runs 应保留");
+        assert_eq!(runs.get("b").unwrap().remaining_seconds, 25, "禁用计时器 runs 应保留");
+    }
+
+    #[test]
+    fn test_timer_save_disabled_keeps_runs() {
+        // 全局关闭（timer_enabled=false）时 runs 保留累积值，不重置/不清理
+        let mut runs = HashMap::new();
+        runs.insert(
+            "t".to_string(),
+            TimerRuntime {
+                started_at_ms: 5000,
+                ends_at_ms: None,
+                current_seconds: 42,
+                remaining_seconds: 18,
+                duration_seconds: 60,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Running,
+                segment_count: 1,
+                segment_duration: 60,
+                recovery_start_pool: 0,
+            },
+        );
+
+        let timer = sample_timer("t", "F2");
+        let settings = TimerSettings {
+            timer_enabled: false,
+            timers: vec![timer],
+            ..TimerSettings::default()
+        };
+
+        TimerLogic::sync_runs_with_settings(&mut runs, &settings);
+
+        assert_eq!(
+            runs.get("t").unwrap().current_seconds, 42,
+            "全局关闭时 runs 应保留累积值，不重置"
+        );
+        assert_eq!(
+            runs.get("t").unwrap().remaining_seconds, 18,
+            "全局关闭时 runs 应保留剩余秒数"
+        );
     }
 }

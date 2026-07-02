@@ -7,6 +7,26 @@ use crate::hotkey_types::{ConflictPolicy, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
 use crate::tool_base::{ToolLogic, ToolState};
 
+/// 工具 runs 同步逻辑：孤儿清理 + 缺失补齐。
+/// 不重置、不按 enabled 清理。
+///
+/// TimerLogic / CounterLogic 各自实现此 trait，
+/// `save_settings` 函数体内不再有内联 runs 操作。
+pub(crate) trait RunsSync: SyncToolLogic
+where
+    Self::Settings: SyncSettings,
+{
+    /// 同步 runs 与最新 settings：
+    /// 1. retain(id ∈ settings items) — 孤儿清理
+    /// 2. entry(id).or_insert(default) — 缺失补齐
+    fn sync_runs_with_settings(runs: &mut Self::Runs, settings: &Self::Settings);
+
+    /// 该 Logic 持有的运行时 map 类型。
+    /// CounterLogic → HashMap<String, i64>
+    /// TimerLogic → HashMap<String, TimerRuntime>
+    type Runs;
+}
+
 pub trait SyncItem: Clone {
     fn id(&self) -> &str;
     fn group_id(&self) -> &str;

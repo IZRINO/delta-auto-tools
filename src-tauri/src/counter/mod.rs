@@ -19,8 +19,8 @@ use crate::overlay_utils::{
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
-    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, SyncGroup, SyncItem, SyncRect,
-    SyncSettings, SyncToolLogic,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup,
+    SyncItem, SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
@@ -184,6 +184,20 @@ impl SyncToolLogic for CounterLogic {
         };
         stop_all(app, &state);
         Ok(())
+    }
+}
+
+impl RunsSync for CounterLogic {
+    type Runs = HashMap<String, i64>;
+
+    fn sync_runs_with_settings(runs: &mut Self::Runs, settings: &Self::Settings) {
+        // 1. retain(id ∈ settings.counters) — 孤儿清理
+        runs.retain(|id, _| settings.counters.iter().any(|c| c.id == *id));
+        // 2. entry(id).or_insert(start_value) — 缺失补齐
+        // 不重置、不按 enabled 清理
+        for counter in &settings.counters {
+            runs.entry(counter.id.clone()).or_insert(counter.start_value);
+        }
     }
 }
 
@@ -736,19 +750,7 @@ pub fn counter_save_settings(
             .map_err(|_| "计数器状态已损坏".to_string())?;
         inner.settings = settings_value.clone();
         inner.hotkey_error = None;
-        inner.logic.runs.retain(|id, _| {
-            settings_value
-                .counters
-                .iter()
-                .any(|counter| counter.id == *id)
-        });
-        for counter in &settings_value.counters {
-            inner
-                .logic
-                .runs
-                .entry(counter.id.clone())
-                .or_insert(counter.start_value);
-        }
+        CounterLogic::sync_runs_with_settings(&mut inner.logic.runs, &settings_value);
         CounterLogic::build_bootstrap(&inner)
     };
 
@@ -1235,19 +1237,10 @@ mod tests {
         assert_eq!(states[0].value, 42, "累积值应被保留而非回落到 start_value");
     }
 
-    /// 模拟 counter_save_settings 中对 runs 的收窄逻辑：
+    /// 使用 CounterLogic::sync_runs_with_settings 验证 runs 收窄逻辑：
     /// 1. retain(id ∈ settings.counters) — 孤儿清理
     /// 2. entry(id).or_insert(start_value) — 缺失补齐
     /// 不重置、不按 enabled 清理。
-    fn sync_runs_with_settings(
-        runs: &mut HashMap<String, i64>,
-        settings: &CounterSettings,
-    ) {
-        runs.retain(|id, _| settings.counters.iter().any(|c| c.id == *id));
-        for counter in &settings.counters {
-            runs.entry(counter.id.clone()).or_insert(counter.start_value);
-        }
-    }
 
     #[test]
     fn test_counter_save_removes_orphan_runs() {
@@ -1262,7 +1255,7 @@ mod tests {
             ..CounterSettings::default()
         };
 
-        sync_runs_with_settings(&mut runs, &settings);
+        CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert!(!runs.contains_key("orphan-99"), "孤儿 runs 应被清理");
         assert_eq!(runs.get("c"), Some(&42), "有效计数器 runs 应保留");
@@ -1280,7 +1273,7 @@ mod tests {
             ..CounterSettings::default()
         };
 
-        sync_runs_with_settings(&mut runs, &settings);
+        CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(runs.get("c"), Some(&7), "缺失计数器应补齐为 start_value");
     }
@@ -1301,7 +1294,7 @@ mod tests {
             ..CounterSettings::default()
         };
 
-        sync_runs_with_settings(&mut runs, &settings);
+        CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(runs.get("a"), Some(&10), "启用计数器 runs 应保留");
         assert_eq!(runs.get("b"), Some(&20), "禁用计数器 runs 应保留");
@@ -1320,7 +1313,7 @@ mod tests {
             ..CounterSettings::default()
         };
 
-        sync_runs_with_settings(&mut runs, &settings);
+        CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(runs.get("c"), Some(&42), "全局关闭时 runs 应保留累积值，不重置为 start_value");
     }
