@@ -71,6 +71,11 @@ type ThemeProviderProps = {
     children: ReactNode;
 };
 
+function isThemeBootstrapStateError(err: unknown): boolean {
+    const message = String(err);
+    return message.includes("state not managed") && message.includes("theme_get_bootstrap");
+}
+
 /**
  * 主题 Provider。
  *
@@ -129,6 +134,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             })
             .catch((err: unknown) => {
                 if (disposed) return;
+                if (isThemeBootstrapStateError(err)) {
+                    setError(null);
+                    return;
+                }
                 setError(String(err));
             })
             .finally(() => {
@@ -161,7 +170,12 @@ export function ThemeProvider({children}: ThemeProviderProps) {
                 setBootstrap(boot);
             })
             .catch((err: unknown) => {
-                if (!disposed) setError(String(err));
+                if (disposed) return;
+                if (isThemeBootstrapStateError(err)) {
+                    setError(null);
+                    return;
+                }
+                setError(String(err));
             });
 
         return () => {

@@ -211,12 +211,15 @@
         background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px;
     }
 
-    body[data-overlay-mode="true"] {
-        background: transparent;
-    }
-
+    html[data-overlay-mode="true"],
+    html[data-overlay-mode="true"] body,
+    html[data-overlay-mode="true"] #root,
+    body[data-overlay-mode="true"],
     body[data-overlay-mode="true"] #root {
-        background: transparent;
+        --root-bg: transparent;
+        --page-scroll-bg: transparent;
+        background: transparent !important;
+        background-image: none !important;
     }
 
     body:not([data-overlay-mode="true"]) {

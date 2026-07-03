@@ -343,8 +343,11 @@ function AppShell() {
 
     useEffect(() => {
         if (!isOverlayWindowMode) return;
+        // ponytail: daisyUI 把背景写在 :root，overlay 必须同时标记 html/body。
+        document.documentElement.dataset.overlayMode = "true";
         document.body.dataset.overlayMode = "true";
         return () => {
+            delete document.documentElement.dataset.overlayMode;
             delete document.body.dataset.overlayMode;
         };
     }, [isOverlayWindowMode]);
