@@ -96,7 +96,6 @@
 | `cmdk` | ^1.1.1 | 命令面板 |
 | `date-fns` | 4.4.0 | 日期工具 |
 | `recharts` | 3.8.1 | 图表 |
-| `next-themes` | ^0.4.6 | 主题 Provider |
 | `react-resizable-panels` | 4.11.2 | 可调面板 |
 | `input-otp` | ^1.4.2 | OTP 输入 |
 | `react-day-picker` | ^9.14.0 | 日期选择器 |
