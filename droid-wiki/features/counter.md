@@ -172,7 +172,7 @@ flowchart TD
 | `counter://hotkey-error` | `events::HOTKEY_ERROR` | `String` | 热键触发执行失败时的错误信息 |
 | `counter://hotkey-triggered` | `events::HOTKEY_TRIGGERED` | `string[]` | 成功触发的计数器 ID 列表 |
 
-前端通过 `src/lib/tauri-events.ts` 的 `COUNTER_EVENTS` 常量与 `listenEvent<T>` helper 订阅。
+前端通过 `src/lib/tauri-events.ts` 的 `COUNTER_EVENTS` 字符串常量与显式泛型 `listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, callback)` 订阅。
 
 ## 修改入口
 

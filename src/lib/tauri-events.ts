@@ -1,64 +1,61 @@
-import {type Event, listen} from "@tauri-apps/api/event";
-import type {CounterBootstrap, TimerBootstrap} from "@/components/app/timer-types";
-import type {MorseRunResult, RegionSelectionProgress} from "@/components/app/morse-types";
-import type {RapidfireBootstrap} from "@/components/app/rapidfire-types";
-import type {AudioBootstrap} from "@/components/app/audio-types";
-import type {UpdateProgress} from "@/components/app/about-types";
-import type {ThemeTokenOverride} from "@/components/app/theme-types";
-import type {ProfileBootstrap} from "@/components/app/profile-types";
+/**
+ * 前端事件名常量 —— 与后端各模块 events.rs 一一对齐。
+ *
+ * 调用方使用显式泛型：
+ *   listen<MorseRunResult>(MORSE_EVENTS.runFinished, (event) => { ... })
+ */
 
+// ——— morse ——— morse/events.rs
 export const MORSE_EVENTS = {
-    runFinished: {name: "morse://run-finished" as const, payload: null as unknown as MorseRunResult},
-    selectionProgress: {
-        name: "morse://selection-progress" as const,
-        payload: null as unknown as RegionSelectionProgress
-    },
-    hotkeyError: {name: "morse://hotkey-error" as const, payload: null as unknown as string},
+    runFinished: "morse://run-finished",
+    selectionProgress: "morse://selection-progress",
+    hotkeyError: "morse://hotkey-error",
 } as const;
 
+// ——— timer ——— timer/events.rs
 export const TIMER_EVENTS = {
-    stateChanged: {name: "timer://state-changed" as const, payload: null as unknown as TimerBootstrap},
-    hotkeyError: {name: "timer://hotkey-error" as const, payload: null as unknown as string},
-    hotkeyTriggered: {name: "timer://hotkey-triggered" as const, payload: null as unknown as string[]},
+    stateChanged: "timer://state-changed",
+    hotkeyError: "timer://hotkey-error",
+    hotkeyTriggered: "timer://hotkey-triggered",
 } as const;
 
+// ——— counter ——— counter/events.rs
 export const COUNTER_EVENTS = {
-    stateChanged: {name: "counter://state-changed" as const, payload: null as unknown as CounterBootstrap},
-    hotkeyError: {name: "counter://hotkey-error" as const, payload: null as unknown as string},
-    hotkeyTriggered: {name: "counter://hotkey-triggered" as const, payload: null as unknown as string[]},
+    stateChanged: "counter://state-changed",
+    hotkeyError: "counter://hotkey-error",
+    hotkeyTriggered: "counter://hotkey-triggered",
 } as const;
 
+// ——— rapidfire ——— rapidfire/events.rs
 export const RAPIDFIRE_EVENTS = {
-    stateChanged: {name: "rapidfire://state-changed" as const, payload: null as unknown as RapidfireBootstrap},
-    hotkeyError: {name: "rapidfire://hotkey-error" as const, payload: null as unknown as string},
+    stateChanged: "rapidfire://state-changed",
+    hotkeyError: "rapidfire://hotkey-error",
 } as const;
 
+// ——— audio ——— audio/events.rs
 export const AUDIO_EVENTS = {
-    stateChanged: {name: "audio://state-changed" as const, payload: null as unknown as AudioBootstrap},
-    hotkeyTriggered: {name: "audio://hotkey-triggered" as const, payload: null as unknown as string},
-    regionMatched: {name: "audio://region-matched" as const, payload: null as unknown as string},
-    hotkeyError: {name: "audio://hotkey-error" as const, payload: null as unknown as string},
+    stateChanged: "audio://state-changed",
+    hotkeyTriggered: "audio://hotkey-triggered",
+    regionMatched: "audio://region-matched",
+    hotkeyError: "audio://hotkey-error",
 } as const;
 
+// ——— global ——— global_state.rs
 export const GLOBAL_EVENTS = {
-    enabledChanged: {name: "global://enabled-changed" as const, payload: null as unknown as boolean},
+    enabledChanged: "global://enabled-changed",
 } as const;
 
+// ——— about ——— about/events.rs
 export const ABOUT_EVENTS = {
-    updateProgress: {name: "about://update-progress" as const, payload: null as unknown as UpdateProgress},
+    updateProgress: "about://update-progress",
 } as const;
 
+// ——— theme ——— theme/events.rs
 export const THEME_EVENTS = {
-    changed: {name: "theme://changed" as const, payload: null as unknown as ThemeTokenOverride[]},
+    changed: "theme://changed",
 } as const;
 
+// ——— profile ——— profile/events.rs
 export const PROFILE_EVENTS = {
-    changed: {name: "profile://changed" as const, payload: null as unknown as ProfileBootstrap},
+    changed: "profile://changed",
 } as const;
-
-export async function listenEvent<T extends { name: string; payload: unknown }>(
-    event: T,
-    handler: (event: Event<T["payload"]>) => void | Promise<void>
-) {
-    return listen<T["payload"]>(event.name, handler);
-}

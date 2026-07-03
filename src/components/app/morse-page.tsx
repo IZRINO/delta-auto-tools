@@ -2,7 +2,8 @@ import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from
 import {invoke} from "@tauri-apps/api/core";
 import {RiCheckboxCircleLine, RiHistoryLine, RiLayoutGridLine, RiRefreshLine,} from "@remixicon/react";
 
-import {listenEvent, MORSE_EVENTS} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {MORSE_EVENTS} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {useAutosave} from "@/hooks/use-autosave";
 import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
@@ -37,6 +38,7 @@ import {
     CLICK_REGION_LABELS,
     REGION_LABELS,
     type RegionSelectionOutcome,
+    type RegionSelectionProgress,
     type VerificationStatus,
 } from "@/components/app/morse-types";
 import {
@@ -167,7 +169,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
         let unlistenSelectionProgress: (() => void) | undefined;
         let unlistenHotkeyError: (() => void) | undefined;
 
-        void listenEvent(MORSE_EVENTS.runFinished, async (event) => {
+        void listen<MorseRunResult>(MORSE_EVENTS.runFinished, async (event) => {
             if (isDisposed) return;
             const result = event.payload;
             startTransition(() => {
@@ -185,7 +187,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             unlistenRunFinished = dispose;
         });
 
-        void listenEvent(MORSE_EVENTS.selectionProgress, (event) => {
+        void listen<RegionSelectionProgress>(MORSE_EVENTS.selectionProgress, (event) => {
             if (isDisposed) return;
             const progress = event.payload;
             startTransition(() => {
@@ -200,7 +202,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             unlistenSelectionProgress = dispose;
         });
 
-        void listenEvent(MORSE_EVENTS.hotkeyError, (event) => {
+        void listen<string>(MORSE_EVENTS.hotkeyError, (event) => {
             if (isDisposed) return;
             startTransition(() => {
                 setBootstrap((current) => (current ? {...current, hotkeyError: event.payload} : current));

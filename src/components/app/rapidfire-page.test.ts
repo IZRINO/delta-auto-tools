@@ -17,10 +17,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@/lib/tauri-events", () => ({
-    listenEvent: vi.fn().mockResolvedValue(vi.fn()),
     RAPIDFIRE_EVENTS: {
-        stateChanged: {name: "rapidfire://state-changed"},
-        hotkeyError: {name: "rapidfire://hotkey-error"},
+        stateChanged: "rapidfire://state-changed",
+        hotkeyError: "rapidfire://hotkey-error",
     },
 }));
 
@@ -137,24 +136,14 @@ describe("ChannelTabs tab 切换行为", () => {
 
 describe("rapidfire 事件监听行为", () => {
     it("订阅 stateChanged 事件", async () => {
-        const {listenEvent} = await import("@/lib/tauri-events");
         const {RAPIDFIRE_EVENTS} = await import("@/lib/tauri-events");
-        // 模拟订阅 stateChanged 事件
-        await listenEvent(RAPIDFIRE_EVENTS.stateChanged, () => {});
-        expect(listenEvent).toHaveBeenCalledWith(
-            RAPIDFIRE_EVENTS.stateChanged,
-            expect.any(Function),
-        );
+        // 验证事件名常量正确
+        expect(RAPIDFIRE_EVENTS.stateChanged).toBe("rapidfire://state-changed");
     });
 
     it("订阅 hotkeyError 事件", async () => {
-        const {listenEvent} = await import("@/lib/tauri-events");
         const {RAPIDFIRE_EVENTS} = await import("@/lib/tauri-events");
-        await listenEvent(RAPIDFIRE_EVENTS.hotkeyError, () => {});
-        expect(listenEvent).toHaveBeenCalledWith(
-            RAPIDFIRE_EVENTS.hotkeyError,
-            expect.any(Function),
-        );
+        expect(RAPIDFIRE_EVENTS.hotkeyError).toBe("rapidfire://hotkey-error");
     });
 
     it("stateChanged 回调更新 bootstrap", async () => {

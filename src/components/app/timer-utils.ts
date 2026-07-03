@@ -1,7 +1,8 @@
 import type React from "react";
 import {useEffect} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {listenEvent, TIMER_EVENTS} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {TIMER_EVENTS} from "@/lib/tauri-events";
 
 import type {
   TimerBootstrap,
@@ -349,7 +350,7 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
             }
         });
 
-        void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
+        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setBootstrap(event.payload);
             }

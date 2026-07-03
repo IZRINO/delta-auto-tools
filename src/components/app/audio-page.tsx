@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {open} from "@tauri-apps/plugin-dialog";
-import {AUDIO_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {AUDIO_EVENTS} from "@/lib/tauri-events";
 import {RiArrowDownLine, RiArrowUpLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
@@ -93,7 +94,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         let unlistenHotkeyTriggered: (() => void) | undefined;
         let unlistenRegionMatched: (() => void) | undefined;
 
-        void listenEvent(AUDIO_EVENTS.stateChanged, (event) => {
+        void listen<AudioBootstrap>(AUDIO_EVENTS.stateChanged, (event) => {
             if (disposed) return;
             const next = event.payload;
             setBootstrap(next);
@@ -103,7 +104,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenStateChanged = dispose;
         });
 
-        void listenEvent(AUDIO_EVENTS.hotkeyError, (event) => {
+        void listen<string>(AUDIO_EVENTS.hotkeyError, (event) => {
             if (disposed) return;
             setPageError(event.payload);
             setStatusMessage(event.payload);
@@ -112,7 +113,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenHotkeyError = dispose;
         });
 
-        void listenEvent(AUDIO_EVENTS.hotkeyTriggered, (event) => {
+        void listen<string>(AUDIO_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) return;
             toast.info(`快捷键触发：卡片 ${event.payload}`);
             setStatusMessage(`快捷键触发：卡片 ${event.payload}`);
@@ -120,7 +121,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenHotkeyTriggered = dispose;
         });
 
-        void listenEvent(AUDIO_EVENTS.regionMatched, (event) => {
+        void listen<string>(AUDIO_EVENTS.regionMatched, (event) => {
             if (disposed) return;
             toast.info(`区域匹配触发：卡片 ${event.payload}`);
             setStatusMessage(`区域匹配触发：卡片 ${event.payload}`);

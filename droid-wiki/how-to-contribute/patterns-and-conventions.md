@@ -27,7 +27,7 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 事件命名
 
-事件名为字符串常量。后端在 `events.rs` 文件（`src-tauri/src/<tool>/events.rs`）中定义。前端在 `src/lib/tauri-events.ts` 中以类型化对象镜像（`MORSE_EVENTS`、`TIMER_EVENTS` 等）和 `listenEvent<T>` helper。两层均不硬编码事件名字符串。
+事件名为字符串常量。后端在 `events.rs` 文件（`src-tauri/src/<tool>/events.rs`）中定义。前端在 `src/lib/tauri-events.ts` 中以字符串常量镜像（`MORSE_EVENTS`、`TIMER_EVENTS` 等），调用方使用显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)`。两层均不硬编码事件名字符串。
 
 ## 原生 shell 检测
 

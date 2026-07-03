@@ -9,7 +9,6 @@ import {afterEach, describe, expect, it, vi} from "vitest";
  */
 
 // ── Mock 依赖 ──────────────────────────────────────────
-const mockListenEvent = vi.fn();
 const mockToast = {
     info: vi.fn(),
     error: vi.fn(),
@@ -20,12 +19,11 @@ const mockSetPageError = vi.fn();
 const mockSetStatusMessage = vi.fn();
 
 vi.mock("@/lib/tauri-events", () => ({
-    listenEvent: mockListenEvent,
     AUDIO_EVENTS: {
-        stateChanged: {name: "audio://state-changed"},
-        hotkeyTriggered: {name: "audio://hotkey-triggered"},
-        regionMatched: {name: "audio://region-matched"},
-        hotkeyError: {name: "audio://hotkey-error"},
+        stateChanged: "audio://state-changed",
+        hotkeyTriggered: "audio://hotkey-triggered",
+        regionMatched: "audio://region-matched",
+        hotkeyError: "audio://hotkey-error",
     },
 }));
 
@@ -64,12 +62,8 @@ describe("audio-page hotkeyTriggered 事件行为", () => {
 
     it("订阅 AUDIO_EVENTS.hotkeyTriggered 事件", async () => {
         const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        // 模拟组件 mount 时的订阅
-        await mockListenEvent(AUDIO_EVENTS.hotkeyTriggered, () => {});
-        expect(mockListenEvent).toHaveBeenCalledWith(
-            AUDIO_EVENTS.hotkeyTriggered,
-            expect.any(Function),
-        );
+        // 验证事件名常量正确
+        expect(AUDIO_EVENTS.hotkeyTriggered).toBe("audio://hotkey-triggered");
     });
 
     it("hotkeyTriggered 回调触发 toast.info 通知", () => {
@@ -139,11 +133,7 @@ describe("audio-page regionMatched 事件行为", () => {
 
     it("订阅 AUDIO_EVENTS.regionMatched 事件", async () => {
         const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        await mockListenEvent(AUDIO_EVENTS.regionMatched, () => {});
-        expect(mockListenEvent).toHaveBeenCalledWith(
-            AUDIO_EVENTS.regionMatched,
-            expect.any(Function),
-        );
+        expect(AUDIO_EVENTS.regionMatched).toBe("audio://region-matched");
     });
 
     it("regionMatched 回调触发 toast.info 通知", () => {
@@ -213,11 +203,7 @@ describe("audio-page stateChanged 事件行为", () => {
 
     it("订阅 AUDIO_EVENTS.stateChanged 事件", async () => {
         const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        await mockListenEvent(AUDIO_EVENTS.stateChanged, () => {});
-        expect(mockListenEvent).toHaveBeenCalledWith(
-            AUDIO_EVENTS.stateChanged,
-            expect.any(Function),
-        );
+        expect(AUDIO_EVENTS.stateChanged).toBe("audio://state-changed");
     });
 
     it("stateChanged 回调更新 bootstrap 并合并 watchRegions", () => {
@@ -263,11 +249,7 @@ describe("audio-page hotkeyError 事件行为", () => {
 
     it("订阅 AUDIO_EVENTS.hotkeyError 事件", async () => {
         const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        await mockListenEvent(AUDIO_EVENTS.hotkeyError, () => {});
-        expect(mockListenEvent).toHaveBeenCalledWith(
-            AUDIO_EVENTS.hotkeyError,
-            expect.any(Function),
-        );
+        expect(AUDIO_EVENTS.hotkeyError).toBe("audio://hotkey-error");
     });
 
     it("hotkeyError 回调触发 toast.error 通知", () => {

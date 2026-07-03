@@ -1,7 +1,8 @@
 import type React from "react";
 import {useEffect} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {COUNTER_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {COUNTER_EVENTS} from "@/lib/tauri-events";
 
 import type {
     CounterBootstrap,
@@ -312,7 +313,7 @@ export function useCounterOverlayBootstrap(isNativeShell: boolean, setBootstrap:
             }
         });
 
-        void listenEvent(COUNTER_EVENTS.stateChanged, (event) => {
+        void listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setBootstrap(event.payload);
             }

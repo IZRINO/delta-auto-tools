@@ -9,7 +9,8 @@ import {
     RiTimerLine,
 } from "@remixicon/react";
 import {invoke} from "@tauri-apps/api/core";
-import {COUNTER_EVENTS, listenEvent, RAPIDFIRE_EVENTS, TIMER_EVENTS} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {COUNTER_EVENTS, RAPIDFIRE_EVENTS, TIMER_EVENTS} from "@/lib/tauri-events";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -124,7 +125,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
                 // 浏览器预览 / 调用失败时静默忽略
             });
 
-        void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
+        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setTimerBootstrap(event.payload);
             }
@@ -132,7 +133,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             unlistenTimerState = dispose;
         });
 
-        void listenEvent(RAPIDFIRE_EVENTS.stateChanged, (event) => {
+        void listen<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setRapidfireBootstrap(event.payload);
             }
@@ -140,7 +141,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             unlistenRapidfireState = dispose;
         });
 
-        void listenEvent(COUNTER_EVENTS.stateChanged, (event) => {
+        void listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setCounterBootstrap(event.payload);
             }

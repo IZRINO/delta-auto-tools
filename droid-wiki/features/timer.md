@@ -167,7 +167,7 @@ flowchart TD
 | `timer://hotkey-error` | `events::HOTKEY_ERROR` | `String` | 热键触发执行失败时的错误信息 |
 | `timer://hotkey-triggered` | `events::HOTKEY_TRIGGERED` | `string[]` | 成功触发的计时器 ID 列表 |
 
-前端通过 `src/lib/tauri-events.ts` 的 `TIMER_EVENTS` 常量与 `listenEvent<T>` helper 订阅。
+前端通过 `src/lib/tauri-events.ts` 的 `TIMER_EVENTS` 字符串常量与显式泛型 `listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, callback)` 订阅。
 
 ## 修改入口
 

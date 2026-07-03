@@ -93,7 +93,7 @@ sequenceDiagram
 
 只读命令 `get_bootstrap` 不 emit，避免噪声事件。
 
-事件名常量定义在 `events.rs`：`CHANGED = "profile://changed"`，与前端 `tauri-events.ts` 的 `PROFILE_EVENTS.changed.name` 一致。
+事件名常量定义在 `events.rs`：`CHANGED = "profile://changed"`，与前端 `tauri-events.ts` 的 `PROFILE_EVENTS.changed` 一致。
 
 ### 名称预留
 

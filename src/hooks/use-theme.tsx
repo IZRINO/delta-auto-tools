@@ -10,7 +10,8 @@ import {
 } from "react";
 import {invoke} from "@tauri-apps/api/core";
 
-import {THEME_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {THEME_EVENTS} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {
     type ThemeBootstrap,
@@ -146,7 +147,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         let disposed = false;
         let unlisten: (() => void) | undefined;
 
-        void listenEvent(THEME_EVENTS.changed, (event) => {
+        void listen<ThemeTokenOverride[]>(THEME_EVENTS.changed, (event) => {
             if (disposed) return;
             applyTokens(event.payload);
         }).then((dispose) => {

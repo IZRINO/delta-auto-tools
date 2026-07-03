@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {listenEvent, TIMER_EVENTS} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {TIMER_EVENTS} from "@/lib/tauri-events";
 import {RiAddLine, RiDeleteBinLine, RiStarFill, RiStarLine, RiTimerLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
@@ -156,7 +157,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
         let unlistenStateChanged: (() => void) | undefined;
         let unlistenHotkeyTriggered: (() => void) | undefined;
 
-        void listenEvent(TIMER_EVENTS.stateChanged, (event) => {
+        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (disposed) {
                 return;
             }
@@ -165,7 +166,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
             unlistenStateChanged = dispose;
         });
 
-        void listenEvent(TIMER_EVENTS.hotkeyTriggered, (event) => {
+        void listen<string[]>(TIMER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
             }

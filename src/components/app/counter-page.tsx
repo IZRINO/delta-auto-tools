@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {COUNTER_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {COUNTER_EVENTS} from "@/lib/tauri-events";
 import {
   RiAddLine,
   RiDeleteBinLine,
@@ -165,7 +166,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
         let unlistenStateChanged: (() => void) | undefined;
         let unlistenCounterTriggered: (() => void) | undefined;
 
-        void listenEvent(COUNTER_EVENTS.stateChanged, (event) => {
+        void listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
             if (disposed) {
                 return;
             }
@@ -174,7 +175,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
             unlistenStateChanged = dispose;
         });
 
-        void listenEvent(COUNTER_EVENTS.hotkeyTriggered, (event) => {
+        void listen<string[]>(COUNTER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
             }

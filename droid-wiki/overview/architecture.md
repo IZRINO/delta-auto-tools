@@ -106,7 +106,7 @@ graph TD
 
 - **命令调用**：`invoke<XxxBootstrap>("tool_action", { params })`
 - **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`
-- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `AUDIO_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS` 和 `listenEvent<T>` helper 订阅
+- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `AUDIO_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS`（字符串常量）与显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)` 订阅
 
 ## 设置持久化
 

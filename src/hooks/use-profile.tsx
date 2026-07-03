@@ -9,7 +9,8 @@ import {
 } from "react";
 import {invoke} from "@tauri-apps/api/core";
 
-import {PROFILE_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {PROFILE_EVENTS} from "@/lib/tauri-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import type {Profile, ProfileBootstrap} from "@/components/app/profile-types";
 import {
@@ -106,7 +107,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         let disposed = false;
         let unlisten: (() => void) | undefined;
 
-        void listenEvent(PROFILE_EVENTS.changed, (event) => {
+        void listen<ProfileBootstrap>(PROFILE_EVENTS.changed, (event) => {
             if (disposed) return;
             setBootstrap(event.payload);
         }).then((dispose) => {

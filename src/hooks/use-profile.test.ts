@@ -15,8 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@/lib/tauri-events", () => ({
-    listenEvent: vi.fn().mockResolvedValue(vi.fn()),
-    PROFILE_EVENTS: {changed: {name: "profile://changed"}},
+    PROFILE_EVENTS: {changed: "profile://changed"},
 }));
 
 vi.mock("@/hooks/use-native-shell", () => ({

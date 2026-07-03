@@ -1,6 +1,7 @@
 import {createContext, type ReactNode, useCallback, useContext, useEffect, useState,} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {GLOBAL_EVENTS, listenEvent} from "@/lib/tauri-events";
+import {listen} from "@tauri-apps/api/event";
+import {GLOBAL_EVENTS} from "@/lib/tauri-events";
 
 import {useNativeShell} from "@/hooks/use-native-shell";
 
@@ -42,7 +43,7 @@ export function GlobalEnabledProvider({children}: { children: ReactNode }) {
             }
         });
 
-        void listenEvent(GLOBAL_EVENTS.enabledChanged, (event) => {
+        void listen<boolean>(GLOBAL_EVENTS.enabledChanged, (event) => {
             if (disposed) return;
             setGlobalEnabledState(event.payload);
             try {
