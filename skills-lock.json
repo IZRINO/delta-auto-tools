@@ -43,6 +43,12 @@
       "skillPath": "codex-dynamic-workflows/SKILL.md",
       "computedHash": "9424c31b911c4ee0246153aab5c18127b717ac5765b6d70b982d2221d6f114f5"
     },
+    "daisyui": {
+      "source": "saadeghi/daisyui",
+      "sourceType": "github",
+      "skillPath": "skills/daisyui/SKILL.md",
+      "computedHash": "cdf8b102133d097ef4cdf1b315bbddc50c340da1d43521bdfcef9b126ed44a5b"
+    },
     "darwin-skill": {
       "source": "oldwinter/skills",
       "sourceType": "github",
