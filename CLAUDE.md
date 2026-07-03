@@ -58,6 +58,8 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 - **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+
+After modifying code, run `codegraph sync` to refresh the index — no need to sync after every small change, just before larger explorations.
 <!-- CODEGRAPH_END -->
 
 ## AI 输出规范
