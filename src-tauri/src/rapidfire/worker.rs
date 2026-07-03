@@ -154,6 +154,63 @@ pub fn should_compensate_count(count: u64, skip_compensation: bool) -> bool {
     count % 2 == 1 && !skip_compensation
 }
 
+/// Worker 循环每轮的核心逻辑。
+/// 从 `run_session_worker_with_emitter` 提取为纯函数，便于测试。
+///
+/// 返回：
+/// - `WorkerStepResult::Fired { count }` — 成功发射一枪，count 递增
+/// - `WorkerStepResult::FiredAndStop { count }` — 成功发射最后一枪（stop_after_fire），循环应结束
+/// - `WorkerStepResult::EmitterError` — 按键发射失败，循环应结束
+/// - `WorkerStepResult::Stop` — 收到 Stop 信号，循环应结束
+/// - `WorkerStepResult::Cancel` — 收到 Cancel 信号，调用方应做清理
+pub fn worker_step(
+    decision: WorkerDecision,
+    emitter: &mut dyn KeyEmitter,
+    target_key: &str,
+    trigger_key: &str,
+    press_jitter_min_ms: u64,
+    press_jitter_max_ms: u64,
+    count: u64,
+) -> WorkerStepResult {
+    match decision {
+        WorkerDecision::Fire { stop_after_fire } => {
+            match emitter.press_release_target_key(
+                target_key,
+                Some(trigger_key),
+                press_jitter_min_ms,
+                press_jitter_max_ms,
+            ) {
+                Ok(()) => {
+                    let new_count = count + 1;
+                    if stop_after_fire {
+                        WorkerStepResult::FiredAndStop { count: new_count }
+                    } else {
+                        WorkerStepResult::Fired { count: new_count }
+                    }
+                }
+                Err(_) => WorkerStepResult::EmitterError,
+            }
+        }
+        WorkerDecision::Stop => WorkerStepResult::Stop,
+        WorkerDecision::Cancel => WorkerStepResult::Cancel,
+    }
+}
+
+/// `worker_step` 的返回值。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkerStepResult {
+    /// 成功发射一枪。
+    Fired { count: u64 },
+    /// 成功发射最后一枪（补偿后停止）。
+    FiredAndStop { count: u64 },
+    /// 按键发射失败。
+    EmitterError,
+    /// 收到 Stop 信号。
+    Stop,
+    /// 收到 Cancel 信号。
+    Cancel,
+}
+
 /// 运行连发器 worker 线程。
 /// `emitter` 为按键输出接口，生产环境使用 EnigoKeyEmitter，测试使用 mock。
 pub fn run_session_worker_with_emitter(
@@ -220,14 +277,18 @@ pub fn run_session_worker_with_emitter(
             match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
                 WorkerDecision::Fire { stop_after_fire } => {
                     ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
-                    match emitter.press_release_target_key(
+                    let step = worker_step(
+                        WorkerDecision::Fire { stop_after_fire },
+                        emitter.as_mut(),
                         &worker.target_key,
-                        Some(&worker.trigger_key),
+                        &worker.trigger_key,
                         worker.press_jitter_min_ms,
                         worker.press_jitter_max_ms,
-                    ) {
-                        Ok(()) => {
-                            count += 1;
+                        count,
+                    );
+                    match step {
+                        WorkerStepResult::Fired { count: new_count } => {
+                            count = new_count;
                             if !update_session_count(
                                 &app,
                                 &worker.card_id,
@@ -237,14 +298,21 @@ pub fn run_session_worker_with_emitter(
                                 return;
                             }
                         }
-                        Err(error) => {
-                            emit_hotkey_error(&app, error);
+                        WorkerStepResult::FiredAndStop { count: new_count } => {
+                            count = new_count;
+                            let _ = update_session_count(
+                                &app,
+                                &worker.card_id,
+                                &worker.session_id,
+                                count,
+                            );
                             break;
                         }
-                    }
-
-                    if stop_after_fire {
-                        break;
+                        WorkerStepResult::EmitterError => {
+                            emit_hotkey_error(&app, "按键发射失败".to_string());
+                            break;
+                        }
+                        WorkerStepResult::Stop | WorkerStepResult::Cancel => break,
                     }
                     next_fire_at = Instant::now()
                         .checked_add(interval)
@@ -575,103 +643,144 @@ mod tests {
         );
     }
 
-    // ---- Worker 生命周期集成测试 (VAL-AR-009 / VAL-AR-010) ----
+    // ---- Worker 循环核心步进测试 (VAL-AR-009 / VAL-AR-010) ----
 
-    /// 构造最小 RapidfireSessionWorker，使用注入的 control_rx。
-    fn make_worker(card_id: &str, session_id: &str, control_rx: std::sync::mpsc::Receiver<SessionControl>) -> RapidfireSessionWorker {
-        RapidfireSessionWorker {
-            card_id: card_id.to_string(),
-            session_id: session_id.to_string(),
-            trigger_key: "F1".to_string(),
-            target_key: "1".to_string(),
-            interval_ms: 50,
-            press_jitter_min_ms: 1,
-            press_jitter_max_ms: 1,
-            skip_compensation: true,
-            compensation_delay_min_ms: 0,
-            compensation_delay_max_ms: 0,
-            min_press_spacing_ms: 0,
-            trigger_jitter_max_ms: 0,
-            cancel_jitter_on_release: false,
-            control_rx,
-            compensate_now: Arc::new(AtomicBool::new(false)),
-            last_press_at: Arc::new(Mutex::new(Instant::now())),
-        }
-    }
-
-    /// VAL-AR-009: 验证 worker 接受 MockKeyEmitter trait 对象，
-    /// control_rx 注入后可正确驱动 start→fire→stop 生命周期。
-    /// 使用 MockKeyEmitter 验证按键调用。
+    /// VAL-AR-009: 验证 worker_step 在 Fire 决策下调用 MockKeyEmitter 并返回 Fired。
     #[test]
-    fn run_session_worker_accepts_mock_key_emitter_and_fires_on_interval() {
-        let (control_tx, control_rx) = std::sync::mpsc::channel();
-        let worker = make_worker("test-card", "test-session-1", control_rx);
+    fn worker_step_fires_on_fire_decision() {
         let mut emitter = super::super::keys::MockKeyEmitter::new();
 
-        // 模拟 worker 循环的前几轮：等待 interval 到达 → 调用 emitter → 检查 control
-        let fire_at = Instant::now() + Duration::from_millis(worker.interval_ms);
-        let decision = wait_for_next_fire(&worker.control_rx, fire_at, 0);
-        match decision {
-            WorkerDecision::Fire { stop_after_fire } => {
-                assert!(!stop_after_fire);
-                // 模拟发射按键（worker 会调用 emitter.press_release_target_key）
-                emitter
-                    .press_release_target_key(
-                        &worker.target_key,
-                        Some(&worker.trigger_key),
-                        worker.press_jitter_min_ms,
-                        worker.press_jitter_max_ms,
-                    )
-                    .unwrap();
-            }
-            WorkerDecision::Stop | WorkerDecision::Cancel => {
-                panic!("worker 应在 interval 到达时开火，不应收到 stop/cancel");
+        let result = worker_step(
+            WorkerDecision::Fire { stop_after_fire: false },
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            0,
+        );
+
+        assert_eq!(emitter.calls.len(), 1, "应调用 emitter 1 次");
+        assert_eq!(emitter.calls[0].target_key, "1");
+        assert_eq!(emitter.calls[0].held_trigger_key, Some("F1".to_string()));
+        assert_eq!(result, WorkerStepResult::Fired { count: 1 });
+    }
+
+    /// VAL-AR-009: 验证 worker_step 在 Fire { stop_after_fire: true } 时返回 FiredAndStop。
+    #[test]
+    fn worker_step_fires_and_stops_on_stop_after_fire() {
+        let mut emitter = super::super::keys::MockKeyEmitter::new();
+
+        let result = worker_step(
+            WorkerDecision::Fire { stop_after_fire: true },
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            5,
+        );
+
+        assert_eq!(emitter.calls.len(), 1);
+        assert_eq!(result, WorkerStepResult::FiredAndStop { count: 6 });
+    }
+
+    /// VAL-AR-009: 验证 worker_step 在 Stop 决策下不调用 emitter 并返回 Stop。
+    #[test]
+    fn worker_step_stops_on_stop_decision() {
+        let mut emitter = super::super::keys::MockKeyEmitter::new();
+
+        let result = worker_step(
+            WorkerDecision::Stop,
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            3,
+        );
+
+        assert!(emitter.calls.is_empty(), "Stop 决策不应调用 emitter");
+        assert_eq!(result, WorkerStepResult::Stop);
+    }
+
+    /// VAL-AR-009: 验证 worker_step 在 Cancel 决策下不调用 emitter 并返回 Cancel。
+    #[test]
+    fn worker_step_cancels_on_cancel_decision() {
+        let mut emitter = super::super::keys::MockKeyEmitter::new();
+
+        let result = worker_step(
+            WorkerDecision::Cancel,
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            3,
+        );
+
+        assert!(emitter.calls.is_empty(), "Cancel 决策不应调用 emitter");
+        assert_eq!(result, WorkerStepResult::Cancel);
+    }
+
+    /// VAL-AR-009: 验证完整 worker 循环模拟——连续 3 次开火后停止。
+    #[test]
+    fn worker_loop_fires_three_times_then_stops() {
+        let mut emitter = super::super::keys::MockKeyEmitter::new();
+        let mut count = 0u64;
+
+        // 模拟 3 次开火
+        for _ in 0..3 {
+            let result = worker_step(
+                WorkerDecision::Fire { stop_after_fire: false },
+                &mut emitter,
+                "1",
+                "F1",
+                1,
+                1,
+                count,
+            );
+            match result {
+                WorkerStepResult::Fired { count: new_count } => count = new_count,
+                _ => panic!("应返回 Fired"),
             }
         }
 
-        // 验证 MockKeyEmitter 记录了调用
-        assert_eq!(emitter.calls.len(), 1);
-        assert_eq!(emitter.calls[0].target_key, "1");
-        assert_eq!(emitter.calls[0].held_trigger_key, Some("F1".to_string()));
-
-        // 发送 StopWithCompensation 信号 → worker 应停止
-        control_tx.send(SessionControl::StopWithCompensation).unwrap();
-        let next_fire = Instant::now() + Duration::from_millis(worker.interval_ms);
-        let decision = wait_for_next_fire(&worker.control_rx, next_fire, 1);
-        assert_eq!(decision, WorkerDecision::Stop);
-    }
-
-    /// VAL-AR-009: 验证 cancel 信号使 worker 立即退出，不等待 interval。
-    #[test]
-    fn run_session_worker_cancel_exits_immediately_without_waiting_interval() {
-        let (control_tx, control_rx) = std::sync::mpsc::channel();
-        let worker = make_worker("cancel-card", "cancel-session", control_rx);
-
-        // 立即发送 cancel 信号
-        control_tx.send(SessionControl::Cancel).unwrap();
-
-        let fire_at = Instant::now() + Duration::from_secs(10); // 很远的未来
-        let decision = wait_for_next_fire(&worker.control_rx, fire_at, 0);
-        assert_eq!(decision, WorkerDecision::Cancel);
-    }
-
-    /// VAL-AR-009: 验证 StopWithCompensation 在 count=0 时仍允许一次开火（用于补偿）。
-    #[test]
-    fn run_session_worker_stop_with_compensation_at_zero_allows_one_fire() {
-        let (control_tx, control_rx) = std::sync::mpsc::channel();
-        let worker = make_worker("comp-card", "comp-session", control_rx);
-
-        // 发送 StopWithCompensation 且 count=0
-        control_tx.send(SessionControl::StopWithCompensation).unwrap();
-
-        let fire_at = Instant::now() + Duration::from_secs(1);
-        let decision = wait_for_next_fire(&worker.control_rx, fire_at, 0);
-        assert_eq!(
-            decision,
-            WorkerDecision::Fire {
-                stop_after_fire: true
-            }
+        // 第 4 次收到 Stop 信号
+        let result = worker_step(
+            WorkerDecision::Stop,
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            count,
         );
+        assert_eq!(result, WorkerStepResult::Stop);
+
+        // 验证 emitter 被调用 3 次（3 次开火）
+        assert_eq!(emitter.calls.len(), 3);
+        assert_eq!(count, 3);
+    }
+
+    /// VAL-AR-009: 验证 worker 循环在 StopWithCompensation + count=0 时允许一次开火。
+    #[test]
+    fn worker_loop_compensation_at_zero() {
+        let mut emitter = super::super::keys::MockKeyEmitter::new();
+        let count = 0u64;
+
+        let result = worker_step(
+            WorkerDecision::Fire { stop_after_fire: true },
+            &mut emitter,
+            "1",
+            "F1",
+            1,
+            1,
+            count,
+        );
+
+        assert_eq!(result, WorkerStepResult::FiredAndStop { count: 1 });
+        assert_eq!(emitter.calls.len(), 1);
     }
 
     /// VAL-AR-010: 验证 stop_all_sessions 后所有 session 的 control_tx

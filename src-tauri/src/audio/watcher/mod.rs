@@ -661,4 +661,199 @@ mod tests {
         // tick 5: 用户重新打开 → 恢复执行
         assert!(watcher_should_run(true, true));
     }
+
+    // ---- T-8: region_watcher_step / color_watcher_step 集成测试 ----
+
+    /// Mock 实现 WatcherDeps，记录所有调用。
+    struct MockWatcherDeps {
+        capture_result: Option<image::DynamicImage>,
+        compare_result: f32,
+        dispatched: std::sync::Mutex<Vec<crate::audio::player::AudioCommand>>,
+    }
+
+    impl MockWatcherDeps {
+        fn new(capture_result: Option<image::DynamicImage>, compare_result: f32) -> Self {
+            Self {
+                capture_result,
+                compare_result,
+                dispatched: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl super::manager::WatcherDeps for MockWatcherDeps {
+        fn capture(&self, _region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage> {
+            self.capture_result.clone()
+        }
+
+        fn compare(&self, _screenshot: &image::DynamicImage, _reference: &image::DynamicImage) -> f32 {
+            self.compare_result
+        }
+
+        fn dispatch_playback(&self, command: crate::audio::player::AudioCommand) {
+            self.dispatched.lock().unwrap().push(command);
+        }
+    }
+
+    /// VAL-AR-022: region_watcher_step 在 audio_on=true 时匹配成功并分派回放。
+    #[test]
+    fn region_watcher_step_dispatches_playback_on_match() {
+        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let screenshot = reference.clone();
+        let deps = MockWatcherDeps::new(Some(screenshot), 0.95);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+        let resolved = crate::audio::ResolvedPlay {
+            path: "/test/audio.wav".to_string(),
+            volume: 0.8,
+            allow_simultaneous: false,
+        };
+
+        let result = super::manager::region_watcher_step(
+            &deps,
+            true,   // global_on
+            true,   // audio_on
+            &region,
+            &reference,
+            0.75,   // threshold
+            "test-card",
+            &tx,
+            Some(&resolved),
+        );
+
+        assert!(result, "匹配成功时应返回 true");
+        assert_eq!(deps.dispatched.lock().unwrap().len(), 1, "应分派 1 个回放命令");
+    }
+
+    /// VAL-AR-022: region_watcher_step 在 audio_on=false 时跳过分派。
+    #[test]
+    fn region_watcher_step_skips_when_audio_off() {
+        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let screenshot = reference.clone();
+        let deps = MockWatcherDeps::new(Some(screenshot), 0.95);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+
+        let result = super::manager::region_watcher_step(
+            &deps,
+            true,   // global_on
+            false,  // audio_on = false → 跳过
+            &region,
+            &reference,
+            0.75,
+            "test-card",
+            &tx,
+            None,
+        );
+
+        assert!(!result, "audio_off 时应返回 false");
+        assert!(deps.dispatched.lock().unwrap().is_empty(), "audio_off 时不应分派回放");
+    }
+
+    /// VAL-AR-022: 模拟循环中切换 audio_enabled，先开后关再开。
+    #[test]
+    fn region_watcher_step_flips_audio_enabled_mid_loop() {
+        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let screenshot = reference.clone();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+        let resolved = crate::audio::ResolvedPlay {
+            path: "/test/audio.wav".to_string(),
+            volume: 0.8,
+            allow_simultaneous: false,
+        };
+
+        // tick 1: audio_on=true → 匹配成功 → 分派
+        let deps = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
+        let result1 = super::manager::region_watcher_step(
+            &deps, true, true, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+        );
+        assert!(result1, "tick 1: audio_on=true 应匹配");
+        assert_eq!(deps.dispatched.lock().unwrap().len(), 1);
+
+        // tick 2: audio_on=false → 跳过（模拟用户中途关闭音频开关）
+        let deps2 = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
+        let result2 = super::manager::region_watcher_step(
+            &deps2, true, false, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+        );
+        assert!(!result2, "tick 2: audio_on=false 应跳过");
+        assert!(deps2.dispatched.lock().unwrap().is_empty());
+
+        // tick 3: audio_on=true → 恢复分派
+        let deps3 = MockWatcherDeps::new(Some(screenshot), 0.95);
+        let result3 = super::manager::region_watcher_step(
+            &deps3, true, true, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+        );
+        assert!(result3, "tick 3: audio_on=true 应恢复匹配");
+        assert_eq!(deps3.dispatched.lock().unwrap().len(), 1);
+    }
+
+    /// VAL-AR-022: color_watcher_step 在 audio_on=false 时跳过分派。
+    #[test]
+    fn color_watcher_step_skips_when_audio_off() {
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255]))),
+        ];
+        let probes = vec![ColorProbe {
+            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
+            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
+        }];
+        let deps = MockWatcherDeps::new(None, 0.0); // 不重要，color_watcher_step 不使用 capture/compare
+        let (tx, _rx) = std::sync::mpsc::channel();
+
+        let result = super::manager::color_watcher_step(
+            &deps,
+            true,   // global_on
+            false,  // audio_on = false
+            &screenshots,
+            &probes,
+            &ColorMatchMode::All,
+            &ColorMatchMethod::Average,
+            &tx,
+            None,
+        );
+
+        assert!(!result, "audio_off 时应返回 false");
+        assert!(deps.dispatched.lock().unwrap().is_empty(), "audio_off 时不应分派回放");
+    }
+
+    /// VAL-AR-022: color_watcher_step 在匹配成功且 audio_on=true 时分派回放。
+    #[test]
+    fn color_watcher_step_dispatches_playback_on_match() {
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255]))),
+        ];
+        let probes = vec![ColorProbe {
+            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
+            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
+        }];
+        let deps = MockWatcherDeps::new(None, 0.0);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let resolved = crate::audio::ResolvedPlay {
+            path: "/test/audio.wav".to_string(),
+            volume: 0.8,
+            allow_simultaneous: false,
+        };
+
+        let result = super::manager::color_watcher_step(
+            &deps,
+            true,   // global_on
+            true,   // audio_on
+            &screenshots,
+            &probes,
+            &ColorMatchMode::All,
+            &ColorMatchMethod::Average,
+            &tx,
+            Some(&resolved),
+        );
+
+        assert!(result, "匹配成功且 audio_on=true 时应返回 true");
+        assert_eq!(deps.dispatched.lock().unwrap().len(), 1, "应分派 1 个回放命令");
+    }
 }

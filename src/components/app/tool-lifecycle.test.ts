@@ -1,49 +1,24 @@
 import {describe, expect, it, vi} from "vitest";
+import {
+    TIMER_EVENTS,
+    COUNTER_EVENTS,
+    RAPIDFIRE_EVENTS,
+    MORSE_EVENTS,
+    AUDIO_EVENTS,
+    ABOUT_EVENTS,
+} from "@/lib/tauri-events";
 
 /**
  * VAL-AR-028: 前端组件 mount/unmount 事件订阅清理测试。
  *
  * 验证关键工具页组件 mount 时 subscribe、unmount 时 unsubscribe（无监听泄漏）。
- * 测试提取自各工具页 useEffect 内的事件订阅逻辑，验证行为契约：
+ * 测试使用生产代码中的事件名常量（来自 tauri-events.ts），而非内联重定义。
  *
  * 1. mount: 调用 listen() 订阅预期事件
  * 2. unmount: 调用所有 unlisten 回调
  * 3. disposed 后回调不执行副作用
  * 4. 非原生环境下跳过订阅
  */
-
-// ── 事件名常量（与 tauri-events.ts 一致） ────────────────────
-const TIMER_EVENTS = {
-    stateChanged: "timer://state-changed",
-    hotkeyTriggered: "timer://hotkey-triggered",
-} as const;
-
-const COUNTER_EVENTS = {
-    stateChanged: "counter://state-changed",
-    hotkeyTriggered: "counter://hotkey-triggered",
-} as const;
-
-const RAPIDFIRE_EVENTS = {
-    stateChanged: "rapidfire://state-changed",
-    hotkeyError: "rapidfire://hotkey-error",
-} as const;
-
-const MORSE_EVENTS = {
-    runFinished: "morse://run-finished",
-    selectionProgress: "morse://selection-progress",
-    hotkeyError: "morse://hotkey-error",
-} as const;
-
-const AUDIO_EVENTS = {
-    stateChanged: "audio://state-changed",
-    hotkeyTriggered: "audio://hotkey-triggered",
-    regionMatched: "audio://region-matched",
-    hotkeyError: "audio://hotkey-error",
-} as const;
-
-const ABOUT_EVENTS = {
-    updateProgress: "about://update-progress",
-} as const;
 
 // ── 通用事件订阅管理器模拟 ──────────────────────────────
 

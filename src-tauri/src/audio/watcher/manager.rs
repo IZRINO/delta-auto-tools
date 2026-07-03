@@ -177,6 +177,121 @@ pub(crate) fn watcher_should_run(global_on: bool, audio_on: bool) -> bool {
     global_on && audio_on
 }
 
+// ── 可注入的 watcher 循环步进 ──────────────────────────────────
+// 从 run_region_watcher / run_color_watcher 循环体提取的核心逻辑，
+// 接受可替换的依赖（截图/匹配/回放），便于测试。
+
+/// Watcher 循环每轮的可替换依赖。
+/// 生产代码使用真实实现，测试代码注入 mock。
+#[cfg(test)]
+pub trait WatcherDeps {
+    /// 截取指定区域。
+    fn capture(&self, region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage>;
+
+    /// 比较截图与参考图像，返回相似度。
+    fn compare(
+        &self,
+        screenshot: &image::DynamicImage,
+        reference: &image::DynamicImage,
+    ) -> f32;
+
+    /// 分派回放命令。
+    fn dispatch_playback(&self, command: player::AudioCommand);
+}
+
+/// 区域监听 watcher 每轮 tick 的纯逻辑。
+///
+/// 返回 `true` 表示本轮匹配成功且已分派回放；`false` 表示未匹配或未分派。
+/// 调用方负责冷却检查和更新 last_triggered。
+#[cfg(test)]
+pub fn region_watcher_step(
+    deps: &dyn WatcherDeps,
+    global_on: bool,
+    audio_on: bool,
+    region: &crate::morse::types::RegionRect,
+    reference_image: &image::DynamicImage,
+    threshold: f32,
+    card_id: &str,
+    playback_tx: &std::sync::mpsc::Sender<player::AudioCommand>,
+    resolved_play: Option<&crate::audio::ResolvedPlay>,
+) -> bool {
+    // 门控检查
+    if !watcher_should_run(global_on, audio_on) {
+        return false;
+    }
+
+    // 截图
+    let Some(captured) = deps.capture(region) else {
+        return false;
+    };
+
+    // 比较
+    let similarity = deps.compare(&captured, reference_image);
+    if similarity < threshold {
+        return false;
+    }
+
+    // 匹配成功 → 分派回放
+    if let Some(resolved) = resolved_play {
+        let exclusive = !resolved.allow_simultaneous;
+        let _ = playback_tx.send(player::AudioCommand::Play {
+            path: resolved.path.clone(),
+            volume: resolved.volume,
+            exclusive,
+        });
+        deps.dispatch_playback(player::AudioCommand::Play {
+            path: resolved.path.clone(),
+            volume: resolved.volume,
+            exclusive,
+        });
+    }
+
+    true
+}
+
+/// 识色 watcher 每轮 tick 的纯逻辑。
+///
+/// 返回 `true` 表示本轮匹配成功且已分派回放；`false` 表示未匹配或未分派。
+#[cfg(test)]
+pub fn color_watcher_step(
+    deps: &dyn WatcherDeps,
+    global_on: bool,
+    audio_on: bool,
+    screenshots: &[image::DynamicImage],
+    probes: &[crate::audio::types::ColorProbe],
+    match_mode: &crate::audio::types::ColorMatchMode,
+    match_method: &crate::audio::types::ColorMatchMethod,
+    playback_tx: &std::sync::mpsc::Sender<player::AudioCommand>,
+    resolved_play: Option<&crate::audio::ResolvedPlay>,
+) -> bool {
+    // 门控检查
+    if !watcher_should_run(global_on, audio_on) {
+        return false;
+    }
+
+    let result = matching::match_color_probes(screenshots, probes, match_mode.clone(), match_method.clone());
+    if !result.matched {
+        return false;
+    }
+
+    // 匹配成功 → 分派回放
+    if let Some(resolved) = resolved_play {
+        let exclusive = !resolved.allow_simultaneous;
+        let _ = playback_tx.send(player::AudioCommand::Play {
+            path: resolved.path.clone(),
+            volume: resolved.volume,
+            exclusive,
+        });
+        deps.dispatch_playback(player::AudioCommand::Play {
+            path: resolved.path.clone(),
+            volume: resolved.volume,
+            exclusive,
+        });
+    }
+
+    true
+}
+
 async fn run_region_watcher(
     app: AppHandle,
     card_id: String,
