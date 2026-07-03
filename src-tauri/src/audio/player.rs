@@ -142,3 +142,69 @@ pub fn play_audio_file(path: &str, volume: f32) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T-9: audio_thread_main 测试 — 启动/停止生命周期
+    #[test]
+    fn start_audio_thread_and_shutdown() {
+        let (tx, worker) = start_audio_thread();
+        assert!(worker.is_some(), "音频线程应启动");
+
+        // 发送 Shutdown 命令
+        let result = tx.send(AudioCommand::Shutdown);
+        assert!(result.is_ok(), "发送 Shutdown 应成功");
+
+        // 等待线程结束
+        if let Some(handle) = worker {
+            let join_result = handle.join();
+            assert!(join_result.is_ok(), "音频线程应正常退出");
+        }
+    }
+
+    /// T-9: audio_thread_main 异常路径 — 不存在的音频文件
+    #[test]
+    fn audio_thread_handles_nonexistent_file() {
+        let (tx, worker) = start_audio_thread();
+
+        // 发送不存在的文件播放命令
+        let result = tx.send(AudioCommand::Play {
+            path: "/nonexistent/audio/file.mp3".to_string(),
+            volume: 0.5,
+            exclusive: true,
+        });
+        assert!(result.is_ok(), "发送 Play 应成功");
+
+        // 关闭线程
+        let _ = tx.send(AudioCommand::Shutdown);
+        if let Some(handle) = worker {
+            let join_result = handle.join();
+            assert!(join_result.is_ok(), "即使播放失败，线程也应正常退出");
+        }
+    }
+
+    /// T-9: audio_thread_main 并发播放命令
+    #[test]
+    fn audio_thread_handles_concurrent_play() {
+        let (tx, worker) = start_audio_thread();
+
+        // 发送多条并发播放命令
+        for _ in 0..5 {
+            let result = tx.send(AudioCommand::Play {
+                path: "/nonexistent/file.mp3".to_string(),
+                volume: 0.8,
+                exclusive: false,
+            });
+            assert!(result.is_ok(), "发送并发 Play 应成功");
+        }
+
+        // 关闭线程
+        let _ = tx.send(AudioCommand::Shutdown);
+        if let Some(handle) = worker {
+            let join_result = handle.join();
+            assert!(join_result.is_ok(), "并发播放后线程应正常退出");
+        }
+    }
+}

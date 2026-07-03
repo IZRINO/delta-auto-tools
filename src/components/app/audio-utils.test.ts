@@ -829,4 +829,196 @@ describe("audio-utils", () => {
             expect(settings.cards[0].colorMatchMethod).toBe("anyPixel");
         });
     });
+
+    // ---- T-9: cardToForm 边界测试 ----
+    describe("cardToForm 边界测试", () => {
+        it("空 cards 数组返回空 form", () => {
+            const settings = {audioEnabled: false, cards: []};
+            const form = settingsToForm(settings);
+            expect(form.cards).toHaveLength(0);
+        });
+
+        it("卡片的 undefined/null 字段回退到默认值", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "边界卡",
+                    // hotkey 和 watchReferenceImagePath 在 cardToForm 中用 ?? "" 回退
+                    // colorProbes 和 colorMatchMode/colorMatchMethod 也用 ?? 回退
+                    hotkey: undefined as unknown as string,
+                    watchReferenceImagePath: undefined as unknown as string,
+                    colorProbes: undefined as unknown as [],
+                    colorMatchMode: undefined as unknown as "all" | "any",
+                    colorMatchMethod: undefined as unknown as "average" | "anyPixel",
+                    playMode: undefined as unknown as "single" | "combo" | "random",
+                    comboWindowMs: undefined as unknown as number,
+                    comboWindows: undefined as unknown as number[],
+                    allowSimultaneous: undefined as unknown as boolean,
+                    audioFiles: undefined as unknown as string[],
+                }],
+            };
+            const form = settingsToForm(settings as any);
+            expect(form.cards[0].hotkey).toBe("");
+            expect(form.cards[0].watchReferenceImagePath).toBe("");
+            expect(form.cards[0].colorProbes).toHaveLength(0);
+            expect(form.cards[0].colorMatchMode).toBe("all");
+            expect(form.cards[0].colorMatchMethod).toBe("average");
+            expect(form.cards[0].playMode).toBe("single");
+            expect(form.cards[0].allowSimultaneous).toBe(false);
+            expect(form.cards[0].audioFiles).toEqual([]);
+        });
+
+        it("极端数值：volume=0、cooldownMs=0、threshold=1", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "极端值",
+                    volume: 0,
+                    cooldownMs: 0,
+                    watchMatchThreshold: 1,
+                    watchPollIntervalMs: 100,
+                }],
+            };
+            const form = settingsToForm(settings);
+            expect(form.cards[0].volume).toBe("0");
+            expect(form.cards[0].cooldownMs).toBe("0");
+            expect(form.cards[0].watchMatchThreshold).toBe("1");
+            expect(form.cards[0].watchPollIntervalMs).toBe("100");
+        });
+
+        it("非法数值：volume=NaN、负数 cooldownMs", () => {
+            const settings = {
+                audioEnabled: true,
+                cards: [{
+                    ...DEFAULT_AUDIO_CARD,
+                    id: "c1",
+                    name: "非法值",
+                    volume: NaN,
+                    cooldownMs: -1,
+                    watchMatchThreshold: -0.5,
+                }],
+            };
+            const form = settingsToForm(settings);
+            // settingsToForm 只做 string 转换，不做校验
+            expect(form.cards[0].volume).toBe("NaN");
+            expect(form.cards[0].cooldownMs).toBe("-1");
+            expect(form.cards[0].watchMatchThreshold).toBe("-0.5");
+        });
+
+        it("parseSettingsForm 空 name 报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "",
+                    enabled: true,
+                    triggerMode: "hotkey" as const,
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioFiles: ["a.mp3"],
+                    playMode: "single" as const,
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all" as const,
+                    colorMatchMethod: "average" as const,
+                }],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("卡片名称不能为空");
+        });
+
+        it("parseSettingsForm 负 volume 报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "测试",
+                    enabled: true,
+                    triggerMode: "hotkey" as const,
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioFiles: ["a.mp3"],
+                    playMode: "single" as const,
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "-0.5",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all" as const,
+                    colorMatchMethod: "average" as const,
+                }],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("音量必须在 0 到 1 之间");
+        });
+
+        it("parseSettingsForm NaN cooldownMs 报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "测试",
+                    enabled: true,
+                    triggerMode: "hotkey" as const,
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioFiles: ["a.mp3"],
+                    playMode: "single" as const,
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "abc",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all" as const,
+                    colorMatchMethod: "average" as const,
+                }],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("冷却时间必须在 0 到 60000 毫秒之间");
+        });
+
+        it("parseSettingsForm 负 cooldownMs 报错", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "测试",
+                    enabled: true,
+                    triggerMode: "hotkey" as const,
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioFiles: ["a.mp3"],
+                    playMode: "single" as const,
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "-100",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all" as const,
+                    colorMatchMethod: "average" as const,
+                }],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("冷却时间必须在 0 到 60000 毫秒之间");
+        });
+    });
 });
