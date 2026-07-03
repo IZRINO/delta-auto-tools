@@ -1,112 +1,112 @@
 # Delta Auto Tools
 
-**Delta Auto Tools** 是一款基于 **Tauri 2 + React + Rust** 的 Windows 桌面工具，面向《三角洲行动》玩家提供本地化辅助能力。
+**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。
 
-项目聚焦轻量、稳定和桌面端原生体验：前端负责工作台交互，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 相关接口调用。
+6 个工具模块 + 攻略网站工作台，前端负责交互，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 接口调用。
 
-## 功能概览
+## 功能模块
 
-- **摩斯识别工作台**：支持区域框选、快捷键触发识别、识别结果展示、历史记录和自动输入。
-- **计时\计数器工作台**：支持多计时器、多计数器、独立总开关、快捷键触发，以及置顶透明显示窗口。
-- **连发器工作台**：支持多组连发配置、组合触发键、按住连发、卡片级不追加补齐、卡片级按键最小间距 / 启动抖动策略，以及透明状态窗口。
-- **音频工作台**：支持多张音频卡片、音量 / 冷却 / 互斥播放控制，以及三种触发模式：快捷键触发、区域监听+图像模板匹配、多区域识色触发。
-  其中**多区域识色触发**：框选 3-4 个小区域并指定目标颜色 + 容差，所有 / 任一区域出现相似颜色时触发音频播放，性能与准确率均优于整图模板匹配。
-- **Delta 工具接口**：支持 QQ、微信、QQ 安全中心、Wegame 与先遣服相关登录流程、本地账号管理和游戏数据查询；账号凭据仅在 Rust
-  侧持有，本地敏感字段使用系统凭据加密保存。
-- **攻略网站工作台**：集成 `kkrb.net` 与 `orzice.com` 两类高频更新的外部攻略页面，以贴顶浏览器工具条集中管理内置 /
-  自定义网址、刷新档位和外部打开入口，并在工具条下方创建 `strategy-content` WebView2
-  子视图真实导航当前站点，让网页区域占满主应用剩余空间；新增自定义站点和自动刷新档位使用工具条下方的内联面板，不再使用会被
-  WebView2 原生层遮挡的弹窗或下拉浮层。cookie、JS 跳转、localStorage、同源 API 和人机验证均由目标站点自身处理，不再额外弹出独立攻略浏览器窗口，也不再默认使用
-  iframe/srcDoc 代理渲染。支持手动刷新、按站点持久化的自动刷新档位和系统浏览器打开兜底；`strategy_fetch_page` /
-  `strategy_open_window` 保留为后端实验 / 兼容入口。
-- **关于面板 / 自动更新**：在主窗口 Left Index Rail 左下角提供固定位置的「关于」入口，Dialog 形式展示当前版本、目标平台、Tauri
-  runtime、开源协议（GPLv2+）、前后端 32 项主要依赖致谢、日志级别设置，以及基于 Tauri 官方更新器（`tauri-plugin-updater`
-  ）的应用内版本检查、下载、安装与自动重启能力。更新配置以 `latest.json` 静态端点指向 GitHub Releases，构建产物带私钥签名（
-  `*.sig`）。
+| 模块 | 能力 |
+|------|------|
+| **Morse** | 区域框选 → 二值化 → 轮廓检测 → 摩斯解码 → 自动输入；快捷键触发、历史记录 |
+| **Timer** | 多计时器，250ms tick 循环，独立总开关，置顶透明显示窗口，位置校准 |
+| **Counter** | 多计数器，运行态独立持久化，独立总开关，置顶透明显示窗口，位置校准 |
+| **Rapidfire** | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距策略 |
+| **Audio** | 三种触发模式：快捷键触发、区域监听+图像模板匹配、多区域识色触发；音量/冷却/互斥播放 |
+| **Strategy** | 主窗口内嵌 `strategy-content` 子 WebView2，站点切换、自定义站点、刷新档位 |
+
+其他能力：Delta 账号管理与游戏数据查询（本地凭据 DPAPI 加密）、关于面板与 Tauri 官方更新器。
+
+## 架构
+
+### 核心系统
+
+| 系统 | 职责 |
+|------|------|
+| `tool_base` | 共享泛型基座：`ToolLogic` trait、`ToolState<T>`、`ToolStateInner<T>`、`get_bootstrap<T>` |
+| `global_state` | 全局总开关（GlobalState）+ `ToolLifecycleRegistry`（统一 stop 入口，所有工具模块注册停止逻辑） |
+| `hotkeys` | 共享 willhook 键盘钩子，scope 注册，`ConflictPolicy`（Strict / AllowHold），跨 scope 冲突检测 |
+| `overlay-windows` | 透明窗口：无边框、置顶、点击穿透；位置设置窗口保留校准靶风格 |
+| `theme-engine` | 5 套内置主题 + 自定义 + token override |
+| `profile-system` | 多配置快照切换 |
+| `logging` | 混合格式日志 + 按天轮转 + 链路追踪 |
+
+### 架构改进
+
+- **ToolLifecycleRegistry**：统一 stop 入口，所有工具模块注册停止逻辑，替代各模块独立 shutdown
+- **RunsSync trait**：`runs` narrowing 逻辑下放到 Logic 层，Rust 侧通过 trait 约束统一调用
+- **Rapidfire 模块拆分**：`keys` / `worker` / `overlay` / `commands` 四个子模块，职责清晰
+- **Audio watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
+- **事件对齐**：前端 `listen<PayloadType>(EVENTS.xxx, handler)` 模式，事件名通过 `src/lib/tauri-events.ts` 常量订阅，杜绝硬编码
+
+### 事件模式
+
+事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `EVENTS` 常量与显式泛型订阅。
+
+### Overlay 约束
+
+计时器/计数器/连发器透明窗口必须无边框、透明、置顶、点击穿透。overlay 保持透明背景。`?mode=` 查询参数分支进入 overlay/display/position 模式，不可用路由替代。
 
 ## 技术栈
 
-- 桌面框架：Tauri 2
-- 原生能力：Rust
-- 前端：React 19、TypeScript、Vite
-- 包管理与脚本：Bun
-- UI：Tailwind CSS v4、shadcn/ui、Remix Icon；视觉语言为 `DESIGN.md` 定义的 Swiss Industrial Print × Declassified Tactical
-  Control Board（工业纸面、粗黑结构线、12 列工作网格、单一航空红 `#E11919` 焦点）
-- 本地存储：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
+- **桌面框架**：Tauri 2
+- **原生能力**：Rust
+- **前端**：React 19、TypeScript、Vite
+- **包管理**：Bun
+- **UI**：shadcn/ui、Tailwind CSS v4、Remix Icon
+- **本地存储**：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
+
+## 测试覆盖
+
+| 层 | 数量 |
+|----|------|
+| Rust 单元测试 | 378 |
+| 前端单元测试 | 326 |
+| 编译检查 | `cargo check` clean |
+| 前端构建 | `bun run build` clean |
 
 ## 本地开发
 
 ```bash
-bun install
+bun install                       # 安装前端依赖
+bun run dev                       # Vite 前端开发服务器（端口 1420）
+bun run tauri dev                 # 完整桌面开发（Vite + Tauri）
+bun run build                     # tsc && vite build
+bun run test                      # Vitest 前端单元测试
+cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
+cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```
-
-安装前端依赖。
-
-```bash
-bun run dev
-```
-
-启动 Vite 前端开发服务器。
-
-```bash
-bun run tauri dev
-```
-
-启动完整桌面开发环境，用于验证快捷键、透明窗口、Tauri commands 和原生能力。
-
-```bash
-bun run build
-```
-
-执行 TypeScript 检查并构建前端产物。
-
-```bash
-bun run test
-```
-
-执行前端单元测试。
-
-```bash
-cargo check --manifest-path src-tauri/Cargo.toml
-```
-
-检查 Rust/Tauri 侧编译。
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-执行 Rust 单元测试。
-
-## 辅助脚本
-
-`scripts/` 目录提供发布流水线脚本：
-
-- `scripts/setup-update-key.ps1` — 一次性脚本：调用 `bunx --offline tauri signer generate` 生成 Tauri 更新签名密钥对，私钥写入
-  `$HOME/.tauri/delta-auto-tools.key`（**不入库**），公钥自动写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`
-- `scripts/build-release.ps1` — 设置 `TAURI_SIGNING_PRIVATE_KEY` 环境变量后执行 `bun run tauri build`，产出带 `.sig` 签名的
-  NSIS 安装包
-- `scripts/generate-latest-json.ps1` — 从 `*-setup.exe.sig` 签名文件生成 Tauri 更新器运行时拉取的 `latest.json`（必须上传到
-  GitHub Release，应用内「检查更新」才能工作）
-- `scripts/wait-for-port.cjs` — PM2 启动 Tauri 前的端口等待脚本
-
-完整发布流程见 `AGENTS.md` / `CLAUDE.md` 的 GitHub workflow 章节。
 
 ## 项目结构
 
 ```text
-src/                    # React 前端应用与桌面工作台界面
-src/components/app/     # 业务页面与功能组件（含 about-page、timer-page、morse-page、strategy-page 等）
-src/components/ui/      # shadcn/ui 基础组件
-src-tauri/src/          # Rust/Tauri 原生能力与 commands
-src-tauri/src/morse/    # 摩斯识别流程
-src-tauri/src/timer/    # 计时器
-src-tauri/src/counter/  # 计数器（独立模块）
-src-tauri/src/rapidfire/# 连发器
-src-tauri/src/audio/    # 音频播放与触发（快捷键 / 区域图像匹配 / 多区域识色）
-src-tauri/src/delta/    # Delta 登录、账号与游戏数据接口
-src-tauri/src/strategy/ # 攻略网站子 WebView 与抓取
-src-tauri/src/about/    # 关于面板：版本信息、依赖致谢、官方更新器封装
-docs/                   # 架构决策、开发记录与 UI 设计规范
-scripts/                # 发布流水线脚本（setup-update-key / build-release / generate-latest-json）
+src/                        # React 前端应用
+src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、audio-page、strategy-page 等）
+src/components/ui/          # shadcn/ui 基础组件
+src/lib/                    # 共享工具函数与 tauri-events 常量
+src-tauri/src/              # Rust/Tauri 原生能力
+src-tauri/src/tool_base.rs  # 共享泛型基座（ToolLogic / ToolState<T>）
+src-tauri/src/global_state.rs  # 全局总开关 + ToolLifecycleRegistry
+src-tauri/src/hotkeys.rs    # 共享键盘钩子与冲突策略
+src-tauri/src/morse/        # 摩斯识别
+src-tauri/src/timer/        # 计时器
+src-tauri/src/counter/      # 计数器
+src-tauri/src/rapidfire/    # 连发器（keys / worker / overlay / commands）
+src-tauri/src/audio/        # 音频触发（manager / matching / capture）
+src-tauri/src/strategy/     # 攻略网站 WebView2 子视图
+src-tauri/src/about/        # 关于面板 + Tauri 官方更新器
+src-tauri/src/delta/        # Delta 登录、账号与游戏数据
+scripts/                    # 发布流水线脚本
+droid-wiki/                 # 项目自维护结构化文档（36 页）
 ```
+
+## 辅助脚本
+
+| 脚本 | 用途 |
+|------|------|
+| `scripts/setup-update-key.ps1` | 生成 Tauri 更新签名密钥对 |
+| `scripts/build-release.ps1` | 带签名的 NSIS 安装包构建 |
+| `scripts/generate-latest-json.ps1` | 从 `.sig` 生成 `latest.json`（更新器端点） |
+| `scripts/wait-for-port.cjs` | PM2 启动前端口等待 |
+
+完整发布流程见 `AGENTS.md` / `CLAUDE.md`。
