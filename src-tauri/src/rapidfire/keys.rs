@@ -89,16 +89,19 @@ impl KeyEmitter for EnigoKeyEmitter {
 // ---- MockKeyEmitter ----
 
 /// 记录调用历史的 mock KeyEmitter，用于测试。
+#[cfg(test)]
 pub struct MockKeyEmitter {
     pub calls: Vec<MockKeyEmitCall>,
 }
 
+#[cfg(test)]
 impl MockKeyEmitter {
     pub fn new() -> Self {
         Self { calls: Vec::new() }
     }
 }
 
+#[cfg(test)]
 impl KeyEmitter for MockKeyEmitter {
     fn press_release_target_key(
         &mut self,
@@ -117,6 +120,7 @@ impl KeyEmitter for MockKeyEmitter {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MockKeyEmitCall {
     pub target_key: String,
@@ -181,17 +185,6 @@ pub fn press_jitter_duration_ms(min_ms: u64, max_ms: u64) -> u64 {
         .unwrap_or(0);
 
     min_ms + ((nanos ^ counter.rotate_left(13)) % span)
-}
-
-/// 将目标键字符串映射为 enigo Key，并执行真实按下/抬起
-pub fn press_release_target_key(
-    target_key: &str,
-    held_trigger_key: Option<&str>,
-    press_jitter_min_ms: u64,
-    press_jitter_max_ms: u64,
-) -> Result<(), String> {
-    let mut emitter = EnigoKeyEmitter::new()?;
-    emitter.press_release_target_key(target_key, held_trigger_key, press_jitter_min_ms, press_jitter_max_ms)
 }
 
 pub fn parse_target_key(key: &str) -> Option<Key> {
