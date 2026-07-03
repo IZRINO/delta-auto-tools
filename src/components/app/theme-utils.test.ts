@@ -5,9 +5,11 @@ import {
     applyThemeTokens,
     applyPersistedThemeTokens,
     buildCustomOverrideSettings,
+    colorToHex,
     findTheme,
     materializeCustomOverrides,
     mergeThemeTokens,
+    normalizeColorInput,
     normalizeHex,
     parseImportedTheme,
     previewThemeTokens,
@@ -311,5 +313,40 @@ describe("normalizeHex", () => {
     it("非法输入原样返回", () => {
         expect(normalizeHex("not-a-color")).toBe("not-a-color");
         expect(normalizeHex("#12")).toBe("#12");
+    });
+});
+
+describe("normalizeColorInput", () => {
+    it("hex 转 oklch 字符串", () => {
+        const result = normalizeColorInput("#e8a000");
+        expect(result).toMatch(/^oklch\(0\.\d+ 0\.\d+ \d+\.\d+\)$/);
+    });
+
+    it("oklch 输入仍规范化为 oklch 字符串", () => {
+        const result = normalizeColorInput("oklch(0.7 0.2 25)");
+        expect(result).toMatch(/^oklch\(0\.700000 0\.200000 25\.000000\)$/);
+    });
+
+    it("hex→oklch→hex 往返零误差（RGB 整数复原）", () => {
+        const oklchStr = normalizeColorInput("#e8a000");
+        expect(colorToHex(oklchStr)).toBe("#e8a000");
+    });
+
+    it("非法输入原样返回", () => {
+        expect(normalizeColorInput("not-a-color")).toBe("not-a-color");
+    });
+});
+
+describe("colorToHex", () => {
+    it("oklch 字符串转 hex", () => {
+        expect(colorToHex("oklch(0.7 0.2 25)")).toMatch(/^#[0-9a-f]{6}$/);
+    });
+
+    it("hex 原样归一", () => {
+        expect(colorToHex("#ff0000")).toBe("#ff0000");
+    });
+
+    it("非法输入回退 #000000", () => {
+        expect(colorToHex("not-a-color")).toBe("#000000");
     });
 });

@@ -4,6 +4,8 @@
  * 所有函数均不依赖 React / Tauri，可在 Node 测试环境直接调用。
  */
 
+import {formatHex, oklch, parse} from "culori";
+
 import type {
     ThemeBootstrap,
     ThemeDefinition,
@@ -251,4 +253,38 @@ export function normalizeHex(value: string): string {
         return `#${expanded.toLowerCase()}`;
     }
     return trimmed;
+}
+
+/**
+ * 把任意合法 CSS 颜色字符串（hex / oklch() / rgb() 等）规范化为 `oklch(L C H)` 字符串。
+ *
+ * 用 culori 做解析与 oklch 转换。新主题 token 统一存 oklch 字符串；
+ * 旧主题遗留的 hex 值经此函数转为 oklch。无法解析的输入原样返回。
+ */
+export function normalizeColorInput(value: string): string {
+    const trimmed = value.trim();
+    const parsed = parse(trimmed);
+    if (!parsed) return trimmed;
+    const c = oklch(parsed);
+    if (!c || c.l === undefined || c.c === undefined) return trimmed;
+    // ponytail: hue 对无彩色（c=0）可能为 NaN/undefined，回退 0
+    const h = c.h === undefined || Number.isNaN(c.h) ? 0 : c.h;
+    return `oklch(${round(c.l)} ${round(c.c)} ${round(h)})`;
+}
+
+/**
+ * 把任意合法 CSS 颜色字符串转为 `#rrggbb`，供原生 `<input type="color">` 使用。
+ *
+ * 无法解析时回退 `#000000`。
+ */
+export function colorToHex(value: string): string {
+    const parsed = parse(value.trim());
+    if (!parsed) return "#000000";
+    const hex = formatHex(parsed);
+    return hex ?? "#000000";
+}
+
+function round(n: number): string {
+    // ponytail: 6 位小数足够 hex 往返精度，避免浮点尾噪
+    return n.toFixed(6);
 }

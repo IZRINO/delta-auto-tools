@@ -1,16 +1,18 @@
 import {useState} from "react";
-import {HexColorPicker} from "react-colorful";
+import {ColorPicker} from "chromakit-react";
+import "chromakit-react/chromakit.css";
 import {RiPaletteLine} from "@remixicon/react";
 
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
 import {Input} from "@/components/ui/input";
 import {Button} from "@/components/ui/button";
-import {normalizeHex} from "@/components/app/theme-utils";
+import {colorToHex, normalizeColorInput} from "@/components/app/theme-utils";
 
 /**
- * 颜色选择器：Popover + react-colorful 色轮 + hex 输入框 + 原生取色器入口。
+ * 颜色选择器：色块+原生取色器入口、文本输入框、Popover 拾色按钮（chromakit-react OKLCH 面板）。
  *
- * 用于主题面板的 TOKENS 编辑区。value 是 `#RRGGBB` 字符串。
+ * value 接受任意合法 CSS 颜色字符串（hex 或 oklch()），onChange 永远输出标准
+ * `oklch(L C H)` 字符串（用 culori 转换）。供主题面板 TOKENS 编辑区使用。
  */
 export function ThemeColorPicker({
     value,
@@ -30,7 +32,7 @@ export function ThemeColorPicker({
     }
 
     const commit = (raw: string) => {
-        const normalized = normalizeHex(raw);
+        const normalized = normalizeColorInput(raw);
         setText(normalized);
         onChange(normalized);
     };
@@ -50,7 +52,7 @@ export function ThemeColorPicker({
                 />
                 <input
                     type="color"
-                    value={value.startsWith("#") ? value : "#000000"}
+                    value={colorToHex(value)}
                     onChange={(e) => commit(e.target.value)}
                     className="absolute inset-0 size-full cursor-pointer opacity-0"
                     aria-hidden="true"
@@ -58,7 +60,7 @@ export function ThemeColorPicker({
                 />
             </label>
 
-            {/* hex 输入框 */}
+            {/* 颜色值输入框（接受 hex 或 oklch() 字符串） */}
             <Input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -68,26 +70,31 @@ export function ThemeColorPicker({
                         commit((e.target as HTMLInputElement).value);
                     }
                 }}
-                className="h-8 w-24 font-mono text-xs"
+                className="h-8 w-28 font-mono text-xs"
                 spellCheck={false}
             />
 
-            {/* Popover 色轮（更精细的调整） */}
+            {/* Popover OKLCH 拾色面板（L/C/H 三通道交互控件） */}
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                     <Button
                         variant="outline"
                         size="icon"
                         className="size-8 border-2 border-[var(--chalk)]"
-                        aria-label="打开色轮"
+                        aria-label="打开 OKLCH 拾色器"
                     >
                         <RiPaletteLine className="size-4" aria-hidden="true"/>
                     </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto p-3">
-                    <HexColorPicker
-                        color={value}
-                        onChange={commit}
+                <PopoverContent align="start" className="w-auto p-2">
+                    <ColorPicker
+                        value={value}
+                        onChange={(colorValue) => commit(colorValue.hex)}
+                        formats={["oklch"]}
+                        showAlpha={false}
+                        showCopyButton={false}
+                        showPresets={false}
+                        enableHistory={false}
                     />
                 </PopoverContent>
             </Popover>
