@@ -21,8 +21,9 @@ use crate::overlay_utils::{
 };
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
-    count_enabled_items_by_group, group_enabled, normalize_sync_settings, HotkeyBindingSet,
-    RunsSync, SyncGroup, SyncItem, SyncSettings, SyncToolLogic,
+    apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup,
+    SyncItem, SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 use crate::utils::now_ms;
@@ -43,6 +44,27 @@ const TIMER_DISPLAY_LABEL: &str = "timer-display";
 const TIMER_POSITION_LABEL: &str = "timer-position";
 const TIMER_DISPLAY_WIDTH: i32 = 320;
 const TIMER_DISPLAY_MIN_HEIGHT: i32 = 96;
+
+impl SyncRect for TimerRect {
+    fn with_position(&self, x: i32, y: i32) -> Self {
+        Self {
+            x,
+            y,
+            width: self.width,
+            height: self.height,
+        }
+    }
+}
+
+impl PositionKinds for TimerSelectionKind {
+    fn selected() -> Self {
+        Self::Selected
+    }
+
+    fn cancelled() -> Self {
+        Self::Cancelled
+    }
+}
 
 pub struct TimerLogic {
     pub runs: HashMap<String, TimerRuntime>,
@@ -74,9 +96,7 @@ pub(crate) struct TimerRuntime {
 }
 
 pub(crate) struct PendingTimerPosition {
-    group_id: String,
-    original_rect: TimerRect,
-    staged_rect: TimerRect,
+    pending: PendingPosition<TimerRect>,
     sender: oneshot::Sender<TimerSelectionKind>,
 }
 
@@ -1050,9 +1070,11 @@ pub async fn timer_begin_position_selection(
 
         let rect = rect_for_group(&inner.settings, &group_id);
         inner.logic.pending_position = Some(PendingTimerPosition {
-            group_id: group_id.clone(),
-            original_rect: rect.clone(),
-            staged_rect: rect.clone(),
+            pending: PendingPosition {
+                group_id: group_id.clone(),
+                original_rect: rect.clone(),
+                staged_rect: rect.clone(),
+            },
             sender,
         });
         rect
@@ -1120,28 +1142,47 @@ pub fn timer_position_commit(
     app: AppHandle,
     state: State<'_, TimerState>,
 ) -> Result<TimerBootstrap, AppError> {
-    let (sender, group_id, bootstrap) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message(
-                "当前没有等待中的位置设置流程".to_string(),
-            ));
-        };
+        inner.logic.pending_position.take()
+    };
+    let Some(pending) = pending else {
+        return Err(AppError::Message(
+            "当前没有等待中的位置设置流程".to_string(),
+        ));
+    };
+    let group_id = pending.pending.group_id.clone();
+    let staged_rect = pending.pending.staged_rect.clone();
+    let sender = pending.sender;
+    let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+        Some(pending.pending),
+        PositionEvent::Commit,
+    )?;
 
-        let group_id = pending.group_id.clone();
-        set_rect_for_group(&mut inner.settings, &group_id, pending.staged_rect.clone());
+    if decision.save {
+        let mut inner = state
+            .lock_inner()
+            .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
+        set_rect_for_group(&mut inner.settings, &group_id, staged_rect);
         settings::save_settings(&app, &inner.settings)?;
-        (
-            pending.sender,
-            group_id,
-            TimerLogic::build_bootstrap(&inner),
-        )
+    }
+
+    if let Some(kind) = decision.send {
+        let _ = sender.send(kind);
+    }
+    if decision.destroy_window {
+        destroy_window(&app, &position_label_for_group(&group_id));
+    }
+
+    let bootstrap = {
+        let inner = state
+            .lock_inner()
+            .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
+        TimerLogic::build_bootstrap(&inner)
     };
 
-    let _ = sender.send(TimerSelectionKind::Selected);
-    destroy_window(&app, &position_label_for_group(&group_id));
     ensure_display_windows(&app, &bootstrap.settings)?;
     emit_state(&app, bootstrap.clone());
     profile::update_active_profile_snapshot(
@@ -1153,23 +1194,38 @@ pub fn timer_position_commit(
 
 #[tauri::command]
 pub fn timer_position_cancel(app: AppHandle, state: State<'_, TimerState>) -> Result<(), AppError> {
-    let (sender, group_id) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message(
-                "当前没有等待中的位置设置流程".to_string(),
-            ));
-        };
-
-        let group_id = pending.group_id.clone();
-        set_rect_for_group(&mut inner.settings, &group_id, pending.original_rect);
-        (pending.sender, group_id)
+        inner.logic.pending_position.take()
     };
+    let Some(pending) = pending else {
+        return Err(AppError::Message(
+            "当前没有等待中的位置设置流程".to_string(),
+        ));
+    };
+    let group_id = pending.pending.group_id.clone();
+    let original_rect = pending.pending.original_rect.clone();
+    let sender = pending.sender;
+    let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+        Some(pending.pending),
+        PositionEvent::Cancel,
+    )?;
 
-    let _ = sender.send(TimerSelectionKind::Cancelled);
-    destroy_window(&app, &position_label_for_group(&group_id));
+    if !decision.save {
+        let mut inner = state
+            .lock_inner()
+            .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
+        set_rect_for_group(&mut inner.settings, &group_id, original_rect);
+    }
+
+    if let Some(kind) = decision.send {
+        let _ = sender.send(kind);
+    }
+    if decision.destroy_window {
+        destroy_window(&app, &position_label_for_group(&group_id));
+    }
     Ok(())
 }
 
@@ -1180,26 +1236,43 @@ pub fn timer_position_moved(
     app: AppHandle,
     state: State<'_, TimerState>,
 ) -> Result<TimerRect, AppError> {
-    let (rect, group_id) = {
+    let pending = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.as_mut() else {
-            return Err(AppError::Message(
-                "当前没有等待中的位置设置流程".to_string(),
-            ));
-        };
-
-        pending.staged_rect.x = x;
-        pending.staged_rect.y = y;
-        (pending.staged_rect.clone(), pending.group_id.clone())
+        inner.logic.pending_position.take()
     };
+    let Some(pending) = pending else {
+        return Err(AppError::Message(
+            "当前没有等待中的位置设置流程".to_string(),
+        ));
+    };
+    let sender = pending.sender;
+    let group_id = pending.pending.group_id.clone();
+    let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+        Some(pending.pending),
+        PositionEvent::Moved { x, y },
+    )?;
 
-    if let Some(window) = app.get_webview_window(&position_label_for_group(&group_id)) {
-        let _ = window.set_position(PhysicalPosition::new(rect.x, rect.y));
+    if let Some(next_pending) = decision.pending {
+        let mut inner = state
+            .lock_inner()
+            .map_err(|_| "计时器位置设置状态已损坏".to_string())?;
+        inner.logic.pending_position = Some(PendingTimerPosition {
+            pending: next_pending,
+            sender,
+        });
     }
 
-    Ok(rect)
+    let staged_rect = decision
+        .move_window_to
+        .ok_or_else(|| "位置设置移动结果缺失".to_string())?;
+
+    if let Some(window) = app.get_webview_window(&position_label_for_group(&group_id)) {
+        let _ = window.set_position(PhysicalPosition::new(staged_rect.x, staged_rect.y));
+    }
+
+    Ok(staged_rect)
 }
 
 #[cfg(test)]
@@ -1641,5 +1714,188 @@ mod tests {
             runs.get("t").unwrap().remaining_seconds, 18,
             "全局关闭时 runs 应保留剩余秒数"
         );
+    }
+
+    // ── apply_position_event 复用单测 ─────────────────────────
+    // 验证 timer 的位置设置流程（moved/commit/cancel）通过
+    // sync_tool::apply_position_event 走同一函数，不再手写状态机。
+
+    #[test]
+    fn timer_position_moved_updates_staged_rect() {
+        let pending = Some(PendingPosition {
+            group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
+            original_rect: TimerRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 96,
+            },
+            staged_rect: TimerRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 96,
+            },
+        });
+
+        let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+            pending,
+            PositionEvent::Moved { x: 50, y: 60 },
+        )
+        .expect("移动事件应成功");
+
+        assert_eq!(decision.pending.as_ref().unwrap().staged_rect.x, 50);
+        assert_eq!(decision.pending.as_ref().unwrap().staged_rect.y, 60);
+        assert_eq!(decision.move_window_to.unwrap().x, 50);
+        assert!(!decision.save);
+        assert!(!decision.destroy_window);
+    }
+
+    #[test]
+    fn timer_position_commit_saves_and_sends_selected() {
+        let pending = Some(PendingPosition {
+            group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
+            original_rect: TimerRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 96,
+            },
+            staged_rect: TimerRect {
+                x: 5,
+                y: 6,
+                width: 320,
+                height: 96,
+            },
+        });
+
+        let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+            pending,
+            PositionEvent::Commit,
+        )
+        .expect("提交事件应成功");
+
+        assert!(decision.pending.is_none());
+        assert!(decision.save);
+        assert_eq!(decision.send, Some(TimerSelectionKind::Selected));
+        assert!(decision.destroy_window);
+    }
+
+    #[test]
+    fn timer_position_cancel_restores_and_sends_cancelled() {
+        let pending = Some(PendingPosition {
+            group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
+            original_rect: TimerRect {
+                x: 1,
+                y: 2,
+                width: 320,
+                height: 96,
+            },
+            staged_rect: TimerRect {
+                x: 50,
+                y: 60,
+                width: 320,
+                height: 96,
+            },
+        });
+
+        let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
+            pending,
+            PositionEvent::Cancel,
+        )
+        .expect("取消事件应成功");
+
+        assert!(decision.pending.is_none());
+        assert!(!decision.save);
+        assert_eq!(decision.send, Some(TimerSelectionKind::Cancelled));
+        assert!(decision.destroy_window);
+    }
+
+    // ── T-7: timer 多段恢复单测 ────────────────────────────
+    // 覆盖多段计时器启动/恢复的多段分支：
+    // 无活跃计时器、有活跃计时器、窗口已存在、窗口缺失等。
+
+    #[test]
+    fn multisegment_recovery_from_zero_pool() {
+        // 从 0 pool 恢复：pool 为 0 时 deduct_multisegment_pool 返回 None，
+        // trigger_multisegment_runtime 应返回 None，无法触发。
+        let runtime = running_multisegment(0, 0, TimerDirection::Countup);
+        // 由于 status=Running 且 pool=0，elapsed=0，
+        // multisegment_pool_ms = 0*1000 + 0 = 0 < 60000，deduct 失败
+        let result = trigger_multisegment_at(
+            Some(runtime),
+            0,
+            TimerDirection::Countup,
+        );
+        assert!(result.is_none(), "pool=0 时不应触发新段");
+    }
+
+    #[test]
+    fn multisegment_recovery_exact_segment_boundary() {
+        // 初始 pool=300（满池），逐段扣减验证每段剩余。
+        let next =
+            trigger_multisegment_at(None, 0, TimerDirection::Countdown).unwrap();
+        assert_eq!(next.current_seconds, 240, "扣除一段后剩余 240");
+        assert_eq!(next.recovery_start_pool, 240);
+
+        let next2 = trigger_multisegment_at(Some(next), 0, TimerDirection::Countdown).unwrap();
+        assert_eq!(next2.current_seconds, 180);
+
+        let next3 = trigger_multisegment_at(Some(next2), 0, TimerDirection::Countdown).unwrap();
+        assert_eq!(next3.current_seconds, 120);
+
+        let next4 = trigger_multisegment_at(Some(next3), 0, TimerDirection::Countdown).unwrap();
+        assert_eq!(next4.current_seconds, 60);
+    }
+
+    #[test]
+    fn multisegment_recovery_countup_mid_run() {
+        // 中途恢复：正在运行的 countup 多段计时器
+        // elapsed 增加到 30s（pool 从 240 增加到 ~270），扣除后剩 ~210
+        let runtime = running_multisegment(240, 0, TimerDirection::Countup);
+        let next =
+            trigger_multisegment_at(Some(runtime), 30_000, TimerDirection::Countup).unwrap();
+        // pool = 240 + 30 = 270, deduct 60 → 210
+        assert_eq!(next.current_seconds, 210);
+        assert_eq!(next.remaining_seconds, 210);
+        assert_eq!(next.recovery_start_pool, 210);
+    }
+
+    #[test]
+    fn multisegment_recovery_finished_then_trigger() {
+        // 已完成（Finished）的多段计时器视为满池（300），扣除后返回 240
+        let runtime = TimerRuntime {
+            status: TimerRunStatus::Finished,
+            current_seconds: 300,
+            remaining_seconds: 300,
+            recovery_start_pool: 300,
+            ..running_multisegment(120, 1_000, TimerDirection::Countdown)
+        };
+
+        let next = trigger_multisegment_at(Some(runtime), 123_456, TimerDirection::Countdown)
+            .unwrap();
+        assert_eq!(next.current_seconds, 240);
+        assert_eq!(next.status, TimerRunStatus::Running);
+    }
+
+    #[test]
+    fn multisegment_recovery_no_prior_runtime() {
+        // 无之前 runtime 时，pool = total_duration（300），扣一段后 240
+        let next = trigger_multisegment_at(None, 0, TimerDirection::Countdown).unwrap();
+        assert_eq!(next.current_seconds, 240);
+        assert_eq!(next.remaining_seconds, 240);
+        assert_eq!(next.status, TimerRunStatus::Running);
+        assert_eq!(next.recovery_start_pool, 240);
+    }
+
+    #[test]
+    fn multisegment_recovery_sub_segment_duration() {
+        // pool 不足 1 segment_duration 时无法触发
+        // running_multisegment 的 recovery_start_pool 单位是秒，
+        // multisegment_pool_ms = recovery_start_pool * 1000 + elapsed_ms
+        // pool=30 → 30000ms < 60000ms（1 segment_duration）
+        let runtime = running_multisegment(30, 0, TimerDirection::Countdown);
+        let result = trigger_multisegment_at(Some(runtime), 0, TimerDirection::Countdown);
+        assert!(result.is_none(), "pool < segment_duration 时不应触发");
     }
 }
