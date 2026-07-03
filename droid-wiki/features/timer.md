@@ -44,7 +44,7 @@ src/components/app/
 | `TimerRuntime` | `timer/mod.rs` | 运行态（非序列化）：started_at_ms、ends_at_ms、current_seconds、remaining_seconds、status、多段池 |
 | `TimerRunState` | `timer/types.rs` | 序列化的运行态快照：随 Bootstrap 返回前端 |
 | `TimerRunStatus` | `timer/types.rs` | 运行状态枚举：`Running` / `Finished` |
-| `TimerLogic` | `timer/mod.rs` | `SyncToolLogic` 实现，持有 `runs: HashMap<String, TimerRuntime>` 与位置设置会话 |
+| `TimerLogic` | `timer/mod.rs` | `SyncToolLogic` + `RunsSync` 实现，持有 `runs: HashMap<String, TimerRuntime>` 与位置设置会话 |
 | `TimerState` | `timer/mod.rs` | 顶层状态：`ToolState<TimerLogic>` + tick 任务句柄 |
 | `TimerBootstrap` | `timer/types.rs` | 前端拉取的完整快照：settings + runs + hotkey_error |
 
@@ -114,16 +114,17 @@ flowchart TD
 - 查询参数：`?mode=timer-display&groupId={groupId}`，前端据此渲染对应分组的计时器列表。
 - `ensure_display_windows` 在每次状态变更后同步窗口位置、大小与可见性，并销毁已不存在的分组窗口。
 
-### 位置校准
+### 位置校准（复用共享状态机）
 
-`timer_begin_position_selection` 启动一个独立的校准窗口（`timer-position` label），用户拖拽定位后：
+计时器位置校准复用 `sync_tool` 模块的共享位置状态机：
 
-- `timer_position_moved`：实时更新 `staged_rect` 并移动校准窗口。
-- `timer_position_commit`：将 `staged_rect` 写入分组 display 配置并持久化，关闭校准窗口。
-- `timer_position_cancel`：回滚到 `original_rect`，关闭校准窗口。
+- `timer_begin_position_selection` 启动一个独立的校准窗口（`timer-position` label），用户拖拽定位后：
+- `timer_position_moved`：调用 `apply_position_event` 处理 `Moved` 事件，实时更新 `staged_rect` 并移动校准窗口。
+- `timer_position_commit`：调用 `apply_position_event` 处理 `Commit` 事件，将 `staged_rect` 写入分组 display 配置并持久化，关闭校准窗口。
+- `timer_position_cancel`：调用 `apply_position_event` 处理 `Cancel` 事件，回滚到 `original_rect`，关闭校准窗口。
 - 窗口被关闭（非正常流程）时通过 `on_window_event` 发送 `Closed` 信号。
 
-计时器模块自行实现位置状态机（`PendingTimerPosition`），未使用 `apply_position_event`（计数器模块使用了该共享函数）。
+`TimerRect` 实现 `SyncRect` trait，`TimerSelectionKind` 实现 `PositionKinds` trait。详见 [同步工具基座](../systems/sync-tool.md)。
 
 ### 全局开关行为
 
@@ -134,7 +135,7 @@ flowchart TD
 | 集成方 | 关系 |
 |--------|------|
 | [工具基座](../systems/tool-base.md) | `TimerLogic` 实现 `ToolLogic` trait，复用 `ToolState<T>` / `ToolStateInner<T>` / `get_bootstrap` 泛型基座 |
-| [同步工具基座](../systems/sync-tool.md) | `TimerLogic` 实现 `SyncToolLogic`，复用 `normalize_sync_settings`、`restart_sync_hotkeys`；`TimerSettings` 实现 `SyncSettings`，`TimerItem`/`TimerGroup` 实现 `SyncItem`/`SyncGroup` |
+| [同步工具基座](../systems/sync-tool.md) | `TimerLogic` 实现 `SyncToolLogic` + `RunsSync`，复用 `normalize_sync_settings`、`restart_sync_hotkeys`、`apply_position_event`；`TimerSettings` 实现 `SyncSettings`，`TimerItem`/`TimerGroup` 实现 `SyncItem`/`SyncGroup` |
 | [热键系统](../systems/hotkeys.md) | scope 名 `"timer"`，冲突策略 `AllowHold`；Press 模式用普通 scope，Release 模式用 hold scope |
 | [透明叠加窗](../systems/overlay-windows.md) | 每个分组一个透明显示窗 + 位置校准窗，均无边框/透明/置顶/点击穿透 |
 | Profile | `ActiveProfileSnapshotPatch::Timer` 在保存设置时同步到当前 Profile 快照 |

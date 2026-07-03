@@ -146,7 +146,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `profile/` — 多配置快照切换
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
 
-**事件模式**：事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `listenEvent<T>` helper 订阅。
+**事件模式**：事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `EVENTS` 常量与显式泛型 `listen<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名。
 
 ## Testing
 

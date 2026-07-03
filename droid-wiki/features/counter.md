@@ -43,7 +43,7 @@ src/components/app/
 | `CounterGroup` | `counter/types.rs` | 计数器分组：id、name、enabled、display（独立透明窗位置与透明度） |
 | `CounterRunState` | `counter/types.rs` | 序列化的运行态：id + 当前累加值，随 Bootstrap 返回前端 |
 | `CounterRunStateSnapshot` | `counter/counter_state.rs` | 运行态持久化结构：`BTreeMap<counter_id, value>`，key 有序便于 diff |
-| `CounterLogic` | `counter/mod.rs` | `SyncToolLogic` 实现，持有 `runs: HashMap<String, i64>` 与位置设置会话 |
+| `CounterLogic` | `counter/mod.rs` | `SyncToolLogic` + `RunsSync` 实现，持有 `runs: HashMap<String, i64>` 与位置设置会话 |
 | `CounterState` | `counter/mod.rs` | 顶层状态：`ToolState<CounterLogic>` |
 | `CounterBootstrap` | `counter/types.rs` | 前端拉取的完整快照：settings + counter_runs + hotkey_error |
 
@@ -138,7 +138,7 @@ flowchart TD
 | 集成方 | 关系 |
 |--------|------|
 | [工具基座](../systems/tool-base.md) | `CounterLogic` 实现 `ToolLogic` trait，复用 `ToolState<T>` / `ToolStateInner<T>` / `get_bootstrap` 泛型基座 |
-| [同步工具基座](../systems/sync-tool.md) | `CounterLogic` 实现 `SyncToolLogic`，复用 `normalize_sync_settings`、`restart_sync_hotkeys`、`apply_position_event`；`CounterSettings` 实现 `SyncSettings`，`CounterItem`/`CounterGroup` 实现 `SyncItem`/`SyncGroup`，`CounterRect` 实现 `SyncRect`，`CounterSelectionKind` 实现 `PositionKinds` |
+| [同步工具基座](../systems/sync-tool.md) | `CounterLogic` 实现 `SyncToolLogic` + `RunsSync`，复用 `normalize_sync_settings`、`restart_sync_hotkeys`、`apply_position_event`；`CounterSettings` 实现 `SyncSettings`，`CounterItem`/`CounterGroup` 实现 `SyncItem`/`SyncGroup`，`CounterRect` 实现 `SyncRect`，`CounterSelectionKind` 实现 `PositionKinds` |
 | [热键系统](../systems/hotkeys.md) | scope 名 `"counter"`，冲突策略 `AllowHold`；仅使用普通 scope（无 hold） |
 | [透明叠加窗](../systems/overlay-windows.md) | 每个分组一个透明显示窗 + 位置校准窗，均无边框/透明/置顶/点击穿透 |
 | Profile | `ActiveProfileSnapshotPatch::Counter` 在保存设置时同步到当前 Profile 快照；`reset_runs_to_start_values` 供 Profile 切换时按需重置 |

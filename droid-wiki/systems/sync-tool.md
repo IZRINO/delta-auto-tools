@@ -22,6 +22,7 @@
 | `PendingPosition<R>` | `src-tauri/src/sync_tool.rs` | 待定位置设置：`group_id`、`original_rect`、`staged_rect` |
 | `PositionDecision<R, K>` | `src-tauri/src/sync_tool.rs` | 位置事件决策：是否保存、是否发送通知、是否销毁窗口、是否移动窗口 |
 | `SyncToolRegistry` | `src-tauri/src/sync_tool.rs` | 全局停止注册表，注册各工具的 `stop_all` 函数 |
+| `RunsSync` | `src-tauri/src/sync_tool.rs` | runs 同步逻辑 trait：声明 `sync_runs_with_settings`，孤儿清理 + 缺失补齐 |
 | `ToolLifecycleRegistry` | `src-tauri/src/sync_tool.rs` | 统一停止注册表，接纳所有工具（含 morse/audio）的 stop handler |
 
 ## 工作原理
@@ -68,7 +69,18 @@ graph TD
 | `Commit` | 清除 pending，保存设置，发送 `Selected` 通知，销毁位置窗口 |
 | `Cancel` | 清除 pending，不保存，发送 `Cancelled` 通知，销毁位置窗口 |
 
-计数器直接使用此泛型函数；计时器和连发器因有额外逻辑而自行实现位置处理。
+计数器和计时器均直接使用此泛型函数；连发器因有额外逻辑而自行实现位置处理。
+
+### Runs 同步（RunsSync trait）
+
+`RunsSync` trait 扩展 `SyncToolLogic`，声明 `sync_runs_with_settings(runs, settings)` 方法，将 runs 收窄逻辑（孤儿清理 + 缺失补齐）从 `save_settings` 内联操作下沉到各 Logic 的 trait 实现：
+
+1. **孤儿清理**：`retain(id ∈ settings items)` —— 配置中已删除但 runs 中残留的条目被移除。
+2. **缺失补齐**：`entry(id).or_insert(default)` —— 新增条目但 runs 中缺失时用默认值补齐。
+
+**不重置、不按 enabled 清理**：禁用计数器的累积值和全局关闭后的 runs 均完整保留。
+
+`CounterLogic` 和 `TimerLogic` 各自实现 `RunsSync`，`save_settings` 函数体内委托调用 `sync_runs_with_settings`，不再有内联 runs 操作。
 
 ### 全局停止注册表
 
@@ -94,11 +106,11 @@ graph TD
 
 ## 使用者
 
-| 工具 | Logic | SyncSettings | 位置状态机 |
-|------|-------|-------------|-----------|
-| [计时器](../features/timer.md) | `TimerLogic` | `TimerSettings` | 自行实现（需额外 segment 逻辑） |
-| [计数器](../features/counter.md) | `CounterLogic` | `CounterSettings` | 复用 `apply_position_event` |
-| [连发器](../features/rapidfire.md) | `RapidfireLogic` | `RapidfireSettings` | 自行实现 |
+| 工具 | Logic | SyncSettings | RunsSync | 位置状态机 |
+|------|-------|-------------|----------|-----------|
+| [计时器](../features/timer.md) | `TimerLogic` | `TimerSettings` | ✅ `sync_runs_with_settings` | 复用 `apply_position_event` |
+| [计数器](../features/counter.md) | `CounterLogic` | `CounterSettings` | ✅ `sync_runs_with_settings` | 复用 `apply_position_event` |
+| [连发器](../features/rapidfire.md) | `RapidfireLogic` | `RapidfireSettings` | — | 自行实现 |
 
 [Morse](../features/morse.md) 和 [音频触发器](../features/audio.md) 不使用 SyncTool：Morse 无分组概念，Audio 有自己的 watcher 生命周期。
 
