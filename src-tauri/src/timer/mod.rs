@@ -805,111 +805,130 @@ fn tick(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 热键触发核心逻辑（纯函数，无 AppHandle 依赖，可单测）。
+///
+/// 遍历 `timer_ids`，对每个符合条件的计时器执行触发操作。
+/// 返回实际被触发的计时器 ID 列表（用于 emit HOTKEY_TRIGGERED 事件）。
+///
+/// 三分支逻辑：
+/// - 正常触发：计时器未运行 → 创建新 runtime
+/// - ignore_running：计时器运行中 + ignore_running=true → 跳过
+/// - is_running 重启：计时器运行中 + ignore_running=false → 删除旧 runtime 再创建新的
+fn apply_timer_trigger(
+    settings: &TimerSettings,
+    runs: &mut HashMap<String, TimerRuntime>,
+    timer_ids: &[String],
+    now: u64,
+) -> Vec<String> {
+    if !settings.timer_enabled {
+        return Vec::new();
+    }
+
+    let mut triggered = Vec::new();
+
+    for timer_id in timer_ids {
+        let Some(item) = settings
+            .timers
+            .iter()
+            .find(|item| {
+                item.id == *timer_id
+                    && item.enabled
+                    && group_enabled(&settings.timer_groups, &item.group_id)
+            })
+            .map(|item| {
+                (
+                    item.id.clone(),
+                    item.duration_seconds,
+                    item.direction.clone(),
+                    item.ignore_running,
+                    item.segment_count,
+                )
+            })
+        else {
+            continue;
+        };
+
+        let (timer_id, duration_seconds, direction, ignore_running, segment_count) = item;
+
+        if let Some(seg_count) = segment_count {
+            if seg_count < 2 {
+                continue;
+            }
+            let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
+            let Some(next_runtime) = trigger_multisegment_runtime(
+                runs.get_mut(&timer_id),
+                now,
+                total_duration,
+                duration_seconds,
+                direction,
+                seg_count,
+            ) else {
+                continue;
+            };
+            runs.insert(timer_id.clone(), next_runtime);
+            triggered.push(timer_id);
+            continue;
+        }
+
+        let is_running = matches!(
+            runs.get(&timer_id).map(|runtime| &runtime.status),
+            Some(TimerRunStatus::Running)
+        );
+
+        if is_running {
+            if ignore_running {
+                continue;
+            }
+            runs.remove(&timer_id);
+        }
+
+        let cur = match direction {
+            TimerDirection::Countdown => duration_seconds,
+            TimerDirection::Countup => 0,
+        };
+
+        runs.insert(
+            timer_id.clone(),
+            TimerRuntime {
+                started_at_ms: now,
+                ends_at_ms: Some(now + duration_seconds * 1000),
+                current_seconds: cur,
+                remaining_seconds: duration_seconds,
+                duration_seconds,
+                direction,
+                status: TimerRunStatus::Running,
+                segment_count: 1,
+                segment_duration: duration_seconds,
+                recovery_start_pool: 0,
+            },
+        );
+        triggered.push(timer_id);
+    }
+
+    triggered
+}
+
 fn trigger_hotkey_targets(
     app: &AppHandle,
     timer_ids: Vec<String>,
 ) -> Result<TimerBootstrap, String> {
     let state = app.state::<TimerState>();
-    let triggered_timer_ids = timer_ids.clone();
     let bootstrap = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
 
-        if !inner.settings.timer_enabled {
-            return Ok(TimerLogic::build_bootstrap(&inner));
-        }
-
         let now = now_ms();
-        for timer_id in timer_ids {
-            let Some(item) = inner
-                .settings
-                .timers
-                .iter()
-                .find(|item| {
-                    item.id == timer_id
-                        && item.enabled
-                        && group_enabled(&inner.settings.timer_groups, &item.group_id)
-                })
-                .map(|item| {
-                    (
-                        item.id.clone(),
-                        item.duration_seconds,
-                        item.direction.clone(),
-                        item.ignore_running,
-                        item.segment_count,
-                    )
-                })
-            else {
-                continue;
-            };
-
-            let (timer_id, duration_seconds, direction, ignore_running, segment_count) = item;
-
-            if let Some(seg_count) = segment_count {
-                if seg_count < 2 {
-                    continue;
-                }
-                let total_duration = (seg_count as u64).saturating_mul(duration_seconds);
-                let Some(next_runtime) = trigger_multisegment_runtime(
-                    inner.logic.runs.get_mut(&timer_id),
-                    now,
-                    total_duration,
-                    duration_seconds,
-                    direction,
-                    seg_count,
-                ) else {
-                    continue;
-                };
-                inner.logic.runs.insert(timer_id, next_runtime);
-                continue;
-            }
-
-            let is_running = matches!(
-                inner
-                    .logic
-                    .runs
-                    .get(&timer_id)
-                    .map(|runtime| &runtime.status),
-                Some(TimerRunStatus::Running)
-            );
-
-            if is_running {
-                if ignore_running {
-                    continue;
-                }
-                inner.logic.runs.remove(&timer_id);
-            }
-
-            let cur = match direction {
-                TimerDirection::Countdown => duration_seconds,
-                TimerDirection::Countup => 0,
-            };
-
-            inner.logic.runs.insert(
-                timer_id,
-                TimerRuntime {
-                    started_at_ms: now,
-                    ends_at_ms: Some(now + duration_seconds * 1000),
-                    current_seconds: cur,
-                    remaining_seconds: duration_seconds,
-                    duration_seconds,
-                    direction,
-                    status: TimerRunStatus::Running,
-                    segment_count: 1,
-                    segment_duration: duration_seconds,
-                    recovery_start_pool: 0,
-                },
-            );
-        }
+        let settings_snapshot = inner.settings.clone();
+        apply_timer_trigger(&settings_snapshot, &mut inner.logic.runs, &timer_ids, now);
 
         TimerLogic::build_bootstrap(&inner)
     };
 
     emit_state(app, bootstrap.clone());
     ensure_display_windows(app, &bootstrap.settings)?;
-    if !triggered_timer_ids.is_empty() {
-        let _ = app.emit_to("main", events::HOTKEY_TRIGGERED, triggered_timer_ids);
+    if !timer_ids.is_empty() {
+        let _ = app.emit_to("main", events::HOTKEY_TRIGGERED, timer_ids);
     }
     Ok(bootstrap)
 }
@@ -1897,5 +1916,309 @@ mod tests {
         let runtime = running_multisegment(30, 0, TimerDirection::Countdown);
         let result = trigger_multisegment_at(Some(runtime), 0, TimerDirection::Countdown);
         assert!(result.is_none(), "pool < segment_duration 时不应触发");
+    }
+
+    // ── apply_timer_trigger 集成测试 ─────────────────────────
+    // 覆盖 trigger_hotkey_targets 三分支：
+    // 1. 正常触发（未运行 → 创建新 runtime）
+    // 2. ignore_running（运行中 + ignore_running=true → 跳过）
+    // 3. is_running 重启（运行中 + ignore_running=false → 删除旧 runtime 再创建新的）
+
+    fn make_timer_settings(
+        timers: Vec<TimerItem>,
+        timer_enabled: bool,
+        timer_groups: Vec<TimerGroup>,
+    ) -> TimerSettings {
+        TimerSettings {
+            enabled: true,
+            timer_enabled,
+            display: TimerDisplaySettings::default(),
+            timer_groups,
+            timers,
+        }
+    }
+
+    fn running_runtime(duration_seconds: u64, direction: TimerDirection) -> TimerRuntime {
+        TimerRuntime {
+            started_at_ms: 1000,
+            ends_at_ms: Some(1000 + duration_seconds * 1000),
+            current_seconds: if direction == TimerDirection::Countdown {
+                duration_seconds
+            } else {
+                0
+            },
+            remaining_seconds: duration_seconds,
+            duration_seconds,
+            direction: direction.clone(),
+            status: TimerRunStatus::Running,
+            segment_count: 1,
+            segment_duration: duration_seconds,
+            recovery_start_pool: 0,
+        }
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_normal_starts_new_runtime() {
+        // 正常触发：计时器未运行 → 创建新 runtime
+        let mut timer = sample_timer("t1", "F2");
+        timer.duration_seconds = 60;
+        timer.ignore_running = true;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert_eq!(triggered, vec!["t1"]);
+        let runtime = runs.get("t1").expect("应创建新 runtime");
+        assert_eq!(runtime.status, TimerRunStatus::Running);
+        assert_eq!(runtime.duration_seconds, 60);
+        assert_eq!(runtime.started_at_ms, 5000);
+        assert_eq!(runtime.direction, TimerDirection::Countdown);
+        assert_eq!(runtime.current_seconds, 60);
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_ignore_running_skips() {
+        // ignore_running 分支：计时器运行中 + ignore_running=true → 跳过，runs 不变
+        let mut timer = sample_timer("t1", "F2");
+        timer.ignore_running = true;
+        timer.duration_seconds = 30;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("t1".to_string(), running_runtime(30, TimerDirection::Countdown));
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert!(triggered.is_empty(), "ignore_running=true 时不应触发");
+        let runtime = runs.get("t1").expect("原有 runtime 应保留");
+        assert_eq!(runtime.started_at_ms, 1000, "started_at_ms 不应变");
+        assert_eq!(runtime.status, TimerRunStatus::Running, "状态应保持 Running");
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_is_running_restarts() {
+        // is_running 重启分支：计时器运行中 + ignore_running=false → 删除旧 runtime 再创建新的
+        let mut timer = sample_timer("t1", "F2");
+        timer.ignore_running = false;
+        timer.duration_seconds = 30;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("t1".to_string(), running_runtime(30, TimerDirection::Countdown));
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert_eq!(triggered, vec!["t1"]);
+        let runtime = runs.get("t1").expect("应创建新 runtime");
+        assert_eq!(runtime.started_at_ms, 5000, "started_at_ms 应为新的 now");
+        assert_eq!(runtime.status, TimerRunStatus::Running);
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_disabled_timer_skips() {
+        // 禁用计时器（enabled=false）→ 跳过
+        let mut timer = sample_timer("t1", "F2");
+        timer.enabled = false;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert!(triggered.is_empty(), "禁用计时器不应触发");
+        assert!(runs.is_empty(), "runs 应为空");
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_disabled_group_skips() {
+        // 分组禁用 → 跳过
+        let timer = sample_timer("t1", "F2");
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: false,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert!(triggered.is_empty(), "分组禁用不应触发");
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_global_disabled_noop() {
+        // 全局 timer_enabled=false → 无触发
+        let timer = sample_timer("t1", "F2");
+        let settings = make_timer_settings(
+            vec![timer],
+            false, // timer_enabled = false
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert!(triggered.is_empty(), "全局禁用不应触发");
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_nonexistent_id_skips() {
+        // 不存在的 timer_id → 跳过
+        let timer = sample_timer("t1", "F2");
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["nonexistent".to_string()], 5000);
+
+        assert!(triggered.is_empty(), "不存在的 ID 不应触发");
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_finished_timer_starts_new() {
+        // 已完成（Finished）的计时器 → 不算 running → 正常触发新 runtime
+        let mut timer = sample_timer("t1", "F2");
+        timer.ignore_running = true; // 即使 ignore_running=true 也应正常触发
+        timer.duration_seconds = 30;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert(
+            "t1".to_string(),
+            TimerRuntime {
+                started_at_ms: 100,
+                ends_at_ms: None,
+                current_seconds: 0,
+                remaining_seconds: 0,
+                duration_seconds: 30,
+                direction: TimerDirection::Countdown,
+                status: TimerRunStatus::Finished,
+                segment_count: 1,
+                segment_duration: 30,
+                recovery_start_pool: 0,
+            },
+        );
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert_eq!(triggered, vec!["t1"]);
+        let runtime = runs.get("t1").expect("应创建新 runtime");
+        assert_eq!(runtime.status, TimerRunStatus::Running);
+        assert_eq!(runtime.started_at_ms, 5000);
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_countup_direction() {
+        // Countup 方向正常触发
+        let mut timer = sample_timer("t1", "F2");
+        timer.direction = TimerDirection::Countup;
+        timer.duration_seconds = 60;
+        timer.ignore_running = true;
+        let settings = make_timer_settings(
+            vec![timer],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
+
+        assert_eq!(triggered, vec!["t1"]);
+        let runtime = runs.get("t1").unwrap();
+        assert_eq!(runtime.current_seconds, 0, "Countup 起始应为 0");
+        assert_eq!(runtime.remaining_seconds, 60);
+        assert_eq!(runtime.direction, TimerDirection::Countup);
+    }
+
+    #[test]
+    fn test_apply_timer_trigger_multiple_timers() {
+        // 多计时器同时触发
+        let mut timer_a = sample_timer("a", "F2");
+        timer_a.ignore_running = true;
+        let mut timer_b = sample_timer("b", "F3");
+        timer_b.ignore_running = true;
+        let settings = make_timer_settings(
+            vec![timer_a, timer_b],
+            true,
+            vec![TimerGroup {
+                id: DEFAULT_TIMER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: TimerDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let triggered =
+            apply_timer_trigger(&settings, &mut runs, &["a".to_string(), "b".to_string()], 5000);
+
+        assert_eq!(triggered, vec!["a", "b"]);
+        assert!(runs.contains_key("a"));
+        assert!(runs.contains_key("b"));
     }
 }

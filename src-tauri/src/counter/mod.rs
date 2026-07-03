@@ -613,6 +613,46 @@ fn rect_for_group(settings_value: &CounterSettings, group_id: &str) -> CounterRe
     .unwrap_or_else(|| settings_value.display.rect.clone())
 }
 
+/// 热键触发核心逻辑（纯函数，无 AppHandle 依赖，可单测）。
+///
+/// 遍历 `counter_ids`，对每个符合条件的计数器执行 +1 操作。
+/// 返回 `(triggered_ids, counter_changed)`：
+/// - `triggered_ids`：实际被触发的计数器 ID 列表
+/// - `counter_changed`：是否有值变更（决定是否持久化）
+fn apply_counter_trigger(
+    settings: &CounterSettings,
+    runs: &mut HashMap<String, i64>,
+    counter_ids: &[String],
+) -> (Vec<String>, bool) {
+    if !settings.counter_enabled {
+        return (Vec::new(), false);
+    }
+
+    let mut triggered = Vec::new();
+    let mut counter_changed = false;
+
+    for counter_id in counter_ids {
+        let Some((id, start_value)) = settings
+            .counters
+            .iter()
+            .find(|item| {
+                item.id == *counter_id
+                    && item.enabled
+                    && group_enabled(&settings.counter_groups, &item.group_id)
+            })
+            .map(|counter| (counter.id.clone(), counter.start_value))
+        else {
+            continue;
+        };
+        let value = runs.entry(id.clone()).or_insert(start_value);
+        *value += 1;
+        counter_changed = true;
+        triggered.push(id);
+    }
+
+    (triggered, counter_changed)
+}
+
 fn trigger_hotkey_targets(
     app: &AppHandle,
     counter_ids: Vec<String>,
@@ -624,29 +664,10 @@ fn trigger_hotkey_targets(
             .lock_inner()
             .map_err(|_| "计数器状态已损坏".to_string())?;
 
-        if !inner.settings.counter_enabled {
-            return Ok(CounterLogic::build_bootstrap(&inner));
-        }
+        let settings_snapshot = inner.settings.clone();
+        let (_triggered, counter_changed) =
+            apply_counter_trigger(&settings_snapshot, &mut inner.logic.runs, &counter_ids);
 
-        let mut counter_changed = false;
-        for counter_id in counter_ids {
-            let Some((id, start_value)) = inner
-                .settings
-                .counters
-                .iter()
-                .find(|item| {
-                    item.id == counter_id
-                        && item.enabled
-                        && group_enabled(&inner.settings.counter_groups, &item.group_id)
-                })
-                .map(|counter| (counter.id.clone(), counter.start_value))
-            else {
-                continue;
-            };
-            let value = inner.logic.runs.entry(id).or_insert(start_value);
-            *value += 1;
-            counter_changed = true;
-        }
         if counter_changed {
             persist_counter_runs(app, &inner);
         }
@@ -1316,5 +1337,202 @@ mod tests {
         CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(runs.get("c"), Some(&42), "全局关闭时 runs 应保留累积值，不重置为 start_value");
+    }
+
+    // ── apply_counter_trigger 集成测试 ─────────────────────────
+    // 覆盖 counter trigger_hotkey_targets 核心逻辑：
+    // 1. 正常触发（enabled + group_enabled → +1）
+    // 2. 全局禁用 → 不触发
+    // 3. 禁用计数器 → 跳过
+    // 4. 分组禁用 → 跳过
+    // 5. 不存在的 ID → 跳过
+
+    fn make_counter_settings(
+        counters: Vec<CounterItem>,
+        counter_enabled: bool,
+        counter_groups: Vec<CounterGroup>,
+    ) -> CounterSettings {
+        CounterSettings {
+            enabled: true,
+            counter_enabled,
+            display: CounterDisplaySettings::default(),
+            counter_groups,
+            counters,
+        }
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_normal_increments() {
+        // 正常触发：计数器值 +1
+        let counter = sample_counter("c1", "F3");
+        let settings = make_counter_settings(
+            vec![counter],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("c1".to_string(), 5);
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+
+        assert_eq!(triggered, vec!["c1"]);
+        assert!(changed);
+        assert_eq!(runs.get("c1"), Some(&6), "正常触发应 +1");
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_inserts_missing_then_increments() {
+        // runs 中不存在的计数器：先插入 start_value 再 +1
+        let mut counter = sample_counter("c1", "F3");
+        counter.start_value = 10;
+        let settings = make_counter_settings(
+            vec![counter],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+
+        assert_eq!(triggered, vec!["c1"]);
+        assert!(changed);
+        assert_eq!(runs.get("c1"), Some(&11), "缺失计数器应从 start_value+1 开始");
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_global_disabled_noop() {
+        // 全局 counter_enabled=false → 不触发
+        let counter = sample_counter("c1", "F3");
+        let settings = make_counter_settings(
+            vec![counter],
+            false,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("c1".to_string(), 5);
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+
+        assert!(triggered.is_empty());
+        assert!(!changed);
+        assert_eq!(runs.get("c1"), Some(&5), "全局禁用时值不变");
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_disabled_counter_skips() {
+        // 禁用计数器（enabled=false）→ 跳过
+        let mut counter = sample_counter("c1", "F3");
+        counter.enabled = false;
+        let settings = make_counter_settings(
+            vec![counter],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("c1".to_string(), 5);
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+
+        assert!(triggered.is_empty());
+        assert!(!changed);
+        assert_eq!(runs.get("c1"), Some(&5), "禁用计数器值不变");
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_disabled_group_skips() {
+        // 分组禁用 → 跳过
+        let counter = sample_counter("c1", "F3");
+        let settings = make_counter_settings(
+            vec![counter],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: false,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+
+        assert!(triggered.is_empty());
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_nonexistent_id_skips() {
+        // 不存在的 ID → 跳过
+        let counter = sample_counter("c1", "F3");
+        let settings = make_counter_settings(
+            vec![counter],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["nonexistent".to_string()]);
+
+        assert!(triggered.is_empty());
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_apply_counter_trigger_multiple_counters() {
+        // 多计数器同时触发
+        let counter_a = sample_counter("a", "F3");
+        let counter_b = sample_counter("b", "F4");
+        let settings = make_counter_settings(
+            vec![counter_a, counter_b],
+            true,
+            vec![CounterGroup {
+                id: DEFAULT_COUNTER_GROUP_ID.to_string(),
+                name: "默认分组".to_string(),
+                enabled: true,
+                display: CounterDisplaySettings::default(),
+            }],
+        );
+        let mut runs = HashMap::new();
+        runs.insert("a".to_string(), 10);
+        runs.insert("b".to_string(), 20);
+
+        let (triggered, changed) =
+            apply_counter_trigger(&settings, &mut runs, &["a".to_string(), "b".to_string()]);
+
+        assert_eq!(triggered, vec!["a", "b"]);
+        assert!(changed);
+        assert_eq!(runs.get("a"), Some(&11));
+        assert_eq!(runs.get("b"), Some(&21));
     }
 }
