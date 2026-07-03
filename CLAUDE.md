@@ -178,17 +178,15 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 视觉方向
 
-**Swiss Industrial Print × Declassified Tactical Control Board**（详见 `DESIGN.md`）。主基底 Carbon `#0C0C0B` / Slate
-`#171715`，Chalk `#D8D4CC` 粗粉笔结构线，Amber `#E8A000` 仅占 3–8% 画面。90 度直角，禁止圆角卡片、柔和阴影、玻璃态、渐变。暗色唯一模式，无
-light/dark 切换。
+当前 UI 迁移到 daisyUI token 体系。保留 Radix headless 组件的焦点管理、键盘导航、Portal 与无障碍行为；视觉层使用 daisyUI class、Tailwind CSS 和 `src/App.css` token。内置主题保留 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`。
 
 ### 组件层
 
 - **共享工业组件**（`src/components/app/app-ui.tsx`）：`AppPage`（12 列 Work Grid）、`PageHero`、`SignalTile`、`TacticalCard`、
   `SectionHeader`、`ControlTile`、`InlineControl`、`CardBody` 等。三个以上页面需要同一种结构时应先扩展共享组件。
-- **shadcn/ui 基础组件**（`src/components/ui/`）：radix-vega 风格，remixicon 图标库。Button 内图标必须
+- **基础组件**（`src/components/ui/`）：保留 shadcn/Radix API 包装，class 优先映射 daisyUI 组件语义，图标库使用 remixicon。Button 内图标必须
   `data-icon="inline-start"` / `"inline-end"`。
-- **禁止新增** `.desktop-*`、`.tactical-*` 等自定义 CSS 类。仅 shadcn/ui + Tailwind 工具类 + `src/App.css` 主题 token。
+- **禁止新增** `.desktop-*`、`.tactical-*` 等自定义 CSS 类。仅 daisyUI + Tailwind 工具类 + `src/App.css` 主题 token。
 
 ### Tailwind v4
 

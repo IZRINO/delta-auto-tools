@@ -51,7 +51,7 @@ Delta Auto Tools 是面向《三角洲行动》玩家的 Tauri 2 + React 19 + Ru
 这是项目迄今为止最密集的一轮重构，视觉与代码结构同步重做。
 
 - **2026-06-08**：v0.12.0，战术卡片视觉统一。
-- **2026-06-12**：**v0.13.0 重大重构**。抽取 `useAutosave`、`useBootstrapForm`、`useHotkeyRecorder` 共享 hooks，抽出 `PositionOverlay` 组件与 `overlay_utils.rs`，统一 `AppError`。同日落地暗色工业风配色重设计（Carbon / Chalk / Amber 三色体系，见 `DESIGN.md`）。
+- **2026-06-12**：**v0.13.0 重大重构**。抽取 `useAutosave`、`useBootstrapForm`、`useHotkeyRecorder` 共享 hooks，抽出 `PositionOverlay` 组件与 `overlay_utils.rs`，统一 `AppError`。同日落地暗色工业风配色重设计（Carbon / Chalk / Amber 三色体系）。
 - **2026-06-13 — 2026-06-14**：v0.14.x，引入全局总开关、UI 亮度调整、窗口状态记忆。
 - **2026-06-14**：**v0.15.0 —— Delta 模块整体移除**（详见下方「已废弃功能」），同期新增音频播放功能（#54）。
 - **2026-06-15**：v0.15.3 / v0.16.0，计时器与计数器拆分为两个独立工具页，并引入 Beta 发布流程。
@@ -63,7 +63,7 @@ Delta Auto Tools 是面向《三角洲行动》玩家的 Tauri 2 + React 19 + Ru
 最近的阶段围绕「主题/配置个性化」与「音频触发能力深化」展开，并最终回归到生命周期基座的统一。
 
 - **2026-06-16 — 2026-06-17**：音频图像匹配从 ZNCC 切换为滑动窗口 RGB NCC；引入混合格式日志系统；新增识色（color watch）模式，发布 v0.17.0-beta.1。
-- **2026-06-18**：v0.17.0 正式版，加入主题引擎（5 套内置主题 + 自定义 + token override）与 Profile 多配置快照系统。
+- **2026-06-18**：v0.17.0 正式版，加入主题引擎（内置主题 + 自定义 + token override）与 Profile 多配置快照系统。
 - **2026-06-19**：音频新增组合 / 随机播放模式，v0.17.0 stable 收尾。
 - **2026-06-20**：音频识色匹配新增 AnyPixel 单像素命中方法。
 - **2026-06-22**：音频多目标颜色探针；Profile 槽位；修复全局开关下的窗口隐藏/恢复。
@@ -94,7 +94,7 @@ Delta Auto Tools 是面向《三角洲行动》玩家的 Tauri 2 + React 19 + Ru
 ## 重大重写
 
 - **v0.13.0 共享 hook 抽取（2026-06-12）**：把各工具页重复的 autosave、bootstrap/form 双状态、热键录制逻辑抽取为 `useAutosave` / `useBootstrapForm` / `useHotkeyRecorder` 共享 hooks，并抽出 `PositionOverlay` 组件与 `overlay_utils.rs`、统一 `AppError`。这是前端代码组织方式的一次系统性收敛。
-- **暗色工业风 UI 重设计（2026-06-12）**：与 v0.13.0 同期落地，确立 Carbon `#0C0C0B` / Slate / Chalk `#D8D4CC` / Amber `#E8A000` 的三色体系与「Swiss Industrial Print × Declassified Tactical Control Board」视觉语言（见 `DESIGN.md`）。按设计文档要求，这不是「在旧 UI 上换色」，而是从 shell 骨架开始重建。
+- **暗色工业风 UI 重设计（2026-06-12）**：与 v0.13.0 同期落地，确立 Carbon `#0C0C0B` / Slate / Chalk `#D8D4CC` / Amber `#E8A000` 的三色体系与「Swiss Industrial Print × Declassified Tactical Control Board」视觉语言。按当时设计要求，这不是「在旧 UI 上换色」，而是从 shell 骨架开始重建。
 - **v0.15.0 Delta 模块移除（2026-06-14）**：见上方「已废弃功能」。这次删减大幅缩减了后端依赖面与凭据风险面，也使项目定位从「账号管家 + 工具箱」收敛为纯工具集。
 - **v0.17.5 `sync_tool` 整合（2026-06-24）**：将 timer / counter / rapidfire 的共享生命周期代码整合到 `sync_tool.rs`（约 484 行），收束了自 v0.13.0 起的工具基座重构线，使三大工具的生命周期管理趋于一致。
 

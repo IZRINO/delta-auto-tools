@@ -59,7 +59,7 @@ cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 - `timer/mod.rs`：透明窗口尺寸计算、settings 验证
 - `audio/types.rs`：音频卡片反序列化默认值、旧字段迁移、识色探针往返
 - `theme/apply.rs`：`merge_theme_tokens`（覆盖、追加、顺序、去重）、`find_theme`
-- `theme/builtins.rs`：5 套内置主题、唯一 ID、token key 一致性
+- `theme/builtins.rs`：3 套 daisyUI 内置主题、唯一 ID、token key 一致性
 - `theme/mod.rs`：`build_bootstrap`、`theme_import`（合法/非法 key 拒绝）、导出
 - `profile/types.rs` / `settings.rs` / `mod.rs`：快照空、默认值、camelCase、往返、profile_id 唯一性
 - `logging/format.rs` / `writer.rs` / `mod.rs`：格式字段顺序、轮转、清理（tempdir）、级别过滤、session_id、TraceContext

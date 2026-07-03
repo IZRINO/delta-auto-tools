@@ -226,9 +226,10 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### UI 约束
 
-- 视觉方向见 `DESIGN.md`（Swiss Industrial Print × Declassified Tactical Control Board）
-- 仅使用 shadcn/ui + Tailwind CSS + `src/App.css` 主题 token；禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类
+- UI 迁移方向：保留 Radix headless 交互能力，视觉层使用 daisyUI + Tailwind CSS + `src/App.css` daisyUI token；禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类
+- 基础组件位于 `src/components/ui/`，可保留 shadcn/Radix API 包装，但 class 应优先映射到 daisyUI 组件语义
 - 图标使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `"inline-end"`
+- 本 mission 的 worker 编码前必须调用 `ponytail`
 - 攻略网站页使用主窗口内嵌 `strategy-content` 子 WebView，不创建独立浏览器窗口，不使用 iframe/srcDoc，不得隐藏 Left Index Rail
 - `TooltipProvider` 已在 `src/main.tsx` 根部提供
 - 设计改动必须保持功能不变：不改 Tauri command 名、查询参数 mode、状态机、保存逻辑或原生窗口 label
@@ -248,7 +249,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程
 - `audio/` — 快捷键/区域监听/识色三种触发模式
 - `strategy/` — 攻略网站 WebView2 嵌入
-- `theme/` — 5 套内置主题 + 自定义 + token override
+- `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
 

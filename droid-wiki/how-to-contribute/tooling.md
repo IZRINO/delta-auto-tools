@@ -50,9 +50,9 @@ Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`�
 | `scripts/setup-update-key.ps1` | 生成 Tauri 签名密钥对（首次设置） |
 | `scripts/wait-for-port.cjs` | 等待端口 1420 可用（PM2 使用） |
 
-## shadcn/ui
+## UI 组件
 
-项目使用 shadcn/ui（v4.11.0），配置在 `components.json`。基础组件在 `src/components/ui/`。风格为 radix-vega，图标用 remixicon。添加组件用 `bunx shadcn add <component>`。
+项目保留 shadcn/Radix 组件 API 与无障碍行为，视觉层迁移到 daisyUI class。配置仍在 `components.json`，基础组件在 `src/components/ui/`。图标用 remixicon。新增组件时优先复用现有包装；必须新增 shadcn 组件时用 `bunx shadcn add <component>` 后再按 daisyUI token 收口样式。
 
 ## Codegraph
 

@@ -79,7 +79,7 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明�
 | strategy | `src-tauri/src/strategy/` | 攻略网站 WebView2 嵌入与 HTTP 抓取 |
 | hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，冲突检测 |
 | key_suppressor | `src-tauri/src/key_suppressor.rs` | WH_KEYBOARD_LL 钩子吞噬指定按键 |
-| theme | `src-tauri/src/theme/` | 5 套内置主题 + 自定义 + token override |
+| theme | `src-tauri/src/theme/` | 3 套 daisyUI 内置主题 + 自定义 + token override |
 | profile | `src-tauri/src/profile/` | 多配置快照切换（5 份工具 settings） |
 | logging | `src-tauri/src/logging/` | 混合格式日志 + 按天轮转 + 链路追踪 |
 | about | `src-tauri/src/about/` | 关于面板 + Tauri 官方更新器 |
@@ -136,4 +136,4 @@ graph TD
 
 ## 设计方向
 
-UI 采用 Swiss Industrial Print x Declassified Tactical Control Board 风格（详见 `DESIGN.md`）。主基底 Carbon `#0C0C0B` / Slate `#171715`，Chalk `#D8D4CC` 粗粉笔结构线，Amber `#E8A000` 仅占 3-8% 画面。90 度直角，禁止圆角卡片、柔和阴影、玻璃态、渐变。通过 5 套内置主题可切换亮/暗/红/绿/琥珀配色，主题切换通过 CSS 变量覆盖实现。
+UI 正在迁移到 daisyUI token 体系。基础组件保留 shadcn/Radix API 包装以维持 Dialog、Dropdown、Tooltip、Select 等交互行为，视觉层使用 daisyUI class、Tailwind CSS 和 `src/App.css` token。内置主题为 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`；主题切换通过 CSS 变量覆盖实现。

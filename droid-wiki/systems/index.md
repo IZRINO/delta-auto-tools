@@ -9,5 +9,5 @@
 - [透明叠加窗](overlay-windows.md) - 透明、点击穿透、置顶的窗口基础设施
 - [全局总开关](global-state.md) - 单一开关，关闭时挂起所有自动化
 - [日志系统](logging.md) - 文件日志，支持按天轮转、session ID 与链路追踪
-- [主题引擎](theme-engine.md) - 5 套内置主题，外加自定义主题与 CSS 变量覆盖
+- [主题引擎](theme-engine.md) - 3 套 daisyUI 内置主题，外加自定义主题与 CSS 变量覆盖
 - [配置系统](profile-system.md) - 所有工具 settings 的多配置快照切换

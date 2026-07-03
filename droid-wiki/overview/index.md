@@ -16,7 +16,7 @@ Delta Auto Tools 是一款面向《三角洲行动》玩家的桌面工具，基
 | 前端 | React 19 + TypeScript 5.8 + Vite 7 |
 | 后端 | Rust (edition 2021) |
 | 包管理 | Bun |
-| 样式 | Tailwind CSS v4 (CSS-first) + shadcn/ui |
+| 样式 | Tailwind CSS v4 (CSS-first) + daisyUI + Radix/shadcn API |
 | 图标 | @remixicon/react |
 | 截屏 | xcap |
 | 输入模拟 | enigo |

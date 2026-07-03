@@ -27,7 +27,7 @@
 | `global_state` | 全局总开关（GlobalState）+ `ToolLifecycleRegistry`（统一 stop 入口，所有工具模块注册停止逻辑） |
 | `hotkeys` | 共享 willhook 键盘钩子，scope 注册，`ConflictPolicy`（Strict / AllowHold），跨 scope 冲突检测 |
 | `overlay-windows` | 透明窗口：无边框、置顶、点击穿透；位置设置窗口保留校准靶风格 |
-| `theme-engine` | 5 套内置主题 + 自定义 + token override |
+| `theme-engine` | 3 套 daisyUI 内置主题 + 自定义 + token override |
 | `profile-system` | 多配置快照切换 |
 | `logging` | 混合格式日志 + 按天轮转 + 链路追踪 |
 
@@ -53,7 +53,7 @@
 - **原生能力**：Rust
 - **前端**：React 19、TypeScript、Vite
 - **包管理**：Bun
-- **UI**：shadcn/ui、Tailwind CSS v4、Remix Icon
+- **UI**：daisyUI、Radix/shadcn 组件 API、Tailwind CSS v4、Remix Icon
 - **本地存储**：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
 
 ## 测试覆盖
@@ -82,7 +82,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```text
 src/                        # React 前端应用
 src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、audio-page、strategy-page 等）
-src/components/ui/          # shadcn/ui 基础组件
+src/components/ui/          # Radix/shadcn API 包装 + daisyUI 风格基础组件
 src/lib/                    # 共享工具函数与 tauri-events 常量
 src-tauri/src/              # Rust/Tauri 原生能力
 src-tauri/src/tool_base.rs  # 共享泛型基座（ToolLogic / ToolState<T>）

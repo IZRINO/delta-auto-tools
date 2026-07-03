@@ -1,10 +1,11 @@
 # 主题引擎
 
-主题引擎（`src-tauri/src/theme/` + `src/hooks/use-theme.tsx` + `src/components/app/theme-*.tsx`）提供运行时切换整个 CSS 变量调色板而无需重载应用。内置 5 套主题，支持基于内置主题派生的用户自定义主题，以及临时 `overrides` 用于实时调色。主题持久化到 `theme_settings.json`，通过 `theme://changed` 事件推送到前端，前端原子地写入 `document.documentElement.style` 作为内联 CSS 变量（覆盖 `App.css` `:root` 默认值）。
+主题引擎（`src-tauri/src/theme/` + `src/hooks/use-theme.tsx` + `src/components/app/theme-*.tsx`）提供运行时切换 CSS 变量调色板的能力。内置 3 套 daisyUI 主题，支持基于内置主题派生的用户自定义主题，以及临时 `overrides` 用于实时调色。主题持久化到 `theme_settings.json`，通过 `theme://changed` 事件推送到前端，前端原子地写入 `document.documentElement.style` 作为内联 CSS 变量（覆盖 `App.css` `:root` 默认值）。
 
 ## 用途
 
-- 定义 5 套内置主题（industrial-light、industrial-dark、tactical-red、phosphor-green、paper-amber），每套包含约 60 个 CSS 变量覆盖
+- 定义 3 套内置主题（`olive-amber`、`valentine`、`arctic-blue`），默认主题为 `valentine`
+- 主题 token 采用 daisyUI 命名体系：`--color-base-*`、`--color-primary`、`--color-error`、`--radius-*`、`--border`、`--depth`、`--noise`
 - 允许用户自定义主题（`builtin: false`），与内置主题一同存储在 `theme_settings.json`
 - 支持临时 `overrides`：在激活主题之上按 token 打补丁，用于实时预览，独立于主题定义持久化
 - Rust 侧合并主题 tokens + overrides 为扁平 `merged_tokens` 列表，通过 `theme://changed` emit，前端逐条写入 `document.documentElement.style.setProperty(key, value)`
@@ -12,12 +13,12 @@
 
 ## 目录结构
 
-```
+```text
 src-tauri/src/theme/
 ├── mod.rs        # ThemeState、命令、build_bootstrap、export_theme
 ├── types.rs      # ThemeTokenOverride、ThemeDefinition、ThemeSettings、ThemeBootstrap
 ├── apply.rs      # merge_theme_tokens / find_theme 纯函数
-├── builtins.rs   # 5 套内置主题常量 + builtin_themes()
+├── builtins.rs   # 3 套 daisyUI 内置主题常量 + builtin_themes()
 ├── events.rs     # CHANGED = "theme://changed"
 └── settings.rs   # theme_settings.json 读写
 
@@ -26,9 +27,9 @@ src/hooks/
 
 src/components/app/
 ├── theme-panel.tsx         # ThemePanel：预设 / token 编辑 / 导入导出
-├── theme-types.ts           # TS 类型 + BUILTIN_THEME_IDS、EDITABLE_TOKEN_KEYS
-├── theme-utils.ts           # applyThemeTokens / mergeThemeTokens / findTheme 等纯函数
-└── theme-color-picker.tsx   # ThemeColorPicker：react-colorful + Popover + 原生 color input
+├── theme-types.ts          # TS 类型 + BUILTIN_THEME_IDS、EDITABLE_TOKEN_KEYS
+├── theme-utils.ts          # applyThemeTokens / mergeThemeTokens / findTheme 等纯函数
+└── theme-color-picker.tsx  # ThemeColorPicker：OKLCH 输入与颜色预览
 ```
 
 ## 关键抽象
@@ -41,7 +42,7 @@ src/components/app/
 | `ThemeBootstrap` | `src-tauri/src/theme/types.rs` | 一次性 payload：`active_theme_id`、`builtin_themes`、`custom_themes`、`overrides`、`merged_tokens` |
 | `ThemeState` | `src-tauri/src/theme/mod.rs` | 运行时持有者：`Mutex<ThemeSettings>`。不走 `ToolState<T>` |
 | `merge_theme_tokens` | `src-tauri/src/theme/apply.rs` | 纯函数：theme.tokens 为基底，overrides 替换同 key、追加新 key |
-| `builtin_themes()` | `src-tauri/src/theme/builtins.rs` | 返回 5 套内置主题的 `Vec<ThemeDefinition>` |
+| `builtin_themes()` | `src-tauri/src/theme/builtins.rs` | 返回 3 套 daisyUI 内置主题的 `Vec<ThemeDefinition>` |
 | `ThemeProvider` | `src/hooks/use-theme.tsx` | React context：获取 bootstrap、监听事件、原子应用 tokens |
 | `applyThemeTokens` | `src/components/app/theme-utils.ts` | 前端纯函数：清除旧 tokens 后设置新 tokens |
 
@@ -71,15 +72,13 @@ sequenceDiagram
 
 ### 内置主题
 
-5 套主题定义相同的 token key 集合。结构/效果 token（`--radius*`、`--shadow-*`、`--scanline` 等）不参与主题切换，工业直角硬边风格恒定。Token 分组包括：shadcn 基础变量、工业语义 token（`--carbon`、`--chalk`、`--amber` 等）、surface token。
+3 套主题定义相同的 daisyUI token key 集合。`--border` 是 daisyUI 边框宽度，不再表示边框颜色；旧 shadcn/工业 token 只在 `src/App.css` 中作为迁移桥接层存在。
 
 | ID | 名称 | 特征 |
 |----|------|------|
-| `industrial-light` | 工业亮色 | 基线，等同 `App.css :root` 默认值 |
-| `industrial-dark` | 工业暗色 | Carbon/Chalk 翻转，Amber 提亮 |
-| `tactical-red` | 战术红 | 深灰底，alert-red 为主色 |
-| `phosphor-green` | 磷光绿 | CRT 黑底，terminal-green 主色 |
-| `paper-amber` | 纸面琥珀 | 暖白纸底，深琥珀强调 |
+| `olive-amber` | 橄榄琥珀 | 暗橄榄绿背景，琥珀主色 |
+| `valentine` | 黑红控制台 | 默认主题，深色背景，红色主色 |
+| `arctic-blue` | 极地蓝红 | 浅蓝背景，红色主色 |
 
 ### 导入导出
 
@@ -95,7 +94,7 @@ sequenceDiagram
 
 ## 修改入口
 
-- 新增第 6 套内置主题：在 `builtins.rs` 定义新函数返回 `Vec<ThemeTokenOverride>`，添加 ID 常量，追加到 `builtin_themes()`，更新前端 `BUILTIN_THEME_IDS`
+- 新增第 4 套内置主题：在 `builtins.rs` 定义新函数返回 `Vec<ThemeTokenOverride>`，添加 ID 常量，追加到 `builtin_themes()`，更新前端 `BUILTIN_THEME_IDS`
 - 新增面板可编辑 token：添加 key 到 `EDITABLE_TOKEN_KEYS`，添加标签到 `TOKEN_LABELS`
 - 修改合并语义：同时修改 `apply.rs` 和 `theme-utils.ts`，保持同步
 
@@ -106,8 +105,8 @@ sequenceDiagram
 | `src-tauri/src/theme/mod.rs` | `ThemeState`、命令、`build_bootstrap`、`current_merged_tokens` |
 | `src-tauri/src/theme/types.rs` | `ThemeTokenOverride`、`ThemeDefinition`、`ThemeSettings`、`ThemeBootstrap` |
 | `src-tauri/src/theme/apply.rs` | `merge_theme_tokens`、`find_theme` 纯函数 |
-| `src-tauri/src/theme/builtins.rs` | 5 套内置主题常量、`builtin_themes()` |
+| `src-tauri/src/theme/builtins.rs` | 3 套 daisyUI 内置主题常量、`builtin_themes()` |
 | `src/hooks/use-theme.tsx` | `ThemeProvider`：bootstrap、事件监听、应用 tokens |
 | `src/components/app/theme-panel.tsx` | `ThemePanel`：预设/token 编辑/导入导出 |
 | `src/components/app/theme-utils.ts` | `applyThemeTokens` / `mergeThemeTokens` 等纯函数 |
-| `src/components/app/theme-color-picker.tsx` | `ThemeColorPicker`：react-colorful + Popover |
+| `src/components/app/theme-color-picker.tsx` | `ThemeColorPicker`：OKLCH 输入与颜色预览 |

@@ -66,9 +66,10 @@
 
 | 包 | 版本 | 用途 |
 |----|------|------|
-| `radix-ui` | 1.5.0 | shadcn/ui 基础组件 |
-| `@base-ui/react` | 1.5.0 | 额外基础组件 |
-| `shadcn` | 4.11.0 | 组件系统 |
+| `radix-ui` | 1.6.1 | headless 交互组件，保留焦点管理、键盘导航、Portal 与无障碍行为 |
+| `@base-ui/react` | 1.6.0 | 额外基础组件 |
+| `shadcn` | 4.12.0 | 组件生成与 API 包装来源 |
+| `daisyui` | ^5.6.10 | 基础组件视觉 class 与主题 token 体系 |
 | `@remixicon/react` | ^4.9.0 | 图标库 |
 | `class-variance-authority` | ^0.7.1 | 变体样式 |
 | `clsx` | ^2.1.1 | class 合并 |

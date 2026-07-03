@@ -23,6 +23,6 @@ Delta Auto Tools 中可能对新读者不直观的术语。
 | 补齐（Compensation） | 连发器卡片触发奇数次时，补齐逻辑额外触发一次使总数为偶数（除非卡片启用了不追加补齐）。 |
 | ColorWatch | 音频触发模式，采样屏幕区域取平均 RGB，通过欧氏距离与目标色比较。支持 Average 和 AnyPixel 两种匹配方式。 |
 | RegionWatch | 音频触发模式，对参考图像区域做归一化互相关（NCC）模板匹配。 |
-| Theme | 一组 CSS 变量覆盖。5 套内置主题加用户自定义主题，持久化到 `theme_settings.json`。通过 `document.documentElement` 的内联样式应用。 |
+| Theme | 一组 CSS 变量覆盖。3 套 daisyUI 内置主题加用户自定义主题，持久化到 `theme_settings.json`。通过 `document.documentElement` 的内联样式应用。 |
 | Profile | 全部 5 个工具 settings 文件的快照。切换 profile 时写入 5 份 settings 到磁盘，重载内存状态，重置计数器运行值。 |
 | IDE gateway | 已移除的 Delta 模块遗留概念。旧文档中的引用不适用于当前代码库。 |

@@ -47,9 +47,9 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 样式规则
 
-- 仅使用 shadcn/ui 组件、Tailwind 工具类和 `src/App.css` 主题 token。禁止自定义 `.desktop-*` 或 `.tactical-*` CSS 类
-- 全局 `--radius: 0`（90 度直角）。主窗口禁止圆角卡片、柔和阴影、玻璃态、渐变
-- Amber（`#E8A000`）是唯一强调色，应占画面 3-8%。状态色（Rust、Moss）仅表达语义
+- 保留 shadcn/Radix headless 组件的交互能力，视觉层优先使用 daisyUI class、Tailwind 工具类和 `src/App.css` daisyUI token。禁止自定义 `.desktop-*` 或 `.tactical-*` CSS 类
+- 主题 token 以 daisyUI 语义 token 为主：`--color-base-*`、`--color-primary`、`--color-error`、`--radius-*`、`--border` 等。旧 shadcn/工业 token 只作为迁移桥接层存在
+- `--border` 在 daisyUI 中表示边框宽度；旧边框颜色使用 `--legacy-border-color` 或迁移后的颜色 token
 - 图标使用 `@remixicon/react`。Button 内图标必须设置 `data-icon="inline-start"` 或 `"inline-end"`
 
 ## 文档中的文件引用

@@ -2,8 +2,8 @@
 
 ## 1. 目标
 
-桌面主界面采用 `DESIGN.md` 定义的 **Swiss Industrial Print × Declassified Tactical Control Board**：工业纸面、粗黑结构线、巨型模块标题、密集
-telemetry、机械标签和单一航空红焦点。它不是白色 SaaS 后台、不是旧 Sidebar + 圆角 Card + Hero，也不是全黑 CRT。
+桌面主界面曾采用 **Swiss Industrial Print × Declassified Tactical Control Board**：工业纸面、粗黑结构线、巨型模块标题、密集
+telemetry、机械标签和单一航空红焦点。当前 UI 正在迁移到 daisyUI token 体系；本文只保留历史重构边界。
 
 本次重构只改变视觉框架与 JSX 布局，不改变工具行为、数据流、Tauri command、窗口入口或透明窗口核心约束。
 
