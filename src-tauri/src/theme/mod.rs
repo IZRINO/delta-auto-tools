@@ -1,6 +1,6 @@
 //! 主题引擎模块。
 //!
-//! 提供 5 套内置主题 + 用户自定义主题 + 临时 overrides 的持久化与切换能力。
+//! 提供 3 套 daisyUI 内置主题 + 用户自定义主题 + 临时 overrides 的持久化与切换能力。
 //! 保存主题设置后向 `main` 窗口推送合并后的最终 token 列表，
 //! 前端 listener 收到后遍历 token 调用 `document.documentElement.style.setProperty` 覆盖 CSS 变量。
 //!
@@ -54,7 +54,7 @@ fn build_bootstrap(state: &ThemeState, builtin_themes: Vec<ThemeDefinition>) -> 
     let active_theme_id = if custom_mode {
         String::new()
     } else if settings.active_theme_id.is_empty() {
-        builtins::INDUSTRIAL_LIGHT_ID.to_string()
+        builtins::VALENTINE_ID.to_string()
     } else {
         settings.active_theme_id.clone()
     };
@@ -101,7 +101,7 @@ fn current_merged_tokens(state: &ThemeState) -> Vec<ThemeTokenOverride> {
     }
 
     let active_id = if settings.active_theme_id.is_empty() {
-        builtins::INDUSTRIAL_LIGHT_ID.to_string()
+        builtins::VALENTINE_ID.to_string()
     } else {
         settings.active_theme_id.clone()
     };
@@ -180,34 +180,35 @@ mod tests {
     }
 
     #[test]
-    fn build_bootstrap_defaults_to_industrial_light() {
+    fn build_bootstrap_defaults_to_valentine() {
         let state = sample_state();
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin.clone());
-        assert_eq!(boot.active_theme_id, "industrial-light");
-        assert_eq!(boot.builtin_themes.len(), 5);
+        assert_eq!(boot.active_theme_id, "valentine");
+        assert_eq!(boot.builtin_themes.len(), 3);
         assert!(boot.custom_themes.is_empty());
-        // 默认无 overrides 时 merged_tokens 应等于 industrial-light 的 tokens
-        assert_eq!(boot.merged_tokens.len(), builtin[0].tokens.len());
+        // 默认无 overrides 时 merged_tokens 应等于 valentine 的 tokens
+        let valentine = builtin.iter().find(|t| t.id == "valentine").unwrap();
+        assert_eq!(boot.merged_tokens.len(), valentine.tokens.len());
     }
 
     #[test]
     fn build_bootstrap_applies_overrides() {
         let mut settings = ThemeSettings::default();
         settings.overrides = vec![ThemeTokenOverride {
-            key: "--amber".to_string(),
-            value: "#FF0000".to_string(),
+            key: "--color-primary".to_string(),
+            value: "oklch(50% 0.2 20)".to_string(),
         }];
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin);
-        // amber 应被覆盖为红色
-        let amber = boot
+        // color-primary 应被覆盖
+        let primary = boot
             .merged_tokens
             .iter()
-            .find(|t| t.key == "--amber")
+            .find(|t| t.key == "--color-primary")
             .unwrap();
-        assert_eq!(amber.value, "#FF0000");
+        assert_eq!(primary.value, "oklch(50% 0.2 20)");
     }
 
 
@@ -218,12 +219,12 @@ mod tests {
             custom_themes: Vec::new(),
             overrides: vec![
                 ThemeTokenOverride {
-                    key: "--carbon".to_string(),
-                    value: "#111111".to_string(),
+                    key: "--color-base-100".to_string(),
+                    value: "oklch(20% 0 0)".to_string(),
                 },
                 ThemeTokenOverride {
-                    key: "--amber".to_string(),
-                    value: "#FF0000".to_string(),
+                    key: "--color-primary".to_string(),
+                    value: "oklch(60% 0.2 20)".to_string(),
                 },
             ],
         };
@@ -240,8 +241,8 @@ mod tests {
             active_theme_id: String::new(),
             custom_themes: Vec::new(),
             overrides: vec![ThemeTokenOverride {
-                key: "--chalk".to_string(),
-                value: "#EEEEEE".to_string(),
+                key: "--color-base-content".to_string(),
+                value: "oklch(90% 0 0)".to_string(),
             }],
         };
         let expected = settings.overrides.clone();
@@ -255,7 +256,7 @@ mod tests {
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin.clone());
-        // active_id 无效时回退到第一个内置主题（industrial-light）的 tokens，
+        // active_id 无效时回退到第一个内置主题（olive-amber）的 tokens，
         // 但 active_theme_id 字段仍保留原值（前端可据此提示用户当前生效主题与配置不一致）
         assert_eq!(boot.active_theme_id, "nonexistent");
         // merged_tokens 应等于第一个内置主题的 tokens（无 overrides 时）
@@ -265,7 +266,7 @@ mod tests {
 
     #[test]
     fn theme_import_parses_valid_json() {
-        let json = r##"{"id":"custom","name":"自定义","builtin":false,"tokens":[{"key":"--amber","value":"#FF0000"}]}"##;
+        let json = r##"{"id":"custom","name":"自定义","builtin":false,"tokens":[{"key":"--color-primary","value":"oklch(50% 0.2 20)"}]}"##;
         let theme = theme_import(json.to_string()).unwrap();
         assert_eq!(theme.id, "custom");
         assert_eq!(theme.name, "自定义");
@@ -275,7 +276,7 @@ mod tests {
 
     #[test]
     fn theme_import_rejects_invalid_key() {
-        let json = r##"{"id":"custom","name":"自定义","builtin":false,"tokens":[{"key":"amber","value":"#FF0000"}]}"##;
+        let json = r##"{"id":"custom","name":"自定义","builtin":false,"tokens":[{"key":"color-primary","value":"oklch(50% 0.2 20)"}]}"##;
         let err = theme_import(json.to_string()).unwrap_err();
         assert!(err.contains("必须以 -- 开头"));
     }
@@ -283,8 +284,8 @@ mod tests {
     #[test]
     fn theme_export_returns_pretty_json() {
         let state = sample_state();
-        let json = export_theme(&state.settings.lock().unwrap(), "industrial-light").unwrap();
-        assert!(json.contains("\"id\": \"industrial-light\""));
-        assert!(json.contains("\"name\": \"工业亮色\""));
+        let json = export_theme(&state.settings.lock().unwrap(), "valentine").unwrap();
+        assert!(json.contains("\"id\": \"valentine\""));
+        assert!(json.contains("\"name\": \"黑红\""));
     }
 }

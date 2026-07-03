@@ -1,25 +1,24 @@
-//! 5 套内置主题常量。
+//! 3 套 daisyUI 内置主题常量。
 //!
-//! 每套主题包含完整的语义 token 覆盖（shadcn 基础变量 + 工业语义族 + surface 族），
-//! 切换主题时由前端写入 `document.documentElement.style` 覆盖 `App.css` 的 `:root` 默认值。
+//! 每套主题完整覆盖 architecture.md §1.2 列出的 26 个 daisyUI token
+//! （18 色 + 8 结构/效果），切换主题时由前端写入 `document.documentElement.style`
+//! 覆盖 `App.css` 的 `:root` 默认值。
 //!
-//! 结构/效果 token（`--radius*`、`--shadow-*`、`--scanline`、`--stripe-warning`、`--misprint-offset`）
-//! **不进入主题切换**，保持工业直角硬边风格恒定。
+//! 3 套主题：
+//! - `olive-amber`：暗橄榄琥珀（暗橄榄绿底 + 琥珀主色）
+//! - `valentine`：黑红（深灰底 + 红色主色，**默认主题**）
+//! - `arctic-blue`：浅蓝红调（浅蓝底 + 红色主色）
 //!
-//! 5 套主题：
-//! - `industrial-light`：工业亮色（基线，等同 `App.css :root` 当前值）
-//! - `industrial-dark`：工业暗色（carbon/chalk 翻转）
-//! - `tactical-red`：战术红（alert-red 提升为主色，深灰底）
-//! - `phosphor-green`：磷光绿（terminal-green 主色，CRT 黑底）
-//! - `paper-amber`：纸面琥珀（暖白纸底 + 深琥珀强调）
+//! 关键色（base-100 / primary / secondary）取自 architecture.md §1.5；
+//! base-200/300 与 base-content 按 daisyUI 惯例从 base-100 派生（明度递减 / 反相）；
+//! info/success/warning/error 取 daisyUI 内置主题通用值（light/dark 一致）；
+//! 结构/效果 token 取 daisyUI 通用默认值（圆角 1rem/0.25rem、边框 1px、depth/noise 关闭）。
 
 use super::types::{ThemeDefinition, ThemeTokenOverride};
 
-pub const INDUSTRIAL_LIGHT_ID: &str = "industrial-light";
-pub const INDUSTRIAL_DARK_ID: &str = "industrial-dark";
-pub const TACTICAL_RED_ID: &str = "tactical-red";
-pub const PHOSPHOR_GREEN_ID: &str = "phosphor-green";
-pub const PAPER_AMBER_ID: &str = "paper-amber";
+pub const OLIVE_AMBER_ID: &str = "olive-amber";
+pub const VALENTINE_ID: &str = "valentine";
+pub const ARCTIC_BLUE_ID: &str = "arctic-blue";
 
 /// 构造一个 token 覆盖项。仅在本模块内使用，减少重复字面量。
 fn t(key: &str, value: &str) -> ThemeTokenOverride {
@@ -29,356 +28,120 @@ fn t(key: &str, value: &str) -> ThemeTokenOverride {
     }
 }
 
-/// 工业亮色（基线主题，等同 `App.css :root` 当前值）。
-fn industrial_light() -> Vec<ThemeTokenOverride> {
-    vec![
-        // shadcn 基础变量
-        t("--background", "#FFFFFF"),
-        t("--foreground", "#0A0A0A"),
-        t("--card", "#FFFFFF"),
-        t("--card-foreground", "#0A0A0A"),
-        t("--popover", "#FFFFFF"),
-        t("--popover-foreground", "#0A0A0A"),
-        t("--primary", "#E8A000"),
-        t("--primary-foreground", "#0A0A0A"),
-        t("--secondary", "#F5F5F5"),
-        t("--secondary-foreground", "#0A0A0A"),
-        t("--muted", "#F5F5F5"),
-        t("--muted-foreground", "#6B6B6B"),
-        t("--accent", "#E8A000"),
-        t("--accent-foreground", "#0A0A0A"),
-        t("--destructive", "#E11919"),
-        t("--border", "#0A0A0A"),
-        t("--input", "#0A0A0A"),
-        t("--ring", "#E8A000"),
-        t("--chart-1", "#E8A000"),
-        t("--chart-2", "#3F8A30"),
-        t("--chart-3", "#E11919"),
-        t("--chart-4", "#6B6B6B"),
-        t("--chart-5", "#9A9A9A"),
-        t("--sidebar", "#F5F5F5"),
-        t("--sidebar-foreground", "#0A0A0A"),
-        t("--sidebar-primary", "#E8A000"),
-        t("--sidebar-primary-foreground", "#0A0A0A"),
-        t("--sidebar-accent", "#FFFFFF"),
-        t("--sidebar-accent-foreground", "#0A0A0A"),
-        t("--sidebar-border", "#0A0A0A"),
-        t("--sidebar-ring", "#E8A000"),
-        // 工业语义族
-        t("--carbon", "#FFFFFF"),
-        t("--slate", "#F5F5F5"),
-        t("--iron", "#E5E5E5"),
-        t("--chalk", "#0A0A0A"),
-        t("--zinc", "#6B6B6B"),
-        t("--dust", "#9A9A9A"),
-        t("--seam", "#E5E5E5"),
-        t("--amber", "#E8A000"),
-        t("--rust", "#C85400"),
-        t("--moss", "#3F8A30"),
-        t("--void", "#2A2A2A"),
-        t("--alert-red", "#E11919"),
-        t("--warning-amber", "#A36A00"),
-        t("--valid-green", "#3F8A30"),
-        t("--terminal-green", "#4AF626"),
-        t("--phosphor", "#0A0A0A"),
-        // surface 表层
-        t("--surface-shell", "#FFFFFF"),
-        t("--surface-panel", "#F5F5F5"),
-        t("--surface-card", "#FFFFFF"),
-        t("--surface-card-strong", "#F5F5F5"),
-        t("--surface-tile", "#F5F5F5"),
-        t("--surface-border", "#0A0A0A"),
-        t("--surface-border-strong", "#0A0A0A"),
-        t("--surface-hover", "#E5E5E5"),
-        t("--surface-highlight", "#E8A000"),
-        t("--surface-dot", "#E5E5E5"),
-    ]
+/// 追加 daisyUI 通用状态色（info/success/warning/error 及其 content）。
+/// 这些值在 daisyUI light/dark 等内置主题中保持一致，跨主题无需差异化。
+fn push_status_colors(v: &mut Vec<ThemeTokenOverride>) {
+    v.push(t("--color-info", "oklch(74% 0.16 232.661)"));
+    v.push(t("--color-info-content", "oklch(29% 0.066 243.157)"));
+    v.push(t("--color-success", "oklch(76% 0.177 163.223)"));
+    v.push(t("--color-success-content", "oklch(37% 0.077 168.94)"));
+    v.push(t("--color-warning", "oklch(82% 0.189 84.429)"));
+    v.push(t("--color-warning-content", "oklch(41% 0.112 45.904)"));
+    v.push(t("--color-error", "oklch(71% 0.194 13.428)"));
+    v.push(t("--color-error-content", "oklch(27% 0.105 12.094)"));
 }
 
-/// 工业暗色（carbon/chalk 翻转，amber 提亮）。
-fn industrial_dark() -> Vec<ThemeTokenOverride> {
-    vec![
-        t("--background", "#0A0A0A"),
-        t("--foreground", "#F5F5F5"),
-        t("--card", "#141414"),
-        t("--card-foreground", "#F5F5F5"),
-        t("--popover", "#141414"),
-        t("--popover-foreground", "#F5F5F5"),
-        t("--primary", "#F0B820"),
-        t("--primary-foreground", "#0A0A0A"),
-        t("--secondary", "#1F1F1F"),
-        t("--secondary-foreground", "#F5F5F5"),
-        t("--muted", "#1F1F1F"),
-        t("--muted-foreground", "#9A9A9A"),
-        t("--accent", "#F0B820"),
-        t("--accent-foreground", "#0A0A0A"),
-        t("--destructive", "#FF3B3B"),
-        t("--border", "#2A2A2A"),
-        t("--input", "#2A2A2A"),
-        t("--ring", "#F0B820"),
-        t("--chart-1", "#F0B820"),
-        t("--chart-2", "#5BC24A"),
-        t("--chart-3", "#FF3B3B"),
-        t("--chart-4", "#9A9A9A"),
-        t("--chart-5", "#6B6B6B"),
-        t("--sidebar", "#141414"),
-        t("--sidebar-foreground", "#F5F5F5"),
-        t("--sidebar-primary", "#F0B820"),
-        t("--sidebar-primary-foreground", "#0A0A0A"),
-        t("--sidebar-accent", "#1F1F1F"),
-        t("--sidebar-accent-foreground", "#F5F5F5"),
-        t("--sidebar-border", "#2A2A2A"),
-        t("--sidebar-ring", "#F0B820"),
-        t("--carbon", "#0A0A0A"),
-        t("--slate", "#141414"),
-        t("--iron", "#1F1F1F"),
-        t("--chalk", "#F5F5F5"),
-        t("--zinc", "#9A9A9A"),
-        t("--dust", "#6B6B6B"),
-        t("--seam", "#2A2A2A"),
-        t("--amber", "#F0B820"),
-        t("--rust", "#D86A20"),
-        t("--moss", "#5BC24A"),
-        t("--void", "#1F1F1F"),
-        t("--alert-red", "#FF3B3B"),
-        t("--warning-amber", "#D49500"),
-        t("--valid-green", "#5BC24A"),
-        t("--terminal-green", "#4AF626"),
-        t("--phosphor", "#F5F5F5"),
-        t("--surface-shell", "#0A0A0A"),
-        t("--surface-panel", "#141414"),
-        t("--surface-card", "#141414"),
-        t("--surface-card-strong", "#1F1F1F"),
-        t("--surface-tile", "#1F1F1F"),
-        t("--surface-border", "#F5F5F5"),
-        t("--surface-border-strong", "#F5F5F5"),
-        t("--surface-hover", "#2A2A2A"),
-        t("--surface-highlight", "#F0B820"),
-        t("--surface-dot", "#2A2A2A"),
-    ]
+/// 追加 daisyUI 通用结构/效果 token（圆角/尺寸/边框宽度/depth/noise）。
+fn push_structural_tokens(v: &mut Vec<ThemeTokenOverride>) {
+    v.push(t("--radius-selector", "1rem"));
+    v.push(t("--radius-field", "0.25rem"));
+    v.push(t("--radius-box", "1rem"));
+    v.push(t("--size-selector", "0.25rem"));
+    v.push(t("--size-field", "0.25rem"));
+    v.push(t("--border", "1px"));
+    v.push(t("--depth", "0"));
+    v.push(t("--noise", "0"));
 }
 
-/// 战术红（深灰底，alert-red 提升为主色）。
-fn tactical_red() -> Vec<ThemeTokenOverride> {
-    vec![
-        t("--background", "#1A1A1A"),
-        t("--foreground", "#F0F0F0"),
-        t("--card", "#242424"),
-        t("--card-foreground", "#F0F0F0"),
-        t("--popover", "#242424"),
-        t("--popover-foreground", "#F0F0F0"),
-        t("--primary", "#E11919"),
-        t("--primary-foreground", "#FFFFFF"),
-        t("--secondary", "#2E2E2E"),
-        t("--secondary-foreground", "#F0F0F0"),
-        t("--muted", "#2E2E2E"),
-        t("--muted-foreground", "#9A9A9A"),
-        t("--accent", "#E11919"),
-        t("--accent-foreground", "#FFFFFF"),
-        t("--destructive", "#FF3B3B"),
-        t("--border", "#3A3A3A"),
-        t("--input", "#3A3A3A"),
-        t("--ring", "#E11919"),
-        t("--chart-1", "#E11919"),
-        t("--chart-2", "#C85400"),
-        t("--chart-3", "#FF3B3B"),
-        t("--chart-4", "#9A9A9A"),
-        t("--chart-5", "#6B6B6B"),
-        t("--sidebar", "#1A1A1A"),
-        t("--sidebar-foreground", "#F0F0F0"),
-        t("--sidebar-primary", "#E11919"),
-        t("--sidebar-primary-foreground", "#FFFFFF"),
-        t("--sidebar-accent", "#2E2E2E"),
-        t("--sidebar-accent-foreground", "#F0F0F0"),
-        t("--sidebar-border", "#3A3A3A"),
-        t("--sidebar-ring", "#E11919"),
-        t("--carbon", "#1A1A1A"),
-        t("--slate", "#242424"),
-        t("--iron", "#2E2E2E"),
-        t("--chalk", "#F0F0F0"),
-        t("--zinc", "#9A9A9A"),
-        t("--dust", "#6B6B6B"),
-        t("--seam", "#3A3A3A"),
-        t("--amber", "#E11919"),
-        t("--rust", "#C85400"),
-        t("--moss", "#3F8A30"),
-        t("--void", "#2E2E2E"),
-        t("--alert-red", "#FF3B3B"),
-        t("--warning-amber", "#D49500"),
-        t("--valid-green", "#3F8A30"),
-        t("--terminal-green", "#4AF626"),
-        t("--phosphor", "#F0F0F0"),
-        t("--surface-shell", "#1A1A1A"),
-        t("--surface-panel", "#242424"),
-        t("--surface-card", "#242424"),
-        t("--surface-card-strong", "#2E2E2E"),
-        t("--surface-tile", "#2E2E2E"),
-        t("--surface-border", "#F0F0F0"),
-        t("--surface-border-strong", "#F0F0F0"),
-        t("--surface-hover", "#3A3A3A"),
-        t("--surface-highlight", "#E11919"),
-        t("--surface-dot", "#3A3A3A"),
-    ]
+/// 暗橄榄琥珀（暗橄榄绿底 + 琥珀主色）。
+fn olive_amber() -> Vec<ThemeTokenOverride> {
+    let mut v = vec![
+        // base 系：暗橄榄绿，明度递减
+        t("--color-base-100", "oklch(27% 0.072 132.109)"),
+        t("--color-base-200", "oklch(24% 0.072 132.109)"),
+        t("--color-base-300", "oklch(21% 0.072 132.109)"),
+        t("--color-base-content", "oklch(89% 0.05 132.109)"),
+        // 品牌/中性色
+        t("--color-primary", "oklch(82% 0.189 84.429)"),
+        t("--color-primary-content", "oklch(27% 0.072 132.109)"),
+        t("--color-secondary", "oklch(85% 0.199 91.936)"),
+        t("--color-secondary-content", "oklch(27% 0.072 132.109)"),
+        t("--color-accent", "oklch(82% 0.189 84.429)"),
+        t("--color-accent-content", "oklch(27% 0.072 132.109)"),
+        t("--color-neutral", "oklch(27% 0.03 132.109)"),
+        t("--color-neutral-content", "oklch(89% 0.05 132.109)"),
+    ];
+    push_status_colors(&mut v);
+    push_structural_tokens(&mut v);
+    v
 }
 
-/// 磷光绿（CRT 黑底，terminal-green 主色）。
-fn phosphor_green() -> Vec<ThemeTokenOverride> {
-    vec![
-        t("--background", "#000000"),
-        t("--foreground", "#4AF626"),
-        t("--card", "#0A1A0A"),
-        t("--card-foreground", "#4AF626"),
-        t("--popover", "#0A1A0A"),
-        t("--popover-foreground", "#4AF626"),
-        t("--primary", "#4AF626"),
-        t("--primary-foreground", "#000000"),
-        t("--secondary", "#0A1A0A"),
-        t("--secondary-foreground", "#4AF626"),
-        t("--muted", "#0A1A0A"),
-        t("--muted-foreground", "#2A8A1A"),
-        t("--accent", "#4AF626"),
-        t("--accent-foreground", "#000000"),
-        t("--destructive", "#FF3B3B"),
-        t("--border", "#2A8A1A"),
-        t("--input", "#2A8A1A"),
-        t("--ring", "#4AF626"),
-        t("--chart-1", "#4AF626"),
-        t("--chart-2", "#2A8A1A"),
-        t("--chart-3", "#FF3B3B"),
-        t("--chart-4", "#2A8A1A"),
-        t("--chart-5", "#1A5A0A"),
-        t("--sidebar", "#000000"),
-        t("--sidebar-foreground", "#4AF626"),
-        t("--sidebar-primary", "#4AF626"),
-        t("--sidebar-primary-foreground", "#000000"),
-        t("--sidebar-accent", "#0A1A0A"),
-        t("--sidebar-accent-foreground", "#4AF626"),
-        t("--sidebar-border", "#2A8A1A"),
-        t("--sidebar-ring", "#4AF626"),
-        t("--carbon", "#000000"),
-        t("--slate", "#0A1A0A"),
-        t("--iron", "#1A2A1A"),
-        t("--chalk", "#4AF626"),
-        t("--zinc", "#2A8A1A"),
-        t("--dust", "#1A5A0A"),
-        t("--seam", "#2A8A1A"),
-        t("--amber", "#4AF626"),
-        t("--rust", "#C85400"),
-        t("--moss", "#4AF626"),
-        t("--void", "#0A1A0A"),
-        t("--alert-red", "#FF3B3B"),
-        t("--warning-amber", "#D49500"),
-        t("--valid-green", "#4AF626"),
-        t("--terminal-green", "#4AF626"),
-        t("--phosphor", "#4AF626"),
-        t("--surface-shell", "#000000"),
-        t("--surface-panel", "#0A1A0A"),
-        t("--surface-card", "#0A1A0A"),
-        t("--surface-card-strong", "#1A2A1A"),
-        t("--surface-tile", "#1A2A1A"),
-        t("--surface-border", "#2A8A1A"),
-        t("--surface-border-strong", "#4AF626"),
-        t("--surface-hover", "#1A2A1A"),
-        t("--surface-highlight", "#4AF626"),
-        t("--surface-dot", "#2A8A1A"),
-    ]
+/// 黑红（深灰底 + 红色主色，默认主题）。
+fn valentine() -> Vec<ThemeTokenOverride> {
+    let mut v = vec![
+        // base 系：近黑蓝灰，明度递减
+        t("--color-base-100", "oklch(21.5% 0 261.692)"),
+        t("--color-base-200", "oklch(18.5% 0 261.692)"),
+        t("--color-base-300", "oklch(15.5% 0 261.692)"),
+        t("--color-base-content", "oklch(89% 0.02 261.692)"),
+        // 品牌/中性色
+        t("--color-primary", "oklch(70% 0.234 24.700)"),
+        t("--color-primary-content", "oklch(98% 0 0)"),
+        t("--color-secondary", "oklch(82% 0.189 84.429)"),
+        t("--color-secondary-content", "oklch(21.5% 0 261.692)"),
+        t("--color-accent", "oklch(70% 0.234 24.700)"),
+        t("--color-accent-content", "oklch(98% 0 0)"),
+        t("--color-neutral", "oklch(27% 0.03 261.692)"),
+        t("--color-neutral-content", "oklch(89% 0.02 261.692)"),
+    ];
+    push_status_colors(&mut v);
+    push_structural_tokens(&mut v);
+    v
 }
 
-/// 纸面琥珀（暖白纸底 + 深琥珀强调，柔光）。
-fn paper_amber() -> Vec<ThemeTokenOverride> {
-    vec![
-        t("--background", "#F5EFE0"),
-        t("--foreground", "#3A2A0A"),
-        t("--card", "#FBF6E8"),
-        t("--card-foreground", "#3A2A0A"),
-        t("--popover", "#FBF6E8"),
-        t("--popover-foreground", "#3A2A0A"),
-        t("--primary", "#B87000"),
-        t("--primary-foreground", "#FBF6E8"),
-        t("--secondary", "#EDE3CC"),
-        t("--secondary-foreground", "#3A2A0A"),
-        t("--muted", "#EDE3CC"),
-        t("--muted-foreground", "#8A7A5A"),
-        t("--accent", "#B87000"),
-        t("--accent-foreground", "#FBF6E8"),
-        t("--destructive", "#B53030"),
-        t("--border", "#3A2A0A"),
-        t("--input", "#3A2A0A"),
-        t("--ring", "#B87000"),
-        t("--chart-1", "#B87000"),
-        t("--chart-2", "#5A7A2A"),
-        t("--chart-3", "#B53030"),
-        t("--chart-4", "#8A7A5A"),
-        t("--chart-5", "#BAA88A"),
-        t("--sidebar", "#EDE3CC"),
-        t("--sidebar-foreground", "#3A2A0A"),
-        t("--sidebar-primary", "#B87000"),
-        t("--sidebar-primary-foreground", "#FBF6E8"),
-        t("--sidebar-accent", "#FBF6E8"),
-        t("--sidebar-accent-foreground", "#3A2A0A"),
-        t("--sidebar-border", "#3A2A0A"),
-        t("--sidebar-ring", "#B87000"),
-        t("--carbon", "#F5EFE0"),
-        t("--slate", "#EDE3CC"),
-        t("--iron", "#E0D4B8"),
-        t("--chalk", "#3A2A0A"),
-        t("--zinc", "#8A7A5A"),
-        t("--dust", "#BAA88A"),
-        t("--seam", "#D4C5A0"),
-        t("--amber", "#B87000"),
-        t("--rust", "#A05000"),
-        t("--moss", "#5A7A2A"),
-        t("--void", "#5A4A2A"),
-        t("--alert-red", "#B53030"),
-        t("--warning-amber", "#8A5A00"),
-        t("--valid-green", "#5A7A2A"),
-        t("--terminal-green", "#4AF626"),
-        t("--phosphor", "#3A2A0A"),
-        t("--surface-shell", "#F5EFE0"),
-        t("--surface-panel", "#EDE3CC"),
-        t("--surface-card", "#FBF6E8"),
-        t("--surface-card-strong", "#EDE3CC"),
-        t("--surface-tile", "#EDE3CC"),
-        t("--surface-border", "#3A2A0A"),
-        t("--surface-border-strong", "#3A2A0A"),
-        t("--surface-hover", "#E0D4B8"),
-        t("--surface-highlight", "#B87000"),
-        t("--surface-dot", "#D4C5A0"),
-    ]
+/// 浅蓝红调（浅蓝底 + 红色主色）。
+fn arctic_blue() -> Vec<ThemeTokenOverride> {
+    let mut v = vec![
+        // base 系：浅蓝白，明度递减
+        t("--color-base-100", "oklch(97% 0.013 236.62)"),
+        t("--color-base-200", "oklch(94% 0.013 236.62)"),
+        t("--color-base-300", "oklch(91% 0.013 236.62)"),
+        t("--color-base-content", "oklch(43% 0.05 236.62)"),
+        // 品牌/中性色
+        t("--color-primary", "oklch(63% 0.237 25.331)"),
+        t("--color-primary-content", "oklch(98% 0 0)"),
+        t("--color-secondary", "oklch(79% 0.184 86.047)"),
+        t("--color-secondary-content", "oklch(43% 0.05 236.62)"),
+        t("--color-accent", "oklch(63% 0.237 25.331)"),
+        t("--color-accent-content", "oklch(98% 0 0)"),
+        t("--color-neutral", "oklch(43% 0.05 236.62)"),
+        t("--color-neutral-content", "oklch(89% 0.05 236.62)"),
+    ];
+    push_status_colors(&mut v);
+    push_structural_tokens(&mut v);
+    v
 }
 
-/// 返回全部内置主题定义（5 套）。
+/// 返回全部内置主题定义（3 套）。顺序：olive-amber, valentine, arctic-blue。
 pub fn builtin_themes() -> Vec<ThemeDefinition> {
     vec![
         ThemeDefinition {
-            id: INDUSTRIAL_LIGHT_ID.to_string(),
-            name: "工业亮色".to_string(),
+            id: OLIVE_AMBER_ID.to_string(),
+            name: "暗橄榄琥珀".to_string(),
             builtin: true,
-            tokens: industrial_light(),
+            tokens: olive_amber(),
         },
         ThemeDefinition {
-            id: INDUSTRIAL_DARK_ID.to_string(),
-            name: "工业暗色".to_string(),
+            id: VALENTINE_ID.to_string(),
+            name: "黑红".to_string(),
             builtin: true,
-            tokens: industrial_dark(),
+            tokens: valentine(),
         },
         ThemeDefinition {
-            id: TACTICAL_RED_ID.to_string(),
-            name: "战术红".to_string(),
+            id: ARCTIC_BLUE_ID.to_string(),
+            name: "浅蓝红调".to_string(),
             builtin: true,
-            tokens: tactical_red(),
-        },
-        ThemeDefinition {
-            id: PHOSPHOR_GREEN_ID.to_string(),
-            name: "磷光绿".to_string(),
-            builtin: true,
-            tokens: phosphor_green(),
-        },
-        ThemeDefinition {
-            id: PAPER_AMBER_ID.to_string(),
-            name: "纸面琥珀".to_string(),
-            builtin: true,
-            tokens: paper_amber(),
+            tokens: arctic_blue(),
         },
     ]
 }
@@ -387,10 +150,45 @@ pub fn builtin_themes() -> Vec<ThemeDefinition> {
 mod tests {
     use super::*;
 
+    /// daisyUI token 的完整 key 集合（architecture.md §1.2 列举）。
+    /// 共 28 个：20 色（4 base + 8 组 color/content 对）+ 8 结构/效果。
+    const EXPECTED_TOKEN_KEYS: &[&str] = &[
+        // 18 色
+        "--color-base-100",
+        "--color-base-200",
+        "--color-base-300",
+        "--color-base-content",
+        "--color-primary",
+        "--color-primary-content",
+        "--color-secondary",
+        "--color-secondary-content",
+        "--color-accent",
+        "--color-accent-content",
+        "--color-neutral",
+        "--color-neutral-content",
+        "--color-info",
+        "--color-info-content",
+        "--color-success",
+        "--color-success-content",
+        "--color-warning",
+        "--color-warning-content",
+        "--color-error",
+        "--color-error-content",
+        // 8 结构/效果
+        "--radius-selector",
+        "--radius-field",
+        "--radius-box",
+        "--size-selector",
+        "--size-field",
+        "--border",
+        "--depth",
+        "--noise",
+    ];
+
     #[test]
-    fn builtin_themes_count_is_five() {
+    fn builtin_themes_count_is_three() {
         let themes = builtin_themes();
-        assert_eq!(themes.len(), 5);
+        assert_eq!(themes.len(), 3);
         assert!(themes.iter().all(|t| t.builtin));
     }
 
@@ -403,14 +201,21 @@ mod tests {
     }
 
     #[test]
-    fn industrial_light_matches_app_css_root() {
-        // 基线主题的几个关键 token 必须与 App.css :root 当前值一致
-        let light = builtin_themes()
+    fn builtin_theme_ids_match_expected() {
+        let themes = builtin_themes();
+        let ids: Vec<&str> = themes.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, vec![OLIVE_AMBER_ID, VALENTINE_ID, ARCTIC_BLUE_ID]);
+    }
+
+    #[test]
+    fn valentine_defines_expected_key_colors() {
+        // 默认主题的关键色必须与 architecture.md §1.5 一致
+        let valentine = builtin_themes()
             .into_iter()
-            .find(|t| t.id == INDUSTRIAL_LIGHT_ID)
+            .find(|t| t.id == VALENTINE_ID)
             .unwrap();
         let find = |key: &str| -> String {
-            light
+            valentine
                 .tokens
                 .iter()
                 .find(|tok| tok.key == key)
@@ -418,19 +223,24 @@ mod tests {
                 .value
                 .clone()
         };
-        assert_eq!(find("--carbon"), "#FFFFFF");
-        assert_eq!(find("--chalk"), "#0A0A0A");
-        assert_eq!(find("--amber"), "#E8A000");
-        assert_eq!(find("--alert-red"), "#E11919");
-        assert_eq!(find("--moss"), "#3F8A30");
+        assert_eq!(find("--color-base-100"), "oklch(21.5% 0 261.692)");
+        assert_eq!(find("--color-primary"), "oklch(70% 0.234 24.700)");
+        assert_eq!(find("--color-secondary"), "oklch(82% 0.189 84.429)");
     }
 
     #[test]
     fn every_builtin_theme_defines_same_token_keys() {
-        // 5 套主题必须定义相同的 key 集合，否则切换主题时会出现 token 残留
+        // 3 套主题必须定义相同的 key 集合，且恰好覆盖 EXPECTED_TOKEN_KEYS 列举的全部 daisyUI token
         let themes = builtin_themes();
         let baseline: std::collections::HashSet<String> =
             themes[0].tokens.iter().map(|t| t.key.clone()).collect();
+        assert_eq!(
+            baseline.len(),
+            EXPECTED_TOKEN_KEYS.len(),
+            "每套主题应恰好定义 {} 个 token，实际 {}",
+            EXPECTED_TOKEN_KEYS.len(),
+            baseline.len()
+        );
         for theme in &themes {
             let keys: std::collections::HashSet<String> =
                 theme.tokens.iter().map(|t| t.key.clone()).collect();
@@ -438,6 +248,13 @@ mod tests {
                 keys, baseline,
                 "主题 {} 的 token key 集合与基线不一致",
                 theme.id
+            );
+        }
+        // 与 EXPECTED_TOKEN_KEYS 对照
+        for key in EXPECTED_TOKEN_KEYS {
+            assert!(
+                baseline.contains(*key),
+                "缺少预期 token key: {key}"
             );
         }
     }

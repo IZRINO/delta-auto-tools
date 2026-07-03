@@ -22,7 +22,7 @@ pub struct ThemeTokenOverride {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeDefinition {
-    /// 主题唯一 id，内置主题使用稳定短码（如 `industrial-light`），自定义主题用时间戳 + 随机串生成。
+    /// 主题唯一 id，内置主题使用稳定短码（如 `valentine`），自定义主题用时间戳 + 随机串生成。
     pub id: String,
     /// 主题显示名，如「工业亮色」。
     pub name: String,
@@ -50,7 +50,7 @@ pub struct ThemeSettings {
 impl Default for ThemeSettings {
     fn default() -> Self {
         Self {
-            active_theme_id: crate::theme::builtins::INDUSTRIAL_LIGHT_ID.to_string(),
+            active_theme_id: crate::theme::builtins::VALENTINE_ID.to_string(),
             custom_themes: Vec::new(),
             overrides: Vec::new(),
         }
@@ -63,7 +63,7 @@ impl Default for ThemeSettings {
 pub struct ThemeBootstrap {
     /// 当前激活主题 id。空串且 overrides 非空表示自定义配色模式。
     pub active_theme_id: String,
-    /// 内置主题列表（5 套）。
+    /// 内置主题列表（3 套）。
     pub builtin_themes: Vec<ThemeDefinition>,
     /// 自定义主题列表。
     pub custom_themes: Vec<ThemeDefinition>,
@@ -78,9 +78,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_settings_uses_industrial_light() {
+    fn default_settings_uses_valentine() {
         let settings = ThemeSettings::default();
-        assert_eq!(settings.active_theme_id, "industrial-light");
+        assert_eq!(settings.active_theme_id, "valentine");
         assert!(settings.custom_themes.is_empty());
         assert!(settings.overrides.is_empty());
     }

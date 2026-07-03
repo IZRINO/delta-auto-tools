@@ -46,13 +46,11 @@ export interface ThemeBootstrap {
 /** localStorage 持久化 key（浏览器预览模式 fallback 用）。 */
 export const THEME_STORAGE_KEY = "delta-auto-tools:theme:v1";
 
-/** 5 套内置主题 id 常量，与 Rust `builtins.rs` 保持同步。 */
+/** 3 套内置主题 id 常量，与 Rust `builtins.rs` 保持同步。 */
 export const BUILTIN_THEME_IDS = {
-    industrialLight: "industrial-light",
-    industrialDark: "industrial-dark",
-    tacticalRed: "tactical-red",
-    phosphorGreen: "phosphor-green",
-    paperAmber: "paper-amber",
+    oliveAmber: "olive-amber",
+    valentine: "valentine",
+    arcticBlue: "arctic-blue",
 } as const;
 
 /**

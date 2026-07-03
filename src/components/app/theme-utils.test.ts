@@ -77,16 +77,16 @@ describe("findTheme", () => {
 
 describe("materializeCustomOverrides", () => {
     it("保存自定义颜色时把当前主题合并成完整 token 集", () => {
-        const theme = makeTheme("industrial-dark", [
-            ["--carbon", "#0c0c0b"],
-            ["--amber", "#e8a000"],
-            ["--chalk", "#d8d4cc"],
+        const theme = makeTheme("valentine", [
+            ["--color-base-100", "oklch(21.5% 0 261.692)"],
+            ["--color-primary", "oklch(70% 0.234 24.700)"],
+            ["--color-base-content", "oklch(89% 0.02 261.692)"],
         ]);
-        const overrides: ThemeTokenOverride[] = [{key: "--amber", value: "#ff0000"}];
+        const overrides: ThemeTokenOverride[] = [{key: "--color-primary", value: "oklch(50% 0.2 20)"}];
 
         const tokens = materializeCustomOverrides(
             {
-                activeThemeId: "industrial-dark",
+                activeThemeId: "valentine",
                 builtinThemes: [theme],
                 customThemes: [],
                 overrides: [],
@@ -96,22 +96,22 @@ describe("materializeCustomOverrides", () => {
         );
 
         expect(tokens).toEqual([
-            {key: "--carbon", value: "#0c0c0b"},
-            {key: "--amber", value: "#ff0000"},
-            {key: "--chalk", value: "#d8d4cc"},
+            {key: "--color-base-100", value: "oklch(21.5% 0 261.692)"},
+            {key: "--color-primary", value: "oklch(50% 0.2 20)"},
+            {key: "--color-base-content", value: "oklch(89% 0.02 261.692)"},
         ]);
     });
 
     it("自定义模式下继续保存时保留完整自定义 token 集", () => {
         const customTokens: ThemeTokenOverride[] = [
-            {key: "--carbon", value: "#111111"},
-            {key: "--amber", value: "#ff0000"},
+            {key: "--color-base-100", value: "oklch(20% 0 0)"},
+            {key: "--color-primary", value: "oklch(50% 0.2 20)"},
         ];
 
         const tokens = materializeCustomOverrides(
             {
                 activeThemeId: "",
-                builtinThemes: [makeTheme("industrial-light", [["--carbon", "#ffffff"]])],
+                builtinThemes: [makeTheme("olive-amber", [["--color-base-100", "oklch(27% 0.072 132.109)"]])],
                 customThemes: [],
                 overrides: customTokens,
                 mergedTokens: customTokens,
@@ -126,29 +126,29 @@ describe("materializeCustomOverrides", () => {
 
 describe("buildCustomOverrideSettings", () => {
     it("保存自定义颜色时取消选中主题并保留自定义主题列表", () => {
-        const builtin = makeTheme("industrial-dark", [
-            ["--carbon", "#0c0c0b"],
-            ["--amber", "#e8a000"],
+        const builtin = makeTheme("valentine", [
+            ["--color-base-100", "oklch(21.5% 0 261.692)"],
+            ["--color-primary", "oklch(70% 0.234 24.700)"],
         ]);
-        const customTheme = makeTheme("custom-1", [["--amber", "#00ff00"]]);
+        const customTheme = makeTheme("custom-1", [["--color-primary", "oklch(40% 0.1 200)"]]);
 
         const settings = buildCustomOverrideSettings(
             {
-                activeThemeId: "industrial-dark",
+                activeThemeId: "valentine",
                 builtinThemes: [builtin],
                 customThemes: [customTheme],
                 overrides: [],
                 mergedTokens: builtin.tokens,
             },
-            [{key: "--amber", value: "#ff0000"}],
+            [{key: "--color-primary", value: "oklch(50% 0.2 20)"}],
         );
 
         expect(settings).toEqual({
             activeThemeId: "",
             customThemes: [customTheme],
             overrides: [
-                {key: "--carbon", value: "#0c0c0b"},
-                {key: "--amber", value: "#ff0000"},
+                {key: "--color-base-100", value: "oklch(21.5% 0 261.692)"},
+                {key: "--color-primary", value: "oklch(50% 0.2 20)"},
             ],
         });
     });
