@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/jetbrains-mono";
+@plugin "daisyui";
 
 :root {
     font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
@@ -15,23 +16,79 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
 
-    /* Bright base industrial palette */
-    --background: #FFFFFF;
-    --foreground: #0A0A0A;
-    --card: #FFFFFF;
-    --card-foreground: #0A0A0A;
-    --popover: #FFFFFF;
-    --popover-foreground: #0A0A0A;
-    --primary: #E8A000;
-    --primary-foreground: #0A0A0A;
-    --secondary: #F5F5F5;
-    --secondary-foreground: #0A0A0A;
-    --muted: #F5F5F5;
-    --muted-foreground: #6B6B6B;
-    --accent: #E8A000;
-    --accent-foreground: #0A0A0A;
-    --destructive: #E11919;
-    --border: #0A0A0A;
+    /* daisyUI 语义 token fallback：默认主题 valentine 的值，运行时由 JS
+       documentElement.style.setProperty 注入激活主题覆盖（inline style 特异性
+       高于 :root，首帧渲染即呈现默认主题视觉）。M0 桥接层 feature 声明。 */
+    --color-base-100: oklch(21.5% 0 261.692);
+    --color-base-200: oklch(18.5% 0 261.692);
+    --color-base-300: oklch(15.5% 0 261.692);
+    --color-base-content: oklch(89% 0.02 261.692);
+    --color-primary: oklch(70% 0.234 24.700);
+    --color-primary-content: oklch(98% 0 0);
+    --color-secondary: oklch(82% 0.189 84.429);
+    --color-secondary-content: oklch(21.5% 0 261.692);
+    --color-accent: oklch(70% 0.234 24.700);
+    --color-accent-content: oklch(98% 0 0);
+    --color-neutral: oklch(27% 0.03 261.692);
+    --color-neutral-content: oklch(89% 0.02 261.692);
+    --color-info: oklch(74% 0.16 232.661);
+    --color-info-content: oklch(29% 0.066 243.157);
+    --color-success: oklch(76% 0.177 163.223);
+    --color-success-content: oklch(37% 0.077 168.94);
+    --color-warning: oklch(82% 0.189 84.429);
+    --color-warning-content: oklch(41% 0.112 45.904);
+    --color-error: oklch(71% 0.194 13.428);
+    --color-error-content: oklch(27% 0.105 12.094);
+    --radius-selector: 1rem;
+    --radius-field: 0.25rem;
+    --radius-box: 1rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+
+    /* 桥接层：旧工业别名 token → daisyUI 语义 token（M5 清零验证后删除） */
+    --carbon: var(--color-base-100);
+    --slate: var(--color-base-200);
+    --iron: var(--color-base-300);
+    --chalk: var(--color-base-content);
+    --zinc: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+    --amber: var(--color-primary);
+    --rust: var(--color-warning);
+    --moss: var(--color-success);
+    --void: var(--color-neutral);
+    --alert-red: var(--color-error);
+    --warning-amber: var(--color-warning);
+    --valid-green: var(--color-success);
+    --terminal-green: var(--color-success);
+    --phosphor: var(--color-base-content);
+
+    /* 未桥接工业 token：M4 重做 body/app-ui brutalist 骨架时随骨架一并放弃 */
+    --dust: #9A9A9A;
+    --seam: #E5E5E5;
+
+    /* 桥接层：旧 shadcn token → daisyUI 语义 token（M5 清零验证后删除） */
+    --background: var(--color-base-100);
+    --foreground: var(--color-base-content);
+    --card: var(--color-base-200);
+    --card-foreground: var(--color-base-content);
+    --popover: var(--color-base-200);
+    --popover-foreground: var(--color-base-content);
+    --primary: var(--color-primary);
+    --primary-foreground: var(--color-primary-content);
+    --secondary: var(--color-secondary);
+    --secondary-foreground: var(--color-secondary-content);
+    --accent: var(--color-accent);
+    --accent-foreground: var(--color-accent-content);
+    --muted: var(--color-base-200);
+    --muted-foreground: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+    --destructive: var(--color-error);
+
+    /* --border 命名冲突解决：旧边框颜色改名，释放 --border 给 daisyUI 边框宽度 */
+    --legacy-border-color: #0A0A0A;
+
+    /* 未桥接 shadcn token：M1~M3 组件迁移后由 M5 评估清理 */
     --input: #0A0A0A;
     --ring: #E8A000;
     --chart-1: #E8A000;
@@ -49,25 +106,7 @@
     --sidebar-border: #0A0A0A;
     --sidebar-ring: #E8A000;
 
-    /* Industrial semantic tokens */
-    --carbon: #FFFFFF;
-    --slate: #F5F5F5;
-    --iron: #E5E5E5;
-    --chalk: #0A0A0A;
-    --zinc: #6B6B6B;
-    --dust: #9A9A9A;
-    --seam: #E5E5E5;
-    --amber: #E8A000;
-    --rust: #C85400;
-    --moss: #3F8A30;
-    --void: #2A2A2A;
-
-    --alert-red: #E11919;
-    --warning-amber: #A36A00;
-    --valid-green: #3F8A30;
-    --terminal-green: #4AF626;
-    --phosphor: #0A0A0A;
-
+    /* 工业纹理效果 token：随 app-ui.tsx brutalist 骨架在 M4 放弃 */
     --surface-shell: #FFFFFF;
     --surface-panel: #F5F5F5;
     --surface-card: #FFFFFF;
@@ -108,7 +147,7 @@
     --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
     --color-input: var(--input);
-    --color-border: var(--border);
+    --color-border: var(--legacy-border-color);
     --color-destructive: var(--destructive);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
