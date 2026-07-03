@@ -51,37 +51,36 @@ fn build_bootstrap(state: &ThemeState, builtin_themes: Vec<ThemeDefinition>) -> 
     let custom_themes = settings.custom_themes.clone();
     let overrides = settings.overrides.clone();
     let custom_mode = settings.active_theme_id.is_empty() && !overrides.is_empty();
+    let themes = all_themes(&settings);
     let active_theme_id = if custom_mode {
         String::new()
-    } else if settings.active_theme_id.is_empty() {
-        builtins::VALENTINE_ID.to_string()
     } else {
-        settings.active_theme_id.clone()
+        resolve_active_theme_id(&settings.active_theme_id, &themes)
     };
-
-    // 找到激活主题定义：先自定义，后内置
-    let active_theme = custom_themes
-        .iter()
-        .chain(builtin_themes.iter())
-        .find(|t| t.id == active_theme_id)
-        .cloned()
-        .or_else(|| builtin_themes.first().cloned());
 
     let merged_tokens = if custom_mode {
         overrides.clone()
     } else {
-        match active_theme {
-            Some(ref theme) => apply::merge_theme_tokens(theme, &overrides),
-            None => Vec::new(),
-        }
+        apply::find_theme(&themes, &active_theme_id)
+            .map(|theme| apply::merge_theme_tokens(theme, &overrides))
+            .unwrap_or_default()
     };
 
     ThemeBootstrap {
-        active_theme_id: active_theme_id,
+        active_theme_id,
         builtin_themes,
         custom_themes,
         overrides,
         merged_tokens,
+    }
+}
+
+fn resolve_active_theme_id(active_theme_id: &str, themes: &[ThemeDefinition]) -> String {
+    // ponytail: 旧主题 id 或损坏配置统一回默认主题，避免空 token 白屏。
+    if active_theme_id.is_empty() || apply::find_theme(themes, active_theme_id).is_none() {
+        builtins::VALENTINE_ID.to_string()
+    } else {
+        active_theme_id.to_string()
     }
 }
 
@@ -100,16 +99,10 @@ fn current_merged_tokens(state: &ThemeState) -> Vec<ThemeTokenOverride> {
         return settings.overrides.clone();
     }
 
-    let active_id = if settings.active_theme_id.is_empty() {
-        builtins::VALENTINE_ID.to_string()
-    } else {
-        settings.active_theme_id.clone()
-    };
-    let active_theme = apply::find_theme(&themes, &active_id);
-    match active_theme {
-        Some(theme) => apply::merge_theme_tokens(theme, &settings.overrides),
-        None => Vec::new(),
-    }
+    let active_id = resolve_active_theme_id(&settings.active_theme_id, &themes);
+    apply::find_theme(&themes, &active_id)
+        .map(|theme| apply::merge_theme_tokens(theme, &settings.overrides))
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -249,18 +242,30 @@ mod tests {
         let state = ThemeState::new(settings);
         assert_eq!(current_merged_tokens(&state), expected);
     }
+
     #[test]
-    fn build_bootstrap_falls_back_to_first_builtin_when_active_id_missing() {
+    fn current_merged_tokens_falls_back_to_valentine_when_active_id_missing() {
+        let mut settings = ThemeSettings::default();
+        settings.active_theme_id = "industrial-light".to_string();
+        let state = ThemeState::new(settings);
+        let builtin = builtins::builtin_themes();
+        let valentine = builtin.iter().find(|t| t.id == builtins::VALENTINE_ID).unwrap();
+        assert_eq!(
+            current_merged_tokens(&state),
+            apply::merge_theme_tokens(valentine, &[])
+        );
+    }
+
+    #[test]
+    fn build_bootstrap_falls_back_to_valentine_when_active_id_missing() {
         let mut settings = ThemeSettings::default();
         settings.active_theme_id = "nonexistent".to_string();
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin.clone());
-        // active_id 无效时回退到第一个内置主题（olive-amber）的 tokens，
-        // 但 active_theme_id 字段仍保留原值（前端可据此提示用户当前生效主题与配置不一致）
-        assert_eq!(boot.active_theme_id, "nonexistent");
-        // merged_tokens 应等于第一个内置主题的 tokens（无 overrides 时）
-        let expected = apply::merge_theme_tokens(&builtin[0], &[]);
+        assert_eq!(boot.active_theme_id, builtins::VALENTINE_ID);
+        let valentine = builtin.iter().find(|t| t.id == builtins::VALENTINE_ID).unwrap();
+        let expected = apply::merge_theme_tokens(valentine, &[]);
         assert_eq!(boot.merged_tokens, expected);
     }
 
