@@ -25,7 +25,7 @@ use crate::morse;
 use crate::rapidfire;
 use crate::settings as common_settings;
 use crate::timer;
-use crate::utils::now_ms;
+
 
 use self::types::{Profile, ProfileBootstrap, ProfileSettings};
 
@@ -62,7 +62,7 @@ fn generate_profile_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed) % 100;
-    format!("p{}{:02}", now_ms(), seq)
+    format!("p{}{:02}", chrono::Utc::now().timestamp_millis() as u64, seq)
 }
 
 fn max_config_number(profiles: &[Profile]) -> u32 {
@@ -105,7 +105,7 @@ fn append_profile(
     name: String,
     snapshot: types::ToolSettingsSnapshot,
 ) -> Profile {
-    let now = now_ms();
+    let now = chrono::Utc::now().timestamp_millis() as u64;
     let profile = Profile {
         id: generate_profile_id(),
         name,
@@ -280,7 +280,7 @@ pub fn profile_rename(
             .find(|p| p.id == id)
             .ok_or_else(|| format!("找不到配置: {id}"))?;
         profile.name = name.trim().to_string();
-        profile.updated_at = now_ms();
+        profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
         settings::save_settings(&app, &settings)?;
     }
     let bootstrap = build_bootstrap(&state);
@@ -328,7 +328,7 @@ pub(crate) fn update_active_profile_snapshot(
         ActiveProfileSnapshotPatch::Rapidfire(value) => profile.snapshot.rapidfire = Some(value),
         ActiveProfileSnapshotPatch::Audio(value) => profile.snapshot.audio = Some(value),
     }
-    profile.updated_at = now_ms();
+    profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
     settings::save_settings(app, &settings)
 }
 

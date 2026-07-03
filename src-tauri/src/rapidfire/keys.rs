@@ -135,14 +135,6 @@ pub struct MockKeyEmitCall {
 pub struct TargetFirePlan {
     pub target_key: Key,
     pub trigger_key_to_release: Option<Key>,
-    pub actions: Vec<TargetKeyAction>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TargetKeyAction {
-    ReleaseHeldTrigger,
-    PressTarget,
-    ReleaseTarget,
 }
 
 pub fn target_fire_plan(
@@ -157,23 +149,11 @@ pub fn target_fire_plan(
         .map(|key| parse_target_key(&key).ok_or_else(|| format!("不支持的触发键: {key}")))
         .transpose()?;
     let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
-    let should_release_trigger_key = trigger_key_to_release.is_some();
 
     Ok(TargetFirePlan {
         target_key,
         trigger_key_to_release,
-        actions: target_fire_actions(should_release_trigger_key),
     })
-}
-
-fn target_fire_actions(has_held_trigger_key: bool) -> Vec<TargetKeyAction> {
-    let mut actions = Vec::new();
-    if has_held_trigger_key {
-        actions.push(TargetKeyAction::ReleaseHeldTrigger);
-    }
-    actions.push(TargetKeyAction::PressTarget);
-    actions.push(TargetKeyAction::ReleaseTarget);
-    actions
 }
 
 pub fn press_jitter_duration_ms(min_ms: u64, max_ms: u64) -> u64 {
@@ -311,14 +291,6 @@ mod tests {
         let plan = target_fire_plan("T", Some("T")).unwrap();
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
         assert_eq!(plan.trigger_key_to_release, parse_target_key("T"));
-        assert_eq!(
-            plan.actions,
-            vec![
-                TargetKeyAction::ReleaseHeldTrigger,
-                TargetKeyAction::PressTarget,
-                TargetKeyAction::ReleaseTarget
-            ]
-        );
     }
 
     #[test]
@@ -326,14 +298,6 @@ mod tests {
         let plan = target_fire_plan("-", Some("Shift+-")).unwrap();
         assert_eq!(plan.target_key, parse_target_key("-").unwrap());
         assert_eq!(plan.trigger_key_to_release, parse_target_key("-"));
-        assert_eq!(
-            plan.actions,
-            vec![
-                TargetKeyAction::ReleaseHeldTrigger,
-                TargetKeyAction::PressTarget,
-                TargetKeyAction::ReleaseTarget
-            ]
-        );
     }
 
     #[test]
@@ -341,10 +305,6 @@ mod tests {
         let plan = target_fire_plan("Space", Some("W")).unwrap();
         assert_eq!(plan.target_key, parse_target_key("Space").unwrap());
         assert_eq!(plan.trigger_key_to_release, None);
-        assert_eq!(
-            plan.actions,
-            vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
-        );
     }
 
     #[test]
@@ -352,10 +312,6 @@ mod tests {
         let plan = target_fire_plan("T", None).unwrap();
         assert_eq!(plan.target_key, parse_target_key("T").unwrap());
         assert_eq!(plan.trigger_key_to_release, None);
-        assert_eq!(
-            plan.actions,
-            vec![TargetKeyAction::PressTarget, TargetKeyAction::ReleaseTarget]
-        );
     }
 
     #[test]

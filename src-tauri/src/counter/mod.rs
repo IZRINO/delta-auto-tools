@@ -430,7 +430,7 @@ impl SyncSettings for CounterSettings {
 
     fn default_item(&self) -> Self::Item {
         CounterItem {
-            id: format!("counter-{}", crate::utils::now_ms()),
+            id: format!("counter-{}", chrono::Utc::now().timestamp_millis() as u64),
             group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
             name: "计数器 1".to_string(),
             start_value: 0,

@@ -1,5 +1,4 @@
 import {useEffect, useRef} from "react";
-import {useTimeoutCleanup} from "@/hooks/use-timeout-cleanup";
 
 /** 自动保存 hook 选项 */
 export interface UseAutosaveOptions<TForm> {
@@ -40,9 +39,17 @@ export function useAutosave<TForm>(options: UseAutosaveOptions<TForm>): UseAutos
 
     const internalVersionRef = useRef(0);
     const autosaveVersionRef = externalVersionRef ?? internalVersionRef;
-    const saveTimeoutRef = useTimeoutCleanup();
+    const saveTimeoutRef = useRef<number | null>(null);
     const onSaveRef = useRef(onSave);
     const onErrorRef = useRef(onError);
+
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current !== null) {
+                window.clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // 保持回调 ref 最新，避免 useEffect 闭包过期
     useEffect(() => {

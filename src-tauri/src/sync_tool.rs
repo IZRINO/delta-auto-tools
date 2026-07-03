@@ -286,39 +286,6 @@ impl SyncToolRegistry {
         self.handlers.push((name, handler));
     }
 
-    /// 按注册顺序调用所有 handler，收集错误但不中断。
-    /// 注意：stop_active_sessions 现在使用 ToolLifecycleRegistry，
-    /// 此方法保留以兼容直接调用场景。
-    #[allow(dead_code)]
-    pub fn stop_all(&self, app: &AppHandle) -> Vec<String> {
-        let mut errors = Vec::new();
-        for (name, handler) in &self.handlers {
-            if let Err(error) = handler(app) {
-                errors.push(format!("{name}: {error}"));
-            }
-        }
-        errors
-    }
-
-    /// 仅测试使用：调用所有 handler，记录每个 handler 的调用状态和错误。
-    /// 返回 (被调用的 handler 名列表, 错误列表)。
-    #[cfg(test)]
-    pub fn stop_all_with_recording(
-        &self,
-        app: &AppHandle,
-    ) -> (Vec<&'static str>, Vec<String>) {
-        let mut called = Vec::new();
-        let mut errors = Vec::new();
-        for (name, handler) in &self.handlers {
-            called.push(*name);
-            if let Err(error) = handler(app) {
-                errors.push(format!("{name}: {error}"));
-            }
-        }
-        (called, errors)
-    }
-
-    /// 仅测试使用：返回 handler 列表的引用，便于直接调用 handler。
     #[cfg(test)]
     pub fn handlers_ref(&self) -> &Vec<(&'static str, StopHandler)> {
         &self.handlers

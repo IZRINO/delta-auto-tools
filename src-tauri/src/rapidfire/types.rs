@@ -280,7 +280,7 @@ impl Default for RapidfireSettings {
                 overlay_width: 400,
             }],
             cards: vec![RapidfireCard {
-                id: format!("rapidfire-{}", crate::utils::now_ms()),
+                id: format!("rapidfire-{}", chrono::Utc::now().timestamp_millis() as u64),
                 group_id: DEFAULT_RAPIDFIRE_GROUP_ID.to_string(),
                 name: "连发器 1".to_string(),
                 trigger_key: "F6".to_string(),

@@ -1,6 +1,5 @@
 import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
-import {useSyncedRef} from "@/hooks/use-synced-ref";
 import {computeIsDirty, isStaleSave} from "@/hooks/use-bootstrap-form-logic";
 import {getErrorMessage} from "@/lib/error-utils";
 
@@ -98,7 +97,10 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
     const autosaveVersionRef = useRef(0);
     const [bootstrap, setBootstrap] = useState<TBootstrap | null>(null);
     const [form, setForm] = useState<TForm | null>(null);
-    const formRef = useSyncedRef(form);
+    const formRef = useRef(form);
+    useEffect(() => {
+        formRef.current = form;
+    }, [form]);
     const [loading, setLoading] = useState(isNativeShell && !skipInitialLoad);
     const [saving, setSaving] = useState(false);
     const [statusMessage, setStatusMessage] = useState(

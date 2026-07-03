@@ -17,7 +17,6 @@ use crate::app_error::AppError;
 use crate::hotkey_types;
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
 use crate::profile::{self, ActiveProfileSnapshotPatch};
-use crate::utils::now_ms;
 
 use self::{
     overlay::PendingSelection,
@@ -193,7 +192,7 @@ async fn run_recognition_flow(
                 details: recognition::missing_regions_details(&settings_snapshot.regions),
                 triggered_by: triggered_by.to_string(),
                 auto_typed: false,
-                occurred_at_ms: now_ms(),
+                occurred_at_ms: chrono::Utc::now().timestamp_millis() as u64,
                 error: Some("请先完成 3 个区域选择".to_string()),
             }
         } else {

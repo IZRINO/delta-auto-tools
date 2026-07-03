@@ -26,7 +26,6 @@ use crate::sync_tool::{
     SyncItem, SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
-use crate::utils::now_ms;
 
 use self::types::{
     TimerDirection, TimerDisplaySettings, TimerGroup, TimerRect, TimerRunState, TimerRunStatus,
@@ -231,7 +230,7 @@ impl SyncSettings for TimerSettings {
     }
     fn default_item(&self) -> Self::Item {
         TimerItem {
-            id: format!("timer-{}", now_ms()),
+            id: format!("timer-{}", chrono::Utc::now().timestamp_millis() as u64),
             group_id: DEFAULT_TIMER_GROUP_ID.to_string(),
             name: "计时器 1".to_string(),
             duration_seconds: 30,
@@ -788,7 +787,7 @@ fn tick(app: &AppHandle) -> Result<(), String> {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
-        let now = now_ms();
+        let now = chrono::Utc::now().timestamp_millis() as u64;
         let mut changed = false;
         for runtime in inner.logic.runs.values_mut() {
             changed |= update_timer_runtime(runtime, now);
@@ -918,7 +917,7 @@ fn trigger_hotkey_targets(
             .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
 
-        let now = now_ms();
+        let now = chrono::Utc::now().timestamp_millis() as u64;
         let settings_snapshot = inner.settings.clone();
         apply_timer_trigger(&settings_snapshot, &mut inner.logic.runs, &timer_ids, now);
 

@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use image::{DynamicImage, GrayImage, Luma, RgbaImage};
 use xcap::Monitor;
 
-use crate::utils::now_ms;
 
 use super::{
     decoder,
@@ -71,7 +70,7 @@ pub async fn run_recognition(
     settings: &MorseSettings,
     triggered_by: &str,
 ) -> Result<MorseRunResult, String> {
-    let occurred_at_ms = now_ms();
+    let occurred_at_ms = chrono::Utc::now().timestamp_millis() as u64;
     let mut details = Vec::with_capacity(3);
     let mut decoded_digits = Vec::with_capacity(3);
     let mut errors = Vec::new();
