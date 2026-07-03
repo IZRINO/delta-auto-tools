@@ -250,8 +250,8 @@ export function ThemePanel() {
                         {allThemes.map((theme) => {
                             // 存在自定义 overrides 时不选中任何预设，避免误点击导致 overrides 被清空
                             const isActive = theme.id === bootstrap.activeThemeId && bootstrap.overrides.length === 0;
-                            // 用主题前 4 个语义色做缩略预览
-                            const swatches = ["--carbon", "--chalk", "--amber", "--alert-red"]
+                            // 用主题前 4 个 daisyUI 语义色做缩略预览：底色/文字/主色/错误色
+                            const swatches = ["--color-base-100", "--color-base-content", "--color-primary", "--color-error"]
                                 .map((k) => theme.tokens.find((t) => t.key === k)?.value ?? "")
                                 .filter(Boolean);
                             return (

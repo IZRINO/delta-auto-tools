@@ -54,47 +54,56 @@ export const BUILTIN_THEME_IDS = {
 } as const;
 
 /**
- * 可编辑的语义 token 白名单。
+ * 可编辑的 daisyUI 语义 token 白名单（20 个，architecture.md §1.6）。
  *
- * 主题面板的 TOKENS 编辑区只展示这些 key（避免把 chart/sidebar 等派生变量
- * 暴露给用户，降低认知负担）。Rust 端 builtin 主题仍包含完整 token 集合，
- * 这里只是前端编辑入口的子集。
+ * 主题面板的 TOKENS 编辑区只展示这些 key：
+ * 4 个 base 相关 + 8 组品牌/状态色的主色+content 配对。
+ * Rust 端 builtin 主题仍包含完整 28 个 token 集合（含 radius/size/border/depth/noise），
+ * 这里只是前端颜色编辑入口的子集，非颜色 token 不暴露给用户。
  */
 export const EDITABLE_TOKEN_KEYS = [
-    "--carbon",
-    "--slate",
-    "--iron",
-    "--chalk",
-    "--zinc",
-    "--dust",
-    "--seam",
-    "--amber",
-    "--rust",
-    "--moss",
-    "--void",
-    "--alert-red",
-    "--warning-amber",
-    "--valid-green",
-    "--terminal-green",
-    "--phosphor",
+    "--color-base-100",
+    "--color-base-200",
+    "--color-base-300",
+    "--color-base-content",
+    "--color-primary",
+    "--color-primary-content",
+    "--color-secondary",
+    "--color-secondary-content",
+    "--color-accent",
+    "--color-accent-content",
+    "--color-neutral",
+    "--color-neutral-content",
+    "--color-info",
+    "--color-info-content",
+    "--color-success",
+    "--color-success-content",
+    "--color-warning",
+    "--color-warning-content",
+    "--color-error",
+    "--color-error-content",
 ] as const;
 
 /** token 的中文显示名映射，供主题面板展示。 */
 export const TOKEN_LABELS: Record<string, string> = {
-    "--carbon": "基底 / Carbon",
-    "--slate": "二级底 / Slate",
-    "--iron": "分隔灰 / Iron",
-    "--chalk": "主前景 / Chalk",
-    "--zinc": "次文字 / Zinc",
-    "--dust": "弱文字 / Dust",
-    "--seam": "缝合线 / Seam",
-    "--amber": "强调主色 / Amber",
-    "--rust": "警告橙 / Rust",
-    "--moss": "成功绿 / Moss",
-    "--void": "深空灰 / Void",
-    "--alert-red": "告警红 / Alert Red",
-    "--warning-amber": "警示琥珀 / Warning Amber",
-    "--valid-green": "有效绿 / Valid Green",
-    "--terminal-green": "终端绿 / Terminal Green",
-    "--phosphor": "磷光 / Phosphor",
+    "--color-base-100": "基底 / Base-100",
+    "--color-base-200": "二级底 / Base-200",
+    "--color-base-300": "三级底 / Base-300",
+    "--color-base-content": "基底文字 / Base-Content",
+    "--color-primary": "主色 / Primary",
+    "--color-primary-content": "主色文字 / Primary-Content",
+    "--color-secondary": "次色 / Secondary",
+    "--color-secondary-content": "次色文字 / Secondary-Content",
+    "--color-accent": "强调色 / Accent",
+    "--color-accent-content": "强调文字 / Accent-Content",
+    "--color-neutral": "中性色 / Neutral",
+    "--color-neutral-content": "中性文字 / Neutral-Content",
+    "--color-info": "信息色 / Info",
+    "--color-info-content": "信息文字 / Info-Content",
+    "--color-success": "成功色 / Success",
+    "--color-success-content": "成功文字 / Success-Content",
+    "--color-warning": "警告色 / Warning",
+    "--color-warning-content": "警告文字 / Warning-Content",
+    "--color-error": "错误色 / Error",
+    "--color-error-content": "错误文字 / Error-Content",
 };
