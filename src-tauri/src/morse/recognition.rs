@@ -22,6 +22,7 @@ struct DetectionSuccess {
     morse: String,
 }
 
+#[derive(Debug, Clone)]
 struct DetectionFailure {
     threshold_mode: &'static str,
     contour_count: usize,
@@ -596,5 +597,259 @@ mod tests {
         let bounds = region_to_capture_bounds(&rect(900, 100, 200, 40), 0, 0, 960, 540, 2.0);
 
         assert_eq!(bounds, None);
+    }
+
+    // --- Morse 识别核心算法单测 (VAL-AR-017 ~ VAL-AR-020) ---
+
+    /// 构造双峰灰度图像：左半暗（50）、右半亮（200），验证 otsu 阈值在两者之间
+    #[test]
+    fn test_otsu_threshold_bimodal_histogram() {
+        let width = 100u32;
+        let height = 10u32;
+        let mut gray = GrayImage::new(width, height);
+
+        for y in 0..height {
+            for x in 0..width {
+                let value = if x < width / 2 { 50 } else { 200 };
+                gray.put_pixel(x, y, Luma([value]));
+            }
+        }
+
+        let threshold = otsu_threshold(&gray);
+
+        // 阈值应在 50 和 200 之间（理想值约为 125）
+        assert!(
+            (50..200).contains(&threshold),
+            "otsu 阈值 {threshold} 应在 50 与 200 之间"
+        );
+    }
+
+    /// 单峰图像（全灰 128），otsu 应返回 0（首个使方差最大的层级）
+    #[test]
+    fn test_otsu_threshold_single_peak() {
+        let width = 50u32;
+        let height = 50u32;
+        let mut gray = GrayImage::new(width, height);
+
+        for y in 0..height {
+            for x in 0..width {
+                gray.put_pixel(x, y, Luma([128]));
+            }
+        }
+
+        let threshold = otsu_threshold(&gray);
+
+        // 单峰直方图：方差始终 0，best_threshold 保持初始值 0
+        assert_eq!(threshold, 0, "单峰图像 otsu 阈值应为 0");
+    }
+
+    /// 空图像（0×0），otsu 返回 0
+    #[test]
+    fn test_otsu_threshold_empty_image() {
+        let gray = GrayImage::new(0, 0);
+        let threshold = otsu_threshold(&gray);
+        assert_eq!(threshold, 0, "空图像 otsu 阈值应为 0");
+    }
+
+    /// 构造 3 个不相连白色区域，验证 detect_components BFS 检测到 3 个连通域
+    #[test]
+    fn test_detect_components_three_islands() {
+        // 30×10 二值图，在 x=[2..4] y=[2..4]、x=[10..14] y=[2..6]、x=[22..26] y=[4..8] 放白色块
+        let width = 30u32;
+        let height = 10u32;
+        let mut binary = GrayImage::new(width, height);
+
+        // 岛屿 1：3×3
+        for y in 2..5u32 {
+            for x in 2..5u32 {
+                binary.put_pixel(x, y, Luma([255]));
+            }
+        }
+
+        // 岛屿 2：4×4
+        for y in 2..6u32 {
+            for x in 10..14u32 {
+                binary.put_pixel(x, y, Luma([255]));
+            }
+        }
+
+        // 岛屿 3：4×4
+        for y in 4..8u32 {
+            for x in 22..26u32 {
+                binary.put_pixel(x, y, Luma([255]));
+            }
+        }
+
+        let components = detect_components(&binary);
+
+        assert_eq!(
+            components.len(),
+            3,
+            "应检测到 3 个连通域，实际 {}",
+            components.len()
+        );
+
+        // 验证面积
+        let mut areas: Vec<usize> = components.iter().map(|c| c.area).collect();
+        areas.sort();
+        assert_eq!(areas, [9, 16, 16], "连通域面积应为 [9, 16, 16]");
+    }
+
+    /// 全黑图像，detect_components 返回空
+    #[test]
+    fn test_detect_components_all_black() {
+        let binary = GrayImage::new(20, 20);
+        let components = detect_components(&binary);
+        assert!(components.is_empty(), "全黑图像不应有连通域");
+    }
+
+    /// 单个白色像素，detect_components 返回 1 个面积=1 的连通域
+    #[test]
+    fn test_detect_components_single_pixel() {
+        let mut binary = GrayImage::new(10, 10);
+        binary.put_pixel(5, 5, Luma([255]));
+
+        let components = detect_components(&binary);
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].area, 1);
+    }
+
+    /// components_to_morse：窄组件映射为 '.'，宽组件映射为 '-'
+    #[test]
+    fn test_components_to_morse_dot_and_dash() {
+        // 窄组件（宽 2 高 10）→ '.'
+        let dot = ComponentBounds {
+            min_x: 0,
+            max_x: 1,
+            min_y: 0,
+            max_y: 9,
+            area: 20,
+        };
+
+        // 宽组件（宽 20 高 10）→ '-'
+        let dash = ComponentBounds {
+            min_x: 10,
+            max_x: 29,
+            min_y: 0,
+            max_y: 9,
+            area: 200,
+        };
+
+        let morse = components_to_morse(&[dot, dash]);
+        assert_eq!(morse, ".-", "窄+宽组件应解码为 '.-'");
+    }
+
+    /// 5 个等宽窄组件 → "....."（对应数字 5）
+    #[test]
+    fn test_components_to_morse_five_dots() {
+        let components: Vec<ComponentBounds> = (0..5)
+            .map(|i| ComponentBounds {
+                min_x: i * 6,
+                max_x: i * 6 + 2,
+                min_y: 0,
+                max_y: 9,
+                area: 30,
+            })
+            .collect();
+
+        let morse = components_to_morse(&components);
+        assert_eq!(morse, ".....", "5 个窄组件应解码为 '.....'");
+    }
+
+    /// 合成 5 组件 Morse 图像，验证 detect_morse 全链路解码
+    /// 构造 "....."（数字 5）的合成图像
+    #[test]
+    fn test_detect_morse_synthetic_image_five_dots() {
+        let width = 80u32;
+        let height = 20u32;
+        let mut image = RgbaImage::new(width, height);
+
+        // 黑色背景
+        for y in 0..height {
+            for x in 0..width {
+                image.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // 5 个窄白色竖条（dot），间距 10px，宽 3px，高 16px
+        for (i, x_offset) in [5, 18, 31, 44, 57].iter().enumerate() {
+            // 确保至少 5 个组件
+            let _ = i;
+            for y in 2..18u32 {
+                for dx in 0..3u32 {
+                    image.put_pixel(
+                        x_offset + dx,
+                        y,
+                        image::Rgba([255, 255, 255, 255]),
+                    );
+                }
+            }
+        }
+
+        let result = detect_morse(&image, 127);
+        assert!(result.is_ok(), "detect_morse 应成功识别 5-dot 图像");
+
+        let success = result.unwrap();
+        assert_eq!(success.morse, ".....", "Morse 码应为 '.....'");
+    }
+
+    /// 合成 "-----"（数字 0）的图像，5 个宽横条
+    #[test]
+    fn test_detect_morse_synthetic_image_five_dashes() {
+        let width = 160u32;
+        let height = 20u32;
+        let mut image = RgbaImage::new(width, height);
+
+        // 黑色背景
+        for y in 0..height {
+            for x in 0..width {
+                image.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // 5 个宽白色横条（dash），宽 16px，高 4px
+        for x_offset in [5, 30, 55, 80, 105] {
+            for y in 8..12u32 {
+                for dx in 0..16u32 {
+                    image.put_pixel(
+                        x_offset + dx,
+                        y,
+                        image::Rgba([255, 255, 255, 255]),
+                    );
+                }
+            }
+        }
+
+        let result = detect_morse(&image, 127);
+        assert!(result.is_ok(), "detect_morse 应成功识别 5-dash 图像");
+
+        let success = result.unwrap();
+        assert_eq!(success.morse, "-----", "Morse 码应为 '-----'");
+    }
+
+    /// 组件不足 5 个时，detect_morse 返回 Err
+    #[test]
+    fn test_detect_morse_too_few_components() {
+        let width = 40u32;
+        let height = 20u32;
+        let mut image = RgbaImage::new(width, height);
+
+        // 黑色背景
+        for y in 0..height {
+            for x in 0..width {
+                image.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+
+        // 仅 2 个白色块
+        for dx in 0..3u32 {
+            for y in 5..15u32 {
+                image.put_pixel(5 + dx, y, image::Rgba([255, 255, 255, 255]));
+                image.put_pixel(20 + dx, y, image::Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        let result = detect_morse(&image, 127);
+        assert!(result.is_err(), "少于 5 个组件应返回 Err");
     }
 }
