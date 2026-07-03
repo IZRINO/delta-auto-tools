@@ -25,28 +25,16 @@
 
 > Wiki 与 codegraph 互补：wiki 适合理解「为什么这样设计」和「整体流程」，codegraph 适合查「符号定义在哪、谁调用了谁」。
 
-## Code Navigation: Use Codegraph MCP
+<!-- CODEGRAPH_START -->
+## CodeGraph
 
-本项目已建立 codegraph 索引（229 文件 / 4392 节点 / 9598 边）。**探索代码时优先使用 codegraph MCP，不要手动 grep 逐文件翻阅**：
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
 
-| 场景 | 工具 | 示例 |
-|------|------|------|
-| 理解某模块如何工作 | `codegraph_explore` | `codegraph_explore("MorseState run_recognition_flow")` |
-| 查找符号定义位置 | `codegraph_search` | `codegraph_search("MorseSettings")` |
-| 查看某函数调用者 | `codegraph_callers` | `codegraph_callers("timer_save_settings")` |
-| 查看某函数调用了什么 | `codegraph_callees` | `codegraph_callees("run_recognition_flow")` |
-| 评估改动影响范围 | `codegraph_impact` | `codegraph_impact("ToolLogic")` |
-| 获取单个符号完整源码 | `codegraph_node` | `codegraph_node("TimerLogic", includeCode=true)` |
-| 浏览文件树 | `codegraph_files` | `codegraph_files(format="tree")` |
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
 
-典型探索流程：`codegraph_explore("keyword")` 获取相关源码 → `codegraph_callers`/`callees` 追踪调用链 → `codegraph_impact` 评估改动影响。
-
-**以下信息不再在本文档中重复维护**，请通过 codegraph 查询：
-- 前端与 Rust 后端完整文件树 → `codegraph_files`
-- 各工具的 Tauri command 清单与签名 → `codegraph_search("morse_")` / `codegraph_search("timer_")` 等
-- Tauri 事件名常量 → `codegraph_explore("events.rs")`
-- 各模块数据结构定义 → `codegraph_search("Settings")` / `codegraph_search("Bootstrap")`
-- 测试文件分布 → `codegraph_files(pattern="*.test.*")`
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+<!-- CODEGRAPH_END -->
 
 ## AI Output 规范
 
