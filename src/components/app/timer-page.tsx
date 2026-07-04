@@ -452,8 +452,8 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                     description="总开关控制计时器透明窗口与快捷键是否生效。"
                 />
                 <CardBody className="grid gap-3">
-                    <div className="grid gap-px border border-base-300 bg-base-content xl:grid-cols-1">
-                        <ControlTile className="border-0 flex items-center gap-3 bg-base-200">
+                    <div className="grid gap-px overflow-hidden rounded-box border border-base-300 bg-base-content xl:grid-cols-1">
+                        <ControlTile className="flex items-center gap-3 rounded-none border-0 bg-base-200">
                             <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
                                     onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
                             <div className="min-w-0">
@@ -582,7 +582,7 @@ function TimerCard({
                 icon={<RiTimerLine/>}
                 title={(
                     <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-100 placeholder:text-base-200 focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
                         placeholder="输入卡片名称"
                         value={timer.name || "计时器"}
                         disabled={controlsDisabled}

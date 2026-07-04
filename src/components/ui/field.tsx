@@ -128,18 +128,23 @@ function FieldTitle({className, ...props}: React.ComponentProps<"div">) {
     )
 }
 
-function FieldDescription({className, ...props}: React.ComponentProps<"p">) {
+function FieldDescription({children, className, title, ...props}: React.ComponentProps<"p">) {
+    const resolvedTitle = title ?? (typeof children === "string" ? children : undefined)
+
     return (
         <p
             data-slot="field-description"
+            title={resolvedTitle}
             className={cn(
-                "label text-start text-xs/relaxed leading-normal text-base-content/60 group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
+                "label min-w-0 max-w-full truncate text-start text-xs/relaxed leading-normal text-base-content/60 group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
                 "last:mt-0 nth-last-2:-mt-1",
                 "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
                 className
             )}
             {...props}
-        />
+        >
+            {children}
+        </p>
     )
 }
 

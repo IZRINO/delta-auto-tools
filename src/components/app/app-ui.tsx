@@ -62,16 +62,16 @@ export function MacroHeader({actions, badges, className, code, subtitle, title, 
                     {verticalLabel ? <span className="badge badge-ghost badge-sm">{verticalLabel}</span> : null}
                     {badges}
                 </div>
-                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="min-w-0">
-                        <h1 className="text-4xl font-semibold leading-tight text-base-content">
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+                    <div className="min-w-64 flex-1">
+                        <h1 className="truncate text-4xl font-semibold leading-tight text-base-content" title={title}>
                             {title}
                         </h1>
-                        <p className="mt-2 max-w-[64ch] text-sm leading-relaxed text-base-content/70">
+                        <p className="mt-2 max-w-[64ch] truncate text-sm leading-relaxed text-base-content/70" title={subtitle}>
                             {subtitle}
                         </p>
                     </div>
-                    {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
+                    {actions ? <div className="card-actions min-w-0 flex-wrap justify-end">{actions}</div> : null}
                 </div>
             </div>
         </section>
@@ -91,6 +91,8 @@ type PageHeroProps = {
 };
 
 export function PageHero({actions, badges, className, description, eyebrow, stats, title}: PageHeroProps) {
+    const descriptionTitle = typeof description === "string" ? description : undefined;
+
     return (
         <section
             className={cn(
@@ -103,12 +105,12 @@ export function PageHero({actions, badges, className, description, eyebrow, stat
                     <span className="badge badge-primary badge-sm">{eyebrow}</span>
                     {badges}
                 </div>
-                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="min-w-0">
-                        <h1 className="text-4xl font-semibold leading-tight text-base-content">{title}</h1>
-                        <p className="mt-2 max-w-[64ch] text-sm leading-relaxed text-base-content/70">{description}</p>
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+                    <div className="min-w-64 flex-1">
+                        <h1 className="truncate text-4xl font-semibold leading-tight text-base-content" title={title}>{title}</h1>
+                        <p className="mt-2 max-w-[64ch] truncate text-sm leading-relaxed text-base-content/70" title={descriptionTitle}>{description}</p>
                     </div>
-                    {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
+                    {actions ? <div className="card-actions min-w-0 flex-wrap justify-end">{actions}</div> : null}
                 </div>
                 {stats ? <div className="stats stats-vertical border border-base-300 bg-base-100 lg:stats-horizontal">{stats}</div> : null}
             </div>
@@ -164,14 +166,16 @@ type SignalTileProps = {
 };
 
 export function SignalTile({className, detail, icon, label, value}: SignalTileProps) {
+    const detailTitle = typeof detail === "string" ? detail : undefined;
+
     return (
-        <div className={cn("stat min-h-12 bg-base-100 px-3 py-2 text-base-content", className)}>
+        <div className={cn("stat min-h-12 min-w-0 bg-base-100 px-3 py-2 text-base-content", className)}>
             {icon ? <div className="stat-figure text-primary">{icon}</div> : null}
-            <div className="stat-title truncate text-xs">{label}</div>
+            <div className="stat-title truncate text-xs" title={label}>{label}</div>
             <div className="stat-value flex items-center gap-2 text-lg">
                 {value}
             </div>
-            {detail ? <div className="stat-desc truncate">{detail}</div> : null}
+            {detail ? <div className="stat-desc truncate" title={detailTitle}>{detail}</div> : null}
         </div>
     );
 }
@@ -211,11 +215,13 @@ type SectionHeaderProps = {
 };
 
 export function SectionHeader({actions, badge, className, description, eyebrow, icon, title}: SectionHeaderProps) {
+    const descriptionTitle = typeof description === "string" ? description : undefined;
+
     return (
         <CardHeader
             className={cn("border-b border-base-300 pb-3", className)}>
             <div className="flex min-w-0 items-start justify-between gap-4">
-                <div className="flex min-w-0 items-start gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                     {icon ? (
                         <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-primary text-primary-content">
                             {icon}
@@ -226,10 +232,10 @@ export function SectionHeader({actions, badge, className, description, eyebrow, 
                             <p className="mb-1 text-xs text-base-content/60">{eyebrow}</p> : null}
                         <CardTitle className="mt-0.5 truncate">{title}</CardTitle>
                         {description ? <CardDescription
-                            className="mt-1 truncate">{description}</CardDescription> : null}
+                            className="mt-1 truncate" title={descriptionTitle}>{description}</CardDescription> : null}
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {actions}
                     {badge ? <div className="shrink-0">{badge}</div> : null}
                 </div>
@@ -246,7 +252,7 @@ type ControlTileProps = {
 };
 
 export function ControlTile({children, className}: ControlTileProps) {
-    return <div className={cn("rounded-box border border-base-300 bg-base-100 p-4", className)}>{children}</div>;
+    return <div className={cn("min-w-0 overflow-hidden rounded-box border border-base-300 bg-base-100 p-4", className)}>{children}</div>;
 }
 
 export function InlineControl({children, className}: ControlTileProps) {

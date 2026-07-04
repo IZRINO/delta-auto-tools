@@ -488,8 +488,8 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                     description="总开关控制计数器的透明窗口与快捷键是否生效。"
                 />
                 <CardBody className="grid gap-3">
-                    <div className="grid gap-px border border-base-300 bg-base-content">
-                        <ControlTile className="border-0 flex items-center gap-3 bg-base-100">
+                    <div className="grid gap-px overflow-hidden rounded-box border border-base-300 bg-base-content">
+                        <ControlTile className="flex items-center gap-3 rounded-none border-0 bg-base-100">
                             <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
                                     onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
                             <div className="min-w-0">
@@ -627,7 +627,7 @@ function CounterCard({
                 icon={<RiSpeedUpLine/>}
                 title={(
                     <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-100 placeholder:text-base-200 focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
                         placeholder="输入卡片名称"
                         value={counter.name || "计数器"}
                         disabled={controlsDisabled}
