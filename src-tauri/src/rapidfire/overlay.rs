@@ -5,8 +5,8 @@ use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, Webv
 use super::keys::RAPIDFIRE_DISPLAY_MIN_HEIGHT;
 use super::types::{RapidfireGroup, RapidfireSettings, DEFAULT_RAPIDFIRE_GROUP_ID};
 use crate::overlay_utils::{
-    destroy_stale_windows, destroy_windows_with_prefix, encoded_query_value,
-    hide_window, safe_label_component,
+    destroy_stale_windows, destroy_windows_with_prefix, encoded_query_value, hide_window,
+    safe_label_component,
 };
 
 const RAPIDFIRE_DISPLAY_LABEL: &str = "rapidfire-display";
@@ -127,8 +127,8 @@ pub fn hide_display_windows(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::keys::RAPIDFIRE_DISPLAY_MIN_HEIGHT;
+    use super::*;
 
     #[test]
     fn display_height_has_minimum() {

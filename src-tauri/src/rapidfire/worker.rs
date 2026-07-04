@@ -6,9 +6,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::events;
-use super::keys::{
-    self, KeyEmitter, RAPIDFIRE_INITIAL_SETTLE_MS, RAPIDFIRE_MIN_INTERVAL_MS,
-};
+use super::keys::{self, KeyEmitter, RAPIDFIRE_INITIAL_SETTLE_MS, RAPIDFIRE_MIN_INTERVAL_MS};
 use super::RapidfireLogic;
 use crate::tool_base::ToolLogic;
 
@@ -409,12 +407,7 @@ fn wait_for_next_fire(
     }
 }
 
-pub fn update_session_count(
-    app: &AppHandle,
-    card_id: &str,
-    session_id: &str,
-    count: u64,
-) -> bool {
+pub fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count: u64) -> bool {
     let state = app.state::<super::RapidfireState>();
     let bootstrap = {
         let Ok(mut inner) = state.lock_inner() else {
@@ -463,10 +456,7 @@ pub fn finish_session(app: &AppHandle, card_id: &str, session_id: &str) {
     super::emit_state(app, bootstrap);
 }
 
-pub fn stop_latest_active_session(
-    run: &mut CardRuntime,
-    control: SessionControl,
-) -> bool {
+pub fn stop_latest_active_session(run: &mut CardRuntime, control: SessionControl) -> bool {
     while let Some(session_id) = run.active_session_ids.pop() {
         let Some(session) = run.sessions.get_mut(&session_id) else {
             continue;
@@ -591,7 +581,10 @@ mod tests {
             },
         );
 
-        assert_eq!(runtime.aggregate_status(), super::super::types::RapidfireRunStatus::Firing);
+        assert_eq!(
+            runtime.aggregate_status(),
+            super::super::types::RapidfireRunStatus::Firing
+        );
         assert_eq!(runtime.aggregate_count(), 3);
         assert_eq!(runtime.sessions.len(), 2);
     }
@@ -651,7 +644,9 @@ mod tests {
         let mut emitter = super::super::keys::MockKeyEmitter::new();
 
         let result = worker_step(
-            WorkerDecision::Fire { stop_after_fire: false },
+            WorkerDecision::Fire {
+                stop_after_fire: false,
+            },
             &mut emitter,
             "1",
             "F1",
@@ -672,7 +667,9 @@ mod tests {
         let mut emitter = super::super::keys::MockKeyEmitter::new();
 
         let result = worker_step(
-            WorkerDecision::Fire { stop_after_fire: true },
+            WorkerDecision::Fire {
+                stop_after_fire: true,
+            },
             &mut emitter,
             "1",
             "F1",
@@ -690,15 +687,7 @@ mod tests {
     fn worker_step_stops_on_stop_decision() {
         let mut emitter = super::super::keys::MockKeyEmitter::new();
 
-        let result = worker_step(
-            WorkerDecision::Stop,
-            &mut emitter,
-            "1",
-            "F1",
-            1,
-            1,
-            3,
-        );
+        let result = worker_step(WorkerDecision::Stop, &mut emitter, "1", "F1", 1, 1, 3);
 
         assert!(emitter.calls.is_empty(), "Stop 决策不应调用 emitter");
         assert_eq!(result, WorkerStepResult::Stop);
@@ -709,15 +698,7 @@ mod tests {
     fn worker_step_cancels_on_cancel_decision() {
         let mut emitter = super::super::keys::MockKeyEmitter::new();
 
-        let result = worker_step(
-            WorkerDecision::Cancel,
-            &mut emitter,
-            "1",
-            "F1",
-            1,
-            1,
-            3,
-        );
+        let result = worker_step(WorkerDecision::Cancel, &mut emitter, "1", "F1", 1, 1, 3);
 
         assert!(emitter.calls.is_empty(), "Cancel 决策不应调用 emitter");
         assert_eq!(result, WorkerStepResult::Cancel);
@@ -732,7 +713,9 @@ mod tests {
         // 模拟 3 次开火
         for _ in 0..3 {
             let result = worker_step(
-                WorkerDecision::Fire { stop_after_fire: false },
+                WorkerDecision::Fire {
+                    stop_after_fire: false,
+                },
                 &mut emitter,
                 "1",
                 "F1",
@@ -747,15 +730,7 @@ mod tests {
         }
 
         // 第 4 次收到 Stop 信号
-        let result = worker_step(
-            WorkerDecision::Stop,
-            &mut emitter,
-            "1",
-            "F1",
-            1,
-            1,
-            count,
-        );
+        let result = worker_step(WorkerDecision::Stop, &mut emitter, "1", "F1", 1, 1, count);
         assert_eq!(result, WorkerStepResult::Stop);
 
         // 验证 emitter 被调用 3 次（3 次开火）
@@ -770,7 +745,9 @@ mod tests {
         let count = 0u64;
 
         let result = worker_step(
-            WorkerDecision::Fire { stop_after_fire: true },
+            WorkerDecision::Fire {
+                stop_after_fire: true,
+            },
             &mut emitter,
             "1",
             "F1",
@@ -788,7 +765,8 @@ mod tests {
     /// 通过检查 control_tx.take() 确认无残留控制权。
     #[test]
     fn stop_all_sessions_drains_control_senders_ensuring_threads_can_exit() {
-        let mut runs: std::collections::HashMap<String, CardRuntime> = std::collections::HashMap::new();
+        let mut runs: std::collections::HashMap<String, CardRuntime> =
+            std::collections::HashMap::new();
 
         // 设置 3 个 card，每个有 1 个 active session
         for i in 0..3 {
@@ -812,9 +790,15 @@ mod tests {
 
         // 验证所有 session 的 control_tx 已被 take（为 None）
         for run in runs.values() {
-            assert!(run.active_session_ids.is_empty(), "active_session_ids 应被清空");
+            assert!(
+                run.active_session_ids.is_empty(),
+                "active_session_ids 应被清空"
+            );
             for session in run.sessions.values() {
-                assert!(session.control_tx.is_none(), "control_tx 应已被取走，worker 线程可退出");
+                assert!(
+                    session.control_tx.is_none(),
+                    "control_tx 应已被取走，worker 线程可退出"
+                );
             }
         }
     }
@@ -826,7 +810,8 @@ mod tests {
         let mut run = CardRuntime::default();
         let (control_tx, control_rx) = std::sync::mpsc::channel();
 
-        run.active_session_ids.push("session-terminator".to_string());
+        run.active_session_ids
+            .push("session-terminator".to_string());
         run.sessions.insert(
             "session-terminator".to_string(),
             RapidfireSessionRuntime {

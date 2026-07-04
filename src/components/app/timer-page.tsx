@@ -452,24 +452,24 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                     description="总开关控制计时器透明窗口与快捷键是否生效。"
                 />
                 <CardBody className="grid gap-3">
-                    <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)] xl:grid-cols-1">
-                        <ControlTile className="border-0 flex items-center gap-3 bg-[var(--slate)]">
+                    <div className="grid gap-px border border-base-300 bg-base-content xl:grid-cols-1">
+                        <ControlTile className="border-0 flex items-center gap-3 bg-base-200">
                             <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
                                     onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
                             <div className="min-w-0">
-                                <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">计时总开关</p>
+                                <p className="font-mono text-xs font-medium text-base-content">计时总开关</p>
                                 <p className="mt-1 text-xs text-muted-foreground">控制计时器快捷键与透明窗口输出。</p>
                             </div>
                         </ControlTile>
                     </div>
                     <InlineControl
-                        className="font-mono text-xs font-medium tracking-[0.08em] text-[var(--zinc)] uppercase">
+                        className="font-mono text-xs font-medium text-base-content/60">
                         {statusMessage}
                     </InlineControl>
                 </CardBody>
             </TacticalCard>
 
-            <div className="col-span-12 h-0.5 bg-[var(--chalk)]"/>
+            <div className="col-span-12 h-0.5 bg-base-content"/>
 
             <SectionHeader
                 className="col-span-12"
@@ -575,14 +575,14 @@ function TimerCard({
 
     return (
         <TacticalCard active={isDragging}
-                      className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "", run?.status === "running" ? "border-l-4 border-l-[var(--amber)]" : run?.status === "finished" ? "border-l-4 border-l-[var(--valid-green)]" : "")}
+                      className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", run?.status === "running" ? "border-l-4 border-l-primary" : run?.status === "finished" ? "border-l-4 border-l-success" : "")}
                       data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
             <SectionHeader
                 eyebrow="计时器"
                 icon={<RiTimerLine/>}
                 title={(
                     <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-100 placeholder:text-base-200 focus-visible:ring-0 focus-visible:ring-offset-0"
                         placeholder="输入卡片名称"
                         value={timer.name || "计时器"}
                         disabled={controlsDisabled}
@@ -595,7 +595,7 @@ function TimerCard({
                     <div className="flex items-center gap-1.5">
                         <Select disabled={controlsDisabled} value={timer.groupId}
                                 onValueChange={(value) => onUpdate({groupId: value})}>
-                            <SelectTrigger className="w-32 bg-[var(--carbon)]">
+                            <SelectTrigger className="w-32 bg-base-100">
                                 <SelectValue placeholder="分组"/>
                             </SelectTrigger>
                             <SelectContent>
@@ -606,7 +606,7 @@ function TimerCard({
                         </Select>
                         <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
                         <Button aria-label={isFavorite ? "取消收藏" : "加入收藏"} aria-pressed={isFavorite}
-                                className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")}
+                                className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
                                 disabled={controlsDisabled} onClick={onToggleFavorite} size="icon-sm" type="button"
                                 variant="outline">
                             {isFavorite ? <RiStarFill/> : <RiStarLine/>}
@@ -639,10 +639,10 @@ function TimerCard({
                                              value={timer.direction} variant="outline"
                                              onValueChange={(value) => value ? onUpdate({direction: value as TimerItemForm["direction"]}) : undefined}>
                                     <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-[var(--chalk)] font-mono text-sm font-black data-[state=on]:bg-[var(--chalk)] data-[state=on]:text-[var(--carbon)]"
+                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                         value="countup">正</ToggleGroupItem>
                                     <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-[var(--chalk)] font-mono text-sm font-black data-[state=on]:bg-[var(--chalk)] data-[state=on]:text-[var(--carbon)]"
+                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                         value="countdown">反</ToggleGroupItem>
                                 </ToggleGroup>
                             </SurfaceToggleGroup>
@@ -656,10 +656,10 @@ function TimerCard({
                                              value={timer.triggerMode} variant="outline"
                                              onValueChange={(value) => value ? onUpdate({triggerMode: value as TimerItemForm["triggerMode"]}) : undefined}>
                                     <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-[var(--chalk)] font-mono text-sm font-black data-[state=on]:bg-[var(--chalk)] data-[state=on]:text-[var(--carbon)]"
+                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                         value="press">按下</ToggleGroupItem>
                                     <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-[var(--chalk)] font-mono text-sm font-black data-[state=on]:bg-[var(--chalk)] data-[state=on]:text-[var(--carbon)]"
+                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                         value="release">释放</ToggleGroupItem>
                                 </ToggleGroup>
                             </SurfaceToggleGroup>

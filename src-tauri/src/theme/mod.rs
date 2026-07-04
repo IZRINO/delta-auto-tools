@@ -204,7 +204,6 @@ mod tests {
         assert_eq!(primary.value, "oklch(50% 0.2 20)");
     }
 
-
     #[test]
     fn build_bootstrap_uses_overrides_when_no_theme_selected() {
         let settings = ThemeSettings {
@@ -249,7 +248,10 @@ mod tests {
         settings.active_theme_id = "industrial-light".to_string();
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
-        let valentine = builtin.iter().find(|t| t.id == builtins::VALENTINE_ID).unwrap();
+        let valentine = builtin
+            .iter()
+            .find(|t| t.id == builtins::VALENTINE_ID)
+            .unwrap();
         assert_eq!(
             current_merged_tokens(&state),
             apply::merge_theme_tokens(valentine, &[])
@@ -264,7 +266,10 @@ mod tests {
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin.clone());
         assert_eq!(boot.active_theme_id, builtins::VALENTINE_ID);
-        let valentine = builtin.iter().find(|t| t.id == builtins::VALENTINE_ID).unwrap();
+        let valentine = builtin
+            .iter()
+            .find(|t| t.id == builtins::VALENTINE_ID)
+            .unwrap();
         let expected = apply::merge_theme_tokens(valentine, &[]);
         assert_eq!(boot.merged_tokens, expected);
     }

@@ -668,7 +668,9 @@ mod tests {
     /// 验证 SyncToolRegistry 注册 3 个 handler 后名称列表正确。
     #[test]
     fn sync_tool_registry_registered_names_correct() {
-        fn ok_handler(_app: &AppHandle) -> Result<(), String> { Ok(()) }
+        fn ok_handler(_app: &AppHandle) -> Result<(), String> {
+            Ok(())
+        }
 
         let mut registry = SyncToolRegistry::default();
         registry.register("timer", ok_handler);
@@ -692,10 +694,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         assert_eq!(registry.registered_names(), names);
@@ -719,10 +724,13 @@ mod tests {
 
         let count_clone = Arc::clone(&call_count);
         let mut registry = ToolLifecycleRegistry::default();
-        registry.register("test", Box::new(move |_app: &AppHandle| {
-            *count_clone.lock().unwrap() += 1;
-            Ok(())
-        }));
+        registry.register(
+            "test",
+            Box::new(move |_app: &AppHandle| {
+                *count_clone.lock().unwrap() += 1;
+                Ok(())
+            }),
+        );
 
         // 模拟 stop_all 的行为：
         // 第一次调用：stopped 从 false -> true
@@ -754,10 +762,13 @@ mod tests {
 
         let ok_clone = Arc::clone(&ok_count);
         let mut registry = ToolLifecycleRegistry::default();
-        registry.register("ok", Box::new(move |_app: &AppHandle| {
-            *ok_clone.lock().unwrap() += 1;
-            Ok(())
-        }));
+        registry.register(
+            "ok",
+            Box::new(move |_app: &AppHandle| {
+                *ok_clone.lock().unwrap() += 1;
+                Ok(())
+            }),
+        );
 
         let err_clone = Arc::clone(&err_count);
         registry.register(
@@ -801,10 +812,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         // 按注册顺序调用所有 handler

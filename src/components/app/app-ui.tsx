@@ -30,7 +30,7 @@ type AppPageProps = {
 
 export function AppPage({children, className}: AppPageProps) {
     return (
-        <div className={cn("grid min-h-0 flex-1 grid-cols-12 gap-2 font-sans", className)}>
+        <div className={cn("grid min-h-0 flex-1 grid-cols-12 gap-3 font-sans", className)}>
             {children}
         </div>
     );
@@ -52,40 +52,27 @@ export function MacroHeader({actions, badges, className, code, subtitle, title, 
     return (
         <section
             className={cn(
-                "relative col-span-12 overflow-hidden border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]",
+                "card card-border col-span-12 bg-base-200 text-base-content shadow-none",
                 className,
             )}
         >
-            <div className="relative grid gap-px bg-[var(--chalk)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-                <div
-                    className="hidden shrink-0 border-r-2 border-[var(--chalk)] bg-[var(--chalk)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
-          <span
-              className="font-heading text-[clamp(2rem,3vw,4rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
-            {verticalLabel ?? title.replace(/^\s*(\S+).*/, "$1")}
-          </span>
+            <div className="card-body gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="badge badge-primary badge-sm">{code}</span>
+                    {verticalLabel ? <span className="badge badge-ghost badge-sm">{verticalLabel}</span> : null}
+                    {badges}
                 </div>
-                <div className="min-w-0 bg-[var(--carbon)] px-3 py-3 sm:px-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--amber)] uppercase">
-                            [ {code} ]
-                        </p>
-                        {badges}
-                    </div>
-                    <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
-                        <h1 className="max-w-4xl text-balance font-heading text-[clamp(2rem,4vw,4.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0">
+                        <h1 className="text-4xl font-semibold leading-tight text-base-content">
                             {title}
                         </h1>
-                        <p className="max-w-[64ch] border-l-4 border-[var(--amber)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--zinc)] uppercase">
+                        <p className="mt-2 max-w-[64ch] text-sm leading-relaxed text-base-content/70">
                             {subtitle}
                         </p>
                     </div>
+                    {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
                 </div>
-                {actions ? (
-                    <aside className="grid min-w-0 bg-[var(--carbon)] lg:min-w-72 lg:max-w-[26rem]">
-                        <div
-                            className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--chalk)] px-3 py-2">{actions}</div>
-                    </aside>
-                ) : null}
             </div>
         </section>
     );
@@ -107,42 +94,23 @@ export function PageHero({actions, badges, className, description, eyebrow, stat
     return (
         <section
             className={cn(
-                "relative col-span-12 overflow-hidden border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]",
+                "card card-border col-span-12 bg-base-200 text-base-content shadow-none",
                 className,
             )}
         >
-            <div className="relative grid gap-px bg-[var(--chalk)] lg:grid-cols-[auto_minmax(0,1fr)_auto]">
-                <div
-                    className="hidden shrink-0 border-r-2 border-[var(--chalk)] bg-[var(--chalk)] lg:flex lg:items-center lg:justify-center lg:px-4 lg:py-2">
-          <span
-              className="font-heading text-[clamp(2rem,3vw,4rem)] font-black leading-[0.82] tracking-[-0.04em] text-[var(--carbon)] uppercase [writing-mode:vertical-rl]">
-            {eyebrow.replace(/^\s*(\S+).*/, "$1")}
-          </span>
+            <div className="card-body gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="badge badge-primary badge-sm">{eyebrow}</span>
+                    {badges}
                 </div>
-                <div className="min-w-0 bg-[var(--carbon)] px-3 py-3 sm:px-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--amber)] uppercase">
-                            [ {eyebrow} ]
-                        </p>
-                        {badges}
+                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0">
+                        <h1 className="text-4xl font-semibold leading-tight text-base-content">{title}</h1>
+                        <p className="mt-2 max-w-[64ch] text-sm leading-relaxed text-base-content/70">{description}</p>
                     </div>
-                    <div className="mt-2 flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
-                        <h1 className="max-w-4xl text-balance font-heading text-[clamp(2rem,4vw,4.5rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
-                            {title}
-                        </h1>
-                        <p className="max-w-[64ch] border-l-4 border-[var(--amber)] pl-3 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.06em] text-[var(--zinc)] uppercase">
-                            {description}
-                        </p>
-                    </div>
+                    {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
                 </div>
-                {(actions || stats) ? (
-                    <aside className="grid min-w-0 bg-[var(--carbon)] lg:min-w-72 lg:max-w-[26rem]">
-                        {actions ? <div
-                            className="flex flex-wrap items-center justify-end gap-2 border-b-2 border-[var(--chalk)] px-3 py-2">{actions}</div> : null}
-                        {stats ? <div
-                            className="grid gap-px bg-[var(--chalk)] sm:grid-cols-3 lg:grid-cols-1">{stats}</div> : null}
-                    </aside>
-                ) : null}
+                {stats ? <div className="stats stats-vertical border border-base-300 bg-base-100 lg:stats-horizontal">{stats}</div> : null}
             </div>
         </section>
     );
@@ -163,27 +131,23 @@ type StatusMatrixProps = {
 
 export function StatusMatrix({items, className}: StatusMatrixProps) {
     const stateColor: Record<string, string> = {
-        idle: "bg-[var(--zinc)]",
-        active: "bg-[var(--amber)]",
-        valid: "bg-[var(--valid-green)]",
-        warning: "bg-[var(--warning-amber)]",
-        error: "bg-[var(--alert-red)]",
+        idle: "badge-ghost",
+        active: "badge-primary",
+        valid: "badge-success",
+        warning: "badge-warning",
+        error: "badge-error",
     };
     return (
-        <div className={cn("flex flex-wrap gap-px border border-[var(--seam)] bg-[var(--seam)]", className)}>
+        <div className={cn("flex flex-wrap gap-2", className)}>
             {items.map((item) => (
-                <div
+                <span
                     key={item.id}
                     data-state={item.state}
-                    className="relative flex items-center gap-2 bg-[var(--carbon)] px-2 py-1"
+                    className={cn("badge badge-sm gap-2", stateColor[item.state])}
                     title={item.label}
                 >
-                    <span className={cn("size-1.5", stateColor[item.state])}/>
-                    <span
-                        className="whitespace-nowrap font-mono text-[0.58rem] font-bold tracking-[0.12em] text-[var(--chalk)] uppercase">
-            {item.label ?? item.id}
-          </span>
-                </div>
+                    {item.label ?? item.id}
+                </span>
             ))}
         </div>
     );
@@ -201,18 +165,13 @@ type SignalTileProps = {
 
 export function SignalTile({className, detail, icon, label, value}: SignalTileProps) {
     return (
-        <div
-            className={cn("flex min-h-12 items-center justify-between gap-3 bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]", className)}>
-            <div className="min-w-0">
-                <p className="truncate font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{label}</p>
-                {detail ? <div
-                    className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">{detail}</div> : null}
-            </div>
-            <div
-                className="flex shrink-0 items-center gap-2 font-mono text-lg font-black leading-none tracking-[-0.04em] text-[var(--chalk)] tabular-nums">
-                {icon ? <div className="text-[var(--amber)]">{icon}</div> : null}
+        <div className={cn("stat min-h-12 bg-base-100 px-3 py-2 text-base-content", className)}>
+            {icon ? <div className="stat-figure text-primary">{icon}</div> : null}
+            <div className="stat-title truncate text-xs">{label}</div>
+            <div className="stat-value flex items-center gap-2 text-lg">
                 {value}
             </div>
+            {detail ? <div className="stat-desc truncate">{detail}</div> : null}
         </div>
     );
 }
@@ -228,8 +187,8 @@ export function TacticalCard({active, children, className, size = "sm", ...props
         <Card
             size={size}
             className={cn(
-                "border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)] shadow-none transition-[background-color,outline-color]",
-                active && "bg-[var(--slate)] outline-4 outline-[var(--amber)]",
+                "bg-base-200 text-base-content shadow-none transition-[background-color,outline-color]",
+                active && "ring-2 ring-primary",
                 className,
             )}
             {...props}
@@ -254,21 +213,20 @@ type SectionHeaderProps = {
 export function SectionHeader({actions, badge, className, description, eyebrow, icon, title}: SectionHeaderProps) {
     return (
         <CardHeader
-            className={cn("border-b-2 border-[var(--chalk)] bg-[var(--chalk)] text-[var(--carbon)]", className)}>
+            className={cn("border-b border-base-300 pb-3", className)}>
             <div className="flex min-w-0 items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-3">
                     {icon ? (
-                        <div
-                            className="flex size-9 shrink-0 items-center justify-center border border-[var(--carbon)] bg-[var(--amber)] text-[var(--carbon)]">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-primary text-primary-content">
                             {icon}
                         </div>
                     ) : null}
                     <div className="min-w-0">
                         {eyebrow ?
-                            <p className="font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--slate)] uppercase">[ {eyebrow} ]</p> : null}
-                        <CardTitle className="mt-0.5 truncate text-[var(--carbon)] uppercase">{title}</CardTitle>
+                            <p className="mb-1 text-xs text-base-content/60">{eyebrow}</p> : null}
+                        <CardTitle className="mt-0.5 truncate">{title}</CardTitle>
                         {description ? <CardDescription
-                            className="mt-1 truncate font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--slate)] uppercase">{description}</CardDescription> : null}
+                            className="mt-1 truncate">{description}</CardDescription> : null}
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -288,11 +246,11 @@ type ControlTileProps = {
 };
 
 export function ControlTile({children, className}: ControlTileProps) {
-    return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--slate)] p-3", className)}>{children}</div>;
+    return <div className={cn("rounded-box border border-base-300 bg-base-100 p-4", className)}>{children}</div>;
 }
 
 export function InlineControl({children, className}: ControlTileProps) {
-    return <div className={cn("border border-[var(--chalk)] bg-[var(--carbon)] p-3", className)}>{children}</div>;
+    return <div className={cn("rounded-field border border-base-300 bg-base-100 p-3", className)}>{children}</div>;
 }
 
 export function SaveStateBadge({dirty, saving}: { dirty: boolean; saving: boolean }) {
@@ -323,17 +281,16 @@ type ChannelTabsProps = {
 
 export function ChannelTabs({tabs, onTabChange, className}: ChannelTabsProps) {
     return (
-        <div className={cn("flex border-b-2 border-[var(--chalk)] bg-[var(--carbon)]", className)}>
+        <div role="tablist" className={cn("tabs tabs-border", className)}>
             {tabs.map((tab) => (
                 <button
                     key={tab.id}
                     className={cn(
-                        "px-4 py-2 font-mono text-xs font-black tracking-[0.12em] uppercase transition-colors focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]",
-                        tab.active
-                            ? "border-b-2 border-[var(--amber)] bg-[var(--chalk)] text-[var(--carbon)]"
-                            : "border-b-2 border-transparent text-[var(--zinc)] hover:bg-[var(--slate)] hover:text-[var(--chalk)]",
+                        "tab",
+                        tab.active && "tab-active",
                     )}
                     onClick={() => onTabChange(tab.id)}
+                    role="tab"
                     type="button"
                 >
                     {tab.label}
@@ -355,28 +312,25 @@ type ConfigRowProps = {
 
 export function ConfigRow({label, value, unit, state = "idle", className}: ConfigRowProps) {
     const stateColor: Record<string, string> = {
-        idle: "bg-[var(--zinc)]",
-        active: "bg-[var(--amber)]",
-        valid: "bg-[var(--valid-green)]",
-        warning: "bg-[var(--warning-amber)]",
-        error: "bg-[var(--alert-red)]",
+        idle: "status-neutral",
+        active: "status-primary",
+        valid: "status-success",
+        warning: "status-warning",
+        error: "status-error",
     };
     return (
         <div
             data-state={state}
             className={cn(
-                "grid grid-cols-[max-content_1fr_max-content_max-content] items-center gap-x-3 border-b border-[var(--seam)] px-3 py-2 text-[var(--chalk)]",
+                "grid grid-cols-[max-content_1fr_max-content_max-content] items-center gap-x-3 border-b border-base-300 px-3 py-2 text-sm text-base-content",
                 className,
             )}
         >
-            <span
-                className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{label}</span>
-            <span
-                className="min-w-0 truncate text-right font-mono text-sm font-bold tracking-[-0.02em] tabular-nums">{value}</span>
-            {unit ? <span
-                    className="font-mono text-[0.6rem] font-bold tracking-[0.1em] text-[var(--zinc)] uppercase">{unit}</span> :
+            <span className="text-base-content/60">{label}</span>
+            <span className="min-w-0 truncate text-right font-medium tabular-nums">{value}</span>
+            {unit ? <span className="text-xs text-base-content/60">{unit}</span> :
                 <span/>}
-            <span className={cn("size-2", stateColor[state])}/>
+            <span className={cn("status status-sm", stateColor[state])}/>
         </div>
     );
 }
@@ -394,7 +348,7 @@ export function HelpHint({content, className}: HelpHintProps) {
             <TooltipTrigger asChild>
                 <button
                     className={cn(
-                        "inline-flex size-4 items-center justify-center rounded-full border border-[var(--zinc)] text-[var(--zinc)] hover:border-[var(--amber)] hover:text-[var(--amber)] focus:outline-none focus-visible:outline-2 focus-visible:outline-[var(--amber)]",
+                        "btn btn-circle btn-ghost btn-xs text-base-content/60 hover:text-primary",
                         className,
                     )}
                     type="button"
@@ -402,8 +356,7 @@ export function HelpHint({content, className}: HelpHintProps) {
                     <RiInformationLine className="size-3"/>
                 </button>
             </TooltipTrigger>
-            <TooltipContent
-                className="max-w-xs border border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-xs text-[var(--chalk)]">
+            <TooltipContent className="max-w-xs">
                 {content}
             </TooltipContent>
         </Tooltip>
@@ -423,7 +376,7 @@ export function ErrorHint({content, className}: ErrorHintProps) {
             <TooltipTrigger asChild>
                 <button
                     className={cn(
-                        "inline-flex size-4 items-center justify-center border border-[var(--alert-red)] text-[var(--alert-red)] hover:bg-[var(--alert-red)] hover:text-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-[var(--alert-red)]",
+                        "btn btn-circle btn-ghost btn-xs text-error",
                         className,
                     )}
                     type="button"
@@ -431,8 +384,7 @@ export function ErrorHint({content, className}: ErrorHintProps) {
                     <RiErrorWarningLine className="size-3"/>
                 </button>
             </TooltipTrigger>
-            <TooltipContent
-                className="max-w-xs border border-[var(--alert-red)] bg-[var(--carbon)] px-3 py-2 font-mono text-xs text-[var(--alert-red)]">
+            <TooltipContent className="max-w-xs tooltip-error">
                 {content}
             </TooltipContent>
         </Tooltip>
@@ -450,7 +402,7 @@ type DataWellProps = {
 export function DataWell({children, className, maxHeight = "max-h-64"}: DataWellProps) {
     return (
         <div
-            className={cn("overflow-auto border border-[var(--chalk)] bg-[var(--slate)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--chalk)]", maxHeight, className)}>
+            className={cn("overflow-auto rounded-box border border-base-300 bg-base-100 p-3 font-mono text-xs leading-relaxed text-base-content", maxHeight, className)}>
             {children}
         </div>
     );
@@ -467,11 +419,10 @@ type FieldUnitProps = {
 
 export function FieldUnit({children, className, header, footer}: FieldUnitProps) {
     return (
-        <div className={cn("border-2 border-[var(--chalk)] bg-[var(--carbon)]", className)}>
-            {header ? <div
-                className="border-b-2 border-[var(--chalk)] bg-[var(--chalk)] px-3 py-2 font-mono text-[0.6rem] font-black tracking-[0.24em] text-[var(--carbon)] uppercase">{header}</div> : null}
+        <div className={cn("card card-border bg-base-200 shadow-none", className)}>
+            {header ? <div className="border-b border-base-300 px-4 py-3 text-sm font-semibold">{header}</div> : null}
             <div className="p-3">{children}</div>
-            {footer ? <div className="border-t border-[var(--seam)] px-3 py-2">{footer}</div> : null}
+            {footer ? <div className="border-t border-base-300 px-4 py-3">{footer}</div> : null}
         </div>
     );
 }
@@ -489,11 +440,10 @@ type EmptyStateProps = {
 export function EmptyState({action, className, description, icon, title}: EmptyStateProps) {
     return (
         <div
-            className={cn("flex flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-6 py-12 text-center", className)}>
-            {icon ? <div
-                className="mb-4 flex size-12 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--amber)]">{icon}</div> : null}
-            <h3 className="font-heading text-lg font-black uppercase tracking-[-0.02em] text-[var(--chalk)]">{title}</h3>
-            <p className="mt-2 max-w-[48ch] font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">{description}</p>
+            className={cn("flex flex-col items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 px-6 py-12 text-center", className)}>
+            {icon ? <div className="mb-4 flex size-12 items-center justify-center rounded-field bg-base-100 text-primary">{icon}</div> : null}
+            <h3 className="text-lg font-semibold text-base-content">{title}</h3>
+            <p className="mt-2 max-w-[48ch] text-sm text-base-content/60">{description}</p>
             {action ? <div className="mt-6">{action}</div> : null}
         </div>
     );
@@ -512,17 +462,14 @@ export function MacroNumber({className, label, unit, value}: MacroNumberProps) {
     return (
         <div className={cn("flex flex-col items-start gap-1", className)}>
             {label ? (
-                <span
-                    className="font-mono text-[0.6rem] font-black tracking-[0.22em] text-[var(--zinc)] uppercase">{label}</span>
+                <span className="text-xs text-base-content/60">{label}</span>
             ) : null}
             <div className="flex items-baseline gap-2">
-        <span
-            className="font-heading text-[clamp(3rem,10vw,9rem)] font-black leading-[0.82] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+        <span className="text-5xl font-semibold leading-none text-base-content">
           {value}
         </span>
                 {unit ? (
-                    <span
-                        className="font-mono text-[0.75rem] font-bold tracking-[0.1em] text-[var(--zinc)] uppercase">{unit}</span>
+                    <span className="text-sm text-base-content/60">{unit}</span>
                 ) : null}
             </div>
         </div>
@@ -615,15 +562,15 @@ export function DisplaySettingsInline({
                                           onUpdateRect,
                                       }: DisplaySettingsInlineProps) {
     return (
-        <ControlTile className="flex flex-col gap-3 bg-[var(--carbon)]">
+        <ControlTile className="flex flex-col gap-3 bg-base-100">
             <div className="flex flex-wrap items-center gap-3">
                 <Switch checked={group.enabled} disabled={controlsDisabled}
                         onCheckedChange={(checked) => onGroupUpdate({enabled: checked})}/>
-                <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
+                <p className="text-sm font-medium text-base-content">
                     {targetLabel}分组 · {group.name}
                 </p>
                 <Input
-                    className="w-28 font-mono text-sm"
+                    className="w-28"
                     disabled={controlsDisabled}
                     value={group.name}
                     onChange={(event) => onGroupUpdate({name: event.currentTarget.value})}
@@ -644,31 +591,30 @@ export function DisplaySettingsInline({
                 <InlineControl className="p-0">
                     <CollapsibleTrigger asChild>
                         <Button
-                            className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase"
+                            className="w-full justify-between px-3"
                             type="button" variant="ghost">
                             显示参数
                             <RiArrowDownSLine className="size-3.5"/>
                         </Button>
                     </CollapsibleTrigger>
-                    <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
+                    <CollapsibleContent className="border-t border-base-300 px-3 py-3">
                         <div className="flex flex-wrap items-center gap-4">
                             <Field className="min-w-0 flex-1">
-                                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
+                                <FieldLabel>字体透明度</FieldLabel>
                                 <FieldContent>
                                     <div className="flex items-center gap-3">
                                         <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05}
                                                 value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
                                                 onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}/>
-                                        <span
-                                            className="w-10 text-right font-mono text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
+                                        <span className="w-10 text-right text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
                                     </div>
                                 </FieldContent>
                             </Field>
                             <Field className="w-36 shrink-0">
-                                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
+                                <FieldLabel>窗口宽度</FieldLabel>
                                 <FieldContent>
                                     <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320"
-                                           className="h-7 font-mono text-xs" value={display?.rect?.width ?? 320}
+                                           className="h-7 text-xs" value={display?.rect?.width ?? 320}
                                            onChange={(event) => onUpdateRect({width: Number.parseInt(event.currentTarget.value, 10) || 320})}/>
                                 </FieldContent>
                             </Field>
@@ -677,7 +623,7 @@ export function DisplaySettingsInline({
                 </InlineControl>
             </Collapsible>
 
-            <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">{statusMessage}</p>
+            <p className="text-xs text-muted-foreground">{statusMessage}</p>
         </ControlTile>
     );
 }
@@ -688,13 +634,10 @@ export function PagePreviewBanner({className}: { className?: string }) {
     return (
         <Alert
             variant="destructive"
-            className={cn("border-2 border-[var(--warning-amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}
+            className={cn("alert-warning", className)}
         >
-            <AlertTitle
-                className="font-mono text-xs font-black tracking-[0.14em] text-[var(--warning-amber)] uppercase">
-                [ 浏览器预览模式 ]
-            </AlertTitle>
-            <AlertDescription className="font-mono text-xs font-bold tracking-[0.06em] text-[var(--zinc)] uppercase">
+            <AlertTitle>浏览器预览模式</AlertTitle>
+            <AlertDescription>
                 当前处于浏览器预览模式，所有 Tauri 原生命令已被禁用。如需使用完整功能，请在桌面端运行。
             </AlertDescription>
         </Alert>
@@ -715,8 +658,7 @@ export function TacticalEmptyState({children, className, description, icon, titl
     return (
         <TacticalCard className={cn("min-h-48", className)}>
             <CardBody className="flex h-full items-center justify-center">
-                <Empty
-                    className="min-h-40 border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                <Empty className="min-h-40 rounded-box border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
                     {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
                     <EmptyHeader>
                         <EmptyTitle>{title}</EmptyTitle>
@@ -743,21 +685,18 @@ export function AddCardButton({className, description, disabled, onClick, title}
     return (
         <button
             className={cn(
-                "group flex min-h-32 flex-col items-center justify-center border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] p-4 text-center transition-colors hover:bg-[var(--carbon)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] active:bg-[var(--chalk)] active:text-[var(--carbon)] disabled:cursor-not-allowed disabled:opacity-50",
+                "group flex min-h-32 flex-col items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 p-4 text-center transition-colors hover:bg-base-100 focus:outline-none focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50",
                 className,
             )}
             disabled={disabled}
             onClick={onClick}
             type="button"
         >
-      <span
-          className="mb-4 flex size-11 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
+      <span className="mb-4 flex size-11 items-center justify-center rounded-field bg-primary text-primary-content">
         <RiAddLine/>
       </span>
-            <span
-                className="text-sm font-black uppercase text-[var(--chalk)] group-active:text-[var(--carbon)]">{title}</span>
-            <span
-                className="mt-1 max-w-56 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase group-active:text-[var(--slate)]">{description}</span>
+            <span className="text-sm font-semibold text-base-content">{title}</span>
+            <span className="mt-1 max-w-56 text-sm leading-relaxed text-base-content/60">{description}</span>
         </button>
     );
 }
@@ -775,7 +714,7 @@ export function JsonPreBlock({className, data, maxHeightClassName = "max-h-64"}:
         <pre
             className={cn(
                 maxHeightClassName,
-                "overflow-auto border-2 border-[var(--chalk)] bg-[var(--void)] p-3 font-mono text-xs font-bold leading-relaxed text-[var(--carbon)]",
+                "mockup-code overflow-auto bg-neutral p-3 font-mono text-xs leading-relaxed text-neutral-content",
                 className,
             )}
         >
@@ -795,7 +734,7 @@ type InlineNoticeProps = {
 export function InlineNotice({children, className, title}: InlineNoticeProps) {
     return (
         <Alert variant="destructive"
-               className={cn("border-2 border-[var(--amber)] bg-[var(--carbon)] text-[var(--chalk)]", className)}>
+               className={className}>
             {title ? <AlertTitle>{title}</AlertTitle> : null}
             <AlertDescription>{children}</AlertDescription>
         </Alert>
@@ -810,8 +749,7 @@ type CardToolbarProps = {
 };
 
 export function CardToolbar({children, className}: CardToolbarProps) {
-    return <div
-        className={cn("flex flex-wrap items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2", className)}>{children}</div>;
+    return <div className={cn("flex flex-wrap items-center gap-2 rounded-box border border-base-300 bg-base-200 p-2", className)}>{children}</div>;
 }
 
 /* Surface Toggle Group (legacy) */
@@ -822,5 +760,5 @@ type SurfaceToggleGroupProps = {
 };
 
 export function SurfaceToggleGroup({children, className}: SurfaceToggleGroupProps) {
-    return <div className={cn("border-2 border-[var(--chalk)] bg-[var(--chalk)] p-px", className)}>{children}</div>;
+    return <div className={cn("join rounded-field bg-base-200", className)}>{children}</div>;
 }

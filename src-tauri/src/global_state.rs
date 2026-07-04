@@ -217,7 +217,11 @@ mod tests {
             let _ = h(unsafe { &*(8usize as *const AppHandle) });
         }
 
-        assert_eq!(SYNC_CALL_COUNT.with(|c| c.get()), 3, "3 个 handler 都应被调用");
+        assert_eq!(
+            SYNC_CALL_COUNT.with(|c| c.get()),
+            3,
+            "3 个 handler 都应被调用"
+        );
 
         let names = registry.registered_names();
         assert_eq!(names, vec!["timer", "counter", "rapidfire"]);
@@ -269,10 +273,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         let reg_names = registry.registered_names();
@@ -298,10 +305,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         // 直接按顺序调用所有 handler
@@ -321,10 +331,13 @@ mod tests {
 
         let count_clone = Arc::clone(&call_count);
         let mut registry = ToolLifecycleRegistry::default();
-        registry.register("test", Box::new(move |_app: &AppHandle| {
-            *count_clone.lock().unwrap() += 1;
-            Ok(())
-        }));
+        registry.register(
+            "test",
+            Box::new(move |_app: &AppHandle| {
+                *count_clone.lock().unwrap() += 1;
+                Ok(())
+            }),
+        );
 
         // 模拟第一次 stop_all：标记 stopped = true，调用 handler
         assert!(!registry.is_stopped());
@@ -335,7 +348,11 @@ mod tests {
         for (_, handler) in registry.handlers_ref() {
             let _ = handler(unsafe { &*(8usize as *const AppHandle) });
         }
-        assert_eq!(*call_count.lock().unwrap(), 1, "第一次 stop_all 应触发 handler");
+        assert_eq!(
+            *call_count.lock().unwrap(),
+            1,
+            "第一次 stop_all 应触发 handler"
+        );
 
         // 第二次 stop_all：由于 stopped = true，handler 不应被调用
         assert!(registry.is_stopped());
@@ -352,10 +369,13 @@ mod tests {
 
         let count_clone = Arc::clone(&call_count);
         let mut registry = ToolLifecycleRegistry::default();
-        registry.register("test", Box::new(move |_app: &AppHandle| {
-            *count_clone.lock().unwrap() += 1;
-            Ok(())
-        }));
+        registry.register(
+            "test",
+            Box::new(move |_app: &AppHandle| {
+                *count_clone.lock().unwrap() += 1;
+                Ok(())
+            }),
+        );
 
         // 标记已停止
         registry.mark_stopped();
@@ -377,10 +397,13 @@ mod tests {
 
         let ok_clone = Arc::clone(&ok_count);
         let mut registry = ToolLifecycleRegistry::default();
-        registry.register("ok", Box::new(move |_app: &AppHandle| {
-            *ok_clone.lock().unwrap() += 1;
-            Ok(())
-        }));
+        registry.register(
+            "ok",
+            Box::new(move |_app: &AppHandle| {
+                *ok_clone.lock().unwrap() += 1;
+                Ok(())
+            }),
+        );
         registry.register(
             "bad",
             Box::new(|_app: &AppHandle| Err("停止失败".to_string())),
@@ -411,10 +434,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         // 直接调用所有 handler
@@ -440,10 +466,13 @@ mod tests {
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
-            registry.register(name, Box::new(move |_app: &AppHandle| {
-                log.lock().unwrap().push(name_owned.clone());
-                Ok(())
-            }));
+            registry.register(
+                name,
+                Box::new(move |_app: &AppHandle| {
+                    log.lock().unwrap().push(name_owned.clone());
+                    Ok(())
+                }),
+            );
         }
 
         // 直接调用所有 handler 验证它们都被触发
@@ -452,8 +481,10 @@ mod tests {
         }
 
         let calls = call_log.lock().unwrap();
-        assert_eq!(*calls, names,
-            "5 类工具 stop handler 必须按注册顺序全部被触发");
+        assert_eq!(
+            *calls, names,
+            "5 类工具 stop handler 必须按注册顺序全部被触发"
+        );
     }
 
     /// VAL-CROSS-002: 全局关闭后 runs 全部保留。
@@ -461,7 +492,7 @@ mod tests {
     /// 使用已知 counter IDs 以匹配 settings.counters 列表。
     #[test]
     fn cross_val_002_counter_runs_preserved_after_global_disable() {
-        use crate::counter::{CounterLogic, CounterSettings, CounterItem};
+        use crate::counter::{CounterItem, CounterLogic, CounterSettings};
         use crate::sync_tool::RunsSync;
 
         let mut runs: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
@@ -494,8 +525,16 @@ mod tests {
 
         CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
-        assert_eq!(runs.get("c1"), Some(&42), "全局关闭后 counter c1 runs 应保留");
-        assert_eq!(runs.get("c2"), Some(&100), "全局关闭后 counter c2 runs 应保留");
+        assert_eq!(
+            runs.get("c1"),
+            Some(&42),
+            "全局关闭后 counter c1 runs 应保留"
+        );
+        assert_eq!(
+            runs.get("c2"),
+            Some(&100),
+            "全局关闭后 counter c2 runs 应保留"
+        );
     }
 
     /// VAL-CROSS-003: autosave 1000 次后 runs 不变量保持。
@@ -523,8 +562,10 @@ mod tests {
             // 不变量：counter-1（默认计数器）的 runs 不被重置
             // CounterSettings::default() 包含 id="counter-1" 的默认计数器
             if runs.contains_key("counter-1") {
-                assert!(*runs.get("counter-1").unwrap() >= 0,
-                    "迭代 {i}: runs 值不能为负");
+                assert!(
+                    *runs.get("counter-1").unwrap() >= 0,
+                    "迭代 {i}: runs 值不能为负"
+                );
             }
         }
     }
@@ -534,7 +575,7 @@ mod tests {
     /// 孤儿清理、缺失补齐、禁用保留、全局关闭保留。
     #[test]
     fn cross_val_003_autosave_strict_4_invariants() {
-        use crate::counter::{CounterLogic, CounterSettings, CounterItem};
+        use crate::counter::{CounterItem, CounterLogic, CounterSettings};
         use crate::sync_tool::RunsSync;
 
         let mut runs: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
@@ -593,11 +634,15 @@ mod tests {
             // 不变量 3: extra 存在时有 runs（缺失补齐），不存在时被孤儿清理
             if has_extra {
                 assert!(runs.contains_key("extra"), "迭代 {i}: extra 应存在");
-                assert!(*runs.get("extra").unwrap() >= 5,
-                    "迭代 {i}: extra runs >= start_value(5)");
+                assert!(
+                    *runs.get("extra").unwrap() >= 5,
+                    "迭代 {i}: extra runs >= start_value(5)"
+                );
             } else {
-                assert!(!runs.contains_key("extra"),
-                    "迭代 {i}: extra 已从 counters 移除，应为孤儿清理");
+                assert!(
+                    !runs.contains_key("extra"),
+                    "迭代 {i}: extra 已从 counters 移除，应为孤儿清理"
+                );
             }
         }
     }

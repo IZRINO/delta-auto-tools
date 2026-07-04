@@ -156,10 +156,9 @@ export function AboutPanel({active}: AboutPanelProps) {
     return (
         <div className="flex flex-col gap-3">
             {/* 版本信息 */}
-            <div className="grid gap-2 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-3">
+            <div className="card card-border bg-base-200 p-4 shadow-none">
                 <div className="flex flex-wrap items-center gap-3">
-            <span
-                className="font-heading text-[clamp(1.5rem,4vw,3rem)] font-black leading-[0.85] tracking-[-0.06em] text-[var(--chalk)] uppercase">
+            <span className="text-3xl font-semibold leading-tight text-base-content">
               {bootstrap?.version ?? "—"}
             </span>
                         <div className="flex flex-wrap gap-2">
@@ -168,7 +167,7 @@ export function AboutPanel({active}: AboutPanelProps) {
                             <Badge variant="outline">GPLv2+</Badge>
                         </div>
                     </div>
-                    <p className="font-mono text-[0.6rem] font-bold tracking-[0.18em] text-[var(--zinc)] uppercase">
+                    <p className="text-xs text-base-content/60">
                         {bootstrap?.identifier ?? "org.izrino.delta-auto-tools"} / {bootstrap?.name ?? "delta-auto-tools"}
                     </p>
                     {bootstrap?.repositoryUrl && (
@@ -181,9 +180,9 @@ export function AboutPanel({active}: AboutPanelProps) {
                 </div>
 
                 {/* 更新状态 */}
-                <FieldUnit header="[ UPDATE STATUS ]" className="border-2 border-[var(--chalk)]">
+                <FieldUnit header="更新状态">
                     {!isNativeShell && (
-                        <p className="font-mono text-xs font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                        <p className="text-sm text-base-content/60">
                             更新功能仅在桌面端可用
                         </p>
                     )}
@@ -192,7 +191,7 @@ export function AboutPanel({active}: AboutPanelProps) {
                             {statusItems.length > 0 ? (
                                 <StatusMatrix items={statusItems} className="mb-3"/>
                             ) : (
-                                <p className="mb-3 font-mono text-[0.68rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                                <p className="mb-3 text-sm text-base-content/60">
                                     点击「检查更新」或直接访问 GitHub Release 页面
                                 </p>
                             )}
@@ -238,9 +237,9 @@ export function AboutPanel({active}: AboutPanelProps) {
                     )}
                 </FieldUnit>
                 {/* 日志级别 */}
-                <FieldUnit header="[ LOG LEVEL ]" className="border-2 border-[var(--chalk)]">
+                <FieldUnit header="日志级别">
                     {!isNativeShell && (
-                        <p className="font-mono text-xs font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                        <p className="text-sm text-base-content/60">
                             日志设置仅在桌面端可用
                         </p>
                     )}
@@ -252,24 +251,23 @@ export function AboutPanel({active}: AboutPanelProps) {
                         >
                             {(["error", "warn", "info", "debug", "trace"] as const).map((level) => (
                                 <label key={level} htmlFor={`log-${level}`}
-                                       className="flex items-center gap-2 border-2 border-[var(--chalk)] bg-[var(--carbon)] p-2 cursor-pointer hover:border-[var(--amber)]">
+                                       className="flex cursor-pointer items-center gap-2 rounded-field border border-base-300 bg-base-100 p-2 hover:border-primary">
                                     <RadioGroupItem value={level} id={`log-${level}`}/>
-                                    <span
-                                        className="font-mono text-[0.68rem] font-bold tracking-[0.12em] uppercase">
+                                    <span className="font-mono text-xs font-medium">
                                         {level.toUpperCase()}
                                     </span>
                                 </label>
                             ))}
                         </RadioGroup>
                     )}
-                    <p className="mt-2 font-mono text-[0.56rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">
+                    <p className="mt-2 text-xs text-base-content/60">
                         当前: {logSettings?.globalLevel?.toUpperCase() ?? "INFO"} · 重启后保持
                     </p>
                 </FieldUnit>
 
                 {/* 开源协议 */}
-                <FieldUnit header="[ LICENSE / GPLv2+ ]" className="border-2 border-[var(--chalk)]">
-                    <DataWell maxHeight="max-h-40" className="text-[var(--zinc)]">
+                <FieldUnit header="开源协议">
+                    <DataWell maxHeight="max-h-40" className="text-base-content/60">
                         {bootstrap?.license ?? "GPLv2+"}
                     </DataWell>
                     {bootstrap?.licenseUrl && (
@@ -289,49 +287,50 @@ export function AboutPanel({active}: AboutPanelProps) {
                 </FieldUnit>
 
                 {/* 开源库致谢 */}
-                <FieldUnit header="[ ATTRIBUTIONS ]" className="border-2 border-[var(--chalk)]">
-                    <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)]">
-                        <div
-                            className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-3 bg-[var(--carbon)] px-3 py-2">
-                            <span
-                                className="font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--amber)] uppercase">KIND</span>
-                            <span
-                                className="font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--amber)] uppercase">NAME</span>
-                            <span
-                                className="font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--amber)] uppercase">LICENSE</span>
-                            <span
-                                className="font-mono text-[0.56rem] font-black tracking-[0.18em] text-[var(--amber)] uppercase">URL</span>
-                        </div>
-                        {(bootstrap?.dependencies ?? DEPENDENCIES).map((dep) => (
-                            <div key={dep.name}
-                                 className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-3 bg-[var(--carbon)] px-3 py-1.5 border-b border-[var(--seam)]">
-                <span className={cn(
-                    "shrink-0 px-1.5 py-0.5 font-mono text-[0.56rem] font-bold tracking-[0.12em] uppercase",
-                    dep.kind === "frontend"
-                        ? "border border-[var(--amber)] text-[var(--amber)]"
-                        : "border border-[var(--zinc)] text-[var(--zinc)]",
-                )}>
-                  {dep.kind === "frontend" ? "FE" : "RS"}
-                </span>
-                                <span className="truncate text-sm font-bold tracking-[-0.01em]">{dep.name}</span>
-                                <span
-                                    className="shrink-0 font-mono text-[0.56rem] font-bold tracking-[0.08em] text-[var(--zinc)] uppercase">{dep.license}</span>
-                                <a
-                                    href={dep.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="shrink-0 text-[var(--amber)] hover:text-[var(--chalk)]"
-                                    onClick={(e) => {
-                                        if (isNativeShell) {
-                                            e.preventDefault();
-                                            void openUrl(dep.url);
-                                        }
-                                    }}
-                                >
-                                    <RiArrowRightLine className="size-3.5"/>
-                                </a>
-                            </div>
-                        ))}
+                <FieldUnit header="开源库致谢">
+                    <div className="overflow-x-auto">
+                        <table className="table table-sm">
+                            <thead>
+                            <tr>
+                                <th>类型</th>
+                                <th>名称</th>
+                                <th>协议</th>
+                                <th>链接</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {(bootstrap?.dependencies ?? DEPENDENCIES).map((dep) => (
+                                <tr key={dep.name}>
+                                    <td>
+                                        <span className={cn(
+                                            "badge badge-sm",
+                                            dep.kind === "frontend" ? "badge-primary" : "badge-ghost",
+                                        )}>
+                                            {dep.kind === "frontend" ? "前端" : "运行时"}
+                                        </span>
+                                    </td>
+                                    <td className="max-w-52 truncate font-medium">{dep.name}</td>
+                                    <td className="font-mono text-xs text-base-content/60">{dep.license}</td>
+                                    <td>
+                                        <a
+                                            href={dep.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-ghost btn-square btn-xs text-primary"
+                                            onClick={(e) => {
+                                                if (isNativeShell) {
+                                                    e.preventDefault();
+                                                    void openUrl(dep.url);
+                                                }
+                                            }}
+                                        >
+                                            <RiArrowRightLine className="size-3.5"/>
+                                        </a>
+                                    </td>
+                                </tr>
+                            ))}
+                            </tbody>
+                        </table>
                     </div>
                 </FieldUnit>
         </div>

@@ -53,16 +53,29 @@ pub fn run() {
             sync_tool_registry.register("timer", timer::stop_registered);
             sync_tool_registry.register("rapidfire", rapidfire::stop_registered);
             let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
-            lifecycle_registry.register("timer", Box::new(|app: &tauri::AppHandle| timer::stop_registered(app)));
-            lifecycle_registry.register("counter", Box::new(|app: &tauri::AppHandle| counter::stop_registered(app)));
-            lifecycle_registry.register("rapidfire", Box::new(|app: &tauri::AppHandle| rapidfire::stop_registered(app)));
-            lifecycle_registry.register("morse", Box::new(|app: &tauri::AppHandle| {
-                crate::morse::cancel_active_overlay(app);
-                Ok(())
-            }));
-            lifecycle_registry.register("audio", Box::new(|app: &tauri::AppHandle| {
-                crate::audio::watcher::stop_all_watchers(app)
-            }));
+            lifecycle_registry.register(
+                "timer",
+                Box::new(|app: &tauri::AppHandle| timer::stop_registered(app)),
+            );
+            lifecycle_registry.register(
+                "counter",
+                Box::new(|app: &tauri::AppHandle| counter::stop_registered(app)),
+            );
+            lifecycle_registry.register(
+                "rapidfire",
+                Box::new(|app: &tauri::AppHandle| rapidfire::stop_registered(app)),
+            );
+            lifecycle_registry.register(
+                "morse",
+                Box::new(|app: &tauri::AppHandle| {
+                    crate::morse::cancel_active_overlay(app);
+                    Ok(())
+                }),
+            );
+            lifecycle_registry.register(
+                "audio",
+                Box::new(|app: &tauri::AppHandle| crate::audio::watcher::stop_all_watchers(app)),
+            );
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
@@ -183,6 +196,10 @@ pub fn run() {
             profile::profile_create_default,
             profile::profile_apply,
             profile::profile_delete,
+            profile::profile_export,
+            profile::profile_export_to_path,
+            profile::profile_import,
+            profile::profile_import_from_path,
             profile::profile_rename,
         ])
         .run(tauri::generate_context!())

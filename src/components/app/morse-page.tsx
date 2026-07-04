@@ -391,20 +391,20 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                 const region = form?.regions[index] ?? null;
                                 const isConfigured = Boolean(region);
                                 return (
-                                    <div key={label} className="border-2 border-[var(--chalk)] p-3">
+                                    <div key={label} className="border border-base-300 p-3">
                                         <div
-                                            className="flex items-center justify-between gap-2 border-b border-[var(--seam)] pb-2 mb-2">
+                                            className="flex items-center justify-between gap-2 border-b border-base-300 pb-2 mb-2">
                                             <span
-                                                className="font-mono text-xs font-black tracking-[0.18em] uppercase">{label}</span>
+                                                className="font-mono text-xs font-semibold">{label}</span>
                                             <Badge variant={isConfigured ? "default" : "outline"}>
                                                 {isConfigured ? "已锁定" : "待锁定"}
                                             </Badge>
                                         </div>
                                         {isConfigured ? (
                                             <div
-                                                className="font-mono text-xs text-[var(--zinc)]">{formatRegion(region)}</div>
+                                                className="font-mono text-xs text-base-content/60">{formatRegion(region)}</div>
                                         ) : (
-                                            <div className="font-mono text-xs text-[var(--dust)]">未配置</div>
+                                            <div className="font-mono text-xs text-base-content/40">未配置</div>
                                         )}
                                         <Button
                                             className="mt-2 w-full"
@@ -443,7 +443,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     value={
                                         <Button
                                             ref={hotkeyButtonRef}
-                                            className="h-auto w-full justify-between gap-4 border-2 border-[var(--chalk)] px-3 py-2 font-mono text-xs"
+                                            className="h-auto w-full justify-between gap-4 border border-base-300 px-3 py-2 font-mono text-xs"
                                             onBlur={recorder.handleBlur}
                                             onClick={() => form && recorder.beginRecording(form.hotkey)}
                                             onKeyDown={recorder.handleKeyDown}
@@ -460,7 +460,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     label="二值化阈值"
                                     value={
                                         <Input
-                                            className="border-2 border-[var(--chalk)] font-mono text-xs"
+                                            className="border border-base-300 font-mono text-xs"
                                             inputMode="numeric"
                                             max="255"
                                             min="0"
@@ -474,7 +474,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     label="自动输入延迟"
                                     value={
                                         <Input
-                                            className="border-2 border-[var(--chalk)] font-mono text-xs"
+                                            className="border border-base-300 font-mono text-xs"
                                             inputMode="numeric"
                                             min="0"
                                             onChange={(e) => updateForm("autoInputDelay", e.currentTarget.value)}
@@ -484,14 +484,14 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     unit="ms"
                                     state={form?.autoInputDelay ? "valid" : "idle"}
                                 />
-                                <div className="flex items-center gap-2 border-b border-[var(--seam)] px-3 py-2">
+                                <div className="flex items-center gap-2 border-b border-base-300 px-3 py-2">
                                     <Switch
                                         checked={form?.autoClickEnabled ?? false}
                                         disabled={isBusy}
                                         onCheckedChange={(v) => updateForm("autoClickEnabled", v)}
                                     />
                                     <span
-                                        className="font-mono text-xs font-black tracking-[0.18em] uppercase">自动点击链路</span>
+                                        className="font-mono text-xs font-semibold">自动点击链路</span>
                                     <HelpHint content="识别成功后按设定顺序执行点击。"/>
                                 </div>
                                 {form?.autoClickEnabled && (
@@ -500,7 +500,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                             label="点击完成后按键"
                                             value={
                                                 <Input
-                                                    className="border-2 border-[var(--chalk)] font-mono text-xs"
+                                                    className="border border-base-300 font-mono text-xs"
                                                     placeholder="留空不执行，例如 F4"
                                                     onChange={(e) => updateForm("afterClickHotkey", e.currentTarget.value)}
                                                     value={form?.afterClickHotkey ?? ""}
@@ -508,30 +508,30 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                             }
                                             state={form?.afterClickHotkey ? "valid" : "idle"}
                                         />
-                                        <Collapsible className="border-2 border-[var(--chalk)] bg-[var(--carbon)]">
+                                        <Collapsible className="border border-base-300 bg-base-100">
                                             <CollapsibleTrigger asChild>
                                                 <Button
-                                                    className="h-auto w-full justify-between rounded-none px-3 py-2 font-mono text-xs font-black tracking-[0.18em]"
+                                                    className="h-auto w-full justify-between px-3 py-2 font-mono text-xs font-semibold"
                                                     type="button" variant="ghost">
                                                     点击区域配置
                                                     <Badge variant="outline">{(form?.clickRegions ?? []).filter((r) => r.rect).length}/7</Badge>
                                                 </Button>
                                             </CollapsibleTrigger>
-                                            <CollapsibleContent className="border-t-2 border-[var(--chalk)] px-3 py-3">
+                                            <CollapsibleContent className="border-t-2 border-base-content px-3 py-3">
                                                 <div className="flex flex-col gap-2">
                                                     {clickRegionRows(form?.clickRegions ?? []).map((cr) => (
                                                         <div key={cr.slotIndex}
-                                                             className="flex items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)] p-2">
+                                                             className="flex items-center gap-3 border border-base-300 bg-base-200 p-2">
                                                             <Badge variant={cr.rect ? "default" : "outline"}
                                                                    className="shrink-0">
                                                                 {cr.slotIndex + 1}
                                                             </Badge>
                                                             <span
-                                                                className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-[var(--zinc)]">
+                                                                className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-base-content/60">
                                                                 {formatRegion(cr.rect)}
                                                             </span>
                                                             <Input
-                                                                className="w-20 border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono text-xs"
+                                                                className="w-20 border border-base-300 bg-base-100 font-mono text-xs"
                                                                 inputMode="numeric"
                                                                 min="0"
                                                                 value={cr.delayMs}
@@ -544,9 +544,9 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                                                     updateForm("clickRegions", next);
                                                                 }}
                                                             />
-                                                            <span className="text-xs text-[var(--dust)]">ms</span>
+                                                            <span className="text-xs text-base-content/40">ms</span>
                                                             <Button
-                                                                className="h-7 w-7 shrink-0 rounded-none px-0"
+                                                                className="h-7 w-7 shrink-0 px-0"
                                                                 disabled={isBusy}
                                                                 onClick={() => {
                                                                     const next = [...(form?.clickRegions ?? [])];
@@ -586,20 +586,20 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                 )}
                             </div>
                             <div className="space-y-3">
-                                <div className="border-2 border-[var(--chalk)] p-3">
+                                <div className="border border-base-300 p-3">
                                     <div className="flex items-center justify-between gap-2 mb-3">
                                         <span
-                                            className="font-mono text-xs font-black tracking-[0.18em] uppercase">即时验证</span>
+                                            className="font-mono text-xs font-semibold">即时验证</span>
                                         <HelpHint content="聚焦输入框或按按钮执行一次仅识别测试。"/>
                                     </div>
                                     <Input
-                                        className="border-2 border-[var(--chalk)] font-mono text-sm tracking-wider"
+                                        className="border border-base-300 font-mono text-sm"
                                         onChange={(e) => setVerificationValue(e.currentTarget.value)}
                                         onFocus={() => void handleVerificationRun()}
                                         placeholder="聚焦此处执行测试验证"
                                         value={verificationValue}
                                     />
-                                    <p className="mt-2 font-mono text-xs text-[var(--zinc)]">{verificationMessage}</p>
+                                    <p className="mt-2 font-mono text-xs text-base-content/60">{verificationMessage}</p>
                                     <Button
                                         className="mt-2 w-full"
                                         disabled={verificationStatus === "running"}
@@ -621,7 +621,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                     <FieldUnit header="[ UNIT 03 ] 报码输出 — 审阅三码结果">
                         {hasLatestResult ? (
                             <div className="grid gap-4 md:grid-cols-2">
-                                <div className="border-2 border-[var(--chalk)] bg-[var(--slate)] p-4">
+                                <div className="border border-base-300 bg-base-200 p-4">
                                     <div className="flex flex-wrap items-center gap-2 mb-4">
                                         <Badge
                                             variant={latestRun?.error ? "outline" : latestRun?.value ? "default" : "secondary"}>
@@ -631,25 +631,25 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                             <Badge variant="outline">{latestRun.triggeredBy}</Badge> : null}
                                         {latestRun?.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
                                     </div>
-                                    <p className="font-mono text-xs font-black tracking-[0.18em] uppercase text-[var(--zinc)]">最新三码输出</p>
-                                    <p className="mt-2 font-mono text-4xl font-semibold tracking-[0.24em] text-[var(--amber)]">
+                                    <p className="font-mono text-xs font-semibold text-base-content/60">最新三码输出</p>
+                                    <p className="mt-2 font-mono text-4xl font-semibold text-primary">
                                         {latestRun?.value ?? "---"}
                                     </p>
-                                    <div className="mt-2 h-0.5 w-full bg-[var(--amber)]"/>
-                                    <p className="mt-2 text-xs text-[var(--zinc)]">{latestRun?.error ?? "执行识别后会在这里显示最新三码输出。"}</p>
+                                    <div className="mt-2 h-0.5 w-full bg-primary"/>
+                                    <p className="mt-2 text-xs text-base-content/60">{latestRun?.error ?? "执行识别后会在这里显示最新三码输出。"}</p>
                                 </div>
                                 <div className="space-y-2">
                                     {runDetails.map((detail) => (
-                                        <div key={detail.slot} className="border-2 border-[var(--chalk)] p-3">
+                                        <div key={detail.slot} className="border border-base-300 p-3">
                                             <div className="flex items-center justify-between gap-2">
                                                 <span
-                                                    className="font-mono text-xs font-black tracking-[0.18em] uppercase">{REGION_LABELS[detail.slot]}</span>
+                                                    className="font-mono text-xs font-semibold">{REGION_LABELS[detail.slot]}</span>
                                                 <Badge
                                                     variant={detail.error ? "outline" : detail.digit ? "default" : "secondary"}>
                                                     {detail.error ? "失败" : detail.digit ?? "--"}
                                                 </Badge>
                                             </div>
-                                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--zinc)]">
+                                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-base-content/60">
                                                 <span className="font-mono">{detail.morse ?? "--"}</span>
                                                 <span>{detail.thresholdMode}</span>
                                                 <span>轮廓 {detail.contourCount}</span>
@@ -680,11 +680,11 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                             <ScrollArea className="h-72">
                                 <div className="flex flex-col gap-2 pe-4">
                                     {history.map((entry) => (
-                                        <div key={entry.id} className="border-2 border-[var(--chalk)] p-3">
+                                        <div key={entry.id} className="border border-base-300 p-3">
                                             <div
-                                                className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--seam)] pb-2">
+                                                className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 pb-2">
                                                 <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-black tracking-[0.18em] uppercase">
+                          <span className="font-mono text-xs font-semibold">
                             {entry.result ? `报码 ${entry.result}` : "识别失败"}
                           </span>
                                                     <Badge
@@ -694,9 +694,9 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                                         <Badge variant="outline">已自动输入</Badge> : null}
                                                 </div>
                                                 <span
-                                                    className="font-mono text-xs text-[var(--zinc)]">{formatTimestamp(entry.occurredAtMs)}</span>
+                                                    className="font-mono text-xs text-base-content/60">{formatTimestamp(entry.occurredAtMs)}</span>
                                             </div>
-                                            <p className="mt-2 text-xs text-[var(--zinc)]">{entry.error ? "本轮识别失败，建议回查窗位与阈值。" : "识别链路执行完成，结果已写入历史档案。"}</p>
+                                            <p className="mt-2 text-xs text-base-content/60">{entry.error ? "本轮识别失败，建议回查窗位与阈值。" : "识别链路执行完成，结果已写入历史档案。"}</p>
                                         </div>
                                     ))}
                                 </div>

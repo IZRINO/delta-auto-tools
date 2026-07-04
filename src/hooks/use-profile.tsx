@@ -45,6 +45,16 @@ type ProfileContextValue = {
     renameProfile: (id: string, name: string) => Promise<void>;
     /** 另存为：将当前运行时设置快照保存为新 Profile。 */
     saveCurrentProfile: (name: string) => Promise<void>;
+    /** 删除非当前激活 Profile。 */
+    deleteProfile: (id: string) => Promise<void>;
+    /** 导出单个 Profile 为 JSON 字符串。 */
+    exportProfile: (id: string) => Promise<string>;
+    /** 从 JSON 字符串导入单个 Profile；不自动切换。 */
+    importProfile: (json: string) => Promise<void>;
+    /** 导出单个 Profile 到用户选择的路径。 */
+    exportProfileToPath: (id: string, path: string) => Promise<void>;
+    /** 从用户选择的路径导入单个 Profile；不自动切换。 */
+    importProfileFromPath: (path: string) => Promise<void>;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -174,6 +184,54 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         }
     }, []);
 
+    const deleteProfile = useCallback(async (id: string) => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_delete", {id});
+            setBootstrap(boot);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const exportProfile = useCallback(async (id: string) => {
+        try {
+            return await invoke<string>("profile_export", {id});
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const importProfile = useCallback(async (json: string) => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_import", {json});
+            setBootstrap(boot);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const exportProfileToPath = useCallback(async (id: string, path: string) => {
+        try {
+            await invoke("profile_export_to_path", {id, path});
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
+    const importProfileFromPath = useCallback(async (path: string) => {
+        try {
+            const boot = await invoke<ProfileBootstrap>("profile_import_from_path", {path});
+            setBootstrap(boot);
+        } catch (err: unknown) {
+            setError(String(err));
+            throw err;
+        }
+    }, []);
+
     const activeProfile = useMemo(() => getActiveProfile(bootstrap), [bootstrap]);
     const activeProfileName = useMemo(() => getProfileDisplayName(bootstrap), [bootstrap]);
 
@@ -189,6 +247,11 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             switchProfile,
             renameProfile,
             saveCurrentProfile,
+            deleteProfile,
+            exportProfile,
+            importProfile,
+            exportProfileToPath,
+            importProfileFromPath,
         }),
         [
             bootstrap,
@@ -201,6 +264,11 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             switchProfile,
             renameProfile,
             saveCurrentProfile,
+            deleteProfile,
+            exportProfile,
+            importProfile,
+            exportProfileToPath,
+            importProfileFromPath,
         ],
     );
 

@@ -41,7 +41,7 @@ export function ThemeColorPicker({
         <div className="flex items-center gap-2">
             {/* 色块预览 + 原生取色器入口（点击直接调系统色板） */}
             <label
-                className="relative size-8 shrink-0 cursor-pointer border-2 border-[var(--chalk)]"
+                className="relative size-8 shrink-0 cursor-pointer overflow-hidden rounded-field border border-base-300"
                 title={label ? `选择${label}` : "选择颜色"}
                 aria-label={label ? `选择${label}颜色` : "选择颜色"}
             >
@@ -80,7 +80,7 @@ export function ThemeColorPicker({
                     <Button
                         variant="outline"
                         size="icon"
-                        className="size-8 border-2 border-[var(--chalk)]"
+                        className="size-8"
                         aria-label="打开 OKLCH 拾色器"
                     >
                         <RiPaletteLine className="size-4" aria-hidden="true"/>

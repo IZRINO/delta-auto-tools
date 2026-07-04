@@ -12,7 +12,7 @@ function FieldSet({className, ...props}: React.ComponentProps<"fieldset">) {
         <fieldset
             data-slot="field-set"
             className={cn(
-                "flex flex-col gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
+                "fieldset flex flex-col gap-4 has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
                 className
             )}
             {...props}
@@ -30,7 +30,7 @@ function FieldLegend({
             data-slot="field-legend"
             data-variant={variant}
             className={cn(
-                "mb-2 font-mono font-black tracking-[0.12em] uppercase data-[variant=label]:text-xs/relaxed data-[variant=legend]:text-sm",
+                "fieldset-legend mb-2 data-[variant=label]:text-xs/relaxed data-[variant=legend]:text-sm",
                 className
             )}
             {...props}
@@ -52,7 +52,7 @@ function FieldGroup({className, ...props}: React.ComponentProps<"div">) {
 }
 
 const fieldVariants = cva(
-    "group/field flex w-full gap-2 data-[invalid=true]:text-[var(--amber)]",
+    "group/field flex w-full gap-2 data-[invalid=true]:text-error",
     {
         variants: {
             orientation: {
@@ -106,7 +106,7 @@ function FieldLabel({
         <Label
             data-slot="field-label"
             className={cn(
-                "group/field-label peer/field-label flex w-fit gap-2 font-mono text-xs font-medium leading-snug tracking-[0.12em] uppercase text-[var(--zinc)] group-data-[disabled=true]/field:opacity-50 has-data-checked:bg-[var(--slate)] has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-[var(--chalk)] *:data-[slot=field]:p-2",
+                "label group/field-label peer/field-label flex w-fit gap-2 text-sm leading-snug text-base-content/70 group-data-[disabled=true]/field:opacity-50 has-data-checked:bg-base-200 has-[>[data-slot=field]]:rounded-box has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-base-300 *:data-[slot=field]:p-2",
                 "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
                 className
             )}
@@ -120,7 +120,7 @@ function FieldTitle({className, ...props}: React.ComponentProps<"div">) {
         <div
             data-slot="field-label"
             className={cn(
-                "flex w-fit items-center gap-2 font-mono text-xs/relaxed font-medium tracking-[0.12em] uppercase group-data-[disabled=true]/field:opacity-50",
+                "flex w-fit items-center gap-2 text-sm/relaxed font-medium group-data-[disabled=true]/field:opacity-50",
                 className
             )}
             {...props}
@@ -133,9 +133,9 @@ function FieldDescription({className, ...props}: React.ComponentProps<"p">) {
         <p
             data-slot="field-description"
             className={cn(
-                "text-start font-mono text-xs/relaxed leading-normal font-bold tracking-[0.04em] text-[var(--zinc)] uppercase group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
+                "label text-start text-xs/relaxed leading-normal text-base-content/60 group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
                 "last:mt-0 nth-last-2:-mt-1",
-                "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-[var(--amber)]",
+                "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
                 className
             )}
             {...props}
@@ -155,7 +155,7 @@ function FieldSeparator({
             data-slot="field-separator"
             data-content={!!children}
             className={cn(
-                "relative -my-2 h-5 font-mono text-xs/relaxed font-black uppercase group-data-[variant=outline]/field-group:-mb-2",
+                "relative -my-2 h-5 text-xs/relaxed font-medium group-data-[variant=outline]/field-group:-mb-2",
                 className
             )}
             {...props}
@@ -163,7 +163,7 @@ function FieldSeparator({
             <Separator className="absolute inset-0 top-1/2"/>
             {children && (
                 <span
-                    className="relative mx-auto block w-fit bg-[var(--carbon)] px-2 text-[var(--zinc)]"
+                    className="relative mx-auto block w-fit bg-base-100 px-2 text-base-content/60"
                     data-slot="field-separator-content"
                 >
           {children}
@@ -217,7 +217,7 @@ function FieldError({
             role="alert"
             data-slot="field-error"
             className={cn(
-                "font-mono text-xs/relaxed font-black tracking-[0.08em] text-[var(--amber)] uppercase",
+                "label text-xs/relaxed font-medium text-error",
                 className
             )}
             {...props}

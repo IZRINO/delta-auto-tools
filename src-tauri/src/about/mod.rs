@@ -97,7 +97,6 @@ fn built_in_dependencies() -> Vec<Dependency> {
             "https://tauri.app",
         ),
         ("radix-ui", "MIT", "https://www.radix-ui.com"),
-        ("shadcn/ui", "MIT", "https://ui.shadcn.com"),
         ("tailwindcss 4", "MIT", "https://tailwindcss.com"),
         ("sonner", "MIT", "https://sonner.emilkowal.dev"),
         ("date-fns", "MIT", "https://date-fns.org"),

@@ -18,6 +18,7 @@ import {ThemeProvider} from "@/hooks/use-theme";
 import {ProfileProvider, useProfile} from "@/hooks/use-profile";
 import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
+import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
 import {Switch} from "@/components/ui/switch";
 import {cn} from "@/lib/utils";
 
@@ -80,9 +81,9 @@ type ToolId = (typeof tools)[number]["id"] | (typeof deltaTools)[number]["id"] |
 
 function ToolPageFallback() {
     return (
-        <div
-            className="flex min-h-[360px] items-center justify-center border-2 border-[var(--chalk)] bg-[var(--slate)] px-6 text-center font-mono text-xs font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
-            [ 正在装载工具面板 ]
+        <div className="flex min-h-[360px] items-center justify-center rounded-box bg-base-200 px-6 text-center text-sm text-base-content/70">
+            <span className="loading loading-spinner loading-sm mr-2"/>
+            正在装载工具面板
         </div>
     );
 }
@@ -148,10 +149,10 @@ function TopTabItem({
     return (
         <button
             className={cn(
-                "flex flex-col items-center justify-center gap-0.5 border-b-2 px-3 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.12em] uppercase focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]",
+                "btn btn-ghost btn-sm h-12 min-h-12 shrink-0 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-3 text-xs font-medium",
                 active
-                    ? "border-[var(--amber)] bg-[var(--chalk)] text-[var(--carbon)]"
-                    : "border-transparent text-[var(--zinc)] hover:bg-[var(--slate)] hover:text-[var(--chalk)]",
+                    ? "border-primary bg-base-200 text-base-content"
+                    : "text-base-content/60 hover:bg-base-200 hover:text-base-content",
             )}
             onClick={onClick}
             type="button"
@@ -164,8 +165,7 @@ function TopTabItem({
 
 function TopTabBar({activeTool, onToolClick}: { activeTool: ToolId; onToolClick: (id: ToolId) => void }) {
     return (
-        <nav
-            className="flex items-center overflow-x-auto border-b-2 border-[var(--chalk)] bg-[var(--carbon)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav className="flex items-center overflow-x-auto border-b border-base-300 bg-base-100 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TopTabItem
                 active={activeTool === "favorites"}
                 icon={RiStarFill}
@@ -213,34 +213,29 @@ function IndexRailItem({
 }) {
     return (
         <button
-            className="group relative grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch border-b border-[var(--chalk)] bg-[var(--carbon)] text-left transition-colors hover:bg-[var(--slate)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] data-[active=true]:bg-[var(--chalk)] data-[active=true]:text-[var(--carbon)]"
+            className={cn(
+                "btn btn-ghost h-auto min-h-14 w-full justify-start rounded-box px-3 py-2 text-left",
+                active && "btn-active",
+            )}
             data-active={active}
             onClick={onClick}
             type="button"
         >
-            <span className="bg-transparent group-data-[active=true]:bg-[var(--amber)]" aria-hidden="true"/>
-            <span className="min-w-0 px-3 py-3">
-        <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">{label}</span>
-        <span
-            className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase group-data-[active=true]:text-[var(--slate)]">
-          {code} / {meta}
-        </span>
-      </span>
-            <span
-                className="flex items-center justify-center border-l border-[var(--chalk)] text-[var(--amber)] group-data-[active=true]:text-[var(--carbon)]">
-        <Icon className="size-4" aria-hidden="true"/>
-      </span>
+            <Icon className="size-4 shrink-0 text-primary" aria-hidden="true"/>
+            <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">{label}</span>
+                <span className="mt-0.5 block truncate text-xs font-normal text-base-content/60">
+                    {code} / {meta}
+                </span>
+            </span>
         </button>
     );
 }
 
 function IndexRailSection({children, title}: { children: ReactNode; title: string }) {
     return (
-        <section className="border-t-2 border-[var(--chalk)]">
-            <div
-                className="flex h-8 items-center border-b border-[var(--chalk)] bg-[var(--chalk)] px-3 font-mono text-[0.62rem] font-black tracking-[0.24em] text-[var(--carbon)] uppercase">
-                [ {title} ]
-            </div>
+        <section>
+            <div className="menu-title px-3 pt-3 pb-1 text-xs text-base-content/60">{title}</div>
             <div>{children}</div>
         </section>
     );
@@ -263,9 +258,9 @@ function FavoritesIndexRailItem({active, count, onClick}: { active: boolean; cou
 
 function GlobalDisabledBanner() {
     return (
-        <div
-            className="mb-2 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
-            [ 全局总开关已关闭 ] 所有自动化功能与热键均已暂停，请在顶部工具栏重新开启。
+        <div role="alert" className="alert alert-error alert-soft mb-3">
+            <RiShutDownLine className="size-4" aria-hidden="true"/>
+            <span>全局总开关已关闭。所有自动化功能与热键均已暂停，请在顶部工具栏重新开启。</span>
         </div>
     );
 }
@@ -281,10 +276,10 @@ function GlobalSwitch() {
     return (
         <div
             className={cn(
-                "flex items-center gap-2 border-2 px-2 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.14em] uppercase",
+                "join join-horizontal items-center rounded-field border border-base-300 bg-base-100 px-2 py-1 text-xs",
                 globalEnabled
-                    ? "border-[var(--moss)] bg-[var(--moss)]/10 text-[var(--moss)]"
-                    : "border-[var(--alert-red)] bg-[var(--alert-red)]/10 text-[var(--alert-red)]",
+                    ? "text-success"
+                    : "text-error",
             )}
         >
             <RiShutDownLine className="size-3.5" aria-hidden="true"/>
@@ -339,6 +334,11 @@ function AppShell() {
             setActiveTool("timer");
             setHighlightCardId({kind: "timer", cardId, nonce: highlightNonceRef.current});
         }
+    }, []);
+
+    const handleSettingsOpenChange = useCallback((open: boolean) => {
+        publishSettingsDialogState(open);
+        setSettingsOpen(open);
     }, []);
 
     useEffect(() => {
@@ -419,52 +419,41 @@ function AppShell() {
     const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool);
 
     return (
-        <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-transparent">
+        <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-base-100">
             <a
-                className="sr-only fixed left-4 top-4 z-50 border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-sm font-black tracking-[0.16em] text-[var(--chalk)] uppercase focus:not-sr-only focus:outline-2 focus:outline-[var(--amber)]"
+                className="sr-only fixed left-4 top-4 z-50 rounded-field bg-base-200 px-3 py-2 text-sm text-base-content focus:not-sr-only focus:outline-2 focus:outline-primary"
                 href="#app-content"
             >
                 跳到主内容
             </a>
 
-            {/* Top Manifest Bar */}
-            <header
-                className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] border-b-2 border-[var(--chalk)] bg-[var(--carbon)] text-[var(--chalk)]">
-                <div className="flex items-center gap-3 border-r-2 border-[var(--chalk)] px-3">
-                    <div
-                        className="flex size-8 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--amber)] text-[var(--carbon)]">
+            <header className="navbar min-h-12 border-b border-base-300 bg-base-200 px-3 text-base-content">
+                <div className="navbar-start min-w-0 gap-3">
+                    <div className="flex size-9 items-center justify-center rounded-field bg-primary text-primary-content">
                         <RiCrosshair2Line className="size-5" aria-hidden="true"/>
                     </div>
                     <div className="min-w-0 leading-none">
-                        <p className="truncate text-sm font-black tracking-[-0.03em] uppercase">三角洲行动工具</p>
-                        <p className="mt-1 truncate font-mono text-[0.58rem] font-bold tracking-[0.18em] text-[var(--zinc)] uppercase">Delta
-                            Auto Tools</p>
+                        <p className="truncate text-sm font-semibold">三角洲行动工具</p>
+                        <p className="mt-0.5 truncate text-xs text-base-content/60">Delta Auto Tools</p>
                     </div>
                 </div>
-                <div className="flex min-h-0 items-center justify-between gap-3 border-l-2 border-[var(--chalk)] px-3">
-                    <div className="flex min-w-0 items-center gap-3">
-            <span
-                className="shrink-0 border-2 border-[var(--chalk)] bg-[var(--chalk)] px-2 py-1 font-heading text-base font-black tracking-[-0.06em] text-[var(--amber)] uppercase">
-              {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "audio" ? "05" : "D1"}
-            </span>
+                <div className="navbar-center hidden min-w-0 items-center gap-3 lg:flex">
+                    <span className="badge badge-primary badge-sm">
+                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "audio" ? "05" : "D1"}
+                    </span>
                         <div className="min-w-0">
-                            <p className="truncate text-xs font-black tracking-[-0.02em] uppercase">
+                            <p className="truncate text-sm font-medium">
                                 {activeMeta?.label ?? "收藏夹"}
                             </p>
-                            <p className="mt-0.5 truncate font-mono text-[0.58rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase">
+                            <p className="mt-0.5 truncate text-xs text-base-content/60">
                                 {activeMeta?.short ?? "Pinned"} / ACTIVE
                             </p>
                         </div>
-                    </div>
-                    <div className="flex items-center gap-3">
+                </div>
+                <div className="navbar-end gap-2">
                         <ProfileSwitcher/>
                         <GlobalSwitch/>
-                        <div
-                            className="hidden items-center border-2 border-[var(--chalk)] bg-[var(--chalk)] font-mono text-[0.58rem] font-black tracking-[0.14em] text-[var(--carbon)] uppercase sm:flex">
-                            <span className="bg-[var(--carbon)] px-3 py-2 text-[var(--chalk)]">DESKTOP</span>
-                            <span className="px-3 py-2 text-[var(--carbon)]">Tauri</span>
-                        </div>
-                    </div>
+                        <span className="badge badge-neutral hidden sm:inline-flex">Tauri</span>
                 </div>
             </header>
 
@@ -475,11 +464,10 @@ function AppShell() {
 
             <div className="grid min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
                 {/* Left Index Rail (desktop >=1024px) */}
-                <aside className="hidden min-h-0 flex-col border-r-2 border-[var(--chalk)] bg-[var(--slate)] lg:flex">
+                <aside className="hidden min-h-0 flex-col border-r border-base-300 bg-base-200 lg:flex">
                     <div
-                        className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <div
-                            className="border-b-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2 font-mono text-[0.58rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">
+                        className="menu min-h-0 flex-1 flex-nowrap overflow-y-auto p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="menu-title px-3 pb-1 text-xs text-base-content/60">
                             工具索引 / 收藏 {favorites.items.length}
                         </div>
 
@@ -516,24 +504,19 @@ function AppShell() {
                     </div>
 
                     {/* 设置 — 固定在 Rail 底部（含主题/配置/关于） */}
-                    <div className="border-t-2 border-[var(--chalk)] bg-[var(--carbon)]">
+                    <div className="border-t border-base-300 bg-base-200 p-2">
                         <button
-                            className="group grid w-full grid-cols-[0.25rem_1fr_2.25rem] items-stretch text-left transition-colors hover:bg-[var(--slate)] focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)]"
-                            onClick={() => setSettingsOpen(true)}
+                            className="btn btn-ghost h-auto min-h-14 w-full justify-start rounded-box px-3 py-2 text-left"
+                            onClick={() => handleSettingsOpenChange(true)}
                             type="button"
                         >
-                            <span className="bg-[var(--amber)]" aria-hidden="true"/>
-                            <span className="min-w-0 px-3 py-3">
-                <span className="block truncate text-sm font-black tracking-[-0.02em] uppercase">设置</span>
-                <span
-                    className="mt-1 block truncate font-mono text-[0.62rem] font-bold tracking-[0.14em] text-[var(--zinc)] uppercase group-hover:text-[var(--chalk)]">
-                  SYS / SETTINGS
-                </span>
-              </span>
-                            <span
-                                className="flex items-center justify-center border-l border-[var(--chalk)] text-[var(--amber)]">
-                <RiSettings3Line className="size-4" aria-hidden="true"/>
-              </span>
+                            <RiSettings3Line className="size-4 shrink-0 text-primary" aria-hidden="true"/>
+                            <span className="min-w-0">
+                                <span className="block truncate text-sm font-semibold">设置</span>
+                                <span className="mt-0.5 block truncate text-xs font-normal text-base-content/60">
+                                    SYS / SETTINGS
+                                </span>
+                            </span>
                         </button>
                     </div>
                 </aside>
@@ -554,7 +537,7 @@ function AppShell() {
 
             {/* 统一设置 Dialog（主题 / 配置 / 关于） */}
             <ToolPageSuspense fallback={null}>
-                <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}/>
+                <SettingsDialog open={settingsOpen} onOpenChange={handleSettingsOpenChange}/>
             </ToolPageSuspense>
         </div>
     );

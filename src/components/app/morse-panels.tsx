@@ -61,7 +61,7 @@ export function SelectionPanel({
             <CardBody className="flex flex-col gap-4 xl:gap-5">
                 {isPreviewMode ? (
                     <InlineControl
-                        className="border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                        className="border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
                         <RiEyeLine className="mx-auto mb-2 text-muted-foreground"/>
                         <p className="text-sm font-medium text-muted-foreground">预览模式</p>
                         <p className="mt-1 text-xs text-muted-foreground">启动桌面程序后才能写入采样窗位</p>
@@ -72,15 +72,15 @@ export function SelectionPanel({
                             className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                             <div className="flex flex-wrap items-center gap-3">
                                 <div className="grid grid-cols-3 gap-1">
-                                    <div className="size-3 border border-[var(--chalk)] bg-[var(--amber)]"
+                                    <div className="size-3 border border-base-content bg-primary"
                                          style={{opacity: configuredCount >= 1 ? 1 : 0.18}}/>
-                                    <div className="size-3 border border-[var(--chalk)] bg-[var(--amber)]"
+                                    <div className="size-3 border border-base-content bg-primary"
                                          style={{opacity: configuredCount >= 2 ? 1 : 0.18}}/>
-                                    <div className="size-3 border border-[var(--chalk)] bg-[var(--amber)]"
+                                    <div className="size-3 border border-base-content bg-primary"
                                          style={{opacity: configuredCount >= 3 ? 1 : 0.18}}/>
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="font-mono text-[0.68rem] font-black tracking-[0.2em] text-[var(--zinc)] uppercase">采样主控</p>
+                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">采样主控</p>
                                     <p className="mt-1 text-sm font-medium text-foreground">已锁定 {configuredCount}/3
                                         个窗位</p>
                                     <p className="mt-1 hidden text-xs text-muted-foreground sm:block">推荐在同一轮完成三段框选，避免后续校准链路漂移。</p>
@@ -104,7 +104,7 @@ export function SelectionPanel({
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span
-                                                    className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{`窗位 0${index + 1}`}</span>
+                                                    className="font-mono text-[0.68rem] font-semibold text-base-content/60">{`窗位 0${index + 1}`}</span>
                                                 <span className="text-sm font-medium text-foreground">{label}</span>
                                             </div>
                                             <Badge className="shrink-0"
@@ -116,12 +116,12 @@ export function SelectionPanel({
                                         {isConfigured ? (
                                             <>
                                                 <InlineControl
-                                                    className="border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2">
-                                                    <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">坐标纪要</p>
+                                                    className="border border-base-300 bg-base-100 px-3 py-2">
+                                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">坐标纪要</p>
                                                     <p className="mt-1 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                                                 </InlineControl>
                                                 <Button
-                                                    className="w-full rounded-none"
+                                                    className="w-full"
                                                     disabled={isBusy}
                                                     onClick={() => onSelectOne(index)}
                                                     type="button"
@@ -132,7 +132,7 @@ export function SelectionPanel({
                                             </>
                                         ) : (
                                             <Button
-                                                className="w-full rounded-none"
+                                                className="w-full"
                                                 disabled={isBusy}
                                                 onClick={() => onSelectOne(index)}
                                                 type="button"
@@ -220,14 +220,14 @@ export function WorkbenchControlPanel({
 
             <CardBody>
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.88fr)]">
-                    <section className="min-h-0 border-2 border-[var(--chalk)] bg-[var(--slate)]">
+                    <section className="min-h-0 border border-base-300 bg-base-200">
                         <div
-                            className="border-b-2 border-[var(--chalk)] bg-[var(--chalk)] px-3 py-2 text-[var(--carbon)]">
+                            className="border-b-2 border-base-content bg-base-content px-3 py-2 text-base-100">
                             <div className="flex items-start gap-2">
-                                <RiSettings3Line className="mt-0.5 text-[var(--amber)]"/>
+                                <RiSettings3Line className="mt-0.5 text-primary"/>
                                 <div>
-                                    <h3 className="font-mono text-[0.68rem] font-black tracking-[0.22em] uppercase">字段机架</h3>
-                                    <p className="mt-1 font-mono text-[0.62rem] font-bold tracking-[0.08em] text-[var(--slate)] uppercase">热键、阈值与自动点击链路写入后即刻自动保存</p>
+                                    <h3 className="font-mono text-[0.68rem] font-semibold">字段机架</h3>
+                                    <p className="mt-1 font-mono text-[0.62rem] font-bold text-base-200">热键、阈值与自动点击链路写入后即刻自动保存</p>
                                 </div>
                             </div>
                         </div>
@@ -241,7 +241,7 @@ export function WorkbenchControlPanel({
                                         <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                                             <Button
                                                 ref={hotkeyButtonRef}
-                                                className="h-auto w-full justify-between gap-4 rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-3 font-mono text-[0.78rem] font-semibold text-[var(--chalk)]"
+                                                className="h-auto w-full justify-between gap-4 border border-base-300 bg-base-100 px-3 py-3 font-mono text-[0.78rem] font-semibold text-base-content"
                                                 id="hotkey-recorder"
                                                 onBlur={onHotkeyRecorderBlur}
                                                 onClick={onBeginHotkeyRecording}
@@ -262,7 +262,7 @@ export function WorkbenchControlPanel({
                                                     className="xl:w-44 xl:shrink-0 xl:pt-1.5">二值化阈值</FieldLabel>
                                         <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                                             <Input
-                                                className="rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono"
+                                                className="border border-base-300 bg-base-100 font-mono"
                                                 id="binary-threshold"
                                                 inputMode="numeric"
                                                 max="255"
@@ -278,7 +278,7 @@ export function WorkbenchControlPanel({
                                                     className="xl:w-44 xl:shrink-0 xl:pt-1.5">自动输入延迟（毫秒）</FieldLabel>
                                         <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                                             <Input
-                                                className="rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono"
+                                                className="border border-base-300 bg-base-100 font-mono"
                                                 id="auto-input-delay"
                                                 inputMode="numeric"
                                                 min="0"
@@ -288,11 +288,11 @@ export function WorkbenchControlPanel({
                                         </FieldContent>
                                     </Field>
 
-                                    <ControlTile className="flex items-center gap-3 bg-[var(--carbon)]">
+                                    <ControlTile className="flex items-center gap-3 bg-base-100">
                                         <Switch checked={autoClickEnabled} disabled={isBusy}
                                                 onCheckedChange={onAutoClickEnabledChange}/>
                                         <div className="min-w-0">
-                                            <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">自动点击链路</p>
+                                            <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">自动点击链路</p>
                                             <p className="mt-1 text-sm font-medium text-foreground">识别成功后按设定顺序执行点击</p>
                                             <p className="mt-1 text-xs text-muted-foreground">每个点击区域都保留单独延迟，供战局内细调节奏。</p>
                                         </div>
@@ -300,17 +300,17 @@ export function WorkbenchControlPanel({
 
                                     {autoClickEnabled && (
                                         <Collapsible defaultOpen={false}
-                                                     className="border-2 border-[var(--chalk)] bg-[var(--carbon)]">
+                                                     className="border border-base-300 bg-base-100">
                                             <CollapsibleTrigger asChild>
                                                 <Button
-                                                    className="h-auto w-full justify-between rounded-none px-3 py-3 font-mono text-[0.72rem] font-black tracking-[0.18em]"
+                                                    className="h-auto w-full justify-between px-3 py-3 font-mono text-[0.72rem] font-semibold"
                                                     type="button" variant="ghost">
                                                     点击区域配置
                                                     <Badge
                                                         variant="outline">{clickRegions.filter((r) => r.rect).length}/7</Badge>
                                                 </Button>
                                             </CollapsibleTrigger>
-                                            <CollapsibleContent className="border-t-2 border-[var(--chalk)] px-3 py-3">
+                                            <CollapsibleContent className="border-t-2 border-base-content px-3 py-3">
                                                 <FieldGroup className="gap-3">
                                                     <Field className="xl:min-h-0 xl:flex-row xl:items-start">
                                                         <FieldLabel htmlFor="after-click-hotkey"
@@ -318,7 +318,7 @@ export function WorkbenchControlPanel({
                                                         <FieldContent
                                                             className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                                                             <Input
-                                                                className="rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono"
+                                                                className="border border-base-300 bg-base-100 font-mono"
                                                                 id="after-click-hotkey"
                                                                 placeholder="留空不执行，例如 F4 或 Ctrl+F4"
                                                                 value={form.afterClickHotkey}
@@ -334,7 +334,7 @@ export function WorkbenchControlPanel({
                                                             <div className="flex flex-col gap-2">
                                                                 {clickRegionRows(clickRegions).map((cr) => (
                                                                     <InlineControl key={cr.slotIndex}
-                                                                                   className="flex items-center gap-3 border-2 border-[var(--chalk)] bg-[var(--slate)]">
+                                                                                   className="flex items-center gap-3 border border-base-300 bg-base-200">
                                                                         <Badge variant={cr.rect ? "default" : "outline"}
                                                                                className="shrink-0">
                                                                             {cr.slotIndex + 1}
@@ -342,7 +342,7 @@ export function WorkbenchControlPanel({
                                                                         <span
                                                                             className="flex-1 font-mono text-xs text-muted-foreground">{formatRegion(cr.rect)}</span>
                                                                         <Input
-                                                                            className="w-20 rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] font-mono"
+                                                                            className="w-20 border border-base-300 bg-base-100 font-mono"
                                                                             inputMode="numeric"
                                                                             min="0"
                                                                             value={cr.delayMs}
@@ -351,7 +351,7 @@ export function WorkbenchControlPanel({
                                                                         <span
                                                                             className="text-xs text-muted-foreground">ms</span>
                                                                         <Button
-                                                                            className="h-8 w-8 shrink-0 rounded-none px-0"
+                                                                            className="h-8 w-8 shrink-0 px-0"
                                                                             disabled={isBusy}
                                                                             onClick={() => onRemoveClickRegion(cr.slotIndex)}
                                                                             type="button"
@@ -383,14 +383,14 @@ export function WorkbenchControlPanel({
                         </div>
                     </section>
 
-                    <section className="min-h-0 border-2 border-[var(--chalk)] bg-[var(--carbon)]">
+                    <section className="min-h-0 border border-base-300 bg-base-100">
                         <div
-                            className="border-b-2 border-[var(--chalk)] bg-[var(--chalk)] px-3 py-2 text-[var(--carbon)]">
+                            className="border-b-2 border-base-content bg-base-content px-3 py-2 text-base-100">
                             <div className="flex items-start gap-2">
-                                <RiSparklingLine className="mt-0.5 text-[var(--amber)]"/>
+                                <RiSparklingLine className="mt-0.5 text-primary"/>
                                 <div>
-                                    <h3 className="font-mono text-[0.68rem] font-black tracking-[0.22em] uppercase">即时验证</h3>
-                                    <p className="mt-1 font-mono text-[0.62rem] font-bold tracking-[0.08em] text-[var(--slate)] uppercase">聚焦输入框或手动触发，执行一次仅识别回路</p>
+                                    <h3 className="font-mono text-[0.68rem] font-semibold">即时验证</h3>
+                                    <p className="mt-1 font-mono text-[0.62rem] font-bold text-base-200">聚焦输入框或手动触发，执行一次仅识别回路</p>
                                 </div>
                             </div>
                         </div>
@@ -416,10 +416,10 @@ export function WorkbenchControlPanel({
                                 </Badge>
                             </div>
 
-                            <InlineControl className="mt-4 border-2 border-[var(--chalk)] bg-[var(--slate)] p-4">
-                                <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">即时验证输入</p>
+                            <InlineControl className="mt-4 border border-base-300 bg-base-200 p-4">
+                                <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">即时验证输入</p>
                                 <Input
-                                    className="mt-3 h-12 rounded-none border-2 border-[var(--chalk)] bg-[var(--carbon)] px-4 font-mono text-base tracking-[0.22em]"
+                                    className="mt-3 h-12 border border-base-300 bg-base-100 px-4 font-mono text-base"
                                     id="verification-input"
                                     onChange={(event) => onVerificationChange(event.currentTarget.value)}
                                     onFocus={onVerificationFocus}
@@ -430,8 +430,8 @@ export function WorkbenchControlPanel({
                             </InlineControl>
 
                             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                                <InlineControl className="border-2 border-[var(--chalk)] bg-[var(--slate)] px-3 py-3">
-                                    <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">验证状态</p>
+                                <InlineControl className="border border-base-300 bg-base-200 px-3 py-3">
+                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">验证状态</p>
                                     <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框或按按钮即可重新验证"}</p>
                                 </InlineControl>
                                 <Button className="rounded-none" disabled={isVerifying} onClick={onVerificationRetry}
@@ -480,7 +480,7 @@ export function ResultPanel({
             <CardBody className="flex min-h-0 flex-col gap-4">
                 {!hasResult ? (
                     <InlineControl
-                        className="border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                        className="border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
                         <RiCheckboxCircleLine className="mx-auto mb-2 text-muted-foreground"/>
                         <p className="text-sm font-medium text-muted-foreground">等待报码</p>
                         <p className="mt-1 text-xs text-muted-foreground">完成前两单元后，三码结果会写入这里。</p>
@@ -488,7 +488,7 @@ export function ResultPanel({
                 ) : (
                     <>
                         <InlineControl
-                            className="border-2 border-[var(--chalk)] bg-[var(--void)] px-5 py-5 text-[var(--carbon)]">
+                            className="border border-base-300 bg-neutral px-5 py-5 text-base-100">
                             <div className="flex flex-wrap items-center gap-2">
                                 <Badge variant={latestRunError ? "outline" : latestRunValue ? "default" : "secondary"}>
                                     {latestRunError ? "失败" : latestRunValue ? "成功" : "等待执行"}
@@ -496,21 +496,21 @@ export function ResultPanel({
                                 {latestTriggeredBy ? <Badge variant="outline">来源 {latestTriggeredBy}</Badge> : null}
                                 {latestAutoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
                             </div>
-                            <p className="mt-4 font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--slate)] uppercase">最新三码输出</p>
-                            <p className="mt-4 break-all font-mono text-4xl font-semibold tracking-[0.24em] text-[var(--amber)] sm:text-5xl sm:tracking-[0.36em]">
+                            <p className="mt-4 font-mono text-[0.68rem] font-semibold text-base-200">最新三码输出</p>
+                            <p className="mt-4 break-all font-mono text-4xl font-semibold text-primary sm:text-5xl">
                                 {latestRunValue ?? "---"}
                             </p>
-                            <div className="mt-2 h-0.5 w-full bg-[var(--amber)]" aria-hidden="true"/>
-                            <p className="mt-3 text-xs text-[var(--slate)]">{latestRunError ?? "执行识别后会在这里显示最新三码输出。"}</p>
+                            <div className="mt-2 h-0.5 w-full bg-primary" aria-hidden="true"/>
+                            <p className="mt-3 text-xs text-base-200">{latestRunError ?? "执行识别后会在这里显示最新三码输出。"}</p>
                         </InlineControl>
 
                         <div className="grid gap-2 md:grid-cols-3">
                             {runDetails.map((detail) => (
                                 <InlineControl key={detail.slot}
-                                               className="border-2 border-[var(--chalk)] bg-[var(--slate)] p-3">
+                                               className="border border-base-300 bg-base-200 p-3">
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">
-                                            <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
+                                            <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
                                             <p className="mt-1 font-mono text-sm font-semibold text-foreground">{detail.morse ?? "--"}</p>
                                         </div>
                                         <Badge
@@ -549,7 +549,7 @@ export function HistoryPanel({history, isPreviewMode}: HistoryPanelProps) {
             <CardBody>
                 {isPreviewMode ? (
                     <InlineControl
-                        className="border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                        className="border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
                         <RiEyeLine className="mx-auto mb-2 text-muted-foreground"/>
                         <p className="text-sm font-medium text-muted-foreground">预览模式</p>
                         <p className="mt-1 text-xs text-muted-foreground">启动桌面程序后才能读取识别档案</p>
@@ -559,7 +559,7 @@ export function HistoryPanel({history, isPreviewMode}: HistoryPanelProps) {
                         <div className="flex flex-col gap-3 pe-4">
                             {history.length === 0 ? (
                                 <InlineControl
-                                    className="border-2 border-dashed border-[var(--chalk)] bg-[var(--slate)] px-4 py-8 text-center">
+                                    className="border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
                                     <RiHistoryLine className="mx-auto mb-2 text-muted-foreground"/>
                                     <p className="text-sm font-medium text-muted-foreground">暂无档案</p>
                                     <p className="mt-1 text-xs text-muted-foreground">执行一次识别后会在这里生成运行回执。</p>
@@ -567,11 +567,11 @@ export function HistoryPanel({history, isPreviewMode}: HistoryPanelProps) {
                             ) : (
                                 history.map((entry) => (
                                     <InlineControl key={entry.id}
-                                                   className="border-2 border-[var(--chalk)] bg-[var(--slate)] p-4">
+                                                   className="border border-base-300 bg-base-200 p-4">
                                         <div
-                                            className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--chalk)] pb-3">
+                                            className="flex flex-wrap items-center justify-between gap-2 border-b border-base-content pb-3">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="font-mono text-[0.68rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">{entry.result ? `报码 ${entry.result}` : "识别失败"}</p>
+                                                <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">{entry.result ? `报码 ${entry.result}` : "识别失败"}</p>
                                                 <Badge
                                                     variant={entry.success ? "default" : "outline"}>{entry.success ? "成功" : "失败"}</Badge>
                                                 <Badge variant="outline">{entry.triggeredBy}</Badge>

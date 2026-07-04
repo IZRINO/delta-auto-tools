@@ -20,7 +20,6 @@ export const DEPENDENCIES: Dependency[] = [
     {name: "@tauri-apps/plugin-updater", kind: "frontend", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "@tauri-apps/plugin-process", kind: "frontend", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "radix-ui", kind: "frontend", license: "MIT", url: "https://www.radix-ui.com"},
-    {name: "shadcn/ui", kind: "frontend", license: "MIT", url: "https://ui.shadcn.com"},
     {name: "tailwindcss 4", kind: "frontend", license: "MIT", url: "https://tailwindcss.com"},
     {name: "sonner", kind: "frontend", license: "MIT", url: "https://sonner.emilkowal.dev"},
     {name: "date-fns", kind: "frontend", license: "MIT", url: "https://date-fns.org"},

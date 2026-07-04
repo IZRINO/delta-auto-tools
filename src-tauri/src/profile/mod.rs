@@ -15,7 +15,7 @@ pub mod events;
 pub mod settings;
 pub mod types;
 
-use std::sync::Mutex;
+use std::{fs, path::Path, sync::Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -25,7 +25,6 @@ use crate::morse;
 use crate::rapidfire;
 use crate::settings as common_settings;
 use crate::timer;
-
 
 use self::types::{Profile, ProfileBootstrap, ProfileSettings};
 
@@ -62,7 +61,11 @@ fn generate_profile_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed) % 100;
-    format!("p{}{:02}", chrono::Utc::now().timestamp_millis() as u64, seq)
+    format!(
+        "p{}{:02}",
+        chrono::Utc::now().timestamp_millis() as u64,
+        seq
+    )
 }
 
 fn max_config_number(profiles: &[Profile]) -> u32 {
@@ -116,6 +119,69 @@ fn append_profile(
     settings.active_profile_id = profile.id.clone();
     settings.profiles.push(profile.clone());
     profile
+}
+
+fn reserve_import_name(settings: &mut ProfileSettings, name: &str) -> String {
+    let base = name.trim();
+    if base.is_empty() {
+        return reserve_config_name(settings);
+    }
+    if !settings.profiles.iter().any(|profile| profile.name == base) {
+        return base.to_string();
+    }
+
+    let mut number: u32 = 2;
+    loop {
+        let candidate = format!("{base} 导入{number}");
+        if !settings
+            .profiles
+            .iter()
+            .any(|profile| profile.name == candidate)
+        {
+            return candidate;
+        }
+        number = number.saturating_add(1);
+    }
+}
+
+fn export_profile(settings: &ProfileSettings, id: &str) -> Result<String, String> {
+    let profile = settings
+        .profiles
+        .iter()
+        .find(|profile| profile.id == id)
+        .ok_or_else(|| format!("找不到配置: {id}"))?;
+    serde_json::to_string_pretty(profile).map_err(|e| format!("导出配置失败: {e}"))
+}
+
+fn import_profile(settings: &mut ProfileSettings, json: &str) -> Result<Profile, String> {
+    let imported: Profile =
+        serde_json::from_str(json).map_err(|e| format!("配置 JSON 解析失败: {e}"))?;
+    let now = chrono::Utc::now().timestamp_millis() as u64;
+    let profile = Profile {
+        id: generate_profile_id(),
+        name: reserve_import_name(settings, &imported.name),
+        created_at: now,
+        updated_at: now,
+        snapshot: imported.snapshot,
+    };
+    settings.profiles.push(profile.clone());
+    Ok(profile)
+}
+
+fn read_profile_json(path: &str) -> Result<String, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("导入路径不能为空".to_string());
+    }
+    fs::read_to_string(Path::new(path)).map_err(|e| format!("读取配置文件失败: {e}"))
+}
+
+fn write_profile_json(path: &str, json: &str) -> Result<(), String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("导出路径不能为空".to_string());
+    }
+    fs::write(Path::new(path), json).map_err(|e| format!("写入配置文件失败: {e}"))
 }
 
 /// 构建 Profile bootstrap。
@@ -258,6 +324,58 @@ pub fn profile_delete(
             return Err("不能删除当前激活的配置".to_string());
         }
         settings.profiles.retain(|p| p.id != id);
+        settings::save_settings(&app, &settings)?;
+    }
+    let bootstrap = build_bootstrap(&state);
+    emit_profile_changed(&app, &bootstrap);
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn profile_export(state: State<'_, ProfileState>, id: String) -> Result<String, String> {
+    let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+    export_profile(&settings, &id)
+}
+
+#[tauri::command]
+pub fn profile_export_to_path(
+    state: State<'_, ProfileState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
+    let json = {
+        let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+        export_profile(&settings, &id)?
+    };
+    write_profile_json(&path, &json)
+}
+
+#[tauri::command]
+pub fn profile_import(
+    app: AppHandle,
+    state: State<'_, ProfileState>,
+    json: String,
+) -> Result<ProfileBootstrap, String> {
+    {
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+        import_profile(&mut settings, &json)?;
+        settings::save_settings(&app, &settings)?;
+    }
+    let bootstrap = build_bootstrap(&state);
+    emit_profile_changed(&app, &bootstrap);
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn profile_import_from_path(
+    app: AppHandle,
+    state: State<'_, ProfileState>,
+    path: String,
+) -> Result<ProfileBootstrap, String> {
+    let json = read_profile_json(&path)?;
+    {
+        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+        import_profile(&mut settings, &json)?;
         settings::save_settings(&app, &settings)?;
     }
     let bootstrap = build_bootstrap(&state);
@@ -771,6 +889,72 @@ mod tests {
         assert!(snap.audio.is_none());
     }
 
+    #[test]
+    fn export_profile_returns_pretty_camel_case_json() {
+        let settings = ProfileSettings {
+            profiles: vec![Profile {
+                id: "p1".to_string(),
+                name: "PVE".to_string(),
+                created_at: 1,
+                updated_at: 2,
+                snapshot: types::ToolSettingsSnapshot::empty(),
+            }],
+            active_profile_id: "p1".to_string(),
+            next_profile_number: 1,
+        };
+
+        let json = export_profile(&settings, "p1").unwrap();
+
+        assert!(json.contains("\"createdAt\": 1"));
+        assert!(json.contains("\"updatedAt\": 2"));
+        assert!(!json.contains("created_at"));
+        assert!(!json.contains("updated_at"));
+    }
+
+    #[test]
+    fn import_profile_generates_new_id_and_keeps_active_profile() {
+        let mut settings = ProfileSettings {
+            profiles: vec![Profile {
+                id: "active".to_string(),
+                name: "当前".to_string(),
+                created_at: 1,
+                updated_at: 1,
+                snapshot: types::ToolSettingsSnapshot::empty(),
+            }],
+            active_profile_id: "active".to_string(),
+            next_profile_number: 1,
+        };
+        let json = r#"{"id":"old","name":"导入","createdAt":1,"updatedAt":2,"snapshot":{}}"#;
+
+        let imported = import_profile(&mut settings, json).unwrap();
+
+        assert_ne!(imported.id, "old");
+        assert_eq!(imported.name, "导入");
+        assert_eq!(settings.active_profile_id, "active");
+        assert_eq!(settings.profiles.len(), 2);
+    }
+
+    #[test]
+    fn import_profile_derives_name_on_conflict() {
+        let mut settings = ProfileSettings {
+            profiles: vec![Profile {
+                id: "p1".to_string(),
+                name: "重复".to_string(),
+                created_at: 1,
+                updated_at: 1,
+                snapshot: types::ToolSettingsSnapshot::empty(),
+            }],
+            active_profile_id: "p1".to_string(),
+            next_profile_number: 1,
+        };
+        let json = r#"{"id":"old","name":"重复","createdAt":1,"updatedAt":2,"snapshot":{}}"#;
+
+        let imported = import_profile(&mut settings, json).unwrap();
+
+        assert_eq!(imported.name, "重复 导入2");
+        assert_eq!(settings.active_profile_id, "p1");
+    }
+
     // ── emit 测试 ──
 
     /// 验证 profile://changed 事件名常量正确。
@@ -844,7 +1028,7 @@ mod tests {
         assert_eq!(emit_tracker::count(), 0);
     }
 
-    /// 验证 5 个写命令在代码结构上均调用了 emit_profile_changed。
+    /// 验证 Profile 写命令在代码结构上可调用 emit_profile_changed。
     /// 由于无法在单元测试中创建 AppHandle 调用 Tauri command，
     /// 此测试通过检查 emit_profile_changed 函数签名和事件常量，
     /// 确认所有写命令在成功路径末尾触发了 emit。

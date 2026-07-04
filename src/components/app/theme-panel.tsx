@@ -208,15 +208,16 @@ export function ThemePanel() {
 
     if (loading) {
         return (
-            <div className="flex min-h-[200px] items-center justify-center font-mono text-xs text-[var(--zinc)]">
-                [ 正在加载主题... ]
+            <div className="flex min-h-[200px] items-center justify-center gap-2 text-sm text-base-content/70">
+                <span className="loading loading-spinner loading-sm"/>
+                正在加载主题
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs text-[var(--alert-red)]">
+            <div className="alert alert-error alert-soft text-sm">
                 主题加载失败：{error}
             </div>
         );
@@ -224,7 +225,7 @@ export function ThemePanel() {
 
     if (!bootstrap) {
         return (
-            <div className="font-mono text-xs text-[var(--zinc)]">
+            <div className="alert text-sm text-base-content/70">
                 浏览器预览模式不支持主题切换，请在桌面应用内使用。
             </div>
         );
@@ -238,12 +239,12 @@ export function ThemePanel() {
         <ScrollArea className="max-h-[60vh]">
             <div className="flex flex-col gap-4 pr-3">
                 {/* 预设区 */}
-                <FieldUnit header="[ PRESET / 预设主题 ]">
+                <FieldUnit header="预设主题">
                     {/* 当存在自定义 overrides 时显示「已自定义」状态条，预设均不选中 */}
                     {bootstrap.overrides.length > 0 && (
-                        <div className="mb-2 flex items-center gap-1.5 border-2 border-[var(--amber)] bg-[var(--amber)]/10 px-2 py-1.5 font-mono text-[0.58rem] font-black tracking-[0.12em] text-[var(--amber)] uppercase">
+                        <div className="alert alert-info alert-soft mb-3 py-2 text-sm">
                             <RiPaletteLine className="size-3" aria-hidden="true"/>
-                            CUSTOMIZED // 点击预设可恢复原主题配色
+                            已自定义配色，点击预设可恢复原主题配色
                         </div>
                     )}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -260,13 +261,13 @@ export function ThemePanel() {
                                     type="button"
                                     onClick={() => handlePresetClick(theme.id)}
                                     className={cn(
-                                        "group relative flex flex-col gap-2 border-2 p-2 text-left transition-colors",
+                                        "card card-border group relative flex flex-col gap-2 bg-base-100 p-3 text-left transition-colors",
                                         isActive
-                                            ? "border-[var(--amber)] bg-[var(--amber)]/10"
-                                            : "border-[var(--chalk)] hover:border-[var(--zinc)] hover:bg-[var(--slate)]",
+                                            ? "border-primary bg-primary/10"
+                                            : "hover:border-primary/60 hover:bg-base-200",
                                     )}
                                 >
-                                    <div className="flex h-6 w-full overflow-hidden border border-[var(--seam)]">
+                                    <div className="flex h-7 w-full overflow-hidden rounded-field border border-base-300">
                                         {swatches.map((c, i) => (
                                             <span
                                                 key={i}
@@ -279,21 +280,21 @@ export function ThemePanel() {
                                     <div className="flex items-center justify-between gap-1">
                                         <span
                                             className={cn(
-                                                "truncate text-xs font-black tracking-tight",
-                                                theme.builtin ? "text-[var(--chalk)]" : "text-[var(--chalk)]",
+                                                "truncate text-sm font-semibold",
+                                                theme.builtin ? "text-base-content" : "text-base-content",
                                             )}
                                         >
                                             {theme.name}
                                         </span>
                                         {isActive ? (
                                             <RiCheckLine
-                                                className="size-3.5 shrink-0 text-[var(--amber)]"
+                                                className="size-3.5 shrink-0 text-primary"
                                                 aria-hidden="true"
                                             />
                                         ) : null}
                                     </div>
-                                    <span className="font-mono text-[0.58rem] font-bold tracking-[0.12em] text-[var(--zinc)] uppercase">
-                                        {theme.builtin ? "BUILTIN" : "CUSTOM"}
+                                    <span className="badge badge-ghost badge-sm w-fit">
+                                        {theme.builtin ? "内置" : "自定义"}
                                     </span>
                                 </button>
                             );
@@ -303,7 +304,7 @@ export function ThemePanel() {
 
                 {/* Tokens 编辑区 */}
                 <FieldUnit
-                    header="[ TOKENS / 自定义颜色 ]"
+                    header="自定义颜色"
                     footer={
                         dirty ? (
                             <div className="flex items-center justify-end gap-2">
@@ -318,7 +319,7 @@ export function ThemePanel() {
                                 <Button
                                     size="sm"
                                     onClick={handleSaveOverrides}
-                                    className="h-7 border-2 border-[var(--chalk)] bg-[var(--chalk)] text-[var(--carbon)] text-xs hover:bg-[var(--chalk)]/90"
+                                    className="h-7 text-xs"
                                 >
                                     保存自定义
                                 </Button>
@@ -333,10 +334,10 @@ export function ThemePanel() {
                                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
                             >
                                 <div className="min-w-0">
-                                    <p className="truncate text-xs font-black tracking-tight">
+                                    <p className="truncate text-sm font-medium">
                                         {TOKEN_LABELS[key] ?? key}
                                     </p>
-                                    <p className="truncate font-mono text-[0.58rem] text-[var(--zinc)]">
+                                    <p className="truncate font-mono text-xs text-base-content/60">
                                         {key}
                                     </p>
                                 </div>
@@ -351,14 +352,14 @@ export function ThemePanel() {
                 </FieldUnit>
 
                 {/* 导入导出 */}
-                <FieldUnit header="[ IMPORT / EXPORT ]">
+                <FieldUnit header="导入导出">
                     <div className="flex flex-wrap gap-2">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={handleExport}
                             disabled={!activeTheme}
-                            className="h-8 border-2 border-[var(--chalk)] text-xs"
+                            className="h-8 text-xs"
                         >
                             <RiDownloadLine
                                 className="size-3.5"
@@ -371,7 +372,7 @@ export function ThemePanel() {
                             variant="outline"
                             size="sm"
                             onClick={handleImportClick}
-                            className="h-8 border-2 border-[var(--chalk)] text-xs"
+                            className="h-8 text-xs"
                         >
                             <RiUploadLine
                                 className="size-3.5"
@@ -381,7 +382,7 @@ export function ThemePanel() {
                             导入主题 JSON
                         </Button>
                     </div>
-                    <p className="mt-2 font-mono text-[0.58rem] text-[var(--zinc)]">
+                    <p className="mt-2 text-xs text-base-content/60">
                         导入的主题会作为新自定义主题加入列表，不影响内置主题。
                     </p>
                 </FieldUnit>

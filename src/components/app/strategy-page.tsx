@@ -14,6 +14,11 @@ import {Tabs, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Textarea} from "@/components/ui/textarea";
 import {AppPage} from "@/components/app/app-ui";
 import {
+    isSettingsDialogOpen,
+    SETTINGS_DIALOG_CLOSE_EVENT,
+    SETTINGS_DIALOG_OPEN_EVENT,
+} from "@/components/app/settings-dialog-events";
+import {
     BUILTIN_STRATEGY_SITES,
     createStrategySite,
     DEFAULT_STRATEGY_REFRESH_SECONDS,
@@ -65,6 +70,7 @@ export function StrategyPage() {
     const contentWindowRef = useRef<WebviewWindow | null>(null);
     const contentWindowReadyRef = useRef(false);
     const latestBoundsRef = useRef<StrategyContentBounds | null>(null);
+    const settingsCoveringRef = useRef(isSettingsDialogOpen());
     const [userSites, setUserSites] = useState<StrategySite[]>(() => {
         const stored = readStoredUserSites();
         // 首次启动：localStorage 为空，把内置预置站点写入 localStorage
@@ -173,7 +179,7 @@ export function StrategyPage() {
     }, [calculateContentWindowBounds]);
 
     const resizeContentWebview = useCallback(async () => {
-        if (!isNativeShell) {
+        if (!isNativeShell || settingsCoveringRef.current) {
             return;
         }
         const bounds = calculateVisibleContentBounds();
@@ -191,8 +197,44 @@ export function StrategyPage() {
     }, [applyContentBounds, calculateVisibleContentBounds, isNativeShell]);
 
     useEffect(() => {
+        if (!isNativeShell) {
+            return;
+        }
+
+        const closeForSettings = () => {
+            settingsCoveringRef.current = true;
+            const current = contentWindowRef.current;
+            contentWindowRef.current = null;
+            contentWindowReadyRef.current = false;
+            setStatusMessage("界面浮层已打开，攻略网页已临时关闭。");
+            void closeContentWindow(current);
+        };
+        const restoreAfterSettings = () => {
+            if (!settingsCoveringRef.current) {
+                return;
+            }
+            settingsCoveringRef.current = false;
+            setReloadNonce((current) => current + 1);
+        };
+
+        window.addEventListener(SETTINGS_DIALOG_OPEN_EVENT, closeForSettings);
+        window.addEventListener(SETTINGS_DIALOG_CLOSE_EVENT, restoreAfterSettings);
+        if (isSettingsDialogOpen()) {
+            closeForSettings();
+        }
+        return () => {
+            window.removeEventListener(SETTINGS_DIALOG_OPEN_EVENT, closeForSettings);
+            window.removeEventListener(SETTINGS_DIALOG_CLOSE_EVENT, restoreAfterSettings);
+        };
+    }, [isNativeShell]);
+
+    useEffect(() => {
         if (!isNativeShell || !activeUrl) {
             setStatusMessage(isNativeShell ? "未选择攻略网站。" : "浏览器预览模式无法创建 Tauri 内容窗口。");
+            return;
+        }
+        if (settingsCoveringRef.current) {
+            setStatusMessage("界面浮层已打开，攻略网页已临时关闭。");
             return;
         }
 
@@ -204,7 +246,7 @@ export function StrategyPage() {
         async function mountWebview() {
             const existing = await WebviewWindow.getByLabel(CONTENT_WEBVIEW_LABEL).catch(() => null);
             await closeContentWindow(existing);
-            if (cancelled) {
+            if (cancelled || settingsCoveringRef.current) {
                 return;
             }
 
@@ -212,7 +254,7 @@ export function StrategyPage() {
             const visibleBounds = calculateVisibleContentBounds();
             const initialBounds = visibleBounds ?? hostBounds;
             latestBoundsRef.current = visibleBounds;
-            if (cancelled) {
+            if (cancelled || settingsCoveringRef.current) {
                 return;
             }
 
@@ -231,7 +273,7 @@ export function StrategyPage() {
             });
             contentWindowRef.current = contentWindow;
             void contentWindow.once("tauri://created", () => {
-                if (cancelled || contentWindowRef.current !== contentWindow) {
+                if (cancelled || settingsCoveringRef.current || contentWindowRef.current !== contentWindow) {
                     void closeContentWindow(contentWindow);
                     return;
                 }
@@ -428,15 +470,15 @@ export function StrategyPage() {
     return (
         <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 overflow-hidden">
             <div
-                className="col-span-12 grid shrink-0 gap-px overflow-hidden border-2 border-[var(--chalk)] bg-[var(--chalk)] lg:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="min-w-0 bg-[var(--carbon)] px-2 py-2">
+                className="col-span-12 grid shrink-0 gap-px overflow-hidden border border-base-300 bg-base-content lg:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="min-w-0 bg-base-100 px-2 py-2">
                     <div className="flex min-w-0 items-center gap-2">
                         <div
-                            className="hidden shrink-0 items-center gap-1.5 border-r-2 border-[var(--chalk)] pr-2 sm:flex">
+                            className="hidden shrink-0 items-center gap-1.5 border-r-2 border-base-content pr-2 sm:flex">
                             <span
-                                className="border-2 border-[var(--chalk)] bg-[var(--chalk)] px-1.5 py-0.5 font-heading text-sm font-black tracking-[-0.04em] text-[var(--amber)] uppercase">04</span>
+                                className="border border-base-300 bg-base-content px-1.5 py-0.5 font-heading text-sm font-semibold text-primary">04</span>
                             <Badge variant="secondary" className="h-6 px-2">攻略</Badge>
-                            <p className="font-mono text-[0.55rem] font-black tracking-[0.18em] text-[var(--zinc)] uppercase">INTEL</p>
+                            <p className="font-mono text-[0.55rem] font-semibold text-base-content/60">INTEL</p>
                         </div>
 
                         <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}
@@ -446,11 +488,11 @@ export function StrategyPage() {
                                           className="h-8 min-w-max justify-start border-0 bg-transparent p-0 group-data-horizontal/tabs:h-8">
                                     {allSites.map((site, siteIndex) => (
                                         <TabsTrigger key={site.id} value={site.id}
-                                                     className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-[0.66rem] font-black tracking-[0.08em]">
+                                                     className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-[0.66rem] font-semibold">
                                             <span
-                                                className="text-[0.55rem] text-[var(--zinc)] data-[state=active]:text-[var(--amber)]">{String(siteIndex + 1).padStart(2, "0")}</span>
+                                                className="text-[0.55rem] text-base-content/60 data-[state=active]:text-primary">{String(siteIndex + 1).padStart(2, "0")}</span>
                                             <img alt="" aria-hidden
-                                                 className="size-3.5 border border-[var(--chalk)] bg-[var(--carbon)] object-contain"
+                                                 className="size-3.5 border border-base-content bg-base-100 object-contain"
                                                  src={site.favicon}/>
                                             <span className="truncate">{site.shortLabel || site.label}</span>
                                         </TabsTrigger>
@@ -460,7 +502,7 @@ export function StrategyPage() {
                         </Tabs>
 
                         <div
-                            className="hidden min-w-0 max-w-[24rem] truncate border-2 border-[var(--chalk)] bg-[var(--slate)] px-2 py-1.5 font-mono text-[0.62rem] font-bold tracking-[0.06em] text-[var(--chalk)] xl:block"
+                            className="hidden min-w-0 max-w-[24rem] truncate border border-base-300 bg-base-200 px-2 py-1.5 font-mono text-[0.62rem] font-bold text-base-content xl:block"
                             title={activeSite?.description ? `${activeUrl}\n${activeSite.description}` : activeUrl}
                         >
                             {activeUrl || "未选择站点"}
@@ -468,7 +510,7 @@ export function StrategyPage() {
                     </div>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 bg-[var(--slate)] px-2 py-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 bg-base-200 px-2 py-2">
                     <Button type="button" size="sm" variant={createPanelOpen ? "default" : "outline"}
                             className="h-8 px-2.5" onClick={handleCreatePanelToggle}>
                         <RiAddLine data-icon="inline-start"/>
@@ -501,7 +543,7 @@ export function StrategyPage() {
                 </div>
 
                 {createPanelOpen ? (
-                    <div className="col-span-full border-t-2 border-[var(--chalk)] bg-[var(--carbon)] p-3">
+                    <div className="col-span-full border-t-2 border-base-content bg-base-100 p-3">
                         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_auto]">
                             <Field className="gap-1.5">
                                 <FieldLabel htmlFor="strategy-site-short-label">简称</FieldLabel>
@@ -551,10 +593,10 @@ export function StrategyPage() {
                 ) : null}
 
                 {refreshPanelOpen ? (
-                    <div className="col-span-full border-t-2 border-[var(--chalk)] bg-[var(--carbon)] p-3">
+                    <div className="col-span-full border-t-2 border-base-content bg-base-100 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                             <span
-                                className="mr-1 font-mono text-[0.62rem] font-black tracking-[0.16em] text-[var(--zinc)] uppercase">自动刷新档位</span>
+                                className="mr-1 font-mono text-[0.62rem] font-semibold text-base-content/60">自动刷新档位</span>
                             {STRATEGY_REFRESH_OPTIONS.map((option) => (
                                 <Button
                                     key={option.seconds}
@@ -576,14 +618,14 @@ export function StrategyPage() {
 
             <div
                 ref={contentHostRef}
-                className="col-span-12 relative z-0 min-h-0 overflow-hidden border-2 border-[var(--chalk)] bg-[var(--carbon)]"
+                className="col-span-12 relative z-0 min-h-0 overflow-hidden border border-base-300 bg-base-100"
             >
                 <div
-                    className="pointer-events-none absolute inset-0 grid place-items-center bg-[var(--carbon)] px-6 text-center">
-                    <div className="max-w-xl border-2 border-[var(--chalk)] bg-[var(--slate)] px-5 py-4">
-                        <p className="font-mono text-[0.62rem] font-black tracking-[0.18em] text-[var(--amber)] uppercase">当前内容窗口宿主区</p>
-                        <p className="mt-3 text-sm font-black uppercase text-[var(--chalk)]">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
-                        <p className="mt-2 font-mono text-[0.68rem] font-bold leading-relaxed tracking-[0.08em] text-[var(--zinc)] uppercase">
+                    className="pointer-events-none absolute inset-0 grid place-items-center bg-base-100 px-6 text-center">
+                    <div className="max-w-xl border border-base-300 bg-base-200 px-5 py-4">
+                        <p className="font-mono text-[0.62rem] font-semibold text-primary">当前内容窗口宿主区</p>
+                        <p className="mt-3 text-sm font-semibold text-base-content">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
+                        <p className="mt-2 font-mono text-[0.68rem] font-bold leading-relaxed text-base-content/60">
                             {isNativeShell
                                 ? "网页内容会贴合此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
                                 : "浏览器预览模式无法创建 Tauri 内容窗口，请在桌面端使用。"}

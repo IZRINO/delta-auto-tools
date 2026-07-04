@@ -1,192 +1,89 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/jetbrains-mono";
 @plugin "daisyui";
 
 :root {
-    font-family: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     font-size: 16px;
-    line-height: 1.38;
-    font-weight: 500;
-    color-scheme: light;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: dark;
     font-synthesis: none;
-    text-rendering: geometricPrecision;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
 
-    /* daisyUI 语义 token fallback：默认主题 valentine 的值，运行时由 JS
-       documentElement.style.setProperty 注入激活主题覆盖（inline style 特异性
-       高于 :root，首帧渲染即呈现默认主题视觉）。M0 桥接层 feature 声明。 */
     --color-base-100: oklch(21.5% 0 261.692);
-    --color-base-200: oklch(18.5% 0 261.692);
-    --color-base-300: oklch(15.5% 0 261.692);
-    --color-base-content: oklch(89% 0.02 261.692);
+    --color-base-200: oklch(18.8% 0 264.665);
+    --color-base-300: oklch(50% 0.213 27.518);
+    --color-base-content: oklch(96% 0.003 264.542);
     --color-primary: oklch(70% 0.234 24.700);
-    --color-primary-content: oklch(98% 0 0);
+    --color-primary-content: oklch(100% 0 281.288);
     --color-secondary: oklch(82% 0.189 84.429);
-    --color-secondary-content: oklch(21.5% 0 261.692);
-    --color-accent: oklch(70% 0.234 24.700);
-    --color-accent-content: oklch(98% 0 0);
-    --color-neutral: oklch(27% 0.03 261.692);
-    --color-neutral-content: oklch(89% 0.02 261.692);
-    --color-info: oklch(74% 0.16 232.661);
-    --color-info-content: oklch(29% 0.066 243.157);
-    --color-success: oklch(76% 0.177 163.223);
-    --color-success-content: oklch(37% 0.077 168.94);
-    --color-warning: oklch(82% 0.189 84.429);
-    --color-warning-content: oklch(41% 0.112 45.904);
-    --color-error: oklch(71% 0.194 13.428);
-    --color-error-content: oklch(27% 0.105 12.094);
-    --radius-selector: 1rem;
-    --radius-field: 0.25rem;
-    --radius-box: 1rem;
+    --color-secondary-content: oklch(27% 0.077 45.635);
+    --color-accent: oklch(26% 0 0);
+    --color-accent-content: oklch(100% 0 0);
+    --color-neutral: oklch(44% 0.017 285.786);
+    --color-neutral-content: oklch(98% 0.002 247.839);
+    --color-info: oklch(60% 0.126 221.723);
+    --color-info-content: oklch(97% 0.014 254.604);
+    --color-success: oklch(64% 0.2 131.684);
+    --color-success-content: oklch(98% 0.031 120.757);
+    --color-warning: oklch(66% 0.179 58.318);
+    --color-warning-content: oklch(98% 0.022 95.277);
+    --color-error: oklch(58% 0.253 17.585);
+    --color-error-content: oklch(97% 0.014 343.198);
+    --radius-selector: 2rem;
+    --radius-field: 0.5rem;
+    --radius-box: 0.5rem;
     --size-selector: 0.25rem;
     --size-field: 0.25rem;
     --border: 1px;
     --depth: 0;
-    --noise: 0;
-
-    /* 桥接层：旧工业别名 token → daisyUI 语义 token（M5 清零验证后删除） */
-    --carbon: var(--color-base-100);
-    --slate: var(--color-base-200);
-    --iron: var(--color-base-300);
-    --chalk: var(--color-base-content);
-    --zinc: color-mix(in oklab, var(--color-base-content) 65%, transparent);
-    --amber: var(--color-primary);
-    --rust: var(--color-warning);
-    --moss: var(--color-success);
-    --void: var(--color-neutral);
-    --alert-red: var(--color-error);
-    --warning-amber: var(--color-warning);
-    --valid-green: var(--color-success);
-    --terminal-green: var(--color-success);
-    --phosphor: var(--color-base-content);
-
-    /* 未桥接工业 token：M4 重做 body/app-ui brutalist 骨架时随骨架一并放弃 */
-    --dust: #9A9A9A;
-    --seam: #E5E5E5;
-
-    /* 桥接层：旧 shadcn token → daisyUI 语义 token（M5 清零验证后删除） */
-    --background: var(--color-base-100);
-    --foreground: var(--color-base-content);
-    --card: var(--color-base-200);
-    --card-foreground: var(--color-base-content);
-    --popover: var(--color-base-200);
-    --popover-foreground: var(--color-base-content);
-    --primary: var(--color-primary);
-    --primary-foreground: var(--color-primary-content);
-    --secondary: var(--color-secondary);
-    --secondary-foreground: var(--color-secondary-content);
-    --accent: var(--color-accent);
-    --accent-foreground: var(--color-accent-content);
-    --muted: var(--color-base-200);
-    --muted-foreground: color-mix(in oklab, var(--color-base-content) 65%, transparent);
-    --destructive: var(--color-error);
-
-    /* --border 命名冲突解决：旧边框颜色改名，释放 --border 给 daisyUI 边框宽度 */
-    --legacy-border-color: #0A0A0A;
-
-    /* 未桥接 shadcn token：M1~M3 组件迁移后由 M5 评估清理 */
-    --input: #0A0A0A;
-    --ring: #E8A000;
-    --chart-1: #E8A000;
-    --chart-2: #3F8A30;
-    --chart-3: #E11919;
-    --chart-4: #6B6B6B;
-    --chart-5: #9A9A9A;
-    --radius: 0;
-    --sidebar: #F5F5F5;
-    --sidebar-foreground: #0A0A0A;
-    --sidebar-primary: #E8A000;
-    --sidebar-primary-foreground: #0A0A0A;
-    --sidebar-accent: #FFFFFF;
-    --sidebar-accent-foreground: #0A0A0A;
-    --sidebar-border: #0A0A0A;
-    --sidebar-ring: #E8A000;
-
-    /* 工业纹理效果 token：随 app-ui.tsx brutalist 骨架在 M4 放弃 */
-    --surface-shell: #FFFFFF;
-    --surface-panel: #F5F5F5;
-    --surface-card: #FFFFFF;
-    --surface-card-strong: #F5F5F5;
-    --surface-tile: #F5F5F5;
-    --surface-border: #0A0A0A;
-    --surface-border-strong: #0A0A0A;
-    --surface-hover: #E5E5E5;
-    --surface-highlight: #E8A000;
-    --surface-dot: #E5E5E5;
-
-    --shadow-shell: none;
-    --shadow-card: none;
-    --shadow-subtle: none;
-    --shadow-focus: 0 0 0 2px #E8A000;
-    --shadow-tile: none;
-
-    --scanline: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.05) 2px, rgba(0, 0, 0, 0.05) 4px);
-    --stripe-warning: repeating-linear-gradient(45deg, #E11919, #E11919 10px, transparent 10px, transparent 20px);
-    --misprint-offset: 0.04em;
+    --noise: 1;
+    --radius: var(--radius-box);
 }
 
 @theme inline {
-    --font-heading: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-    --font-sans: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--legacy-border-color);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --color-carbon: var(--carbon);
-    --color-slate: var(--slate);
-    --color-iron: var(--iron);
-    --color-chalk: var(--chalk);
-    --color-zinc: var(--zinc);
-    --color-dust: var(--dust);
-    --color-seam: var(--seam);
-    --color-amber: var(--amber);
-    --color-rust: var(--rust);
-    --color-moss: var(--moss);
-    --color-void: var(--void);
-    --color-alert-red: var(--alert-red);
-    --color-warning-amber: var(--warning-amber);
-    --color-valid-green: var(--valid-green);
-    --color-terminal-green: var(--terminal-green);
-    --color-phosphor: var(--phosphor);
-    --radius-sm: 0;
-    --radius-md: 0;
-    --radius-lg: 0;
-    --radius-xl: 0;
-    --radius-2xl: 0;
-    --radius-3xl: 0;
-    --radius-4xl: 0;
-    --font-mono: 'JetBrains Mono Variable', 'Consolas', monospace;
+    --font-heading: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono Variable", "Cascadia Mono", "Consolas", monospace;
+
+    --color-background: var(--color-base-100);
+    --color-foreground: var(--color-base-content);
+    --color-card: var(--color-base-200);
+    --color-card-foreground: var(--color-base-content);
+    --color-popover: var(--color-base-200);
+    --color-popover-foreground: var(--color-base-content);
+    --color-muted: var(--color-base-200);
+    --color-muted-foreground: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+    --color-destructive: var(--color-error);
+    --color-border: var(--color-base-300);
+    --color-input: var(--color-base-300);
+    --color-ring: var(--color-primary);
+    --color-sidebar: var(--color-base-200);
+    --color-sidebar-foreground: var(--color-base-content);
+    --color-sidebar-primary: var(--color-primary);
+    --color-sidebar-primary-foreground: var(--color-primary-content);
+    --color-sidebar-accent: var(--color-base-300);
+    --color-sidebar-accent-foreground: var(--color-base-content);
+    --color-sidebar-border: var(--color-base-300);
+    --color-sidebar-ring: var(--color-primary);
+    --color-chart-1: var(--color-primary);
+    --color-chart-2: var(--color-secondary);
+    --color-chart-3: var(--color-accent);
+    --color-chart-4: var(--color-success);
+    --color-chart-5: var(--color-warning);
+
+    --radius-sm: var(--radius-field);
+    --radius-md: var(--radius-field);
+    --radius-lg: var(--radius-box);
+    --radius-xl: var(--radius-box);
+    --radius-2xl: var(--radius-box);
+    --radius-3xl: var(--radius-box);
+    --radius-4xl: var(--radius-box);
 }
 
 @layer base {
@@ -200,15 +97,7 @@
     body {
         font-family: var(--font-sans);
         font-variant-numeric: tabular-nums;
-        letter-spacing: -0.01em;
-        @apply bg-background text-foreground;
-        background-color: var(--carbon);
-        background-image: linear-gradient(color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
-        linear-gradient(90deg, color-mix(in srgb, var(--seam) 100%, transparent) 1px, transparent 1px),
-        linear-gradient(color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px),
-        linear-gradient(90deg, color-mix(in srgb, var(--zinc) 10%, transparent) 2px, transparent 2px);
-        background-position: 0 0, 0 0, 0 0, 0 0;
-        background-size: 24px 24px, 24px 24px, 96px 96px, 96px 96px;
+        @apply bg-base-100 text-base-content;
     }
 
     html[data-overlay-mode="true"],
@@ -227,7 +116,7 @@
     }
 
     * {
-        @apply border-border outline-ring/50;
+        @apply border-base-300 outline-primary/50;
     }
 
     html {
@@ -236,33 +125,30 @@
 }
 
 [data-token-status="valid"] {
-    background-color: var(--moss);
+    background-color: var(--color-success);
 }
 
 [data-token-status="expiring_soon"] {
-    background-color: var(--rust);
+    background-color: var(--color-warning);
 }
 
 [data-token-status="expired"] {
-    background-color: var(--destructive);
+    background-color: var(--color-error);
 }
 
 [data-token-status="none"] {
-    background-color: var(--zinc);
+    background-color: color-mix(in oklab, var(--color-base-content) 35%, transparent);
 }
 
 @keyframes favorite-highlight-pulse {
     0% {
-        outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
-        transform: translateZ(0);
+        outline: 0 solid color-mix(in oklab, var(--color-primary) 0%, transparent);
     }
     35% {
-        outline: 4px solid color-mix(in srgb, var(--amber) 84%, transparent);
-        transform: translateZ(0);
+        outline: 4px solid color-mix(in oklab, var(--color-primary) 82%, transparent);
     }
     100% {
-        outline: 0 solid color-mix(in srgb, var(--amber) 0%, transparent);
-        transform: translateZ(0);
+        outline: 0 solid color-mix(in oklab, var(--color-primary) 0%, transparent);
     }
 }
 
@@ -272,7 +158,6 @@
     }
 }
 
-/* Tooltip z-index fix for WebView2 overlay issues */
 [data-slot="tooltip-content"] {
     z-index: 9999;
 }

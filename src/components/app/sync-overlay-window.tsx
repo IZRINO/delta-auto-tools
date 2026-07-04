@@ -107,7 +107,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
                              className={cn("relative my-0.5 min-w-0 overflow-hidden rounded-md px-2 py-0.5 text-base font-semibold tracking-wide", isActive ? "bg-primary/20 ring-1 ring-primary/70" : "")}>
                             {(run && !isMultiSegment) || isMultiSegment ? (
                                 <Progress aria-label={`${timer.name} 进度`}
-                                          className="absolute inset-0 h-full rounded-md bg-white/20 [&_[data-slot=progress-indicator]]:bg-[var(--rust)]"
+                                          className="absolute inset-0 h-full rounded-md bg-white/20 [&_[data-slot=progress-indicator]]:bg-warning"
                                           value={progress}/>
                             ) : null}
                             <div className="relative flex min-w-0 items-center justify-between gap-3">
@@ -117,7 +117,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
                     <span
                         className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
                   <span
-                      className={cn("shrink-0 font-mono text-xs", isActive ? "text-primary" : finished ? "text-[var(--amber)]" : "text-white/60")}>
+                      className={cn("shrink-0 font-mono text-xs", isActive ? "text-primary" : finished ? "text-primary" : "text-white/60")}>
                     {isActive ? "RUNNING" : finished ? "FINISHED" : "IDLE"}
                   </span>
                 </span>

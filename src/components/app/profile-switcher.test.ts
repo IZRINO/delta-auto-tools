@@ -1,14 +1,17 @@
 import {afterEach, describe, expect, it, vi} from "vitest";
 
 /**
- * VAL-DF-005: profile-switcher 含"另存为"入口。
+ * VAL-DF-005: profile-switcher 含"复制"入口。
  *
- * 行为级测试：mock saveCurrentProfile，测试另存为流程的行为契约。
+ * 行为级测试：mock saveCurrentProfile，测试复制流程的行为契约。
  * 不使用 source-regex 断言，而是通过 vi.mock/vi.fn 验证调用行为。
  */
 
 // ── Mock 依赖 ──────────────────────────────────────────
 const mockSaveCurrentProfile = vi.fn();
+const mockDeleteProfile = vi.fn();
+const mockExportProfileToPath = vi.fn();
+const mockImportProfileFromPath = vi.fn();
 const mockValidateProfileName = vi.fn();
 
 vi.mock("@/hooks/use-profile", () => ({
@@ -28,6 +31,11 @@ vi.mock("@/hooks/use-profile", () => ({
         switchProfile: vi.fn(),
         renameProfile: vi.fn(),
         saveCurrentProfile: mockSaveCurrentProfile,
+        deleteProfile: mockDeleteProfile,
+        exportProfile: vi.fn(),
+        importProfile: vi.fn(),
+        exportProfileToPath: mockExportProfileToPath,
+        importProfileFromPath: mockImportProfileFromPath,
     }),
 }));
 
@@ -40,14 +48,14 @@ vi.mock("@/lib/utils", () => ({
     cn: (...args: string[]) => args.filter(Boolean).join(" "),
 }));
 
-// ── 另存为流程行为测试 ──────────────────────────────────
+// ── 复制流程行为测试 ──────────────────────────────────
 
 /**
  * handleSaveAs 的核心行为契约（提取自 profile-switcher.tsx）：
  * 1. 验证名称：调用 validateProfileName(name)
  * 2. 验证失败时设置错误消息，不调用 saveCurrentProfile
  * 3. 验证通过时调用 saveCurrentProfile(trimmedName)
- * 4. 成功后关闭另存为面板、清空输入
+ * 4. 成功后关闭复制面板、清空输入
  * 5. 失败时设置错误消息
  */
 async function handleSaveAsContract(
@@ -67,13 +75,13 @@ async function handleSaveAsContract(
     }
 }
 
-describe("另存为流程行为", () => {
+describe("复制流程行为", () => {
     afterEach(() => {
         mockSaveCurrentProfile.mockReset();
         mockValidateProfileName.mockReset();
     });
 
-    it("另存为：输入有效名称并确认后调用 saveCurrentProfile", async () => {
+    it("复制：输入有效名称并确认后调用 saveCurrentProfile", async () => {
         mockValidateProfileName.mockReturnValue(null);
         mockSaveCurrentProfile.mockResolvedValue(undefined);
 
@@ -85,7 +93,7 @@ describe("另存为流程行为", () => {
         expect(result.message).toBeNull();
     });
 
-    it("另存为：名称前后空格会被 trim 后传给 saveCurrentProfile", async () => {
+    it("复制：名称前后空格会被 trim 后传给 saveCurrentProfile", async () => {
         mockValidateProfileName.mockReturnValue(null);
         mockSaveCurrentProfile.mockResolvedValue(undefined);
 
@@ -94,7 +102,7 @@ describe("另存为流程行为", () => {
         expect(mockSaveCurrentProfile).toHaveBeenCalledWith("带空格配置");
     });
 
-    it("另存为：名称验证失败时不调用 saveCurrentProfile", async () => {
+    it("复制：名称验证失败时不调用 saveCurrentProfile", async () => {
         mockValidateProfileName.mockReturnValue("配置名称不能为空");
 
         const result = await handleSaveAsContract("", mockSaveCurrentProfile, mockValidateProfileName);
@@ -104,7 +112,7 @@ describe("另存为流程行为", () => {
         expect(result.saveAsOpen).toBe(true);
     });
 
-    it("另存为：名称过长验证失败时不调用 saveCurrentProfile", async () => {
+    it("复制：名称过长验证失败时不调用 saveCurrentProfile", async () => {
         mockValidateProfileName.mockReturnValue("配置名称不能超过 40 个字符");
 
         const result = await handleSaveAsContract("超".repeat(41), mockSaveCurrentProfile, mockValidateProfileName);
@@ -113,7 +121,7 @@ describe("另存为流程行为", () => {
         expect(result.message).toBe("配置名称不能超过 40 个字符");
     });
 
-    it("另存为：saveCurrentProfile 失败时显示错误消息但保持面板打开", async () => {
+    it("复制：saveCurrentProfile 失败时显示错误消息但保持面板打开", async () => {
         mockValidateProfileName.mockReturnValue(null);
         mockSaveCurrentProfile.mockRejectedValue(new Error("保存失败"));
 
@@ -170,6 +178,70 @@ describe("切换 Profile 行为", () => {
         mockSwitchProfile.mockRejectedValue(new Error("切换失败"));
         const result = await handleSwitchContract("p2", "p1", mockSwitchProfile);
         expect(result.error).toBe("Error: 切换失败");
+    });
+});
+
+describe("删除 Profile 行为", () => {
+    afterEach(() => {
+        mockDeleteProfile.mockReset();
+    });
+
+    async function handleDeleteContract(
+        clickedProfileId: string,
+        activeProfileId: string,
+        deleteProfile: (id: string) => Promise<void>,
+        confirmed: boolean,
+    ): Promise<{deleted: boolean; message: string | null}> {
+        if (clickedProfileId === activeProfileId) {
+            return {deleted: false, message: "不能删除当前激活的配置。"};
+        }
+        if (!confirmed) {
+            return {deleted: false, message: null};
+        }
+        try {
+            await deleteProfile(clickedProfileId);
+            return {deleted: true, message: "配置已删除。"};
+        } catch (err) {
+            return {deleted: false, message: String(err)};
+        }
+    }
+
+    it("删除当前激活 Profile 被前端拦截", async () => {
+        const result = await handleDeleteContract("p1", "p1", mockDeleteProfile, true);
+        expect(mockDeleteProfile).not.toHaveBeenCalled();
+        expect(result.message).toBe("不能删除当前激活的配置。");
+    });
+
+    it("删除非当前 Profile 调用 deleteProfile", async () => {
+        mockDeleteProfile.mockResolvedValue(undefined);
+        const result = await handleDeleteContract("p2", "p1", mockDeleteProfile, true);
+        expect(mockDeleteProfile).toHaveBeenCalledWith("p2");
+        expect(result.deleted).toBe(true);
+    });
+
+    it("取消确认时不调用 deleteProfile", async () => {
+        const result = await handleDeleteContract("p2", "p1", mockDeleteProfile, false);
+        expect(mockDeleteProfile).not.toHaveBeenCalled();
+        expect(result.deleted).toBe(false);
+    });
+});
+
+describe("Profile 导入导出路径行为", () => {
+    afterEach(() => {
+        mockExportProfileToPath.mockReset();
+        mockImportProfileFromPath.mockReset();
+    });
+
+    it("导出时把 Profile id 和用户选择路径传给 hook", async () => {
+        mockExportProfileToPath.mockResolvedValue(undefined);
+        await mockExportProfileToPath("p1", "D:/tmp/profile-p1.json");
+        expect(mockExportProfileToPath).toHaveBeenCalledWith("p1", "D:/tmp/profile-p1.json");
+    });
+
+    it("导入时把用户选择路径传给 hook", async () => {
+        mockImportProfileFromPath.mockResolvedValue(undefined);
+        await mockImportProfileFromPath("D:/tmp/profile-p1.json");
+        expect(mockImportProfileFromPath).toHaveBeenCalledWith("D:/tmp/profile-p1.json");
     });
 });
 

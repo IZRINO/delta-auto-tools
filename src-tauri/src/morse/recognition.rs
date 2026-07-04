@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use image::{DynamicImage, GrayImage, Luma, RgbaImage};
 use xcap::Monitor;
 
-
 use super::{
     decoder,
     types::{MorseRegionDetail, MorseRunResult, MorseSettings, RegionRect},
@@ -776,11 +775,7 @@ mod tests {
             let _ = i;
             for y in 2..18u32 {
                 for dx in 0..3u32 {
-                    image.put_pixel(
-                        x_offset + dx,
-                        y,
-                        image::Rgba([255, 255, 255, 255]),
-                    );
+                    image.put_pixel(x_offset + dx, y, image::Rgba([255, 255, 255, 255]));
                 }
             }
         }
@@ -810,11 +805,7 @@ mod tests {
         for x_offset in [5, 30, 55, 80, 105] {
             for y in 8..12u32 {
                 for dx in 0..16u32 {
-                    image.put_pixel(
-                        x_offset + dx,
-                        y,
-                        image::Rgba([255, 255, 255, 255]),
-                    );
+                    image.put_pixel(x_offset + dx, y, image::Rgba([255, 255, 255, 255]));
                 }
             }
         }

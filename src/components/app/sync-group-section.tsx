@@ -42,14 +42,14 @@ export function SyncGroupSection({
     return (
         <div className={cn("col-span-12 flex flex-col gap-2", className)}>
             {groups.map((group) => (
-                <ControlTile key={group.id} className="flex flex-col gap-3 bg-[var(--carbon)]">
+                <ControlTile key={group.id} className="flex flex-col gap-3 bg-base-100">
                     <div className="flex flex-wrap items-center gap-3">
                         <Switch
                             checked={group.enabled}
                             disabled={controlsDisabled}
                             onCheckedChange={(checked) => onGroupUpdate(group.id, {enabled: checked})}
                         />
-                        <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">
+                        <p className="font-mono text-xs font-medium text-base-content">
                             {targetLabel}分组 · {group.name}
                         </p>
                         <Input
@@ -86,7 +86,7 @@ export function SyncGroupSection({
                         <InlineControl className="p-0">
                             <CollapsibleTrigger asChild>
                                 <Button
-                                    className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium tracking-[0.12em] uppercase"
+                                    className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium"
                                     type="button"
                                     variant="ghost"
                                 >
@@ -94,7 +94,7 @@ export function SyncGroupSection({
                                     <RiArrowDownSLine className="size-3.5"/>
                                 </Button>
                             </CollapsibleTrigger>
-                            <CollapsibleContent className="border-t border-[var(--chalk)] px-2 py-2">
+                            <CollapsibleContent className="border-t border-base-content px-2 py-2">
                                 <div className="flex flex-wrap items-center gap-4">
                                     <Field className="min-w-0 flex-1">
                                         <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
@@ -135,7 +135,7 @@ export function SyncGroupSection({
                         </InlineControl>
                     </Collapsible>
 
-                    <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
+                    <p className="font-mono text-xs font-medium text-muted-foreground">
                         {group.enabled ? "分组已启用" : "分组已关闭"} · {effectiveCount(group.id)} 张有效卡片
                     </p>
                 </ControlTile>

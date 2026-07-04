@@ -2,6 +2,8 @@
 
 多配置 Profile 系统（`src-tauri/src/profile/` + `src/hooks/use-profile.tsx` + `src/components/app/profile-*.tsx`）允许用户将全部 5 个工具的 settings 快照为命名配置并在运行时切换。切换 profile 时写入 5 份 settings JSON 文件到磁盘，重载各工具内存状态（复用各工具的 `pub(crate)` 热键/窗口/emit 函数），重置计数器运行值，更新 `active_profile_id`。写命令执行成功后 emit `profile://changed` 事件到 main 窗口，前端 `ProfileProvider` 监听该事件刷新 bootstrap。前端使用 `reloadNonce` 强制重挂载当前工具页，清除待处理的 autosave 定时器并重新获取配置。
 
+顶栏 Profile 切换器提供新增、复制、重命名、删除、导入、导出入口。删除当前激活 Profile 会被拒绝；复制沿用当前运行态快照创建新 Profile 并切换到副本；导入/导出只处理单个 Profile JSON，导入时生成新 ID、刷新时间戳并加入列表，不自动切换当前运行态。
+
 ## 用途
 
 - 将 5 个工具的当前内存 settings 快照为单个 `Profile`，存储在 `profile_settings.json`
@@ -89,7 +91,7 @@ sequenceDiagram
 
 ### 写命令 emit profile://changed
 
-5 个写命令（`save_current` / `create_default` / `apply` / `delete` / `rename`）执行成功后，调用 `emit_profile_changed(app, &build_bootstrap(&state))`，向 main 窗口 emit `profile://changed` 事件，payload 为最新 `ProfileBootstrap`。前端 `ProfileProvider` 监听该事件并刷新 bootstrap。
+写命令（`save_current` / `create_default` / `apply` / `delete` / `rename` / `import`）执行成功后，调用 `emit_profile_changed(app, &build_bootstrap(&state))`，向 main 窗口 emit `profile://changed` 事件，payload 为最新 `ProfileBootstrap`。前端 `ProfileProvider` 监听该事件并刷新 bootstrap。`export` / `export_to_path` 只读，不 emit。
 
 只读命令 `get_bootstrap` 不 emit，避免噪声事件。
 
@@ -110,6 +112,7 @@ sequenceDiagram
 
 - 新增第 6 个工具到快照：在 `types.rs` 的 `ToolSettingsSnapshot` 添加字段（`#[serde(default)]`），更新 `snapshot_current_settings` 和 `build_default_snapshot`，添加 `apply_*_settings` 函数
 - 修改自动命名：编辑 `reserve_config_name`
+- 修改导入命名：编辑 `reserve_import_name`
 - 修改重载触发：编辑 `ProfileProvider.switchProfile` 和 `App.tsx` 中的 `key` 用法
 
 ## 关键源文件

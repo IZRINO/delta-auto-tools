@@ -615,10 +615,7 @@ fn probe_hit_single_target(
 ///
 /// 聚合摘要字段（sampled_color/distance/target_color/tolerance/matching_pixel_count）
 /// 取距离最小（最接近命中）的目标作为代表。
-fn aggregate_probe_hits(
-    hits: &[TargetHit],
-    probe_match_mode: ColorMatchMode,
-) -> ProbeHit {
+fn aggregate_probe_hits(hits: &[TargetHit], probe_match_mode: ColorMatchMode) -> ProbeHit {
     if hits.is_empty() {
         return ProbeHit {
             matched: false,

@@ -93,9 +93,9 @@
 |------|------|------|
 | `react` / `react-dom` | **19.2.7** | React 19，相当靠前的版本。 |
 | `tailwindcss` | **4.3.1** | Tailwind v4，CSS-first 方案，**不存在 `tailwind.config.js`**，主题 token 全部写在 `src/App.css` 的 `@theme inline`。 |
-| `shadcn` | 4.11.0 | shadcn/ui CLI，组件源码直接落在 `src/components/ui/`。 |
+| `daisyui` | ^5.6.10 | daisyUI 组件 class 与主题 token。 |
 | `@remixicon/react` | ^4.9.0 | 图标库；按约定 Button 内图标必须设置 `data-icon="inline-start"` / `"inline-end"`。 |
 | `vite` | 7.3.5 | 构建器。 |
 | `recharts` | 3.8.1 | 图表库，大概用于游戏数据/统计可视化（Delta 移除后用途可能已收窄）。 |
 
-前端栈整体偏「新」：React 19 + Tailwind v4 + Vite 7 + shadcn 4，都是 2025–2026 年的主力版本。这与 Rust 侧 `enigo 0.6.1` 的「老成」形成有趣对照——前端追新，后端在关键底层库上求稳。
+前端栈整体偏「新」：React 19 + Tailwind v4 + Vite + daisyUI 5，都是 2025–2026 年的主力方向。这与 Rust 侧 `enigo 0.6.1` 的「老成」形成有趣对照——前端追新，后端在关键底层库上求稳。

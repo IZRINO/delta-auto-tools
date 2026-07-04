@@ -10,7 +10,7 @@ graph TD
         App[App.tsx 应用壳层]
         Pages[工具页面组件]
         Hooks[共享 Hooks]
-        UI[工业风 UI 组件]
+        UI[daisyUI 组件]
     end
 
     subgraph Rust 后端
@@ -136,4 +136,4 @@ graph TD
 
 ## 设计方向
 
-UI 正在迁移到 daisyUI token 体系。基础组件保留 shadcn/Radix API 包装以维持 Dialog、Dropdown、Tooltip、Select 等交互行为，视觉层使用 daisyUI class、Tailwind CSS 和 `src/App.css` token。内置主题为 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`；主题切换通过 CSS 变量覆盖实现。
+UI 使用 daisyUI token 体系。基础组件保留 Radix headless 行为能力以维持 Dialog、Dropdown、Tooltip、Select 等交互，视觉层使用 daisyUI class、Tailwind CSS 和 `src/App.css` token。内置主题为 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`；主题切换通过 CSS 变量覆盖实现，旧工业桥接 token 已删除。

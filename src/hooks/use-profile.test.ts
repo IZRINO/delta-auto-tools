@@ -50,6 +50,31 @@ async function createDefaultProfileContract(): Promise<void> {
     await invoke("profile_create_default");
 }
 
+async function deleteProfileContract(id: string): Promise<void> {
+    const {invoke} = await import("@tauri-apps/api/core");
+    await invoke("profile_delete", {id});
+}
+
+async function exportProfileContract(id: string): Promise<string> {
+    const {invoke} = await import("@tauri-apps/api/core");
+    return await invoke("profile_export", {id}) as string;
+}
+
+async function importProfileContract(json: string): Promise<void> {
+    const {invoke} = await import("@tauri-apps/api/core");
+    await invoke("profile_import", {json});
+}
+
+async function exportProfileToPathContract(id: string, path: string): Promise<void> {
+    const {invoke} = await import("@tauri-apps/api/core");
+    await invoke("profile_export_to_path", {id, path});
+}
+
+async function importProfileFromPathContract(path: string): Promise<void> {
+    const {invoke} = await import("@tauri-apps/api/core");
+    await invoke("profile_import_from_path", {path});
+}
+
 describe("saveCurrentProfile IPC 契约", () => {
     afterEach(() => {
         mockInvoke.mockReset();
@@ -125,6 +150,42 @@ describe("createDefaultProfile IPC 契约", () => {
         mockInvoke.mockResolvedValue({});
         await createDefaultProfileContract();
         expect(mockInvoke).toHaveBeenCalledWith("profile_create_default");
+    });
+});
+
+describe("Profile 删除与导入导出 IPC 契约", () => {
+    afterEach(() => {
+        mockInvoke.mockReset();
+    });
+
+    it("deleteProfile 调用 invoke('profile_delete', {id})", async () => {
+        mockInvoke.mockResolvedValue({});
+        await deleteProfileContract("profile-delete");
+        expect(mockInvoke).toHaveBeenCalledWith("profile_delete", {id: "profile-delete"});
+    });
+
+    it("exportProfile 调用 invoke('profile_export', {id})", async () => {
+        mockInvoke.mockResolvedValue("{\"id\":\"profile-export\"}");
+        await exportProfileContract("profile-export");
+        expect(mockInvoke).toHaveBeenCalledWith("profile_export", {id: "profile-export"});
+    });
+
+    it("importProfile 调用 invoke('profile_import', {json})", async () => {
+        mockInvoke.mockResolvedValue({});
+        await importProfileContract("{\"id\":\"p1\"}");
+        expect(mockInvoke).toHaveBeenCalledWith("profile_import", {json: "{\"id\":\"p1\"}"});
+    });
+
+    it("exportProfileToPath 调用 path 版导出 command", async () => {
+        mockInvoke.mockResolvedValue({});
+        await exportProfileToPathContract("p1", "D:/tmp/p1.json");
+        expect(mockInvoke).toHaveBeenCalledWith("profile_export_to_path", {id: "p1", path: "D:/tmp/p1.json"});
+    });
+
+    it("importProfileFromPath 调用 path 版导入 command", async () => {
+        mockInvoke.mockResolvedValue({});
+        await importProfileFromPathContract("D:/tmp/p1.json");
+        expect(mockInvoke).toHaveBeenCalledWith("profile_import_from_path", {path: "D:/tmp/p1.json"});
     });
 });
 

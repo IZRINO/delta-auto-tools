@@ -331,9 +331,7 @@ mod tests {
         emitter
             .press_release_target_key("A", Some("W"), 8, 12)
             .unwrap();
-        emitter
-            .press_release_target_key("B", None, 10, 15)
-            .unwrap();
+        emitter.press_release_target_key("B", None, 10, 15).unwrap();
 
         assert_eq!(emitter.calls.len(), 2);
         assert_eq!(emitter.calls[0].target_key, "A");

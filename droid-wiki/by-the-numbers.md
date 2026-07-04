@@ -25,7 +25,7 @@ xychart-beta
 
 ### 文件构成
 
-统计口径：源文件为业务代码文件；测试文件为前端 `*.test.ts`/`*.test.tsx`（Rust 测试以 `#[cfg(test)]` 内联模块形式存在，不单独计数）；配置文件为根目录与 `src-tauri/` 下的构建/清单/能力声明文件（`package.json`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*.json`、`vite.config.ts`、`tsconfig*.json`、`components.json`、`bun.lock` 等）。
+统计口径：源文件为业务代码文件；测试文件为前端 `*.test.ts`/`*.test.tsx`（Rust 测试以 `#[cfg(test)]` 内联模块形式存在，不单独计数）；配置文件为根目录与 `src-tauri/` 下的构建/清单/能力声明文件（`package.json`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*.json`、`vite.config.ts`、`tsconfig*.json`、`bun.lock` 等）。
 
 | 类别 | 数量 |
 |------|-----:|

@@ -22,8 +22,8 @@ use crate::overlay_utils::{
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
-    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup,
-    SyncItem, SyncRect, SyncSettings, SyncToolLogic,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup, SyncItem,
+    SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
@@ -1642,7 +1642,11 @@ mod tests {
         assert!(runs.contains_key("t"), "缺失计时器应补齐");
         let runtime = runs.get("t").unwrap();
         assert_eq!(runtime.duration_seconds, 60);
-        assert_eq!(runtime.status, TimerRunStatus::Finished, "补齐的运行应为 Finished 状态");
+        assert_eq!(
+            runtime.status,
+            TimerRunStatus::Finished,
+            "补齐的运行应为 Finished 状态"
+        );
     }
 
     #[test]
@@ -1691,8 +1695,16 @@ mod tests {
 
         TimerLogic::sync_runs_with_settings(&mut runs, &settings);
 
-        assert_eq!(runs.get("a").unwrap().remaining_seconds, 20, "启用计时器 runs 应保留");
-        assert_eq!(runs.get("b").unwrap().remaining_seconds, 25, "禁用计时器 runs 应保留");
+        assert_eq!(
+            runs.get("a").unwrap().remaining_seconds,
+            20,
+            "启用计时器 runs 应保留"
+        );
+        assert_eq!(
+            runs.get("b").unwrap().remaining_seconds,
+            25,
+            "禁用计时器 runs 应保留"
+        );
     }
 
     #[test]
@@ -1725,11 +1737,13 @@ mod tests {
         TimerLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(
-            runs.get("t").unwrap().current_seconds, 42,
+            runs.get("t").unwrap().current_seconds,
+            42,
             "全局关闭时 runs 应保留累积值，不重置"
         );
         assert_eq!(
-            runs.get("t").unwrap().remaining_seconds, 18,
+            runs.get("t").unwrap().remaining_seconds,
+            18,
             "全局关闭时 runs 应保留剩余秒数"
         );
     }
@@ -1787,11 +1801,9 @@ mod tests {
             },
         });
 
-        let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
-            pending,
-            PositionEvent::Commit,
-        )
-        .expect("提交事件应成功");
+        let decision =
+            apply_position_event::<TimerRect, TimerSelectionKind>(pending, PositionEvent::Commit)
+                .expect("提交事件应成功");
 
         assert!(decision.pending.is_none());
         assert!(decision.save);
@@ -1817,11 +1829,9 @@ mod tests {
             },
         });
 
-        let decision = apply_position_event::<TimerRect, TimerSelectionKind>(
-            pending,
-            PositionEvent::Cancel,
-        )
-        .expect("取消事件应成功");
+        let decision =
+            apply_position_event::<TimerRect, TimerSelectionKind>(pending, PositionEvent::Cancel)
+                .expect("取消事件应成功");
 
         assert!(decision.pending.is_none());
         assert!(!decision.save);
@@ -1840,19 +1850,14 @@ mod tests {
         let runtime = running_multisegment(0, 0, TimerDirection::Countup);
         // 由于 status=Running 且 pool=0，elapsed=0，
         // multisegment_pool_ms = 0*1000 + 0 = 0 < 60000，deduct 失败
-        let result = trigger_multisegment_at(
-            Some(runtime),
-            0,
-            TimerDirection::Countup,
-        );
+        let result = trigger_multisegment_at(Some(runtime), 0, TimerDirection::Countup);
         assert!(result.is_none(), "pool=0 时不应触发新段");
     }
 
     #[test]
     fn multisegment_recovery_exact_segment_boundary() {
         // 初始 pool=300（满池），逐段扣减验证每段剩余。
-        let next =
-            trigger_multisegment_at(None, 0, TimerDirection::Countdown).unwrap();
+        let next = trigger_multisegment_at(None, 0, TimerDirection::Countdown).unwrap();
         assert_eq!(next.current_seconds, 240, "扣除一段后剩余 240");
         assert_eq!(next.recovery_start_pool, 240);
 
@@ -1871,8 +1876,7 @@ mod tests {
         // 中途恢复：正在运行的 countup 多段计时器
         // elapsed 增加到 30s（pool 从 240 增加到 ~270），扣除后剩 ~210
         let runtime = running_multisegment(240, 0, TimerDirection::Countup);
-        let next =
-            trigger_multisegment_at(Some(runtime), 30_000, TimerDirection::Countup).unwrap();
+        let next = trigger_multisegment_at(Some(runtime), 30_000, TimerDirection::Countup).unwrap();
         // pool = 240 + 30 = 270, deduct 60 → 210
         assert_eq!(next.current_seconds, 210);
         assert_eq!(next.remaining_seconds, 210);
@@ -1890,8 +1894,8 @@ mod tests {
             ..running_multisegment(120, 1_000, TimerDirection::Countdown)
         };
 
-        let next = trigger_multisegment_at(Some(runtime), 123_456, TimerDirection::Countdown)
-            .unwrap();
+        let next =
+            trigger_multisegment_at(Some(runtime), 123_456, TimerDirection::Countdown).unwrap();
         assert_eq!(next.current_seconds, 240);
         assert_eq!(next.status, TimerRunStatus::Running);
     }
@@ -2002,14 +2006,21 @@ mod tests {
             }],
         );
         let mut runs = HashMap::new();
-        runs.insert("t1".to_string(), running_runtime(30, TimerDirection::Countdown));
+        runs.insert(
+            "t1".to_string(),
+            running_runtime(30, TimerDirection::Countdown),
+        );
 
         let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
 
         assert!(triggered.is_empty(), "ignore_running=true 时不应触发");
         let runtime = runs.get("t1").expect("原有 runtime 应保留");
         assert_eq!(runtime.started_at_ms, 1000, "started_at_ms 不应变");
-        assert_eq!(runtime.status, TimerRunStatus::Running, "状态应保持 Running");
+        assert_eq!(
+            runtime.status,
+            TimerRunStatus::Running,
+            "状态应保持 Running"
+        );
     }
 
     #[test]
@@ -2029,7 +2040,10 @@ mod tests {
             }],
         );
         let mut runs = HashMap::new();
-        runs.insert("t1".to_string(), running_runtime(30, TimerDirection::Countdown));
+        runs.insert(
+            "t1".to_string(),
+            running_runtime(30, TimerDirection::Countdown),
+        );
 
         let triggered = apply_timer_trigger(&settings, &mut runs, &["t1".to_string()], 5000);
 
@@ -2120,7 +2134,8 @@ mod tests {
         );
         let mut runs = HashMap::new();
 
-        let triggered = apply_timer_trigger(&settings, &mut runs, &["nonexistent".to_string()], 5000);
+        let triggered =
+            apply_timer_trigger(&settings, &mut runs, &["nonexistent".to_string()], 5000);
 
         assert!(triggered.is_empty(), "不存在的 ID 不应触发");
     }
@@ -2213,8 +2228,12 @@ mod tests {
         );
         let mut runs = HashMap::new();
 
-        let triggered =
-            apply_timer_trigger(&settings, &mut runs, &["a".to_string(), "b".to_string()], 5000);
+        let triggered = apply_timer_trigger(
+            &settings,
+            &mut runs,
+            &["a".to_string(), "b".to_string()],
+            5000,
+        );
 
         assert_eq!(triggered, vec!["a", "b"]);
         assert!(runs.contains_key("a"));

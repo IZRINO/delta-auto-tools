@@ -28,7 +28,6 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 1. `src-tauri/tauri.conf.json`
 2. `package.json`
 3. `src/` 和 `src-tauri/src/`
-4. `components.json`（shadcn/ui 配置）
 
 文档与代码不一致时以当前实现为准。
 
@@ -184,9 +183,9 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 - **共享工业组件**（`src/components/app/app-ui.tsx`）：`AppPage`（12 列 Work Grid）、`PageHero`、`SignalTile`、`TacticalCard`、
   `SectionHeader`、`ControlTile`、`InlineControl`、`CardBody` 等。三个以上页面需要同一种结构时应先扩展共享组件。
-- **基础组件**（`src/components/ui/`）：保留 shadcn/Radix API 包装，class 优先映射 daisyUI 组件语义，图标库使用 remixicon。Button 内图标必须
+- **基础组件**（`src/components/ui/`）：保留 Radix headless 行为能力，class 优先映射 daisyUI 组件语义，图标库使用 remixicon。Button 内图标必须
   `data-icon="inline-start"` / `"inline-end"`。
-- **禁止新增** `.desktop-*`、`.tactical-*` 等自定义 CSS 类。仅 daisyUI + Tailwind 工具类 + `src/App.css` 主题 token。
+- **禁止新增**旧桌面/战术风格自定义 CSS 类。仅 daisyUI + Tailwind 工具类 + `src/App.css` 主题 token。
 
 ### Tailwind v4
 

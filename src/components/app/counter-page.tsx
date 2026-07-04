@@ -488,24 +488,24 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                     description="总开关控制计数器的透明窗口与快捷键是否生效。"
                 />
                 <CardBody className="grid gap-3">
-                    <div className="grid gap-px border-2 border-[var(--chalk)] bg-[var(--chalk)]">
-                        <ControlTile className="border-0 flex items-center gap-3 bg-[var(--carbon)]">
+                    <div className="grid gap-px border border-base-300 bg-base-content">
+                        <ControlTile className="border-0 flex items-center gap-3 bg-base-100">
                             <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
                                     onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
                             <div className="min-w-0">
-                                <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--chalk)] uppercase">计数总开关</p>
+                                <p className="font-mono text-xs font-medium text-base-content">计数总开关</p>
                                 <p className="mt-1 text-xs text-muted-foreground">控制计数器快捷键、透明窗口与现场累加。</p>
                             </div>
                         </ControlTile>
                     </div>
                     <InlineControl
-                        className="font-mono text-xs font-medium tracking-[0.08em] text-[var(--zinc)] uppercase">
+                        className="font-mono text-xs font-medium text-base-content/60">
                         {statusMessage}
                     </InlineControl>
                 </CardBody>
             </TacticalCard>
 
-            <div className="col-span-12 h-0.5 bg-[var(--chalk)]"/>
+            <div className="col-span-12 h-0.5 bg-base-content"/>
 
             {/* ── 计数器系统 ── */}
             <SectionHeader
@@ -619,7 +619,7 @@ function CounterCard({
                      }: CounterCardProps) {
     return (
         <TacticalCard active={isDragging}
-                      className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-[var(--amber)]" : "")}
+                      className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "")}
                       data-counter-card={counter.id} data-favorite-card={`counter:${counter.id}`}
                       onPointerEnter={onDragOver}>
             <SectionHeader
@@ -627,7 +627,7 @@ function CounterCard({
                 icon={<RiSpeedUpLine/>}
                 title={(
                     <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium uppercase text-[var(--carbon)] placeholder:text-[var(--slate)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-100 placeholder:text-base-200 focus-visible:ring-0 focus-visible:ring-offset-0"
                         placeholder="输入卡片名称"
                         value={counter.name || "计数器"}
                         disabled={controlsDisabled}
@@ -639,14 +639,14 @@ function CounterCard({
                 badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge
                     variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge></>}
             />
-            <CardHeader className="border-b-2 border-[var(--chalk)] bg-[var(--slate)] pt-0">
+            <CardHeader className="border-b-2 border-base-content bg-base-200 pt-0">
                 <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
                     <div className="grid gap-3">
                         <div>
-                            <p className="font-mono text-xs font-medium tracking-[0.12em] text-[var(--zinc)] uppercase">所属分组</p>
+                            <p className="font-mono text-xs font-medium text-base-content/60">所属分组</p>
                             <Select disabled={controlsDisabled} value={counter.groupId}
                                     onValueChange={(value) => onUpdate({groupId: value})}>
-                                <SelectTrigger className="mt-2 w-full max-w-full bg-[var(--carbon)]">
+                                <SelectTrigger className="mt-2 w-full max-w-full bg-base-100">
                                     <SelectValue placeholder="选择分组"/>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -660,12 +660,12 @@ function CounterCard({
                         </div>
                     </div>
                     <div
-                        className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-[var(--chalk)] pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
+                        className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-base-content pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
                         <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
                         <Button
                             aria-label={isFavorite ? "取消收藏" : "加入收藏"}
                             aria-pressed={isFavorite}
-                            className={cn(isFavorite ? "text-[var(--amber)]" : "text-muted-foreground")}
+                            className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
                             data-icon="inline-start"
                             disabled={controlsDisabled}
                             onClick={onToggleFavorite}

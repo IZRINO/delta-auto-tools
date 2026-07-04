@@ -47,9 +47,9 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 样式规则
 
-- 保留 shadcn/Radix headless 组件的交互能力，视觉层优先使用 daisyUI class、Tailwind 工具类和 `src/App.css` daisyUI token。禁止自定义 `.desktop-*` 或 `.tactical-*` CSS 类
-- 主题 token 以 daisyUI 语义 token 为主：`--color-base-*`、`--color-primary`、`--color-error`、`--radius-*`、`--border` 等。旧 shadcn/工业 token 只作为迁移桥接层存在
-- `--border` 在 daisyUI 中表示边框宽度；旧边框颜色使用 `--legacy-border-color` 或迁移后的颜色 token
+- 保留 Radix headless 组件的交互能力，视觉层优先使用 daisyUI class、Tailwind 工具类和 `src/App.css` daisyUI token。禁止自定义旧桌面/战术风格 CSS 类
+- 主题 token 以 daisyUI 语义 token 为主：`--color-base-*`、`--color-primary`、`--color-error`、`--radius-*`、`--border` 等。禁止新增旧组件生成器/工业桥接 token
+- `--border` 在 daisyUI 中表示边框宽度；边框颜色使用 `base-300`、`primary`、`error` 等 daisyUI 语义色
 - 图标使用 `@remixicon/react`。Button 内图标必须设置 `data-icon="inline-start"` 或 `"inline-end"`
 
 ## 文档中的文件引用

@@ -161,7 +161,10 @@ fn audio_module_enabled(app: &AppHandle) -> bool {
     use crate::audio::AudioState;
     app.try_state::<AudioState>()
         .and_then(|state| {
-            state.lock_inner().ok().map(|inner| inner.settings.audio_enabled)
+            state
+                .lock_inner()
+                .ok()
+                .map(|inner| inner.settings.audio_enabled)
         })
         .unwrap_or(true)
 }
@@ -189,11 +192,7 @@ pub trait WatcherDeps {
     fn capture(&self, region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage>;
 
     /// 比较截图与参考图像，返回相似度。
-    fn compare(
-        &self,
-        screenshot: &image::DynamicImage,
-        reference: &image::DynamicImage,
-    ) -> f32;
+    fn compare(&self, screenshot: &image::DynamicImage, reference: &image::DynamicImage) -> f32;
 
     /// 分派回放命令。
     fn dispatch_playback(&self, command: player::AudioCommand);
@@ -269,7 +268,12 @@ pub fn color_watcher_step(
         return false;
     }
 
-    let result = matching::match_color_probes(screenshots, probes, match_mode.clone(), match_method.clone());
+    let result = matching::match_color_probes(
+        screenshots,
+        probes,
+        match_mode.clone(),
+        match_method.clone(),
+    );
     if !result.matched {
         return false;
     }

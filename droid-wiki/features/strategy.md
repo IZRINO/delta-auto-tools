@@ -72,6 +72,7 @@ src/components/app/
 - **刷新档位**：可选自动刷新间隔，到点重新加载内嵌网页
 - **当前 URL 展示**：mono 小字横向压缩显示当前站点 URL
 - **bounds 同步**：监听宿主容器尺寸变化，规范化后更新子 WebView 的 `PhysicalPosition` / `PhysicalSize`
+- **界面浮层保护**：打开全局设置 Dialog 或顶部 Profile 菜单时关闭 `strategy-content` 子 WebView，关闭浮层后按当前站点重建，避免原生 WebView2 覆盖 DOM 浮层。
 
 ### 流程图
 

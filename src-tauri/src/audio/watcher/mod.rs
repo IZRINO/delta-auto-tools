@@ -319,21 +319,42 @@ mod tests {
         ];
         let probes = vec![
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(result.matched, "All 模式全命中应触发");
         assert_eq!(result.hit_count, 2);
     }
@@ -346,21 +367,42 @@ mod tests {
         ];
         let probes = vec![
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(!result.matched, "All 模式部分未命中不应触发");
         assert_eq!(result.hit_count, 1);
     }
@@ -373,21 +415,42 @@ mod tests {
         ];
         let probes = vec![
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [200, 100, 50],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [10, 20, 30], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [10, 20, 30],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
         ];
-        let result = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::Average);
+        let result = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::Any,
+            ColorMatchMethod::Average,
+        );
         assert!(result.matched, "Any 模式任一命中即触发");
         assert_eq!(result.hit_count, 1);
     }
@@ -410,15 +473,33 @@ mod tests {
         img.put_pixel(1, 1, Rgba([255, 0, 0, 255]));
         let screenshots = vec![DynamicImage::ImageRgba8(img)];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 3, height: 3 }),
-            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 3,
+                height: 3,
+            }),
+            targets: vec![ColorTarget {
+                color: [255, 0, 0],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         }];
-        let avg = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::Average);
+        let avg = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::Average,
+        );
         assert!(!avg.matched, "average 模式平均色为黑，距红远，未中");
-        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        let any = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(any.matched, "anyPixel 模式存在红像素应命中");
         assert_eq!(any.hit_count, 1);
     }
@@ -432,27 +513,56 @@ mod tests {
             }
         }
         let img2 = RgbaImage::from_pixel(2, 2, Rgba([0, 0, 0, 255]));
-        let screenshots = vec![DynamicImage::ImageRgba8(img1), DynamicImage::ImageRgba8(img2)];
+        let screenshots = vec![
+            DynamicImage::ImageRgba8(img1),
+            DynamicImage::ImageRgba8(img2),
+        ];
         let probes = vec![
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [255, 0, 0],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
             ColorProbe {
-                region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-                targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+                region: Some(RegionRect {
+                    x: 0,
+                    y: 0,
+                    width: 2,
+                    height: 2,
+                }),
+                targets: vec![ColorTarget {
+                    color: [255, 0, 0],
+                    tolerance: 10,
+                }],
                 probe_match_mode: ColorMatchMode::Any,
                 legacy_target_color: None,
                 legacy_tolerance: None,
             },
         ];
-        let all = match_color_probes(&screenshots, &probes, ColorMatchMode::All, ColorMatchMethod::AnyPixel);
+        let all = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(!all.matched, "mode=All 第二探针未中，不触发");
         assert_eq!(all.hit_count, 1);
-        let any = match_color_probes(&screenshots, &probes, ColorMatchMode::Any, ColorMatchMethod::AnyPixel);
+        let any = match_color_probes(
+            &screenshots,
+            &probes,
+            ColorMatchMode::Any,
+            ColorMatchMethod::AnyPixel,
+        );
         assert!(any.matched, "mode=Any 任一命中即触发");
     }
 
@@ -487,7 +597,10 @@ mod tests {
         let img = RgbaImage::from_pixel(2, 2, Rgba([200, 100, 50, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let result = scan_region_for_color(&dyn_img, [200, 100, 50], 10.0, true);
-        assert_eq!(result.matching_count, 1, "count_only=true 命中后应早退，count 为 1");
+        assert_eq!(
+            result.matching_count, 1,
+            "count_only=true 命中后应早退，count 为 1"
+        );
     }
 
     #[test]
@@ -511,15 +624,26 @@ mod tests {
         img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            targets: vec![ColorTarget { color: [127, 0, 0], tolerance: 5 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            }),
+            targets: vec![ColorTarget {
+                color: [127, 0, 0],
+                tolerance: 5,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         };
         let hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
         assert!(hit.matched, "average 模式平均色应命中");
-        assert_eq!(hit.matching_pixel_count, 0, "average 模式 matching_pixel_count 恒 0");
+        assert_eq!(
+            hit.matching_pixel_count, 0,
+            "average 模式 matching_pixel_count 恒 0"
+        );
     }
 
     #[test]
@@ -531,14 +655,25 @@ mod tests {
         img.put_pixel(1, 1, Rgba([0, 0, 0, 255]));
         let dyn_img = DynamicImage::ImageRgba8(img);
         let probe = ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 2, height: 2 }),
-            targets: vec![ColorTarget { color: [255, 0, 0], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 2,
+                height: 2,
+            }),
+            targets: vec![ColorTarget {
+                color: [255, 0, 0],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
         };
         let avg_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::Average, false);
-        assert!(!avg_hit.matched, "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中");
+        assert!(
+            !avg_hit.matched,
+            "average 模式平均色 [127,0,0] 距 [255,0,0] 远，应未中"
+        );
         let any_hit = probe_hit(&dyn_img, &probe, ColorMatchMethod::AnyPixel, false);
         assert!(any_hit.matched, "anyPixel 模式存在红像素应命中");
         assert!(any_hit.matching_pixel_count >= 1, "anyPixel 命中数应 >= 1");
@@ -605,12 +740,22 @@ mod tests {
     #[test]
     fn color_watcher_loop_matching_triggers_playback() {
         // 构造颜色探针完全匹配的截图
-        let screenshots = vec![
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255]))),
-        ];
+        let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            Rgba([200, 100, 50, 255]),
+        ))];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
-            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            }),
+            targets: vec![ColorTarget {
+                color: [200, 100, 50],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
@@ -627,12 +772,22 @@ mod tests {
     #[test]
     fn color_watcher_loop_no_match_skips_playback() {
         // 构造颜色探针不匹配的截图
-        let screenshots = vec![
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([0, 0, 0, 255]))),
-        ];
+        let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            Rgba([0, 0, 0, 255]),
+        ))];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
-            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            }),
+            targets: vec![ColorTarget {
+                color: [200, 100, 50],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
@@ -682,11 +837,18 @@ mod tests {
     }
 
     impl super::manager::WatcherDeps for MockWatcherDeps {
-        fn capture(&self, _region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage> {
+        fn capture(
+            &self,
+            _region: &crate::morse::types::RegionRect,
+        ) -> Option<image::DynamicImage> {
             self.capture_result.clone()
         }
 
-        fn compare(&self, _screenshot: &image::DynamicImage, _reference: &image::DynamicImage) -> f32 {
+        fn compare(
+            &self,
+            _screenshot: &image::DynamicImage,
+            _reference: &image::DynamicImage,
+        ) -> f32 {
             self.compare_result
         }
 
@@ -698,11 +860,17 @@ mod tests {
     /// VAL-AR-022: region_watcher_step 在 audio_on=true 时匹配成功并分派回放。
     #[test]
     fn region_watcher_step_dispatches_playback_on_match() {
-        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let reference =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
         let screenshot = reference.clone();
         let deps = MockWatcherDeps::new(Some(screenshot), 0.95);
         let (tx, _rx) = std::sync::mpsc::channel();
-        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+        let region = RegionRect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 4,
+        };
         let resolved = crate::audio::ResolvedPlay {
             path: "/test/audio.wav".to_string(),
             volume: 0.8,
@@ -711,33 +879,43 @@ mod tests {
 
         let result = super::manager::region_watcher_step(
             &deps,
-            true,   // global_on
-            true,   // audio_on
+            true, // global_on
+            true, // audio_on
             &region,
             &reference,
-            0.75,   // threshold
+            0.75, // threshold
             "test-card",
             &tx,
             Some(&resolved),
         );
 
         assert!(result, "匹配成功时应返回 true");
-        assert_eq!(deps.dispatched.lock().unwrap().len(), 1, "应分派 1 个回放命令");
+        assert_eq!(
+            deps.dispatched.lock().unwrap().len(),
+            1,
+            "应分派 1 个回放命令"
+        );
     }
 
     /// VAL-AR-022: region_watcher_step 在 audio_on=false 时跳过分派。
     #[test]
     fn region_watcher_step_skips_when_audio_off() {
-        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let reference =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
         let screenshot = reference.clone();
         let deps = MockWatcherDeps::new(Some(screenshot), 0.95);
         let (tx, _rx) = std::sync::mpsc::channel();
-        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+        let region = RegionRect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 4,
+        };
 
         let result = super::manager::region_watcher_step(
             &deps,
-            true,   // global_on
-            false,  // audio_on = false → 跳过
+            true,  // global_on
+            false, // audio_on = false → 跳过
             &region,
             &reference,
             0.75,
@@ -747,16 +925,25 @@ mod tests {
         );
 
         assert!(!result, "audio_off 时应返回 false");
-        assert!(deps.dispatched.lock().unwrap().is_empty(), "audio_off 时不应分派回放");
+        assert!(
+            deps.dispatched.lock().unwrap().is_empty(),
+            "audio_off 时不应分派回放"
+        );
     }
 
     /// VAL-AR-022: 模拟循环中切换 audio_enabled，先开后关再开。
     #[test]
     fn region_watcher_step_flips_audio_enabled_mid_loop() {
-        let reference = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
+        let reference =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
         let screenshot = reference.clone();
         let (tx, _rx) = std::sync::mpsc::channel();
-        let region = RegionRect { x: 0, y: 0, width: 4, height: 4 };
+        let region = RegionRect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 4,
+        };
         let resolved = crate::audio::ResolvedPlay {
             path: "/test/audio.wav".to_string(),
             volume: 0.8,
@@ -766,7 +953,15 @@ mod tests {
         // tick 1: audio_on=true → 匹配成功 → 分派
         let deps = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
         let result1 = super::manager::region_watcher_step(
-            &deps, true, true, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+            &deps,
+            true,
+            true,
+            &region,
+            &reference,
+            0.75,
+            "card-1",
+            &tx,
+            Some(&resolved),
         );
         assert!(result1, "tick 1: audio_on=true 应匹配");
         assert_eq!(deps.dispatched.lock().unwrap().len(), 1);
@@ -774,7 +969,15 @@ mod tests {
         // tick 2: audio_on=false → 跳过（模拟用户中途关闭音频开关）
         let deps2 = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
         let result2 = super::manager::region_watcher_step(
-            &deps2, true, false, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+            &deps2,
+            true,
+            false,
+            &region,
+            &reference,
+            0.75,
+            "card-1",
+            &tx,
+            Some(&resolved),
         );
         assert!(!result2, "tick 2: audio_on=false 应跳过");
         assert!(deps2.dispatched.lock().unwrap().is_empty());
@@ -782,7 +985,15 @@ mod tests {
         // tick 3: audio_on=true → 恢复分派
         let deps3 = MockWatcherDeps::new(Some(screenshot), 0.95);
         let result3 = super::manager::region_watcher_step(
-            &deps3, true, true, &region, &reference, 0.75, "card-1", &tx, Some(&resolved),
+            &deps3,
+            true,
+            true,
+            &region,
+            &reference,
+            0.75,
+            "card-1",
+            &tx,
+            Some(&resolved),
         );
         assert!(result3, "tick 3: audio_on=true 应恢复匹配");
         assert_eq!(deps3.dispatched.lock().unwrap().len(), 1);
@@ -791,12 +1002,22 @@ mod tests {
     /// VAL-AR-022: color_watcher_step 在 audio_on=false 时跳过分派。
     #[test]
     fn color_watcher_step_skips_when_audio_off() {
-        let screenshots = vec![
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255]))),
-        ];
+        let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            Rgba([200, 100, 50, 255]),
+        ))];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
-            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            }),
+            targets: vec![ColorTarget {
+                color: [200, 100, 50],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
@@ -806,8 +1027,8 @@ mod tests {
 
         let result = super::manager::color_watcher_step(
             &deps,
-            true,   // global_on
-            false,  // audio_on = false
+            true,  // global_on
+            false, // audio_on = false
             &screenshots,
             &probes,
             &ColorMatchMode::All,
@@ -817,18 +1038,31 @@ mod tests {
         );
 
         assert!(!result, "audio_off 时应返回 false");
-        assert!(deps.dispatched.lock().unwrap().is_empty(), "audio_off 时不应分派回放");
+        assert!(
+            deps.dispatched.lock().unwrap().is_empty(),
+            "audio_off 时不应分派回放"
+        );
     }
 
     /// VAL-AR-022: color_watcher_step 在匹配成功且 audio_on=true 时分派回放。
     #[test]
     fn color_watcher_step_dispatches_playback_on_match() {
-        let screenshots = vec![
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255]))),
-        ];
+        let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            4,
+            4,
+            Rgba([200, 100, 50, 255]),
+        ))];
         let probes = vec![ColorProbe {
-            region: Some(RegionRect { x: 0, y: 0, width: 4, height: 4 }),
-            targets: vec![ColorTarget { color: [200, 100, 50], tolerance: 10 }],
+            region: Some(RegionRect {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            }),
+            targets: vec![ColorTarget {
+                color: [200, 100, 50],
+                tolerance: 10,
+            }],
             probe_match_mode: ColorMatchMode::Any,
             legacy_target_color: None,
             legacy_tolerance: None,
@@ -843,8 +1077,8 @@ mod tests {
 
         let result = super::manager::color_watcher_step(
             &deps,
-            true,   // global_on
-            true,   // audio_on
+            true, // global_on
+            true, // audio_on
             &screenshots,
             &probes,
             &ColorMatchMode::All,
@@ -854,6 +1088,10 @@ mod tests {
         );
 
         assert!(result, "匹配成功且 audio_on=true 时应返回 true");
-        assert_eq!(deps.dispatched.lock().unwrap().len(), 1, "应分派 1 个回放命令");
+        assert_eq!(
+            deps.dispatched.lock().unwrap().len(),
+            1,
+            "应分派 1 个回放命令"
+        );
     }
 }

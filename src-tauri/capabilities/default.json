@@ -38,6 +38,7 @@
     "core:window:allow-show",
     "updater:default",
     "process:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

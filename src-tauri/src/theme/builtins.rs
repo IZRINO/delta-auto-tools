@@ -9,10 +9,7 @@
 //! - `valentine`：黑红（深灰底 + 红色主色，**默认主题**）
 //! - `arctic-blue`：浅蓝红调（浅蓝底 + 红色主色）
 //!
-//! 关键色（base-100 / primary / secondary）取自 architecture.md §1.5；
-//! base-200/300 与 base-content 按 daisyUI 惯例从 base-100 派生（明度递减 / 反相）；
-//! info/success/warning/error 取 daisyUI 内置主题通用值（light/dark 一致）；
-//! 结构/效果 token 取 daisyUI 通用默认值（圆角 1rem/0.25rem、边框 1px、depth/noise 关闭）。
+//! 主题值使用迁移规格给出的 daisyUI token 原值，不再派生 base-200/300 或状态色。
 
 use super::types::{ThemeDefinition, ThemeTokenOverride};
 
@@ -28,98 +25,106 @@ fn t(key: &str, value: &str) -> ThemeTokenOverride {
     }
 }
 
-/// 追加 daisyUI 通用状态色（info/success/warning/error 及其 content）。
-/// 这些值在 daisyUI light/dark 等内置主题中保持一致，跨主题无需差异化。
-fn push_status_colors(v: &mut Vec<ThemeTokenOverride>) {
-    v.push(t("--color-info", "oklch(74% 0.16 232.661)"));
-    v.push(t("--color-info-content", "oklch(29% 0.066 243.157)"));
-    v.push(t("--color-success", "oklch(76% 0.177 163.223)"));
-    v.push(t("--color-success-content", "oklch(37% 0.077 168.94)"));
-    v.push(t("--color-warning", "oklch(82% 0.189 84.429)"));
-    v.push(t("--color-warning-content", "oklch(41% 0.112 45.904)"));
-    v.push(t("--color-error", "oklch(71% 0.194 13.428)"));
-    v.push(t("--color-error-content", "oklch(27% 0.105 12.094)"));
-}
-
-/// 追加 daisyUI 通用结构/效果 token（圆角/尺寸/边框宽度/depth/noise）。
-fn push_structural_tokens(v: &mut Vec<ThemeTokenOverride>) {
-    v.push(t("--radius-selector", "1rem"));
-    v.push(t("--radius-field", "0.25rem"));
-    v.push(t("--radius-box", "1rem"));
-    v.push(t("--size-selector", "0.25rem"));
-    v.push(t("--size-field", "0.25rem"));
-    v.push(t("--border", "1px"));
-    v.push(t("--depth", "0"));
-    v.push(t("--noise", "0"));
-}
-
 /// 暗橄榄琥珀（暗橄榄绿底 + 琥珀主色）。
 fn olive_amber() -> Vec<ThemeTokenOverride> {
-    let mut v = vec![
-        // base 系：暗橄榄绿，明度递减
+    vec![
         t("--color-base-100", "oklch(27% 0.072 132.109)"),
-        t("--color-base-200", "oklch(24% 0.072 132.109)"),
-        t("--color-base-300", "oklch(21% 0.072 132.109)"),
-        t("--color-base-content", "oklch(89% 0.05 132.109)"),
-        // 品牌/中性色
+        t("--color-base-200", "oklch(40% 0.101 131.063)"),
+        t("--color-base-300", "oklch(45% 0.124 130.933)"),
+        t("--color-base-content", "oklch(96% 0.067 122.328)"),
         t("--color-primary", "oklch(82% 0.189 84.429)"),
-        t("--color-primary-content", "oklch(27% 0.072 132.109)"),
+        t("--color-primary-content", "oklch(27% 0.077 45.635)"),
         t("--color-secondary", "oklch(85% 0.199 91.936)"),
-        t("--color-secondary-content", "oklch(27% 0.072 132.109)"),
+        t("--color-secondary-content", "oklch(28% 0.066 53.813)"),
         t("--color-accent", "oklch(82% 0.189 84.429)"),
-        t("--color-accent-content", "oklch(27% 0.072 132.109)"),
-        t("--color-neutral", "oklch(27% 0.03 132.109)"),
-        t("--color-neutral-content", "oklch(89% 0.05 132.109)"),
-    ];
-    push_status_colors(&mut v);
-    push_structural_tokens(&mut v);
-    v
+        t("--color-accent-content", "oklch(27% 0.077 45.635)"),
+        t("--color-neutral", "oklch(27% 0.072 132.109)"),
+        t("--color-neutral-content", "oklch(98% 0.031 120.757)"),
+        t("--color-info", "oklch(54% 0.245 262.881)"),
+        t("--color-info-content", "oklch(97% 0.014 254.604)"),
+        t("--color-success", "oklch(62% 0.194 149.214)"),
+        t("--color-success-content", "oklch(98% 0.018 155.826)"),
+        t("--color-warning", "oklch(64% 0.222 41.116)"),
+        t("--color-warning-content", "oklch(98% 0.016 73.684)"),
+        t("--color-error", "oklch(58% 0.253 17.585)"),
+        t("--color-error-content", "oklch(96% 0.015 12.422)"),
+        t("--radius-selector", "1rem"),
+        t("--radius-field", "0rem"),
+        t("--radius-box", "2rem"),
+        t("--size-selector", "0.25rem"),
+        t("--size-field", "0.25rem"),
+        t("--border", "1px"),
+        t("--depth", "1"),
+        t("--noise", "0"),
+    ]
 }
 
 /// 黑红（深灰底 + 红色主色，默认主题）。
 fn valentine() -> Vec<ThemeTokenOverride> {
-    let mut v = vec![
-        // base 系：近黑蓝灰，明度递减
+    vec![
         t("--color-base-100", "oklch(21.5% 0 261.692)"),
-        t("--color-base-200", "oklch(18.5% 0 261.692)"),
-        t("--color-base-300", "oklch(15.5% 0 261.692)"),
-        t("--color-base-content", "oklch(89% 0.02 261.692)"),
-        // 品牌/中性色
+        t("--color-base-200", "oklch(18.8% 0 264.665)"),
+        t("--color-base-300", "oklch(50% 0.213 27.518)"),
+        t("--color-base-content", "oklch(96% 0.003 264.542)"),
         t("--color-primary", "oklch(70% 0.234 24.700)"),
-        t("--color-primary-content", "oklch(98% 0 0)"),
+        t("--color-primary-content", "oklch(100% 0 281.288)"),
         t("--color-secondary", "oklch(82% 0.189 84.429)"),
-        t("--color-secondary-content", "oklch(21.5% 0 261.692)"),
-        t("--color-accent", "oklch(70% 0.234 24.700)"),
-        t("--color-accent-content", "oklch(98% 0 0)"),
-        t("--color-neutral", "oklch(27% 0.03 261.692)"),
-        t("--color-neutral-content", "oklch(89% 0.02 261.692)"),
-    ];
-    push_status_colors(&mut v);
-    push_structural_tokens(&mut v);
-    v
+        t("--color-secondary-content", "oklch(27% 0.077 45.635)"),
+        t("--color-accent", "oklch(26% 0 0)"),
+        t("--color-accent-content", "oklch(100% 0 0)"),
+        t("--color-neutral", "oklch(44% 0.017 285.786)"),
+        t("--color-neutral-content", "oklch(98% 0.002 247.839)"),
+        t("--color-info", "oklch(60% 0.126 221.723)"),
+        t("--color-info-content", "oklch(97% 0.014 254.604)"),
+        t("--color-success", "oklch(64% 0.2 131.684)"),
+        t("--color-success-content", "oklch(98% 0.031 120.757)"),
+        t("--color-warning", "oklch(66% 0.179 58.318)"),
+        t("--color-warning-content", "oklch(98% 0.022 95.277)"),
+        t("--color-error", "oklch(58% 0.253 17.585)"),
+        t("--color-error-content", "oklch(97% 0.014 343.198)"),
+        t("--radius-selector", "2rem"),
+        t("--radius-field", "0.5rem"),
+        t("--radius-box", "0.5rem"),
+        t("--size-selector", "0.25rem"),
+        t("--size-field", "0.25rem"),
+        t("--border", "1px"),
+        t("--depth", "0"),
+        t("--noise", "1"),
+    ]
 }
 
 /// 浅蓝红调（浅蓝底 + 红色主色）。
 fn arctic_blue() -> Vec<ThemeTokenOverride> {
-    let mut v = vec![
-        // base 系：浅蓝白，明度递减
+    vec![
         t("--color-base-100", "oklch(97% 0.013 236.62)"),
-        t("--color-base-200", "oklch(94% 0.013 236.62)"),
-        t("--color-base-300", "oklch(91% 0.013 236.62)"),
-        t("--color-base-content", "oklch(43% 0.05 236.62)"),
-        // 品牌/中性色
+        t("--color-base-200", "oklch(95% 0.026 236.824)"),
+        t("--color-base-300", "oklch(90% 0.058 230.902)"),
+        t("--color-base-content", "oklch(39% 0.09 240.876)"),
         t("--color-primary", "oklch(63% 0.237 25.331)"),
-        t("--color-primary-content", "oklch(98% 0 0)"),
+        t("--color-primary-content", "oklch(97% 0.013 17.38)"),
         t("--color-secondary", "oklch(79% 0.184 86.047)"),
-        t("--color-secondary-content", "oklch(43% 0.05 236.62)"),
-        t("--color-accent", "oklch(63% 0.237 25.331)"),
-        t("--color-accent-content", "oklch(98% 0 0)"),
-        t("--color-neutral", "oklch(43% 0.05 236.62)"),
-        t("--color-neutral-content", "oklch(89% 0.05 236.62)"),
-    ];
-    push_status_colors(&mut v);
-    push_structural_tokens(&mut v);
-    v
+        t("--color-secondary-content", "oklch(98% 0.026 102.212)"),
+        t("--color-accent", "oklch(70% 0.213 47.604)"),
+        t("--color-accent-content", "oklch(98% 0.016 73.684)"),
+        t("--color-neutral", "oklch(50% 0.134 242.749)"),
+        t("--color-neutral-content", "oklch(97% 0.013 236.62)"),
+        t("--color-info", "oklch(70% 0.165 254.624)"),
+        t("--color-info-content", "oklch(28% 0.091 267.935)"),
+        t("--color-success", "oklch(79% 0.209 151.711)"),
+        t("--color-success-content", "oklch(26% 0.065 152.934)"),
+        t("--color-warning", "oklch(85% 0.199 91.936)"),
+        t("--color-warning-content", "oklch(28% 0.066 53.813)"),
+        t("--color-error", "oklch(71% 0.202 349.761)"),
+        t("--color-error-content", "oklch(28% 0.109 3.907)"),
+        t("--radius-selector", "2rem"),
+        t("--radius-field", "0rem"),
+        t("--radius-box", "0.5rem"),
+        t("--size-selector", "0.25rem"),
+        t("--size-field", "0.25rem"),
+        t("--border", "1px"),
+        t("--depth", "0"),
+        t("--noise", "0"),
+    ]
 }
 
 /// 返回全部内置主题定义（3 套）。顺序：olive-amber, valentine, arctic-blue。
@@ -224,8 +229,12 @@ mod tests {
                 .clone()
         };
         assert_eq!(find("--color-base-100"), "oklch(21.5% 0 261.692)");
+        assert_eq!(find("--color-base-200"), "oklch(18.8% 0 264.665)");
+        assert_eq!(find("--color-base-300"), "oklch(50% 0.213 27.518)");
+        assert_eq!(find("--color-base-content"), "oklch(96% 0.003 264.542)");
         assert_eq!(find("--color-primary"), "oklch(70% 0.234 24.700)");
         assert_eq!(find("--color-secondary"), "oklch(82% 0.189 84.429)");
+        assert_eq!(find("--noise"), "1");
     }
 
     #[test]
@@ -252,10 +261,7 @@ mod tests {
         }
         // 与 EXPECTED_TOKEN_KEYS 对照
         for key in EXPECTED_TOKEN_KEYS {
-            assert!(
-                baseline.contains(*key),
-                "缺少预期 token key: {key}"
-            );
+            assert!(baseline.contains(*key), "缺少预期 token key: {key}");
         }
     }
 

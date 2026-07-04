@@ -168,7 +168,6 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 1. `src-tauri/tauri.conf.json`
 2. `package.json`
 3. `src/` 和 `src-tauri/src/`
-4. `components.json`（shadcn/ui 配置）
 
 文档与代码不一致时以当前实现为准。
 
@@ -226,8 +225,8 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### UI 约束
 
-- UI 迁移方向：保留 Radix headless 交互能力，视觉层使用 daisyUI + Tailwind CSS + `src/App.css` daisyUI token；禁止新增 `.desktop-*`、`.tactical-*` 等自定义 CSS 类
-- 基础组件位于 `src/components/ui/`，可保留 shadcn/Radix API 包装，但 class 应优先映射到 daisyUI 组件语义
+- UI 迁移方向：保留 Radix headless 交互能力，视觉层使用 daisyUI + Tailwind CSS + `src/App.css` daisyUI token；禁止新增旧桌面/战术风格自定义 CSS 类
+- 基础组件位于 `src/components/ui/`，保留 Radix headless 行为能力，class 必须优先映射到 daisyUI 组件语义
 - 图标使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `"inline-end"`
 - 本 mission 的 worker 编码前必须调用 `ponytail`
 - 攻略网站页使用主窗口内嵌 `strategy-content` 子 WebView，不创建独立浏览器窗口，不使用 iframe/srcDoc，不得隐藏 Left Index Rail
@@ -250,7 +249,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `audio/` — 快捷键/区域监听/识色三种触发模式
 - `strategy/` — 攻略网站 WebView2 嵌入
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
-- `profile/` — 多配置快照切换
+- `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
 
 **事件模式**：事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `EVENTS` 常量与显式泛型 `listen<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名。

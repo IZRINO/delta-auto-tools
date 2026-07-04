@@ -68,7 +68,6 @@
 |----|------|------|
 | `radix-ui` | 1.6.1 | headless 交互组件，保留焦点管理、键盘导航、Portal 与无障碍行为 |
 | `@base-ui/react` | 1.6.0 | 额外基础组件 |
-| `shadcn` | 4.12.0 | 组件生成与 API 包装来源 |
 | `daisyui` | ^5.6.10 | 基础组件视觉 class 与主题 token 体系 |
 | `@remixicon/react` | ^4.9.0 | 图标库 |
 | `class-variance-authority` | ^0.7.1 | 变体样式 |
@@ -105,6 +104,6 @@
 ## 依赖说明
 
 - 项目使用 Bun 作为包管理器（`bun.lock`），不使用 npm/pnpm/yarn
-- `react-colorful`（约 3KB）是唯一批准的第三方颜色选择器；不使用 shadcn 官方 color-picker
+- `react-colorful`（约 3KB）是唯一批准的第三方颜色选择器；不使用外部组件生成器附带的 color-picker
 - Tailwind v4 为 CSS-first：不存在 `tailwind.config.js`，主题 token 在 `src/App.css` 中
 - `devDependencies` 不包含 ESLint 或 Prettier；代码风格由约定和 review 保证

@@ -19,8 +19,8 @@ use crate::overlay_utils::{
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::{
     apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
-    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup,
-    SyncItem, SyncRect, SyncSettings, SyncToolLogic,
+    HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup, SyncItem,
+    SyncRect, SyncSettings, SyncToolLogic,
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
@@ -196,7 +196,8 @@ impl RunsSync for CounterLogic {
         // 2. entry(id).or_insert(start_value) — 缺失补齐
         // 不重置、不按 enabled 清理
         for counter in &settings.counters {
-            runs.entry(counter.id.clone()).or_insert(counter.start_value);
+            runs.entry(counter.id.clone())
+                .or_insert(counter.start_value);
         }
     }
 }
@@ -1336,7 +1337,11 @@ mod tests {
 
         CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
-        assert_eq!(runs.get("c"), Some(&42), "全局关闭时 runs 应保留累积值，不重置为 start_value");
+        assert_eq!(
+            runs.get("c"),
+            Some(&42),
+            "全局关闭时 runs 应保留累积值，不重置为 start_value"
+        );
     }
 
     // ── apply_counter_trigger 集成测试 ─────────────────────────
@@ -1378,8 +1383,7 @@ mod tests {
         let mut runs = HashMap::new();
         runs.insert("c1".to_string(), 5);
 
-        let (triggered, changed) =
-            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+        let (triggered, changed) = apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
 
         assert_eq!(triggered, vec!["c1"]);
         assert!(changed);
@@ -1403,12 +1407,15 @@ mod tests {
         );
         let mut runs = HashMap::new();
 
-        let (triggered, changed) =
-            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+        let (triggered, changed) = apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
 
         assert_eq!(triggered, vec!["c1"]);
         assert!(changed);
-        assert_eq!(runs.get("c1"), Some(&11), "缺失计数器应从 start_value+1 开始");
+        assert_eq!(
+            runs.get("c1"),
+            Some(&11),
+            "缺失计数器应从 start_value+1 开始"
+        );
     }
 
     #[test]
@@ -1428,8 +1435,7 @@ mod tests {
         let mut runs = HashMap::new();
         runs.insert("c1".to_string(), 5);
 
-        let (triggered, changed) =
-            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+        let (triggered, changed) = apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
 
         assert!(triggered.is_empty());
         assert!(!changed);
@@ -1454,8 +1460,7 @@ mod tests {
         let mut runs = HashMap::new();
         runs.insert("c1".to_string(), 5);
 
-        let (triggered, changed) =
-            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+        let (triggered, changed) = apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
 
         assert!(triggered.is_empty());
         assert!(!changed);
@@ -1478,8 +1483,7 @@ mod tests {
         );
         let mut runs = HashMap::new();
 
-        let (triggered, changed) =
-            apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
+        let (triggered, changed) = apply_counter_trigger(&settings, &mut runs, &["c1".to_string()]);
 
         assert!(triggered.is_empty());
         assert!(!changed);

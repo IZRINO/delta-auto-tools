@@ -473,7 +473,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
 
             {pageError && (
                 <div
-                    className="col-span-12 mb-3 border-2 border-[var(--alert-red)] bg-[var(--alert-red)]/10 px-3 py-2 font-mono text-xs font-black tracking-[0.12em] text-[var(--alert-red)] uppercase">
+                    className="col-span-12 mb-3 border border-error bg-error/10 px-3 py-2 font-mono text-xs font-semibold text-error">
                     [ 错误 ] {pageError}
                 </div>
             )}
@@ -491,7 +491,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                                 aria-label="音频总开关"
                             />
                             <span
-                                className="font-mono text-xs font-black tracking-[0.14em] uppercase text-[var(--chalk)]">
+                                className="font-mono text-xs font-semibold text-base-content">
                 {enabled ? "已启用" : "已禁用"}
               </span>
                         </div>
@@ -602,18 +602,18 @@ function AudioCardEditor({
     }, [card.watchReferenceImagePath, isRegion, isNativeShell, onLoadReferencePreview]);
 
     return (
-        <div className="border-2 border-[var(--chalk)] bg-[var(--slate)]">
+        <div className="border border-base-300 bg-base-200">
             <div
-                className="flex items-center justify-between border-b-2 border-[var(--chalk)] bg-[var(--carbon)] px-3 py-2">
+                className="flex items-center justify-between border-b-2 border-base-content bg-base-100 px-3 py-2">
                 <div className="flex items-center gap-2">
                     <span
-                        className="font-mono text-xs font-black text-[var(--amber)]">A-{String(index + 1).padStart(2, "0")}</span>
+                        className="font-mono text-xs font-semibold text-primary">A-{String(index + 1).padStart(2, "0")}</span>
                     <Switch
                         checked={card.enabled}
                         onCheckedChange={(v) => onUpdate({enabled: v})}
                         aria-label={`卡片 ${index + 1} 启用开关`}
                     />
-                    <span className="font-mono text-xs font-bold tracking-[0.12em] uppercase text-[var(--chalk)]">
+                    <span className="font-mono text-xs font-bold text-base-content">
             {card.enabled ? "启用" : "禁用"}
           </span>
                 </div>
@@ -623,7 +623,7 @@ function AudioCardEditor({
                         测试
                     </Button>
                     <Button variant="ghost" size="sm" onClick={onRemove} title="删除卡片" data-icon="inline-start">
-                        <RiDeleteBinLine className="size-4 text-[var(--alert-red)]" aria-hidden="true"/>
+                        <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
                     </Button>
                 </div>
             </div>
@@ -723,7 +723,7 @@ function AudioCardEditor({
                                     </Button>
                                 </div>
                                 {previewUrl && (
-                                    <div className="mt-2 border border-[var(--seam)] bg-[var(--slate)] p-1">
+                                    <div className="mt-2 border border-base-300 bg-base-200 p-1">
                                         <img
                                             src={previewUrl}
                                             alt="参考图像预览"
@@ -732,7 +732,7 @@ function AudioCardEditor({
                                     </div>
                                 )}
                                 {previewLoading && (
-                                    <p className="mt-1 text-xs text-[var(--zinc)]">加载预览中...</p>
+                                    <p className="mt-1 text-xs text-base-content/60">加载预览中...</p>
                                 )}
                             </FieldContent>
                         </Field>
@@ -804,9 +804,9 @@ function AudioCardEditor({
                         </Field>
 
                         {card.colorProbes.map((probe, probeIndex) => (
-                            <div key={probeIndex} className="border border-[var(--seam)] p-2 space-y-2">
+                            <div key={probeIndex} className="border border-base-300 p-2 space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="font-mono text-xs font-bold text-[var(--amber)]">
+                                    <span className="font-mono text-xs font-bold text-primary">
                                         探针 #{probeIndex + 1}
                                     </span>
                                     <Button
@@ -816,7 +816,7 @@ function AudioCardEditor({
                                         title="删除探针"
                                         data-icon="inline-start"
                                     >
-                                        <RiDeleteBinLine className="size-4 text-[var(--alert-red)]" aria-hidden="true"/>
+                                        <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
                                         删除
                                     </Button>
                                 </div>
@@ -857,7 +857,7 @@ function AudioCardEditor({
                                                             );
                                                             onUpdateColorProbe(probeIndex, {targets: nextTargets});
                                                         }}
-                                                        className="h-9 w-12 cursor-pointer border border-[var(--seam)] bg-transparent p-0"
+                                                        className="h-9 w-12 cursor-pointer border border-base-300 bg-transparent p-0"
                                                         aria-label="目标颜色"
                                                     />
                                                     <Input
@@ -896,7 +896,7 @@ function AudioCardEditor({
                                                         title="删除此目标颜色"
                                                         disabled={probe.targets.length <= 1}
                                                     >
-                                                        <RiDeleteBinLine className="size-4 text-[var(--alert-red)]" aria-hidden="true"/>
+                                                        <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
                                                     </Button>
                                                 </div>
                                             ))}
@@ -1013,20 +1013,20 @@ function AudioCardEditor({
                         <FieldContent>
                             <div className="flex flex-col gap-2">
                                 {(card.audioFiles ?? []).length === 0 ? (
-                                    <p className="text-xs text-[var(--zinc)]">尚未添加音频文件。</p>
+                                    <p className="text-xs text-base-content/60">尚未添加音频文件。</p>
                                 ) : (
                                     <ul className="flex flex-col gap-1">
                                         {(card.audioFiles ?? []).map((file, fileIndex) => (
                                             <li
                                                 key={`${file}-${fileIndex}`}
-                                                className="flex items-center gap-2 border border-[var(--seam)] bg-[var(--carbon)] px-2 py-1"
+                                                className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-1"
                                             >
-                                                <span className="flex-1 truncate font-mono text-xs text-[var(--chalk)]" title={file}>
+                                                <span className="flex-1 truncate font-mono text-xs text-base-content" title={file}>
                                                     {file}
                                                 </span>
                                                 {card.playMode === "combo" && (
                                                     <div className="flex items-center gap-1" title="播完此段后用此窗口判断是否播放下一段（空=用卡片默认窗口）">
-                                                        <span className="font-mono text-xs text-[var(--zinc)]">窗口</span>
+                                                        <span className="font-mono text-xs text-base-content/60">窗口</span>
                                                         <Input
                                                             type="number"
                                                             min={100}
@@ -1283,7 +1283,7 @@ export function AudioRegionOverlay() {
         >
             {displayRect && (
                 <div
-                    className="pointer-events-none absolute border-2 border-[var(--amber)] bg-[var(--amber)]/16"
+                    className="pointer-events-none absolute border border-primary bg-primary/16"
                     style={{
                         left: displayRect.x,
                         top: displayRect.y,
@@ -1294,18 +1294,18 @@ export function AudioRegionOverlay() {
             )}
 
             <div
-                className="pointer-events-none absolute left-6 top-6 max-w-md border-2 border-white/40 bg-[var(--carbon)]/88 px-4 py-4 text-[var(--chalk)] backdrop-blur-md">
-                <h1 className="text-lg font-semibold text-[var(--chalk)]">音频区域选择</h1>
-                <p className="mt-2 text-sm text-[var(--zinc)]">{statusMessage}</p>
+                className="pointer-events-none absolute left-6 top-6 max-w-md border border-white/40 bg-base-100/88 px-4 py-4 text-base-content backdrop-blur-md">
+                <h1 className="text-lg font-semibold text-base-content">音频区域选择</h1>
+                <p className="mt-2 text-sm text-base-content/60">{statusMessage}</p>
                 {displayRect && (
-                    <p className="mt-3 border border-[var(--seam)] bg-[var(--slate)]/80 px-3 py-2 font-mono text-xs text-[var(--zinc)]">
+                    <p className="mt-3 border border-base-300 bg-base-200/80 px-3 py-2 font-mono text-xs text-base-content/60">
                         {`X ${displayRect.x} · Y ${displayRect.y} · W ${displayRect.width} · H ${displayRect.height}`}
                     </p>
                 )}
             </div>
 
             <div
-                className="absolute right-6 top-6 flex items-center gap-2 border-2 border-white/30 bg-[var(--carbon)]/80 px-3 py-3 backdrop-blur-md">
+                className="absolute right-6 top-6 flex items-center gap-2 border border-white/30 bg-base-100/80 px-3 py-3 backdrop-blur-md">
                 <Button
                     disabled={!committedRect || submitting}
                     onClick={() => void submitSelection()}

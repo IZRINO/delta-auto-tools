@@ -72,7 +72,7 @@ sequenceDiagram
 
 ### 内置主题
 
-3 套主题定义相同的 daisyUI token key 集合。`--border` 是 daisyUI 边框宽度，不再表示边框颜色；旧 shadcn/工业 token 只在 `src/App.css` 中作为迁移桥接层存在。
+3 套主题定义相同的 daisyUI token key 集合。`--border` 是 daisyUI 边框宽度，不再表示边框颜色；旧组件生成器/工业 token 不再作为迁移桥接层存在。
 
 | ID | 名称 | 特征 |
 |----|------|------|

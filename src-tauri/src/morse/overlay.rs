@@ -658,6 +658,9 @@ mod tests {
 
         // 二次 take 返回 None，模拟 resolve_pending 中的安全跳过
         let second_take = option.take();
-        assert!(second_take.is_none(), "二次 take 应返回 None，不重复 resolve");
+        assert!(
+            second_take.is_none(),
+            "二次 take 应返回 None，不重复 resolve"
+        );
     }
 }

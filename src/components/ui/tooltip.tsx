@@ -42,14 +42,14 @@ function TooltipContent({
                 data-slot="tooltip-content"
                 sideOffset={sideOffset}
                 className={cn(
-                    "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 border border-[var(--chalk)] bg-[var(--chalk)] px-3 py-1.5 font-mono text-xs font-black tracking-[0.08em] text-[var(--carbon)] uppercase has-data-[slot=kbd]:pe-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+                    "tooltip-content z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-field bg-neutral px-3 py-1.5 text-xs text-neutral-content has-data-[slot=kbd]:pe-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
                     className
                 )}
                 {...props}
             >
                 {children}
                 <TooltipPrimitive.Arrow
-                    className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 bg-[var(--chalk)] fill-[var(--chalk)]"/>
+                    className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 bg-neutral fill-neutral"/>
             </TooltipPrimitive.Content>
         </TooltipPrimitive.Portal>
     )

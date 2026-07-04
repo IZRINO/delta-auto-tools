@@ -1,29 +1,30 @@
 import * as React from "react"
-import {Checkbox as CheckboxPrimitive} from "radix-ui"
 
 import {cn} from "@/lib/utils"
-import {RiCheckLine} from "@remixicon/react"
+
+type CheckboxProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "type"> & {
+    onCheckedChange?: (checked: boolean) => void
+}
 
 function Checkbox({
                       className,
+                      checked,
+                      defaultChecked,
+                      disabled,
+                      onCheckedChange,
                       ...props
-                  }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+                  }: CheckboxProps) {
     return (
-        <CheckboxPrimitive.Root
+        <input
             data-slot="checkbox"
-            className={cn(
-                "peer relative flex size-4 shrink-0 items-center justify-center border-2 border-[var(--chalk)] bg-[var(--carbon)] transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--amber)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--amber)] data-checked:bg-[var(--chalk)] data-checked:text-[var(--carbon)]",
-                className
-            )}
+            type="checkbox"
+            checked={checked}
+            defaultChecked={defaultChecked}
+            disabled={disabled}
+            className={cn("checkbox checkbox-primary checkbox-sm", className)}
+            onChange={(event) => onCheckedChange?.(event.currentTarget.checked)}
             {...props}
-        >
-            <CheckboxPrimitive.Indicator
-                data-slot="checkbox-indicator"
-                className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
-            >
-                <RiCheckLine/>
-            </CheckboxPrimitive.Indicator>
-        </CheckboxPrimitive.Root>
+        />
     )
 }
 

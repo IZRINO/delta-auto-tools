@@ -52,7 +52,7 @@ Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`�
 
 ## UI 组件
 
-项目保留 shadcn/Radix 组件 API 与无障碍行为，视觉层迁移到 daisyUI class。配置仍在 `components.json`，基础组件在 `src/components/ui/`。图标用 remixicon。新增组件时优先复用现有包装；必须新增 shadcn 组件时用 `bunx shadcn add <component>` 后再按 daisyUI token 收口样式。
+项目保留 Radix headless 组件的焦点管理、键盘导航、Portal 与无障碍行为，视觉层使用 daisyUI class。基础组件在 `src/components/ui/`。图标用 remixicon。新增组件时优先复用现有包装，不再使用外部组件生成 CLI。
 
 ## Codegraph
 
