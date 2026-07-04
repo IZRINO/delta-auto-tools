@@ -253,6 +253,42 @@
       "skillPath": "planning-with-files-zh/SKILL.md",
       "computedHash": "a6976866202b3015e055393218bc59812bc7f93df806f6f5a24b74883fe12f55"
     },
+    "ponytail": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail/SKILL.md",
+      "computedHash": "491ccdc2c13a29cebabbac6bbe37f39e2e21ddff890c0b3fcf83b53b05dcc5c8"
+    },
+    "ponytail-audit": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail-audit/SKILL.md",
+      "computedHash": "0406899b920175367e43ca6bf3c2e5b9ba676a9bcf1fe35b57dc75fd15cfa1e2"
+    },
+    "ponytail-debt": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail-debt/SKILL.md",
+      "computedHash": "8e7448ee88cb22234f73d1b9b8ad5f815ee32bc33ada062281b9723a961e6d92"
+    },
+    "ponytail-gain": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail-gain/SKILL.md",
+      "computedHash": "88b962b5a1af59f7a663c4f219763bbdc9ac1983ff428186d0e69d43fe8e3753"
+    },
+    "ponytail-help": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail-help/SKILL.md",
+      "computedHash": "52565f3dc387c320ca6da9dc3a73e5a9abddc7a28f8a3c944d25009db2eaaa9c"
+    },
+    "ponytail-review": {
+      "source": "dietrichgebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail-review/SKILL.md",
+      "computedHash": "d68b62a2fb83972ca8a9f7f20851baf6563bb7908bc81002214c6c1141486c25"
+    },
     "prototype": {
       "source": "mattpocock/skills",
       "sourceType": "github",
