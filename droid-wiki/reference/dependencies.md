@@ -23,6 +23,7 @@
 | `rodio` | 0.20 | 音频播放 |
 | `image` | 0.25.10 | 图像处理（模板匹配、颜色采样） |
 | `crossbeam-channel` | 0.5 | 按键抑制器事件转发通道 |
+| `windows-sys` | 0.61 | Windows API 绑定（Foundation、UI、Input、ProcessStatus、Threading） |
 
 ### 异步与序列化
 
@@ -33,14 +34,7 @@
 | `serde_json` | 1.0.150 | JSON 处理 |
 | `thiserror` | 2.0.18 | 错误派生宏 |
 | `chrono` | 0.4 | 日期/时间（含 serde） |
-| `regex` | 1.12.4 | 正则匹配 |
 | `url` | 2.5.8 | URL 解析 |
-
-### 系统
-
-| Crate | 版本 | 用途 |
-|-------|------|------|
-| `windows-sys` | 0.61 | Windows API 绑定（Foundation、UI、System） |
 
 ### 开发
 
@@ -55,11 +49,11 @@
 | 包 | 版本 | 用途 |
 |----|------|------|
 | `react` | 19.2.7 | UI 库 |
-| `react-dom` | 19.2.7 | React DOM 渲染器 |
-| `@tauri-apps/api` | 2.11.0 | Tauri 前端 API（invoke、events） |
+| `react-dom` | 19.2.7 | React DOM renderer |
+| `@tauri-apps/api` | 2.11.1 | Tauri 前端 API（invoke、events） |
 | `@tauri-apps/plugin-updater` | ^2.10.1 | 更新器前端 |
 | `@tauri-apps/plugin-process` | ^2.3.1 | 进程控制（重启） |
-| `@tauri-apps/plugin-dialog` | ^2.0.0 | 对话框 |
+| `@tauri-apps/plugin-dialog` | ^2.7.1 | 对话框 |
 | `@tauri-apps/plugin-opener` | 2.5.4 | 打开外部 URL |
 
 ### UI
@@ -67,43 +61,39 @@
 | 包 | 版本 | 用途 |
 |----|------|------|
 | `radix-ui` | 1.6.1 | headless 交互组件，保留焦点管理、键盘导航、Portal 与无障碍行为 |
-| `@base-ui/react` | 1.6.0 | 额外基础组件 |
 | `daisyui` | ^5.6.10 | 基础组件视觉 class 与主题 token 体系 |
 | `@remixicon/react` | ^4.9.0 | 图标库 |
+| `chromakit-react` | ^0.1.16 | 颜色输入与颜色面板基础组件 |
 | `class-variance-authority` | ^0.7.1 | 变体样式 |
 | `clsx` | ^2.1.1 | class 合并 |
 | `tailwind-merge` | 3.6.0 | Tailwind class 去重 |
-| `react-colorful` | ^5.7.0 | 颜色选择器（批准的例外） |
 | `sonner` | ^2.0.7 | Toast 通知 |
-| `vaul` | ^1.1.2 | Drawer 组件 |
+| `tw-animate-css` | ^1.4.0 | Tailwind 动画工具类 |
+
+### 辅助
+
+| 包 | 版本 | 用途 |
+|----|------|------|
+| `@fontsource-variable/jetbrains-mono` | ^5.2.8 | JetBrains Mono variable font |
+| `culori` | ^4.0.2 | 颜色解析与转换 |
 
 ### 构建
 
 | 包 | 版本 | 用途 |
 |----|------|------|
-| `vite` | 7.3.5 | 构建工具 |
-| `@vitejs/plugin-react` | 4.7.0 | React 插件 |
-| `tailwindcss` | 4.3.1 | CSS 框架（v4，CSS-first） |
-| `@tailwindcss/vite` | 4.3.1 | Tailwind Vite 插件 |
-| `typescript` | ~5.8.3 | 类型检查 |
-| `vitest` | 3.2.6 | 测试运行器 |
-| `@vitest/coverage-v8` | 3.2.6 | 测试覆盖率 |
-
-### 其他
-
-| 包 | 版本 | 用途 |
-|----|------|------|
-| `cmdk` | ^1.1.1 | 命令面板 |
-| `date-fns` | 4.4.0 | 日期工具 |
-| `recharts` | 3.8.1 | 图表 |
-| `react-resizable-panels` | 4.11.2 | 可调面板 |
-| `input-otp` | ^1.4.2 | OTP 输入 |
-| `react-day-picker` | ^9.14.0 | 日期选择器 |
-| `embla-carousel-react` | ^8.6.0 | 轮播 |
+| `vite` | 8.1.2 | 构建工具 |
+| `@vitejs/plugin-react` | 6.0.3 | React 插件 |
+| `tailwindcss` | 4.3.2 | CSS 框架（v4，CSS-first） |
+| `@tailwindcss/vite` | 4.3.2 | Tailwind Vite 插件 |
+| `typescript` | ~6.0.3 | 类型检查 |
+| `vitest` | 4.1.9 | 测试运行器 |
+| `@vitest/coverage-v8` | 4.1.9 | 测试覆盖率 |
+| `@tauri-apps/cli` | ^2.11.4 | Tauri CLI |
+| `@types/react` | 19.2.17 | React 类型 |
+| `@types/react-dom` | 19.2.3 | React DOM 类型 |
 
 ## 依赖说明
 
 - 项目使用 Bun 作为包管理器（`bun.lock`），不使用 npm/pnpm/yarn
-- `react-colorful`（约 3KB）是唯一批准的第三方颜色选择器；不使用外部组件生成器附带的 color-picker
 - Tailwind v4 为 CSS-first：不存在 `tailwind.config.js`，主题 token 在 `src/App.css` 中
 - `devDependencies` 不包含 ESLint 或 Prettier；代码风格由约定和 review 保证

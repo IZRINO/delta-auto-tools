@@ -1,23 +1,15 @@
 import type {ComponentProps, ReactNode} from "react";
 import {
     RiAddLine,
-    RiArrowDownSLine,
-    RiDeleteBinLine,
-    RiErrorWarningLine,
     RiInformationLine,
-    RiMapPinLine,
 } from "@remixicon/react";
 
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from "@/components/ui/empty";
 import {Field, FieldContent, FieldLabel} from "@/components/ui/field";
-import {Input} from "@/components/ui/input";
-import {Slider} from "@/components/ui/slider";
-import {Switch} from "@/components/ui/switch";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {cn} from "@/lib/utils";
 
@@ -73,44 +65,6 @@ export function MacroHeader({actions, badges, className, code, subtitle, title, 
                     </div>
                     {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
                 </div>
-            </div>
-        </section>
-    );
-}
-
-/* ────────── Page Hero (legacy alias, maps to MacroHeader) ────────── */
-
-type PageHeroProps = {
-    eyebrow: string;
-    title: string;
-    description: string;
-    badges?: ReactNode;
-    actions?: ReactNode;
-    stats?: ReactNode;
-    className?: string;
-};
-
-export function PageHero({actions, badges, className, description, eyebrow, stats, title}: PageHeroProps) {
-    return (
-        <section
-            className={cn(
-                "card card-border col-span-12 bg-base-200 text-base-content shadow-none",
-                className,
-            )}
-        >
-            <div className="card-body gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="badge badge-primary badge-sm">{eyebrow}</span>
-                    {badges}
-                </div>
-                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="min-w-0">
-                        <h1 className="text-4xl font-semibold leading-tight text-base-content">{title}</h1>
-                        <p className="mt-2 max-w-[64ch] text-sm leading-relaxed text-base-content/70">{description}</p>
-                    </div>
-                    {actions ? <div className="card-actions shrink-0 justify-end">{actions}</div> : null}
-                </div>
-                {stats ? <div className="stats stats-vertical border border-base-300 bg-base-100 lg:stats-horizontal">{stats}</div> : null}
             </div>
         </section>
     );
@@ -363,34 +317,6 @@ export function HelpHint({content, className}: HelpHintProps) {
     );
 }
 
-/* Error Hint (square !) */
-
-type ErrorHintProps = {
-    content: ReactNode;
-    className?: string;
-};
-
-export function ErrorHint({content, className}: ErrorHintProps) {
-    return (
-        <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-                <button
-                    className={cn(
-                        "btn btn-circle btn-ghost btn-xs text-error",
-                        className,
-                    )}
-                    type="button"
-                >
-                    <RiErrorWarningLine className="size-3"/>
-                </button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs tooltip-error">
-                {content}
-            </TooltipContent>
-        </Tooltip>
-    );
-}
-
 /* Data Well */
 
 type DataWellProps = {
@@ -449,33 +375,6 @@ export function EmptyState({action, className, description, icon, title}: EmptyS
     );
 }
 
-/* Macro Number */
-
-type MacroNumberProps = {
-    value: ReactNode;
-    label?: string;
-    unit?: string;
-    className?: string;
-};
-
-export function MacroNumber({className, label, unit, value}: MacroNumberProps) {
-    return (
-        <div className={cn("flex flex-col items-start gap-1", className)}>
-            {label ? (
-                <span className="text-xs text-base-content/60">{label}</span>
-            ) : null}
-            <div className="flex items-baseline gap-2">
-        <span className="text-5xl font-semibold leading-none text-base-content">
-          {value}
-        </span>
-                {unit ? (
-                    <span className="text-sm text-base-content/60">{unit}</span>
-                ) : null}
-            </div>
-        </div>
-    );
-}
-
 /* Drag Button */
 
 type DragButtonProps = {
@@ -529,102 +428,6 @@ export function HotkeyField({
                 </Button>
             </FieldContent>
         </Field>
-    );
-}
-
-/* Display Settings Inline (legacy) */
-
-type DisplaySettingsInlineProps = {
-    canDelete: boolean;
-    controlsDisabled: boolean;
-    display: { fontOpacity?: string; rect?: { width?: number } } | undefined;
-    group: { enabled: boolean; name: string };
-    statusMessage: string;
-    targetLabel: string;
-    onGroupDelete: () => void;
-    onGroupUpdate: (value: Partial<{ enabled: boolean; name: string }>) => void;
-    onPositionSelection: () => void;
-    onUpdate: (value: Partial<{ fontOpacity?: string }>) => void;
-    onUpdateRect: (value: Partial<{ width?: number }>) => void;
-};
-
-export function DisplaySettingsInline({
-                                          canDelete,
-                                          controlsDisabled,
-                                          display,
-                                          group,
-                                          statusMessage,
-                                          targetLabel,
-                                          onGroupDelete,
-                                          onGroupUpdate,
-                                          onPositionSelection,
-                                          onUpdate,
-                                          onUpdateRect,
-                                      }: DisplaySettingsInlineProps) {
-    return (
-        <ControlTile className="flex flex-col gap-3 bg-base-100">
-            <div className="flex flex-wrap items-center gap-3">
-                <Switch checked={group.enabled} disabled={controlsDisabled}
-                        onCheckedChange={(checked) => onGroupUpdate({enabled: checked})}/>
-                <p className="text-sm font-medium text-base-content">
-                    {targetLabel}分组 · {group.name}
-                </p>
-                <Input
-                    className="w-28"
-                    disabled={controlsDisabled}
-                    value={group.name}
-                    onChange={(event) => onGroupUpdate({name: event.currentTarget.value})}
-                    aria-label="分组名称"
-                />
-                <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0"
-                        size="icon-sm">
-                    <RiDeleteBinLine/>
-                </Button>
-                <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button"
-                        variant="outline" size="sm">
-                    <RiMapPinLine data-icon="inline-start"/>
-                    位置
-                </Button>
-            </div>
-
-            <Collapsible defaultOpen={false}>
-                <InlineControl className="p-0">
-                    <CollapsibleTrigger asChild>
-                        <Button
-                            className="w-full justify-between px-3"
-                            type="button" variant="ghost">
-                            显示参数
-                            <RiArrowDownSLine className="size-3.5"/>
-                        </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="border-t border-base-300 px-3 py-3">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <Field className="min-w-0 flex-1">
-                                <FieldLabel>字体透明度</FieldLabel>
-                                <FieldContent>
-                                    <div className="flex items-center gap-3">
-                                        <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05}
-                                                value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
-                                                onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}/>
-                                        <span className="w-10 text-right text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
-                                    </div>
-                                </FieldContent>
-                            </Field>
-                            <Field className="w-36 shrink-0">
-                                <FieldLabel>窗口宽度</FieldLabel>
-                                <FieldContent>
-                                    <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320"
-                                           className="h-7 text-xs" value={display?.rect?.width ?? 320}
-                                           onChange={(event) => onUpdateRect({width: Number.parseInt(event.currentTarget.value, 10) || 320})}/>
-                                </FieldContent>
-                            </Field>
-                        </div>
-                    </CollapsibleContent>
-                </InlineControl>
-            </Collapsible>
-
-            <p className="text-xs text-muted-foreground">{statusMessage}</p>
-        </ControlTile>
     );
 }
 
@@ -701,28 +504,6 @@ export function AddCardButton({className, description, disabled, onClick, title}
     );
 }
 
-/* Json Pre Block (legacy) */
-
-type JsonPreBlockProps = {
-    data: unknown;
-    className?: string;
-    maxHeightClassName?: string;
-};
-
-export function JsonPreBlock({className, data, maxHeightClassName = "max-h-64"}: JsonPreBlockProps) {
-    return (
-        <pre
-            className={cn(
-                maxHeightClassName,
-                "mockup-code overflow-auto bg-neutral p-3 font-mono text-xs leading-relaxed text-neutral-content",
-                className,
-            )}
-        >
-      {JSON.stringify(data, null, 2)}
-    </pre>
-    );
-}
-
 /* Inline Notice (legacy) */
 
 type InlineNoticeProps = {
@@ -739,17 +520,6 @@ export function InlineNotice({children, className, title}: InlineNoticeProps) {
             <AlertDescription>{children}</AlertDescription>
         </Alert>
     );
-}
-
-/* Card Toolbar (legacy) */
-
-type CardToolbarProps = {
-    children: ReactNode;
-    className?: string;
-};
-
-export function CardToolbar({children, className}: CardToolbarProps) {
-    return <div className={cn("flex flex-wrap items-center gap-2 rounded-box border border-base-300 bg-base-200 p-2", className)}>{children}</div>;
 }
 
 /* Surface Toggle Group (legacy) */

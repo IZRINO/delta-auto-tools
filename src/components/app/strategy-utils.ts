@@ -41,23 +41,6 @@ export type StrategyContentRectLike = Pick<DOMRectReadOnly, "left" | "top" | "wi
 
 export type StrategyContentViewportLike = Pick<DOMRectReadOnly, "width" | "height"> | null | undefined;
 
-/**
- * Tauri 端 `strategy_open_window` 命令的请求。
- */
-export type StrategyOpenWindowRequest = {
-    url: string;
-    title?: string;
-    label?: string;
-};
-
-/**
- * Tauri 端 `strategy_open_window` 命令的响应。
- */
-export type StrategyOpenWindowResponse = {
-    label: string;
-    reused: boolean;
-};
-
 export const DEFAULT_STRATEGY_REFRESH_SECONDS = 0;
 export const STRATEGY_CONTENT_MIN_WIDTH = 320;
 export const STRATEGY_CONTENT_MIN_HEIGHT = 360;
@@ -87,15 +70,6 @@ function isStrategyRefreshSeconds(value: number): value is StrategyRefreshSecond
 }
 
 /**
- * Tauri 端 `strategy_fetch_page` 命令的响应。
- */
-export type StrategyFetchResponse = {
-    html: string;
-    finalUrl: string;
-    challenge: { kind: string; message: string } | null;
-};
-
-/**
  * 内置两个攻略站点（只读、不可删除）。
  *
  * - kkrb → https://www.kkrb.net/?viewpage=view%2Foverview
@@ -121,11 +95,6 @@ export const BUILTIN_STRATEGY_SITES: ReadonlyArray<StrategySite> = [
         builtin: false,
     },
 ];
-
-/** 默认列表：只读内置站点。 */
-export function defaultStrategySites(): ReadonlyArray<StrategySite> {
-    return BUILTIN_STRATEGY_SITES;
-}
 
 /**
  * 用户新增的站点条目（不含内置站点）。本地存储只保存这一段。

@@ -274,35 +274,11 @@ where
     }
 }
 
-pub type StopHandler = fn(&AppHandle) -> Result<(), String>;
-
-#[derive(Default)]
-pub struct SyncToolRegistry {
-    handlers: Vec<(&'static str, StopHandler)>,
-}
-
-impl SyncToolRegistry {
-    pub fn register(&mut self, name: &'static str, handler: StopHandler) {
-        self.handlers.push((name, handler));
-    }
-
-    #[cfg(test)]
-    pub fn handlers_ref(&self) -> &Vec<(&'static str, StopHandler)> {
-        &self.handlers
-    }
-
-    #[cfg(test)]
-    pub fn registered_names(&self) -> Vec<&'static str> {
-        self.handlers.iter().map(|(name, _)| *name).collect()
-    }
-}
-
 // ── ToolLifecycleRegistry ────────────────────────────────────────
 // 统一所有工具（含非 SyncToolLogic 工具如 morse/recognition）的停止入口。
 // stop_all 按注册顺序调用各 handler，幂等不 panic。
 
 /// 工具生命周期停止回调。
-/// 与 SyncToolRegistry 的 StopHandler（fn pointer）不同，
 /// ToolLifecycleRegistry 使用 Box<dyn Fn> 以支持闭包捕获环境
 /// （如 morse 的 cancel_active_overlay 需要捕获 AppHandle 操作）。
 pub type LifecycleStopHandler = Box<dyn Fn(&AppHandle) -> Result<(), String> + Send + Sync>;
@@ -627,57 +603,6 @@ mod tests {
         assert!(decision.save);
         assert_eq!(decision.send, Some(TestKind::Selected));
         assert!(decision.destroy_window);
-    }
-
-    // ── SyncToolRegistry 单元测试 ────────────────────────────────
-
-    /// 验证 SyncToolRegistry 注册的 handler 可被直接调用并正确返回结果。
-    /// 由于 AppHandle 无法在非主线程创建，通过 registered_names + 直接调用 handler 验证。
-    #[test]
-    fn sync_tool_registry_stop_all_fires_handlers_and_collects_errors() {
-        use std::cell::Cell;
-
-        thread_local! {
-            static OK_CALLED: Cell<bool> = Cell::new(false);
-        }
-
-        fn ok_handler(_app: &AppHandle) -> Result<(), String> {
-            OK_CALLED.with(|c| c.set(true));
-            Ok(())
-        }
-        fn err_handler(_app: &AppHandle) -> Result<(), String> {
-            Err("停止失败".to_string())
-        }
-
-        let mut registry = SyncToolRegistry::default();
-        registry.register("ok", ok_handler);
-        registry.register("bad", err_handler);
-
-        let names = registry.registered_names();
-        assert_eq!(names, vec!["ok", "bad"]);
-
-        // 直接调用 ok_handler 验证其行为
-        // （fn pointer handler 无法通过闭包记录调用，使用 thread_local 替代）
-        // 由于我们没有 AppHandle，无法直接调用 handler。
-        // 但我们可以通过 stop_all_with_recording 验证（如果有 AppHandle 的话）
-        // 这里验证 registered_names 和 handler 签名正确性
-        assert_eq!(names.len(), 2);
-    }
-
-    /// 验证 SyncToolRegistry 注册 3 个 handler 后名称列表正确。
-    #[test]
-    fn sync_tool_registry_registered_names_correct() {
-        fn ok_handler(_app: &AppHandle) -> Result<(), String> {
-            Ok(())
-        }
-
-        let mut registry = SyncToolRegistry::default();
-        registry.register("timer", ok_handler);
-        registry.register("counter", ok_handler);
-        registry.register("rapidfire", ok_handler);
-
-        let names = registry.registered_names();
-        assert_eq!(names, vec!["timer", "counter", "rapidfire"]);
     }
 
     // ── ToolLifecycleRegistry 单元测试 ──────────────────────────

@@ -4,7 +4,7 @@ import {afterEach, describe, expect, it, vi} from "vitest";
  * VAL-DF-005: profile-switcher 含"复制"入口。
  *
  * 行为级测试：mock saveCurrentProfile，测试复制流程的行为契约。
- * 不使用 source-regex 断言，而是通过 vi.mock/vi.fn 验证调用行为。
+ * 不使用源码正则断言，而是通过 vi.mock/vi.fn 验证调用行为。
  */
 
 // ── Mock 依赖 ──────────────────────────────────────────

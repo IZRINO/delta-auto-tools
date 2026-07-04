@@ -4,7 +4,7 @@ import {afterEach, describe, expect, it, vi} from "vitest";
  * VAL-DF-004: use-profile 暴露 saveCurrentProfile 方法。
  *
  * 行为级测试：mock invoke，测试 saveCurrentProfile 的 IPC 契约。
- * 不使用 source-regex 断言，而是通过 vi.mock/vi.fn 验证调用行为。
+ * 不使用源码正则断言，而是通过 vi.mock/vi.fn 验证调用行为。
  */
 
 // ── Mock Tauri IPC 层 ──────────────────────────────────────

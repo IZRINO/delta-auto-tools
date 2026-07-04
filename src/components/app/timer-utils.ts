@@ -21,7 +21,6 @@ import {formatRecordedHotkey} from "@/components/app/morse-utils";
 export function formatTimerHotkey(event: Pick<React.KeyboardEvent<HTMLButtonElement>, "key" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey">): string | null {
     return formatRecordedHotkey(event);
 }
-
 function displaySettingsToForm(display: TimerDisplaySettings) {
     return {
         rect: display.rect,
@@ -316,18 +315,6 @@ export function timerRunsById(runs: TimerRunState[]): Map<string, TimerRunState>
     return new Map(runs.map((run) => [run.id, run]));
 }
 
-export function isTimerDirty(bootstrap: TimerBootstrap | null, form: TimerSettingsForm | null): boolean {
-    if (!bootstrap || !form) {
-        return false;
-    }
-
-    try {
-        return JSON.stringify(timerSettingsToForm(bootstrap.settings)) !== JSON.stringify(timerSettingsToForm(parseTimerSettingsForm(form)));
-    } catch {
-        return true;
-    }
-}
-
 export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: TimerBootstrap) => void) {
     useEffect(() => {
         document.body.dataset.overlayMode = "true";
@@ -371,14 +358,4 @@ export function timerSignalChar(timer: { enabled: boolean }, run?: TimerRunState
     if (run.status === "running") return "▣";
     if (run.status === "finished") return "▩";
     return "▢";
-}
-
-export function timerSignalState(timer: {
-    enabled: boolean
-}, run?: TimerRunState): "idle" | "active" | "valid" | "warning" | "error" {
-    if (!timer.enabled) return "idle";
-    if (!run) return "idle";
-    if (run.status === "running") return "active";
-    if (run.status === "finished") return "valid";
-    return "idle";
 }

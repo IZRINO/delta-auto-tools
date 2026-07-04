@@ -53,7 +53,7 @@ graph TD
 ## 集成点
 
 - [热键系统](hotkeys.md) 监听线程每个事件检查 `GlobalState::enabled()`
-- [同步工具基座](sync-tool.md) 的 `SyncToolRegistry` 提供同步工具管理，`ToolLifecycleRegistry` 提供全局停止入口
+- [同步工具基座](sync-tool.md) 的 `ToolLifecycleRegistry` 提供全局停止入口
 - [按键抑制器](key-suppressor.md) 的 `clear_all_suppressions` 在关闭时调用
 - [计时器](../features/timer.md)、[计数器](../features/counter.md)、[连发器](../features/rapidfire.md) 在恢复时重建窗口和热键
 

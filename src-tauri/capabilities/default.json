@@ -19,7 +19,6 @@
     "rapidfire-position-*",
     "recognition-overlay",
     "recognition-overlay-*",
-    "strategy-view-*",
     "strategy-content"
   ],
   "permissions": [

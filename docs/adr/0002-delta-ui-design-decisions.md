@@ -196,7 +196,7 @@ Step 4: 获取访问令牌
   ├─ 首批（并行，2 个请求）:
   │   invoke("delta_game_get_player", { auth })   → SignalTile + 角色卡片
   │   invoke("delta_game_get_record", { auth })    → SignalTile + 战绩卡片
-  │   首批完成后 → 渲染 PageHero stats + 两个卡片
+  │   首批完成后 → 渲染 MacroHeader stats + 两个卡片
   │
   └─ 次批（并行，5 个请求）:
       invoke("delta_game_get_assets", { auth })

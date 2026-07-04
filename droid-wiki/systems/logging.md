@@ -9,7 +9,7 @@ src-tauri/src/logging/
 ├── mod.rs      # LogLevel、LogSettings、FrontendLogRequest、TraceContext、session_id、命令
 ├── format.rs   # 日志行格式化（人类可读 | JSON 结构化）
 ├── writer.rs   # LogWriter：BufWriter + Mutex + 按天轮转 + 清理 + 级别过滤
-└── macros.rs   # log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏
+└── macros.rs   # log_error! 宏
 ```
 
 ## 关键抽象
@@ -27,7 +27,7 @@ src-tauri/src/logging/
 
 ```mermaid
 graph TD
-    Rust["Rust 代码<br/>log_info! 宏"] --> Writer["LogWriter"]
+    Rust["Rust 代码<br/>log_error! 宏"] --> Writer["LogWriter"]
     Frontend["前端<br/>logFrontend()"] -->|invoke log_write_frontend| Cmd["log_write_frontend 命令"]
     Cmd --> Writer
     Writer -->|格式化行| Format["format.rs<br/>人类可读 | JSON"]
@@ -42,7 +42,7 @@ graph TD
 
 ### 宏
 
-`macros.rs` 中的宏（`log_error!` 到 `log_trace!`）自动注入来源（`[RUST]·{source}`）、位置（`{file}:{line}`）、thread_id 和 trace_id。Debug 级别还注入 `memory_kb`。
+`macros.rs` 中的 `log_error!` 宏自动注入来源、位置（`{file}:{line}`）和 JSON payload。
 
 ### 前端日志
 
@@ -79,5 +79,5 @@ graph TD
 | `src-tauri/src/logging/mod.rs` | 公共 API、类型、命令、session_id、TraceContext |
 | `src-tauri/src/logging/format.rs` | 行格式化，含宽度/截断规则 |
 | `src-tauri/src/logging/writer.rs` | LogWriter，含轮转、清理、级别过滤 |
-| `src-tauri/src/logging/macros.rs` | `log_error!` 到 `log_trace!` 宏 |
+| `src-tauri/src/logging/macros.rs` | `log_error!` 宏 |
 | `src/lib/logging.ts` | 前端日志接口 |

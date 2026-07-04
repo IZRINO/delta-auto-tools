@@ -247,7 +247,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `counter/` — 多计数器，运行态独立持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程
 - `recognition/` — 快捷键/区域监听/识色三种识别来源 + 音频/按键/点击效果
-- `strategy/` — 攻略网站 WebView2 嵌入
+- `src/components/app/strategy-page.tsx` — 攻略网站主窗口内嵌 `strategy-content` 子 WebView
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪

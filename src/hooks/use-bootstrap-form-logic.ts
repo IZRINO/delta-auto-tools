@@ -26,12 +26,3 @@ export function isStaleSave(
 ): boolean {
     return typeof pendingVersion === "number" && pendingVersion !== autosaveVersionRef.current;
 }
-
-/** 判断是否应完全同步 form */
-export function shouldSyncFormFully(
-    syncMode: string | undefined,
-    syncForm: boolean | undefined,
-    formIsNull: boolean,
-): boolean {
-    return syncMode === "full" || syncForm === true || formIsNull;
-}

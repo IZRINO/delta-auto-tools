@@ -167,9 +167,4 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     colorMatchMethod: "average",
 };
 
-export const DEFAULT_RECOGNITION_SETTINGS: RecognitionSettings = {
-    recognitionEnabled: true,
-    cards: [],
-};
-
 export const RECOGNITION_AUTOSAVE_DELAY_MS = 400;

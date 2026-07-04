@@ -5,7 +5,7 @@ import {afterEach, describe, expect, it, vi} from "vitest";
  *
  * 行为级测试：mock listenEvent，测试 hotkeyTriggered 和 regionMatched
  * 事件的订阅与回调行为契约。
- * 不使用 source-regex 断言，而是通过 vi.mock/vi.fn 验证调用行为。
+ * 不使用源码正则断言，而是通过 vi.mock/vi.fn 验证调用行为。
  */
 
 // ── Mock 依赖 ──────────────────────────────────────────

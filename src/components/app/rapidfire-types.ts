@@ -652,19 +652,6 @@ export function rapidfireStatusLabel(status: RapidfireRunStatus): string {
     }
 }
 
-export function rapidfireStatusVariant(
-    status: RapidfireRunStatus,
-): "outline" | "default" | "secondary" {
-    switch (status) {
-        case "idle":
-            return "outline";
-        case "firing":
-            return "default";
-        case "pendingCompensation":
-            return "secondary";
-    }
-}
-
 export type RapidfireCardStatusView = {
     label: string;
     variant: "outline" | "default" | "secondary" | "destructive";
@@ -809,34 +796,6 @@ export function rapidfireEffectiveCardsByGroup(
     }
     return settings.cards.filter((card) => card.groupId === groupId && card.enabled);
 }
-
-// ---- 支持的目标键列表 ----
-
-export const SUPPORTED_TARGET_KEYS = [
-    {group: "字母键", keys: "A-Z".split("").map((k) => k)},
-    {group: "数字键", keys: "0-9".split("").map((k) => k)},
-    {group: "功能键", keys: Array.from({length: 12}, (_, i) => `F${i + 1}`)},
-    {
-        group: "修饰键",
-        keys: ["Alt"],
-    },
-    {
-        group: "符号键",
-        keys: [";", ",", ".", "/", "\\", "[", "]", "-", "=", "`", "'"],
-    },
-    {
-        group: "特殊键",
-        keys: ["Space", "Enter", "Tab", "Esc", "Backspace"],
-    },
-    {
-        group: "方向键",
-        keys: ["Up", "Down", "Left", "Right"],
-    },
-    {
-        group: "其他",
-        keys: ["Home", "End", "PageUp", "PageDown", "Insert", "Delete"],
-    },
-];
 
 // ---- 热键格式化 ----
 

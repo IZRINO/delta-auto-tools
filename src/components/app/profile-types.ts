@@ -31,15 +31,6 @@ export interface Profile {
     snapshot: ToolSettingsSnapshot;
 }
 
-/** Profile 持久化设置。 */
-export interface ProfileSettings {
-    profiles: Profile[];
-    /** 当前激活 Profile id。空串表示「默认」（未保存的现场）。 */
-    activeProfileId: string;
-    /** 下一次自动创建 `配置N` 时使用的编号。 */
-    nextProfileNumber: number;
-}
-
 /** Profile bootstrap：一次性返回前端所需的全部信息。 */
 export interface ProfileBootstrap {
     profiles: Profile[];

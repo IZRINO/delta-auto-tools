@@ -7,7 +7,6 @@ import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {DataWell, FieldUnit, StatusMatrix} from "@/components/app/app-ui";
 import {DEPENDENCIES} from "@/components/app/about-deps";
@@ -26,8 +25,7 @@ type AboutPanelProps = {
 /**
  * 关于面板内容：版本 / 更新状态 / 日志级别 / 协议 / 致谢。
  *
- * 原 AboutDialog 的逻辑拆出，可在 SettingsDialog 的「关于」Tab 内复用，
- * 也可被 AboutDialog 薄包装继续作为独立 Dialog 使用。
+ * 由 SettingsDialog 的「关于」Tab 按需挂载。
  */
 export function AboutPanel({active}: AboutPanelProps) {
     const isNativeShell = useNativeShell();
@@ -334,31 +332,5 @@ export function AboutPanel({active}: AboutPanelProps) {
                     </div>
                 </FieldUnit>
         </div>
-    );
-}
-
-type AboutDialogProps = {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-};
-
-/**
- * 关于 Dialog：保留为独立入口（向后兼容），内部直接渲染 AboutPanel。
- *
- * 新的统一设置入口请使用 SettingsDialog（含主题/配置/关于三 Tab）。
- */
-export function AboutDialog({open, onOpenChange}: AboutDialogProps) {
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>关于</DialogTitle>
-                    <DialogDescription>
-                        软件版本、开源协议与更新信息
-                    </DialogDescription>
-                </DialogHeader>
-                <AboutPanel active={open}/>
-            </DialogContent>
-        </Dialog>
     );
 }

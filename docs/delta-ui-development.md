@@ -62,7 +62,7 @@ DeltaAccountsContext（React Context）
 
 ```
 AppPage
-├── PageHero
+├── MacroHeader
 │   ├── eyebrow: "三角洲行动"
 │   ├── title: "账号管理"
 │   ├── description: "管理游戏账号登录状态与访问令牌"
@@ -145,7 +145,7 @@ Dialog（模态）
 
 ### 3.4 令牌状态摘要
 
-账号管理页 PageHero 的 SignalTile：
+账号管理页 MacroHeader 的 SignalTile：
 
 - **总账号数**：`accounts.length`
 - **有效令牌**：`accounts.filter(a => a.expiresAt > Date.now()).length`
@@ -157,7 +157,7 @@ Dialog（模态）
 
 ```
 AppPage
-├── PageHero
+├── MacroHeader
 │   ├── eyebrow: "三角洲行动"
 │   ├── title: "游戏数据"
 │   ├── description: "查看游戏内角色数据与资产信息"
@@ -186,7 +186,7 @@ AppPage
 
 **分批加载**：
 
-1. **首批**（核心摘要）：`player` + `record` → 渲染 PageHero SignalTile + 两个卡片
+1. **首批**（核心摘要）：`player` + `record` → 渲染 MacroHeader SignalTile + 两个卡片
 2. **次批**（详情数据）：`assets` + `recent` + `achievement` + `password` + `bind` → 并行请求，逐步渲染
 
 切换账号时重新触发加载。加载期间卡片显示 skeleton 状态。
@@ -227,7 +227,7 @@ const player = await invoke("delta_game_get_player", { auth })
 
 ```
 AppPage
-├── PageHero
+├── MacroHeader
 │   ├── eyebrow: "三角洲行动"
 │   ├── title: "工具箱"
 │   ├── description: "Wegame 运营、安全查询与先遣服测试"
@@ -575,7 +575,7 @@ src/
 ## 10. 设计约束
 
 - 延续现有"战术白色操作台"视觉风格
-- 复用 `app-ui.tsx` 共享组件：`AppPage` / `PageHero` / `SignalTile` / `TacticalCard` / `SectionHeader` / `ControlTile` /
+- 复用 `app-ui.tsx` 共享组件：`AppPage` / `MacroHeader` / `SignalTile` / `TacticalCard` / `SectionHeader` / `ControlTile` /
   `SaveStateBadge` / `CardBody`
 - 图标使用 `@remixicon/react`，Button 内图标加 `data-icon` 属性
 - 表单使用 `FieldGroup` / `Field` / `FieldLabel` / `FieldContent`
