@@ -2,7 +2,7 @@
 
 ## 设置文件
 
-所有设置为 JSON 文件，存储在 Tauri app config 目录（`%APPDATA%/org.izrino.delta-auto-tools/`）。每个工具有自己的文件。
+所有设置为 JSON 文件，存储在 Tauri app config 目录（`%APPDATA%/org.izrino.delta-auto-tools/`）。每个工具有自己的文件。Rust 侧公共 `settings::save_settings` 先写同目录临时文件，再替换目标文件；Windows 使用 `MoveFileExW` 覆盖写入，降低进程异常退出导致配置文件半写的概率。
 
 | 文件 | 工具 | 内容 |
 |------|------|------|

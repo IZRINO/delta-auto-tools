@@ -266,7 +266,7 @@ pub fn morse_get_bootstrap(state: State<'_, MorseState>) -> Result<MorseBootstra
 }
 
 #[tauri::command]
-pub fn morse_save_settings(
+pub async fn morse_save_settings(
     settings_value: MorseSettings,
     app: AppHandle,
     state: State<'_, MorseState>,

@@ -5,7 +5,7 @@
 ## 用途
 
 - 将 5 个工具的当前内存 settings 快照为单个 `Profile`，存储在 `profile_settings.json`
-- 应用 profile 时写入 5 份文件到磁盘，然后重载各工具运行时状态而无需重启应用
+- 应用 profile 时写入 5 份文件到磁盘，然后重载各工具运行时状态而无需重启应用；settings 写入通过同目录临时文件替换目标 JSON，避免进程中断留下半截配置
 - 切换时重置计数器运行值为目标 profile 的 `start_value` 并持久化 `counter_state.json`
 - 主题独立于 profile，不打包进快照
 

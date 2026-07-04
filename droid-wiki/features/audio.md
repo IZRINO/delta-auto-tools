@@ -108,7 +108,7 @@ flowchart TD
 | 命令 | 作用 |
 |------|------|
 | `audio_get_bootstrap` | 返回 `AudioBootstrap`（settings + hotkey_error），由 `tool_base::get_bootstrap` 转发 |
-| `audio_save_settings` | 规范化 → 写盘 → 更新内存 → 重启热键 listener → 重启 watcher → emit state + 更新 profile snapshot。热键注册失败时回滚到旧设置 |
+| `audio_save_settings` | 规范化 → 写盘 → 更新内存 → 释放状态锁 → 重启热键 listener → 重启 watcher → emit state + 更新 profile snapshot。热键注册失败时回滚到旧设置 |
 | `audio_begin_region_selection` | 创建透明全屏 overlay 窗口（`audio-overlay-{cardId}`）用于框选，识色模式透传 `probe_index` |
 | `audio_overlay_submit_selection` | 提交框选区域：识色写探针 region，区域监听写 `watch_region`；重启 watcher 并 emit state |
 | `audio_overlay_cancel_selection` | 取消并关闭 overlay 窗口 |

@@ -748,7 +748,7 @@ pub fn counter_get_bootstrap(state: State<'_, CounterState>) -> Result<CounterBo
 }
 
 #[tauri::command]
-pub fn counter_save_settings(
+pub async fn counter_save_settings(
     settings_value: CounterSettings,
     app: AppHandle,
     state: State<'_, CounterState>,

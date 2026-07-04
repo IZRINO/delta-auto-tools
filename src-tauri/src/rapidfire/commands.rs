@@ -9,17 +9,15 @@ use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::sync_tool::group_enabled;
 use crate::tool_base::ToolLogic;
 
-use super::RapidfireLogic;
-use super::overlay::{
-    display_height, ensure_overlay_window, position_label_for_group,
-};
+use super::overlay::{display_height, ensure_overlay_window, position_label_for_group};
 use super::settings;
 use super::types::{
-    RapidfireRect, RapidfireSelectionKind, RapidfireSelectionOutcome,
-    RapidfireSettings, DEFAULT_RAPIDFIRE_GROUP_ID,
+    RapidfireRect, RapidfireSelectionKind, RapidfireSelectionOutcome, RapidfireSettings,
+    DEFAULT_RAPIDFIRE_GROUP_ID,
 };
 use super::worker::{self, SessionControl};
 use super::PendingRapidfirePosition;
+use super::RapidfireLogic;
 use super::RapidfireState;
 
 #[tauri::command]
@@ -33,7 +31,7 @@ pub fn rapidfire_get_bootstrap(
 }
 
 #[tauri::command]
-pub fn rapidfire_save_settings(
+pub async fn rapidfire_save_settings(
     settings_value: RapidfireSettings,
     app: AppHandle,
     state: State<'_, RapidfireState>,
@@ -61,7 +59,7 @@ pub fn rapidfire_save_settings(
         return Err(AppError::from(error));
     }
 
-    let bootstrap = {
+    let (bootstrap, suppressions_to_clear, should_stop_suppressor) = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
@@ -97,23 +95,31 @@ pub fn rapidfire_save_settings(
             .map(|c| c.trigger_key.clone())
             .collect();
 
-        for trigger_key in previous_should_suppress.difference(&should_suppress) {
-            let _ = hotkey_manager.unsuppress_key(trigger_key);
-        }
-
-        if should_suppress.is_empty() && !previous_should_suppress.is_empty() {
-            let _ = hotkey_manager.stop_suppressor();
-        }
-
         if !settings_value.rapidfire_enabled {
             worker::stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
             inner.logic.runs.clear();
-            hotkey_manager.clear_all_suppressions();
-            let _ = hotkey_manager.stop_suppressor();
         }
 
-        RapidfireLogic::build_bootstrap(&inner)
+        (
+            RapidfireLogic::build_bootstrap(&inner),
+            previous_should_suppress
+                .difference(&should_suppress)
+                .cloned()
+                .collect::<Vec<_>>(),
+            (should_suppress.is_empty() && !previous_should_suppress.is_empty())
+                || !settings_value.rapidfire_enabled,
+        )
     };
+
+    for trigger_key in suppressions_to_clear {
+        let _ = hotkey_manager.unsuppress_key(&trigger_key);
+    }
+    if !settings_value.rapidfire_enabled {
+        hotkey_manager.clear_all_suppressions();
+    }
+    if should_stop_suppressor {
+        let _ = hotkey_manager.stop_suppressor();
+    }
 
     ensure_overlay_window(&app, &bootstrap.settings)?;
     super::emit_state(&app, bootstrap.clone());
@@ -150,8 +156,8 @@ pub async fn rapidfire_begin_position_selection(
     app: AppHandle,
     state: State<'_, RapidfireState>,
 ) -> Result<RapidfireSelectionOutcome, AppError> {
-    use tauri::WebviewWindowBuilder;
     use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
     use tauri::WindowEvent;
 
     let (sender, receiver) = oneshot::channel();

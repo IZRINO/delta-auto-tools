@@ -1024,7 +1024,7 @@ pub fn timer_get_bootstrap(state: State<'_, TimerState>) -> Result<TimerBootstra
 }
 
 #[tauri::command]
-pub fn timer_save_settings(
+pub async fn timer_save_settings(
     settings_value: TimerSettings,
     app: AppHandle,
     state: State<'_, TimerState>,

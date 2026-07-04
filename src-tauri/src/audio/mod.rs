@@ -228,7 +228,7 @@ pub fn audio_get_bootstrap(
 }
 
 #[tauri::command]
-pub fn audio_save_settings(
+pub async fn audio_save_settings(
     app: tauri::AppHandle,
     state: tauri::State<'_, AudioState>,
     settings_value: AudioSettings,
@@ -242,28 +242,28 @@ pub fn audio_save_settings(
     // 先保存到磁盘，失败时直接返回错误，不重启 listeners
     settings::write_settings(&app, &normalized).map_err(|e| AppError::from(e))?;
 
-    // 再更新内存状态
-    let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    inner.settings = normalized.clone();
+    let playback_tx = {
+        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        inner.settings = normalized.clone();
+        inner.logic.playback_tx.clone()
+    };
 
-    // 然后重启热键和 watcher
+    // 然后重启热键和 watcher。不要持有 AudioState 锁做 watcher IPC。
     let hotkey_manager = app.state::<HotkeyManager>();
     if let Err(e) = restart_hotkey_listeners(&hotkey_manager, &normalized) {
-        // 热键注册失败：回滚到之前的设置
         let _ = settings::write_settings(&app, &previous_settings);
+        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         inner.settings = previous_settings;
         inner.hotkey_error = Some(e.clone());
         return Err(AppError::from(e));
     }
-    let _ = watcher::restart_watchers(&app, &normalized, inner.logic.playback_tx.clone());
+    let _ = watcher::restart_watchers(&app, &normalized, playback_tx);
 
-    // 总开关关闭时停止所有 watcher
-    if !inner.settings.audio_enabled {
-        let _ = watcher::stop_all_watchers(&app);
-    }
-
-    inner.hotkey_error = None;
-    let bootstrap = AudioLogic::build_bootstrap(&inner);
+    let bootstrap = {
+        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        inner.hotkey_error = None;
+        AudioLogic::build_bootstrap(&inner)
+    };
     AudioLogic::emit_state(&app, &bootstrap);
     profile::update_active_profile_snapshot(
         &app,
