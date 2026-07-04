@@ -27,7 +27,7 @@ src/hooks/
 
 src/components/app/
 ├── theme-panel.tsx         # ThemePanel：预设 / token 编辑 / 导入导出
-├── theme-types.ts          # TS 类型 + EDITABLE_TOKEN_KEYS
+├── theme-types.ts          # TS 类型 + BUILTIN_THEME_IDS、EDITABLE_TOKEN_KEYS
 ├── theme-utils.ts          # applyThemeTokens / mergeThemeTokens / findTheme 等纯函数
 └── theme-color-picker.tsx  # ThemeColorPicker：OKLCH 输入与颜色预览
 ```
@@ -94,7 +94,7 @@ sequenceDiagram
 
 ## 修改入口
 
-- 新增第 4 套内置主题：在 `builtins.rs` 定义新函数返回 `Vec<ThemeTokenOverride>`，添加 ID 常量，追加到 `builtin_themes()`；前端通过 `theme_get_bootstrap` 获取内置主题列表
+- 新增第 4 套内置主题：在 `builtins.rs` 定义新函数返回 `Vec<ThemeTokenOverride>`，添加 ID 常量，追加到 `builtin_themes()`，更新前端 `BUILTIN_THEME_IDS`
 - 新增面板可编辑 token：添加 key 到 `EDITABLE_TOKEN_KEYS`，添加标签到 `TOKEN_LABELS`
 - 修改合并语义：同时修改 `apply.rs` 和 `theme-utils.ts`，保持同步
 

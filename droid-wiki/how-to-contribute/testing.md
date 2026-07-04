@@ -63,7 +63,7 @@ cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 - `theme/mod.rs`：`build_bootstrap`、`theme_import`（合法/非法 key 拒绝）、导出
 - `profile/types.rs` / `settings.rs` / `mod.rs`：快照空、默认值、camelCase、往返、profile_id 唯一性
 - `logging/format.rs` / `writer.rs` / `mod.rs`：格式字段顺序、轮转、清理（tempdir）、级别过滤、session_id、TraceContext
-- `sync_tool.rs`：`normalize_sync_settings`（默认条目插入、孤儿分组重分配、重复 ID 拒绝）、`apply_position_event`（移动/提交/取消）、`ToolLifecycleRegistry`
+- `sync_tool.rs`：`normalize_sync_settings`（默认条目插入、孤儿分组重分配、重复 ID 拒绝）、`apply_position_event`（移动/提交/取消）、`SyncToolRegistry`
 
 ## 添加测试
 

@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {computeIsDirty, isStaleSave} from "@/hooks/use-bootstrap-form-logic";
+import {computeIsDirty, isStaleSave, shouldSyncFormFully,} from "@/hooks/use-bootstrap-form-logic";
 
 describe("useBootstrapForm core logic", () => {
     describe("computeIsDirty", () => {
@@ -58,4 +58,25 @@ describe("useBootstrapForm core logic", () => {
         });
     });
 
+    describe("shouldSyncFormFully", () => {
+        it("returns true for syncMode full", () => {
+            expect(shouldSyncFormFully("full", undefined, false)).toBe(true);
+        });
+
+        it("returns true for syncForm true", () => {
+            expect(shouldSyncFormFully(undefined, true, false)).toBe(true);
+        });
+
+        it("returns true when form is null", () => {
+            expect(shouldSyncFormFully(undefined, false, true)).toBe(true);
+        });
+
+        it("returns false for syncMode none with syncForm false and form not null", () => {
+            expect(shouldSyncFormFully("none", false, false)).toBe(false);
+        });
+
+        it("returns false for no syncMode with syncForm false", () => {
+            expect(shouldSyncFormFully(undefined, false, false)).toBe(false);
+        });
+    });
 });

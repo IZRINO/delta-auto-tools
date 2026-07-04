@@ -2,6 +2,7 @@ import {createContext, type ReactNode, useCallback, useContext, useEffect, useMe
 
 import {
     addFavorite as addFavoriteUtil,
+    DEFAULT_FAVORITES_STATE,
     type FavoriteCardKind,
     type FavoriteItem,
     type FavoritesState,
@@ -118,3 +119,7 @@ export function FavoritesProvider({children}: FavoritesProviderProps) {
         </FavoritesContext.Provider>
     );
 }
+
+export const __FAVORITES_TEST_HELPERS = {
+    DEFAULT_FAVORITES_STATE,
+};

@@ -22,12 +22,14 @@ export const DEPENDENCIES: Dependency[] = [
     {name: "radix-ui", kind: "frontend", license: "MIT", url: "https://www.radix-ui.com"},
     {name: "tailwindcss 4", kind: "frontend", license: "MIT", url: "https://tailwindcss.com"},
     {name: "sonner", kind: "frontend", license: "MIT", url: "https://sonner.emilkowal.dev"},
+    {name: "date-fns", kind: "frontend", license: "MIT", url: "https://date-fns.org"},
     // ── Rust 运行时 ──
     {name: "tauri", kind: "runtime", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "tauri-plugin-updater", kind: "runtime", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "tauri-plugin-opener", kind: "runtime", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "tauri-plugin-window-state", kind: "runtime", license: "MIT/Apache-2.0", url: "https://tauri.app"},
     {name: "tauri-plugin-process", kind: "runtime", license: "MIT/Apache-2.0", url: "https://tauri.app"},
+    {name: "reqwest", kind: "runtime", license: "MIT/Apache-2.0", url: "https://github.com/seanmonstar/reqwest"},
     {name: "enigo", kind: "runtime", license: "MIT", url: "https://github.com/enigo-rs/enigo"},
     {name: "willhook", kind: "runtime", license: "MIT", url: "https://github.com/2hndr/willhook"},
     {name: "xcap", kind: "runtime", license: "MIT", url: "https://github.com/nicedoc/xcap"},
@@ -36,6 +38,7 @@ export const DEPENDENCIES: Dependency[] = [
     {name: "tokio", kind: "runtime", license: "MIT", url: "https://tokio.rs"},
     {name: "serde", kind: "runtime", license: "MIT/Apache-2.0", url: "https://serde.rs"},
     {name: "serde_json", kind: "runtime", license: "MIT/Apache-2.0", url: "https://github.com/serde-rs/json"},
+    {name: "regex", kind: "runtime", license: "MIT/Apache-2.0", url: "https://github.com/rust-lang/regex"},
     {name: "thiserror", kind: "runtime", license: "MIT/Apache-2.0", url: "https://github.com/dtolnay/thiserror"},
     {
         name: "crossbeam-channel",

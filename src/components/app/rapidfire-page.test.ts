@@ -4,7 +4,7 @@ import {describe, expect, it, vi} from "vitest";
  * VAL-DF-006: rapidfire ChannelTabs tab 切换逻辑。
  *
  * 行为级测试：测试 tab 切换状态管理和条件渲染逻辑的行为契约。
- * 不使用源码正则断言，而是通过 vi.mock/vi.fn 验证调用行为。
+ * 不使用 source-regex 断言，而是通过 vi.mock/vi.fn 验证调用行为。
  */
 
 // ── Mock 依赖 ──────────────────────────────────────────

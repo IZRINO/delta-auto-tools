@@ -22,7 +22,7 @@ type SettingsDialogProps = {
 /**
  * 统一设置 Dialog：含「主题 / 关于」两个 Tab。
  *
- * Rail 底部「设置」按钮打开此 Dialog。
+ * 替代原独立的 AboutDialog 入口，Rail 底部「设置」按钮打开此 Dialog。
  * 内部两 Tab 各自懒挂载，切到关于 Tab 时才触发 AboutPanel 的数据加载。
  */
 export function SettingsDialog({open, onOpenChange, initialTab = "theme"}: SettingsDialogProps) {

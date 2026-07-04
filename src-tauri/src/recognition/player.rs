@@ -118,6 +118,31 @@ fn open_audio_source(path: &str) -> Result<rodio::Decoder<BufReader<File>>, Stri
     Decoder::new(BufReader::new(file)).map_err(|e| format!("解码音频文件失败: {e}"))
 }
 
+/// 保留旧的同步播放接口（兼容性），每次创建独立 OutputStream
+/// 仅用于测试或不需要互斥协调的场景
+#[allow(dead_code)]
+pub fn play_audio_file(path: &str, volume: f32) -> Result<(), String> {
+    let path = Path::new(path);
+    if !path.exists() {
+        return Err(format!("音频文件不存在: {}", path.display()));
+    }
+
+    let file = File::open(path).map_err(|e| format!("打开音频文件失败: {e}"))?;
+    let source =
+        Decoder::new(BufReader::new(file)).map_err(|e| format!("解码音频文件失败: {e}"))?;
+
+    let (_stream, stream_handle) =
+        OutputStream::try_default().map_err(|e| format!("初始化音频输出失败: {e}"))?;
+
+    let sink = Sink::try_new(&stream_handle).map_err(|e| format!("创建音频播放器失败: {e}"))?;
+
+    sink.set_volume(volume.clamp(0.0, 1.0));
+    sink.append(source);
+    sink.sleep_until_end();
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

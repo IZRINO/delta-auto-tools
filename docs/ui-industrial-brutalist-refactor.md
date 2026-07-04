@@ -64,12 +64,12 @@ Overlay / display / position 查询参数入口仍 early return，不经过主�
 `src/components/app/app-ui.tsx` 保留导出名，但语义已重写：
 
 - `AppPage`：12 列 Main Work Grid。
-- `MacroHeader`：Macro Module Header，包含模块标题、机器元信息与状态矩阵承载区。
+- `PageHero`：Macro Module Header，包含巨大模块标题、机器元信息与状态矩阵承载区。
 - `SignalTile`：Status Matrix Cell。
 - `TacticalCard`：FIELD UNIT 面板。
 - `SectionHeader`：黑色机器标签条。
 - `ControlTile` / `InlineControl`：硬边配置格。
-- `DataWell`：深色数据井。
+- `JsonPreBlock`：深色 Data Well。
 - `SurfaceToggleGroup`：硬边频道 / 拨档底座。
 
 ### 4.4 基础 UI 原语

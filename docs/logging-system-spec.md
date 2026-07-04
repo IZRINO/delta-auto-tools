@@ -114,7 +114,7 @@ src-tauri/src/
 │   ├── mod.rs         # 公共接口 + Tauri Command + session_id 管理
 │   ├── format.rs      # 格式化：拼接混合格式字符串
 │   ├── writer.rs      # 文件写入、BufWriter、按天轮转、清理
-│   └── macros.rs      # log_error! 宏
+│   └── macros.rs      # log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏
 ```
 
 ### 4.2 核心类型
@@ -241,13 +241,15 @@ macro_rules! log_error {
     };
 }
 
-// 其他级别由前端 log 对象和后端 log_write 接口处理；Rust 侧只保留 log_error! 便捷宏
+// log_warn! / log_info! / log_debug! / log_trace! 同理
 ```
 
 调用示例：
 
 ```rust
+log_info!("morse::mod", "识别完成", "result" => "1234", "regions" => 3);
 log_error!("delta::commands", "请求超时", "endpoint" => "get_player", "duration_ms" => 5000);
+log_warn!("timer::mod", "热键冲突");
 ```
 
 宏内部自动：
@@ -636,7 +638,7 @@ chrono = { version = "0.4", features = ["serde"] }
 | `src-tauri/src/logging/mod.rs` | 公共接口、LogLevel、FrontendLogRequest、TraceContext、session_id、Tauri Commands |
 | `src-tauri/src/logging/format.rs` | 混合格式拼接逻辑 |
 | `src-tauri/src/logging/writer.rs` | LogWriter（BufWriter + Mutex + 按天轮转 + 清理 + 级别过滤） |
-| `src-tauri/src/logging/macros.rs` | `log_error!` 宏 |
+| `src-tauri/src/logging/macros.rs` | log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏 |
 | `src/lib/logging.ts` | 前端日志接口（initLogging、logFrontend、generateTraceId、setTraceId/clearTraceId、便捷 log 对象） |
 
 ---

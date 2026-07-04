@@ -2,7 +2,7 @@
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。
 
-6 个工具模块 + 攻略网站工作台，前端负责交互与攻略站 WebView2 子视图，Rust/Tauri 负责快捷键、透明窗口、屏幕识别和本地存储。
+6 个工具模块 + 攻略网站工作台，前端负责交互，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 接口调用。
 
 ## 功能模块
 
@@ -93,6 +93,7 @@ src-tauri/src/timer/        # 计时器
 src-tauri/src/counter/      # 计数器
 src-tauri/src/rapidfire/    # 连发器（keys / worker / overlay / commands）
 src-tauri/src/recognition/  # 识别触发（effects / manager / matching / capture / player）
+src-tauri/src/strategy/     # 攻略网站 WebView2 子视图
 src-tauri/src/about/        # 关于面板 + Tauri 官方更新器
 src-tauri/src/delta/        # Delta 登录、账号与游戏数据
 scripts/                    # 发布流水线脚本

@@ -51,7 +51,7 @@ Promise 去重，避免重复调用。
 _Avoid_: 静默刷新、后台刷新、隐形刷新
 
 **分批加载**:
-游戏数据页选中账号后先并行加载 player 和 record 两个核心摘要 API，渲染 MacroHeader 指标和两个核心卡片后，再并行加载
+游戏数据页选中账号后先并行加载 player 和 record 两个核心摘要 API，渲染 PageHero 指标和两个核心卡片后，再并行加载
 assets、recent、achievement、password、bind 五个详情 API。切换账号时通过版本号机制（loadVersion）取消过期请求的回调处理。
 _Avoid_: 懒加载、渐进加载、流式加载
 

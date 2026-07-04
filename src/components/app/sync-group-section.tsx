@@ -24,7 +24,7 @@ type SyncGroupSectionProps = {
 };
 
 /**
- * 同步系统分组列表：封装 timer/counter 分组显示参数的重复渲染。
+ * 同步系统分组列表：封装 DisplaySettingsInline 的重复渲染。
  */
 export function SyncGroupSection({
                                      groups,

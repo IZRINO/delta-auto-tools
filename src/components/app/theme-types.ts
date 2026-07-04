@@ -46,6 +46,13 @@ export interface ThemeBootstrap {
 /** localStorage 持久化 key（浏览器预览模式 fallback 用）。 */
 export const THEME_STORAGE_KEY = "delta-auto-tools:theme:v1";
 
+/** 3 套内置主题 id 常量，与 Rust `builtins.rs` 保持同步。 */
+export const BUILTIN_THEME_IDS = {
+    oliveAmber: "olive-amber",
+    valentine: "valentine",
+    arcticBlue: "arctic-blue",
+} as const;
+
 /**
  * 可编辑的 daisyUI 语义 token 白名单（20 个，architecture.md §1.6）。
  *

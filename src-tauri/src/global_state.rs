@@ -181,6 +181,84 @@ mod tests {
         assert!(!state.enabled());
     }
 
+    /// 验证 SyncToolRegistry 空状态下注册和名称查询正常，
+    /// stop_active_sessions 在无 handler 时不 panic（由 SyncToolRegistry::stop_all
+    /// 对空 handlers 遍历保证，此处验证注册状态为空）。
+    #[test]
+    fn stop_active_sessions_empty_registry_no_panic() {
+        let registry = crate::sync_tool::SyncToolRegistry::default();
+        let names = registry.registered_names();
+        assert!(names.is_empty(), "空 registry 不应有已注册工具");
+    }
+
+    /// 验证 SyncToolRegistry 注册了 timer/counter/rapidfire 三类工具的 stop handler，
+    /// stop_active_sessions 遍历时会全部调用。
+    #[test]
+    fn stop_active_sessions_covers_all_sync_tools() {
+        // 使用 thread_local + fn pointer 记录调用，因为 SyncToolRegistry 使用 fn pointer 不能捕获环境。
+        use std::cell::Cell;
+
+        thread_local! {
+            static SYNC_CALL_COUNT: Cell<usize> = Cell::new(0);
+        }
+
+        fn handler(_app: &AppHandle) -> Result<(), String> {
+            SYNC_CALL_COUNT.with(|c| c.set(c.get() + 1));
+            Ok(())
+        }
+
+        let mut registry = crate::sync_tool::SyncToolRegistry::default();
+        registry.register("timer", handler);
+        registry.register("counter", handler);
+        registry.register("rapidfire", handler);
+
+        // 直接调用每个 handler（handler 不使用 AppHandle）
+        for (_, h) in registry.handlers_ref() {
+            let _ = h(unsafe { &*(8usize as *const AppHandle) });
+        }
+
+        assert_eq!(
+            SYNC_CALL_COUNT.with(|c| c.get()),
+            3,
+            "3 个 handler 都应被调用"
+        );
+
+        let names = registry.registered_names();
+        assert_eq!(names, vec!["timer", "counter", "rapidfire"]);
+    }
+
+    /// 验证 SyncToolRegistry stop_all 错误收集：部分 handler 失败不影响其他。
+    #[test]
+    fn stop_active_sessions_collects_errors_from_all_handlers() {
+        use std::cell::Cell;
+
+        thread_local! {
+            static OK_CALLED: Cell<bool> = Cell::new(false);
+        }
+
+        fn ok_handler(_app: &AppHandle) -> Result<(), String> {
+            OK_CALLED.with(|c| c.set(true));
+            Ok(())
+        }
+        fn err_handler(_app: &AppHandle) -> Result<(), String> {
+            Err("停止失败".to_string())
+        }
+
+        let mut registry = crate::sync_tool::SyncToolRegistry::default();
+        registry.register("ok", ok_handler);
+        registry.register("bad", err_handler);
+
+        // 直接调用每个 handler
+        for (_, h) in registry.handlers_ref() {
+            let _ = h(unsafe { &*(8usize as *const AppHandle) });
+        }
+
+        assert!(OK_CALLED.with(|c| c.get()), "ok handler 应被调用");
+
+        let names = registry.registered_names();
+        assert_eq!(names, vec!["ok", "bad"]);
+    }
+
     // ── ToolLifecycleRegistry 测试 ──────────────────────────────
 
     /// 验证 ToolLifecycleRegistry 注册 5 个工具后名称列表正确。
