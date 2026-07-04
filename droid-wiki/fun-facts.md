@@ -47,10 +47,10 @@
 | 排名 | 文件 | 行数 |
 |------|------|-----:|
 | 1 | `rapidfire/mod.rs` | **2106** |
-| 2 | `audio/watcher.rs` | 1674 |
+| 2 | `recognition/watcher.rs` | 1674 |
 | 3 | `hotkeys.rs` | 1363 |
 | 4 | `timer/mod.rs` | 1300 |
-| 5 | `audio/mod.rs` | 1155 |
+| 5 | `recognition/mod.rs` | 1155 |
 | 6 | `counter/mod.rs` | 1107 |
 | 7 | `profile/mod.rs` | 665 |
 | 8 | `morse/recognition.rs` | 518 |

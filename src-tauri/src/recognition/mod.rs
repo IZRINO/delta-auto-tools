@@ -8,13 +8,14 @@ use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
+mod effects;
 mod events;
 mod player;
 mod settings;
 mod types;
 pub(crate) mod watcher;
 
-pub use self::types::{AudioBootstrap, AudioSettings, AudioTriggerMode};
+pub use self::types::{RecognitionBootstrap, RecognitionSettings, RecognitionTriggerMode};
 pub use events::*;
 
 use crate::morse::types::RegionRect;
@@ -22,7 +23,7 @@ use crate::overlay_utils::{
     destroy_stale_windows, destroy_window, encoded_query_value, safe_label_component,
 };
 
-const AUDIO_OVERLAY_LABEL: &str = "audio-overlay";
+const RECOGNITION_OVERLAY_LABEL: &str = "recognition-overlay";
 
 // ---- TestMatchResult ----
 
@@ -93,14 +94,14 @@ pub struct ColorTestResult {
 
 // ---- State ----
 
-pub struct AudioLogic {
+pub struct RecognitionLogic {
     /// 音频播放线程的命令发送端
     pub playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     /// 连杀/随机播放的 per-card 运行时状态（纯内存，重启归零，不持久化）。
     pub play_states: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PlayState>>>,
 }
 
-pub type AudioState = ToolState<AudioLogic>;
+pub type RecognitionState = ToolState<RecognitionLogic>;
 
 /// 连杀/随机播放的卡片级运行时状态。
 /// - current_index：连杀当前播放到第几个文件
@@ -114,7 +115,8 @@ pub struct PlayState {
 }
 
 /// 随机数抖动计数器（无依赖的轻量随机源，仿 rapidfire::press_jitter_duration_ms）。
-static AUDIO_RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static RECOGNITION_RANDOM_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
 
 /// 在 [0, len) 范围内取一个伪随机索引，可排除 `exclude` 指定的索引。
 /// len==1 时直接返回 0（无法排除）。
@@ -122,7 +124,7 @@ fn random_index(len: usize, exclude: Option<usize>) -> usize {
     if len <= 1 {
         return 0;
     }
-    let counter = AUDIO_RANDOM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let counter = RECOGNITION_RANDOM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| u64::from(d.subsec_nanos()))
@@ -192,11 +194,11 @@ pub(crate) fn pick_audio_file(
     }
 }
 
-impl ToolLogic for AudioLogic {
-    type Settings = AudioSettings;
-    type Bootstrap = AudioBootstrap;
+impl ToolLogic for RecognitionLogic {
+    type Settings = RecognitionSettings;
+    type Bootstrap = RecognitionBootstrap;
 
-    const NAME: &'static str = "音频";
+    const NAME: &'static str = "识别触发";
 
     fn load_settings(app: &tauri::AppHandle) -> Result<Self::Settings, String> {
         settings::read_settings(app)
@@ -207,7 +209,7 @@ impl ToolLogic for AudioLogic {
     }
 
     fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap {
-        AudioBootstrap {
+        RecognitionBootstrap {
             settings: inner.settings.clone(),
             hotkey_error: inner.hotkey_error.clone(),
         }
@@ -221,19 +223,20 @@ impl ToolLogic for AudioLogic {
 // ---- Tauri commands ----
 
 #[tauri::command]
-pub fn audio_get_bootstrap(
-    state: tauri::State<'_, AudioState>,
-) -> Result<AudioBootstrap, AppError> {
+pub fn recognition_get_bootstrap(
+    state: tauri::State<'_, RecognitionState>,
+) -> Result<RecognitionBootstrap, AppError> {
     crate::tool_base::get_bootstrap(state).map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn audio_save_settings(
+pub async fn recognition_save_settings(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
-    settings_value: AudioSettings,
-) -> Result<AudioBootstrap, AppError> {
+    state: tauri::State<'_, RecognitionState>,
+    settings_value: RecognitionSettings,
+) -> Result<RecognitionBootstrap, AppError> {
     let normalized = normalize_settings(settings_value);
+    validate_settings(&normalized).map_err(AppError::from)?;
     let previous_settings = {
         let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         inner.settings.clone()
@@ -248,7 +251,7 @@ pub async fn audio_save_settings(
         inner.logic.playback_tx.clone()
     };
 
-    // 然后重启热键和 watcher。不要持有 AudioState 锁做 watcher IPC。
+    // 然后重启热键和 watcher。不要持有 RecognitionState 锁做 watcher IPC。
     let hotkey_manager = app.state::<HotkeyManager>();
     if let Err(e) = restart_hotkey_listeners(&hotkey_manager, &normalized) {
         let _ = settings::write_settings(&app, &previous_settings);
@@ -262,26 +265,37 @@ pub async fn audio_save_settings(
     let bootstrap = {
         let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         inner.hotkey_error = None;
-        AudioLogic::build_bootstrap(&inner)
+        RecognitionLogic::build_bootstrap(&inner)
     };
-    AudioLogic::emit_state(&app, &bootstrap);
+    RecognitionLogic::emit_state(&app, &bootstrap);
     profile::update_active_profile_snapshot(
         &app,
-        ActiveProfileSnapshotPatch::Audio(bootstrap.settings.clone()),
+        ActiveProfileSnapshotPatch::Recognition(bootstrap.settings.clone()),
     )?;
     Ok(bootstrap)
 }
 
 #[tauri::command]
-pub async fn audio_begin_region_selection(
+pub fn recognition_set_hotkey_recording(
+    recording: bool,
+    hotkey_manager: tauri::State<'_, HotkeyManager>,
+) -> Result<(), AppError> {
+    hotkey_manager
+        .set_scope_enabled("recognition", !recording)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn recognition_begin_region_selection(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
+    selection_target: Option<String>,
     probe_index: Option<usize>,
 ) -> Result<(), AppError> {
     let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    if !inner.settings.audio_enabled {
-        return Err(AppError::from("音频功能未启用".to_string()));
+    if !inner.settings.recognition_enabled {
+        return Err(AppError::from("识别触发功能未启用".to_string()));
     }
 
     // 检查卡片存在
@@ -297,20 +311,26 @@ pub async fn audio_begin_region_selection(
     }
 
     // 识色模式传了 probe_index 时，校验探针索引有效
-    if let Some(idx) = probe_index {
-        if matches!(card.trigger_mode, types::AudioTriggerMode::ColorWatch)
-            && idx >= card.color_probes.len()
-        {
-            return Err(AppError::from("探针索引越界".to_string()));
+    if selection_target.as_deref() != Some("customClick") {
+        if let Some(idx) = probe_index {
+            if matches!(card.trigger_mode, types::RecognitionTriggerMode::ColorWatch)
+                && idx >= card.color_probes.len()
+            {
+                return Err(AppError::from("探针索引越界".to_string()));
+            }
         }
     }
     drop(inner);
 
     // 创建 overlay 窗口
-    let label = format!("{}-{}", AUDIO_OVERLAY_LABEL, safe_label_component(&card_id));
+    let label = format!(
+        "{}-{}",
+        RECOGNITION_OVERLAY_LABEL,
+        safe_label_component(&card_id)
+    );
     let mut active_labels = std::collections::HashSet::new();
     active_labels.insert(label.clone());
-    destroy_stale_windows(&app, AUDIO_OVERLAY_LABEL, &active_labels);
+    destroy_stale_windows(&app, RECOGNITION_OVERLAY_LABEL, &active_labels);
     destroy_window(&app, &label);
 
     // 用 xcap 获取主显示器物理尺寸，显式设置窗口 inner_size + position 覆盖全屏，
@@ -329,15 +349,21 @@ pub async fn audio_begin_region_selection(
 
     // 识色探针框选时把 probe_index 透传给 overlay，提交时回传定位探针
     let mut url = format!(
-        "index.html?mode=audio-overlay&audio_card={}",
+        "index.html?mode=recognition-overlay&recognition_card={}",
         encoded_query_value(&card_id)
     );
     if let Some(idx) = probe_index {
         url.push_str(&format!("&probe_index={idx}"));
     }
+    if let Some(target) = selection_target.as_ref() {
+        url.push_str(&format!(
+            "&selection_target={}",
+            encoded_query_value(target)
+        ));
+    }
 
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
-        .title("音频区域选择")
+        .title("识别区域选择")
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -349,7 +375,7 @@ pub async fn audio_begin_region_selection(
         .inner_size(screen_w as f64, screen_h as f64)
         .position(screen_x as f64, screen_y as f64)
         .build()
-        .map_err(|error| AppError::from(format!("创建音频区域选择窗口失败: {error}")))?;
+        .map_err(|error| AppError::from(format!("创建识别区域选择窗口失败: {error}")))?;
 
     // 窗口创建后强制最大化，防止 DPI 缩放导致尺寸不足
     let _ = window.maximize();
@@ -358,15 +384,20 @@ pub async fn audio_begin_region_selection(
 }
 
 #[tauri::command]
-pub async fn audio_overlay_submit_selection(
+pub async fn recognition_overlay_submit_selection(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
     region: RegionRect,
+    selection_target: Option<String>,
     probe_index: Option<usize>,
 ) -> Result<(), AppError> {
     // 关闭 overlay 窗口
-    let overlay_label = format!("{}-{}", AUDIO_OVERLAY_LABEL, safe_label_component(&card_id));
+    let overlay_label = format!(
+        "{}-{}",
+        RECOGNITION_OVERLAY_LABEL,
+        safe_label_component(&card_id)
+    );
     destroy_window(&app, &overlay_label);
 
     // 更新卡片区域
@@ -376,9 +407,19 @@ pub async fn audio_overlay_submit_selection(
             return Err(AppError::from("卡片不存在".to_string()));
         };
 
-        // 识色模式 + probe_index：写到指定探针的 region；否则写 watch_region（区域监听模式）
-        if let Some(idx) = probe_index {
-            if matches!(card.trigger_mode, types::AudioTriggerMode::ColorWatch) {
+        if selection_target.as_deref() == Some("customClick") {
+            let click = card
+                .effects
+                .click
+                .get_or_insert(types::RecognitionClickEffect {
+                    mode: types::RecognitionClickMode::CustomRegion,
+                    custom_region: None,
+                    color_probe_index: None,
+                });
+            click.mode = types::RecognitionClickMode::CustomRegion;
+            click.custom_region = Some(region);
+        } else if let Some(idx) = probe_index {
+            if matches!(card.trigger_mode, types::RecognitionTriggerMode::ColorWatch) {
                 let probe = card
                     .color_probes
                     .get_mut(idx)
@@ -393,34 +434,38 @@ pub async fn audio_overlay_submit_selection(
         settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
         (
             inner.settings.clone(),
-            AudioLogic::build_bootstrap(&inner),
+            RecognitionLogic::build_bootstrap(&inner),
             inner.logic.playback_tx.clone(),
         )
     };
 
     watcher::restart_watchers(&app, &settings_snapshot, playback_tx).map_err(AppError::from)?;
-    AudioLogic::emit_state(&app, &bootstrap);
+    RecognitionLogic::emit_state(&app, &bootstrap);
     profile::update_active_profile_snapshot(
         &app,
-        ActiveProfileSnapshotPatch::Audio(settings_snapshot),
+        ActiveProfileSnapshotPatch::Recognition(settings_snapshot),
     )?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn audio_overlay_cancel_selection(
+pub async fn recognition_overlay_cancel_selection(
     app: tauri::AppHandle,
     card_id: String,
 ) -> Result<(), AppError> {
-    let overlay_label = format!("{}-{}", AUDIO_OVERLAY_LABEL, safe_label_component(&card_id));
+    let overlay_label = format!(
+        "{}-{}",
+        RECOGNITION_OVERLAY_LABEL,
+        safe_label_component(&card_id)
+    );
     destroy_window(&app, &overlay_label);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn audio_test_play(
+pub async fn recognition_test_play(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
 ) -> Result<(), AppError> {
     let (path, volume, allow_simultaneous, playback_tx) = {
@@ -447,9 +492,9 @@ pub async fn audio_test_play(
 }
 
 #[tauri::command]
-pub async fn audio_test_match(
+pub async fn recognition_test_match(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
 ) -> Result<TestMatchResult, AppError> {
     let (region, ref_path, threshold) = {
@@ -462,13 +507,13 @@ pub async fn audio_test_match(
             .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
 
         match card.trigger_mode {
-            types::AudioTriggerMode::RegionWatch => {}
-            types::AudioTriggerMode::ColorWatch => {
+            types::RecognitionTriggerMode::RegionWatch => {}
+            types::RecognitionTriggerMode::ColorWatch => {
                 return Err(AppError::from(
-                    "识色模式请使用 audio_test_color_match 命令".to_string(),
+                    "识色模式请使用 recognition_test_color_match 命令".to_string(),
                 ));
             }
-            types::AudioTriggerMode::Hotkey => {
+            types::RecognitionTriggerMode::Hotkey => {
                 return Err(AppError::from("快捷键模式不支持匹配测试".to_string()));
             }
         }
@@ -509,9 +554,9 @@ pub async fn audio_test_match(
 }
 
 #[tauri::command]
-pub async fn audio_test_color_match(
+pub async fn recognition_test_color_match(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
 ) -> Result<ColorTestResult, AppError> {
     let (probes, match_mode, match_method) = {
@@ -523,7 +568,7 @@ pub async fn audio_test_color_match(
             .find(|c| c.id == card_id)
             .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
 
-        if card.trigger_mode != types::AudioTriggerMode::ColorWatch {
+        if card.trigger_mode != types::RecognitionTriggerMode::ColorWatch {
             return Err(AppError::from("只有识色模式卡片支持识色测试".to_string()));
         }
         if card.color_probes.is_empty() {
@@ -592,9 +637,9 @@ pub async fn audio_test_color_match(
 
 /// 读取参考图像并返回 base64 PNG 数据 URL（供前端预览）
 #[tauri::command]
-pub fn audio_read_reference_image(
+pub fn recognition_read_reference_image(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, AudioState>,
+    state: tauri::State<'_, RecognitionState>,
     card_id: String,
 ) -> Result<String, AppError> {
     let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
@@ -621,42 +666,101 @@ pub fn audio_read_reference_image(
 
 pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
-    settings: &AudioSettings,
+    settings: &RecognitionSettings,
 ) -> Result<(), String> {
-    let _ = hotkey_manager.clear_scope("audio");
+    let _ = hotkey_manager.clear_scope("recognition");
 
-    if !settings.audio_enabled {
+    if !settings.recognition_enabled {
         return Ok(());
     }
 
-    let bindings: Vec<(String, crate::hotkey_types::HotkeyAction)> = settings
-        .cards
-        .iter()
-        .filter(|c| c.enabled && c.trigger_mode == AudioTriggerMode::Hotkey)
-        .filter_map(|c| {
-            c.hotkey.as_ref().map(|key| {
-                let card_id = c.id.clone();
+    validate_hotkey_duplicates(settings)?;
+
+    let mut bindings: Vec<(String, crate::hotkey_types::HotkeyAction)> = Vec::new();
+    for card in settings.cards.iter().filter(|c| c.enabled) {
+        if card.trigger_mode == RecognitionTriggerMode::Hotkey {
+            if let Some(key) = card
+                .hotkey
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                let card_id = card.id.clone();
                 let action: crate::hotkey_types::HotkeyAction =
                     Arc::new(move |app: tauri::AppHandle| {
-                        let card_id = card_id.clone();
-                        if let Err(error) = trigger_audio_play(&app, &card_id) {
-                            let _ = app.emit_to("main", HOTKEY_ERROR, error);
-                        }
+                        effects::spawn_execute(
+                            app,
+                            card_id.clone(),
+                            effects::TriggerContext::Hotkey,
+                        );
                     });
-                (key.clone(), action)
-            })
-        })
-        .collect();
+                bindings.push((key.clone(), action));
+            }
+            continue;
+        }
+
+        if card.activation.mode != types::RecognitionActivationMode::Always {
+            if let Some(key) = card
+                .activation
+                .hotkey
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                let card_id = card.id.clone();
+                let action: crate::hotkey_types::HotkeyAction =
+                    Arc::new(move |app: tauri::AppHandle| {
+                        watcher::start_activation_session(app, card_id.clone());
+                    });
+                bindings.push((key.clone(), action));
+            }
+        }
+    }
 
     if !bindings.is_empty() {
         hotkey_manager.replace_scope(
-            "audio",
+            "recognition",
             bindings,
-            "音频".to_string(),
+            "识别触发".to_string(),
             ConflictPolicy::AllowHold,
         )?;
     }
 
+    Ok(())
+}
+
+fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), String> {
+    let mut seen = std::collections::HashMap::<String, String>::new();
+    for card in settings.cards.iter().filter(|c| c.enabled) {
+        let mut keys = Vec::new();
+        if card.trigger_mode == RecognitionTriggerMode::Hotkey {
+            if let Some(key) = card.hotkey.as_ref().filter(|v| !v.trim().is_empty()) {
+                keys.push((key, "触发快捷键"));
+            }
+        } else if card.activation.mode != types::RecognitionActivationMode::Always {
+            if let Some(key) = card
+                .activation
+                .hotkey
+                .as_ref()
+                .filter(|v| !v.trim().is_empty())
+            {
+                keys.push((key, "识别激活快捷键"));
+            }
+        }
+        if let Some(effect) = card.effects.hotkey.as_ref() {
+            if !effect.hotkey.trim().is_empty() {
+                keys.push((&effect.hotkey, "按键效果"));
+            }
+        }
+
+        for (key, label) in keys {
+            let normalized = crate::hotkey_types::hotkey_to_string(key)?;
+            if let Some(existing) = seen.insert(normalized.clone(), card.name.clone()) {
+                return Err(format!(
+                    "快捷键 {normalized} 在 {existing} 与 {} 中重复（{label}）",
+                    card.name
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -667,12 +771,8 @@ pub(crate) struct ResolvedPlay {
     pub allow_simultaneous: bool,
 }
 
-/// 为指定卡片按播放方式（Single/Combo/Random）选出本次要播放的音频文件路径，
-/// 并就地更新 `play_states`。调用方需持 `AudioState` 的 inner 锁；本函数内部会再锁 play_states。
-///
-/// 锁序：先 inner（ToolStateInner），后 play_states —— 全路径一致，无反向加锁，无死锁风险。
 fn resolve_audio_path(
-    inner: &ToolStateInner<AudioLogic>,
+    inner: &ToolStateInner<RecognitionLogic>,
     card_id: &str,
     now: std::time::Instant,
 ) -> Result<ResolvedPlay, String> {
@@ -686,76 +786,40 @@ fn resolve_audio_path(
     if !card.enabled {
         return Err("卡片未启用".to_string());
     }
-    if card.audio_files.is_empty() {
+    let effect = card
+        .effects
+        .audio
+        .as_ref()
+        .ok_or_else(|| "未启用播放音频效果".to_string())?;
+    resolve_audio_effect_path(inner, card_id, effect, now)
+}
+
+pub(crate) fn resolve_audio_effect_path(
+    inner: &ToolStateInner<RecognitionLogic>,
+    card_id: &str,
+    effect: &types::RecognitionAudioEffect,
+    now: std::time::Instant,
+) -> Result<ResolvedPlay, String> {
+    if effect.audio_files.is_empty() {
         return Err("未设置音频文件路径".to_string());
     }
     let path = {
         let mut states = inner.logic.play_states.lock().map_err(|e| e.to_string())?;
         let state = states.entry(card_id.to_string()).or_default();
         pick_audio_file(
-            &card.audio_files,
-            card.play_mode,
-            &card.combo_windows,
-            card.combo_window_ms,
+            &effect.audio_files,
+            effect.play_mode,
+            &effect.combo_windows,
+            effect.combo_window_ms,
             state,
             now,
         )
     };
     Ok(ResolvedPlay {
         path,
-        volume: card.volume,
-        allow_simultaneous: card.allow_simultaneous,
+        volume: effect.volume,
+        allow_simultaneous: effect.allow_simultaneous,
     })
-}
-
-/// watcher 命中时的播放解析入口：锁 AudioState inner 后调 resolve_audio_path，
-/// 选出本次要播放的文件并更新 play_states。命中失败（卡片禁用/空文件）时返回 None。
-///
-/// 锁序：先 inner（ToolStateInner），后 play_states —— 与 trigger_audio_play 一致。
-pub(crate) fn resolve_play_for_card(app: &tauri::AppHandle, card_id: &str) -> Option<ResolvedPlay> {
-    let state = app.state::<AudioState>();
-    let inner = state.lock_inner().ok()?;
-    if !inner.settings.audio_enabled {
-        return None;
-    }
-    resolve_audio_path(&inner, card_id, std::time::Instant::now()).ok()
-}
-
-fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), String> {
-    let state = app.state::<AudioState>();
-    let inner = state.lock_inner()?;
-    if !inner.settings.audio_enabled {
-        eprintln!("[音频] 触发播放跳过：音频功能未启用");
-        return Ok(());
-    }
-
-    let playback_tx = inner.logic.playback_tx.clone();
-    let resolved = resolve_audio_path(&inner, card_id, std::time::Instant::now());
-    drop(inner);
-
-    let ResolvedPlay {
-        path,
-        volume,
-        allow_simultaneous,
-    } = match resolved {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("[音频] 触发播放跳过：{e} (card_id={card_id})");
-            return Ok(());
-        }
-    };
-
-    eprintln!("[音频] 快捷键触发播放: card_id={card_id}, path={path}, volume={volume}, simultaneous={allow_simultaneous}");
-
-    // 通过协调器播放音频
-    let _ = playback_tx.send(player::AudioCommand::Play {
-        path,
-        volume,
-        exclusive: !allow_simultaneous,
-    });
-
-    let _ = app.emit(HOTKEY_TRIGGERED, card_id);
-    Ok(())
 }
 
 // ---- 初始化与关闭 ----
@@ -763,7 +827,7 @@ fn trigger_audio_play(app: &tauri::AppHandle, card_id: &str) -> Result<(), Strin
 pub fn initialize(
     app: &tauri::AppHandle,
     hotkey_manager: &HotkeyManager,
-) -> Result<AudioState, String> {
+) -> Result<RecognitionState, String> {
     let settings = settings::read_settings(app)?;
     let _ = restart_hotkey_listeners(hotkey_manager, &settings);
 
@@ -773,28 +837,28 @@ pub fn initialize(
     // 启动区域监听 watcher
     let _ = watcher::restart_watchers(app, &settings, playback_tx.clone());
 
-    let logic = AudioLogic {
+    let logic = RecognitionLogic {
         playback_tx,
         play_states: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
-    Ok(AudioState::new(logic, settings))
+    Ok(RecognitionState::new(logic, settings))
 }
 
 pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
-    let _ = hotkey_manager.clear_scope("audio");
+    let _ = hotkey_manager.clear_scope("recognition");
     hotkey_manager.clear_all_suppressions();
     let _ = watcher::stop_all_watchers(app);
 
     // 通知音频线程关闭
-    if let Ok(inner) = app.state::<AudioState>().lock_inner() {
+    if let Ok(inner) = app.state::<RecognitionState>().lock_inner() {
         let _ = inner.logic.playback_tx.send(player::AudioCommand::Shutdown);
     };
 }
 
 // ---- 设置规范化 ----
 
-pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
+pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSettings {
     let mut cards = settings.cards;
 
     for card in &mut cards {
@@ -804,7 +868,7 @@ pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
-            card.id = format!("audio-{now}");
+            card.id = format!("recognition-{now}");
         }
 
         // 迁移旧单值 audioFilePath → audio_files 单元素数组
@@ -817,6 +881,17 @@ pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
         } else {
             // 已有 audio_files 时清掉兼容字段（避免后续误用）
             card.legacy_audio_file_path = None;
+        }
+
+        if card.effects.audio.is_none() && !card.audio_files.is_empty() {
+            card.effects.audio = Some(types::RecognitionAudioEffect {
+                audio_files: std::mem::take(&mut card.audio_files),
+                play_mode: card.play_mode,
+                combo_window_ms: card.combo_window_ms,
+                combo_windows: std::mem::take(&mut card.combo_windows),
+                volume: card.volume,
+                allow_simultaneous: card.allow_simultaneous,
+            });
         }
 
         // Issue #65：迁移旧 ColorProbe 单值 targetColor/tolerance → targets 单元素
@@ -845,10 +920,86 @@ pub(crate) fn normalize_settings(settings: AudioSettings) -> AudioSettings {
         }
     }
 
-    AudioSettings {
-        audio_enabled: settings.audio_enabled,
+    RecognitionSettings {
+        recognition_enabled: settings.recognition_enabled,
         cards,
     }
+}
+
+pub(crate) fn validate_settings(settings: &RecognitionSettings) -> Result<(), String> {
+    validate_hotkey_duplicates(settings)?;
+    for card in &settings.cards {
+        if card.trigger_mode == RecognitionTriggerMode::Hotkey
+            && card.hotkey.as_deref().unwrap_or("").trim().is_empty()
+        {
+            return Err(format!("卡片 {} 必须设置触发快捷键", card.name));
+        }
+        if card.trigger_mode != RecognitionTriggerMode::Hotkey
+            && card.activation.mode != types::RecognitionActivationMode::Always
+            && card
+                .activation
+                .hotkey
+                .as_deref()
+                .unwrap_or("")
+                .trim()
+                .is_empty()
+        {
+            return Err(format!("卡片 {} 必须设置识别激活快捷键", card.name));
+        }
+
+        let mut executable_effect_count = 0;
+        if let Some(effect) = &card.effects.audio {
+            if effect.audio_files.is_empty() {
+                return Err(format!(
+                    "卡片 {} 的音频效果至少需要 1 个音频文件",
+                    card.name
+                ));
+            }
+            if effect.play_mode != types::PlayMode::Single && effect.audio_files.len() < 2 {
+                return Err(format!(
+                    "卡片 {} 的连杀/随机播放至少需要 2 个音频文件",
+                    card.name
+                ));
+            }
+            executable_effect_count += 1;
+        }
+        if let Some(effect) = &card.effects.hotkey {
+            if effect.hotkey.trim().is_empty() {
+                return Err(format!("卡片 {} 的按键效果必须设置快捷键", card.name));
+            }
+            executable_effect_count += 1;
+        }
+        if let Some(effect) = &card.effects.click {
+            match effect.mode {
+                types::RecognitionClickMode::CustomRegion => {
+                    if effect.custom_region.is_none() {
+                        return Err(format!("卡片 {} 的点击效果必须框选自定义区域", card.name));
+                    }
+                }
+                types::RecognitionClickMode::RecognitionRegion => {
+                    if card.trigger_mode == RecognitionTriggerMode::Hotkey {
+                        return Err(format!(
+                            "卡片 {} 的快捷键触发点击必须使用自定义区域",
+                            card.name
+                        ));
+                    }
+                    if card.trigger_mode == RecognitionTriggerMode::ColorWatch {
+                        let Some(index) = effect.color_probe_index else {
+                            return Err(format!("卡片 {} 的识色点击效果必须选择探针", card.name));
+                        };
+                        if index >= card.color_probes.len() {
+                            return Err(format!("卡片 {} 的识色点击探针不存在", card.name));
+                        }
+                    }
+                }
+            }
+            executable_effect_count += 1;
+        }
+        if executable_effect_count == 0 {
+            return Err(format!("卡片 {} 至少需要启用一个触发效果", card.name));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -858,6 +1009,33 @@ mod tests {
 
     fn files(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn base_card() -> types::RecognitionCard {
+        types::RecognitionCard {
+            id: "c1".into(),
+            name: "测试卡".into(),
+            enabled: true,
+            trigger_mode: types::RecognitionTriggerMode::Hotkey,
+            hotkey: Some("Ctrl+F1".into()),
+            watch_region: None,
+            watch_reference_image_path: None,
+            watch_match_threshold: 0.75,
+            watch_poll_interval_ms: 500,
+            activation: types::RecognitionActivation::default(),
+            effects: types::RecognitionEffects::default(),
+            audio_files: vec![],
+            legacy_audio_file_path: None,
+            play_mode: types::PlayMode::Single,
+            combo_window_ms: 60000,
+            combo_windows: vec![],
+            volume: 0.8,
+            cooldown_ms: 1000,
+            allow_simultaneous: false,
+            color_probes: vec![],
+            color_match_mode: types::ColorMatchMode::All,
+            color_match_method: types::ColorMatchMethod::Average,
+        }
     }
 
     #[test]
@@ -1202,18 +1380,20 @@ mod tests {
 
     #[test]
     fn normalize_migrates_legacy_audio_file_path_to_audio_files() {
-        let settings = AudioSettings {
-            audio_enabled: true,
-            cards: vec![types::AudioCard {
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![types::RecognitionCard {
                 id: "c1".into(),
                 name: "旧卡".into(),
                 enabled: true,
-                trigger_mode: types::AudioTriggerMode::Hotkey,
+                trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: Some("Ctrl+F1".into()),
                 watch_region: None,
                 watch_reference_image_path: None,
                 watch_match_threshold: 0.75,
                 watch_poll_interval_ms: 500,
+                activation: types::RecognitionActivation::default(),
+                effects: types::RecognitionEffects::default(),
                 audio_files: vec![],
                 legacy_audio_file_path: Some("old.mp3".into()),
                 play_mode: types::PlayMode::Single,
@@ -1228,24 +1408,35 @@ mod tests {
             }],
         };
         let normalized = normalize_settings(settings);
-        assert_eq!(normalized.cards[0].audio_files, vec!["old.mp3".to_string()]);
+        assert_eq!(
+            normalized.cards[0]
+                .effects
+                .audio
+                .as_ref()
+                .unwrap()
+                .audio_files,
+            vec!["old.mp3".to_string()]
+        );
+        assert!(normalized.cards[0].audio_files.is_empty());
         assert!(normalized.cards[0].legacy_audio_file_path.is_none());
     }
 
     #[test]
     fn normalize_keeps_existing_audio_files_and_clears_legacy() {
-        let settings = AudioSettings {
-            audio_enabled: true,
-            cards: vec![types::AudioCard {
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![types::RecognitionCard {
                 id: "c1".into(),
                 name: "新卡".into(),
                 enabled: true,
-                trigger_mode: types::AudioTriggerMode::Hotkey,
+                trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: None,
                 watch_region: None,
                 watch_reference_image_path: None,
                 watch_match_threshold: 0.75,
                 watch_poll_interval_ms: 500,
+                activation: types::RecognitionActivation::default(),
+                effects: types::RecognitionEffects::default(),
                 audio_files: vec!["a.mp3".into(), "b.mp3".into()],
                 legacy_audio_file_path: Some("ignored.mp3".into()),
                 play_mode: types::PlayMode::Combo,
@@ -1261,9 +1452,65 @@ mod tests {
         };
         let normalized = normalize_settings(settings);
         assert_eq!(
-            normalized.cards[0].audio_files,
+            normalized.cards[0]
+                .effects
+                .audio
+                .as_ref()
+                .unwrap()
+                .audio_files,
             vec!["a.mp3".to_string(), "b.mp3".to_string()]
         );
+        assert!(normalized.cards[0].audio_files.is_empty());
         assert!(normalized.cards[0].legacy_audio_file_path.is_none());
+    }
+
+    #[test]
+    fn validate_rejects_empty_audio_effect() {
+        let mut card = base_card();
+        card.effects.audio = Some(types::RecognitionAudioEffect {
+            audio_files: vec![],
+            play_mode: types::PlayMode::Single,
+            combo_window_ms: 60000,
+            combo_windows: vec![],
+            volume: 0.8,
+            allow_simultaneous: false,
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("音频效果至少需要 1 个音频文件"));
+    }
+
+    #[test]
+    fn validate_rejects_empty_hotkey_effect() {
+        let mut card = base_card();
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect { hotkey: " ".into() });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("按键效果必须设置快捷键"));
+    }
+
+    #[test]
+    fn validate_rejects_missing_custom_click_region() {
+        let mut card = base_card();
+        card.effects.click = Some(types::RecognitionClickEffect {
+            mode: types::RecognitionClickMode::CustomRegion,
+            custom_region: None,
+            color_probe_index: None,
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("点击效果必须框选自定义区域"));
     }
 }

@@ -14,7 +14,7 @@ graph TD
     Stop --> C["counter::stop_registered"]
     Stop --> RF["rapidfire::stop_registered"]
     Stop --> MorseCancel["morse::cancel_active_overlay<br/>resolve pending → Cancelled<br/>destroy overlay window"]
-    Stop --> Audio["audio::stop_all_watchers<br/>stop watchers + stop playback"]
+    Stop --> Audio["recognition::stop_all_watchers<br/>stop watchers + stop playback"]
     Stop --> Clear["clear_all_suppressions"]
 ```
 
@@ -26,7 +26,7 @@ graph TD
 - 调用 `ToolLifecycleRegistry.stop_all()` 统一停止所有工具运行态会话
   - timer/counter/rapidfire: 各自 `stop_registered` 停止运行态会话
   - morse: `cancel_active_overlay` 销毁 overlay 窗口并将 pending sender resolve 为 Cancelled
-  - audio: `stop_all_watchers` 停止所有区域监听 watcher
+  - recognition: `stop_all_watchers` 停止所有区域监听 watcher
 - 调用 `clear_all_suppressions()` 清除所有按键抑制
 - 隐藏所有透明显示窗口（v0.17.5 起改为隐藏而非销毁）
 

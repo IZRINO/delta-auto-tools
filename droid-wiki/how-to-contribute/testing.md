@@ -19,7 +19,7 @@ bunx vitest run src/components/app/morse-utils.test.ts
 | `src/components/app/counter-utils.test.ts` | 计数器 settings 转换 |
 | `src/components/app/favorites-utils.test.ts` | 收藏 ID 读写、卡片过滤 |
 | `src/components/app/rapidfire-types.test.ts` | 连发器类型常量 |
-| `src/components/app/audio-utils.test.ts` | 音频颜色转换、探针表单解析 |
+| `src/components/app/recognition-utils.test.ts` | 音频颜色转换、探针表单解析 |
 | `src/components/app/strategy-utils.test.ts` | 攻略站点常量、刷新档位 |
 | `src/components/app/theme-utils.test.ts` | 主题 token 合并、应用、导入、hex 规范化 |
 | `src/components/app/profile-utils.test.ts` | 配置时间戳格式、名称验证、快照助手 |
@@ -57,7 +57,7 @@ cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 - `morse/types.rs`：Settings 默认值
 - `timer/types.rs` / `settings.rs`：计时器默认值、settings 读写往返
 - `timer/mod.rs`：透明窗口尺寸计算、settings 验证
-- `audio/types.rs`：音频卡片反序列化默认值、旧字段迁移、识色探针往返
+- `recognition/types.rs`：识别触发卡片反序列化默认值、旧字段迁移、识色探针往返
 - `theme/apply.rs`：`merge_theme_tokens`（覆盖、追加、顺序、去重）、`find_theme`
 - `theme/builtins.rs`：3 套 daisyUI 内置主题、唯一 ID、token key 一致性
 - `theme/mod.rs`：`build_bootstrap`、`theme_import`（合法/非法 key 拒绝）、导出

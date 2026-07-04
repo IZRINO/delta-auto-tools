@@ -23,7 +23,7 @@
 | `PositionDecision<R, K>` | `src-tauri/src/sync_tool.rs` | 位置事件决策：是否保存、是否发送通知、是否销毁窗口、是否移动窗口 |
 | `SyncToolRegistry` | `src-tauri/src/sync_tool.rs` | 全局停止注册表，注册各工具的 `stop_all` 函数 |
 | `RunsSync` | `src-tauri/src/sync_tool.rs` | runs 同步逻辑 trait：声明 `sync_runs_with_settings`，孤儿清理 + 缺失补齐 |
-| `ToolLifecycleRegistry` | `src-tauri/src/sync_tool.rs` | 统一停止注册表，接纳所有工具（含 morse/audio）的 stop handler |
+| `ToolLifecycleRegistry` | `src-tauri/src/sync_tool.rs` | 统一停止注册表，接纳所有工具（含 morse/recognition）的 stop handler |
 
 ## 工作原理
 
@@ -98,7 +98,7 @@ graph TD
 - `"counter"` -> `counter::stop_registered`
 - `"rapidfire"` -> `rapidfire::stop_registered`
 - `"morse"` -> `morse::cancel_active_overlay`（销毁 overlay 窗口 + resolve pending 为 Cancelled）
-- `"audio"` -> `audio::stop_all_watchers`（停止所有区域监听 watcher）
+- `"recognition"` -> `recognition::stop_all_watchers`（停止所有区域监听 watcher）
 
 `stop_all` 按注册顺序调用各 handler，收集错误但不中断。幂等：第二次调用时所有 handler 被跳过（`stopped` 标记为 true）。`reset` 重置标记以允许全局开关重新打开后再关闭。
 
@@ -112,14 +112,14 @@ graph TD
 | [计数器](../features/counter.md) | `CounterLogic` | `CounterSettings` | ✅ `sync_runs_with_settings` | 复用 `apply_position_event` |
 | [连发器](../features/rapidfire.md) | `RapidfireLogic` | `RapidfireSettings` | — | 自行实现 |
 
-[Morse](../features/morse.md) 和 [音频触发器](../features/audio.md) 不使用 SyncTool：Morse 无分组概念，Audio 有自己的 watcher 生命周期。
+[Morse](../features/morse.md) 和 [识别触发](../features/recognition.md) 不使用 SyncTool：Morse 无分组概念，Recognition 有自己的 watcher 生命周期。
 
 ## 集成点
 
 - 扩展 [工具基座](tool-base.md) 的 `ToolLogic` trait
 - 使用 [热键系统](hotkeys.md) 的 `replace_scope` / `replace_hold_scope`
 - 位置状态机驱动 [透明叠加窗](overlay-windows.md) 的位置设置窗口
-- [全局总开关](global-state.md) 通过 `ToolLifecycleRegistry` 停止所有会话（含 morse/audio），`SyncToolRegistry` 保留以兼容直接调用
+- [全局总开关](global-state.md) 通过 `ToolLifecycleRegistry` 停止所有会话（含 morse/recognition），`SyncToolRegistry` 保留以兼容直接调用
 - [配置系统](profile-system.md) 切换时复用各工具的 `restart_sync_hotkeys`
 
 ## 修改入口

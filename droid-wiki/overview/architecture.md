@@ -48,7 +48,7 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明�
 | `counter-position` | 计数器位置校准 |
 | `rapidfire-display` | 连发器透明显示 |
 | `rapidfire-position` | 连发器位置校准 |
-| `audio-overlay` | 音频识色区域框选 |
+| `recognition-overlay` | 识别区域、识色 probe、自定义点击区域框选 |
 
 ### Bootstrap/Form 双状态模式
 
@@ -75,7 +75,7 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明�
 | timer | `src-tauri/src/timer/` | 多计时器，250ms tick 循环，透明窗口 |
 | counter | `src-tauri/src/counter/` | 多计数器，运行态独立持久化 |
 | rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程 |
-| audio | `src-tauri/src/audio/` | 快捷键/区域监听/识色三种触发模式播放音频 |
+| recognition | `src-tauri/src/recognition/` | 快捷键/区域监听/识色三种识别来源，执行音频/按键/点击效果 |
 | strategy | `src-tauri/src/strategy/` | 攻略网站 WebView2 嵌入与 HTTP 抓取 |
 | hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，冲突检测 |
 | key_suppressor | `src-tauri/src/key_suppressor.rs` | WH_KEYBOARD_LL 钩子吞噬指定按键 |
@@ -93,7 +93,7 @@ graph TD
     ToolState --> TimerState[TimerState]
     ToolState --> CounterState[CounterState]
     ToolState --> RapidfireState[RapidfireState]
-    ToolState --> AudioState[AudioState]
+    ToolState --> RecognitionState[RecognitionState]
     SyncToolLogic[SyncToolLogic trait] --> ToolState
     SyncToolLogic --> TimerLogic
     SyncToolLogic --> CounterLogic
@@ -106,7 +106,7 @@ graph TD
 
 - **命令调用**：`invoke<XxxBootstrap>("tool_action", { params })`
 - **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`
-- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `AUDIO_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS`（字符串常量）与显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)` 订阅
+- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `RECOGNITION_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS`（字符串常量）与显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)` 订阅
 
 ## 设置持久化
 
@@ -119,7 +119,7 @@ graph TD
 | `counter_settings.json` | 计数器配置 |
 | `counter_state.json` | 计数器运行态（独立持久化） |
 | `rapidfire_settings.json` | 连发器配置 |
-| `audio_settings.json` | 音频触发器配置 |
+| `recognition_settings.json` | 识别触发配置 |
 | `theme_settings.json` | 主题配置 |
 | `profile_settings.json` | 配置快照元数据 |
 
@@ -129,7 +129,7 @@ graph TD
 
 两类机制：
 
-1. **同窗口 overlay**（Morse 区域框选、音频识色框选）：`?mode=overlay` / `?mode=audio-overlay` -> 全屏透明拖拽框选，坐标通过对应命令提交
+1. **同窗口 overlay**（Morse 区域框选、识别触发框选）：`?mode=overlay` / `?mode=recognition-overlay` -> 全屏透明拖拽框选，坐标通过对应命令提交
 2. **独立窗口 overlay**（Timer/Counter/Rapidfire 透明显示与位置设置）：各自有 display 和 position 两种模式，position 模式拖拽定位坐标提交
 
 透明窗口必须无边框、透明、置顶、点击穿透。位置设置窗口可保留校准靶风格。窗口管理工具函数在 `src-tauri/src/overlay_utils.rs` 中。

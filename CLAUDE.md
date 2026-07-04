@@ -40,7 +40,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 | 目录/文件 | 内容 |
 |----------|------|
 | `overview/` | 项目概览、系统架构、快速开始、术语表 |
-| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / audio / strategy / about） |
+| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / recognition / strategy / about） |
 | `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
 | `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
 | `reference/` | 配置项与依赖参考 |

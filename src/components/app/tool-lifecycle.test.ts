@@ -4,7 +4,7 @@ import {
     COUNTER_EVENTS,
     RAPIDFIRE_EVENTS,
     MORSE_EVENTS,
-    AUDIO_EVENTS,
+    RECOGNITION_EVENTS,
     ABOUT_EVENTS,
 } from "@/lib/tauri-events";
 
@@ -307,22 +307,22 @@ describe("morse-page 事件订阅清理", () => {
 
 // ── 音频页事件订阅 ──────────────────────────────────
 
-describe("audio-page 事件订阅清理", () => {
+describe("recognition-page 事件订阅清理", () => {
     it("mount 时订阅 stateChanged、hotkeyError、hotkeyTriggered 和 regionMatched", () => {
         const tracker = createEventSubscriptionTracker();
         const {mockListen} = tracker;
 
-        void mockListen(AUDIO_EVENTS.stateChanged, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyError, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyTriggered, () => {});
-        void mockListen(AUDIO_EVENTS.regionMatched, () => {});
+        void mockListen(RECOGNITION_EVENTS.stateChanged, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyError, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyTriggered, () => {});
+        void mockListen(RECOGNITION_EVENTS.regionMatched, () => {});
 
         expect(tracker.listenCalls).toHaveLength(4);
         expect(tracker.listenCalls.map((c) => c.event)).toEqual([
-            AUDIO_EVENTS.stateChanged,
-            AUDIO_EVENTS.hotkeyError,
-            AUDIO_EVENTS.hotkeyTriggered,
-            AUDIO_EVENTS.regionMatched,
+            RECOGNITION_EVENTS.stateChanged,
+            RECOGNITION_EVENTS.hotkeyError,
+            RECOGNITION_EVENTS.hotkeyTriggered,
+            RECOGNITION_EVENTS.regionMatched,
         ]);
     });
 
@@ -330,16 +330,16 @@ describe("audio-page 事件订阅清理", () => {
         const tracker = createEventSubscriptionTracker();
         const {mockListen, cleanup} = tracker;
 
-        void mockListen(AUDIO_EVENTS.stateChanged, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyError, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyTriggered, () => {});
-        void mockListen(AUDIO_EVENTS.regionMatched, () => {});
+        void mockListen(RECOGNITION_EVENTS.stateChanged, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyError, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyTriggered, () => {});
+        void mockListen(RECOGNITION_EVENTS.regionMatched, () => {});
 
         cleanup(
-            AUDIO_EVENTS.stateChanged,
-            AUDIO_EVENTS.hotkeyError,
-            AUDIO_EVENTS.hotkeyTriggered,
-            AUDIO_EVENTS.regionMatched,
+            RECOGNITION_EVENTS.stateChanged,
+            RECOGNITION_EVENTS.hotkeyError,
+            RECOGNITION_EVENTS.hotkeyTriggered,
+            RECOGNITION_EVENTS.regionMatched,
         );
 
         expect(tracker.unlistenCalls).toHaveLength(4);
@@ -466,10 +466,10 @@ describe("跨页面事件订阅完整性", () => {
         expect(MORSE_EVENTS.runFinished).toBe("morse://run-finished");
         expect(MORSE_EVENTS.selectionProgress).toBe("morse://selection-progress");
         expect(MORSE_EVENTS.hotkeyError).toBe("morse://hotkey-error");
-        expect(AUDIO_EVENTS.stateChanged).toBe("audio://state-changed");
-        expect(AUDIO_EVENTS.hotkeyTriggered).toBe("audio://hotkey-triggered");
-        expect(AUDIO_EVENTS.regionMatched).toBe("audio://region-matched");
-        expect(AUDIO_EVENTS.hotkeyError).toBe("audio://hotkey-error");
+        expect(RECOGNITION_EVENTS.stateChanged).toBe("recognition://state-changed");
+        expect(RECOGNITION_EVENTS.hotkeyTriggered).toBe("recognition://hotkey-triggered");
+        expect(RECOGNITION_EVENTS.regionMatched).toBe("recognition://region-matched");
+        expect(RECOGNITION_EVENTS.hotkeyError).toBe("recognition://hotkey-error");
         expect(ABOUT_EVENTS.updateProgress).toBe("about://update-progress");
     });
 
@@ -488,10 +488,10 @@ describe("跨页面事件订阅完整性", () => {
             MORSE_EVENTS.runFinished,
             MORSE_EVENTS.selectionProgress,
             MORSE_EVENTS.hotkeyError,
-            AUDIO_EVENTS.stateChanged,
-            AUDIO_EVENTS.hotkeyTriggered,
-            AUDIO_EVENTS.regionMatched,
-            AUDIO_EVENTS.hotkeyError,
+            RECOGNITION_EVENTS.stateChanged,
+            RECOGNITION_EVENTS.hotkeyTriggered,
+            RECOGNITION_EVENTS.regionMatched,
+            RECOGNITION_EVENTS.hotkeyError,
             ABOUT_EVENTS.updateProgress,
         ];
 
@@ -520,13 +520,13 @@ describe("监听泄漏检测", () => {
         const {mockListen, cleanup} = tracker;
 
         // 订阅 4 个事件
-        void mockListen(AUDIO_EVENTS.stateChanged, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyError, () => {});
-        void mockListen(AUDIO_EVENTS.hotkeyTriggered, () => {});
-        void mockListen(AUDIO_EVENTS.regionMatched, () => {});
+        void mockListen(RECOGNITION_EVENTS.stateChanged, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyError, () => {});
+        void mockListen(RECOGNITION_EVENTS.hotkeyTriggered, () => {});
+        void mockListen(RECOGNITION_EVENTS.regionMatched, () => {});
 
         // 只清理 3 个，模拟泄漏
-        cleanup(AUDIO_EVENTS.stateChanged, AUDIO_EVENTS.hotkeyError, AUDIO_EVENTS.hotkeyTriggered);
+        cleanup(RECOGNITION_EVENTS.stateChanged, RECOGNITION_EVENTS.hotkeyError, RECOGNITION_EVENTS.hotkeyTriggered);
 
         expect(tracker.unlistenCalls).toHaveLength(3);
         // 检测泄漏：unlisten 调用数 < listen 调用数
@@ -537,7 +537,7 @@ describe("监听泄漏检测", () => {
         const leakedEvents = tracker.listenCalls
             .map((c) => c.event)
             .filter((e) => !unlistenedEvents.has(e));
-        expect(leakedEvents).toEqual([AUDIO_EVENTS.regionMatched]);
+        expect(leakedEvents).toEqual([RECOGNITION_EVENTS.regionMatched]);
     });
 
     it("完全清理时无泄漏", () => {

@@ -32,12 +32,12 @@ export const RAPIDFIRE_EVENTS = {
     hotkeyError: "rapidfire://hotkey-error",
 } as const;
 
-// ——— audio ——— audio/events.rs
-export const AUDIO_EVENTS = {
-    stateChanged: "audio://state-changed",
-    hotkeyTriggered: "audio://hotkey-triggered",
-    regionMatched: "audio://region-matched",
-    hotkeyError: "audio://hotkey-error",
+// ——— recognition ——— recognition/events.rs
+export const RECOGNITION_EVENTS = {
+    stateChanged: "recognition://state-changed",
+    hotkeyTriggered: "recognition://hotkey-triggered",
+    regionMatched: "recognition://region-matched",
+    hotkeyError: "recognition://hotkey-error",
 } as const;
 
 // ——— global ——— global_state.rs

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::morse::types::RegionRect;
 
-fn default_audio_enabled() -> bool {
+fn default_recognition_enabled() -> bool {
     true
 }
 
@@ -16,6 +16,10 @@ fn default_volume() -> f32 {
 
 fn default_cooldown_ms() -> u32 {
     1000
+}
+
+fn default_activation_duration_ms() -> u32 {
+    10000
 }
 
 fn default_watch_match_threshold() -> f32 {
@@ -34,17 +38,17 @@ pub(crate) const DEFAULT_COLOR_TOLERANCE: u8 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioSettings {
-    #[serde(default = "default_audio_enabled")]
-    pub audio_enabled: bool,
+pub struct RecognitionSettings {
+    #[serde(default = "default_recognition_enabled", alias = "audioEnabled")]
+    pub recognition_enabled: bool,
     #[serde(default)]
-    pub cards: Vec<AudioCard>,
+    pub cards: Vec<RecognitionCard>,
 }
 
-impl Default for AudioSettings {
+impl Default for RecognitionSettings {
     fn default() -> Self {
         Self {
-            audio_enabled: true,
+            recognition_enabled: true,
             cards: Vec::new(),
         }
     }
@@ -52,13 +56,13 @@ impl Default for AudioSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioCard {
+pub struct RecognitionCard {
     pub id: String,
     pub name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
-    pub trigger_mode: AudioTriggerMode,
+    pub trigger_mode: RecognitionTriggerMode,
     // 快捷键模式
     #[serde(default)]
     pub hotkey: Option<String>,
@@ -71,31 +75,35 @@ pub struct AudioCard {
     pub watch_match_threshold: f32,
     #[serde(default = "default_watch_poll_interval_ms")]
     pub watch_poll_interval_ms: u32,
-    // 通用
-    /// 音频文件列表（按序）。连杀顺序=数组顺序；单文件时为单元素数组。
     #[serde(default)]
+    pub activation: RecognitionActivation,
+    #[serde(default)]
+    pub effects: RecognitionEffects,
+    // 旧播放字段：仅用于迁移到 effects.audio。
+    /// 音频文件列表（按序）。连杀顺序=数组顺序；单文件时为单元素数组。
+    #[serde(default, skip_serializing)]
     pub audio_files: Vec<String>,
     /// 仅用于反序列化旧 JSON 的单值 audioFilePath 字段；normalize_settings 迁移进 audio_files 后清空。
     /// 序列化时跳过，不输出到新 JSON。
     #[serde(default, rename = "audioFilePath", skip_serializing)]
     pub legacy_audio_file_path: Option<String>,
     /// 播放方式：Single/Combo/Random
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub play_mode: PlayMode,
     /// 连杀窗口（毫秒），从上一次触发起算；超时复位第一首。默认 60000。
     /// 作为卡片级默认窗口，被 combo_windows 缺省 index 时回落使用。
-    #[serde(default = "default_combo_window_ms")]
+    #[serde(default = "default_combo_window_ms", skip_serializing)]
     pub combo_window_ms: u32,
     /// 每段音频各自的连杀窗口（毫秒）。播完第 i 段后用 combo_windows[i] 判断是否进 i+1 段（Issue #62）。
     /// 长度可小于 audio_files，缺省 index 回落到 combo_window_ms。空数组 = 全用卡片级默认窗口（向后兼容）。
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub combo_windows: Vec<u32>,
-    #[serde(default = "default_volume")]
+    #[serde(default = "default_volume", skip_serializing)]
     pub volume: f32,
     #[serde(default = "default_cooldown_ms")]
     pub cooldown_ms: u32,
     /// 允许此卡片的音频与其他卡片同时播放（默认互斥）
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub allow_simultaneous: bool,
     // 识色模式探针列表
     #[serde(default)]
@@ -110,13 +118,102 @@ pub struct AudioCard {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum AudioTriggerMode {
+pub struct RecognitionActivation {
+    #[serde(default)]
+    pub mode: RecognitionActivationMode,
+    #[serde(default)]
+    pub hotkey: Option<String>,
+    #[serde(default = "default_activation_duration_ms")]
+    pub duration_ms: u32,
+}
+
+impl Default for RecognitionActivation {
+    fn default() -> Self {
+        Self {
+            mode: RecognitionActivationMode::Always,
+            hotkey: None,
+            duration_ms: default_activation_duration_ms(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RecognitionActivationMode {
+    #[default]
+    Always,
+    OnceHotkey,
+    TimedHotkey,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionEffects {
+    #[serde(default)]
+    pub audio: Option<RecognitionAudioEffect>,
+    #[serde(default)]
+    pub hotkey: Option<RecognitionHotkeyEffect>,
+    #[serde(default)]
+    pub click: Option<RecognitionClickEffect>,
+}
+
+impl RecognitionEffects {
+    pub fn has_any(&self) -> bool {
+        self.audio.is_some() || self.hotkey.is_some() || self.click.is_some()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionAudioEffect {
+    #[serde(default)]
+    pub audio_files: Vec<String>,
+    #[serde(default)]
+    pub play_mode: PlayMode,
+    #[serde(default = "default_combo_window_ms")]
+    pub combo_window_ms: u32,
+    #[serde(default)]
+    pub combo_windows: Vec<u32>,
+    #[serde(default = "default_volume")]
+    pub volume: f32,
+    #[serde(default)]
+    pub allow_simultaneous: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionHotkeyEffect {
+    pub hotkey: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionClickEffect {
+    #[serde(default)]
+    pub mode: RecognitionClickMode,
+    #[serde(default)]
+    pub custom_region: Option<RegionRect>,
+    #[serde(default)]
+    pub color_probe_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RecognitionClickMode {
+    #[default]
+    CustomRegion,
+    RecognitionRegion,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RecognitionTriggerMode {
     Hotkey,
     RegionWatch,
     ColorWatch,
 }
 
-impl Default for AudioTriggerMode {
+impl Default for RecognitionTriggerMode {
     fn default() -> Self {
         Self::Hotkey
     }
@@ -205,8 +302,8 @@ pub enum ColorMatchMethod {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AudioBootstrap {
-    pub settings: AudioSettings,
+pub struct RecognitionBootstrap {
+    pub settings: RecognitionSettings,
     pub hotkey_error: Option<String>,
 }
 
@@ -215,19 +312,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn audio_settings_default_values_are_stable() {
-        let settings = AudioSettings::default();
-        assert!(settings.audio_enabled);
+    fn recognition_settings_default_values_are_stable() {
+        let settings = RecognitionSettings::default();
+        assert!(settings.recognition_enabled);
         assert!(settings.cards.is_empty());
     }
 
     #[test]
-    fn audio_card_deserialize_with_defaults() {
+    fn recognition_card_deserialize_with_defaults() {
         let json = r#"{"id":"c1","name":"测试"}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.id, "c1");
         assert!(card.enabled);
-        assert_eq!(card.trigger_mode, AudioTriggerMode::Hotkey);
+        assert_eq!(card.trigger_mode, RecognitionTriggerMode::Hotkey);
         assert_eq!(card.volume, 0.8);
         assert_eq!(card.cooldown_ms, 1000);
         assert_eq!(card.watch_match_threshold, 0.75);
@@ -235,12 +332,12 @@ mod tests {
     }
 
     #[test]
-    fn audio_card_allow_simultaneous_roundtrip() {
+    fn recognition_card_allow_simultaneous_roundtrip() {
         let json = r#"{"id":"c2","name":"并发播放","allowSimultaneous":true}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert!(card.allow_simultaneous);
         let reserialized = serde_json::to_string(&card).unwrap();
-        assert!(reserialized.contains("\"allowSimultaneous\":true"));
+        assert!(!reserialized.contains("\"allowSimultaneous\""));
     }
 
     #[test]
@@ -305,25 +402,38 @@ mod tests {
 
     #[test]
     fn color_match_mode_default_is_all() {
-        // AudioCard 缺省 color_match_mode 应为 All
+        // RecognitionCard 缺省 color_match_mode 应为 All
         let json = r#"{"id":"c1","name":"测试","triggerMode":"colorWatch"}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.color_match_mode, ColorMatchMode::All);
         assert!(card.color_probes.is_empty());
     }
 
     #[test]
-    fn audio_card_with_color_watch_roundtrip() {
-        let card = AudioCard {
+    fn recognition_card_with_color_watch_roundtrip() {
+        let card = RecognitionCard {
             id: "c1".into(),
             name: "识色卡".into(),
             enabled: true,
-            trigger_mode: AudioTriggerMode::ColorWatch,
+            trigger_mode: RecognitionTriggerMode::ColorWatch,
             hotkey: None,
             watch_region: None,
             watch_reference_image_path: None,
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
+            activation: RecognitionActivation::default(),
+            effects: RecognitionEffects {
+                audio: Some(RecognitionAudioEffect {
+                    audio_files: vec!["a.mp3".into()],
+                    play_mode: PlayMode::Combo,
+                    combo_window_ms: 60000,
+                    combo_windows: vec![],
+                    volume: 0.8,
+                    allow_simultaneous: false,
+                }),
+                hotkey: None,
+                click: None,
+            },
             audio_files: vec!["a.mp3".into()],
             legacy_audio_file_path: None,
             play_mode: PlayMode::Combo,
@@ -354,24 +464,25 @@ mod tests {
         // 序列化不应输出兼容字段 audioFilePath
         assert!(!json.contains("audioFilePath"));
         assert!(json.contains("\"audioFiles\""));
-        let back: AudioCard = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.trigger_mode, AudioTriggerMode::ColorWatch);
+        let back: RecognitionCard = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.trigger_mode, RecognitionTriggerMode::ColorWatch);
         assert_eq!(back.color_match_mode, ColorMatchMode::Any);
         assert_eq!(back.color_match_method, ColorMatchMethod::AnyPixel);
         assert_eq!(back.color_probes.len(), 1);
         assert_eq!(back.color_probes[0].targets.len(), 1);
         assert_eq!(back.color_probes[0].targets[0].color, [10, 20, 30]);
         assert_eq!(back.color_probes[0].targets[0].tolerance, 25);
-        assert_eq!(back.audio_files, vec!["a.mp3".to_string()]);
-        assert_eq!(back.play_mode, PlayMode::Combo);
-        assert_eq!(back.combo_window_ms, 60000);
+        let effect = back.effects.audio.unwrap();
+        assert_eq!(effect.audio_files, vec!["a.mp3".to_string()]);
+        assert_eq!(effect.play_mode, PlayMode::Combo);
+        assert_eq!(effect.combo_window_ms, 60000);
     }
 
     #[test]
-    fn audio_card_legacy_audio_file_path_deserialized() {
+    fn recognition_card_legacy_audio_file_path_deserialized() {
         // 旧 JSON 的 audioFilePath 单值字段应能被反序列化到 legacy_audio_file_path
         let json = r#"{"id":"c1","name":"旧卡","audioFilePath":"old.mp3"}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.legacy_audio_file_path, Some("old.mp3".to_string()));
         assert!(card.audio_files.is_empty());
         assert_eq!(card.play_mode, PlayMode::Single);
@@ -380,16 +491,16 @@ mod tests {
 
     #[test]
     fn color_match_method_default_is_average() {
-        // AudioCard 缺省 color_match_method 应为 Average（向后兼容旧 JSON）
+        // RecognitionCard 缺省 color_match_method 应为 Average（向后兼容旧 JSON）
         let json = r#"{"id":"c1","name":"测试","triggerMode":"colorWatch"}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.color_match_method, ColorMatchMethod::Average);
     }
 
     #[test]
     fn color_match_method_anypixel_roundtrip() {
         let json = r#"{"id":"c1","name":"单像素","triggerMode":"colorWatch","colorMatchMethod":"anyPixel"}"#;
-        let card: AudioCard = serde_json::from_str(json).unwrap();
+        let card: RecognitionCard = serde_json::from_str(json).unwrap();
         assert_eq!(card.color_match_method, ColorMatchMethod::AnyPixel);
         let reserialized = serde_json::to_string(&card).unwrap();
         assert!(

@@ -13,7 +13,7 @@
 | `rapidfire-display` | 连发器 | 显示触发键到目标键映射与开火状态 |
 | `rapidfire-position` | 连发器 | 位置校准窗口 |
 | `morse-overlay` | Morse | 全屏透明区域选择叠加窗 |
-| `audio-overlay` | 音频 | 区域/探针选择叠加窗 |
+| `recognition-overlay` | 识别触发 | 监听区域、识色探针、自定义点击区域选择叠加窗 |
 
 ## 显示窗口
 
@@ -45,7 +45,7 @@
 
 ## 区域选择叠加窗
 
-Morse 和音频使用全屏透明叠加窗（`morse-overlay` / `audio-overlay`）拖拽选择屏幕区域。通过 `?mode=overlay`（Morse）或 `?mode=audio-overlay`（音频）进入。使用 `oneshot` channel 将完成结果回传给调用方。
+Morse 和识别触发使用全屏透明叠加窗（`morse-overlay` / `recognition-overlay`）拖拽选择屏幕区域。通过 `?mode=overlay`（Morse）或 `?mode=recognition-overlay`（识别触发）进入。
 
 ## 共享组件
 
@@ -55,13 +55,13 @@ Morse 和音频使用全屏透明叠加窗（`morse-overlay` / `audio-overlay`�
 |------|------|------|
 | `SyncOverlayWindow` | `src/components/app/sync-overlay-window.tsx` | 计时器/计数器/连发器共享的显示/位置窗口包装 |
 | `MorseOverlay` / `RegionSelectionOverlay` | `src/components/app/morse-overlay.tsx` | Morse 区域选择全屏叠加窗 |
-| `AudioRegionOverlay` | `src/components/app/audio-page.tsx` | 音频区域/探针选择叠加窗 |
+| `RecognitionRegionOverlay` | `src/components/app/recognition-page.tsx` | 识别触发区域/探针/点击区域选择叠加窗 |
 
 ## 集成点
 
 - [计时器](../features/timer.md)、[计数器](../features/counter.md)、[连发器](../features/rapidfire.md) 各自拥有显示窗口和位置窗口
 - [Morse](../features/morse.md) 拥有区域选择叠加窗
-- [音频触发器](../features/audio.md) 共享 overlay 流程用于区域/探针选择
+- [识别触发](../features/recognition.md) 共享 overlay 流程用于监听区域、探针和点击区域选择
 - `src-tauri/src/overlay_utils.rs` 提供共享的叠加窗创建与尺寸计算工具函数
 - 状态变更同时 emit 到 `main` 和显示窗口 label，使 overlay 实时更新
 

@@ -55,7 +55,7 @@ pub fn global_set_enabled(
 
 fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
     // 通过 ToolLifecycleRegistry 统一停止所有工具
-    // （timer/counter/rapidfire/morse/audio），按注册顺序调用各 handler。
+    // （timer/counter/rapidfire/morse/recognition），按注册顺序调用各 handler。
     let Some(registry) = app.try_state::<crate::sync_tool::ToolLifecycleRegistry>() else {
         return;
     };
@@ -267,7 +267,7 @@ mod tests {
     fn lifecycle_registry_registered_names() {
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
         let mut registry = ToolLifecycleRegistry::default();
 
         for name in &names {
@@ -299,7 +299,7 @@ mod tests {
     fn lifecycle_registry_stop_all_respects_order() {
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
         let mut registry = ToolLifecycleRegistry::default();
 
         for name in &names {
@@ -428,7 +428,7 @@ mod tests {
     fn lifecycle_registry_covers_all_five_tools() {
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
         let mut registry = ToolLifecycleRegistry::default();
 
         for name in &names {
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn cross_val_001_global_disable_stops_all_five_tools() {
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
 
         let mut registry = ToolLifecycleRegistry::default();
         for name in &names {

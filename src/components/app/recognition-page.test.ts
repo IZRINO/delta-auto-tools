@@ -1,7 +1,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest";
 
 /**
- * VAL-DF-007, VAL-DF-008: audio-page 事件监听补全。
+ * VAL-DF-007, VAL-DF-008: recognition-page 事件监听补全。
  *
  * 行为级测试：mock listenEvent，测试 hotkeyTriggered 和 regionMatched
  * 事件的订阅与回调行为契约。
@@ -19,11 +19,11 @@ const mockSetPageError = vi.fn();
 const mockSetStatusMessage = vi.fn();
 
 vi.mock("@/lib/tauri-events", () => ({
-    AUDIO_EVENTS: {
-        stateChanged: "audio://state-changed",
-        hotkeyTriggered: "audio://hotkey-triggered",
-        regionMatched: "audio://region-matched",
-        hotkeyError: "audio://hotkey-error",
+    RECOGNITION_EVENTS: {
+        stateChanged: "recognition://state-changed",
+        hotkeyTriggered: "recognition://hotkey-triggered",
+        regionMatched: "recognition://region-matched",
+        hotkeyError: "recognition://hotkey-error",
     },
 }));
 
@@ -39,9 +39,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     invoke: vi.fn().mockResolvedValue({}),
 }));
 
-vi.mock("@/components/app/audio-utils", () => ({
-    createEmptyAudioCard: vi.fn(),
-    mergeAudioWatchRegionsIntoForm: vi.fn(),
+vi.mock("@/components/app/recognition-utils", () => ({
+    createEmptyRecognitionCard: vi.fn(),
+    mergeRecognitionWatchRegionsIntoForm: vi.fn(),
     parseSettingsForm: vi.fn(),
     rgbToHex: vi.fn(),
     settingsToForm: vi.fn(),
@@ -53,21 +53,21 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 // ── hotkeyTriggered 事件回调行为测试 ────────────────────
 
-describe("audio-page hotkeyTriggered 事件行为", () => {
+describe("recognition-page hotkeyTriggered 事件行为", () => {
     afterEach(() => {
         mockToast.info.mockReset();
         mockSetStatusMessage.mockReset();
         vi.clearAllMocks();
     });
 
-    it("订阅 AUDIO_EVENTS.hotkeyTriggered 事件", async () => {
-        const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
+    it("订阅 RECOGNITION_EVENTS.hotkeyTriggered 事件", async () => {
+        const {RECOGNITION_EVENTS} = await import("@/lib/tauri-events");
         // 验证事件名常量正确
-        expect(AUDIO_EVENTS.hotkeyTriggered).toBe("audio://hotkey-triggered");
+        expect(RECOGNITION_EVENTS.hotkeyTriggered).toBe("recognition://hotkey-triggered");
     });
 
     it("hotkeyTriggered 回调触发 toast.info 通知", () => {
-        // 模拟 hotkeyTriggered 回调行为（提取自 audio-page.tsx）：
+        // 模拟 hotkeyTriggered 回调行为（提取自 recognition-page.tsx）：
         // toast.info(`快捷键触发：卡片 ${event.payload}`);
         const cardId = "audio-card-1";
         const hotkeyTriggeredCallback = (event: {payload: string}) => {
@@ -124,20 +124,20 @@ describe("audio-page hotkeyTriggered 事件行为", () => {
 
 // ── regionMatched 事件回调行为测试 ────────────────────
 
-describe("audio-page regionMatched 事件行为", () => {
+describe("recognition-page regionMatched 事件行为", () => {
     afterEach(() => {
         mockToast.info.mockReset();
         mockSetStatusMessage.mockReset();
         vi.clearAllMocks();
     });
 
-    it("订阅 AUDIO_EVENTS.regionMatched 事件", async () => {
-        const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        expect(AUDIO_EVENTS.regionMatched).toBe("audio://region-matched");
+    it("订阅 RECOGNITION_EVENTS.regionMatched 事件", async () => {
+        const {RECOGNITION_EVENTS} = await import("@/lib/tauri-events");
+        expect(RECOGNITION_EVENTS.regionMatched).toBe("recognition://region-matched");
     });
 
     it("regionMatched 回调触发 toast.info 通知", () => {
-        // 模拟 regionMatched 回调行为（提取自 audio-page.tsx）：
+        // 模拟 regionMatched 回调行为（提取自 recognition-page.tsx）：
         // toast.info(`区域匹配触发：卡片 ${event.payload}`);
         const cardId = "audio-card-3";
         const regionMatchedCallback = (event: {payload: string}) => {
@@ -194,16 +194,16 @@ describe("audio-page regionMatched 事件行为", () => {
 
 // ── stateChanged 事件回调行为测试 ────────────────────
 
-describe("audio-page stateChanged 事件行为", () => {
+describe("recognition-page stateChanged 事件行为", () => {
     afterEach(() => {
         mockSetBootstrap.mockReset();
         mockSetPageError.mockReset();
         vi.clearAllMocks();
     });
 
-    it("订阅 AUDIO_EVENTS.stateChanged 事件", async () => {
-        const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        expect(AUDIO_EVENTS.stateChanged).toBe("audio://state-changed");
+    it("订阅 RECOGNITION_EVENTS.stateChanged 事件", async () => {
+        const {RECOGNITION_EVENTS} = await import("@/lib/tauri-events");
+        expect(RECOGNITION_EVENTS.stateChanged).toBe("recognition://state-changed");
     });
 
     it("stateChanged 回调更新 bootstrap 并合并 watchRegions", () => {
@@ -214,7 +214,7 @@ describe("audio-page stateChanged 事件行为", () => {
         const mockSetForm = vi.fn();
         const mockMerge = vi.fn().mockReturnValue({cards: []});
 
-        // 模拟 stateChanged 回调行为（提取自 audio-page.tsx）：
+        // 模拟 stateChanged 回调行为（提取自 recognition-page.tsx）：
         const stateChangedCallback = (event: {payload: unknown}) => {
             mockSetBootstrap(event.payload);
             // setForm 接受 updater 函数，内部调用 merge
@@ -239,7 +239,7 @@ describe("audio-page stateChanged 事件行为", () => {
 
 // ── hotkeyError 事件回调行为测试 ──────────────────────
 
-describe("audio-page hotkeyError 事件行为", () => {
+describe("recognition-page hotkeyError 事件行为", () => {
     afterEach(() => {
         mockSetPageError.mockReset();
         mockSetStatusMessage.mockReset();
@@ -247,9 +247,9 @@ describe("audio-page hotkeyError 事件行为", () => {
         vi.clearAllMocks();
     });
 
-    it("订阅 AUDIO_EVENTS.hotkeyError 事件", async () => {
-        const {AUDIO_EVENTS} = await import("@/lib/tauri-events");
-        expect(AUDIO_EVENTS.hotkeyError).toBe("audio://hotkey-error");
+    it("订阅 RECOGNITION_EVENTS.hotkeyError 事件", async () => {
+        const {RECOGNITION_EVENTS} = await import("@/lib/tauri-events");
+        expect(RECOGNITION_EVENTS.hotkeyError).toBe("recognition://hotkey-error");
     });
 
     it("hotkeyError 回调触发 toast.error 通知", () => {
@@ -270,14 +270,14 @@ describe("audio-page hotkeyError 事件行为", () => {
 
 // ── unmount 时 unlisten 行为测试 ──────────────────────
 
-describe("audio-page unmount 时清理事件监听", () => {
+describe("recognition-page unmount 时清理事件监听", () => {
     it("unmount 时调用所有 unlisten 回调", async () => {
         const unlistenStateChanged = vi.fn();
         const unlistenHotkeyError = vi.fn();
         const unlistenHotkeyTriggered = vi.fn();
         const unlistenRegionMatched = vi.fn();
 
-        // 模拟 unmount 时的清理行为（提取自 audio-page.tsx useEffect cleanup）
+        // 模拟 unmount 时的清理行为（提取自 recognition-page.tsx useEffect cleanup）
         const cleanup = () => {
             unlistenStateChanged();
             unlistenHotkeyError();

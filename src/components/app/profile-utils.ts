@@ -43,7 +43,7 @@ export function snapshotTools(
         {key: "timer", label: "计时器", included: Boolean(s.timer)},
         {key: "counter", label: "计数器", included: Boolean(s.counter)},
         {key: "rapidfire", label: "连发器", included: Boolean(s.rapidfire)},
-        {key: "audio", label: "音频", included: Boolean(s.audio)},
+        {key: "recognition", label: "识别触发", included: Boolean(s.recognition ?? s.audio)},
     ];
 }
 

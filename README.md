@@ -12,7 +12,7 @@
 | **Timer** | 多计时器，250ms tick 循环，独立总开关，置顶透明显示窗口，位置校准 |
 | **Counter** | 多计数器，运行态独立持久化，独立总开关，置顶透明显示窗口，位置校准 |
 | **Rapidfire** | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距策略 |
-| **Audio** | 三种触发模式：快捷键触发、区域监听+图像模板匹配、多区域识色触发；音量/冷却/互斥播放 |
+| **Recognition** | 快捷键、区域图像匹配、多区域识色三种识别来源；可执行音频、按键、点击三类效果 |
 | **Strategy** | 主窗口内嵌 `strategy-content` 子 WebView2，站点切换、自定义站点、刷新档位 |
 
 其他能力：Delta 账号管理与游戏数据查询（本地凭据 DPAPI 加密）、关于面板与 Tauri 官方更新器。
@@ -36,7 +36,7 @@
 - **ToolLifecycleRegistry**：统一 stop 入口，所有工具模块注册停止逻辑，替代各模块独立 shutdown
 - **RunsSync trait**：`runs` narrowing 逻辑下放到 Logic 层，Rust 侧通过 trait 约束统一调用
 - **Rapidfire 模块拆分**：`keys` / `worker` / `overlay` / `commands` 四个子模块，职责清晰
-- **Audio watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
+- **Recognition watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
 - **事件对齐**：前端 `listen<PayloadType>(EVENTS.xxx, handler)` 模式，事件名通过 `src/lib/tauri-events.ts` 常量订阅，杜绝硬编码
 
 ### 事件模式
@@ -60,8 +60,8 @@
 
 | 层 | 数量 |
 |----|------|
-| Rust 单元测试 | 378 |
-| 前端单元测试 | 326 |
+| Rust 单元测试 | 386 |
+| 前端单元测试 | 346 |
 | 编译检查 | `cargo check` clean |
 | 前端构建 | `bun run build` clean |
 
@@ -81,7 +81,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 
 ```text
 src/                        # React 前端应用
-src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、audio-page、strategy-page 等）
+src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、recognition-page、strategy-page 等）
 src/components/ui/          # Radix headless 行为 + daisyUI 风格基础组件
 src/lib/                    # 共享工具函数与 tauri-events 常量
 src-tauri/src/              # Rust/Tauri 原生能力
@@ -92,7 +92,7 @@ src-tauri/src/morse/        # 摩斯识别
 src-tauri/src/timer/        # 计时器
 src-tauri/src/counter/      # 计数器
 src-tauri/src/rapidfire/    # 连发器（keys / worker / overlay / commands）
-src-tauri/src/audio/        # 音频触发（manager / matching / capture）
+src-tauri/src/recognition/  # 识别触发（effects / manager / matching / capture / player）
 src-tauri/src/strategy/     # 攻略网站 WebView2 子视图
 src-tauri/src/about/        # 关于面板 + Tauri 官方更新器
 src-tauri/src/delta/        # Delta 登录、账号与游戏数据

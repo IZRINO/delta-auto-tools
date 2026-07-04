@@ -1,6 +1,6 @@
 //! NCC 图像匹配 + 颜色匹配算法
 
-use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe};
+use crate::recognition::types::{ColorMatchMethod, ColorMatchMode, ColorProbe};
 
 // ── 图像比较 ──────────────────────────────────────────────────
 
@@ -401,6 +401,8 @@ pub(crate) struct ColorMatchResult {
     pub matched: bool,
     /// 命中的 probe 数量
     pub hit_count: usize,
+    /// 命中的 probe 索引
+    pub matched_indices: Vec<usize>,
 }
 
 /// 计算两个 RGB 颜色的欧氏距离
@@ -576,7 +578,7 @@ struct SingleTargetHit {
 /// 单探针对单个 `ColorTarget` 的判定：按 method 计算 sampled 与目标色的距离。
 fn probe_hit_single_target(
     screenshot: &image::DynamicImage,
-    target: &crate::audio::types::ColorTarget,
+    target: &crate::recognition::types::ColorTarget,
     method: ColorMatchMethod,
     count_only: bool,
 ) -> SingleTargetHit {
@@ -650,7 +652,7 @@ fn aggregate_probe_hits(hits: &[TargetHit], probe_match_mode: ColorMatchMode) ->
     }
 }
 
-/// pub(crate) wrapper：供 mod.rs 的 audio_test_color_match 命令复用
+/// pub(crate) wrapper：供 mod.rs 的 recognition_test_color_match 命令复用
 pub(crate) fn aggregate_probe_hits_pub(
     hits: &[TargetHit],
     probe_match_mode: ColorMatchMode,
@@ -683,17 +685,24 @@ pub(crate) fn match_color_probes(
         return ColorMatchResult {
             matched: false,
             hit_count: 0,
+            matched_indices: Vec::new(),
         };
     }
     let mut hit_count = 0usize;
+    let mut matched_indices = Vec::new();
     for (i, probe) in probes.iter().enumerate() {
         if probe_hit(&screenshots[i], probe, method.clone(), true).matched {
             hit_count += 1;
+            matched_indices.push(i);
         }
     }
     let matched = match mode {
         ColorMatchMode::All => hit_count == probes.len(),
         ColorMatchMode::Any => hit_count > 0,
     };
-    ColorMatchResult { matched, hit_count }
+    ColorMatchResult {
+        matched,
+        hit_count,
+        matched_indices,
+    }
 }

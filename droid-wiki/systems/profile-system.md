@@ -33,7 +33,7 @@ src/components/app/
 
 | 抽象 | 路径 | 角色 |
 |------|------|------|
-| `ToolSettingsSnapshot` | `src-tauri/src/profile/types.rs` | 5 工具快照：`{ morse, timer, counter, rapidfire, audio }` |
+| `ToolSettingsSnapshot` | `src-tauri/src/profile/types.rs` | 5 工具快照：`{ morse, timer, counter, rapidfire, recognition }` |
 | `Profile` | `src-tauri/src/profile/types.rs` | `{ id, name, created_at, updated_at, snapshot }`，命名配置 |
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` |
@@ -60,7 +60,7 @@ flowchart TD
     F --> F2["timer: normalize → restart_hotkey → swap → ensure_display_windows → emit_state"]
     F --> F3["counter: normalize → restart_hotkey → swap → ensure_display_windows → emit_state"]
     F --> F4["rapidfire: normalize → restart_hotkey(force) → swap → ensure_overlay_window → emit_state"]
-    F --> F5["audio: normalize → swap → restart_hotkey → restart_watchers → emit_state"]
+    F --> F5["recognition: normalize → swap → restart_hotkey → restart_watchers → emit_state"]
     F1 & F2 & F3 & F4 & F5 --> G["4. counter 重置运行值为 start_value + 持久化"]
     G --> H["5. 更新 active_profile_id，保存 profile_settings.json"]
 ```

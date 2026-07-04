@@ -1,15 +1,15 @@
 import {describe, expect, it} from "vitest";
 import {
-    createEmptyAudioCard,
+    createEmptyRecognitionCard,
     generateCardId,
-    getAudioCardFormErrors,
-    mergeAudioWatchRegionsIntoForm,
+    getRecognitionCardFormErrors,
+    mergeRecognitionWatchRegionsIntoForm,
     parseSettingsForm,
     settingsToForm,
-} from "@/components/app/audio-utils";
-import {DEFAULT_AUDIO_CARD} from "@/components/app/audio-types";
+} from "@/components/app/recognition-utils";
+import {DEFAULT_RECOGNITION_CARD} from "@/components/app/recognition-types";
 
-describe("audio-utils", () => {
+describe("recognition-utils", () => {
     describe("settingsToForm", () => {
         it("converts empty settings to empty form", () => {
             const settings = {
@@ -26,7 +26,7 @@ describe("audio-utils", () => {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "测试",
                         volume: 0.5,
@@ -45,6 +45,24 @@ describe("audio-utils", () => {
             expect(form.cards[0].watchPollIntervalMs).toBe("1000");
             expect(form.cards[0].hotkey).toBe("Ctrl+F1");
             expect(form.cards[0].allowSimultaneous).toBe(false);
+        });
+
+        it("migrates legacy audio fields into audio effect form", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{
+                    ...DEFAULT_RECOGNITION_CARD,
+                    id: "c1",
+                    name: "旧音频卡",
+                    audioFiles: ["a.mp3"],
+                    playMode: "single",
+                    volume: 0.4,
+                }],
+            });
+
+            expect(form.cards[0].audioEffectEnabled).toBe(true);
+            expect(form.cards[0].audioFiles).toEqual(["a.mp3"]);
+            expect(form.cards[0].volume).toBe("0.4");
         });
     });
 
@@ -77,10 +95,84 @@ describe("audio-utils", () => {
             };
             const settings = parseSettingsForm(form);
             expect(settings.cards[0].name).toBe("测试");
-            expect(settings.cards[0].volume).toBe(0.8);
+            expect(settings.cards[0].effects?.audio?.volume).toBe(0.8);
             expect(settings.cards[0].cooldownMs).toBe(1000);
             expect(settings.cards[0].hotkey).toBe("Ctrl+F1");
-            expect(settings.cards[0].allowSimultaneous).toBe(false);
+            expect(settings.cards[0].effects?.audio?.allowSimultaneous).toBe(false);
+        });
+
+        it("saves hotkey effect without audio files", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "按键效果",
+                    enabled: true,
+                    triggerMode: "hotkey",
+                    hotkey: "Ctrl+F1",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioEffectEnabled: false,
+                    hotkeyEffectEnabled: true,
+                    effectHotkey: "F2",
+                    clickEffectEnabled: false,
+                    audioFiles: [],
+                    playMode: "single",
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all",
+                    colorMatchMethod: "average",
+                }],
+            });
+
+            expect(settings.cards[0].effects?.audio).toBeUndefined();
+            expect(settings.cards[0].effects?.hotkey?.hotkey).toBe("F2");
+        });
+
+        it("writes timed activation for region watch cards", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "限时识别",
+                    enabled: true,
+                    triggerMode: "regionWatch",
+                    hotkey: "",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    activationMode: "timedHotkey",
+                    activationHotkey: "Alt+F1",
+                    activationDurationMs: "3000",
+                    audioEffectEnabled: false,
+                    hotkeyEffectEnabled: true,
+                    effectHotkey: "F2",
+                    clickEffectEnabled: false,
+                    audioFiles: [],
+                    playMode: "single",
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all",
+                    colorMatchMethod: "average",
+                }],
+            });
+
+            expect(settings.cards[0].activation).toEqual({
+                mode: "timedHotkey",
+                hotkey: "Alt+F1",
+                durationMs: 3000,
+            });
         });
 
         it("throws for empty name", () => {
@@ -147,21 +239,21 @@ describe("audio-utils", () => {
             const id1 = generateCardId();
             const id2 = generateCardId();
             expect(id1).not.toBe(id2);
-            expect(id1).toMatch(/^audio-/);
+            expect(id1).toMatch(/^recognition-/);
         });
     });
 
-    describe("createEmptyAudioCard", () => {
+    describe("createEmptyRecognitionCard", () => {
         it("creates card with defaults and new id", () => {
-            const card = createEmptyAudioCard();
+            const card = createEmptyRecognitionCard();
             expect(card.name).toBe("");
-            expect(card.volume).toBe(0.8);
+            expect(card.effects?.audio?.volume).toBe(0.8);
             expect(card.watchMatchThreshold).toBe(0.75);
-            expect(card.id).toMatch(/^audio-/);
+            expect(card.id).toMatch(/^recognition-/);
         });
     });
 
-    describe("mergeAudioWatchRegionsIntoForm", () => {
+    describe("mergeRecognitionWatchRegionsIntoForm", () => {
         it("merges backend watchRegion without overwriting local edits", () => {
             const current = {
                 audioEnabled: true,
@@ -188,11 +280,11 @@ describe("audio-utils", () => {
                     },
                 ],
             };
-            const merged = mergeAudioWatchRegionsIntoForm(current, {
+            const merged = mergeRecognitionWatchRegionsIntoForm(current, {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "后端名称",
                         triggerMode: "regionWatch",
@@ -241,11 +333,11 @@ describe("audio-utils", () => {
                 ],
             };
             // 后端：探针 region 已被框选提交（10,20,5x5）
-            const merged = mergeAudioWatchRegionsIntoForm(current, {
+            const merged = mergeRecognitionWatchRegionsIntoForm(current, {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "识色",
                         triggerMode: "colorWatch",
@@ -297,11 +389,11 @@ describe("audio-utils", () => {
                 ],
             };
             // 后端推送的 settings 也含 comboWindows，但应被本地草稿优先（合并只覆盖 watchRegion/probe.region）
-            const merged = mergeAudioWatchRegionsIntoForm(current, {
+            const merged = mergeRecognitionWatchRegionsIntoForm(current, {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "连杀",
                         triggerMode: "hotkey",
@@ -324,7 +416,7 @@ describe("audio-utils", () => {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "识色",
                         triggerMode: "colorWatch" as const,
@@ -503,7 +595,7 @@ describe("audio-utils", () => {
                 audioEnabled: true,
                 cards: [
                     {
-                        ...DEFAULT_AUDIO_CARD,
+                        ...DEFAULT_RECOGNITION_CARD,
                         id: "c1",
                         name: "连杀卡",
                         triggerMode: "hotkey" as const,
@@ -548,9 +640,9 @@ describe("audio-utils", () => {
                 ],
             };
             const settings = parseSettingsForm(form);
-            expect(settings.cards[0].audioFiles).toEqual(["a.mp3"]);
-            expect(settings.cards[0].playMode).toBe("single");
-            expect(settings.cards[0].comboWindowMs).toBe(60000);
+            expect(settings.cards[0].effects?.audio?.audioFiles).toEqual(["a.mp3"]);
+            expect(settings.cards[0].effects?.audio?.playMode).toBe("single");
+            expect(settings.cards[0].effects?.audio?.comboWindowMs).toBe(60000);
         });
 
         it("parseSettingsForm combo 不足 2 个音频报错", () => {
@@ -613,7 +705,7 @@ describe("audio-utils", () => {
             expect(() => parseSettingsForm(form)).toThrow("连杀或随机播放至少需要添加 2 个音频文件");
         });
 
-        it("parseSettingsForm 空音频文件报错", () => {
+        it("parseSettingsForm 空音频文件拒绝音频效果", () => {
             const form = {
                 audioEnabled: true,
                 cards: [
@@ -640,7 +732,42 @@ describe("audio-utils", () => {
                     },
                 ],
             };
-            expect(() => parseSettingsForm(form)).toThrow("音频文件不能为空");
+            expect(() => parseSettingsForm(form)).toThrow("请至少添加一个音频文件");
+        });
+
+        it("parseSettingsForm 自定义点击效果必须框选区域", () => {
+            const form = {
+                audioEnabled: true,
+                cards: [
+                    {
+                        id: "c1",
+                        name: "点击",
+                        enabled: true,
+                        triggerMode: "hotkey" as const,
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioEffectEnabled: false,
+                        hotkeyEffectEnabled: false,
+                        clickEffectEnabled: true,
+                        clickMode: "customRegion" as const,
+                        clickCustomRegion: null,
+                        audioFiles: [],
+                        playMode: "single" as const,
+                        comboWindowMs: "60000",
+                        comboWindows: [],
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all" as const,
+                        colorMatchMethod: "average" as const,
+                    },
+                ],
+            };
+            expect(() => parseSettingsForm(form)).toThrow("必须框选自定义点击区域");
         });
 
         it("parseSettingsForm combo 窗口越界报错", () => {
@@ -702,8 +829,8 @@ describe("audio-utils", () => {
             };
             const settings = parseSettingsForm(form);
             // 空段填卡片级默认 60000；数组与 audioFiles 等长
-            expect(settings.cards[0].comboWindows).toEqual([500, 60000, 1000]);
-            expect(settings.cards[0].comboWindowMs).toBe(60000);
+            expect(settings.cards[0].effects?.audio?.comboWindows).toEqual([500, 60000, 1000]);
+            expect(settings.cards[0].effects?.audio?.comboWindowMs).toBe(60000);
         });
 
         it("parseSettingsForm combo per-segment 窗口越界报错", () => {
@@ -736,8 +863,8 @@ describe("audio-utils", () => {
             expect(() => parseSettingsForm(form)).toThrow("连杀窗口时间必须在 100 到 600000 毫秒之间");
         });
 
-        it("getAudioCardFormErrors combo 文件不足标记 audioFiles 错误", () => {
-            const errors = getAudioCardFormErrors({
+        it("getRecognitionCardFormErrors combo 文件不足标记 audioFiles 错误", () => {
+            const errors = getRecognitionCardFormErrors({
                 id: "c1",
                 name: "连杀",
                 enabled: true,
@@ -767,7 +894,7 @@ describe("audio-utils", () => {
             const settings = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "识色卡",
                     triggerMode: "colorWatch" as const,
@@ -784,7 +911,7 @@ describe("audio-utils", () => {
             const settings = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "识色卡",
                     triggerMode: "colorWatch" as const,
@@ -799,7 +926,7 @@ describe("audio-utils", () => {
             const form = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "识色卡",
                     triggerMode: "colorWatch" as const,
@@ -842,7 +969,7 @@ describe("audio-utils", () => {
             const settings = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "边界卡",
                     // hotkey 和 watchReferenceImagePath 在 cardToForm 中用 ?? "" 回退
@@ -874,7 +1001,7 @@ describe("audio-utils", () => {
             const settings = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "极端值",
                     volume: 0,
@@ -894,7 +1021,7 @@ describe("audio-utils", () => {
             const settings = {
                 audioEnabled: true,
                 cards: [{
-                    ...DEFAULT_AUDIO_CARD,
+                    ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "非法值",
                     volume: NaN,
@@ -917,7 +1044,7 @@ describe("audio-utils", () => {
                     name: "",
                     enabled: true,
                     triggerMode: "hotkey" as const,
-                    hotkey: "",
+                    hotkey: "Ctrl+F1",
                     watchRegion: null,
                     watchReferenceImagePath: "",
                     watchMatchThreshold: "0.75",
@@ -945,7 +1072,7 @@ describe("audio-utils", () => {
                     name: "测试",
                     enabled: true,
                     triggerMode: "hotkey" as const,
-                    hotkey: "",
+                    hotkey: "Ctrl+F1",
                     watchRegion: null,
                     watchReferenceImagePath: "",
                     watchMatchThreshold: "0.75",

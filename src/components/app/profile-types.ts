@@ -8,7 +8,7 @@
 import type {MorseSettings} from "@/components/app/morse-types";
 import type {CounterSettings, TimerSettings} from "@/components/app/timer-types";
 import type {RapidfireSettings} from "@/components/app/rapidfire-types";
-import type {AudioSettings} from "@/components/app/audio-types";
+import type {RecognitionSettings} from "@/components/app/recognition-types";
 
 /** 单个工具的配置快照（5 选 1，其余为 None）。 */
 export interface ToolSettingsSnapshot {
@@ -16,7 +16,8 @@ export interface ToolSettingsSnapshot {
     timer?: TimerSettings | null;
     counter?: CounterSettings | null;
     rapidfire?: RapidfireSettings | null;
-    audio?: AudioSettings | null;
+    recognition?: RecognitionSettings | null;
+    audio?: RecognitionSettings | null;
 }
 
 /** 一个完整 Profile。 */

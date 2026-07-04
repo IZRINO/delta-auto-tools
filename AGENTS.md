@@ -131,7 +131,7 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 
 ## Project Overview
 
-**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、音频触发器、攻略网站工作台。
+**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
 
 开发环境：Windows，仓库路径 `D:/code/ai/sjz/delta-auto-tools`，所有命令在 Windows + Bun 下测试通过。
 
@@ -144,7 +144,7 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 | 目录 | 内容 |
 |------|------|
 | `overview/` | 项目概览、系统架构、快速开始、术语表 |
-| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / audio / strategy / about） |
+| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / recognition / strategy / about） |
 | `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
 | `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
 | `reference/` | 配置项与依赖参考 |
@@ -246,7 +246,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `timer/` — 多计时器，250ms tick，透明窗口
 - `counter/` — 多计数器，运行态独立持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程
-- `audio/` — 快捷键/区域监听/识色三种触发模式
+- `recognition/` — 快捷键/区域监听/识色三种识别来源 + 音频/按键/点击效果
 - `strategy/` — 攻略网站 WebView2 嵌入
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
@@ -264,7 +264,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 - Commit message 使用中文
 - 发布 commit：subject `发布 v<version>`，正文必须包含 `变更：` 段，变更项从实际 diff 提炼，禁止泛泛"更新版本"
-- 常规 commit 示例：`feat(audio): 识色探针支持多目标颜色`、`fix(counter): 全局开关关闭时保留计数器运行值`
+- 常规 commit 示例：`feat(recognition): 识色探针支持多目标颜色`、`fix(counter): 全局开关关闭时保留计数器运行值`
 
 ## Release Workflow
 

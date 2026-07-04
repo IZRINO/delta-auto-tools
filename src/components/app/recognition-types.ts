@@ -1,0 +1,175 @@
+import type {RegionRect} from "@/components/app/morse-types";
+
+export type ColorMatchMode = "all" | "any";
+
+export type ColorMatchMethod = "average" | "anyPixel";
+
+export type ColorTarget = {
+    color: [number, number, number];
+    tolerance: number;
+};
+
+export type ColorTargetForm = {
+    color: string;
+    tolerance: string;
+};
+
+export type ColorProbe = {
+    region: RegionRect | null;
+    targets: ColorTarget[];
+    probeMatchMode: ColorMatchMode;
+};
+
+export type ColorProbeForm = {
+    region: RegionRect | null;
+    targets: ColorTargetForm[];
+    probeMatchMode: ColorMatchMode;
+};
+
+export type RecognitionTriggerMode = "hotkey" | "regionWatch" | "colorWatch";
+
+export type RecognitionPlayMode = "single" | "combo" | "random";
+
+export type RecognitionActivationMode = "always" | "onceHotkey" | "timedHotkey";
+
+export type RecognitionActivation = {
+    mode: RecognitionActivationMode;
+    hotkey: string | null;
+    durationMs: number;
+};
+
+export type RecognitionAudioEffect = {
+    audioFiles: string[];
+    playMode: RecognitionPlayMode;
+    comboWindowMs: number;
+    comboWindows: number[];
+    volume: number;
+    allowSimultaneous: boolean;
+};
+
+export type RecognitionHotkeyEffect = {
+    hotkey: string;
+};
+
+export type RecognitionClickMode = "customRegion" | "recognitionRegion";
+
+export type RecognitionClickEffect = {
+    mode: RecognitionClickMode;
+    customRegion: RegionRect | null;
+    colorProbeIndex: number | null;
+};
+
+export type RecognitionEffects = {
+    audio?: RecognitionAudioEffect | null;
+    hotkey?: RecognitionHotkeyEffect | null;
+    click?: RecognitionClickEffect | null;
+};
+
+export type RecognitionCard = {
+    id: string;
+    name: string;
+    enabled: boolean;
+    triggerMode: RecognitionTriggerMode;
+    hotkey: string | null;
+    watchRegion: RegionRect | null;
+    watchReferenceImagePath: string | null;
+    watchMatchThreshold: number;
+    watchPollIntervalMs: number;
+    activation?: RecognitionActivation | null;
+    effects?: RecognitionEffects | null;
+    cooldownMs: number;
+    colorProbes: ColorProbe[];
+    colorMatchMode: ColorMatchMode;
+    colorMatchMethod: ColorMatchMethod;
+
+    // 旧 settings 输入兼容：settingsToForm 迁移到 effects.audio；parseSettingsForm 不输出这些字段。
+    audioFiles?: string[];
+    playMode?: RecognitionPlayMode;
+    comboWindowMs?: number;
+    comboWindows?: number[];
+    volume?: number;
+    allowSimultaneous?: boolean;
+};
+
+export type RecognitionSettings = {
+    recognitionEnabled?: boolean;
+    audioEnabled?: boolean;
+    cards: RecognitionCard[];
+};
+
+export type RecognitionBootstrap = {
+    settings: RecognitionSettings;
+    hotkeyError: string | null;
+};
+
+export type RecognitionSettingsForm = {
+    recognitionEnabled?: boolean;
+    audioEnabled: boolean;
+    cards: RecognitionCardForm[];
+};
+
+export type RecognitionCardForm = {
+    id: string;
+    name: string;
+    enabled: boolean;
+    triggerMode: RecognitionTriggerMode;
+    hotkey: string;
+    watchRegion: RegionRect | null;
+    watchReferenceImagePath: string;
+    watchMatchThreshold: string;
+    watchPollIntervalMs: string;
+    activationMode?: RecognitionActivationMode;
+    activationHotkey?: string;
+    activationDurationMs?: string;
+    audioEffectEnabled?: boolean;
+    hotkeyEffectEnabled?: boolean;
+    clickEffectEnabled?: boolean;
+    effectHotkey?: string;
+    clickMode?: RecognitionClickMode;
+    clickCustomRegion?: RegionRect | null;
+    clickColorProbeIndex?: string;
+    audioFiles: string[];
+    playMode: RecognitionPlayMode;
+    comboWindowMs: string;
+    comboWindows?: string[];
+    volume: string;
+    cooldownMs: string;
+    allowSimultaneous: boolean;
+    colorProbes: ColorProbeForm[];
+    colorMatchMode: ColorMatchMode;
+    colorMatchMethod: ColorMatchMethod;
+};
+
+export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
+    id: "",
+    name: "",
+    enabled: true,
+    triggerMode: "hotkey",
+    hotkey: null,
+    watchRegion: null,
+    watchReferenceImagePath: null,
+    watchMatchThreshold: 0.75,
+    watchPollIntervalMs: 500,
+    activation: {mode: "always", hotkey: null, durationMs: 10000},
+    effects: {
+        audio: {
+            audioFiles: [],
+            playMode: "single",
+            comboWindowMs: 60000,
+            comboWindows: [],
+            volume: 0.8,
+            allowSimultaneous: false,
+        },
+    },
+    cooldownMs: 1000,
+    colorProbes: [],
+    colorMatchMode: "all",
+    colorMatchMethod: "average",
+};
+
+export const DEFAULT_RECOGNITION_SETTINGS: RecognitionSettings = {
+    recognitionEnabled: true,
+    cards: [],
+};
+
+export const RECOGNITION_AUTOSAVE_DELAY_MS = 400;

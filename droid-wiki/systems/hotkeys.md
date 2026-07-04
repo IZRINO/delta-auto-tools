@@ -79,7 +79,7 @@ hold 匹配器处理组合触发键（如 `Shift+-`）。按下 `Shift+1` 会同
 - [Morse](../features/morse.md) 使用 scope `"morse"`，策略 `Strict`
 - [计时器](../features/timer.md) 和 [计数器](../features/counter.md) 使用 scope `"timer"`/`"counter"`，策略 `AllowHold`
 - [连发器](../features/rapidfire.md) 使用 hold scope `"rapidfire"`，策略 `AllowHold`
-- [音频触发器](../features/audio.md) 使用 scope `"audio"`
+- [识别触发](../features/recognition.md) 使用 scope `"recognition"`，策略 `AllowHold`
 - [全局总开关](global-state.md)：监听线程每个事件都检查 `GlobalState::enabled()`
 - [按键抑制器](key-suppressor.md)：共享 VK 集合过滤重复事件
 

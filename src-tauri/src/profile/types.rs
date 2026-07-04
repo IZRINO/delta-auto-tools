@@ -1,15 +1,15 @@
 //! 多配置 Profile 前端类型定义。
 //!
-//! 一个 Profile = 5 份工具 settings 的快照（morse/timer/counter/rapidfire/audio），
+//! 一个 Profile = 5 份工具 settings 的快照（morse/timer/counter/rapidfire/recognition），
 //! 切换 Profile 时一次性写盘 5 份 `*_settings.json` 并让各工具 reload 内存状态。
 //! 主题独立于 Profile，不打包进快照。
 
 use serde::{Deserialize, Serialize};
 
-use crate::audio::AudioSettings;
 use crate::counter::CounterSettings;
 use crate::morse::MorseSettings;
 use crate::rapidfire::RapidfireSettings;
+use crate::recognition::RecognitionSettings;
 use crate::timer::TimerSettings;
 
 /// 单个工具的配置快照。
@@ -27,8 +27,8 @@ pub struct ToolSettingsSnapshot {
     pub counter: Option<CounterSettings>,
     #[serde(default)]
     pub rapidfire: Option<RapidfireSettings>,
-    #[serde(default)]
-    pub audio: Option<AudioSettings>,
+    #[serde(default, alias = "audio")]
+    pub recognition: Option<RecognitionSettings>,
 }
 
 impl ToolSettingsSnapshot {
@@ -40,7 +40,7 @@ impl ToolSettingsSnapshot {
             timer: None,
             counter: None,
             rapidfire: None,
-            audio: None,
+            recognition: None,
         }
     }
 }
@@ -111,7 +111,39 @@ mod tests {
         assert!(snap.timer.is_none());
         assert!(snap.counter.is_none());
         assert!(snap.rapidfire.is_none());
-        assert!(snap.audio.is_none());
+        assert!(snap.recognition.is_none());
+    }
+
+    #[test]
+    fn tool_snapshot_deserializes_legacy_audio_as_recognition() {
+        let json = r#"{"audio":{"audioEnabled":true,"cards":[{"id":"c1","name":"旧卡","audioFiles":["a.mp3"]}]}}"#;
+        let snap: ToolSettingsSnapshot = serde_json::from_str(json).unwrap();
+        let recognition = snap.recognition.unwrap();
+        assert_eq!(recognition.cards[0].audio_files, vec!["a.mp3".to_string()]);
+
+        let normalized = crate::recognition::normalize_settings(recognition);
+        assert_eq!(
+            normalized.cards[0]
+                .effects
+                .audio
+                .as_ref()
+                .unwrap()
+                .audio_files,
+            vec!["a.mp3".to_string()]
+        );
+
+        let output = serde_json::to_string(&ToolSettingsSnapshot {
+            recognition: Some(normalized),
+            ..ToolSettingsSnapshot::empty()
+        })
+        .unwrap();
+        let output_json: serde_json::Value = serde_json::from_str(&output).unwrap();
+        assert!(output_json.get("recognition").is_some());
+        assert!(output_json.get("audio").is_none());
+        assert_eq!(
+            output_json["recognition"]["cards"][0]["effects"]["audio"]["audioFiles"][0],
+            "a.mp3"
+        );
     }
 
     #[test]

@@ -147,7 +147,7 @@ xychart-beta
 | 目录 | 文件数 | 平均行数/文件 |
 |------|------:|------------:|
 | `src-tauri/src/rapidfire` | 4 | 662 |
-| `src-tauri/src/audio` | 6 | 560 |
+| `src-tauri/src/recognition` | 6 | 560 |
 | `src-tauri/src/timer` | 4 | 402 |
 | `src-tauri/src/profile` | 3 | 289 |
 | `src-tauri/src/counter` | 5 | 289 |
@@ -178,7 +178,7 @@ xychart-beta
 |-----:|------|-------:|----:|-----:|----:|------:|
 | 1 | `src-tauri/src/sync_tool.rs` | 21 | 10 | 4 | 1 | 6 |
 | 2 | `src-tauri/src/hotkey_types.rs` | 18 | 10 | 3 | 5 | 0 |
-| 3 | `src-tauri/src/audio/mod.rs` | 18 | 11 | 7 | 0 | 0 |
+| 3 | `src-tauri/src/recognition/mod.rs` | 18 | 11 | 7 | 0 | 0 |
 | 4 | `src-tauri/src/logging/mod.rs` | 17 | 13 | 3 | 1 | 0 |
 | 5 | `src-tauri/src/hotkeys.rs` | 17 | 16 | 1 | 0 | 0 |
 | 6 | `src-tauri/src/counter/mod.rs` | 15 | 13 | 2 | 0 | 0 |
@@ -203,7 +203,7 @@ xychart-beta
 | 5 | `src/components/app/morse-types.ts` | 22 |
 | 6 | `src/components/app/favorites-utils.ts` | 19 |
 | 7 | `src/components/app/timer-utils.ts` | 16 |
-| 8 | `src/components/app/audio-types.ts` | 16 |
+| 8 | `src/components/app/recognition-types.ts` | 16 |
 | 9 | `src/components/app/morse-utils.ts` | 11 |
 | 10 | `src/components/app/counter-utils.ts` | 11 |
 | 11 | `src/lib/tauri-events.ts` | 9 |
@@ -219,10 +219,10 @@ xychart-beta
 | 排名 | 文件 | 行数 |
 |-----:|------|----:|
 | 1 | `src-tauri/src/rapidfire/mod.rs` | 2,106 |
-| 2 | `src-tauri/src/audio/watcher.rs` | 1,674 |
+| 2 | `src-tauri/src/recognition/watcher.rs` | 1,674 |
 | 3 | `src-tauri/src/hotkeys.rs` | 1,363 |
 | 4 | `src-tauri/src/timer/mod.rs` | 1,300 |
-| 5 | `src-tauri/src/audio/mod.rs` | 1,155 |
+| 5 | `src-tauri/src/recognition/mod.rs` | 1,155 |
 | 6 | `src-tauri/src/counter/mod.rs` | 1,107 |
 | 7 | `src-tauri/src/profile/mod.rs` | 665 |
 | 8 | `src-tauri/src/morse/recognition.rs` | 518 |
@@ -233,9 +233,9 @@ xychart-beta
 
 | 排名 | 文件 | 行数 |
 |-----:|------|----:|
-| 1 | `src/components/app/audio-page.tsx` | 1,250 |
+| 1 | `src/components/app/recognition-page.tsx` | 1,250 |
 | 2 | `src/components/app/rapidfire-page.tsx` | 1,232 |
-| 3 | `src/components/app/audio-utils.test.ts` | 803 |
+| 3 | `src/components/app/recognition-utils.test.ts` | 803 |
 | 4 | `src/components/app/rapidfire-types.ts` | 762 |
 | 5 | `src/components/app/app-ui.tsx` | 740 |
 | 6 | `src/components/app/counter-page.tsx` | 675 |

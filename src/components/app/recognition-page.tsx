@@ -1,8 +1,8 @@
-import {useCallback, useEffect, useMemo, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invoke} from "@tauri-apps/api/core";
 import {open} from "@tauri-apps/plugin-dialog";
 import {listen} from "@tauri-apps/api/event";
-import {AUDIO_EVENTS} from "@/lib/tauri-events";
+import {RECOGNITION_EVENTS} from "@/lib/tauri-events";
 import {RiArrowDownLine, RiArrowUpLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
@@ -17,6 +17,7 @@ import {
     AddCardButton,
     CardBody,
     ControlTile,
+    HotkeyField,
     MacroHeader,
     PagePreviewBanner,
     SaveStateBadge,
@@ -24,35 +25,41 @@ import {
     SignalTile,
     TacticalCard,
 } from "@/components/app/app-ui";
-import type {AudioBootstrap, AudioCard, AudioSettings, AudioSettingsForm, ColorProbeForm} from "@/components/app/audio-types";
-import {AUDIO_AUTOSAVE_DELAY_MS} from "@/components/app/audio-types";
+import type {RecognitionBootstrap, RecognitionCard, RecognitionSettings, RecognitionSettingsForm, ColorProbeForm} from "@/components/app/recognition-types";
+import {RECOGNITION_AUTOSAVE_DELAY_MS} from "@/components/app/recognition-types";
 import {
-    createEmptyAudioCard,
-    mergeAudioWatchRegionsIntoForm,
+    createEmptyRecognitionCard,
+    mergeRecognitionWatchRegionsIntoForm,
     parseSettingsForm,
     rgbToHex,
     settingsToForm
-} from "@/components/app/audio-utils";
-import {getErrorMessage, getSelectionRect} from "@/components/app/morse-utils";
+} from "@/components/app/recognition-utils";
+import {formatRecordedHotkey, getErrorMessage, getSelectionRect} from "@/components/app/morse-utils";
 import type {Point} from "@/components/app/morse-types";
 import {MIN_SELECTION_HEIGHT, MIN_SELECTION_WIDTH} from "@/components/app/morse-types";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
 import {useAutosave} from "@/hooks/use-autosave";
+import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 
-const AUDIO_BOOTSTRAP_SPEC = {
-    getBootstrapCommand: "audio_get_bootstrap",
-    saveSettingsCommand: "audio_save_settings",
+type RecognitionRecordingTarget = {
+    cardId: string;
+    field: "triggerHotkey" | "activationHotkey" | "effectHotkey";
+} | null;
+
+const RECOGNITION_BOOTSTRAP_SPEC = {
+    getBootstrapCommand: "recognition_get_bootstrap",
+    saveSettingsCommand: "recognition_save_settings",
     settingsToForm,
     parseSettingsForm,
 };
 
-export function AudioPage() {
+export function RecognitionPage() {
     const isNativeShell = useNativeShell();
-    return <AudioWorkbench isNativeShell={isNativeShell}/>;
+    return <RecognitionWorkbench isNativeShell={isNativeShell}/>;
 }
 
-function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
+function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const {
         form,
         setForm,
@@ -67,22 +74,72 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         statusMessage,
         setStatusMessage,
         autosaveVersionRef,
-    } = useBootstrapForm<AudioBootstrap, AudioSettings, AudioSettingsForm>({
-        spec: AUDIO_BOOTSTRAP_SPEC,
+    } = useBootstrapForm<RecognitionBootstrap, RecognitionSettings, RecognitionSettingsForm>({
+        spec: RECOGNITION_BOOTSTRAP_SPEC,
         isNativeShell,
-        loadStatusMessage: "正在加载音频设置...",
-        readyStatusMessage: "音频模块就绪。",
+        loadStatusMessage: "正在加载识别触发设置...",
+        readyStatusMessage: "识别触发模块就绪。",
     });
 
-    useAutosave<AudioSettingsForm>({
+    const [recordingTarget, setRecordingTarget] = useState<RecognitionRecordingTarget>(null);
+    const recordingTargetRef = useRef<RecognitionRecordingTarget>(null);
+    recordingTargetRef.current = recordingTarget;
+
+    const updateCardById = useCallback((cardId: string, patch: Partial<RecognitionSettingsForm["cards"][number]>) => {
+        setForm((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                cards: current.cards.map((card) => card.id === cardId ? {...card, ...patch} : card),
+            };
+        });
+    }, [setForm]);
+
+    const recorder = useHotkeyRecorder({
+        formatKey: formatRecordedHotkey,
+        onCommit: (key) => {
+            const target = recordingTargetRef.current;
+            if (!target) return;
+            setRecordingTarget(null);
+            const patch = target.field === "triggerHotkey"
+                ? {hotkey: key}
+                : target.field === "activationHotkey"
+                    ? {activationHotkey: key}
+                    : {effectHotkey: key};
+            updateCardById(target.cardId, patch);
+        },
+        onCancel: (draft) => {
+            const target = recordingTargetRef.current;
+            if (!target) return;
+            setRecordingTarget(null);
+            const patch = target.field === "triggerHotkey"
+                ? {hotkey: draft}
+                : target.field === "activationHotkey"
+                    ? {activationHotkey: draft}
+                    : {effectHotkey: draft};
+            updateCardById(target.cardId, patch);
+        },
+        onStatusMessage: setStatusMessage,
+        keyRecordedMessage: (key) => `新的快捷键已录制：${key}`,
+        recordingCancelledMessage: "已取消快捷键录制。",
+    });
+
+    useEffect(() => {
+        if (!isNativeShell) return;
+        void invoke("recognition_set_hotkey_recording", {recording: !!recordingTarget}).catch((error) => {
+            toast.error(getErrorMessage(error));
+        });
+    }, [isNativeShell, recordingTarget]);
+
+    useAutosave<RecognitionSettingsForm>({
         form,
         isDirty,
-        disabled: !isNativeShell || loading || !form,
+        disabled: !isNativeShell || loading || !form || !!recordingTarget,
         onSave: (formSnapshot, nextVersion) => saveSettings(parseSettingsForm(formSnapshot), nextVersion),
         onError: (message) => {
             toast.error(`保存失败：${message}`);
         },
-        delay: AUDIO_AUTOSAVE_DELAY_MS,
+        delay: RECOGNITION_AUTOSAVE_DELAY_MS,
         autosaveVersionRef,
     });
 
@@ -94,17 +151,17 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         let unlistenHotkeyTriggered: (() => void) | undefined;
         let unlistenRegionMatched: (() => void) | undefined;
 
-        void listen<AudioBootstrap>(AUDIO_EVENTS.stateChanged, (event) => {
+        void listen<RecognitionBootstrap>(RECOGNITION_EVENTS.stateChanged, (event) => {
             if (disposed) return;
             const next = event.payload;
             setBootstrap(next);
-            setForm((current) => mergeAudioWatchRegionsIntoForm(current, next.settings));
+            setForm((current) => mergeRecognitionWatchRegionsIntoForm(current, next.settings));
             setPageError(null);
         }).then((dispose) => {
             unlistenStateChanged = dispose;
         });
 
-        void listen<string>(AUDIO_EVENTS.hotkeyError, (event) => {
+        void listen<string>(RECOGNITION_EVENTS.hotkeyError, (event) => {
             if (disposed) return;
             setPageError(event.payload);
             setStatusMessage(event.payload);
@@ -113,7 +170,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenHotkeyError = dispose;
         });
 
-        void listen<string>(AUDIO_EVENTS.hotkeyTriggered, (event) => {
+        void listen<string>(RECOGNITION_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) return;
             toast.info(`快捷键触发：卡片 ${event.payload}`);
             setStatusMessage(`快捷键触发：卡片 ${event.payload}`);
@@ -121,7 +178,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             unlistenHotkeyTriggered = dispose;
         });
 
-        void listen<string>(AUDIO_EVENTS.regionMatched, (event) => {
+        void listen<string>(RECOGNITION_EVENTS.regionMatched, (event) => {
             if (disposed) return;
             toast.info(`区域匹配触发：卡片 ${event.payload}`);
             setStatusMessage(`区域匹配触发：卡片 ${event.payload}`);
@@ -141,7 +198,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const handleAddCard = useCallback(() => {
         setForm((current) => {
             if (!current) return current;
-            const newCard = cardToForm(createEmptyAudioCard());
+            const newCard = cardToForm(createEmptyRecognitionCard());
             return {...current, cards: [...current.cards, newCard]};
         });
     }, [setForm]);
@@ -154,7 +211,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     }, [setForm]);
 
     const handleUpdateCard = useCallback(
-        (index: number, patch: Partial<AudioSettingsForm["cards"][number]>) => {
+        (index: number, patch: Partial<RecognitionSettingsForm["cards"][number]>) => {
             setForm((current) => {
                 if (!current) return current;
                 const nextCards = current.cards.map((card, i) => (i === index ? {...card, ...patch} : card));
@@ -164,6 +221,28 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [setForm],
     );
 
+    const beginHotkeyRecording = useCallback((card: RecognitionSettingsForm["cards"][number], field: NonNullable<RecognitionRecordingTarget>["field"]) => {
+        const currentValue = field === "triggerHotkey"
+            ? card.hotkey
+            : field === "activationHotkey"
+                ? card.activationHotkey ?? ""
+                : card.effectHotkey ?? "";
+        setRecordingTarget({cardId: card.id, field});
+        recorder.beginRecording(currentValue);
+        setStatusMessage(`正在录制 ${card.name || "识别卡片"} 的快捷键，按下主键会保存；失焦会取消。`);
+    }, [recorder, setStatusMessage]);
+
+    const handleHotkeyRecorderKeyDown = useCallback((
+        card: RecognitionSettingsForm["cards"][number],
+        field: NonNullable<RecognitionRecordingTarget>["field"],
+        event: React.KeyboardEvent<HTMLButtonElement>,
+    ) => {
+        if (recordingTarget?.cardId !== card.id || recordingTarget.field !== field) {
+            return;
+        }
+        recorder.handleKeyDown(event);
+    }, [recordingTarget, recorder]);
+
     // 操作前强制把当前 form 落盘到后端内存：避免「新建卡片/改字段后未等 400ms autosave 落地就调后端命令」
     // 导致后端按 cardId 查不到卡或读到旧字段（「卡片不存在」/「只有识色模式才可测试」）。
     // 直接 invoke save 命令、不经 useBootstrapForm.saveSettings，不重置前端 form 草稿；
@@ -171,7 +250,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const flushSettings = useCallback(async (): Promise<void> => {
         if (!isNativeShell || !form) return;
         try {
-            await invoke(AUDIO_BOOTSTRAP_SPEC.saveSettingsCommand, {
+            await invoke(RECOGNITION_BOOTSTRAP_SPEC.saveSettingsCommand, {
                 settingsValue: parseSettingsForm(form),
             });
         } catch (error) {
@@ -189,7 +268,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             if (!isNativeShell) return;
             try {
                 await flushSettings();
-                await invoke("audio_test_play", {cardId});
+                await invoke("recognition_test_play", {cardId});
                 toast.success("播放测试已触发");
             } catch (error) {
                 if (error instanceof Error && error.name === "FlushSettingsError") return;
@@ -205,7 +284,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             try {
                 await flushSettings();
                 type TestMatchResult = { similarity: number; triggered: boolean; matchPosition: { x: number; y: number } | null };
-                const result = await invoke<TestMatchResult>("audio_test_match", {cardId});
+                const result = await invoke<TestMatchResult>("recognition_test_match", {cardId});
                 const pos = result.matchPosition ? ` (位置: ${result.matchPosition.x}, ${result.matchPosition.y})` : "";
                 toast.success(
                     `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}${pos}`
@@ -219,11 +298,11 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     );
 
     const handleBeginRegionSelection = useCallback(
-        async (cardId: string, probeIndex?: number) => {
+        async (cardId: string, probeIndex?: number, selectionTarget?: string) => {
             if (!isNativeShell) return;
             try {
                 await flushSettings();
-                await invoke("audio_begin_region_selection", {cardId, probeIndex});
+                await invoke("recognition_begin_region_selection", {cardId, probeIndex, selectionTarget});
             } catch (error) {
                 if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
@@ -260,7 +339,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             };
             try {
                 await flushSettings();
-                const result = await invoke<ColorTestResult>("audio_test_color_match", {cardId});
+                const result = await invoke<ColorTestResult>("recognition_test_color_match", {cardId});
                 const detail = result.probes
                     .map((p, i) => {
                         const sample = p.sampledColor.map((v) => v.toString(16).padStart(2, "0")).join("");
@@ -332,7 +411,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         async (cardId: string): Promise<string | null> => {
             if (!isNativeShell) return null;
             try {
-                const dataUrl = await invoke<string>("audio_read_reference_image", {cardId});
+                const dataUrl = await invoke<string>("recognition_read_reference_image", {cardId});
                 return dataUrl;
             } catch {
                 return null;
@@ -444,7 +523,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [setForm],
     );
 
-    const enabled = form?.audioEnabled ?? false;
+    const enabled = form?.recognitionEnabled ?? form?.audioEnabled ?? false;
     const cardCount = form?.cards.length ?? 0;
     const activeCards = form?.cards.filter((c) => c.enabled).length ?? 0;
 
@@ -453,9 +532,9 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             <MacroHeader
                 className="col-span-12"
                 code="A-04"
-                title="AUDIO / 音频"
-                verticalLabel="音频"
-                subtitle="快捷键触发或区域监听+图像匹配触发音频播放。"
+                title="RECOGNITION / 识别触发"
+                verticalLabel="识别"
+                subtitle="快捷键、图像匹配或识色触发音频、按键与点击效果。"
                 badges={
                     <>
                         <Badge variant={enabled ? "default" : "outline"}>{enabled ? "已启用" : "已禁用"}</Badge>
@@ -487,8 +566,11 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                         <div className="flex items-center gap-3">
                             <Switch
                                 checked={enabled}
-                                onCheckedChange={(v) => updateForm("audioEnabled", v)}
-                                aria-label="音频总开关"
+                                onCheckedChange={(v) => {
+                                    updateForm("recognitionEnabled", v);
+                                    updateForm("audioEnabled", v);
+                                }}
+                                aria-label="识别触发总开关"
                             />
                             <span
                                 className="font-mono text-xs font-semibold text-base-content">
@@ -500,10 +582,10 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             </TacticalCard>
 
             <TacticalCard className="col-span-12 mt-3">
-                <SectionHeader eyebrow="音频卡片" title="音频卡片" />
+                <SectionHeader eyebrow="识别卡片" title="识别触发卡片" />
                 <section className="@container grid min-h-0 gap-3 p-3 @xl:grid-cols-2">
                     {form?.cards.map((card, index) => (
-                        <AudioCardEditor
+                        <RecognitionCardEditor
                             key={card.id}
                             card={card}
                             index={index}
@@ -513,6 +595,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onTestPlay={() => handleTestPlay(card.id)}
                             onTestMatch={() => handleTestMatch(card.id)}
                             onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
+                            onBeginCustomClickSelection={() => handleBeginRegionSelection(card.id, undefined, "customClick")}
                             onPickReferenceImage={() => handlePickReferenceImage(index)}
                             onPickAudioFile={() => handlePickAudioFile(index)}
                             onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
@@ -523,13 +606,17 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onAddColorProbe={() => handleAddColorProbe(index)}
                             onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
                             onUpdateColorProbe={(probeIndex, patch) => handleUpdateColorProbe(index, probeIndex, patch)}
+                            recordingTarget={recordingTarget}
+                            onBeginHotkeyRecording={(field) => beginHotkeyRecording(card, field)}
+                            onHotkeyKeyDown={(field, event) => handleHotkeyRecorderKeyDown(card, field, event)}
+                            onHotkeyRecorderBlur={recorder.handleBlur}
                         />
                     ))}
                     <AddCardButton
                         className="min-h-36"
                         disabled={!isNativeShell || loading}
-                        title="新增音频卡片"
-                        description="添加新的快捷键触发或区域监听音频卡片。"
+                        title="新增识别卡片"
+                        description="添加新的快捷键、区域监听或识色触发卡片。"
                         onClick={handleAddCard}
                     />
                 </section>
@@ -538,7 +625,7 @@ function AudioWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     );
 }
 
-function AudioCardEditor({
+function RecognitionCardEditor({
                              card,
                              index,
                              isNativeShell,
@@ -547,6 +634,7 @@ function AudioCardEditor({
                              onTestPlay,
                              onTestMatch,
                              onBeginRegionSelection,
+                             onBeginCustomClickSelection,
                              onPickReferenceImage,
                              onPickAudioFile,
                              onRemoveAudioFile,
@@ -557,15 +645,20 @@ function AudioCardEditor({
                              onAddColorProbe,
                              onRemoveColorProbe,
                              onUpdateColorProbe,
+                             recordingTarget,
+                             onBeginHotkeyRecording,
+                             onHotkeyKeyDown,
+                             onHotkeyRecorderBlur,
                          }: {
-    card: AudioSettingsForm["cards"][number];
+    card: RecognitionSettingsForm["cards"][number];
     index: number;
     isNativeShell: boolean;
-    onUpdate: (patch: Partial<AudioSettingsForm["cards"][number]>) => void;
+    onUpdate: (patch: Partial<RecognitionSettingsForm["cards"][number]>) => void;
     onRemove: () => void;
     onTestPlay: () => void;
     onTestMatch: () => void;
     onBeginRegionSelection: (probeIndex?: number) => void;
+    onBeginCustomClickSelection: () => void;
     onPickReferenceImage: () => void;
     onPickAudioFile: () => void;
     onRemoveAudioFile: (fileIndex: number) => void;
@@ -576,10 +669,17 @@ function AudioCardEditor({
     onAddColorProbe: () => void;
     onRemoveColorProbe: (probeIndex: number) => void;
     onUpdateColorProbe: (probeIndex: number, patch: Partial<ColorProbeForm>) => void;
+    recordingTarget: RecognitionRecordingTarget;
+    onBeginHotkeyRecording: (field: NonNullable<RecognitionRecordingTarget>["field"]) => void;
+    onHotkeyKeyDown: (field: NonNullable<RecognitionRecordingTarget>["field"], event: React.KeyboardEvent<HTMLButtonElement>) => void;
+    onHotkeyRecorderBlur: () => void;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
     const isRegion = card.triggerMode === "regionWatch";
     const isColor = card.triggerMode === "colorWatch";
+    const audioEffectEnabled = card.audioEffectEnabled ?? true;
+    const hotkeyEffectEnabled = card.hotkeyEffectEnabled ?? false;
+    const clickEffectEnabled = card.clickEffectEnabled ?? false;
 
     // 参考图像预览
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -661,16 +761,64 @@ function AudioCardEditor({
 
                 {isHotkey && (
                     <FieldGroup>
+                        <HotkeyField
+                            controlsDisabled={!isNativeShell}
+                            hotkey={card.hotkey}
+                            id={`${card.id}-trigger-hotkey`}
+                            isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "triggerHotkey"}
+                            onBeginHotkeyRecording={() => onBeginHotkeyRecording("triggerHotkey")}
+                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", event)}
+                            onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                        />
+                    </FieldGroup>
+                )}
+
+                {!isHotkey && (
+                    <FieldGroup>
                         <Field>
-                            <FieldLabel>快捷键</FieldLabel>
+                            <FieldLabel>识别激活方式</FieldLabel>
                             <FieldContent>
-                                <Input
-                                    value={card.hotkey}
-                                    onChange={(e) => onUpdate({hotkey: e.target.value})}
-                                    placeholder="输入快捷键，如 Ctrl+F1..."
-                                />
+                                <Select
+                                    value={card.activationMode ?? "always"}
+                                    onValueChange={(v) => onUpdate({activationMode: v as "always" | "onceHotkey" | "timedHotkey"})}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="always">持续识别</SelectItem>
+                                        <SelectItem value="onceHotkey">按快捷键识别一次</SelectItem>
+                                        <SelectItem value="timedHotkey">按快捷键限时识别</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </FieldContent>
                         </Field>
+                        {(card.activationMode ?? "always") !== "always" && (
+                            <HotkeyField
+                                controlsDisabled={!isNativeShell}
+                                hotkey={card.activationHotkey ?? ""}
+                                id={`${card.id}-activation-hotkey`}
+                                isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "activationHotkey"}
+                                onBeginHotkeyRecording={() => onBeginHotkeyRecording("activationHotkey")}
+                                onHotkeyKeyDown={(event) => onHotkeyKeyDown("activationHotkey", event)}
+                                onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                            />
+                        )}
+                        {(card.activationMode ?? "always") === "timedHotkey" && (
+                            <Field>
+                                <FieldLabel>限时时长 (ms)</FieldLabel>
+                                <FieldContent>
+                                    <Input
+                                        type="number"
+                                        min={100}
+                                        max={600000}
+                                        step={1000}
+                                        value={card.activationDurationMs ?? "10000"}
+                                        onChange={(e) => onUpdate({activationDurationMs: e.target.value})}
+                                    />
+                                </FieldContent>
+                            </Field>
+                        )}
                     </FieldGroup>
                 )}
 
@@ -971,24 +1119,134 @@ function AudioCardEditor({
 
                 <FieldGroup>
                     <Field>
-                        <FieldLabel>播放方式</FieldLabel>
+                        <FieldLabel>触发效果</FieldLabel>
                         <FieldContent>
-                            <Select
-                                value={card.playMode}
-                                onValueChange={(v) => onUpdate({playMode: v as AudioCard["playMode"]})}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="single">单文件</SelectItem>
-                                    <SelectItem value="combo">连杀（窗口内顺序递增）</SelectItem>
-                                    <SelectItem value="random">随机（不重复上一次）</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                                <label className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-2 text-xs font-medium">
+                                    <Switch
+                                        checked={audioEffectEnabled}
+                                        onCheckedChange={(checked) => onUpdate({audioEffectEnabled: checked})}
+                                    />
+                                    播放音频
+                                </label>
+                                <label className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-2 text-xs font-medium">
+                                    <Switch
+                                        checked={hotkeyEffectEnabled}
+                                        onCheckedChange={(checked) => onUpdate({hotkeyEffectEnabled: checked})}
+                                    />
+                                    按快捷键
+                                </label>
+                                <label className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-2 text-xs font-medium">
+                                    <Switch
+                                        checked={clickEffectEnabled}
+                                        onCheckedChange={(checked) => onUpdate({clickEffectEnabled: checked})}
+                                    />
+                                    点击
+                                </label>
+                            </div>
                         </FieldContent>
                     </Field>
-                    {card.playMode === "combo" && (
+
+                    {hotkeyEffectEnabled && (
+                        <HotkeyField
+                            controlsDisabled={!isNativeShell}
+                            hotkey={card.effectHotkey ?? ""}
+                            id={`${card.id}-effect-hotkey`}
+                            isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey"}
+                            onBeginHotkeyRecording={() => onBeginHotkeyRecording("effectHotkey")}
+                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("effectHotkey", event)}
+                            onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                        />
+                    )}
+
+                    {clickEffectEnabled && (
+                        <>
+                            <Field>
+                                <FieldLabel>点击目标</FieldLabel>
+                                <FieldContent>
+                                    <Select
+                                        value={card.clickMode ?? "customRegion"}
+                                        onValueChange={(v) => onUpdate({clickMode: v as "customRegion" | "recognitionRegion"})}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="customRegion">自定义区域中心</SelectItem>
+                                            <SelectItem value="recognitionRegion" disabled={isHotkey}>识别命中中心</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </FieldContent>
+                            </Field>
+                            {(card.clickMode ?? "customRegion") === "customRegion" ? (
+                                <Field>
+                                    <FieldLabel>自定义点击区域</FieldLabel>
+                                    <FieldContent>
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={onBeginCustomClickSelection}
+                                                data-icon="inline-start"
+                                            >
+                                                <RiVolumeUpLine className="size-4" aria-hidden="true"/>
+                                                {card.clickCustomRegion ? "重新框选" : "框选区域"}
+                                            </Button>
+                                            {card.clickCustomRegion && (
+                                                <Badge variant="outline" className="font-mono text-xs">
+                                                    {card.clickCustomRegion.x},{card.clickCustomRegion.y} / {card.clickCustomRegion.width}x{card.clickCustomRegion.height}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </FieldContent>
+                                </Field>
+                            ) : isColor ? (
+                                <Field>
+                                    <FieldLabel>识色点击探针</FieldLabel>
+                                    <FieldContent>
+                                        <Select
+                                            value={card.clickColorProbeIndex ?? ""}
+                                            onValueChange={(value) => onUpdate({clickColorProbeIndex: value})}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="选择探针"/>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {card.colorProbes.map((_, probeIndex) => (
+                                                    <SelectItem key={probeIndex} value={String(probeIndex)}>
+                                                        探针 #{probeIndex + 1}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </FieldContent>
+                                </Field>
+                            ) : null}
+                        </>
+                    )}
+                </FieldGroup>
+
+                {audioEffectEnabled && (
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel>播放方式</FieldLabel>
+                            <FieldContent>
+                                <Select
+                                    value={card.playMode}
+                                    onValueChange={(v) => onUpdate({playMode: v as RecognitionCard["playMode"]})}
+                                >
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue/>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="single">单文件</SelectItem>
+                                        <SelectItem value="combo">连杀（窗口内顺序递增）</SelectItem>
+                                        <SelectItem value="random">随机（不重复上一次）</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FieldContent>
+                        </Field>
+                        {card.playMode === "combo" && (
                         <Field>
                             <FieldLabel>默认连杀窗口 (ms)</FieldLabel>
                             <FieldContent>
@@ -1003,20 +1261,20 @@ function AudioCardEditor({
                                 />
                             </FieldContent>
                         </Field>
-                    )}
-                    <Field>
-                        <FieldLabel>
-                            音频文件
-                            {card.playMode === "combo" && "（顺序即连杀顺序）"}
-                            {card.playMode === "random" && "（至少 2 个）"}
-                        </FieldLabel>
-                        <FieldContent>
-                            <div className="flex flex-col gap-2">
-                                {(card.audioFiles ?? []).length === 0 ? (
-                                    <p className="text-xs text-base-content/60">尚未添加音频文件。</p>
-                                ) : (
-                                    <ul className="flex flex-col gap-1">
-                                        {(card.audioFiles ?? []).map((file, fileIndex) => (
+                        )}
+                        <Field>
+                            <FieldLabel>
+                                音频文件
+                                {card.playMode === "combo" && "（顺序即连杀顺序）"}
+                                {card.playMode === "random" && "（至少 2 个）"}
+                            </FieldLabel>
+                            <FieldContent>
+                                <div className="flex flex-col gap-2">
+                                    {(card.audioFiles ?? []).length === 0 ? (
+                                        <p className="text-xs text-base-content/60">尚未添加音频文件。</p>
+                                    ) : (
+                                        <ul className="flex flex-col gap-1">
+                                            {(card.audioFiles ?? []).map((file, fileIndex) => (
                                             <li
                                                 key={`${file}-${fileIndex}`}
                                                 className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-1"
@@ -1072,36 +1330,50 @@ function AudioCardEditor({
                                                     <RiDeleteBinLine className="size-4" aria-hidden="true"/>
                                                 </Button>
                                             </li>
-                                        ))}
-                                    </ul>
-                                )}
-                                <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={onPickAudioFile}
-                                    disabled={!isNativeShell}
-                                    title={isNativeShell ? "浏览并添加音频文件（可多选）" : "仅在桌面端可用"}
-                                    data-icon="inline-start"
-                                >
-                                    <RiFolderOpenLine className="size-4" aria-hidden="true"/>
-                                    添加音频文件...
-                                </Button>
-                            </div>
-                        </FieldContent>
-                    </Field>
-                    <Field>
-                        <FieldLabel>音量</FieldLabel>
-                        <FieldContent>
-                            <Input
-                                type="number"
-                                min={0}
-                                max={1}
-                                step={0.1}
-                                value={card.volume}
-                                onChange={(e) => onUpdate({volume: e.target.value})}
-                            />
-                        </FieldContent>
-                    </Field>
+                                            ))}
+                                        </ul>
+                                    )}
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={onPickAudioFile}
+                                        disabled={!isNativeShell}
+                                        title={isNativeShell ? "浏览并添加音频文件（可多选）" : "仅在桌面端可用"}
+                                        data-icon="inline-start"
+                                    >
+                                        <RiFolderOpenLine className="size-4" aria-hidden="true"/>
+                                        添加音频文件...
+                                    </Button>
+                                </div>
+                            </FieldContent>
+                        </Field>
+                        <Field>
+                            <FieldLabel>音量</FieldLabel>
+                            <FieldContent>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    max={1}
+                                    step={0.1}
+                                    value={card.volume}
+                                    onChange={(e) => onUpdate({volume: e.target.value})}
+                                />
+                            </FieldContent>
+                        </Field>
+                        <Field>
+                            <FieldLabel>允许同时播放</FieldLabel>
+                            <FieldContent>
+                                <Switch
+                                    checked={card.allowSimultaneous}
+                                    onCheckedChange={(checked) => onUpdate({allowSimultaneous: checked})}
+                                    title="开启后此卡片音频可与其他卡片同时播放（默认互斥）"
+                                />
+                            </FieldContent>
+                        </Field>
+                    </FieldGroup>
+                )}
+
+                <FieldGroup>
                     <Field>
                         <FieldLabel>触发冷却 (ms)</FieldLabel>
                         <FieldContent>
@@ -1116,23 +1388,23 @@ function AudioCardEditor({
                             />
                         </FieldContent>
                     </Field>
-                    <Field>
-                        <FieldLabel>允许同时播放</FieldLabel>
-                        <FieldContent>
-                            <Switch
-                                checked={card.allowSimultaneous}
-                                onCheckedChange={(checked) => onUpdate({allowSimultaneous: checked})}
-                                title="开启后此卡片音频可与其他卡片同时播放（默认互斥）"
-                            />
-                        </FieldContent>
-                    </Field>
                 </FieldGroup>
             </div>
         </div>
     );
 }
 
-function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
+function cardToForm(card: RecognitionCard): RecognitionSettingsForm["cards"][number] {
+    const audio = card.effects?.audio ?? (card.audioFiles && card.audioFiles.length > 0 ? {
+        audioFiles: card.audioFiles,
+        playMode: card.playMode ?? "single",
+        comboWindowMs: card.comboWindowMs ?? 60000,
+        comboWindows: card.comboWindows ?? [],
+        volume: card.volume ?? 0.8,
+        allowSimultaneous: card.allowSimultaneous ?? false,
+    } : null);
+    const activation = card.activation ?? {mode: "always", hotkey: null, durationMs: 10000};
+    const click = card.effects?.click ?? null;
     return {
         id: card.id,
         name: card.name,
@@ -1143,12 +1415,23 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
         watchReferenceImagePath: card.watchReferenceImagePath ?? "",
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
-        audioFiles: card.audioFiles ?? [],
-        playMode: card.playMode ?? "single",
-        comboWindowMs: String(card.comboWindowMs ?? 60000),
-        volume: String(card.volume),
+        activationMode: activation.mode,
+        activationHotkey: activation.hotkey ?? "",
+        activationDurationMs: String(activation.durationMs),
+        audioEffectEnabled: Boolean(audio),
+        hotkeyEffectEnabled: Boolean(card.effects?.hotkey),
+        clickEffectEnabled: Boolean(click),
+        effectHotkey: card.effects?.hotkey?.hotkey ?? "",
+        clickMode: click?.mode ?? "customRegion",
+        clickCustomRegion: click?.customRegion ?? null,
+        clickColorProbeIndex: click?.colorProbeIndex == null ? "" : String(click.colorProbeIndex),
+        audioFiles: audio?.audioFiles ?? [],
+        playMode: audio?.playMode ?? "single",
+        comboWindowMs: String(audio?.comboWindowMs ?? 60000),
+        comboWindows: (audio?.audioFiles ?? []).map((_, i) => String((audio?.comboWindows ?? [])[i] ?? audio?.comboWindowMs ?? 60000)),
+        volume: String(audio?.volume ?? 0.8),
         cooldownMs: String(card.cooldownMs),
-        allowSimultaneous: card.allowSimultaneous ?? false,
+        allowSimultaneous: audio?.allowSimultaneous ?? false,
         colorProbes: (card.colorProbes ?? []).map((p) => ({
             region: p.region,
             targets: (p.targets ?? []).map((t) => ({
@@ -1162,9 +1445,10 @@ function cardToForm(card: AudioCard): AudioSettingsForm["cards"][number] {
     };
 }
 
-export function AudioRegionOverlay() {
+export function RecognitionRegionOverlay() {
     const params = useMemo(() => new URLSearchParams(window.location.search), []);
-    const cardId = params.get("audio_card") ?? "";
+    const cardId = params.get("recognition_card") ?? "";
+    const selectionTarget = params.get("selection_target") ?? undefined;
     // 识色模式探针框选时透传的探针索引；区域监听模式为 null
     const probeIndex = useMemo(() => {
         const raw = params.get("probe_index");
@@ -1196,7 +1480,7 @@ export function AudioRegionOverlay() {
         setSubmitting(true);
         setStatusMessage("正在取消...");
         try {
-            await invoke("audio_overlay_cancel_selection", {cardId});
+            await invoke("recognition_overlay_cancel_selection", {cardId});
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
             setSubmitting(false);
@@ -1213,12 +1497,12 @@ export function AudioRegionOverlay() {
         setSubmitting(true);
         setStatusMessage("正在提交...");
         try {
-            await invoke("audio_overlay_submit_selection", {cardId, probeIndex, region: rect});
+            await invoke("recognition_overlay_submit_selection", {cardId, probeIndex, selectionTarget, region: rect});
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
             setSubmitting(false);
         }
-    }, [cardId, probeIndex, committedRect, submitting]);
+    }, [cardId, probeIndex, selectionTarget, committedRect, submitting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1295,7 +1579,7 @@ export function AudioRegionOverlay() {
 
             <div
                 className="pointer-events-none absolute left-6 top-6 max-w-md border border-white/40 bg-base-100/88 px-4 py-4 text-base-content backdrop-blur-md">
-                <h1 className="text-lg font-semibold text-base-content">音频区域选择</h1>
+                <h1 className="text-lg font-semibold text-base-content">识别区域选择</h1>
                 <p className="mt-2 text-sm text-base-content/60">{statusMessage}</p>
                 {displayRect && (
                     <p className="mt-3 border border-base-300 bg-base-200/80 px-3 py-2 font-mono text-xs text-base-content/60">

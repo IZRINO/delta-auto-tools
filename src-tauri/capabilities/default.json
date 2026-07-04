@@ -17,8 +17,8 @@
     "rapidfire-display-*",
     "rapidfire-position",
     "rapidfire-position-*",
-    "audio-overlay",
-    "audio-overlay-*",
+    "recognition-overlay",
+    "recognition-overlay-*",
     "strategy-view-*",
     "strategy-content"
   ],

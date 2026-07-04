@@ -32,7 +32,7 @@ const overlayWindowModes = new Set([
     "counter-position",
     "rapidfire-display",
     "rapidfire-position",
-    "audio-overlay",
+    "recognition-overlay",
 ]);
 
 const MorsePage = lazy(() =>
@@ -53,12 +53,12 @@ const StrategyPage = lazy(() =>
 const FavoritesPage = lazy(() =>
     import("@/components/app/favorites-page").then((module) => ({default: module.FavoritesPage})),
 );
-const AudioPage = lazy(() =>
-    import("@/components/app/audio-page").then((module) => ({default: module.AudioPage})),
+const RecognitionPage = lazy(() =>
+    import("@/components/app/recognition-page").then((module) => ({default: module.RecognitionPage})),
 );
 
-const AudioRegionOverlay = lazy(() =>
-    import("@/components/app/audio-page").then((module) => ({default: module.AudioRegionOverlay})),
+const RecognitionRegionOverlay = lazy(() =>
+    import("@/components/app/recognition-page").then((module) => ({default: module.RecognitionRegionOverlay})),
 );
 
 const SettingsDialog = lazy(() =>
@@ -70,7 +70,7 @@ const tools = [
     {id: "counter" as const, icon: RiSpeedUpLine, label: "计数器", short: "Counter"},
     {id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire"},
     {id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy"},
-    {id: "audio" as const, icon: RiVolumeUpLine, label: "音频", short: "Audio"},
+    {id: "recognition" as const, icon: RiVolumeUpLine, label: "识别触发", short: "Recognition"},
 ];
 
 const deltaTools = [
@@ -126,8 +126,8 @@ function renderToolPage(
             return <FavoritesPage onNavigate={onNavigateFavorite}/>;
         case "strategy":
             return <StrategyPage/>;
-        case "audio":
-            return <AudioPage/>;
+        case "recognition":
+            return <RecognitionPage/>;
         case "morse":
             return <MorsePage/>;
     }
@@ -408,10 +408,10 @@ function AppShell() {
         );
     }
 
-    if (overlayMode === "audio-overlay") {
+    if (overlayMode === "recognition-overlay") {
         return (
             <ToolPageSuspense fallback={null}>
-                <AudioRegionOverlay/>
+                <RecognitionRegionOverlay/>
             </ToolPageSuspense>
         );
     }
@@ -439,7 +439,7 @@ function AppShell() {
                 </div>
                 <div className="navbar-center hidden min-w-0 items-center gap-3 lg:flex">
                     <span className="badge badge-primary badge-sm">
-                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "audio" ? "05" : "D1"}
+                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "recognition" ? "05" : "D1"}
                     </span>
                         <div className="min-w-0">
                             <p className="truncate text-sm font-medium">

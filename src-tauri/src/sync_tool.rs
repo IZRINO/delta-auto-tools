@@ -298,7 +298,7 @@ impl SyncToolRegistry {
 }
 
 // ── ToolLifecycleRegistry ────────────────────────────────────────
-// 统一所有工具（含非 SyncToolLogic 工具如 morse/audio）的停止入口。
+// 统一所有工具（含非 SyncToolLogic 工具如 morse/recognition）的停止入口。
 // stop_all 按注册顺序调用各 handler，幂等不 panic。
 
 /// 工具生命周期停止回调。
@@ -658,7 +658,6 @@ mod tests {
 
         // 直接调用 ok_handler 验证其行为
         // （fn pointer handler 无法通过闭包记录调用，使用 thread_local 替代）
-        let app_handle_ref: Option<&AppHandle> = None;
         // 由于我们没有 AppHandle，无法直接调用 handler。
         // 但我们可以通过 stop_all_with_recording 验证（如果有 AppHandle 的话）
         // 这里验证 registered_names 和 handler 签名正确性
@@ -690,7 +689,7 @@ mod tests {
         let mut registry = ToolLifecycleRegistry::default();
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
         for name in &names {
             let log = Arc::clone(&call_log);
             let name_owned = name.to_string();
@@ -806,7 +805,7 @@ mod tests {
     fn lifecycle_registry_stop_all_respects_order() {
         let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "audio"];
+        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
         let mut registry = ToolLifecycleRegistry::default();
 
         for name in &names {

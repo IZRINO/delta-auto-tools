@@ -1,6 +1,6 @@
 //! 多配置 Profile 模块。
 //!
-//! 一个 Profile = 5 份工具 settings 快照（morse/timer/counter/rapidfire/audio）。
+//! 一个 Profile = 5 份工具 settings 快照（morse/timer/counter/rapidfire/recognition）。
 //! 切换 Profile 时：
 //! 1. 先停止所有运行态会话（rapidfire/timer/counter）
 //! 2. 把目标 Profile 的 5 份 settings 写盘（统一走 `settings::save_settings`）
@@ -19,10 +19,10 @@ use std::{fs, path::Path, sync::Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::audio;
 use crate::counter;
 use crate::morse;
 use crate::rapidfire;
+use crate::recognition;
 use crate::settings as common_settings;
 use crate::timer;
 
@@ -33,7 +33,7 @@ const MORSE_FILE: &str = "morse_settings.json";
 const TIMER_FILE: &str = "timer_settings.json";
 const COUNTER_FILE: &str = "counter_settings.json";
 const RAPIDFIRE_FILE: &str = "rapidfire_settings.json";
-const AUDIO_FILE: &str = "audio_settings.json";
+const RECOGNITION_FILE: &str = "recognition_settings.json";
 
 /// Profile 模块运行时状态。
 pub struct ProfileState {
@@ -99,7 +99,7 @@ fn build_default_snapshot() -> types::ToolSettingsSnapshot {
         timer: Some(timer::TimerSettings::default()),
         counter: Some(counter::CounterSettings::default()),
         rapidfire: Some(rapidfire::RapidfireSettings::default()),
-        audio: Some(audio::AudioSettings::default()),
+        recognition: Some(recognition::RecognitionSettings::default()),
     }
 }
 
@@ -412,7 +412,7 @@ pub(crate) enum ActiveProfileSnapshotPatch {
     Timer(timer::TimerSettings),
     Counter(counter::CounterSettings),
     Rapidfire(rapidfire::RapidfireSettings),
-    Audio(audio::AudioSettings),
+    Recognition(recognition::RecognitionSettings),
 }
 
 #[allow(dead_code)]
@@ -444,7 +444,9 @@ pub(crate) fn update_active_profile_snapshot(
         ActiveProfileSnapshotPatch::Timer(value) => profile.snapshot.timer = Some(value),
         ActiveProfileSnapshotPatch::Counter(value) => profile.snapshot.counter = Some(value),
         ActiveProfileSnapshotPatch::Rapidfire(value) => profile.snapshot.rapidfire = Some(value),
-        ActiveProfileSnapshotPatch::Audio(value) => profile.snapshot.audio = Some(value),
+        ActiveProfileSnapshotPatch::Recognition(value) => {
+            profile.snapshot.recognition = Some(value)
+        }
     }
     profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
     settings::save_settings(app, &settings)
@@ -491,12 +493,12 @@ fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnaps
         })
         .transpose()?;
 
-    let audio_settings = app
-        .try_state::<audio::AudioState>()
+    let recognition_settings = app
+        .try_state::<recognition::RecognitionState>()
         .map(|s| {
             s.lock_inner()
                 .map(|inner| inner.settings.clone())
-                .map_err(|_| "音频状态已损坏".to_string())
+                .map_err(|_| "识别触发状态已损坏".to_string())
         })
         .transpose()?;
 
@@ -508,7 +510,7 @@ fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnaps
         timer: timer_settings,
         counter: counter_settings,
         rapidfire: rapidfire_settings,
-        audio: audio_settings,
+        recognition: recognition_settings,
     })
 }
 
@@ -534,7 +536,7 @@ fn apply_snapshot_to_tools(
         counter::stop_all(app, &counter_state);
     }
 
-    // 2. 写盘 5 份 settings（统一走公共 helper；audio 也用同一套，绕开其私有 write_settings）
+    // 2. 写盘 5 份 settings（统一走公共 helper；recognition 也用同一套，绕开其私有 write_settings）
     if let Some(m) = &snapshot.morse {
         let path = common_settings::settings_path(app, MORSE_FILE)?;
         common_settings::save_settings(&path, m)?;
@@ -551,9 +553,10 @@ fn apply_snapshot_to_tools(
         let path = common_settings::settings_path(app, RAPIDFIRE_FILE)?;
         common_settings::save_settings(&path, r)?;
     }
-    if let Some(a) = &snapshot.audio {
-        let path = common_settings::settings_path(app, AUDIO_FILE)?;
-        common_settings::save_settings(&path, a)?;
+    if let Some(a) = &snapshot.recognition {
+        let path = common_settings::settings_path(app, RECOGNITION_FILE)?;
+        let normalized = recognition::normalize_settings(a.clone());
+        common_settings::save_settings(&path, &normalized)?;
     }
 
     // 3. 逐工具 reload 内存状态
@@ -569,7 +572,11 @@ fn apply_snapshot_to_tools(
         &snapshot.rapidfire,
         hotkey_manager.as_ref().map(|v| &**v),
     )?;
-    apply_audio_settings(app, &snapshot.audio, hotkey_manager.as_ref().map(|v| &**v))?;
+    apply_recognition_settings(
+        app,
+        &snapshot.recognition,
+        hotkey_manager.as_ref().map(|v| &**v),
+    )?;
 
     // 4. counter 运行值重置为目标 Profile 的 start_value 并落盘
     if let Some(counter_state) = app.try_state::<counter::CounterState>() {
@@ -730,43 +737,44 @@ fn apply_rapidfire_settings(
     Ok(())
 }
 
-/// 应用 audio settings：normalize → swap inner.settings → 重启热键 → 重启 watcher → emit_state。
-fn apply_audio_settings(
+/// 应用 recognition settings：normalize → swap inner.settings → 重启热键 → 重启 watcher → emit_state。
+fn apply_recognition_settings(
     app: &AppHandle,
-    snapshot: &Option<audio::AudioSettings>,
+    snapshot: &Option<recognition::RecognitionSettings>,
     hotkey_manager: Option<&crate::hotkeys::HotkeyManager>,
 ) -> Result<(), String> {
     let Some(new_settings) = snapshot.as_ref() else {
         return Ok(());
     };
-    let Some(state) = app.try_state::<audio::AudioState>() else {
+    let Some(state) = app.try_state::<recognition::RecognitionState>() else {
         return Ok(());
     };
     let Some(hm) = hotkey_manager else {
         return Err("热键管理器未注册".to_string());
     };
 
-    let normalized = audio::normalize_settings(new_settings.clone());
+    let normalized = recognition::normalize_settings(new_settings.clone());
     let mut inner = state
         .lock_inner()
-        .map_err(|_| "音频状态已损坏".to_string())?;
+        .map_err(|_| "识别触发状态已损坏".to_string())?;
     inner.settings = normalized.clone();
     let playback_tx = inner.logic.playback_tx.clone();
     // 在锁外重启热键和 watcher，避免持有锁期间做 IPC
     drop(inner);
 
-    audio::restart_hotkey_listeners(hm, &normalized)?;
-    crate::audio::watcher::restart_watchers(app, &normalized, playback_tx)?;
+    recognition::restart_hotkey_listeners(hm, &normalized)?;
+    crate::recognition::watcher::restart_watchers(app, &normalized, playback_tx)?;
 
     let mut inner = state
         .lock_inner()
-        .map_err(|_| "音频状态已损坏".to_string())?;
-    if !inner.settings.audio_enabled {
-        let _ = crate::audio::watcher::stop_all_watchers(app);
+        .map_err(|_| "识别触发状态已损坏".to_string())?;
+    if !inner.settings.recognition_enabled {
+        let _ = crate::recognition::watcher::stop_all_watchers(app);
     }
     inner.hotkey_error = None;
-    let bootstrap = <audio::AudioLogic as crate::tool_base::ToolLogic>::build_bootstrap(&inner);
-    <audio::AudioLogic as crate::tool_base::ToolLogic>::emit_state(app, &bootstrap);
+    let bootstrap =
+        <recognition::RecognitionLogic as crate::tool_base::ToolLogic>::build_bootstrap(&inner);
+    <recognition::RecognitionLogic as crate::tool_base::ToolLogic>::emit_state(app, &bootstrap);
     Ok(())
 }
 
@@ -876,7 +884,7 @@ mod tests {
         assert!(snapshot.timer.is_some());
         assert!(snapshot.counter.is_some());
         assert!(snapshot.rapidfire.is_some());
-        assert!(snapshot.audio.is_some());
+        assert!(snapshot.recognition.is_some());
     }
 
     #[test]
@@ -886,7 +894,7 @@ mod tests {
         assert!(snap.timer.is_none());
         assert!(snap.counter.is_none());
         assert!(snap.rapidfire.is_none());
-        assert!(snap.audio.is_none());
+        assert!(snap.recognition.is_none());
     }
 
     #[test]

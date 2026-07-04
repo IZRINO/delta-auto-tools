@@ -10,7 +10,7 @@
 | `timer_settings.json` | 计时器 | `timerEnabled`、timers 数组（duration、direction、hotkey）、display 设置 |
 | `counter_settings.json` | 计数器 | `counterEnabled`、counters 数组（startValue、hotkey）、display 设置 |
 | `rapidfire_settings.json` | 连发器 | `rapidfireEnabled`、cards 数组（trigger、target、interval、jitter、spacing、no-append）、compensation delay |
-| `audio_settings.json` | 音频 | `audioEnabled`、cards 数组（trigger mode、files、volume、cooldown、probes） |
+| `recognition_settings.json` | 识别触发 | `recognitionEnabled`、cards 数组（trigger mode、activation、effects、cooldown、probes） |
 | `theme_settings.json` | 主题 | `activeThemeId`、custom themes、token overrides |
 | `profile_settings.json` | 配置 | `profiles` 数组、`activeProfileId` |
 | `counter_state.json` | 计数器（运行态） | 累积计数器值（独立于配置） |

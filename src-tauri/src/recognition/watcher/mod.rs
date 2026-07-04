@@ -1,4 +1,4 @@
-//! Audio watcher 模块
+//! Recognition watcher 模块
 //!
 //! 拆分自原 watcher.rs 单文件（1815 行）为三个子模块：
 //! - `manager` — watcher 生命周期（restart/stop/run 循环）
@@ -11,7 +11,7 @@ pub(crate) mod matching;
 
 // Re-export 公开接口，保持与旧 watcher.rs 兼容的导入路径
 pub(crate) use capture::{capture_region, load_reference_image, read_reference_image_as_data_url};
-pub(crate) use manager::{restart_watchers, stop_all_watchers};
+pub(crate) use manager::{restart_watchers, start_activation_session, stop_all_watchers};
 pub(crate) use matching::{aggregate_probe_hits_pub, compare_images, probe_hit_targets};
 
 #[cfg(test)]
@@ -22,8 +22,8 @@ mod tests {
         average_region_rgb, color_distance, compare_images, match_color_probes, probe_hit,
         scan_region_for_color,
     };
-    use crate::audio::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
     use crate::morse::types::RegionRect;
+    use crate::recognition::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
     use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage, Rgba, RgbaImage};
 
     /// 辅助：取比较结果的 similarity
@@ -44,7 +44,7 @@ mod tests {
     }
 
     #[test]
-    fn watcher_should_run_disabled_when_audio_off() {
+    fn watcher_should_run_disabled_when_recognition_off() {
         assert!(!watcher_should_run(true, false));
     }
 
@@ -682,7 +682,7 @@ mod tests {
     // ---- A-M1 修复验证：watcher_should_run 实时读取 ----
 
     #[test]
-    fn watcher_should_run_uses_realtime_audio_state_not_snapshot() {
+    fn watcher_should_run_uses_realtime_recognition_state_not_snapshot() {
         // 验证 watcher_should_run 接受实时参数而非快照
         assert!(watcher_should_run(true, true));
         assert!(!watcher_should_run(true, false));
@@ -801,13 +801,13 @@ mod tests {
         assert!(!result.matched, "颜色不匹配不应触发 playback");
     }
 
-    /// 验证 watcher_should_run 在全局/音频开关变化时的即时响应
+    /// 验证 watcher_should_run 在全局/识别触发开关变化时的即时响应
     #[test]
     fn watcher_loop_respects_toggle_changes_immediately() {
         // 模拟 watcher 循环中开关状态变化序列：
         // tick 1: 两者都开 → 执行截图匹配
         assert!(watcher_should_run(true, true));
-        // tick 2: 用户关闭音频模块开关 → 立即跳过
+        // tick 2: 用户关闭识别触发模块开关 → 立即跳过
         assert!(!watcher_should_run(true, false));
         // tick 3: 用户关闭全局开关 → 也跳过
         assert!(!watcher_should_run(false, true));
@@ -823,7 +823,7 @@ mod tests {
     struct MockWatcherDeps {
         capture_result: Option<image::DynamicImage>,
         compare_result: f32,
-        dispatched: std::sync::Mutex<Vec<crate::audio::player::AudioCommand>>,
+        dispatched: std::sync::Mutex<Vec<crate::recognition::player::AudioCommand>>,
     }
 
     impl MockWatcherDeps {
@@ -852,12 +852,12 @@ mod tests {
             self.compare_result
         }
 
-        fn dispatch_playback(&self, command: crate::audio::player::AudioCommand) {
+        fn dispatch_playback(&self, command: crate::recognition::player::AudioCommand) {
             self.dispatched.lock().unwrap().push(command);
         }
     }
 
-    /// VAL-AR-022: region_watcher_step 在 audio_on=true 时匹配成功并分派回放。
+    /// VAL-AR-022: region_watcher_step 在 recognition_on=true 时匹配成功并分派回放。
     #[test]
     fn region_watcher_step_dispatches_playback_on_match() {
         let reference =
@@ -871,7 +871,7 @@ mod tests {
             width: 4,
             height: 4,
         };
-        let resolved = crate::audio::ResolvedPlay {
+        let resolved = crate::recognition::ResolvedPlay {
             path: "/test/audio.wav".to_string(),
             volume: 0.8,
             allow_simultaneous: false,
@@ -880,7 +880,7 @@ mod tests {
         let result = super::manager::region_watcher_step(
             &deps,
             true, // global_on
-            true, // audio_on
+            true, // recognition_on
             &region,
             &reference,
             0.75, // threshold
@@ -897,9 +897,9 @@ mod tests {
         );
     }
 
-    /// VAL-AR-022: region_watcher_step 在 audio_on=false 时跳过分派。
+    /// VAL-AR-022: region_watcher_step 在 recognition_on=false 时跳过分派。
     #[test]
-    fn region_watcher_step_skips_when_audio_off() {
+    fn region_watcher_step_skips_when_recognition_off() {
         let reference =
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
         let screenshot = reference.clone();
@@ -915,7 +915,7 @@ mod tests {
         let result = super::manager::region_watcher_step(
             &deps,
             true,  // global_on
-            false, // audio_on = false → 跳过
+            false, // recognition_on = false → 跳过
             &region,
             &reference,
             0.75,
@@ -924,16 +924,16 @@ mod tests {
             None,
         );
 
-        assert!(!result, "audio_off 时应返回 false");
+        assert!(!result, "recognition_off 时应返回 false");
         assert!(
             deps.dispatched.lock().unwrap().is_empty(),
-            "audio_off 时不应分派回放"
+            "recognition_off 时不应分派回放"
         );
     }
 
-    /// VAL-AR-022: 模拟循环中切换 audio_enabled，先开后关再开。
+    /// VAL-AR-022: 模拟循环中切换 recognition_enabled，先开后关再开。
     #[test]
-    fn region_watcher_step_flips_audio_enabled_mid_loop() {
+    fn region_watcher_step_flips_recognition_enabled_mid_loop() {
         let reference =
             DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 4, Rgba([200, 100, 50, 255])));
         let screenshot = reference.clone();
@@ -944,13 +944,13 @@ mod tests {
             width: 4,
             height: 4,
         };
-        let resolved = crate::audio::ResolvedPlay {
+        let resolved = crate::recognition::ResolvedPlay {
             path: "/test/audio.wav".to_string(),
             volume: 0.8,
             allow_simultaneous: false,
         };
 
-        // tick 1: audio_on=true → 匹配成功 → 分派
+        // tick 1: recognition_on=true → 匹配成功 → 分派
         let deps = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
         let result1 = super::manager::region_watcher_step(
             &deps,
@@ -963,10 +963,10 @@ mod tests {
             &tx,
             Some(&resolved),
         );
-        assert!(result1, "tick 1: audio_on=true 应匹配");
+        assert!(result1, "tick 1: recognition_on=true 应匹配");
         assert_eq!(deps.dispatched.lock().unwrap().len(), 1);
 
-        // tick 2: audio_on=false → 跳过（模拟用户中途关闭音频开关）
+        // tick 2: recognition_on=false → 跳过（模拟用户中途关闭识别触发开关）
         let deps2 = MockWatcherDeps::new(Some(screenshot.clone()), 0.95);
         let result2 = super::manager::region_watcher_step(
             &deps2,
@@ -979,10 +979,10 @@ mod tests {
             &tx,
             Some(&resolved),
         );
-        assert!(!result2, "tick 2: audio_on=false 应跳过");
+        assert!(!result2, "tick 2: recognition_on=false 应跳过");
         assert!(deps2.dispatched.lock().unwrap().is_empty());
 
-        // tick 3: audio_on=true → 恢复分派
+        // tick 3: recognition_on=true → 恢复分派
         let deps3 = MockWatcherDeps::new(Some(screenshot), 0.95);
         let result3 = super::manager::region_watcher_step(
             &deps3,
@@ -995,13 +995,13 @@ mod tests {
             &tx,
             Some(&resolved),
         );
-        assert!(result3, "tick 3: audio_on=true 应恢复匹配");
+        assert!(result3, "tick 3: recognition_on=true 应恢复匹配");
         assert_eq!(deps3.dispatched.lock().unwrap().len(), 1);
     }
 
-    /// VAL-AR-022: color_watcher_step 在 audio_on=false 时跳过分派。
+    /// VAL-AR-022: color_watcher_step 在 recognition_on=false 时跳过分派。
     #[test]
-    fn color_watcher_step_skips_when_audio_off() {
+    fn color_watcher_step_skips_when_recognition_off() {
         let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
             4,
             4,
@@ -1028,7 +1028,7 @@ mod tests {
         let result = super::manager::color_watcher_step(
             &deps,
             true,  // global_on
-            false, // audio_on = false
+            false, // recognition_on = false
             &screenshots,
             &probes,
             &ColorMatchMode::All,
@@ -1037,14 +1037,14 @@ mod tests {
             None,
         );
 
-        assert!(!result, "audio_off 时应返回 false");
+        assert!(!result, "recognition_off 时应返回 false");
         assert!(
             deps.dispatched.lock().unwrap().is_empty(),
-            "audio_off 时不应分派回放"
+            "recognition_off 时不应分派回放"
         );
     }
 
-    /// VAL-AR-022: color_watcher_step 在匹配成功且 audio_on=true 时分派回放。
+    /// VAL-AR-022: color_watcher_step 在匹配成功且 recognition_on=true 时分派回放。
     #[test]
     fn color_watcher_step_dispatches_playback_on_match() {
         let screenshots = vec![DynamicImage::ImageRgba8(RgbaImage::from_pixel(
@@ -1069,7 +1069,7 @@ mod tests {
         }];
         let deps = MockWatcherDeps::new(None, 0.0);
         let (tx, _rx) = std::sync::mpsc::channel();
-        let resolved = crate::audio::ResolvedPlay {
+        let resolved = crate::recognition::ResolvedPlay {
             path: "/test/audio.wav".to_string(),
             volume: 0.8,
             allow_simultaneous: false,
@@ -1078,7 +1078,7 @@ mod tests {
         let result = super::manager::color_watcher_step(
             &deps,
             true, // global_on
-            true, // audio_on
+            true, // recognition_on
             &screenshots,
             &probes,
             &ColorMatchMode::All,
@@ -1087,7 +1087,7 @@ mod tests {
             Some(&resolved),
         );
 
-        assert!(result, "匹配成功且 audio_on=true 时应返回 true");
+        assert!(result, "匹配成功且 recognition_on=true 时应返回 true");
         assert_eq!(
             deps.dispatched.lock().unwrap().len(),
             1,

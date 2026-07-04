@@ -1,16 +1,17 @@
 mod about;
 mod app_error;
-mod audio;
 mod counter;
 mod global_state;
 mod hotkey_types;
 mod hotkeys;
+mod input_simulation;
 mod key_suppressor;
 mod logging;
 mod morse;
 mod overlay_utils;
 mod profile;
 mod rapidfire;
+mod recognition;
 mod settings;
 mod strategy;
 mod sync_tool;
@@ -43,7 +44,7 @@ pub fn run() {
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
             let counter_state = counter::initialize(app.handle(), &hotkey_manager)?;
             let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
-            let audio_state = audio::initialize(app.handle(), &hotkey_manager)?;
+            let recognition_state = recognition::initialize(app.handle(), &hotkey_manager)?;
             let theme_state = theme::initialize(app.handle())?;
             let profile_state = profile::initialize(app.handle())?;
             let global_state = global_state::GlobalState::new(true);
@@ -73,15 +74,17 @@ pub fn run() {
                 }),
             );
             lifecycle_registry.register(
-                "audio",
-                Box::new(|app: &tauri::AppHandle| crate::audio::watcher::stop_all_watchers(app)),
+                "recognition",
+                Box::new(|app: &tauri::AppHandle| {
+                    crate::recognition::watcher::stop_all_watchers(app)
+                }),
             );
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
             app.manage(counter_state);
             app.manage(rapidfire_state);
-            app.manage(audio_state);
+            app.manage(recognition_state);
             app.manage(theme_state);
             app.manage(profile_state);
             app.manage(global_state);
@@ -109,14 +112,15 @@ pub fn run() {
                         return;
                     };
                     rapidfire::shutdown(app, &rapidfire_state, &hotkey_manager);
-                    let Some(_audio_state) = app.try_state::<audio::AudioState>() else {
+                    let Some(_recognition_state) = app.try_state::<recognition::RecognitionState>()
+                    else {
                         return;
                     };
                     let Some(hotkey_manager) = app.try_state::<hotkeys::HotkeyManager>() else {
                         return;
                     };
                     hotkey_manager.clear_all_suppressions();
-                    audio::shutdown(app, &hotkey_manager);
+                    recognition::shutdown(app, &hotkey_manager);
                     if let Some(log_writer) = app.try_state::<logging::LogWriter>() {
                         logging::shutdown(&log_writer);
                     }
@@ -160,16 +164,17 @@ pub fn run() {
             rapidfire::commands::rapidfire_position_commit,
             rapidfire::commands::rapidfire_position_cancel,
             rapidfire::commands::rapidfire_position_moved,
-            // ── audio ──
-            audio::audio_get_bootstrap,
-            audio::audio_save_settings,
-            audio::audio_begin_region_selection,
-            audio::audio_overlay_submit_selection,
-            audio::audio_overlay_cancel_selection,
-            audio::audio_test_play,
-            audio::audio_test_match,
-            audio::audio_read_reference_image,
-            audio::audio_test_color_match,
+            // ── recognition ──
+            recognition::recognition_get_bootstrap,
+            recognition::recognition_save_settings,
+            recognition::recognition_set_hotkey_recording,
+            recognition::recognition_begin_region_selection,
+            recognition::recognition_overlay_submit_selection,
+            recognition::recognition_overlay_cancel_selection,
+            recognition::recognition_test_play,
+            recognition::recognition_test_match,
+            recognition::recognition_read_reference_image,
+            recognition::recognition_test_color_match,
             // ── strategy ──
             strategy::webview::strategy_open_window,
             strategy::fetch::strategy_fetch_page,
