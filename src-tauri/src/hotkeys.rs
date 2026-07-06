@@ -62,6 +62,11 @@ impl HotkeyManager {
             let suppressed_vk_set = Arc::new(Mutex::new(None));
 
             let Some(hook) = willhook::keyboard_hook() else {
+                crate::log_error!(
+                    "hotkeys",
+                    "键盘钩子安装失败",
+                    "hint" => "请检查杀毒软件或系统权限设置"
+                );
                 return Self {
                     registrations,
                     hold_registrations,
@@ -107,22 +112,34 @@ impl HotkeyManager {
                     suppressed_vk_set,
                     worker: Some(worker),
                 },
-                Err(error) => Self {
-                    registrations,
-                    hold_registrations,
-                    stopped,
-                    install_error: Some(error),
-                    key_suppressor,
-                    suppressed_rx,
-                    suppressed_vk_set,
-                    worker: None,
-                },
+                Err(error) => {
+                    crate::log_error!(
+                        "hotkeys",
+                        "启动热键监听线程失败",
+                        "error" => error.to_string()
+                    );
+                    Self {
+                        registrations,
+                        hold_registrations,
+                        stopped,
+                        install_error: Some(error),
+                        key_suppressor,
+                        suppressed_rx,
+                        suppressed_vk_set,
+                        worker: None,
+                    }
+                }
             }
         }
 
         #[cfg(not(target_os = "windows"))]
         {
             let _ = app;
+            crate::log_warn!(
+                "hotkeys",
+                "当前平台不支持被动热键监听",
+                "platform" => std::env::consts::OS
+            );
             Self {
                 registrations,
                 hold_registrations,
@@ -279,6 +296,14 @@ impl HotkeyManager {
                     && registration.scope != scope
                     && registration.binding == *new_binding
             }) {
+                crate::log_warn!(
+                    "hotkeys",
+                    "快捷键冲突",
+                    "scope" => scope,
+                    "existing_scope" => existing.scope.clone(),
+                    "existing_display_name" => existing.display_name.clone(),
+                    "binding" => types::binding_to_string(new_binding)
+                );
                 return Err(format!(
                     "快捷键 {} 与{}的快捷键冲突",
                     types::binding_to_string(new_binding),
@@ -301,6 +326,14 @@ impl HotkeyManager {
                         && !(conflict_policy == ConflictPolicy::AllowHold
                             && registration.conflict_policy == ConflictPolicy::AllowHold)
                 }) {
+                    crate::log_warn!(
+                        "hotkeys",
+                        "触发键冲突",
+                        "scope" => scope,
+                        "existing_scope" => existing.scope.clone(),
+                        "existing_display_name" => existing.display_name.clone(),
+                        "binding" => types::binding_to_string(new_binding)
+                    );
                     return Err(format!(
                         "快捷键 {} 与{}的触发键冲突",
                         types::binding_to_string(new_binding),
@@ -330,6 +363,14 @@ impl HotkeyManager {
                     && !(registration.conflict_policy == ConflictPolicy::AllowHold
                         && conflict_policy == ConflictPolicy::AllowHold)
             }) {
+                crate::log_warn!(
+                    "hotkeys",
+                    "触发键与快捷键冲突",
+                    "scope" => scope,
+                    "existing_scope" => existing.scope.clone(),
+                    "existing_display_name" => existing.display_name.clone(),
+                    "binding" => types::binding_to_string(new_binding)
+                );
                 return Err(format!(
                     "触发键 {} 与{}的快捷键冲突",
                     types::binding_to_string(new_binding),
@@ -374,6 +415,13 @@ impl HotkeyManager {
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         registrations.retain(|registration| registration.scope != scope);
         registrations.extend(next_registrations);
+        crate::log_info!(
+            "hotkeys",
+            "快捷键 scope 已注册",
+            "scope" => scope,
+            "display_name" => display_name,
+            "count" => parsed_bindings.len()
+        );
 
         Ok(())
     }
@@ -439,6 +487,13 @@ impl HotkeyManager {
         if !regs.is_empty() {
             hold_regs.insert(scope.to_string(), regs);
         }
+        crate::log_info!(
+            "hotkeys",
+            "按住触发 scope 已注册",
+            "scope" => scope,
+            "display_name" => display_name,
+            "count" => parsed_bindings.len()
+        );
 
         Ok(())
     }

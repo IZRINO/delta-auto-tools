@@ -1,5 +1,5 @@
 import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {computeIsDirty, isStaleSave} from "@/hooks/use-bootstrap-form-logic";
 import {getErrorMessage} from "@/lib/error-utils";
 

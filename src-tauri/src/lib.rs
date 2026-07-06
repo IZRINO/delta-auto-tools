@@ -39,6 +39,8 @@ pub fn run() {
                 .handle()
                 .plugin(tauri_plugin_updater::Builder::new().build());
 
+            let log_writer = logging::init_logger(app.handle())?;
+            app.manage(log_writer);
             let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
             let state = morse::initialize(app.handle(), &hotkey_manager)?;
             let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
@@ -48,7 +50,6 @@ pub fn run() {
             let theme_state = theme::initialize(app.handle())?;
             let profile_state = profile::initialize(app.handle())?;
             let global_state = global_state::GlobalState::new(true);
-            let log_writer = logging::init_logger(app.handle())?;
             let mut sync_tool_registry = sync_tool::SyncToolRegistry::default();
             sync_tool_registry.register("counter", counter::stop_registered);
             sync_tool_registry.register("timer", timer::stop_registered);
@@ -90,7 +91,6 @@ pub fn run() {
             app.manage(global_state);
             app.manage(sync_tool_registry);
             app.manage(lifecycle_registry);
-            app.manage(log_writer);
             Ok(())
         })
         .on_window_event(|window, event| {

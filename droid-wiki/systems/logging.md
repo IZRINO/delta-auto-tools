@@ -28,7 +28,7 @@ src-tauri/src/logging/
 ```mermaid
 graph TD
     Rust["Rust 代码<br/>log_info! 宏"] --> Writer["LogWriter"]
-    Frontend["前端<br/>logFrontend()"] -->|invoke log_write_frontend| Cmd["log_write_frontend 命令"]
+    Frontend["前端<br/>logFrontend() / invokeLogged()"] -->|invoke log_write_frontend| Cmd["log_write_frontend 命令"]
     Cmd --> Writer
     Writer -->|格式化行| Format["format.rs<br/>人类可读 | JSON"]
     Format --> File["logs/delta-{yyyyMMdd}.log"]
@@ -46,7 +46,9 @@ graph TD
 
 ### 前端日志
 
-前端 `src/lib/logging.ts` 提供 `initLogging()`、`logFrontend()`、`generateTraceId()`、`setTraceId()`/`clearTraceId()` 和便捷 `log` 对象。`src/main.tsx` 启动时调用 `initLogging()`。生产环境下 `console.log/warn/error` 被劫持，同时通过 `log_write_frontend` 写入日志文件。
+前端 `src/lib/logging.ts` 提供 `initLogging()`、`logFrontend()`、`invokeLogged()`、`generateTraceId()`、`setTraceId()`/`clearTraceId()` 和便捷 `log` 对象。`src/main.tsx` 启动时调用 `initLogging()`。生产环境下 `console.log/warn/error` 被劫持，同时通过 `log_write_frontend` 写入日志文件。
+
+`invokeLogged()` 是前端统一 Tauri command 包装器。生产代码通过 `invokeLogged as invoke` 调用后端；`*_get_*` / `*_read_*` 归类为 `debug` 读取日志，其余 command 归类为 `info` 用户操作日志，失败统一写 `error` 并继续透传原错误。日志 payload 会截断深层/长文本，并屏蔽 `token`、`ticket`、`cookie`、`secret`、`password`、`authorization` 等敏感字段。
 
 ### 级别过滤
 
@@ -68,8 +70,11 @@ graph TD
 ## 集成点
 
 - 每个 Rust 模块可使用 `log_*!` 宏
+- 通用配置读写在 `src-tauri/src/settings.rs` 记录默认配置、读取失败、解析失败和写入失败
+- 热键、全局开关、Morse、Rapidfire、Recognition 音频/watcher 已接入关键错误和用户操作日志
+- 前端所有生产 Tauri command 调用经 `invokeLogged()` 记录开始、完成和失败
 - `src/main.tsx` 初始化前端日志并在生产环境劫持 console
-- Tauri command 入口设置 `TraceContext`，退出时清除
+- Rust `TraceContext` 供后端调用链显式设置；前端 command 链路主要通过 `invokeLogged()` 的 traceId 记录
 - 应用关闭时调用 `logging::shutdown()` 刷新 BufWriter
 
 ## 关键源文件
@@ -80,4 +85,4 @@ graph TD
 | `src-tauri/src/logging/format.rs` | 行格式化，含宽度/截断规则 |
 | `src-tauri/src/logging/writer.rs` | LogWriter，含轮转、清理、级别过滤 |
 | `src-tauri/src/logging/macros.rs` | `log_error!` 到 `log_trace!` 宏 |
-| `src/lib/logging.ts` | 前端日志接口 |
+| `src/lib/logging.ts` | 前端日志接口与 Tauri command 日志包装器 |

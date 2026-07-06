@@ -35,7 +35,7 @@
 | `level` | 左对齐 5 字符 `ERROR / WARN  / INFO  / DEBUG / TRACE` | 日志级别 | 传入参数 | 传入参数 |
 | `origin` | `[RUST]·{module}` 或 `[FE]·{component}` | 区分前后端+模块路径 | `module_path!()` 截断 | 调用方显式传入（如 `timer-page`） |
 | `location` | `{file}:{line}` 或 `{Component}:{hook}` | 代码定位 | `file!():line!()` | 调用方显式传入（如 `TimerPage:autosave`） |
-| `trace` | `trace:{hex4}` | 4位hex链路追踪ID | 从 Tauri Command 参数或 ThreadLocal 获取 | 前端生成并传入 |
+| `trace` | `trace:{hex4}` | 4位hex链路追踪ID | 从 ThreadLocal 获取（需要显式设置） | 前端生成并通过 `log_write_frontend` 传入 |
 | `session` | `sess:{alnum6}` | 6位本次运行实例ID | Rust 启动时生成 `LazyLock` | 通过 `log_get_session_id` Tauri Command 获取 |
 | `message` | 自由文本 | 人类可读消息 | 传入参数 | 传入参数 |
 | `json_payload` | `{...}` JSON 对象 | 结构化附加数据 | `serde_json::Value` | `Record<string, unknown>` 序列化后传入 |
@@ -291,7 +291,7 @@ impl TraceContext {
 }
 ```
 
-当 Tauri Command 收到前端的 `trace_id` 时，在命令函数入口调用 `TraceContext::set(&trace_id)`，命令返回前调用 `TraceContext::clear()`。这样同一命令内部所有日志自动共享该 trace_id。
+当前 Rust `TraceContext` 只在后端显式调用 `TraceContext::set()` 时生效。前端发起的 Tauri command 由 `invokeLogged()` 记录 traceId；后端 command 内部日志不会自动继承前端 traceId。若某条后端链路需要跨前后端强关联，应给该 command 增加显式 trace 参数或集中入口包装。
 
 ### 4.7 session_id 生成
 
@@ -402,7 +402,7 @@ src/lib/
 ```typescript
 // src/lib/logging.ts
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as rawInvoke } from "@tauri-apps/api/core";
 
 export type FrontendLogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
@@ -413,7 +413,7 @@ let _traceId: string = "--";
 export async function initLogging(): Promise<void> {
   if (!checkNativeShell()) return;
   try {
-    _sessionId = await invoke<string>("log_get_session_id");
+    _sessionId = await rawInvoke<string>("log_get_session_id");
   } catch {
     _sessionId = null;
   }
@@ -452,7 +452,7 @@ export async function logFrontend(
   if (!checkNativeShell()) return;
 
   try {
-    await invoke("log_write_frontend", {
+    await rawInvoke("log_write_frontend", {
       request: {
         level,
         source,
@@ -488,7 +488,18 @@ function checkNativeShell(): boolean {
 }
 ```
 
-### 5.3 console 劫持（可选）
+### 5.3 Tauri command 包装
+
+`src/lib/logging.ts` 额外提供 `invokeLogged()`，生产代码通过 `invokeLogged as invoke` 调用 Tauri command：
+
+- `*_get_*` / `*_read_*` 归类为读取型 command，开始/完成日志写 `DEBUG`
+- 其他 command 归类为用户操作，开始/完成日志写 `INFO`
+- 任意 command 失败写 `ERROR`，记录原始错误并继续向调用方抛出
+- payload 会截断深层/长文本，并屏蔽 `token`、`ticket`、`cookie`、`secret`、`password`、`authorization` 等字段
+
+该包装器覆盖前端发起的用户操作、配置保存、位置设置、测试播放、更新检查和系统 command 错误。
+
+### 5.4 console 劫持（可选）
 
 在 `main.tsx` 初始化日志后，覆盖全局 console 方法使其同时写入日志文件：
 
@@ -520,7 +531,7 @@ console.error = (...args) => {
 - 此行为仅在生产环境（`import.meta.env.PROD === true`）生效
 - 开发环境保留原始 console 行为，避免 Vite HMR 热更新时大量日志污染
 
-### 5.4 trace_id 使用模式
+### 5.5 trace_id 使用模式
 
 前端在用户操作入口生成 trace_id，贯穿整个操作链路：
 
@@ -538,7 +549,7 @@ async function handleRunRecognition() {
 }
 ```
 
-后端 Tauri Command 入口读取前端传入的 trace_id（通过 ThreadLocal），后续该 Command 内所有日志自动携带该 ID。
+当前前端操作链路通过 `invokeLogged()` 记录 traceId；后端内部链路可在需要时显式设置 `TraceContext`。
 
 ---
 
@@ -639,7 +650,7 @@ chrono = { version = "0.4", features = ["serde"] }
 | `src-tauri/src/logging/format.rs` | 混合格式拼接逻辑 |
 | `src-tauri/src/logging/writer.rs` | LogWriter（BufWriter + Mutex + 按天轮转 + 清理 + 级别过滤） |
 | `src-tauri/src/logging/macros.rs` | log_error! / log_warn! / log_info! / log_debug! / log_trace! 宏 |
-| `src/lib/logging.ts` | 前端日志接口（initLogging、logFrontend、generateTraceId、setTraceId/clearTraceId、便捷 log 对象） |
+| `src/lib/logging.ts` | 前端日志接口（initLogging、logFrontend、invokeLogged、generateTraceId、setTraceId/clearTraceId、便捷 log 对象） |
 
 ---
 
@@ -651,7 +662,7 @@ chrono = { version = "0.4", features = ["serde"] }
 |--------|------|-----------|
 | P0 | morse | 识别流程开始/完成/失败、overlay 框选开始/提交/取消、热键录制开始/结束 |
 | P0 | rapidfire | 连发 session 开始/停止/补齐、热键冲突拒绝、总开关切换 |
-| P0 | delta::commands | 所有 Tauri Command 入口/出口（附带 account_id）、请求超时/失败 |
+| P0 | command 覆盖 | 前端 `invokeLogged()` 已覆盖所有生产 Tauri command 开始/完成/失败；后端按模块继续补业务上下文 |
 | P1 | timer | 计时器触发/完成/重复触发忽略、总开关切换 |
 | P1 | counter | 计数器触发/重置/调整 |
 | P1 | hotkeys | scope 注册/解绑/冲突检测、键盘钩子安装失败 |
@@ -659,7 +670,7 @@ chrono = { version = "0.4", features = ["serde"] }
 | P2 | about | 更新检查/下载/安装进度 |
 | P2 | global_state | 总开关切换 |
 
-每个 Command 入口注入 `TraceContext::set(&trace_id)`、出口 `TraceContext::clear()`。
+跨前后端 trace 自动注入仍是后续增强项；当前不要假设所有后端 command 日志都带前端 traceId。
 
 ---
 
@@ -677,4 +688,4 @@ chrono = { version = "0.4", features = ["serde"] }
 
 | 测试文件 | 覆盖内容 |
 |---------|---------|
-| `logging.test.ts` | `generateTraceId` 格式/唯一性、`setTraceId`/`clearTraceId` 状态切换、`logFrontend` 参数序列化正确性（mock invoke）、非 native shell 时不调用 invoke |
+| `logging.test.ts` | `generateTraceId` 格式/唯一性、`setTraceId`/`clearTraceId` 状态切换、`logFrontend` 参数序列化正确性（mock invoke）、`invokeLogged` 成功/失败日志、非 native shell 时不调用 invoke |

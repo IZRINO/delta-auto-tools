@@ -378,10 +378,18 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             let hm = app.state::<HotkeyManager>();
             for trigger_key in &trigger_keys {
                 match hm.suppress_key(trigger_key) {
-                    Ok(was_new) => {
-                        eprintln!("[连发器] suppress_key({trigger_key}) -> was_new={was_new}")
-                    }
-                    Err(e) => eprintln!("[连发器] suppress_key({trigger_key}) 失败: {e}"),
+                    Ok(was_new) => crate::log_debug!(
+                        "rapidfire",
+                        "触发键抑制已更新",
+                        "trigger_key" => trigger_key.clone(),
+                        "was_new" => was_new
+                    ),
+                    Err(e) => crate::log_error!(
+                        "rapidfire",
+                        "触发键抑制失败",
+                        "trigger_key" => trigger_key.clone(),
+                        "error" => e.to_string()
+                    ),
                 }
             }
         }
@@ -450,10 +458,18 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             if !has_active {
                 let hm = app.state::<HotkeyManager>();
                 match hm.unsuppress_key(trigger_key) {
-                    Ok(was) => {
-                        eprintln!("[连发器] unsuppress_key({trigger_key}) -> was_suppressed={was}")
-                    }
-                    Err(e) => eprintln!("[连发器] unsuppress_key({trigger_key}) 失败: {e}"),
+                    Ok(was) => crate::log_debug!(
+                        "rapidfire",
+                        "触发键抑制已取消",
+                        "trigger_key" => trigger_key.clone(),
+                        "was_suppressed" => was
+                    ),
+                    Err(e) => crate::log_error!(
+                        "rapidfire",
+                        "取消触发键抑制失败",
+                        "trigger_key" => trigger_key.clone(),
+                        "error" => e.to_string()
+                    ),
                 }
             }
         }
@@ -741,6 +757,11 @@ pub fn initialize(
 
     if settings.rapidfire_enabled {
         if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings, true) {
+            crate::log_warn!(
+                "rapidfire",
+                "初始化热键监听失败",
+                "error" => error.clone()
+            );
             if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error);
             }

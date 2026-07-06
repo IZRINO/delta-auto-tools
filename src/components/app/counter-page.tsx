@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {listen} from "@tauri-apps/api/event";
 import {COUNTER_EVENTS} from "@/lib/tauri-events";
 import {

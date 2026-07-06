@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {relaunch} from "@tauri-apps/plugin-process";
 import {openUrl} from "@tauri-apps/plugin-opener";
 import {RiArrowRightLine, RiDownloadLine, RiGithubLine, RiRestartLine, RiSearchLine,} from "@remixicon/react";

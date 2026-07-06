@@ -74,7 +74,7 @@ pub fn format_log_line(
             }
             format!("| {}", obj)
         }
-        None => format!("| {{\"msg\":\"{}\"}}", message.replace('"', "\\\"")),
+        None => format!("| {}", serde_json::json!({ "msg": message })),
     };
 
     format!(
@@ -235,5 +235,24 @@ mod tests {
         // payload 中的 msg 应与 message 一致
         assert!(line.contains("\"msg\":\"我的消息\""));
         assert!(line.contains("\"key\":\"val\""));
+    }
+
+    #[test]
+    fn test_format_log_line_no_payload_escapes_json() {
+        let dt = Local::now();
+        let line = format_log_line(
+            &dt,
+            LogLevel::Warn,
+            "[RUST]·settings",
+            "settings.rs:1",
+            "--",
+            "123456",
+            "配置包含引号\"和换行\n",
+            None,
+        );
+
+        let payload = line.split(" | ").last().unwrap();
+        let parsed: Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(parsed["msg"], "配置包含引号\"和换行\n");
     }
 }

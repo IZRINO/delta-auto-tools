@@ -730,6 +730,11 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Cou
 
     if settings.counter_enabled {
         if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings) {
+            crate::log_warn!(
+                "counter",
+                "初始化热键监听失败",
+                "error" => error.clone()
+            );
             if let Ok(mut inner) = state.lock_inner() {
                 inner.hotkey_error = Some(error);
             }

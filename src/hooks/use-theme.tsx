@@ -8,7 +8,7 @@ import {
     useRef,
     useState,
 } from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 
 import {listen} from "@tauri-apps/api/event";
 import {THEME_EVENTS} from "@/lib/tauri-events";

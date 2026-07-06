@@ -8,7 +8,7 @@ import {
     RiStarLine,
     RiTimerLine,
 } from "@remixicon/react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {listen} from "@tauri-apps/api/event";
 import {COUNTER_EVENTS, RAPIDFIRE_EVENTS, TIMER_EVENTS} from "@/lib/tauri-events";
 import {toast} from "sonner";

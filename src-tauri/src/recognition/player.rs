@@ -45,7 +45,11 @@ fn audio_thread_main(rx: mpsc::Receiver<AudioCommand>) {
     let (stream, stream_handle) = match OutputStream::try_default() {
         Ok(pair) => pair,
         Err(e) => {
-            eprintln!("[音频] 初始化音频输出失败: {e}，音频线程退出");
+            crate::log_error!(
+                "recognition::audio",
+                "初始化音频输出失败，音频线程退出",
+                "error" => e.to_string()
+            );
             return;
         }
     };
@@ -76,7 +80,11 @@ fn audio_thread_main(rx: mpsc::Receiver<AudioCommand>) {
                                 primary_sink = Some(sink);
                             }
                         }
-                        Err(e) => eprintln!("[音频] 创建互斥 Sink 失败: {e}"),
+                        Err(e) => crate::log_error!(
+                            "recognition::audio",
+                            "创建互斥 Sink 失败",
+                            "error" => e.to_string()
+                        ),
                     }
                 } else {
                     // 并发模式：创建独立 Sink
@@ -88,7 +96,11 @@ fn audio_thread_main(rx: mpsc::Receiver<AudioCommand>) {
                                 simultaneous_sinks.push(sink);
                             }
                         }
-                        Err(e) => eprintln!("[音频] 创建并发 Sink 失败: {e}"),
+                        Err(e) => crate::log_error!(
+                            "recognition::audio",
+                            "创建并发 Sink 失败",
+                            "error" => e.to_string()
+                        ),
                     }
                 }
                 // 清理已结束的 concurrent sinks

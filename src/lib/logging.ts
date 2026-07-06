@@ -5,9 +5,17 @@
  * 格式与 Rust 后端日志完全一致。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as rawInvoke } from "@tauri-apps/api/core";
 
 export type FrontendLogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+type InvokeArgs = Record<string, unknown>;
+
+interface InvokeLogOptions {
+  source?: string;
+  location?: string;
+  payload?: Record<string, unknown>;
+}
 
 let _sessionId: string | null = null;
 let _traceId: string = "--";
@@ -18,7 +26,7 @@ let _traceId: string = "--";
 export async function initLogging(): Promise<void> {
   if (!checkNativeShell()) return;
   try {
-    _sessionId = await invoke<string>("log_get_session_id");
+    _sessionId = await rawInvoke<string>("log_get_session_id");
   } catch {
     _sessionId = null;
   }
@@ -74,7 +82,7 @@ export async function logFrontend(
   if (!checkNativeShell()) return;
 
   try {
-    await invoke("log_write_frontend", {
+    await rawInvoke("log_write_frontend", {
       request: {
         level,
         source,
@@ -105,6 +113,57 @@ export const log = {
     logFrontend("trace", source, location, message, payload),
 };
 
+export async function invokeLogged<T>(
+  command: string,
+  args?: InvokeArgs,
+  options: InvokeLogOptions = {},
+): Promise<T> {
+  const source = options.source ?? `${command.split("_")[0] || "app"}-command`;
+  const location = options.location ?? command;
+  const category = classifyCommand(command);
+  const startMs = nowMs();
+  const basePayload = {
+    command,
+    category,
+    args: toLogValue(args ?? null),
+    ...(options.payload ?? {}),
+  };
+
+  if (checkNativeShell()) {
+    void logFrontend(
+      category === "query" ? "debug" : "info",
+      source,
+      location,
+      category === "query" ? "读取 Tauri command" : "调用 Tauri command",
+      {...basePayload, phase: "start"},
+    );
+  }
+
+  try {
+    const result = await rawInvoke<T>(command, args);
+    if (checkNativeShell()) {
+      void logFrontend(
+        category === "query" ? "debug" : "info",
+        source,
+        location,
+        "Tauri command 完成",
+        {...basePayload, phase: "success", durationMs: elapsedMs(startMs)},
+      );
+    }
+    return result;
+  } catch (error) {
+    if (checkNativeShell()) {
+      void logFrontend("error", source, location, "Tauri command 失败", {
+        ...basePayload,
+        phase: "error",
+        durationMs: elapsedMs(startMs),
+        error: serializeError(error),
+      });
+    }
+    throw error;
+  }
+}
+
 function checkNativeShell(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as Window & { __TAURI_INTERNALS__?: unknown };
@@ -124,7 +183,7 @@ export interface LogSettings {
 export async function getLogSettings(): Promise<LogSettings | null> {
   if (!checkNativeShell()) return null;
   try {
-    return await invoke<LogSettings>("log_get_level");
+    return await rawInvoke<LogSettings>("log_get_level");
   } catch {
     return null;
   }
@@ -136,8 +195,59 @@ export async function getLogSettings(): Promise<LogSettings | null> {
 export async function setLogSettings(settings: LogSettings): Promise<void> {
   if (!checkNativeShell()) return;
   try {
-    await invoke("log_set_level", { settings });
+    await rawInvoke("log_set_level", { settings });
   } catch {
     // 静默忽略
   }
+}
+
+function classifyCommand(command: string): "query" | "mutation" {
+  if (/_(get|read)_/.test(command)) {
+    return "query";
+  }
+  return "mutation";
+}
+
+function nowMs(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
+}
+
+function elapsedMs(startMs: number): number {
+  return Math.round(nowMs() - startMs);
+}
+
+function serializeError(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+  return {message: String(error ?? "未知错误")};
+}
+
+function toLogValue(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) return value ?? null;
+  if (typeof value === "string") return value.length > 512 ? `${value.slice(0, 512)}...` : value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= 3) return "[truncated]";
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => toLogValue(item, depth + 1));
+  }
+
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value).slice(0, 30)) {
+      out[key] = shouldMaskKey(key) ? "[masked]" : toLogValue(item, depth + 1);
+    }
+    return out;
+  }
+
+  return String(value);
+}
+
+function shouldMaskKey(key: string): boolean {
+  return /token|ticket|cookie|secret|password|authorization/i.test(key);
 }

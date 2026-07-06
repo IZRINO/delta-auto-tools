@@ -40,6 +40,11 @@ pub fn global_set_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     state.set_enabled(enabled);
+    crate::log_info!(
+        "global_state",
+        "全局开关已切换",
+        "enabled" => enabled
+    );
     let _ = app.emit_to("main", ENABLED_CHANGED, enabled);
 
     if !enabled {
@@ -65,7 +70,11 @@ fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
     registry.reset();
 
     for error in registry.stop_all(app) {
-        eprintln!("停止工具失败: {error}");
+        crate::log_error!(
+            "global_state",
+            "停止工具失败",
+            "error" => error
+        );
     }
 }
 
@@ -94,10 +103,20 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             (settings, bootstrap)
         };
         if let Err(e) = timer::ensure_display_windows(app, &settings) {
+            crate::log_error!(
+                "global_state",
+                "恢复计时器透明窗口失败",
+                "error" => e.to_string()
+            );
             errors.push(format!("计时器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
             if let Err(e) = timer::restart_hotkey_listeners(&timer_state, &**hm, &settings) {
+                crate::log_warn!(
+                    "global_state",
+                    "恢复计时器热键监听失败",
+                    "error" => e.to_string()
+                );
                 errors.push(format!("计时器热键: {e}"));
             }
         }
@@ -113,10 +132,20 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             (settings, bootstrap)
         };
         if let Err(e) = counter::ensure_display_windows(app, &settings) {
+            crate::log_error!(
+                "global_state",
+                "恢复计数器透明窗口失败",
+                "error" => e.to_string()
+            );
             errors.push(format!("计数器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
             if let Err(e) = counter::restart_hotkey_listeners(&counter_state, &**hm, &settings) {
+                crate::log_warn!(
+                    "global_state",
+                    "恢复计数器热键监听失败",
+                    "error" => e.to_string()
+                );
                 errors.push(format!("计数器热键: {e}"));
             }
         }
@@ -132,12 +161,22 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             (settings, bootstrap)
         };
         if let Err(e) = rapidfire::ensure_overlay_window(app, &settings) {
+            crate::log_error!(
+                "global_state",
+                "恢复连发器透明窗口失败",
+                "error" => e.to_string()
+            );
             errors.push(format!("连发器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
             if let Err(e) =
                 rapidfire::restart_hotkey_listeners(&rapidfire_state, &**hm, &settings, false)
             {
+                crate::log_warn!(
+                    "global_state",
+                    "恢复连发器热键监听失败",
+                    "error" => e.to_string()
+                );
                 errors.push(format!("连发器热键: {e}"));
             }
         }

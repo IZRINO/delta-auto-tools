@@ -23,19 +23,45 @@ pub fn ensure_config_dir(path: &Path) -> Result<(), String> {
 
 pub fn load_settings<T: DeserializeOwned + Default>(path: &Path) -> Result<T, String> {
     if !path.exists() {
+        crate::log_info!(
+            "settings",
+            "配置文件不存在，使用默认配置",
+            "path" => path.display().to_string()
+        );
         return Ok(T::default());
     }
 
-    let content = fs::read_to_string(path)
-        .map_err(|error| format!("无法读取配置文件 {}: {error}", path.display()))?;
+    let content = fs::read_to_string(path).map_err(|error| {
+        crate::log_warn!(
+            "settings",
+            "读取配置文件失败",
+            "path" => path.display().to_string(),
+            "error" => error.to_string()
+        );
+        format!("无法读取配置文件 {}: {error}", path.display())
+    })?;
 
-    serde_json::from_str::<T>(&content)
-        .map_err(|error| format!("无法解析配置文件 {}: {error}", path.display()))
+    serde_json::from_str::<T>(&content).map_err(|error| {
+        crate::log_warn!(
+            "settings",
+            "解析配置文件失败",
+            "path" => path.display().to_string(),
+            "error" => error.to_string()
+        );
+        format!("无法解析配置文件 {}: {error}", path.display())
+    })
 }
 
 pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(), String> {
-    let content = serde_json::to_string_pretty(settings)
-        .map_err(|error| format!("无法序列化设置: {error}"))?;
+    let content = serde_json::to_string_pretty(settings).map_err(|error| {
+        crate::log_error!(
+            "settings",
+            "序列化配置失败",
+            "path" => path.display().to_string(),
+            "error" => error.to_string()
+        );
+        format!("无法序列化设置: {error}")
+    })?;
     let parent = path
         .parent()
         .ok_or_else(|| format!("无法解析配置文件目录 {}", path.display()))?;
@@ -47,11 +73,27 @@ pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(
         .ok_or_else(|| format!("配置文件名无效 {}", path.display()))?;
     let temp_path = parent.join(format!(".{file_name}.tmp"));
 
-    fs::write(&temp_path, content)
-        .map_err(|error| format!("无法写入临时配置文件 {}: {error}", temp_path.display()))?;
+    fs::write(&temp_path, content).map_err(|error| {
+        crate::log_error!(
+            "settings",
+            "写入临时配置文件失败",
+            "path" => temp_path.display().to_string(),
+            "target_path" => path.display().to_string(),
+            "error" => error.to_string()
+        );
+        format!("无法写入临时配置文件 {}: {error}", temp_path.display())
+    })?;
 
-    replace_settings_file(&temp_path, path)
-        .map_err(|error| format!("无法写入配置文件 {}: {error}", path.display()))
+    replace_settings_file(&temp_path, path).map_err(|error| {
+        crate::log_error!(
+            "settings",
+            "替换配置文件失败",
+            "path" => path.display().to_string(),
+            "temp_path" => temp_path.display().to_string(),
+            "error" => error.to_string()
+        );
+        format!("无法写入配置文件 {}: {error}", path.display())
+    })
 }
 
 #[cfg(target_os = "windows")]

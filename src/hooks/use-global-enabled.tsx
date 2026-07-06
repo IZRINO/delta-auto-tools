@@ -1,5 +1,5 @@
 import {createContext, type ReactNode, useCallback, useContext, useEffect, useState,} from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {listen} from "@tauri-apps/api/event";
 import {GLOBAL_EVENTS} from "@/lib/tauri-events";
 

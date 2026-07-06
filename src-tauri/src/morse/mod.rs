@@ -169,7 +169,7 @@ fn finish_run(app: &AppHandle) {
     if let Ok(mut inner) = state.lock_inner() {
         inner.logic.run_in_progress = false;
     } else {
-        eprintln!("摩斯状态已损坏，无法清除运行标志");
+        crate::log_error!("morse", "摩斯状态已损坏，无法清除运行标志");
     };
 }
 
@@ -252,6 +252,12 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Mor
     );
 
     if let Err(error) = restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey) {
+        crate::log_warn!(
+            "morse",
+            "初始化热键监听失败",
+            "hotkey" => settings.hotkey.clone(),
+            "error" => error.clone()
+        );
         if let Ok(mut inner) = state.lock_inner() {
             inner.hotkey_error = Some(error);
         }
@@ -422,7 +428,7 @@ fn persist_run_result(app: &AppHandle, result: MorseRunResult) {
         inner.logic.latest_run = Some(result);
         inner.logic.push_history(entry);
     } else {
-        eprintln!("摩斯状态已损坏，无法写入运行结果");
+        crate::log_error!("morse", "摩斯状态已损坏，无法写入运行结果");
     };
 }
 

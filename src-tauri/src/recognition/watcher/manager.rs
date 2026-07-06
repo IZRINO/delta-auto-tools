@@ -475,15 +475,23 @@ async fn run_region_watcher(
     // 加载参考图像
     let reference_image = match capture::load_reference_image(&reference_image_path) {
         Some(img) => {
-            eprintln!(
-                "[识别 watcher] 卡片 {card_id}: 参考图像加载成功 ({reference_image_path}), {}x{}",
-                img.width(),
-                img.height()
+            crate::log_debug!(
+                "recognition::watcher",
+                "参考图像加载成功",
+                "card_id" => card_id.clone(),
+                "path" => reference_image_path.clone(),
+                "width" => img.width(),
+                "height" => img.height()
             );
             img
         }
         None => {
-            eprintln!("[识别 watcher] 卡片 {card_id}: 无法加载参考图像: {reference_image_path}");
+            crate::log_error!(
+                "recognition::watcher",
+                "无法加载参考图像",
+                "card_id" => card_id.clone(),
+                "path" => reference_image_path.clone()
+            );
             return;
         }
     };
@@ -512,7 +520,15 @@ async fn run_region_watcher(
             Some(captured) => {
                 let result = matching::compare_images(&captured, &reference_image);
                 if result.similarity >= threshold {
-                    eprintln!("[识别 watcher] 卡片 {card_id}: 匹配成功 similarity={:.4} >= threshold={threshold} (位置: {},{})", result.similarity, result.best_x, result.best_y);
+                    crate::log_debug!(
+                        "recognition::watcher",
+                        "区域识别命中",
+                        "card_id" => card_id.clone(),
+                        "similarity" => result.similarity,
+                        "threshold" => threshold,
+                        "best_x" => result.best_x,
+                        "best_y" => result.best_y
+                    );
                     let _ = app.emit(REGION_MATCHED, &card_id);
                     let center_x =
                         region.x + result.best_x as i32 + reference_image.width() as i32 / 2;
@@ -525,6 +541,12 @@ async fn run_region_watcher(
                     )
                     .await
                     {
+                        crate::log_error!(
+                            "recognition::watcher",
+                            "区域识别效果执行失败",
+                            "card_id" => card_id.clone(),
+                            "error" => error.clone()
+                        );
                         let _ = app.emit_to("main", HOTKEY_ERROR, error);
                     }
                     last_triggered = Some(Instant::now());
@@ -600,10 +622,12 @@ async fn run_color_watcher(
             match_method.clone(),
         );
         if result.matched {
-            eprintln!(
-                "[识别 color watcher] 卡片 {card_id}: 识色命中 {}/{} probes",
-                result.hit_count,
-                probes.len()
+            crate::log_debug!(
+                "recognition::watcher",
+                "识色命中",
+                "card_id" => card_id.clone(),
+                "hit_count" => result.hit_count,
+                "probe_count" => probes.len()
             );
             let _ = app.emit(REGION_MATCHED, &card_id);
             let matched_probes = result
@@ -627,6 +651,12 @@ async fn run_color_watcher(
             )
             .await
             {
+                crate::log_error!(
+                    "recognition::watcher",
+                    "识色效果执行失败",
+                    "card_id" => card_id.clone(),
+                    "error" => error.clone()
+                );
                 let _ = app.emit_to("main", HOTKEY_ERROR, error);
             }
             last_triggered = Some(Instant::now());

@@ -1,5 +1,5 @@
 import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {invoke} from "@tauri-apps/api/core";
+import {invokeLogged as invoke} from "@/lib/logging";
 import {RiCheckboxCircleLine, RiHistoryLine, RiLayoutGridLine, RiRefreshLine,} from "@remixicon/react";
 
 import {listen} from "@tauri-apps/api/event";

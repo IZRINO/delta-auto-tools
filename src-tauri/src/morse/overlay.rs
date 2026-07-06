@@ -61,7 +61,10 @@ fn resolve_pending(app: &AppHandle, kind: RegionSelectionKind) {
 
         let _ = pending.sender.send(kind);
     } else {
-        eprintln!("区域选择状态已损坏，无法回收待处理选择流程");
+        crate::log_error!(
+            "morse::overlay",
+            "区域选择状态已损坏，无法回收待处理选择流程"
+        );
     };
 }
 

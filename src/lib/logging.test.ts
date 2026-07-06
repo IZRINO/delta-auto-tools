@@ -17,6 +17,7 @@ import {
   initLogging,
   getLogSettings,
   setLogSettings,
+  invokeLogged,
 } from "./logging";
 
 describe("logging", () => {
@@ -126,6 +127,71 @@ describe("logging", () => {
       });
 
       clearTraceId();
+      Object.defineProperty(globalThis, "window", {
+        value: origWindow,
+        writable: true,
+        configurable: true,
+      });
+    });
+  });
+
+  describe("invokeLogged", () => {
+    it("记录变更类 command 的开始和完成", async () => {
+      const origWindow = globalThis.window;
+      Object.defineProperty(globalThis, "window", {
+        value: { __TAURI_INTERNALS__: {} },
+        writable: true,
+        configurable: true,
+      });
+
+      mockInvoke.mockImplementation((command: string) => {
+        if (command === "timer_save_settings") return Promise.resolve({ ok: true });
+        if (command === "log_write_frontend") return Promise.resolve(undefined);
+        return Promise.resolve("abc123");
+      });
+
+      const result = await invokeLogged("timer_save_settings", { settingsValue: { token: "secret" } });
+
+      expect(result).toEqual({ ok: true });
+      expect(mockInvoke).toHaveBeenCalledWith("timer_save_settings", {
+        settingsValue: { token: "secret" },
+      });
+      const logCalls = mockInvoke.mock.calls.filter(([command]) => command === "log_write_frontend");
+      expect(logCalls).toHaveLength(2);
+      expect(logCalls[0][1].request.level).toBe("info");
+      expect(logCalls[0][1].request.source).toBe("timer-command");
+      expect(logCalls[0][1].request.payload.args.settingsValue.token).toBe("[masked]");
+      expect(logCalls[1][1].request.payload.phase).toBe("success");
+
+      Object.defineProperty(globalThis, "window", {
+        value: origWindow,
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it("command 失败时记录 error 并透传原错误", async () => {
+      const origWindow = globalThis.window;
+      Object.defineProperty(globalThis, "window", {
+        value: { __TAURI_INTERNALS__: {} },
+        writable: true,
+        configurable: true,
+      });
+
+      mockInvoke.mockImplementation((command: string) => {
+        if (command === "counter_adjust") return Promise.reject("计数器不存在");
+        if (command === "log_write_frontend") return Promise.resolve(undefined);
+        return Promise.resolve("abc123");
+      });
+
+      await expect(invokeLogged("counter_adjust", { counterId: "missing", delta: 1 })).rejects.toBe(
+        "计数器不存在",
+      );
+      const errorLog = mockInvoke.mock.calls.find(
+        ([command, payload]) => command === "log_write_frontend" && payload.request.level === "error",
+      );
+      expect(errorLog?.[1].request.payload.error.message).toBe("计数器不存在");
+
       Object.defineProperty(globalThis, "window", {
         value: origWindow,
         writable: true,
