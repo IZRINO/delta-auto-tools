@@ -46,6 +46,7 @@ import {useGlobalEnabled} from "@/hooks/use-global-enabled";
 type RecognitionRecordingTarget = {
     cardId: string;
     field: "triggerHotkey" | "activationHotkey" | "effectHotkey";
+    stepIndex?: number;
 } | null;
 
 const RECOGNITION_BOOTSTRAP_SPEC = {
@@ -57,6 +58,22 @@ const RECOGNITION_BOOTSTRAP_SPEC = {
 
 export function getRecognitionGlobalStatusMessage(globalEnabled: boolean): string | null {
     return globalEnabled ? null : "全局开关关闭，识别触发不会响应。";
+}
+
+export function patchHotkeyEffectStep(
+    card: RecognitionSettingsForm["cards"][number],
+    hotkey: string,
+    stepIndex = 0,
+): Pick<RecognitionSettingsForm["cards"][number], "effectHotkey" | "hotkeyEffectSteps"> {
+    const steps = card.hotkeyEffectSteps?.length
+        ? card.hotkeyEffectSteps
+        : [{hotkey: card.effectHotkey ?? "", delayMs: "0"}];
+    const targetIndex = Math.min(Math.max(stepIndex, 0), steps.length - 1);
+    const hotkeyEffectSteps = steps.map((step, index) => index === targetIndex ? {...step, hotkey} : step);
+    return {
+        effectHotkey: hotkeyEffectSteps[0]?.hotkey ?? "",
+        hotkeyEffectSteps,
+    };
 }
 
 export function RecognitionPage() {
@@ -102,20 +119,16 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         });
     }, [setForm]);
 
-    const updateEffectHotkeyById = useCallback((cardId: string, hotkey: string) => {
+    const updateEffectHotkeyById = useCallback((cardId: string, hotkey: string, stepIndex = 0) => {
         setForm((current) => {
             if (!current) return current;
             return {
                 ...current,
                 cards: current.cards.map((card) => {
                     if (card.id !== cardId) return card;
-                    const steps = card.hotkeyEffectSteps?.length
-                        ? card.hotkeyEffectSteps
-                        : [{hotkey: card.effectHotkey ?? "", delayMs: "0"}];
                     return {
                         ...card,
-                        effectHotkey: hotkey,
-                        hotkeyEffectSteps: steps.map((step, index) => index === 0 ? {...step, hotkey} : step),
+                        ...patchHotkeyEffectStep(card, hotkey, stepIndex),
                     };
                 }),
             };
@@ -129,7 +142,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             if (!target) return;
             setRecordingTarget(null);
             if (target.field === "effectHotkey") {
-                updateEffectHotkeyById(target.cardId, key);
+                updateEffectHotkeyById(target.cardId, key, target.stepIndex);
                 return;
             }
             const patch = target.field === "triggerHotkey"
@@ -142,7 +155,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             if (!target) return;
             setRecordingTarget(null);
             if (target.field === "effectHotkey") {
-                updateEffectHotkeyById(target.cardId, draft);
+                updateEffectHotkeyById(target.cardId, draft, target.stepIndex);
                 return;
             }
             const patch = target.field === "triggerHotkey"
@@ -252,13 +265,17 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [setForm],
     );
 
-    const beginHotkeyRecording = useCallback((card: RecognitionSettingsForm["cards"][number], field: NonNullable<RecognitionRecordingTarget>["field"]) => {
+    const beginHotkeyRecording = useCallback((
+        card: RecognitionSettingsForm["cards"][number],
+        field: NonNullable<RecognitionRecordingTarget>["field"],
+        stepIndex = 0,
+    ) => {
         const currentValue = field === "triggerHotkey"
                 ? card.hotkey
                 : field === "activationHotkey"
                     ? card.activationHotkey ?? ""
-                    : card.hotkeyEffectSteps?.[0]?.hotkey ?? card.effectHotkey ?? "";
-        setRecordingTarget({cardId: card.id, field});
+                    : card.hotkeyEffectSteps?.[stepIndex]?.hotkey ?? card.effectHotkey ?? "";
+        setRecordingTarget({cardId: card.id, field, stepIndex: field === "effectHotkey" ? stepIndex : undefined});
         recorder.beginRecording(currentValue);
         setStatusMessage(`正在录制 ${card.name || "识别卡片"} 的快捷键，按下主键会保存；失焦会取消。`);
     }, [recorder, setStatusMessage]);
@@ -266,9 +283,13 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const handleHotkeyRecorderKeyDown = useCallback((
         card: RecognitionSettingsForm["cards"][number],
         field: NonNullable<RecognitionRecordingTarget>["field"],
+        stepIndex: number | undefined,
         event: React.KeyboardEvent<HTMLButtonElement>,
     ) => {
         if (recordingTarget?.cardId !== card.id || recordingTarget.field !== field) {
+            return;
+        }
+        if (field === "effectHotkey" && recordingTarget.stepIndex !== stepIndex) {
             return;
         }
         recorder.handleKeyDown(event);
@@ -657,8 +678,8 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                             onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
                             onUpdateColorProbe={(probeIndex, patch) => handleUpdateColorProbe(index, probeIndex, patch)}
                             recordingTarget={recordingTarget}
-                            onBeginHotkeyRecording={(field) => beginHotkeyRecording(card, field)}
-                            onHotkeyKeyDown={(field, event) => handleHotkeyRecorderKeyDown(card, field, event)}
+                            onBeginHotkeyRecording={(field, stepIndex) => beginHotkeyRecording(card, field, stepIndex)}
+                            onHotkeyKeyDown={(field, stepIndex, event) => handleHotkeyRecorderKeyDown(card, field, stepIndex, event)}
                             onHotkeyRecorderBlur={recorder.handleBlur}
                         />
                     ))}
@@ -720,8 +741,8 @@ function RecognitionCardEditor({
     onRemoveColorProbe: (probeIndex: number) => void;
     onUpdateColorProbe: (probeIndex: number, patch: Partial<ColorProbeForm>) => void;
     recordingTarget: RecognitionRecordingTarget;
-    onBeginHotkeyRecording: (field: NonNullable<RecognitionRecordingTarget>["field"]) => void;
-    onHotkeyKeyDown: (field: NonNullable<RecognitionRecordingTarget>["field"], event: React.KeyboardEvent<HTMLButtonElement>) => void;
+    onBeginHotkeyRecording: (field: NonNullable<RecognitionRecordingTarget>["field"], stepIndex?: number) => void;
+    onHotkeyKeyDown: (field: NonNullable<RecognitionRecordingTarget>["field"], stepIndex: number | undefined, event: React.KeyboardEvent<HTMLButtonElement>) => void;
     onHotkeyRecorderBlur: () => void;
 }) {
     const isHotkey = card.triggerMode === "hotkey";
@@ -820,7 +841,7 @@ function RecognitionCardEditor({
                             id={`${card.id}-trigger-hotkey`}
                             isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "triggerHotkey"}
                             onBeginHotkeyRecording={() => onBeginHotkeyRecording("triggerHotkey")}
-                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", event)}
+                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", undefined, event)}
                             onHotkeyRecorderBlur={onHotkeyRecorderBlur}
                         />
                     </FieldGroup>
@@ -853,7 +874,7 @@ function RecognitionCardEditor({
                                 id={`${card.id}-activation-hotkey`}
                                 isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "activationHotkey"}
                                 onBeginHotkeyRecording={() => onBeginHotkeyRecording("activationHotkey")}
-                                onHotkeyKeyDown={(event) => onHotkeyKeyDown("activationHotkey", event)}
+                                onHotkeyKeyDown={(event) => onHotkeyKeyDown("activationHotkey", undefined, event)}
                                 onHotkeyRecorderBlur={onHotkeyRecorderBlur}
                             />
                         )}
@@ -1222,26 +1243,15 @@ function RecognitionCardEditor({
                                 <div className="space-y-2">
                                     {hotkeySteps.map((step, stepIndex) => (
                                         <div key={stepIndex} className="flex items-center gap-2">
-                                            {stepIndex === 0 ? (
-                                                <HotkeyField
-                                                    controlsDisabled={!isNativeShell}
-                                                    hotkey={step.hotkey}
-                                                    id={`${card.id}-effect-hotkey`}
-                                                    isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey"}
-                                                    onBeginHotkeyRecording={() => onBeginHotkeyRecording("effectHotkey")}
-                                                    onHotkeyKeyDown={(event) => onHotkeyKeyDown("effectHotkey", event)}
-                                                    onHotkeyRecorderBlur={onHotkeyRecorderBlur}
-                                                />
-                                            ) : (
-                                                <Input
-                                                    className="flex-1 font-mono"
-                                                    value={step.hotkey}
-                                                    onChange={(e) => {
-                                                        const next = hotkeySteps.map((item, index) => index === stepIndex ? {...item, hotkey: e.target.value} : item);
-                                                        onUpdate({hotkeyEffectSteps: next});
-                                                    }}
-                                                />
-                                            )}
+                                            <HotkeyField
+                                                controlsDisabled={!isNativeShell}
+                                                hotkey={step.hotkey}
+                                                id={`${card.id}-effect-hotkey-${stepIndex}`}
+                                                isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey" && recordingTarget.stepIndex === stepIndex}
+                                                onBeginHotkeyRecording={() => onBeginHotkeyRecording("effectHotkey", stepIndex)}
+                                                onHotkeyKeyDown={(event) => onHotkeyKeyDown("effectHotkey", stepIndex, event)}
+                                                onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                                            />
                                             <Input
                                                 className="w-28 font-mono"
                                                 type="number"

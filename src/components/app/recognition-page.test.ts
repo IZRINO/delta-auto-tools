@@ -71,6 +71,90 @@ describe("recognition-page 全局开关提示", () => {
     });
 });
 
+describe("recognition-page 按键效果步骤录制", () => {
+    it("录制第二步只更新第二步并保留首步 effectHotkey", async () => {
+        const {patchHotkeyEffectStep} = await import("@/components/app/recognition-page");
+        const patch = patchHotkeyEffectStep({
+            id: "card-1",
+            name: "卡片",
+            enabled: true,
+            triggerMode: "hotkey",
+            hotkey: "F1",
+            watchRegion: null,
+            watchReferenceImagePath: "",
+            watchMatchThreshold: "0.75",
+            watchPollIntervalMs: "500",
+            activationMode: "always",
+            activationHotkey: "",
+            activationDurationMs: "10000",
+            activationTriggerCount: "1",
+            hotkeyEffectEnabled: true,
+            effectHotkey: "Q",
+            hotkeyEffectSteps: [
+                {hotkey: "Q", delayMs: "0"},
+                {hotkey: "W", delayMs: "25"},
+                {hotkey: "E", delayMs: "50"},
+            ],
+            audioFiles: [],
+            playMode: "single",
+            comboWindowMs: "60000",
+            volume: "0.8",
+            cooldownMs: "1000",
+            allowSimultaneous: false,
+            colorProbes: [],
+            colorMatchMode: "all",
+            colorMatchMethod: "average",
+        }, "R", 1);
+
+        expect(patch.effectHotkey).toBe("Q");
+        expect(patch.hotkeyEffectSteps).toEqual([
+            {hotkey: "Q", delayMs: "0"},
+            {hotkey: "R", delayMs: "25"},
+            {hotkey: "E", delayMs: "50"},
+        ]);
+    });
+
+    it("录制首步同步更新 effectHotkey", async () => {
+        const {patchHotkeyEffectStep} = await import("@/components/app/recognition-page");
+        const patch = patchHotkeyEffectStep({
+            id: "card-1",
+            name: "卡片",
+            enabled: true,
+            triggerMode: "hotkey",
+            hotkey: "F1",
+            watchRegion: null,
+            watchReferenceImagePath: "",
+            watchMatchThreshold: "0.75",
+            watchPollIntervalMs: "500",
+            activationMode: "always",
+            activationHotkey: "",
+            activationDurationMs: "10000",
+            activationTriggerCount: "1",
+            hotkeyEffectEnabled: true,
+            effectHotkey: "Q",
+            hotkeyEffectSteps: [
+                {hotkey: "Q", delayMs: "0"},
+                {hotkey: "W", delayMs: "25"},
+            ],
+            audioFiles: [],
+            playMode: "single",
+            comboWindowMs: "60000",
+            volume: "0.8",
+            cooldownMs: "1000",
+            allowSimultaneous: false,
+            colorProbes: [],
+            colorMatchMode: "all",
+            colorMatchMethod: "average",
+        }, "A", 0);
+
+        expect(patch.effectHotkey).toBe("A");
+        expect(patch.hotkeyEffectSteps).toEqual([
+            {hotkey: "A", delayMs: "0"},
+            {hotkey: "W", delayMs: "25"},
+        ]);
+    });
+});
+
 // ── hotkeyTriggered 事件回调行为测试 ────────────────────
 
 describe("recognition-page hotkeyTriggered 事件行为", () => {

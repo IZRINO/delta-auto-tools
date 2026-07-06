@@ -135,7 +135,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             .catch((err: unknown) => {
                 if (disposed) return;
                 if (isThemeBootstrapStateError(err)) {
-                    setError("主题状态未注册，后端初始化可能失败，请检查配置文件或启动日志。");
+                    setError("主题状态暂未就绪，后端启动未完成或初始化失败，请查看启动日志。");
                     return;
                 }
                 setError(String(err));
@@ -172,7 +172,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             .catch((err: unknown) => {
                 if (disposed) return;
                 if (isThemeBootstrapStateError(err)) {
-                    setError("主题状态未注册，后端初始化可能失败，请检查配置文件或启动日志。");
+                    setError("主题状态暂未就绪，后端启动未完成或初始化失败，请查看启动日志。");
                     return;
                 }
                 setError(String(err));

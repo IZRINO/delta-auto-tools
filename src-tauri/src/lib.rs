@@ -24,7 +24,101 @@ mod tool_base;
 #[link(name = "resource", kind = "static")]
 extern "C" {}
 
+use std::path::PathBuf;
+
 use tauri::{Manager, WindowEvent};
+
+fn initialize_with_settings_recovery<T, F>(
+    app: &tauri::AppHandle,
+    tool: &str,
+    file_names: &[&str],
+    initialize: F,
+) -> Result<T, String>
+where
+    F: Fn() -> Result<T, String>,
+{
+    let paths = file_names
+        .iter()
+        .map(|file_name| settings::settings_path(app, file_name))
+        .collect::<Result<Vec<_>, _>>()?;
+    initialize_with_settings_recovery_paths(tool, paths, initialize)
+}
+
+fn initialize_with_settings_recovery_paths<T, F>(
+    tool: &str,
+    paths: Vec<PathBuf>,
+    initialize: F,
+) -> Result<T, String>
+where
+    F: Fn() -> Result<T, String>,
+{
+    match initialize() {
+        Ok(state) => Ok(state),
+        Err(first_error) => {
+            let mut recovered = Vec::new();
+            for path in paths {
+                if path.exists() {
+                    let backup = settings::backup_invalid_settings(&path)?;
+                    recovered.push(format!("{}=>{}", path.display(), backup.display()));
+                }
+            }
+            crate::log_warn!(
+                "settings",
+                "工具启动配置语义异常，已回退默认配置重试",
+                "tool" => tool.to_string(),
+                "backup" => recovered.join(";"),
+                "error" => first_error.clone()
+            );
+            initialize().map_err(|retry_error| {
+                format!(
+                    "{tool} 初始化失败，配置恢复后仍失败: {retry_error}; 原始错误: {first_error}"
+                )
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn initialize_with_settings_recovery_backs_up_invalid_file_and_retries() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("timer_settings.json");
+        fs::write(&path, r#"{"timerEnabled":true,"timers":[{"name":""}]}"#).unwrap();
+        let attempts = Cell::new(0);
+
+        let result = initialize_with_settings_recovery_paths("timer", vec![path.clone()], || {
+            let next = attempts.get() + 1;
+            attempts.set(next);
+            if next == 1 {
+                Err("计时器名称不能为空".to_string())
+            } else {
+                Ok("default-state")
+            }
+        })
+        .unwrap();
+
+        assert_eq!(result, "default-state");
+        assert_eq!(attempts.get(), 2);
+        assert!(!path.exists());
+        let backups = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("timer_settings.json.invalid-")
+            })
+            .count();
+        assert_eq!(backups, 1);
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -41,15 +135,44 @@ pub fn run() {
 
             let log_writer = logging::init_logger(app.handle())?;
             app.manage(log_writer);
-            let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
-            let state = morse::initialize(app.handle(), &hotkey_manager)?;
-            let timer_state = timer::initialize(app.handle(), &hotkey_manager)?;
-            let counter_state = counter::initialize(app.handle(), &hotkey_manager)?;
-            let rapidfire_state = rapidfire::initialize(app.handle(), &hotkey_manager)?;
-            let recognition_state = recognition::initialize(app.handle(), &hotkey_manager)?;
             let theme_state = theme::initialize(app.handle())?;
             let profile_state = profile::initialize(app.handle())?;
             let global_state = global_state::GlobalState::new(true);
+            app.manage(theme_state);
+            app.manage(profile_state);
+            app.manage(global_state);
+
+            let hotkey_manager = hotkeys::HotkeyManager::start(app.handle().clone());
+            let state = initialize_with_settings_recovery(
+                app.handle(),
+                "morse",
+                &["morse_settings.json"],
+                || morse::initialize(app.handle(), &hotkey_manager),
+            )?;
+            let timer_state = initialize_with_settings_recovery(
+                app.handle(),
+                "timer",
+                &["timer_settings.json"],
+                || timer::initialize(app.handle(), &hotkey_manager),
+            )?;
+            let counter_state = initialize_with_settings_recovery(
+                app.handle(),
+                "counter",
+                &["counter_settings.json"],
+                || counter::initialize(app.handle(), &hotkey_manager),
+            )?;
+            let rapidfire_state = initialize_with_settings_recovery(
+                app.handle(),
+                "rapidfire",
+                &["rapidfire_settings.json"],
+                || rapidfire::initialize(app.handle(), &hotkey_manager),
+            )?;
+            let recognition_state = initialize_with_settings_recovery(
+                app.handle(),
+                "recognition",
+                &["recognition_settings.json", "audio_settings.json"],
+                || recognition::initialize(app.handle(), &hotkey_manager),
+            )?;
             let mut sync_tool_registry = sync_tool::SyncToolRegistry::default();
             sync_tool_registry.register("counter", counter::stop_registered);
             sync_tool_registry.register("timer", timer::stop_registered);
@@ -86,9 +209,6 @@ pub fn run() {
             app.manage(counter_state);
             app.manage(rapidfire_state);
             app.manage(recognition_state);
-            app.manage(theme_state);
-            app.manage(profile_state);
-            app.manage(global_state);
             app.manage(sync_tool_registry);
             app.manage(lifecycle_registry);
             Ok(())

@@ -70,4 +70,5 @@
 ## 配置恢复策略
 
 - 通用 `load_settings` 遇到损坏 JSON 时，会把原文件重命名为 `<file>.corrupt-<timestamp>`，并返回默认配置，避免单个配置文件阻断 Tauri setup。
+- 工具启动阶段遇到语义非法配置（例如字段组合无法 normalize）时，会把对应工具配置重命名为 `<file>.invalid-<timestamp>`，然后用默认配置重试初始化。Recognition 会同时检查当前 `recognition_settings.json` 和旧版迁移文件 `audio_settings.json`。
 - 文件读取失败仍返回错误；该路径通常代表权限、磁盘或路径问题，不会被默认配置掩盖。

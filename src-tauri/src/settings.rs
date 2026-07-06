@@ -45,7 +45,7 @@ pub fn load_settings<T: DeserializeOwned + Default>(path: &Path) -> Result<T, St
     match serde_json::from_str::<T>(&content) {
         Ok(settings) => Ok(settings),
         Err(error) => {
-            let backup_path = backup_corrupt_settings(path);
+            let backup_path = backup_settings(path, "corrupt");
             crate::log_warn!(
                 "settings",
                 "配置 JSON 损坏，已回退默认配置",
@@ -58,7 +58,11 @@ pub fn load_settings<T: DeserializeOwned + Default>(path: &Path) -> Result<T, St
     }
 }
 
-fn backup_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
+pub fn backup_invalid_settings(path: &Path) -> Result<PathBuf, String> {
+    backup_settings(path, "invalid")
+}
+
+fn backup_settings(path: &Path, kind: &str) -> Result<PathBuf, String> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -67,11 +71,11 @@ fn backup_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
-    let backup_path = path.with_file_name(format!("{file_name}.corrupt-{timestamp}"));
+    let backup_path = path.with_file_name(format!("{file_name}.{kind}-{timestamp}"));
     fs::rename(path, &backup_path).map_err(|error| {
         crate::log_warn!(
             "settings",
-            "备份损坏配置文件失败",
+            "备份异常配置文件失败",
             "path" => path.display().to_string(),
             "backup" => backup_path.display().to_string(),
             "error" => error.to_string()
@@ -196,5 +200,25 @@ mod tests {
             })
             .count();
         assert_eq!(backups, 1);
+    }
+
+    #[test]
+    fn backup_invalid_settings_renames_file_with_invalid_suffix() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("bad_settings.json");
+        fs::write(&path, "{\"valid_json\":\"bad_semantics\"}").unwrap();
+
+        let backup = backup_invalid_settings(&path).unwrap();
+
+        assert!(!path.exists());
+        assert!(backup
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("bad_settings.json.invalid-"));
+        assert_eq!(
+            fs::read_to_string(backup).unwrap(),
+            "{\"valid_json\":\"bad_semantics\"}"
+        );
     }
 }
