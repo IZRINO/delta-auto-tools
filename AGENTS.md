@@ -262,6 +262,8 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ## Commit Guidelines
 
+- Issue 修复分支必须合并回 `master` 后再作为最终提交结果；不要把只存在于临时 `codex/*` 分支的提交当作完成。
+- 本地合并完成并验证通过后，删除已合并的临时开发分支，保持分支列表干净。
 - Commit message 使用中文
 - 发布 commit：subject `发布 v<version>`，正文必须包含 `变更：` 段，变更项从实际 diff 提炼，禁止泛泛"更新版本"
 - 常规 commit 示例：`feat(recognition): 识色探针支持多目标颜色`、`fix(counter): 全局开关关闭时保留计数器运行值`
