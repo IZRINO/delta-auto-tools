@@ -170,6 +170,32 @@ describe("logging", () => {
       });
     });
 
+    it("logs commands in __TAURI__ fallback shell", async () => {
+      const origWindow = globalThis.window;
+      Object.defineProperty(globalThis, "window", {
+        value: { __TAURI__: {} },
+        writable: true,
+        configurable: true,
+      });
+
+      mockInvoke.mockImplementation((command: string) => {
+        if (command === "theme_save_settings") return Promise.resolve({ ok: true });
+        if (command === "log_write_frontend") return Promise.resolve(undefined);
+        return Promise.resolve("abc123");
+      });
+
+      await invokeLogged("theme_save_settings", { settingsValue: { activeThemeId: "valentine" } });
+
+      const logCalls = mockInvoke.mock.calls.filter(([command]) => command === "log_write_frontend");
+      expect(logCalls).toHaveLength(2);
+
+      Object.defineProperty(globalThis, "window", {
+        value: origWindow,
+        writable: true,
+        configurable: true,
+      });
+    });
+
     it("command 失败时记录 error 并透传原错误", async () => {
       const origWindow = globalThis.window;
       Object.defineProperty(globalThis, "window", {

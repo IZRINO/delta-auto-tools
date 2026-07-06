@@ -1,6 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
 };
 
 use tauri::{
@@ -73,6 +76,8 @@ pub struct TimerLogic {
 pub struct TimerState {
     pub tool: ToolState<TimerLogic>,
     tick_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    display_reconcile_generation: Arc<AtomicU64>,
+    display_reconcile_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl TimerState {
@@ -621,9 +626,47 @@ pub(crate) fn ensure_display_windows(
     Ok(())
 }
 
-fn schedule_display_windows_reconcile(app: AppHandle, settings_value: TimerSettings) {
+fn next_display_reconcile_generation(generation: &AtomicU64) -> u64 {
+    generation.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+fn display_reconcile_is_current(generation: &AtomicU64, expected: u64) -> bool {
+    generation.load(Ordering::SeqCst) == expected
+}
+
+async fn run_serialized_display_reconcile<F>(
+    generation: Arc<AtomicU64>,
+    expected_generation: u64,
+    reconcile_lock: Arc<tokio::sync::Mutex<()>>,
+    reconcile: F,
+) -> Result<bool, String>
+where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+{
+    let _guard = reconcile_lock.lock().await;
+    if !display_reconcile_is_current(&generation, expected_generation) {
+        return Ok(false);
+    }
+    reconcile()?;
+    Ok(true)
+}
+
+fn schedule_display_windows_reconcile(
+    app: AppHandle,
+    settings_value: TimerSettings,
+    generation: Arc<AtomicU64>,
+    reconcile_lock: Arc<tokio::sync::Mutex<()>>,
+    expected_generation: u64,
+) {
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = ensure_display_windows(&app, &settings_value) {
+        if let Err(error) = run_serialized_display_reconcile(
+            generation,
+            expected_generation,
+            reconcile_lock,
+            move || ensure_display_windows(&app, &settings_value),
+        )
+        .await
+        {
             crate::log_warn!(
                 "timer",
                 "同步计时器透明窗口失败",
@@ -1017,6 +1060,8 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Tim
     let state = TimerState {
         tool,
         tick_task: Mutex::new(None),
+        display_reconcile_generation: Arc::new(AtomicU64::new(0)),
+        display_reconcile_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
 
     if settings.timer_enabled {
@@ -1074,7 +1119,15 @@ pub async fn timer_save_settings(
         TimerLogic::build_bootstrap(&inner)
     };
 
-    schedule_display_windows_reconcile(app.clone(), bootstrap.settings.clone());
+    let reconcile_generation =
+        next_display_reconcile_generation(&state.display_reconcile_generation);
+    schedule_display_windows_reconcile(
+        app.clone(),
+        bootstrap.settings.clone(),
+        Arc::clone(&state.display_reconcile_generation),
+        Arc::clone(&state.display_reconcile_lock),
+        reconcile_generation,
+    );
     emit_state(&app, bootstrap.clone());
     profile::update_active_profile_snapshot(
         &app,
@@ -1365,6 +1418,44 @@ mod tests {
             &settings,
             DEFAULT_TIMER_GROUP_ID
         ));
+    }
+
+    #[test]
+    fn display_reconcile_generation_keeps_latest_save_authoritative() {
+        let generation = std::sync::atomic::AtomicU64::new(0);
+
+        let first = next_display_reconcile_generation(&generation);
+        let second = next_display_reconcile_generation(&generation);
+
+        assert!(!display_reconcile_is_current(&generation, first));
+        assert!(display_reconcile_is_current(&generation, second));
+    }
+
+    #[tokio::test]
+    async fn serialized_display_reconcile_skips_stale_after_wait() {
+        let generation = Arc::new(AtomicU64::new(0));
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+
+        let stale = next_display_reconcile_generation(&generation);
+        let guard = lock.lock().await;
+        let stale_task = tokio::spawn(run_serialized_display_reconcile(
+            Arc::clone(&generation),
+            stale,
+            Arc::clone(&lock),
+            || Ok(()),
+        ));
+        let latest = next_display_reconcile_generation(&generation);
+        drop(guard);
+
+        assert!(!stale_task.await.unwrap().unwrap());
+        assert!(run_serialized_display_reconcile(
+            Arc::clone(&generation),
+            latest,
+            Arc::clone(&lock),
+            || Ok(()),
+        )
+        .await
+        .unwrap());
     }
 
     #[test]

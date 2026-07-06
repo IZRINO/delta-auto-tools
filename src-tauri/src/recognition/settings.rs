@@ -1,6 +1,9 @@
+use std::path::Path;
+
 use tauri::Manager;
 
 use super::types::RecognitionSettings;
+use crate::settings as common_settings;
 
 const SETTINGS_FILE: &str = "recognition_settings.json";
 const LEGACY_SETTINGS_FILE: &str = "audio_settings.json";
@@ -10,33 +13,30 @@ pub fn read_settings(app: &tauri::AppHandle) -> Result<RecognitionSettings, Stri
         .path()
         .app_config_dir()
         .map_err(|e| format!("获取配置目录失败: {e}"))?;
+    read_settings_from_dir(&config_dir)
+}
+
+fn read_settings_from_dir(config_dir: &Path) -> Result<RecognitionSettings, String> {
+    common_settings::ensure_config_dir(config_dir)?;
 
     let path = config_dir.join(SETTINGS_FILE);
-
-    let (content, should_write_migration) = if path.exists() {
-        (
-            std::fs::read_to_string(&path).map_err(|e| format!("读取识别触发设置失败: {e}"))?,
-            false,
-        )
-    } else {
-        let legacy_path = config_dir.join(LEGACY_SETTINGS_FILE);
-        if !legacy_path.exists() {
-            return Ok(RecognitionSettings::default());
+    if path.exists() {
+        let settings: RecognitionSettings = common_settings::load_settings(&path)?;
+        let normalized = super::normalize_settings(settings.clone());
+        if normalized != settings {
+            common_settings::save_settings(&path, &normalized)?;
         }
-        (
-            std::fs::read_to_string(&legacy_path)
-                .map_err(|e| format!("读取旧音频设置失败: {e}"))?,
-            true,
-        )
-    };
-
-    let settings: RecognitionSettings =
-        serde_json::from_str(&content).map_err(|e| format!("解析识别触发设置失败: {e}"))?;
-    let normalized = super::normalize_settings(settings.clone());
-    if should_write_migration || normalized != settings {
-        write_settings(app, &normalized)?;
+        return Ok(normalized);
     }
 
+    let legacy_path = config_dir.join(LEGACY_SETTINGS_FILE);
+    if !legacy_path.exists() {
+        return Ok(RecognitionSettings::default());
+    }
+
+    let settings: RecognitionSettings = common_settings::load_settings(&legacy_path)?;
+    let normalized = super::normalize_settings(settings);
+    common_settings::save_settings(&path, &normalized)?;
     Ok(normalized)
 }
 
@@ -48,15 +48,33 @@ pub fn write_settings(
         .path()
         .app_config_dir()
         .map_err(|e| format!("获取配置目录失败: {e}"))?;
-
-    std::fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {e}"))?;
-
     let path = config_dir.join(SETTINGS_FILE);
+    common_settings::save_settings(&path, settings)
+}
 
-    let content = serde_json::to_string_pretty(settings)
-        .map_err(|e| format!("序列化识别触发设置失败: {e}"))?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    std::fs::write(&path, content).map_err(|e| format!("写入识别触发设置失败: {e}"))?;
+    #[test]
+    fn read_settings_recovers_corrupt_current_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join(SETTINGS_FILE);
+        std::fs::write(&path, "{ broken json").unwrap();
 
-    Ok(())
+        let loaded = read_settings_from_dir(temp_dir.path()).unwrap();
+
+        assert_eq!(loaded, RecognitionSettings::default());
+        let backups = std::fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("recognition_settings.json.corrupt-")
+            })
+            .count();
+        assert_eq!(backups, 1);
+    }
 }

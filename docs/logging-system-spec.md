@@ -497,6 +497,8 @@ function checkNativeShell(): boolean {
 - 任意 command 失败写 `ERROR`，记录原始错误并继续向调用方抛出
 - payload 会截断深层/长文本，并屏蔽 `token`、`ticket`、`cookie`、`secret`、`password`、`authorization` 等字段
 
+native shell 检测同时接受 `__TAURI_INTERNALS__` 与 `__TAURI__`，必须与 `useNativeShell()` 的判定保持一致。
+
 该包装器覆盖前端发起的用户操作、配置保存、位置设置、测试播放、更新检查和系统 command 错误。
 
 ### 5.4 console 劫持（可选）

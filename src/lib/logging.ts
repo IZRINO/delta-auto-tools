@@ -166,8 +166,8 @@ export async function invokeLogged<T>(
 
 function checkNativeShell(): boolean {
   if (typeof window === "undefined") return false;
-  const w = window as Window & { __TAURI_INTERNALS__?: unknown };
-  return Boolean(w.__TAURI_INTERNALS__);
+  const w = window as Window & { __TAURI_INTERNALS__?: unknown; __TAURI__?: unknown };
+  return Boolean(w.__TAURI_INTERNALS__ ?? w.__TAURI__);
 }
 /**
  * 日志设置 DTO（与 Rust LogSettings 对应）

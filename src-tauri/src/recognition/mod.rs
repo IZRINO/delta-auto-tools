@@ -966,7 +966,7 @@ pub(crate) fn validate_settings(settings: &RecognitionSettings) -> Result<(), St
             executable_effect_count += 1;
         }
         if let Some(effect) = &card.effects.hotkey {
-            if effect.hotkey.trim().is_empty() {
+            if effect.normalized_steps().is_empty() {
                 return Err(format!("卡片 {} 的按键效果必须设置快捷键", card.name));
             }
             executable_effect_count += 1;
@@ -1500,6 +1500,24 @@ mod tests {
         assert!(validate_settings(&settings)
             .unwrap_err()
             .contains("按键效果必须设置快捷键"));
+    }
+
+    #[test]
+    fn validate_accepts_hotkey_effect_steps_without_legacy_hotkey() {
+        let mut card = base_card();
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![types::RecognitionHotkeyEffectStep {
+                hotkey: "F2".into(),
+                delay_ms: 25,
+            }],
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+
+        validate_settings(&settings).unwrap();
     }
 
     #[test]

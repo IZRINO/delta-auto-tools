@@ -50,6 +50,8 @@ graph TD
 
 `invokeLogged()` 是前端统一 Tauri command 包装器。生产代码通过 `invokeLogged as invoke` 调用后端；`*_get_*` / `*_read_*` 归类为 `debug` 读取日志，其余 command 归类为 `info` 用户操作日志，失败统一写 `error` 并继续透传原错误。日志 payload 会截断深层/长文本，并屏蔽 `token`、`ticket`、`cookie`、`secret`、`password`、`authorization` 等敏感字段。
 
+前端日志 native shell 检测同时兼容 Tauri v2 的 `__TAURI_INTERNALS__` 和旧 fallback `__TAURI__`，避免 shell 检测与业务页面检测不一致导致 command 日志丢失。
+
 ### 级别过滤
 
 `LogSettings` 存储全局级别和可选的按模块覆盖（如 `"morse": "debug"`）。过滤在格式化之前进行。`log_set_level` 命令同时更新内存阈值和持久化 JSON。`log_get_level` 命令返回当前设置。
