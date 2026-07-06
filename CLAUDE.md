@@ -367,7 +367,7 @@ Beta 版本**不建立独立的 beta 更新通道**，不需要 `latest-beta.jso
 #### Beta 发布完整流程
 
 1. 同步更新版本号（三处：`package.json` / `Cargo.toml` / `tauri.conf.json`），版本号带 `-beta.N` 后缀
-2. **无签名构建**：`bun run tauri build`（不需要 `TAURI_SIGNING_PRIVATE_KEY`）
+2. **无签名构建**：`bun run tauri build --config src-tauri/tauri.beta.conf.json`（关闭 updater artifact，不需要 `TAURI_SIGNING_PRIVATE_KEY`）
 3. 检查产物：`src-tauri/target/release/bundle/nsis/delta-auto-tools_<version>_x64-setup.exe`
 4. 提交 + Tag：`git commit` → `git tag -a v<version>` → `git push origin master v<version>`
 5. 创建 **prerelease** Release 并上传 1 个资产：

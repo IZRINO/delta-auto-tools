@@ -28,6 +28,8 @@
 - CSP：null（无内容安全策略限制）
 - `createUpdaterArtifacts: true`（构建时生成 .sig 文件）
 
+`src-tauri/tauri.beta.conf.json` 是 beta 构建覆盖配置，仅将 `bundle.createUpdaterArtifacts` 设为 `false`。beta 发布命令使用 `bun run tauri build --config src-tauri/tauri.beta.conf.json`，避免无签名环境下因 updater artifact 签名失败。
+
 ## Capabilities
 
 `src-tauri/capabilities/default.json` 定义前端可调用的 Tauri 命令。新增命令必须添加到此处，否则 `invoke()` 会失败。

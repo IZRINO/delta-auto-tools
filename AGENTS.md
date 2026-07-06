@@ -283,7 +283,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 ### Beta 版
 
 1. 版本号格式：`<major>.<minor>.<patch>-beta.<N>`
-2. 无签名构建：`bun run tauri build`（不需要 `TAURI_SIGNING_PRIVATE_KEY`）
+2. 无签名构建：`bun run tauri build --config src-tauri/tauri.beta.conf.json`（关闭 updater artifact，不需要 `TAURI_SIGNING_PRIVATE_KEY`）
 3. 产物仅 `.exe`，无 `.sig` 和 `latest.json`
 4. 创建 Release 加 `--prerelease` 标记，只上传 1 个资产（`.exe`）
 5. Beta 应用内「检查更新」走 stable 端点；同数值正式版 > beta，更高数值正式版触发更新

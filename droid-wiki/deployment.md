@@ -30,10 +30,10 @@ scripts/build-release.ps1
 
 ### Beta 构建（无签名）
 
-Beta 版本不需要签名：
+Beta 版本不需要签名。因为主配置开启了 `createUpdaterArtifacts` 并配置了 updater `pubkey`，beta 构建必须使用覆盖配置关闭 updater artifact：
 
 ```bash
-bun run tauri build
+bun run tauri build --config src-tauri/tauri.beta.conf.json
 ```
 
 仅产出 `.exe`（无 `.sig`）。
@@ -51,7 +51,7 @@ bun run tauri build
 ## 发布流程
 
 1. 更新三个文件中的版本号
-2. 构建（正式版签名，Beta 版无签名）
+2. 构建（正式版签名，Beta 版用 `src-tauri/tauri.beta.conf.json` 无签名构建）
 3. 提交，subject 为 `发布 v<version>`，正文包含 `变更：` 段列出实际变更
 4. 打 Tag：`git tag -a v<version> -m "发布 v<version>"` 并推送
 5. 创建 GitHub Release 并上传资产：
