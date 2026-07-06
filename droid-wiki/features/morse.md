@@ -210,3 +210,7 @@ sequenceDiagram
 | `morse://hotkey-error` | 热键触发识别失败 | `String`（错误信息） |
 
 > Morse 命令返回 `Result<T, String>`（中文错误字符串），与其他工具的 `Result<T, AppError>` 不同。
+## 当前行为补充
+
+- 点击区域选择必须显式传 `target: "click"`；不能再依赖 slot 数值推断目标类型，因为点击区低序号会与采样区 slot 冲突。
+- 热键录制支持 `-`、`=` 等符号主键，前端格式化范围与 Rust hotkey parser 保持一致。

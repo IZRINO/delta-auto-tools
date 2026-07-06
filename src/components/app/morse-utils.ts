@@ -149,6 +149,20 @@ export function parseOverlayTarget(search?: string): "sampling" | "click" {
     return params.get("target") === "click" ? "click" : "sampling";
 }
 
+export function createRegionSelectionRequest(
+    slots: number[],
+    target?: "sampling" | "click",
+): { target: "sampling" | "click"; slots: number[] } {
+    const resolvedTarget = target ?? (slots.some((slot) => slot >= REGION_LABELS.length) ? "click" : "sampling");
+    const maxSlots = resolvedTarget === "click" ? CLICK_REGION_LABELS.length : REGION_LABELS.length;
+    return {
+        target: resolvedTarget,
+        slots: slots.filter((slot, index, values) =>
+            Number.isInteger(slot) && slot >= 0 && slot < maxSlots && values.indexOf(slot) === index
+        ),
+    };
+}
+
 export function clickRegionRows(clickRegions: MorseSettingsForm["clickRegions"]) {
     return clickRegions
         .map((region, slotIndex) => ({...region, slotIndex}))
@@ -189,6 +203,18 @@ export function normalizeHotkeyPrimaryKey(key: string): string | null {
         Insert: "Insert",
         Delete: "Delete",
         Backspace: "Backspace",
+        ";": ";",
+        ",": ",",
+        ".": ".",
+        "/": "/",
+        "\\": "\\",
+        "[": "[",
+        "]": "]",
+        "-": "-",
+        "=": "=",
+        "+": "+",
+        "`": "`",
+        "'": "'",
     };
 
     return specialKeyMap[key] ?? null;

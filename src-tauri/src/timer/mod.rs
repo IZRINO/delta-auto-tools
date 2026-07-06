@@ -458,6 +458,12 @@ fn enabled_timer_count_for_group(settings_value: &TimerSettings, group_id: &str)
         .count()
 }
 
+fn group_needs_display_window(settings_value: &TimerSettings, group_id: &str) -> bool {
+    settings_value.timer_enabled
+        && group_enabled(&settings_value.timer_groups, group_id)
+        && enabled_timer_count_for_group(settings_value, group_id) > 0
+}
+
 fn normalize_timer(timer: &TimerItem) -> Result<TimerItem, String> {
     let name = timer.name.trim();
     if name.is_empty() {
@@ -608,11 +614,23 @@ pub(crate) fn ensure_display_windows(
             &display_query_for_group(&group.id),
             &format!("计时器透明窗口 - {}", group.name),
             &display,
-            settings_value.timer_enabled && group.enabled,
+            group_needs_display_window(settings_value, &group.id),
         )?;
     }
     destroy_stale_windows(app, TIMER_DISPLAY_LABEL, &active_labels);
     Ok(())
+}
+
+fn schedule_display_windows_reconcile(app: AppHandle, settings_value: TimerSettings) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = ensure_display_windows(&app, &settings_value) {
+            crate::log_warn!(
+                "timer",
+                "同步计时器透明窗口失败",
+                "error" => error
+            );
+        }
+    });
 }
 
 fn display_label_for_group(group_id: &str) -> String {
@@ -1056,7 +1074,7 @@ pub async fn timer_save_settings(
         TimerLogic::build_bootstrap(&inner)
     };
 
-    ensure_display_windows(&app, &bootstrap.settings)?;
+    schedule_display_windows_reconcile(app.clone(), bootstrap.settings.clone());
     emit_state(&app, bootstrap.clone());
     profile::update_active_profile_snapshot(
         &app,
@@ -1329,6 +1347,24 @@ mod tests {
         assert!(is_main_window_close("main"));
         assert!(!is_main_window_close(TIMER_DISPLAY_LABEL));
         assert!(!is_main_window_close(TIMER_POSITION_LABEL));
+    }
+
+    #[test]
+    fn empty_enabled_group_does_not_need_display_window() {
+        let mut settings = TimerSettings::default();
+        settings.timer_enabled = true;
+        settings.timer_groups.push(TimerGroup {
+            id: "empty-group".to_string(),
+            name: "空分组".to_string(),
+            enabled: true,
+            display: TimerDisplaySettings::default(),
+        });
+
+        assert!(!group_needs_display_window(&settings, "empty-group"));
+        assert!(group_needs_display_window(
+            &settings,
+            DEFAULT_TIMER_GROUP_ID
+        ));
     }
 
     #[test]

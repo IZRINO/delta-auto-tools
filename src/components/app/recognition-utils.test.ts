@@ -135,6 +135,46 @@ describe("recognition-utils", () => {
             expect(settings.cards[0].effects?.hotkey?.hotkey).toBe("F2");
         });
 
+        it("parses hotkey effect steps with per-step delay", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "按键序列",
+                    enabled: true,
+                    triggerMode: "hotkey",
+                    hotkey: "Ctrl+F1",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    audioEffectEnabled: false,
+                    hotkeyEffectEnabled: true,
+                    effectHotkey: "F2",
+                    hotkeyEffectSteps: [
+                        {hotkey: "F2", delayMs: "0"},
+                        {hotkey: "Ctrl+=", delayMs: "250"},
+                    ],
+                    clickEffectEnabled: false,
+                    audioFiles: [],
+                    playMode: "single",
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all",
+                    colorMatchMethod: "average",
+                } as any],
+            });
+
+            expect(settings.cards[0].effects?.hotkey?.steps).toEqual([
+                {hotkey: "F2", delayMs: 0},
+                {hotkey: "Ctrl+=", delayMs: 250},
+            ]);
+        });
+
         it("writes timed activation for region watch cards", () => {
             const settings = parseSettingsForm({
                 audioEnabled: true,
@@ -151,6 +191,7 @@ describe("recognition-utils", () => {
                     activationMode: "timedHotkey",
                     activationHotkey: "Alt+F1",
                     activationDurationMs: "3000",
+                    activationTriggerCount: "10",
                     audioEffectEnabled: false,
                     hotkeyEffectEnabled: true,
                     effectHotkey: "F2",
@@ -172,6 +213,7 @@ describe("recognition-utils", () => {
                 mode: "timedHotkey",
                 hotkey: "Alt+F1",
                 durationMs: 3000,
+                triggerCount: 10,
             });
         });
 

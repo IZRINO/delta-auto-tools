@@ -36,6 +36,7 @@ export type RecognitionActivation = {
     mode: RecognitionActivationMode;
     hotkey: string | null;
     durationMs: number;
+    triggerCount: number;
 };
 
 export type RecognitionAudioEffect = {
@@ -47,8 +48,14 @@ export type RecognitionAudioEffect = {
     allowSimultaneous: boolean;
 };
 
-export type RecognitionHotkeyEffect = {
+export type RecognitionHotkeyEffectStep = {
     hotkey: string;
+    delayMs: number;
+};
+
+export type RecognitionHotkeyEffect = {
+    hotkey?: string;
+    steps?: RecognitionHotkeyEffectStep[];
 };
 
 export type RecognitionClickMode = "customRegion" | "recognitionRegion";
@@ -121,10 +128,12 @@ export type RecognitionCardForm = {
     activationMode?: RecognitionActivationMode;
     activationHotkey?: string;
     activationDurationMs?: string;
+    activationTriggerCount?: string;
     audioEffectEnabled?: boolean;
     hotkeyEffectEnabled?: boolean;
     clickEffectEnabled?: boolean;
     effectHotkey?: string;
+    hotkeyEffectSteps?: { hotkey: string; delayMs: string }[];
     clickMode?: RecognitionClickMode;
     clickCustomRegion?: RegionRect | null;
     clickColorProbeIndex?: string;
@@ -150,7 +159,7 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     watchReferenceImagePath: null,
     watchMatchThreshold: 0.75,
     watchPollIntervalMs: 500,
-    activation: {mode: "always", hotkey: null, durationMs: 10000},
+    activation: {mode: "always", hotkey: null, durationMs: 10000, triggerCount: 1},
     effects: {
         audio: {
             audioFiles: [],

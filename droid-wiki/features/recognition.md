@@ -93,3 +93,8 @@ RegionWatch / ColorWatch 可选激活方式：
 - Overlay mode：`?mode=recognition-overlay`。
 - 持久化：`recognition_settings.json`；旧 `audio_settings.json` 自动迁移。
 - Profile snapshot：字段 `recognition`；旧 `audio` 字段通过 serde alias 迁移。
+## 当前行为补充
+
+- `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
+- `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
+- 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。

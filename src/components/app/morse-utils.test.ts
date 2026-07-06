@@ -6,6 +6,7 @@ import {
     formatRecordedHotkey,
     formatRegion,
     formatTimestamp,
+    createRegionSelectionRequest,
     getSelectionRect,
     normalizeHotkeyPrimaryKey,
     normalizeRunDetails,
@@ -140,6 +141,39 @@ describe("morse-utils", () => {
                 metaKey: true,
             } as React.KeyboardEvent<HTMLButtonElement>),
         ).toBeNull();
+    });
+
+    it("formats symbol hotkeys used by recognition effects", () => {
+        expect(
+            formatRecordedHotkey({
+                key: "-",
+                ctrlKey: false,
+                altKey: false,
+                shiftKey: false,
+                metaKey: false,
+            } as React.KeyboardEvent<HTMLButtonElement>),
+        ).toBe("-");
+
+        expect(
+            formatRecordedHotkey({
+                key: "=",
+                ctrlKey: true,
+                altKey: false,
+                shiftKey: false,
+                metaKey: false,
+            } as React.KeyboardEvent<HTMLButtonElement>),
+        ).toBe("Ctrl+=");
+    });
+
+    it("keeps click selection target explicit for low click slots", () => {
+        expect(createRegionSelectionRequest([0], "click")).toEqual({
+            target: "click",
+            slots: [0],
+        });
+        expect(createRegionSelectionRequest([0, 1, 2], "sampling")).toEqual({
+            target: "sampling",
+            slots: [0, 1, 2],
+        });
     });
 
     it("parses overlay slots from slots query", () => {

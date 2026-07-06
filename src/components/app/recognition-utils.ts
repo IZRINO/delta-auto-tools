@@ -5,6 +5,7 @@ import type {
     RecognitionCard,
     RecognitionCardForm,
     RecognitionClickEffect,
+    RecognitionHotkeyEffect,
     RecognitionSettings,
     RecognitionSettingsForm,
 } from "@/components/app/recognition-types";
@@ -91,10 +92,28 @@ function legacyAudioEffect(card: RecognitionCard): RecognitionAudioEffect | null
     };
 }
 
+function hotkeyEffectSteps(effect: RecognitionHotkeyEffect | null | undefined): { hotkey: string; delayMs: string }[] {
+    if (!effect) {
+        return [];
+    }
+    const steps = (effect.steps ?? [])
+        .map((step) => ({
+            hotkey: step.hotkey ?? "",
+            delayMs: String(step.delayMs ?? 0),
+        }))
+        .filter((step) => step.hotkey.trim().length > 0);
+    if (steps.length > 0) {
+        return steps;
+    }
+    const legacyHotkey = effect.hotkey?.trim() ?? "";
+    return legacyHotkey ? [{hotkey: legacyHotkey, delayMs: "0"}] : [];
+}
+
 function cardToForm(card: RecognitionCard): RecognitionCardForm {
     const audio = legacyAudioEffect(card);
-    const activation = card.activation ?? {mode: "always", hotkey: null, durationMs: 10000};
+    const activation = card.activation ?? {mode: "always", hotkey: null, durationMs: 10000, triggerCount: 1};
     const click = card.effects?.click ?? null;
+    const hotkeySteps = hotkeyEffectSteps(card.effects?.hotkey);
     return {
         id: card.id,
         name: card.name,
@@ -108,10 +127,12 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
         activationMode: activation.mode ?? "always",
         activationHotkey: activation.hotkey ?? "",
         activationDurationMs: String(activation.durationMs ?? 10000),
+        activationTriggerCount: String(activation.triggerCount ?? 1),
         audioEffectEnabled: Boolean(audio),
         hotkeyEffectEnabled: Boolean(card.effects?.hotkey),
         clickEffectEnabled: Boolean(click),
-        effectHotkey: card.effects?.hotkey?.hotkey ?? "",
+        effectHotkey: hotkeySteps[0]?.hotkey ?? card.effects?.hotkey?.hotkey ?? "",
+        hotkeyEffectSteps: hotkeySteps,
         clickMode: click?.mode ?? "customRegion",
         clickCustomRegion: click?.customRegion ?? null,
         clickColorProbeIndex: click?.colorProbeIndex == null ? "" : String(click.colorProbeIndex),
@@ -170,12 +191,18 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
         throw new Error("当前识别激活方式必须设置激活快捷键。");
     }
     let activationDurationMs = 10000;
+    let activationTriggerCount = 1;
     if (activationMode === "timedHotkey") {
         const parsed = parseInt(form.activationDurationMs ?? "10000", 10);
         if (Number.isNaN(parsed) || parsed < 100 || parsed > 600000) {
             throw new Error("限时识别时长必须在 100 到 600000 毫秒之间。");
         }
         activationDurationMs = parsed;
+        const parsedTriggerCount = parseInt(form.activationTriggerCount ?? "1", 10);
+        if (Number.isNaN(parsedTriggerCount) || parsedTriggerCount < 1 || parsedTriggerCount > 1000) {
+            throw new Error("限时识别触发次数必须在 1 到 1000 之间。");
+        }
+        activationTriggerCount = parsedTriggerCount;
     }
 
     const colorProbes = form.triggerMode === "colorWatch"
@@ -194,11 +221,23 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
         effects.audio = parseAudioEffect(form);
     }
     if (form.hotkeyEffectEnabled) {
-        const effectHotkey = form.effectHotkey?.trim() ?? "";
+        const configuredSteps = form.hotkeyEffectSteps?.length
+            ? form.hotkeyEffectSteps
+            : [{hotkey: form.effectHotkey ?? "", delayMs: "0"}];
+        const steps = configuredSteps
+            .map((step) => ({
+                hotkey: step.hotkey.trim(),
+                delayMs: parseInt(step.delayMs || "0", 10),
+            }))
+            .filter((step) => step.hotkey.length > 0);
+        const effectHotkey = steps[0]?.hotkey ?? "";
         if (!effectHotkey) {
             throw new Error("按键效果必须设置快捷键。");
         }
-        effects.hotkey = {hotkey: effectHotkey};
+        if (steps.some((step) => Number.isNaN(step.delayMs) || step.delayMs < 0 || step.delayMs > 600000)) {
+            throw new Error("按键效果延迟必须在 0 到 600000 毫秒之间。");
+        }
+        effects.hotkey = {hotkey: effectHotkey, steps};
     }
     if (form.clickEffectEnabled) {
         effects.click = parseClickEffect(form, colorProbes.length);
@@ -221,6 +260,7 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
             mode: activationMode,
             hotkey: activationHotkey,
             durationMs: activationDurationMs,
+            triggerCount: activationTriggerCount,
         },
         effects,
         cooldownMs,

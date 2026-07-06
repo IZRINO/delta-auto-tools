@@ -35,7 +35,6 @@ import {
     type MorseRunResult,
     type MorseSettings,
     type MorseSettingsForm,
-    CLICK_REGION_LABELS,
     REGION_LABELS,
     type RegionSelectionOutcome,
     type RegionSelectionProgress,
@@ -43,6 +42,7 @@ import {
 } from "@/components/app/morse-types";
 import {
     clickRegionRows,
+    createRegionSelectionRequest,
     formatRecordedHotkey,
     formatRegion,
     formatTimestamp,
@@ -229,17 +229,15 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
     const canRun = configuredCount === REGION_LABELS.length;
     const isBusy = loading || saving || running || selectingSlot !== null;
 
-    const performSelectionSession = useCallback(async (slots: number[]) => {
-        if (slots.length === 0) return false;
+    const performSelectionSession = useCallback(async (slots: number[], explicitTarget?: "sampling" | "click") => {
+        const request = createRegionSelectionRequest(slots, explicitTarget);
+        if (request.slots.length === 0) return false;
         if (!isNativeShell) {
             setStatusMessage("浏览器预览模式下不可执行区域框选，请在桌面端使用。");
             return false;
         }
-        // ponytail: any slot ≥3 means click mode (sampling has only 0-2)
-        const target = slots.some((s) => s >= REGION_LABELS.length) ? "click" : "sampling";
-        const actualSlots = target === "click"
-            ? slots.filter((s) => s < CLICK_REGION_LABELS.length)
-            : slots;
+        const target = request.target;
+        const actualSlots = request.slots;
         setSelectingSlot(actualSlots.length === 1 ? actualSlots[0] : -1);
         setStatusMessage(
             target === "click"
@@ -570,7 +568,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                                             onClick={() => {
                                                                 const empty = (form?.clickRegions ?? []).findIndex((r) => !r.rect);
                                                                 if (empty === -1) return;
-                                                                void performSelectionSession([empty]);
+                                                                void performSelectionSession([empty], "click");
                                                             }}
                                                             type="button"
                                                             variant="outline"

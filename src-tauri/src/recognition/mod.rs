@@ -730,10 +730,10 @@ pub(crate) fn restart_hotkey_listeners(
 fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), String> {
     let mut seen = std::collections::HashMap::<String, String>::new();
     for card in settings.cards.iter().filter(|c| c.enabled) {
-        let mut keys = Vec::new();
+        let mut keys: Vec<(String, &str)> = Vec::new();
         if card.trigger_mode == RecognitionTriggerMode::Hotkey {
             if let Some(key) = card.hotkey.as_ref().filter(|v| !v.trim().is_empty()) {
-                keys.push((key, "触发快捷键"));
+                keys.push((key.clone(), "触发快捷键"));
             }
         } else if card.activation.mode != types::RecognitionActivationMode::Always {
             if let Some(key) = card
@@ -742,17 +742,19 @@ fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), Stri
                 .as_ref()
                 .filter(|v| !v.trim().is_empty())
             {
-                keys.push((key, "识别激活快捷键"));
+                keys.push((key.clone(), "识别激活快捷键"));
             }
         }
         if let Some(effect) = card.effects.hotkey.as_ref() {
-            if !effect.hotkey.trim().is_empty() {
-                keys.push((&effect.hotkey, "按键效果"));
+            for step in effect.normalized_steps() {
+                if !step.hotkey.trim().is_empty() {
+                    keys.push((step.hotkey, "按键效果"));
+                }
             }
         }
 
         for (key, label) in keys {
-            let normalized = crate::hotkey_types::hotkey_to_string(key)?;
+            let normalized = crate::hotkey_types::hotkey_to_string(&key)?;
             if let Some(existing) = seen.insert(normalized.clone(), card.name.clone()) {
                 return Err(format!(
                     "快捷键 {normalized} 在 {existing} 与 {} 中重复（{label}）",
@@ -1487,7 +1489,10 @@ mod tests {
     #[test]
     fn validate_rejects_empty_hotkey_effect() {
         let mut card = base_card();
-        card.effects.hotkey = Some(types::RecognitionHotkeyEffect { hotkey: " ".into() });
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: " ".into(),
+            steps: Vec::new(),
+        });
         let settings = RecognitionSettings {
             recognition_enabled: true,
             cards: vec![card],

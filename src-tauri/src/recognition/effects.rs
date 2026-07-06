@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::events::{HOTKEY_ERROR, HOTKEY_TRIGGERED};
-use super::types::{RecognitionClickEffect, RecognitionClickMode, RecognitionHotkeyEffect};
+use super::types::{RecognitionClickEffect, RecognitionClickMode, RecognitionHotkeyEffectStep};
 use super::{player, resolve_audio_effect_path, RecognitionState, ResolvedPlay};
 use crate::input_simulation;
 
@@ -27,7 +27,7 @@ pub(crate) struct ColorProbeMatch {
 struct EffectPlan {
     playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     audio: Option<ResolvedPlay>,
-    hotkey: Option<RecognitionHotkeyEffect>,
+    hotkey_steps: Vec<RecognitionHotkeyEffectStep>,
     click_point: Option<(i32, i32)>,
 }
 
@@ -46,8 +46,11 @@ pub(crate) async fn execute(
         });
     }
 
-    if let Some(effect) = plan.hotkey {
-        input_simulation::press_hotkey_once(&effect.hotkey, "识别触发按键效果").await?;
+    for step in plan.hotkey_steps {
+        if step.delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(step.delay_ms as u64)).await;
+        }
+        input_simulation::press_hotkey_once(&step.hotkey, "识别触发按键效果").await?;
     }
 
     if let Some((x, y)) = plan.click_point {
@@ -95,25 +98,25 @@ fn build_plan(
         .filter(|effect| !effect.audio_files.is_empty())
         .map(|effect| resolve_audio_effect_path(&inner, card_id, effect, std::time::Instant::now()))
         .transpose()?;
-    let hotkey = card
+    let hotkey_steps = card
         .effects
         .hotkey
         .as_ref()
-        .filter(|effect| !effect.hotkey.trim().is_empty())
-        .cloned();
+        .map(|effect| effect.normalized_steps())
+        .unwrap_or_default();
     let click_point = card
         .effects
         .click
         .as_ref()
         .and_then(|effect| click_point_for_effect(effect, context));
-    if audio.is_none() && hotkey.is_none() && click_point.is_none() {
+    if audio.is_none() && hotkey_steps.is_empty() && click_point.is_none() {
         return Err("卡片没有可执行的触发效果".to_string());
     }
 
     Ok(EffectPlan {
         playback_tx: inner.logic.playback_tx.clone(),
         audio,
-        hotkey,
+        hotkey_steps,
         click_point,
     })
 }

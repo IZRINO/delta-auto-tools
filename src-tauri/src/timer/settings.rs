@@ -92,14 +92,16 @@ mod tests {
     }
 
     #[test]
-    fn deserialize_settings_reports_invalid_json() {
+    fn deserialize_settings_recovers_invalid_json() {
         use std::fs;
 
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join(SETTINGS_FILE_NAME);
         fs::write(&path, "{not-json}").unwrap();
 
-        let error = settings::load_settings::<TimerSettings>(&path).unwrap_err();
-        assert!(error.contains("无法解析配置文件"));
+        let loaded = settings::load_settings::<TimerSettings>(&path).unwrap();
+        assert_eq!(loaded.timer_enabled, TimerSettings::default().timer_enabled);
+        assert!(!path.exists());
+        assert_eq!(temp_dir.path().read_dir().unwrap().count(), 1);
     }
 }

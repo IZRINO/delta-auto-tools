@@ -65,3 +65,7 @@
 ## PM2
 
 `ecosystem.config.cjs` 定义两个进程：`delta-auto-tools-vite`（Vite 开发服务器）和 `delta-auto-tools-tauri`（Tauri 开发）。Tauri 进程通过 `scripts/wait-for-port.cjs` 等待端口 1420。
+## 配置恢复策略
+
+- 通用 `load_settings` 遇到损坏 JSON 时，会把原文件重命名为 `<file>.corrupt-<timestamp>`，并返回默认配置，避免单个配置文件阻断 Tauri setup。
+- 文件读取失败仍返回错误；该路径通常代表权限、磁盘或路径问题，不会被默认配置掩盖。

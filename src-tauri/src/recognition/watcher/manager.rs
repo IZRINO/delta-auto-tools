@@ -214,12 +214,28 @@ pub(crate) fn watcher_should_run(global_on: bool, recognition_on: bool) -> bool 
     global_on && recognition_on
 }
 
+fn activation_session_should_continue(
+    mode: RecognitionActivationMode,
+    matched_count: u32,
+    trigger_count: u32,
+    timed_out: bool,
+) -> bool {
+    match mode {
+        RecognitionActivationMode::TimedHotkey => {
+            !timed_out && matched_count < trigger_count.max(1)
+        }
+        RecognitionActivationMode::OnceHotkey | RecognitionActivationMode::Always => false,
+    }
+}
+
 async fn run_activation_session(app: AppHandle, card_id: String, cancel: Arc<AtomicBool>) {
     let Some(card) = card_snapshot(&app, &card_id) else {
         return;
     };
     let duration = Duration::from_millis(card.activation.duration_ms.max(100) as u64);
     let interval_ms = card.watch_poll_interval_ms.max(100);
+    let trigger_count = card.activation.trigger_count.max(1);
+    let mut matched_count = 0_u32;
     let deadline = Instant::now() + duration;
 
     loop {
@@ -232,13 +248,19 @@ async fn run_activation_session(app: AppHandle, card_id: String, cancel: Arc<Ato
                 RecognitionTriggerMode::ColorWatch => run_color_once(&app, &card).await,
                 RecognitionTriggerMode::Hotkey => false,
             };
-            if matched || card.activation.mode == RecognitionActivationMode::OnceHotkey {
+            if matched {
+                matched_count = matched_count.saturating_add(1);
+            }
+            if card.activation.mode == RecognitionActivationMode::OnceHotkey && matched {
                 break;
             }
         }
-        if card.activation.mode != RecognitionActivationMode::TimedHotkey
-            || Instant::now() >= deadline
-        {
+        if !activation_session_should_continue(
+            card.activation.mode.clone(),
+            matched_count,
+            trigger_count,
+            Instant::now() >= deadline,
+        ) {
             break;
         }
         tokio::time::sleep(Duration::from_millis(interval_ms as u64)).await;
@@ -661,5 +683,32 @@ async fn run_color_watcher(
             }
             last_triggered = Some(Instant::now());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timed_activation_stops_after_target_trigger_count() {
+        assert!(activation_session_should_continue(
+            RecognitionActivationMode::TimedHotkey,
+            2,
+            3,
+            false
+        ));
+        assert!(!activation_session_should_continue(
+            RecognitionActivationMode::TimedHotkey,
+            3,
+            3,
+            false
+        ));
+        assert!(!activation_session_should_continue(
+            RecognitionActivationMode::TimedHotkey,
+            2,
+            3,
+            true
+        ));
     }
 }

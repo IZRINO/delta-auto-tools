@@ -22,6 +22,10 @@ fn default_activation_duration_ms() -> u32 {
     10000
 }
 
+fn default_activation_trigger_count() -> u32 {
+    1
+}
+
 fn default_watch_match_threshold() -> f32 {
     0.75
 }
@@ -125,6 +129,8 @@ pub struct RecognitionActivation {
     pub hotkey: Option<String>,
     #[serde(default = "default_activation_duration_ms")]
     pub duration_ms: u32,
+    #[serde(default = "default_activation_trigger_count")]
+    pub trigger_count: u32,
 }
 
 impl Default for RecognitionActivation {
@@ -133,6 +139,7 @@ impl Default for RecognitionActivation {
             mode: RecognitionActivationMode::Always,
             hotkey: None,
             duration_ms: default_activation_duration_ms(),
+            trigger_count: default_activation_trigger_count(),
         }
     }
 }
@@ -182,8 +189,70 @@ pub struct RecognitionAudioEffect {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct RecognitionHotkeyEffect {
+pub struct RecognitionHotkeyEffectStep {
     pub hotkey: String,
+    #[serde(default)]
+    pub delay_ms: u32,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionHotkeyEffect {
+    #[serde(default)]
+    pub hotkey: String,
+    #[serde(default)]
+    pub steps: Vec<RecognitionHotkeyEffectStep>,
+}
+
+impl RecognitionHotkeyEffect {
+    pub fn normalized_steps(&self) -> Vec<RecognitionHotkeyEffectStep> {
+        let steps: Vec<_> = self
+            .steps
+            .iter()
+            .filter(|step| !step.hotkey.trim().is_empty())
+            .cloned()
+            .collect();
+        if !steps.is_empty() {
+            return steps;
+        }
+        if self.hotkey.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![RecognitionHotkeyEffectStep {
+                hotkey: self.hotkey.clone(),
+                delay_ms: 0,
+            }]
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RecognitionHotkeyEffect {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Helper {
+            #[serde(default)]
+            hotkey: String,
+            #[serde(default)]
+            steps: Vec<RecognitionHotkeyEffectStep>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        let mut effect = Self {
+            hotkey: helper.hotkey,
+            steps: helper.steps,
+        };
+        if effect.steps.is_empty() && !effect.hotkey.trim().is_empty() {
+            effect.steps.push(RecognitionHotkeyEffectStep {
+                hotkey: effect.hotkey.clone(),
+                delay_ms: 0,
+            });
+        }
+        Ok(effect)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -338,6 +407,31 @@ mod tests {
         assert!(card.allow_simultaneous);
         let reserialized = serde_json::to_string(&card).unwrap();
         assert!(!reserialized.contains("\"allowSimultaneous\""));
+    }
+
+    #[test]
+    fn activation_trigger_count_defaults_and_roundtrips() {
+        let activation: RecognitionActivation =
+            serde_json::from_str(r#"{"mode":"timedHotkey","hotkey":"Alt+F1","durationMs":3000}"#)
+                .unwrap();
+        assert_eq!(activation.trigger_count, 1);
+
+        let activation: RecognitionActivation = serde_json::from_str(
+            r#"{"mode":"timedHotkey","hotkey":"Alt+F1","durationMs":3000,"triggerCount":10}"#,
+        )
+        .unwrap();
+        assert_eq!(activation.trigger_count, 10);
+        let json = serde_json::to_string(&activation).unwrap();
+        assert!(json.contains("\"triggerCount\":10"));
+    }
+
+    #[test]
+    fn hotkey_effect_migrates_legacy_hotkey_to_steps() {
+        let effect: RecognitionHotkeyEffect = serde_json::from_str(r#"{"hotkey":"F2"}"#).unwrap();
+        assert_eq!(effect.hotkey, "F2");
+        assert_eq!(effect.steps.len(), 1);
+        assert_eq!(effect.steps[0].hotkey, "F2");
+        assert_eq!(effect.steps[0].delay_ms, 0);
     }
 
     #[test]

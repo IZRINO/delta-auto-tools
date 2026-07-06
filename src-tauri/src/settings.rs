@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::de::DeserializeOwned;
@@ -41,15 +42,43 @@ pub fn load_settings<T: DeserializeOwned + Default>(path: &Path) -> Result<T, St
         format!("无法读取配置文件 {}: {error}", path.display())
     })?;
 
-    serde_json::from_str::<T>(&content).map_err(|error| {
+    match serde_json::from_str::<T>(&content) {
+        Ok(settings) => Ok(settings),
+        Err(error) => {
+            let backup_path = backup_corrupt_settings(path);
+            crate::log_warn!(
+                "settings",
+                "配置 JSON 损坏，已回退默认配置",
+                "path" => path.display().to_string(),
+                "backup" => backup_path.as_ref().map(|path| path.display().to_string()).unwrap_or_else(|error| error.clone()),
+                "error" => error.to_string()
+            );
+            Ok(T::default())
+        }
+    }
+}
+
+fn backup_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("无法解析配置文件名 {}", path.display()))?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    let backup_path = path.with_file_name(format!("{file_name}.corrupt-{timestamp}"));
+    fs::rename(path, &backup_path).map_err(|error| {
         crate::log_warn!(
             "settings",
-            "解析配置文件失败",
+            "备份损坏配置文件失败",
             "path" => path.display().to_string(),
+            "backup" => backup_path.display().to_string(),
             "error" => error.to_string()
         );
-        format!("无法解析配置文件 {}: {error}", path.display())
-    })
+        format!("无法备份损坏配置文件 {}: {error}", path.display())
+    })?;
+    Ok(backup_path)
 }
 
 pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(), String> {
@@ -135,4 +164,37 @@ fn replace_settings_file(temp_path: &Path, target_path: &Path) -> Result<(), Str
         let _ = fs::remove_file(temp_path);
         error.to_string()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+    struct TestSettings {
+        value: String,
+    }
+
+    #[test]
+    fn load_settings_backs_up_corrupt_json_and_returns_default() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("broken_settings.json");
+        fs::write(&path, "{ broken json").unwrap();
+
+        let loaded = load_settings::<TestSettings>(&path).unwrap();
+
+        assert_eq!(loaded, TestSettings::default());
+        let backups = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("broken_settings.json.corrupt-")
+            })
+            .count();
+        assert_eq!(backups, 1);
+    }
 }

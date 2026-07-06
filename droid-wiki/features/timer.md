@@ -197,3 +197,7 @@ flowchart TD
 | 前端类型 | `src/components/app/timer-types.ts` |
 | 前端表单转换 | `src/components/app/timer-utils.ts` |
 | 事件订阅 | `src/lib/tauri-events.ts` |
+## 当前行为补充
+
+- 空的 enabled 分组不会创建 display WebView；至少有一个 enabled timer 的分组才需要透明显示窗口。
+- `timer_save_settings` 保存配置后异步 reconcile display 窗口，避免 WebView 创建阻塞 autosave 返回。

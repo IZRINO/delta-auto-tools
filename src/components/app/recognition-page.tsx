@@ -95,28 +95,52 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         });
     }, [setForm]);
 
+    const updateEffectHotkeyById = useCallback((cardId: string, hotkey: string) => {
+        setForm((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                cards: current.cards.map((card) => {
+                    if (card.id !== cardId) return card;
+                    const steps = card.hotkeyEffectSteps?.length
+                        ? card.hotkeyEffectSteps
+                        : [{hotkey: card.effectHotkey ?? "", delayMs: "0"}];
+                    return {
+                        ...card,
+                        effectHotkey: hotkey,
+                        hotkeyEffectSteps: steps.map((step, index) => index === 0 ? {...step, hotkey} : step),
+                    };
+                }),
+            };
+        });
+    }, [setForm]);
+
     const recorder = useHotkeyRecorder({
         formatKey: formatRecordedHotkey,
         onCommit: (key) => {
             const target = recordingTargetRef.current;
             if (!target) return;
             setRecordingTarget(null);
+            if (target.field === "effectHotkey") {
+                updateEffectHotkeyById(target.cardId, key);
+                return;
+            }
             const patch = target.field === "triggerHotkey"
                 ? {hotkey: key}
-                : target.field === "activationHotkey"
-                    ? {activationHotkey: key}
-                    : {effectHotkey: key};
+                : {activationHotkey: key};
             updateCardById(target.cardId, patch);
         },
         onCancel: (draft) => {
             const target = recordingTargetRef.current;
             if (!target) return;
             setRecordingTarget(null);
+            if (target.field === "effectHotkey") {
+                updateEffectHotkeyById(target.cardId, draft);
+                return;
+            }
             const patch = target.field === "triggerHotkey"
                 ? {hotkey: draft}
-                : target.field === "activationHotkey"
-                    ? {activationHotkey: draft}
-                    : {effectHotkey: draft};
+                : {activationHotkey: draft};
             updateCardById(target.cardId, patch);
         },
         onStatusMessage: setStatusMessage,
@@ -223,10 +247,10 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
 
     const beginHotkeyRecording = useCallback((card: RecognitionSettingsForm["cards"][number], field: NonNullable<RecognitionRecordingTarget>["field"]) => {
         const currentValue = field === "triggerHotkey"
-            ? card.hotkey
-            : field === "activationHotkey"
-                ? card.activationHotkey ?? ""
-                : card.effectHotkey ?? "";
+                ? card.hotkey
+                : field === "activationHotkey"
+                    ? card.activationHotkey ?? ""
+                    : card.hotkeyEffectSteps?.[0]?.hotkey ?? card.effectHotkey ?? "";
         setRecordingTarget({cardId: card.id, field});
         recorder.beginRecording(currentValue);
         setStatusMessage(`正在录制 ${card.name || "识别卡片"} 的快捷键，按下主键会保存；失焦会取消。`);
@@ -680,6 +704,9 @@ function RecognitionCardEditor({
     const audioEffectEnabled = card.audioEffectEnabled ?? true;
     const hotkeyEffectEnabled = card.hotkeyEffectEnabled ?? false;
     const clickEffectEnabled = card.clickEffectEnabled ?? false;
+    const hotkeySteps = card.hotkeyEffectSteps?.length
+        ? card.hotkeyEffectSteps
+        : [{hotkey: card.effectHotkey ?? "", delayMs: "0"}];
 
     // 参考图像预览
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -805,6 +832,7 @@ function RecognitionCardEditor({
                             />
                         )}
                         {(card.activationMode ?? "always") === "timedHotkey" && (
+                            <>
                             <Field>
                                 <FieldLabel>限时时长 (ms)</FieldLabel>
                                 <FieldContent>
@@ -818,6 +846,20 @@ function RecognitionCardEditor({
                                     />
                                 </FieldContent>
                             </Field>
+                            <Field>
+                                <FieldLabel>触发次数</FieldLabel>
+                                <FieldContent>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        max={1000}
+                                        step={1}
+                                        value={card.activationTriggerCount ?? "1"}
+                                        onChange={(e) => onUpdate({activationTriggerCount: e.target.value})}
+                                    />
+                                </FieldContent>
+                            </Field>
+                            </>
                         )}
                     </FieldGroup>
                 )}
@@ -1148,15 +1190,72 @@ function RecognitionCardEditor({
                     </Field>
 
                     {hotkeyEffectEnabled && (
-                        <HotkeyField
-                            controlsDisabled={!isNativeShell}
-                            hotkey={card.effectHotkey ?? ""}
-                            id={`${card.id}-effect-hotkey`}
-                            isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey"}
-                            onBeginHotkeyRecording={() => onBeginHotkeyRecording("effectHotkey")}
-                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("effectHotkey", event)}
-                            onHotkeyRecorderBlur={onHotkeyRecorderBlur}
-                        />
+                        <Field>
+                            <FieldLabel>按键序列</FieldLabel>
+                            <FieldContent>
+                                <div className="space-y-2">
+                                    {hotkeySteps.map((step, stepIndex) => (
+                                        <div key={stepIndex} className="flex items-center gap-2">
+                                            {stepIndex === 0 ? (
+                                                <HotkeyField
+                                                    controlsDisabled={!isNativeShell}
+                                                    hotkey={step.hotkey}
+                                                    id={`${card.id}-effect-hotkey`}
+                                                    isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey"}
+                                                    onBeginHotkeyRecording={() => onBeginHotkeyRecording("effectHotkey")}
+                                                    onHotkeyKeyDown={(event) => onHotkeyKeyDown("effectHotkey", event)}
+                                                    onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                                                />
+                                            ) : (
+                                                <Input
+                                                    className="flex-1 font-mono"
+                                                    value={step.hotkey}
+                                                    onChange={(e) => {
+                                                        const next = hotkeySteps.map((item, index) => index === stepIndex ? {...item, hotkey: e.target.value} : item);
+                                                        onUpdate({hotkeyEffectSteps: next});
+                                                    }}
+                                                />
+                                            )}
+                                            <Input
+                                                className="w-28 font-mono"
+                                                type="number"
+                                                min={0}
+                                                max={600000}
+                                                step={50}
+                                                value={step.delayMs}
+                                                onChange={(e) => {
+                                                    const next = hotkeySteps.map((item, index) => index === stepIndex ? {...item, delayMs: e.target.value} : item);
+                                                    onUpdate({hotkeyEffectSteps: next});
+                                                }}
+                                            />
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                disabled={hotkeySteps.length <= 1}
+                                                onClick={() => {
+                                                    const next = hotkeySteps.filter((_, index) => index !== stepIndex);
+                                                    onUpdate({
+                                                        effectHotkey: next[0]?.hotkey ?? "",
+                                                        hotkeyEffectSteps: next,
+                                                    });
+                                                }}
+                                            >
+                                                <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => onUpdate({hotkeyEffectSteps: [...hotkeySteps, {hotkey: "", delayMs: "0"}]})}
+                                        data-icon="inline-start"
+                                    >
+                                        <RiCheckLine className="size-4" aria-hidden="true"/>
+                                        添加按键
+                                    </Button>
+                                </div>
+                            </FieldContent>
+                        </Field>
                     )}
 
                     {clickEffectEnabled && (
