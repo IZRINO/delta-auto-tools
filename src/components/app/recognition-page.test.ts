@@ -35,8 +35,16 @@ vi.mock("@/hooks/use-native-shell", () => ({
     useNativeShell: () => true,
 }));
 
+vi.mock("@/hooks/use-global-enabled", () => ({
+    useGlobalEnabled: () => ({globalEnabled: true, setGlobalEnabled: vi.fn()}),
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
     invoke: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+    listen: vi.fn().mockResolvedValue(vi.fn()),
 }));
 
 vi.mock("@/components/app/recognition-utils", () => ({
@@ -50,6 +58,18 @@ vi.mock("@/components/app/recognition-utils", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({
     open: vi.fn(),
 }));
+
+describe("recognition-page 全局开关提示", () => {
+    it("全局关闭时返回识别不可响应提示", async () => {
+        const {getRecognitionGlobalStatusMessage} = await import("@/components/app/recognition-page");
+        expect(getRecognitionGlobalStatusMessage(false)).toBe("全局开关关闭，识别触发不会响应。");
+    });
+
+    it("全局开启时不返回提示", async () => {
+        const {getRecognitionGlobalStatusMessage} = await import("@/components/app/recognition-page");
+        expect(getRecognitionGlobalStatusMessage(true)).toBeNull();
+    });
+});
 
 // ── hotkeyTriggered 事件回调行为测试 ────────────────────
 

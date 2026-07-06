@@ -41,6 +41,7 @@ import {useNativeShell} from "@/hooks/use-native-shell";
 import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
 import {useAutosave} from "@/hooks/use-autosave";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
+import {useGlobalEnabled} from "@/hooks/use-global-enabled";
 
 type RecognitionRecordingTarget = {
     cardId: string;
@@ -54,12 +55,18 @@ const RECOGNITION_BOOTSTRAP_SPEC = {
     parseSettingsForm,
 };
 
+export function getRecognitionGlobalStatusMessage(globalEnabled: boolean): string | null {
+    return globalEnabled ? null : "全局开关关闭，识别触发不会响应。";
+}
+
 export function RecognitionPage() {
     const isNativeShell = useNativeShell();
     return <RecognitionWorkbench isNativeShell={isNativeShell}/>;
 }
 
 function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
+    const {globalEnabled} = useGlobalEnabled();
+    const globalStatusMessage = getRecognitionGlobalStatusMessage(globalEnabled);
     const {
         form,
         setForm,
@@ -293,13 +300,19 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             try {
                 await flushSettings();
                 await invoke("recognition_test_play", {cardId});
-                toast.success("播放测试已触发");
+                const message = globalStatusMessage ?? "播放测试已触发";
+                setStatusMessage(message);
+                if (globalStatusMessage) {
+                    toast.info(message);
+                } else {
+                    toast.success(message);
+                }
             } catch (error) {
                 if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell, flushSettings],
+        [isNativeShell, flushSettings, globalStatusMessage, setStatusMessage],
     );
 
     const handleTestMatch = useCallback(
@@ -313,12 +326,15 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 toast.success(
                     `匹配度: ${(result.similarity * 100).toFixed(1)}% ${result.triggered ? "(已触发)" : "(未触发)"}${pos}`
                 );
+                if (globalStatusMessage) {
+                    setStatusMessage(globalStatusMessage);
+                }
             } catch (error) {
                 if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell, flushSettings],
+        [isNativeShell, flushSettings, globalStatusMessage, setStatusMessage],
     );
 
     const handleBeginRegionSelection = useCallback(
@@ -373,12 +389,15 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                     .join("\n");
                 const summary = `识色: ${result.hitCount}/${result.totalCount} 命中 ${result.triggered ? "(已触发)" : "(未触发)"}`;
                 toast.success(`${summary}\n${detail}`, {duration: 6000});
+                if (globalStatusMessage) {
+                    setStatusMessage(globalStatusMessage);
+                }
             } catch (error) {
                 if (error instanceof Error && error.name === "FlushSettingsError") return;
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell, flushSettings],
+        [isNativeShell, flushSettings, globalStatusMessage, setStatusMessage],
     );
 
     const handleAddColorProbe = useCallback(
@@ -568,7 +587,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 }
                 actions={
                     <>
-                        <SignalTile label="总开关" value={enabled ? "ON" : "OFF"} detail={statusMessage}/>
+                        <SignalTile label="总开关" value={enabled ? "ON" : "OFF"} detail={globalStatusMessage ?? statusMessage}/>
                         <SignalTile label="卡片数" value={cardCount} detail="已配置"/>
                     </>
                 }
@@ -578,6 +597,13 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 <div
                     className="col-span-12 mb-3 border border-error bg-error/10 px-3 py-2 font-mono text-xs font-semibold text-error">
                     [ 错误 ] {pageError}
+                </div>
+            )}
+
+            {globalStatusMessage && (
+                <div
+                    className="col-span-12 mb-3 border border-warning bg-warning/10 px-3 py-2 font-mono text-xs font-semibold text-warning">
+                    [ 全局 ] {globalStatusMessage}
                 </div>
             )}
 
@@ -769,7 +795,7 @@ function RecognitionCardEditor({
                     </Field>
 
                     <Field>
-                        <FieldLabel>触发模式</FieldLabel>
+                        <FieldLabel>识别来源</FieldLabel>
                         <FieldContent>
                             <Select value={card.triggerMode}
                                     onValueChange={(v) => onUpdate({triggerMode: v as "hotkey" | "regionWatch" | "colorWatch"})}>
@@ -803,7 +829,7 @@ function RecognitionCardEditor({
                 {!isHotkey && (
                     <FieldGroup>
                         <Field>
-                            <FieldLabel>识别激活方式</FieldLabel>
+                            <FieldLabel>激活方式</FieldLabel>
                             <FieldContent>
                                 <Select
                                     value={card.activationMode ?? "always"}

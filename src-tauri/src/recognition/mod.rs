@@ -728,7 +728,8 @@ pub(crate) fn restart_hotkey_listeners(
 }
 
 fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), String> {
-    let mut seen = std::collections::HashMap::<String, String>::new();
+    let mut listener_keys = std::collections::HashMap::<String, String>::new();
+    let mut listener_set = std::collections::HashSet::<String>::new();
     for card in settings.cards.iter().filter(|c| c.enabled) {
         let mut keys: Vec<(String, &str)> = Vec::new();
         if card.trigger_mode == RecognitionTriggerMode::Hotkey {
@@ -745,21 +746,32 @@ fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), Stri
                 keys.push((key.clone(), "识别激活快捷键"));
             }
         }
-        if let Some(effect) = card.effects.hotkey.as_ref() {
-            for step in effect.normalized_steps() {
-                if !step.hotkey.trim().is_empty() {
-                    keys.push((step.hotkey, "按键效果"));
-                }
-            }
-        }
 
         for (key, label) in keys {
             let normalized = crate::hotkey_types::hotkey_to_string(&key)?;
-            if let Some(existing) = seen.insert(normalized.clone(), card.name.clone()) {
+            if let Some(existing) = listener_keys.insert(normalized.clone(), card.name.clone()) {
                 return Err(format!(
                     "快捷键 {normalized} 在 {existing} 与 {} 中重复（{label}）",
                     card.name
                 ));
+            }
+            listener_set.insert(normalized);
+        }
+    }
+
+    for card in settings.cards.iter().filter(|c| c.enabled) {
+        if let Some(effect) = card.effects.hotkey.as_ref() {
+            for step in effect.normalized_steps() {
+                if step.hotkey.trim().is_empty() {
+                    continue;
+                }
+                let normalized = crate::hotkey_types::hotkey_to_string(&step.hotkey)?;
+                if listener_set.contains(&normalized) {
+                    return Err(format!(
+                        "卡片 {} 的按键效果不能和监听热键相同：{normalized}",
+                        card.name
+                    ));
+                }
             }
         }
     }
@@ -1518,6 +1530,136 @@ mod tests {
         };
 
         validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_accepts_repeated_output_steps_in_same_card() {
+        let mut card = base_card();
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![
+                types::RecognitionHotkeyEffectStep {
+                    hotkey: "Q".into(),
+                    delay_ms: 0,
+                },
+                types::RecognitionHotkeyEffectStep {
+                    hotkey: "Q".into(),
+                    delay_ms: 25,
+                },
+                types::RecognitionHotkeyEffectStep {
+                    hotkey: "W".into(),
+                    delay_ms: 50,
+                },
+            ],
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+
+        validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_accepts_repeated_output_steps_across_cards() {
+        let mut card_a = base_card();
+        card_a.id = "c1".into();
+        card_a.name = "卡片 A".into();
+        card_a.hotkey = Some("Ctrl+F1".into());
+        card_a.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![types::RecognitionHotkeyEffectStep {
+                hotkey: "Q".into(),
+                delay_ms: 0,
+            }],
+        });
+
+        let mut card_b = base_card();
+        card_b.id = "c2".into();
+        card_b.name = "卡片 B".into();
+        card_b.hotkey = Some("Ctrl+F2".into());
+        card_b.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![types::RecognitionHotkeyEffectStep {
+                hotkey: "Q".into(),
+                delay_ms: 0,
+            }],
+        });
+
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card_a, card_b],
+        };
+
+        validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_output_step_equal_to_listener_hotkey() {
+        let mut card = base_card();
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![types::RecognitionHotkeyEffectStep {
+                hotkey: "Ctrl+F1".into(),
+                delay_ms: 0,
+            }],
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("按键效果不能和监听热键相同"));
+    }
+
+    #[test]
+    fn validate_rejects_output_step_equal_to_activation_hotkey() {
+        let mut card = base_card();
+        card.trigger_mode = types::RecognitionTriggerMode::RegionWatch;
+        card.hotkey = None;
+        card.activation = types::RecognitionActivation {
+            mode: types::RecognitionActivationMode::TimedHotkey,
+            hotkey: Some("Alt+F1".into()),
+            duration_ms: 3000,
+            trigger_count: 3,
+        };
+        card.effects.hotkey = Some(types::RecognitionHotkeyEffect {
+            hotkey: String::new(),
+            steps: vec![types::RecognitionHotkeyEffectStep {
+                hotkey: "Alt+F1".into(),
+                delay_ms: 0,
+            }],
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card],
+        };
+
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("按键效果不能和监听热键相同"));
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_listener_hotkeys_across_cards() {
+        let mut card_a = base_card();
+        card_a.id = "c1".into();
+        card_a.name = "卡片 A".into();
+        card_a.hotkey = Some("Ctrl+F1".into());
+
+        let mut card_b = base_card();
+        card_b.id = "c2".into();
+        card_b.name = "卡片 B".into();
+        card_b.hotkey = Some("Ctrl+F1".into());
+
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            cards: vec![card_a, card_b],
+        };
+
+        assert!(validate_settings(&settings).unwrap_err().contains("重复"));
     }
 
     #[test]

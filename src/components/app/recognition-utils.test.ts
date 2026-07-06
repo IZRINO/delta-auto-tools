@@ -217,6 +217,48 @@ describe("recognition-utils", () => {
             });
         });
 
+        it("hotkey 来源忽略 activation 配置", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cards: [{
+                    id: "c1",
+                    name: "快捷键直接触发",
+                    enabled: true,
+                    triggerMode: "hotkey",
+                    hotkey: "Ctrl+F1",
+                    watchRegion: null,
+                    watchReferenceImagePath: "",
+                    watchMatchThreshold: "0.75",
+                    watchPollIntervalMs: "500",
+                    activationMode: "timedHotkey",
+                    activationHotkey: "Alt+F1",
+                    activationDurationMs: "3000",
+                    activationTriggerCount: "3",
+                    audioEffectEnabled: false,
+                    hotkeyEffectEnabled: true,
+                    effectHotkey: "F2",
+                    clickEffectEnabled: false,
+                    audioFiles: [],
+                    playMode: "single",
+                    comboWindowMs: "60000",
+                    comboWindows: [],
+                    volume: "0.8",
+                    cooldownMs: "1000",
+                    allowSimultaneous: false,
+                    colorProbes: [],
+                    colorMatchMode: "all",
+                    colorMatchMethod: "average",
+                }],
+            });
+
+            expect(settings.cards[0].activation).toEqual({
+                mode: "always",
+                hotkey: null,
+                durationMs: 10000,
+                triggerCount: 1,
+            });
+        });
+
         it("throws for empty name", () => {
             const form = {
                 audioEnabled: true,

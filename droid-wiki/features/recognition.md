@@ -28,7 +28,7 @@ src-tauri/src/recognition/
 |------|------|
 | `RecognitionSettings` | 总开关 `recognition_enabled` + 卡片列表，落盘为 `recognition_settings.json` |
 | `RecognitionCard` | 触发来源、激活方式、效果配置、冷却、识色探针 |
-| `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey` |
+| `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey`；Hotkey 来源不使用 activation |
 | `RecognitionEffects` | 每卡最多一个音频效果、一个按键效果、一个点击效果 |
 | `RecognitionAudioEffect` | 音频文件、Single/Combo/Random、音量、并发策略 |
 | `RecognitionClickEffect` | 自定义区域中心或识别命中中心；ColorWatch 需显式选择 probe |
@@ -47,7 +47,9 @@ RegionWatch / ColorWatch 可选激活方式：
 |------|------|
 | `always` | 无激活快捷键，持续识别 |
 | `onceHotkey` | 按激活快捷键后识别一次 |
-| `timedHotkey` | 按激活快捷键后在 `durationMs` 内识别，成功一次即停 |
+| `timedHotkey` | 按激活快捷键后在 `durationMs` 内识别，命中 `triggerCount` 次或超时后停止 |
+
+Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配置；`onceHotkey` / `timedHotkey` 只表示“快捷键激活区域/识色识别窗口”。
 
 ## 效果执行
 
@@ -98,3 +100,5 @@ RegionWatch / ColorWatch 可选激活方式：
 - `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
 - 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。
+- 全局开关关闭时，识别 scope 的热键与 RegionWatch / ColorWatch watcher 都被全局门控拦截；Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
+- 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。

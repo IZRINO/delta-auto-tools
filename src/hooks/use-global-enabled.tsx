@@ -2,6 +2,7 @@ import {createContext, type ReactNode, useCallback, useContext, useEffect, useSt
 import {invokeLogged as invoke} from "@/lib/logging";
 import {listen} from "@tauri-apps/api/event";
 import {GLOBAL_EVENTS} from "@/lib/tauri-events";
+import {invokeWithStartupRetry} from "@/lib/tauri-startup-retry";
 
 import {useNativeShell} from "@/hooks/use-native-shell";
 
@@ -34,7 +35,7 @@ export function GlobalEnabledProvider({children}: { children: ReactNode }) {
         let disposed = false;
         let unlisten: (() => void) | undefined;
 
-        void invoke<boolean>("global_get_enabled").then((enabled) => {
+        void invokeWithStartupRetry<boolean>("global_get_enabled").then((enabled) => {
             if (disposed) return;
             setGlobalEnabledState(enabled);
             try {

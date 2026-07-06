@@ -2,6 +2,7 @@ import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from
 import {invokeLogged as invoke} from "@/lib/logging";
 import {computeIsDirty, isStaleSave} from "@/hooks/use-bootstrap-form-logic";
 import {getErrorMessage} from "@/lib/error-utils";
+import {invokeWithStartupRetry} from "@/lib/tauri-startup-retry";
 
 /** 定义工具页与 Rust 后端交互的规范 */
 export interface BootstrapFormSpec<TBootstrap extends { settings: Record<string, unknown> }, TSettings, TForm> {
@@ -185,7 +186,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
             const {syncMode, syncForm} = opts;
             const shouldSyncForm = syncMode === "full" || syncForm === true || formRef.current === null;
 
-            const next = await invoke<TBootstrap>(specRef.current.getBootstrapCommand);
+            const next = await invokeWithStartupRetry<TBootstrap>(specRef.current.getBootstrapCommand);
 
             updateState(() => {
                 setBootstrap(next);
