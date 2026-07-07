@@ -108,7 +108,14 @@ describe("morse-utils", () => {
         expect(normalizeHotkeyPrimaryKey("5")).toBe("5");
         expect(normalizeHotkeyPrimaryKey("F12")).toBe("F12");
         expect(normalizeHotkeyPrimaryKey("ArrowLeft")).toBe("Left");
+        expect(normalizeHotkeyPrimaryKey(",")).toBe(",");
+        expect(normalizeHotkeyPrimaryKey(".")).toBe(".");
         expect(normalizeHotkeyPrimaryKey("Control")).toBeNull();
+    });
+
+    it("formats comma and period hotkeys", () => {
+        expect(formatRecordedHotkey({key: ",", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false})).toBe(",");
+        expect(formatRecordedHotkey({key: ".", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false})).toBe("Ctrl+.");
     });
 
     it("formats recorded hotkeys", () => {

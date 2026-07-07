@@ -76,6 +76,8 @@ const RECOGNITION_BOOTSTRAP_SPEC = {
     parseSettingsForm,
 };
 
+export const RECOGNITION_HOTKEY_HELPER_TEXT = "支持字母、数字、F1-F24、方向键及 , . ; / \\ [ ] - = + ` ' 等符号";
+
 export function getRecognitionGlobalStatusMessage(globalEnabled: boolean): string | null {
     return globalEnabled ? null : "全局开关关闭，识别触发不会响应。";
 }
@@ -1124,6 +1126,7 @@ function RecognitionCardEditor({
                     <FieldGroup>
                         <HotkeyField
                             controlsDisabled={!isNativeShell}
+                            helperText={RECOGNITION_HOTKEY_HELPER_TEXT}
                             hotkey={card.hotkey}
                             id={`${card.id}-trigger-hotkey`}
                             isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "triggerHotkey"}
@@ -1157,6 +1160,7 @@ function RecognitionCardEditor({
                         {(card.activationMode ?? "always") !== "always" && (
                             <HotkeyField
                                 controlsDisabled={!isNativeShell}
+                                helperText={RECOGNITION_HOTKEY_HELPER_TEXT}
                                 hotkey={card.activationHotkey ?? ""}
                                 id={`${card.id}-activation-hotkey`}
                                 isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "activationHotkey"}
@@ -1532,6 +1536,7 @@ function RecognitionCardEditor({
                                         <div key={stepIndex} className="flex items-center gap-2">
                                             <HotkeyField
                                                 controlsDisabled={!isNativeShell}
+                                                helperText={RECOGNITION_HOTKEY_HELPER_TEXT}
                                                 hotkey={step.hotkey}
                                                 id={`${card.id}-effect-hotkey-${stepIndex}`}
                                                 isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "effectHotkey" && recordingTarget.stepIndex === stepIndex}

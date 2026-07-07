@@ -462,6 +462,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_comma_and_period_hotkeys() {
+        assert_eq!(
+            HotkeyBinding::parse(",").unwrap().primary,
+            PrimaryKey::Named(NamedKey::Comma)
+        );
+        assert_eq!(
+            HotkeyBinding::parse("Ctrl+.").unwrap().primary,
+            PrimaryKey::Named(NamedKey::Period)
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn maps_comma_and_period_vk_events_to_primary_keys() {
+        use willhook::event::KeyboardKey;
+
+        assert_eq!(
+            to_primary_key(KeyboardKey::Other(0xBC)),
+            Some(PrimaryKey::Named(NamedKey::Comma))
+        );
+        assert_eq!(
+            to_primary_key(KeyboardKey::Other(0xBE)),
+            Some(PrimaryKey::Named(NamedKey::Period))
+        );
+    }
+
+    #[test]
     fn extracts_primary_label_from_modified_hotkey() {
         assert_eq!(hotkey_primary_label("Ctrl+Shift+F6").unwrap(), "F6");
         assert_eq!(hotkey_primary_label("Alt+Space").unwrap(), "Space");

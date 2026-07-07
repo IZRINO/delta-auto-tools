@@ -218,3 +218,20 @@ fn named_to_key(named: NamedKey) -> Key {
         NamedKey::Quote => Key::OEM7,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_comma_and_period_to_enigo_keys() {
+        assert!(matches!(
+            primary_to_key(PrimaryKey::Named(NamedKey::Comma)).unwrap(),
+            Key::OEMComma
+        ));
+        assert!(matches!(
+            primary_to_key(PrimaryKey::Named(NamedKey::Period)).unwrap(),
+            Key::OEMPeriod
+        ));
+    }
+}

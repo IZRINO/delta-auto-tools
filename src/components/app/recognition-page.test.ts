@@ -73,6 +73,13 @@ describe("recognition-page 全局开关提示", () => {
 });
 
 describe("recognition-page 按键效果步骤录制", () => {
+    it("暴露标点热键录制提示", async () => {
+        const {RECOGNITION_HOTKEY_HELPER_TEXT} = await import("@/components/app/recognition-page");
+
+        expect(RECOGNITION_HOTKEY_HELPER_TEXT).toContain("F1-F24");
+        expect(RECOGNITION_HOTKEY_HELPER_TEXT).toContain(", . ; / \\ [ ] - = + ` '");
+    });
+
     it("录制第二步只更新第二步并保留首步 effectHotkey", async () => {
         const {patchHotkeyEffectStep} = await import("@/components/app/recognition-page");
         const patch = patchHotkeyEffectStep({

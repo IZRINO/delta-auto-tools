@@ -508,6 +508,7 @@ type HotkeyFieldProps = {
     hotkey: string;
     id: string;
     isRecording: boolean;
+    helperText?: string;
     onBeginHotkeyRecording: () => void;
     onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
     onHotkeyRecorderBlur: () => void;
@@ -518,6 +519,7 @@ export function HotkeyField({
                                 hotkey,
                                 id,
                                 isRecording,
+                                helperText,
                                 onBeginHotkeyRecording,
                                 onHotkeyKeyDown,
                                 onHotkeyRecorderBlur
@@ -528,7 +530,7 @@ export function HotkeyField({
             <FieldContent>
                 <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id}
                         onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown}
-                        type="button" variant="outline">
+                        title={helperText} type="button" variant="outline">
                     <span>{isRecording ? "录制中..." : hotkey || "未设置"}</span>
                     <span
                         className="text-[0.6875rem] text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>

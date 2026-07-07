@@ -102,6 +102,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 
 - `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
+- 识别触发的监听热键、激活热键和按键效果热键支持字母、数字、F1-F24、方向键，以及 `,`、`.`、`;`、`/`、`\`、`[`、`]`、`-`、`=`、`+`、`` ` ``、`'` 等符号。
 - 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。
 - 全局开关关闭时，识别 scope 的热键与 RegionWatch / ColorWatch watcher 都被全局门控拦截；Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
 - 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。
