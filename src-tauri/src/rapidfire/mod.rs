@@ -772,6 +772,33 @@ pub fn initialize(
     Ok(state)
 }
 
+pub(crate) fn schedule_overlay_window_reconcile_from_profile(
+    app: &AppHandle,
+    settings: &RapidfireSettings,
+) {
+    let settings = match normalize_settings(settings.clone()) {
+        Ok(settings) => settings,
+        Err(error) => {
+            crate::log_warn!(
+                "rapidfire",
+                "Profile 连发器透明窗口配置无效",
+                "error" => error
+            );
+            return;
+        }
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = ensure_overlay_window(&app, &settings) {
+            crate::log_warn!(
+                "rapidfire",
+                "同步连发器透明窗口失败",
+                "error" => error
+            );
+        }
+    });
+}
+
 // ---- Tests ----
 
 #[cfg(test)]

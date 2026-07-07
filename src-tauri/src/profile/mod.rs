@@ -15,7 +15,11 @@ pub mod events;
 pub mod settings;
 pub mod types;
 
-use std::{fs, path::Path, sync::Mutex};
+use std::{
+    fs,
+    path::Path,
+    sync::{Mutex, MutexGuard},
+};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -48,6 +52,13 @@ impl ProfileState {
             apply_lock: Mutex::new(()),
         }
     }
+}
+
+fn acquire_apply_lock(state: &ProfileState) -> Result<MutexGuard<'_, ()>, String> {
+    state
+        .apply_lock
+        .lock()
+        .map_err(|_| "Profile 切换锁已损坏".to_string())
 }
 
 /// 初始化 Profile 状态：加载持久化 `profile_settings.json`，缺失则用默认值。
@@ -258,10 +269,11 @@ pub fn profile_save_current(
 }
 
 #[tauri::command]
-pub fn profile_create_default(
+pub async fn profile_create_default(
     app: AppHandle,
     state: State<'_, ProfileState>,
 ) -> Result<ProfileBootstrap, String> {
+    let _apply_guard = acquire_apply_lock(&state)?;
     let snapshot = build_default_snapshot();
     let profile_id = {
         let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
@@ -285,16 +297,13 @@ pub fn profile_create_default(
 }
 
 #[tauri::command]
-pub fn profile_apply(
+pub async fn profile_apply(
     app: AppHandle,
     state: State<'_, ProfileState>,
     id: String,
 ) -> Result<(), String> {
     let started_at = std::time::Instant::now();
-    let _apply_guard = state
-        .apply_lock
-        .lock()
-        .map_err(|_| "Profile 切换锁已损坏".to_string())?;
+    let _apply_guard = acquire_apply_lock(&state)?;
     crate::log_info!(
         "profile",
         "开始切换 Profile",
@@ -540,6 +549,15 @@ fn apply_snapshot_to_tools(
     app: &AppHandle,
     snapshot: &types::ToolSettingsSnapshot,
 ) -> Result<(), String> {
+    apply_snapshot_to_tool_state(app, snapshot)?;
+    schedule_profile_window_reconcile(app, snapshot);
+    Ok(())
+}
+
+fn apply_snapshot_to_tool_state(
+    app: &AppHandle,
+    snapshot: &types::ToolSettingsSnapshot,
+) -> Result<(), String> {
     use crate::hotkeys::HotkeyManager;
 
     let hotkey_manager = app.try_state::<HotkeyManager>();
@@ -605,6 +623,18 @@ fn apply_snapshot_to_tools(
     Ok(())
 }
 
+fn schedule_profile_window_reconcile(app: &AppHandle, snapshot: &types::ToolSettingsSnapshot) {
+    if let Some(settings) = &snapshot.timer {
+        timer::schedule_display_windows_reconcile_from_profile(app, settings);
+    }
+    if let Some(settings) = &snapshot.counter {
+        counter::schedule_counter_windows_reconcile_from_profile(app, settings);
+    }
+    if let Some(settings) = &snapshot.rapidfire {
+        rapidfire::schedule_overlay_window_reconcile_from_profile(app, settings);
+    }
+}
+
 /// 应用 morse settings：normalize → swap inner.settings → 重启热键监听。
 fn apply_morse_settings(
     app: &AppHandle,
@@ -666,7 +696,6 @@ fn apply_timer_settings(
         }
         crate::tool_base::ToolLogic::build_bootstrap(&inner)
     };
-    timer::ensure_display_windows(app, &bootstrap.settings)?;
     timer::emit_state(app, bootstrap);
     Ok(())
 }
@@ -715,7 +744,6 @@ fn apply_counter_settings(
         }
         crate::tool_base::ToolLogic::build_bootstrap(&inner)
     };
-    counter::ensure_display_windows(app, &bootstrap.settings)?;
     counter::emit_state(app, bootstrap);
     Ok(())
 }
@@ -751,7 +779,6 @@ fn apply_rapidfire_settings(
         // stop_all 已清空 runs；这里保持空（新 Profile 没有运行态）
         crate::tool_base::ToolLogic::build_bootstrap(&inner)
     };
-    rapidfire::ensure_overlay_window(app, &bootstrap.settings)?;
     rapidfire::emit_state(app, bootstrap);
     Ok(())
 }
@@ -823,6 +850,32 @@ mod tests {
     fn profile_state_initializes_apply_lock() {
         let state = ProfileState::new(ProfileSettings::default());
         let _guard = state.apply_lock.try_lock().expect("apply lock 应可获取");
+    }
+
+    #[test]
+    fn acquire_apply_lock_serializes_profile_writes() {
+        let state = ProfileState::new(ProfileSettings::default());
+        let _guard = acquire_apply_lock(&state).expect("apply lock should be acquirable");
+
+        assert!(state.apply_lock.try_lock().is_err());
+    }
+
+    #[test]
+    fn profile_apply_splits_state_phase_from_window_reconcile() {
+        let _state_phase = apply_snapshot_to_tool_state
+            as fn(&AppHandle, &types::ToolSettingsSnapshot) -> Result<(), String>;
+        let _window_phase =
+            schedule_profile_window_reconcile as fn(&AppHandle, &types::ToolSettingsSnapshot);
+    }
+
+    #[test]
+    fn profile_window_reconcile_schedulers_are_exposed() {
+        let _timer = timer::schedule_display_windows_reconcile_from_profile
+            as fn(&AppHandle, &timer::TimerSettings);
+        let _counter = counter::schedule_counter_windows_reconcile_from_profile
+            as fn(&AppHandle, &counter::CounterSettings);
+        let _rapidfire = rapidfire::schedule_overlay_window_reconcile_from_profile
+            as fn(&AppHandle, &rapidfire::RapidfireSettings);
     }
 
     #[test]

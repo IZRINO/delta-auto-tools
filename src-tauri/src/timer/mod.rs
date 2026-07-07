@@ -676,6 +676,35 @@ fn schedule_display_windows_reconcile(
     });
 }
 
+pub(crate) fn schedule_display_windows_reconcile_from_profile(
+    app: &AppHandle,
+    settings_value: &TimerSettings,
+) {
+    let settings_value = match normalize_settings(settings_value.clone()) {
+        Ok(settings) => settings,
+        Err(error) => {
+            crate::log_warn!(
+                "timer",
+                "Profile 计时器透明窗口配置无效",
+                "error" => error
+            );
+            return;
+        }
+    };
+    let Some(state) = app.try_state::<TimerState>() else {
+        return;
+    };
+    let reconcile_generation =
+        next_display_reconcile_generation(&state.display_reconcile_generation);
+    schedule_display_windows_reconcile(
+        app.clone(),
+        settings_value,
+        Arc::clone(&state.display_reconcile_generation),
+        Arc::clone(&state.display_reconcile_lock),
+        reconcile_generation,
+    );
+}
+
 fn display_label_for_group(group_id: &str) -> String {
     if group_id == DEFAULT_TIMER_GROUP_ID {
         TIMER_DISPLAY_LABEL.to_string()

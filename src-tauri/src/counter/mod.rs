@@ -562,6 +562,33 @@ pub(crate) fn ensure_display_windows(
     Ok(())
 }
 
+pub(crate) fn schedule_counter_windows_reconcile_from_profile(
+    app: &AppHandle,
+    settings_value: &CounterSettings,
+) {
+    let settings_value = match normalize_settings(settings_value.clone()) {
+        Ok(settings) => settings,
+        Err(error) => {
+            crate::log_warn!(
+                "counter",
+                "Profile 计数器透明窗口配置无效",
+                "error" => error
+            );
+            return;
+        }
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = ensure_display_windows(&app, &settings_value) {
+            crate::log_warn!(
+                "counter",
+                "同步计数器透明窗口失败",
+                "error" => error
+            );
+        }
+    });
+}
+
 fn display_label_for_group(group_id: &str) -> String {
     if group_id == DEFAULT_COUNTER_GROUP_ID {
         COUNTER_DISPLAY_LABEL.to_string()

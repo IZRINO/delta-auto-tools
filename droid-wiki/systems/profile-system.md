@@ -37,7 +37,7 @@ src/components/app/
 | `Profile` | `src-tauri/src/profile/types.rs` | `{ id, name, created_at, updated_at, snapshot }`，命名配置 |
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` + `apply_lock` 串行化 Profile 应用 |
-| `apply_snapshot_to_tools` | `src-tauri/src/profile/mod.rs` | 核心编排：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 |
+| `apply_snapshot_to_tools` | `src-tauri/src/profile/mod.rs` | 核心编排：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 -> 调度窗口刷新 |
 | `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
 | `ProfileProvider` | `src/hooks/use-profile.tsx` | React context：bootstrap、事件监听、`reloadNonce` |
@@ -57,12 +57,13 @@ flowchart TD
     D --> E["2. 写 5 份 settings 文件到磁盘"]
     E --> F["3. 逐工具重载内存状态"]
     F --> F1["morse: normalize → restart_hotkey → swap"]
-    F --> F2["timer: normalize → restart_hotkey → swap → ensure_display_windows → emit_state"]
-    F --> F3["counter: normalize → restart_hotkey → swap → ensure_display_windows → emit_state"]
-    F --> F4["rapidfire: normalize → restart_hotkey(force) → swap → ensure_overlay_window → emit_state"]
+    F --> F2["timer: normalize → restart_hotkey → swap → emit_state"]
+    F --> F3["counter: normalize → restart_hotkey → swap → emit_state"]
+    F --> F4["rapidfire: normalize → restart_hotkey(force) → swap → emit_state"]
     F --> F5["recognition: normalize → swap → restart_hotkey → restart_watchers → emit_state"]
     F1 & F2 & F3 & F4 & F5 --> G["4. counter 重置运行值为 start_value + 持久化"]
-    G --> H["5. 更新 active_profile_id，保存 profile_settings.json"]
+    G --> H["5. 调度 timer/counter/rapidfire 透明窗口 reconcile"]
+    H --> I["6. 更新 active_profile_id，保存 profile_settings.json"]
 ```
 
 ### 前端重载机制
@@ -85,9 +86,11 @@ sequenceDiagram
 
 `reloadNonce` 是关键集成点：`App.tsx` 将其用作工具页容器的 `key`。递增时 React 卸载当前页（清除 400ms autosave debounce 的 `setTimeout`），重新挂载新实例调用 `xxx_get_bootstrap` 加载新 profile 的 settings。
 
-`profile_apply` 串行执行：后端使用 `apply_lock` 防止并发切换互相覆盖；前端 `switchingProfileId` 在切换期间禁用 ProfileSwitcher 操作，避免启动装载期重复触发。
+`profile_apply` 和 `profile_create_default` 串行执行：后端使用 `apply_lock` 防止并发切换互相覆盖；前端 `switchingProfileId` 在切换期间禁用 ProfileSwitcher 操作，避免启动装载期重复触发。
 
-切换过程写入 `profile` 日志，包含 `profile_id` 和 `elapsed_ms`，用于排查卡死或窗口创建阻塞。
+Profile state 切换阶段只写文件、换内存状态、重启热键/watchers、emit 状态，不直接创建或更新透明窗口。`timer`、`counter`、`rapidfire` 的窗口刷新在 state 切换后通过 async task 调度；刷新失败只写日志，不回滚已切换的 Profile。
+
+切换过程写入 `profile` 日志，包含 `profile_id` 和 `elapsed_ms`，用于排查 state 切换耗时；窗口 reconcile 失败分别写入对应工具日志。
 
 ### 自动默认 profile
 
@@ -108,7 +111,7 @@ sequenceDiagram
 ## 集成点
 
 - `src-tauri/src/lib.rs`：`profile::initialize()` 在 `setup` 中调用，6 个命令注册到 `generate_handler![]`
-- 各工具模块：`apply_snapshot_to_tools` 依赖各工具的 `pub(crate)` 函数（`normalize_settings`、`restart_hotkey_listeners`、`ensure_display_windows`、`emit_state`、`stop_all`）
+- 各工具模块：`apply_snapshot_to_tools` 依赖各工具的 `pub(crate)` 函数（`normalize_settings`、`restart_hotkey_listeners`、`emit_state`、`stop_all`）；窗口刷新通过 `schedule_display_windows_reconcile_from_profile`、`schedule_counter_windows_reconcile_from_profile`、`schedule_overlay_window_reconcile_from_profile` 后台调度
 - `src/App.tsx`：使用 `reloadNonce` 作为工具页容器 `key`
 - [主题引擎](theme-engine.md)：显式不参与 profile 快照
 
