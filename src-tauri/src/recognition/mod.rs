@@ -24,6 +24,16 @@ use crate::overlay_utils::{
 };
 
 const RECOGNITION_OVERLAY_LABEL: &str = "recognition-overlay";
+const DEFAULT_RECOGNITION_GROUP_ID: &str = "default-recognition-group";
+
+fn default_recognition_group() -> types::RecognitionGroup {
+    types::RecognitionGroup {
+        id: DEFAULT_RECOGNITION_GROUP_ID.to_string(),
+        name: "默认分组".to_string(),
+        order: 0,
+        collapsed: false,
+    }
+}
 
 // ---- TestMatchResult ----
 
@@ -866,9 +876,36 @@ pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
 // ---- 设置规范化 ----
 
 pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSettings {
+    let mut groups = settings
+        .card_groups
+        .into_iter()
+        .map(|mut group| {
+            group.id = group.id.trim().to_string();
+            if group.id.is_empty() {
+                group.id = DEFAULT_RECOGNITION_GROUP_ID.to_string();
+            }
+            group.name = group.name.trim().to_string();
+            if group.name.is_empty() {
+                group.name = "未命名分组".to_string();
+            }
+            group
+        })
+        .collect::<Vec<_>>();
+    if !groups
+        .iter()
+        .any(|group| group.id == DEFAULT_RECOGNITION_GROUP_ID)
+    {
+        groups.push(default_recognition_group());
+    }
+    groups.sort_by_key(|group| group.order);
+    groups.dedup_by(|a, b| a.id == b.id);
+    let group_ids = groups
+        .iter()
+        .map(|group| group.id.clone())
+        .collect::<std::collections::HashSet<_>>();
     let mut cards = settings.cards;
 
-    for card in &mut cards {
+    for (index, card) in cards.iter_mut().enumerate() {
         // 确保每张卡片有唯一 ID
         if card.id.is_empty() {
             let now = std::time::SystemTime::now()
@@ -925,10 +962,23 @@ pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSe
                 // 但 probe_match_mode 仍需有值，serde default 已保证 Any
             }
         }
+
+        let group_id = card.group_id.clone().unwrap_or_default();
+        let trimmed_group_id = group_id.trim();
+        if trimmed_group_id.is_empty() || !group_ids.contains(trimmed_group_id) {
+            card.group_id = Some(DEFAULT_RECOGNITION_GROUP_ID.to_string());
+        } else if trimmed_group_id != group_id {
+            card.group_id = Some(trimmed_group_id.to_string());
+        }
+        if card.order == 0 && index > 0 {
+            card.order = index as i32;
+        }
     }
+    cards.sort_by_key(|card| card.order);
 
     RecognitionSettings {
         recognition_enabled: settings.recognition_enabled,
+        card_groups: groups,
         cards,
     }
 }
@@ -1017,6 +1067,8 @@ mod tests {
     fn base_card() -> types::RecognitionCard {
         types::RecognitionCard {
             id: "c1".into(),
+            group_id: None,
+            order: 0,
             name: "测试卡".into(),
             enabled: true,
             trigger_mode: types::RecognitionTriggerMode::Hotkey,
@@ -1039,6 +1091,42 @@ mod tests {
             color_match_mode: types::ColorMatchMode::All,
             color_match_method: types::ColorMatchMethod::Average,
         }
+    }
+
+    #[test]
+    fn normalize_settings_adds_default_group_and_sorts_cards() {
+        let mut card_b = base_card();
+        card_b.id = "b".into();
+        card_b.name = "B".into();
+        card_b.group_id = None;
+        card_b.order = 20;
+
+        let mut card_a = base_card();
+        card_a.id = "a".into();
+        card_a.name = "A".into();
+        card_a.group_id = Some("missing".into());
+        card_a.order = 10;
+
+        let normalized = normalize_settings(types::RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![],
+            cards: vec![card_b, card_a],
+        });
+
+        assert_eq!(normalized.card_groups.len(), 1);
+        assert_eq!(normalized.card_groups[0].id, DEFAULT_RECOGNITION_GROUP_ID);
+        assert_eq!(
+            normalized
+                .cards
+                .iter()
+                .map(|card| card.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert!(normalized
+            .cards
+            .iter()
+            .all(|card| card.group_id.as_deref() == Some(DEFAULT_RECOGNITION_GROUP_ID)));
     }
 
     #[test]
@@ -1385,8 +1473,11 @@ mod tests {
     fn normalize_migrates_legacy_audio_file_path_to_audio_files() {
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![types::RecognitionCard {
                 id: "c1".into(),
+                group_id: None,
+                order: 0,
                 name: "旧卡".into(),
                 enabled: true,
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
@@ -1428,8 +1519,11 @@ mod tests {
     fn normalize_keeps_existing_audio_files_and_clears_legacy() {
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![types::RecognitionCard {
                 id: "c1".into(),
+                group_id: None,
+                order: 0,
                 name: "新卡".into(),
                 enabled: true,
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
@@ -1480,6 +1574,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
         assert!(validate_settings(&settings)
@@ -1496,6 +1591,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
         assert!(validate_settings(&settings)
@@ -1515,6 +1611,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
 
@@ -1543,6 +1640,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
 
@@ -1577,6 +1675,7 @@ mod tests {
 
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card_a, card_b],
         };
 
@@ -1595,6 +1694,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
 
@@ -1623,6 +1723,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
 
@@ -1659,6 +1760,7 @@ mod tests {
 
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card_a, card_b],
         };
 
@@ -1675,6 +1777,7 @@ mod tests {
         });
         let settings = RecognitionSettings {
             recognition_enabled: true,
+            card_groups: vec![],
             cards: vec![card],
         };
         validate_settings(&settings).unwrap();

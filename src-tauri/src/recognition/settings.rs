@@ -64,7 +64,10 @@ mod tests {
 
         let loaded = read_settings_from_dir(temp_dir.path()).unwrap();
 
-        assert_eq!(loaded, RecognitionSettings::default());
+        assert_eq!(
+            loaded,
+            super::super::normalize_settings(RecognitionSettings::default())
+        );
         let backups = std::fs::read_dir(temp_dir.path())
             .unwrap()
             .filter_map(Result::ok)

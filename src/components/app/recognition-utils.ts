@@ -5,11 +5,38 @@ import type {
     RecognitionCard,
     RecognitionCardForm,
     RecognitionClickEffect,
+    RecognitionGroup,
     RecognitionHotkeyEffect,
     RecognitionSettings,
     RecognitionSettingsForm,
 } from "@/components/app/recognition-types";
 import {DEFAULT_RECOGNITION_CARD} from "@/components/app/recognition-types";
+
+export const DEFAULT_RECOGNITION_GROUP_ID = "default-recognition-group";
+
+function defaultRecognitionGroup(): RecognitionGroup {
+    return {
+        id: DEFAULT_RECOGNITION_GROUP_ID,
+        name: "默认分组",
+        order: 0,
+        collapsed: false,
+    };
+}
+
+function normalizeRecognitionGroups(settings: RecognitionSettings): RecognitionGroup[] {
+    const groups = (settings.cardGroups ?? [])
+        .map((group) => ({
+            id: group.id.trim() || DEFAULT_RECOGNITION_GROUP_ID,
+            name: group.name.trim() || "未命名分组",
+            order: Number.isFinite(group.order) ? group.order : 0,
+            collapsed: group.collapsed ?? false,
+        }))
+        .filter((group, index, all) => all.findIndex((item) => item.id === group.id) === index);
+    if (!groups.some((group) => group.id === DEFAULT_RECOGNITION_GROUP_ID)) {
+        groups.unshift(defaultRecognitionGroup());
+    }
+    return groups.sort((a, b) => a.order - b.order);
+}
 
 export function rgbToHex(rgb: [number, number, number]): string {
     const [r, g, b] = rgb;
@@ -64,10 +91,21 @@ function parseProbeForm(form: ColorProbeForm): ColorProbe {
 
 export function settingsToForm(settings: RecognitionSettings): RecognitionSettingsForm {
     const recognitionEnabled = settings.recognitionEnabled ?? settings.audioEnabled ?? true;
+    const cardGroups = normalizeRecognitionGroups(settings);
+    const groupIds = new Set(cardGroups.map((group) => group.id));
     return {
         recognitionEnabled,
         audioEnabled: recognitionEnabled,
-        cards: settings.cards.map((card) => cardToForm(card)),
+        cardGroups,
+        cards: settings.cards
+            .map((card, index) => cardToForm({
+                ...card,
+                groupId: card.groupId && groupIds.has(card.groupId)
+                    ? card.groupId
+                    : DEFAULT_RECOGNITION_GROUP_ID,
+                order: Number.isFinite(card.order ?? NaN) ? card.order : index,
+            }))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     };
 }
 
@@ -116,6 +154,9 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
     const hotkeySteps = hotkeyEffectSteps(card.effects?.hotkey);
     return {
         id: card.id,
+        groupId: card.groupId ?? DEFAULT_RECOGNITION_GROUP_ID,
+        order: card.order ?? 0,
+        collapsed: false,
         name: card.name,
         enabled: card.enabled,
         triggerMode: card.triggerMode,
@@ -155,6 +196,7 @@ export function parseSettingsForm(form: RecognitionSettingsForm): RecognitionSet
     const cards = form.cards.map((card) => parseCardForm(card));
     return {
         recognitionEnabled: form.recognitionEnabled ?? form.audioEnabled ?? true,
+        cardGroups: form.cardGroups ?? [defaultRecognitionGroup()],
         cards,
     };
 }
@@ -248,6 +290,8 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
 
     return {
         id: form.id || generateCardId(),
+        groupId: form.groupId?.trim() || DEFAULT_RECOGNITION_GROUP_ID,
+        order: form.order ?? 0,
         name,
         enabled: form.enabled,
         triggerMode: form.triggerMode,

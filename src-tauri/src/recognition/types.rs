@@ -46,6 +46,8 @@ pub struct RecognitionSettings {
     #[serde(default = "default_recognition_enabled", alias = "audioEnabled")]
     pub recognition_enabled: bool,
     #[serde(default)]
+    pub card_groups: Vec<RecognitionGroup>,
+    #[serde(default)]
     pub cards: Vec<RecognitionCard>,
 }
 
@@ -53,15 +55,31 @@ impl Default for RecognitionSettings {
     fn default() -> Self {
         Self {
             recognition_enabled: true,
+            card_groups: Vec::new(),
             cards: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecognitionGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub order: i32,
+    #[serde(default)]
+    pub collapsed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecognitionCard {
     pub id: String,
+    #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub order: i32,
     pub name: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -384,6 +402,7 @@ mod tests {
     fn recognition_settings_default_values_are_stable() {
         let settings = RecognitionSettings::default();
         assert!(settings.recognition_enabled);
+        assert!(settings.card_groups.is_empty());
         assert!(settings.cards.is_empty());
     }
 
@@ -397,7 +416,26 @@ mod tests {
         assert_eq!(card.volume, 0.8);
         assert_eq!(card.cooldown_ms, 1000);
         assert_eq!(card.watch_match_threshold, 0.75);
+        assert!(card.group_id.is_none());
+        assert_eq!(card.order, 0);
         assert!(!card.allow_simultaneous);
+    }
+
+    #[test]
+    fn recognition_group_roundtrip_uses_camel_case() {
+        let settings: RecognitionSettings = serde_json::from_str(
+            r#"{"recognitionEnabled":true,"cardGroups":[{"id":"g1","name":"战斗","order":2,"collapsed":true}],"cards":[]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(settings.card_groups.len(), 1);
+        assert_eq!(settings.card_groups[0].id, "g1");
+        assert_eq!(settings.card_groups[0].order, 2);
+        assert!(settings.card_groups[0].collapsed);
+
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("\"cardGroups\""));
+        assert!(json.contains("\"collapsed\":true"));
     }
 
     #[test]
@@ -507,6 +545,8 @@ mod tests {
     fn recognition_card_with_color_watch_roundtrip() {
         let card = RecognitionCard {
             id: "c1".into(),
+            group_id: None,
+            order: 0,
             name: "识色卡".into(),
             enabled: true,
             trigger_mode: RecognitionTriggerMode::ColorWatch,

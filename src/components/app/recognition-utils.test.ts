@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
     createEmptyRecognitionCard,
+    DEFAULT_RECOGNITION_GROUP_ID,
     generateCardId,
     getRecognitionCardFormErrors,
     mergeRecognitionWatchRegionsIntoForm,
@@ -64,6 +65,25 @@ describe("recognition-utils", () => {
             expect(form.cards[0].audioFiles).toEqual(["a.mp3"]);
             expect(form.cards[0].volume).toBe("0.4");
         });
+
+        it("settingsToForm 为旧配置补默认分组并按 order 排序", () => {
+            const settings = {
+                recognitionEnabled: true,
+                cardGroups: undefined,
+                cards: [
+                    {...DEFAULT_RECOGNITION_CARD, id: "b", name: "B", order: 20, groupId: null},
+                    {...DEFAULT_RECOGNITION_CARD, id: "a", name: "A", order: 10, groupId: null},
+                ],
+            };
+
+            const form = settingsToForm(settings);
+
+            expect(form.cardGroups).toEqual([
+                {id: DEFAULT_RECOGNITION_GROUP_ID, name: "默认分组", order: 0, collapsed: false},
+            ]);
+            expect(form.cards.map((card) => card.id)).toEqual(["a", "b"]);
+            expect(form.cards.every((card) => card.groupId === DEFAULT_RECOGNITION_GROUP_ID)).toBe(true);
+        });
     });
 
     describe("parseSettingsForm", () => {
@@ -99,6 +119,41 @@ describe("recognition-utils", () => {
             expect(settings.cards[0].cooldownMs).toBe(1000);
             expect(settings.cards[0].hotkey).toBe("Ctrl+F1");
             expect(settings.cards[0].effects?.audio?.allowSimultaneous).toBe(false);
+        });
+
+        it("parseSettingsForm 回写分组和卡片排序字段", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cardGroups: [{id: "g1", name: "战斗", order: 1, collapsed: true}],
+                cards: [
+                    {
+                        id: "c1",
+                        groupId: "g1",
+                        order: 3,
+                        name: "测试",
+                        enabled: true,
+                        triggerMode: "hotkey",
+                        hotkey: "Ctrl+F1",
+                        watchRegion: null,
+                        watchReferenceImagePath: "",
+                        watchMatchThreshold: "0.9",
+                        watchPollIntervalMs: "500",
+                        audioFiles: ["test.mp3"],
+                        playMode: "single",
+                        comboWindowMs: "60000",
+                        volume: "0.8",
+                        cooldownMs: "1000",
+                        allowSimultaneous: false,
+                        colorProbes: [],
+                        colorMatchMode: "all",
+                        colorMatchMethod: "average",
+                    },
+                ],
+            });
+
+            expect(settings.cardGroups).toEqual([{id: "g1", name: "战斗", order: 1, collapsed: true}]);
+            expect(settings.cards[0].groupId).toBe("g1");
+            expect(settings.cards[0].order).toBe(3);
         });
 
         it("saves hotkey effect without audio files", () => {

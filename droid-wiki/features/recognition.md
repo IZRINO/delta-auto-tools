@@ -26,8 +26,9 @@ src-tauri/src/recognition/
 
 | 类型 | 职责 |
 |------|------|
-| `RecognitionSettings` | 总开关 `recognition_enabled` + 卡片列表，落盘为 `recognition_settings.json` |
-| `RecognitionCard` | 触发来源、激活方式、效果配置、冷却、识色探针 |
+| `RecognitionSettings` | 总开关 `recognition_enabled` + `card_groups` + 卡片列表，落盘为 `recognition_settings.json` |
+| `RecognitionGroup` | 识别卡片分组，包含 `id`、`name`、`order`、`collapsed`；旧配置会补 `default-recognition-group` |
+| `RecognitionCard` | 分组归属 `group_id`、排序 `order`、触发来源、激活方式、效果配置、冷却、识色探针 |
 | `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey`；Hotkey 来源不使用 activation |
 | `RecognitionEffects` | 每卡最多一个音频效果、一个按键效果、一个点击效果 |
 | `RecognitionAudioEffect` | 音频文件、Single/Combo/Random、音量、并发策略 |

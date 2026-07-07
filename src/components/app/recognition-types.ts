@@ -66,6 +66,13 @@ export type RecognitionClickEffect = {
     colorProbeIndex: number | null;
 };
 
+export type RecognitionGroup = {
+    id: string;
+    name: string;
+    order: number;
+    collapsed: boolean;
+};
+
 export type RecognitionEffects = {
     audio?: RecognitionAudioEffect | null;
     hotkey?: RecognitionHotkeyEffect | null;
@@ -74,6 +81,8 @@ export type RecognitionEffects = {
 
 export type RecognitionCard = {
     id: string;
+    groupId?: string | null;
+    order?: number | null;
     name: string;
     enabled: boolean;
     triggerMode: RecognitionTriggerMode;
@@ -101,6 +110,7 @@ export type RecognitionCard = {
 export type RecognitionSettings = {
     recognitionEnabled?: boolean;
     audioEnabled?: boolean;
+    cardGroups?: RecognitionGroup[];
     cards: RecognitionCard[];
 };
 
@@ -112,11 +122,15 @@ export type RecognitionBootstrap = {
 export type RecognitionSettingsForm = {
     recognitionEnabled?: boolean;
     audioEnabled: boolean;
+    cardGroups?: RecognitionGroup[];
     cards: RecognitionCardForm[];
 };
 
 export type RecognitionCardForm = {
     id: string;
+    groupId?: string | null;
+    order?: number | null;
+    collapsed?: boolean;
     name: string;
     enabled: boolean;
     triggerMode: RecognitionTriggerMode;
@@ -151,6 +165,8 @@ export type RecognitionCardForm = {
 
 export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     id: "",
+    groupId: null,
+    order: 0,
     name: "",
     enabled: true,
     triggerMode: "hotkey",
@@ -178,6 +194,7 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
 
 export const DEFAULT_RECOGNITION_SETTINGS: RecognitionSettings = {
     recognitionEnabled: true,
+    cardGroups: [],
     cards: [],
 };
 
