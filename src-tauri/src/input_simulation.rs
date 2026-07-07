@@ -1,12 +1,49 @@
-use std::{thread, time::Duration};
+use std::{sync::OnceLock, thread, time::Duration};
 
 use crate::hotkey_types::{HotkeyBinding, ModifierKey, NamedKey, PrimaryKey};
 use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
+static INPUT_SIMULATION_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+const INPUT_POST_ACTION_GAP: Duration = Duration::from_millis(35);
+
+async fn run_serialized_input<F, T>(operation: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    let result = tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|err| format!("输入模拟任务失败: {err}"))?;
+    tokio::time::sleep(INPUT_POST_ACTION_GAP).await;
+    result
+}
+
+#[cfg(test)]
+async fn run_serialized_input_for_test<F, Fut>(operation: F) -> Result<(), String>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
+{
+    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    operation().await
+}
+
 pub async fn type_text(value: &str, delay_ms: u64) -> Result<(), String> {
     let value = value.to_string();
+    let char_count = value.chars().count();
 
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟开始",
+        "kind" => "text",
+        "primary" => "text",
+        "char_count" => char_count,
+        "card_id" => Option::<String>::None
+    );
+    let result = run_serialized_input(move || -> Result<(), String> {
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|error| format!("初始化自动输入失败: {error}"))?;
 
@@ -22,21 +59,59 @@ pub async fn type_text(value: &str, delay_ms: u64) -> Result<(), String> {
 
         Ok(())
     })
-    .await
-    .map_err(|error| format!("自动输入任务执行失败: {error}"))?
+    .await;
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟结束",
+        "kind" => "text",
+        "primary" => "text",
+        "char_count" => char_count,
+        "success" => result.is_ok(),
+        "error" => result.as_ref().err(),
+        "card_id" => Option::<String>::None
+    );
+    result
 }
 
 pub async fn press_hotkey_once(hotkey: &str, label: &str) -> Result<(), String> {
+    press_hotkey_once_with_card(hotkey, label, None).await
+}
+
+pub async fn press_hotkey_once_for_card(
+    hotkey: &str,
+    label: &str,
+    card_id: &str,
+) -> Result<(), String> {
+    press_hotkey_once_with_card(hotkey, label, Some(card_id)).await
+}
+
+async fn press_hotkey_once_with_card(
+    hotkey: &str,
+    label: &str,
+    card_id: Option<&str>,
+) -> Result<(), String> {
     let hotkey = hotkey.trim().to_string();
     let label = label.to_string();
+    let card_id = card_id.map(str::to_string);
     if hotkey.is_empty() {
         return Ok(());
     }
     let task_label = label.clone();
+    let binding =
+        HotkeyBinding::parse(&hotkey).map_err(|error| format!("{task_label}配置无效: {error}"))?;
+    let primary_label = crate::hotkey_types::primary_to_string(binding.primary);
 
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let binding = HotkeyBinding::parse(&hotkey)
-            .map_err(|error| format!("{task_label}配置无效: {error}"))?;
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟开始",
+        "kind" => "hotkey",
+        "primary" => primary_label.clone(),
+        "hotkey" => hotkey.clone(),
+        "label" => label.clone(),
+        "card_id" => card_id.as_deref()
+    );
+    let hotkey_for_task = hotkey.clone();
+    let result = run_serialized_input(move || -> Result<(), String> {
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|error| format!("初始化{task_label}失败: {error}"))?;
 
@@ -50,7 +125,7 @@ pub async fn press_hotkey_once(hotkey: &str, label: &str) -> Result<(), String> 
         let primary = primary_to_key(binding.primary)?;
         let click_result = enigo
             .key(primary, Direction::Click)
-            .map_err(|error| format!("执行{task_label} {hotkey} 失败: {error}"));
+            .map_err(|error| format!("执行{task_label} {hotkey_for_task} 失败: {error}"));
 
         for modifier in modifiers.iter().rev() {
             let _ = enigo.key(modifier_to_key(*modifier), Direction::Release);
@@ -58,17 +133,53 @@ pub async fn press_hotkey_once(hotkey: &str, label: &str) -> Result<(), String> 
 
         click_result
     })
-    .await
-    .map_err(|error| format!("{label}任务执行失败: {error}"))?
+    .await;
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟结束",
+        "kind" => "hotkey",
+        "primary" => primary_label,
+        "hotkey" => hotkey,
+        "label" => label,
+        "success" => result.is_ok(),
+        "error" => result.as_ref().err(),
+        "card_id" => card_id.as_deref()
+    );
+    result
 }
 
 pub async fn click_points(points: &[(i32, i32, u64)]) -> Result<(), String> {
+    click_points_with_card(points, None).await
+}
+
+pub async fn click_points_for_card(
+    points: &[(i32, i32, u64)],
+    card_id: &str,
+) -> Result<(), String> {
+    click_points_with_card(points, Some(card_id)).await
+}
+
+async fn click_points_with_card(
+    points: &[(i32, i32, u64)],
+    card_id: Option<&str>,
+) -> Result<(), String> {
     if points.is_empty() {
         return Ok(());
     }
 
     let points = points.to_vec();
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
+    let point_count = points.len();
+    let card_id = card_id.map(str::to_string);
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟开始",
+        "kind" => "click",
+        "primary" => "left",
+        "button" => "left",
+        "point_count" => point_count,
+        "card_id" => card_id.as_deref()
+    );
+    let result = run_serialized_input(move || -> Result<(), String> {
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|error| format!("初始化鼠标点击失败: {error}"))?;
 
@@ -86,8 +197,19 @@ pub async fn click_points(points: &[(i32, i32, u64)]) -> Result<(), String> {
 
         Ok(())
     })
-    .await
-    .map_err(|error| format!("自动点击任务执行失败: {error}"))?
+    .await;
+    crate::log_debug!(
+        "input_simulation",
+        "输入模拟结束",
+        "kind" => "click",
+        "primary" => "left",
+        "button" => "left",
+        "point_count" => point_count,
+        "success" => result.is_ok(),
+        "error" => result.as_ref().err(),
+        "card_id" => card_id.as_deref()
+    );
+    result
 }
 
 fn ordered_modifiers(binding: &HotkeyBinding) -> Vec<ModifierKey> {
@@ -222,6 +344,8 @@ fn named_to_key(named: NamedKey) -> Key {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use tokio::sync::{oneshot, Mutex};
 
     #[test]
     fn maps_comma_and_period_to_enigo_keys() {
@@ -233,5 +357,42 @@ mod tests {
             primary_to_key(PrimaryKey::Named(NamedKey::Period)).unwrap(),
             Key::OEMPeriod
         ));
+    }
+
+    #[tokio::test]
+    async fn serialized_input_jobs_do_not_overlap() {
+        let events = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let (first_started_tx, first_started_rx) = oneshot::channel::<()>();
+        let (release_first_tx, release_first_rx) = oneshot::channel::<()>();
+
+        let first_events = Arc::clone(&events);
+        let first = tokio::spawn(run_serialized_input_for_test(move || async move {
+            first_events.lock().await.push("first-start");
+            let _ = first_started_tx.send(());
+            release_first_rx.await.map_err(|error| error.to_string())?;
+            first_events.lock().await.push("first-end");
+            Ok(())
+        }));
+
+        first_started_rx.await.unwrap();
+
+        let second_events = Arc::clone(&events);
+        let second = tokio::spawn(run_serialized_input_for_test(move || async move {
+            second_events.lock().await.push("second-start");
+            second_events.lock().await.push("second-end");
+            Ok(())
+        }));
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert_eq!(events.lock().await.as_slice(), ["first-start"]);
+
+        release_first_tx.send(()).unwrap();
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+
+        assert_eq!(
+            events.lock().await.as_slice(),
+            ["first-start", "first-end", "second-start", "second-end"]
+        );
     }
 }

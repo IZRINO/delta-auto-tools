@@ -65,11 +65,12 @@ pub(crate) async fn execute(
         if step.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(step.delay_ms as u64)).await;
         }
-        input_simulation::press_hotkey_once(&step.hotkey, "识别触发按键效果").await?;
+        input_simulation::press_hotkey_once_for_card(&step.hotkey, "识别触发按键效果", &card_id)
+            .await?;
     }
 
     if let Some((x, y)) = plan.click_point {
-        input_simulation::click_points(&[(x, y, 0)]).await?;
+        input_simulation::click_points_for_card(&[(x, y, 0)], &card_id).await?;
     }
 
     Ok(())
