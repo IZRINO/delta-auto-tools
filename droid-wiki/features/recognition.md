@@ -107,3 +107,4 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。
 - 卡片支持分组、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和 `order`。
 - 旧配置缺少分组字段时自动归入 `default-recognition-group`。
+- 排查同输出按键问题时查看 `recognition` 日志：`注册识别监听热键` 确认 listener 注册，`准备执行触发效果` 和 `执行按键效果 step` 确认效果链已进入 input simulation。

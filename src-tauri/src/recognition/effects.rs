@@ -37,6 +37,14 @@ pub(crate) async fn execute(
     context: TriggerContext,
 ) -> Result<(), String> {
     let plan = build_plan(&app, &card_id, &context)?;
+    crate::log_info!(
+        "recognition",
+        "准备执行触发效果",
+        "card_id" => card_id.clone(),
+        "hotkey_step_count" => plan.hotkey_steps.len(),
+        "has_click" => plan.click_point.is_some(),
+        "has_audio" => plan.audio.is_some()
+    );
 
     if let Some(audio) = plan.audio {
         let _ = plan.playback_tx.send(player::AudioCommand::Play {
@@ -47,6 +55,13 @@ pub(crate) async fn execute(
     }
 
     for step in plan.hotkey_steps {
+        crate::log_info!(
+            "recognition",
+            "执行按键效果 step",
+            "card_id" => card_id.clone(),
+            "hotkey" => step.hotkey.clone(),
+            "delay_ms" => step.delay_ms
+        );
         if step.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(step.delay_ms as u64)).await;
         }

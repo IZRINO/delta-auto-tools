@@ -703,6 +703,14 @@ pub(crate) fn restart_hotkey_listeners(
                             effects::TriggerContext::Hotkey,
                         );
                     });
+                crate::log_info!(
+                    "recognition",
+                    "注册识别监听热键",
+                    "card_id" => card.id.clone(),
+                    "card_name" => card.name.clone(),
+                    "hotkey" => key.clone(),
+                    "trigger_mode" => format!("{:?}", card.trigger_mode)
+                );
                 bindings.push((key.clone(), action));
             }
             continue;
@@ -720,6 +728,14 @@ pub(crate) fn restart_hotkey_listeners(
                     Arc::new(move |app: tauri::AppHandle| {
                         watcher::start_activation_session(app, card_id.clone());
                     });
+                crate::log_info!(
+                    "recognition",
+                    "注册识别监听热键",
+                    "card_id" => card.id.clone(),
+                    "card_name" => card.name.clone(),
+                    "hotkey" => key.clone(),
+                    "trigger_mode" => format!("{:?}", card.trigger_mode)
+                );
                 bindings.push((key.clone(), action));
             }
         }
