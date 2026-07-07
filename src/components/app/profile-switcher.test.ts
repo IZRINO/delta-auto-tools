@@ -27,6 +27,7 @@ vi.mock("@/hooks/use-profile", () => ({
         loading: false,
         error: null,
         reloadNonce: 0,
+        switchingProfileId: null,
         createDefaultProfile: vi.fn(),
         switchProfile: vi.fn(),
         renameProfile: vi.fn(),
@@ -148,8 +149,12 @@ describe("切换 Profile 行为", () => {
     async function handleSwitchContract(
         clickedProfileId: string,
         activeProfileId: string,
+        switchingProfileId: string | null,
         switchProfile: (id: string) => Promise<void>,
     ): Promise<{called: boolean; error: string | null}> {
+        if (switchingProfileId) {
+            return {called: false, error: null};
+        }
         if (clickedProfileId === activeProfileId) {
             return {called: false, error: null};
         }
@@ -162,22 +167,28 @@ describe("切换 Profile 行为", () => {
     }
 
     it("点击当前激活 Profile 不调用 switchProfile", async () => {
-        const result = await handleSwitchContract("p1", "p1", mockSwitchProfile);
+        const result = await handleSwitchContract("p1", "p1", null, mockSwitchProfile);
         expect(result.called).toBe(false);
         expect(mockSwitchProfile).not.toHaveBeenCalled();
     });
 
     it("点击其他 Profile 调用 switchProfile", async () => {
         mockSwitchProfile.mockResolvedValue(undefined);
-        const result = await handleSwitchContract("p2", "p1", mockSwitchProfile);
+        const result = await handleSwitchContract("p2", "p1", null, mockSwitchProfile);
         expect(result.called).toBe(true);
         expect(mockSwitchProfile).toHaveBeenCalledWith("p2");
     });
 
     it("switchProfile 失败时返回错误", async () => {
         mockSwitchProfile.mockRejectedValue(new Error("切换失败"));
-        const result = await handleSwitchContract("p2", "p1", mockSwitchProfile);
+        const result = await handleSwitchContract("p2", "p1", null, mockSwitchProfile);
         expect(result.error).toBe("Error: 切换失败");
+    });
+
+    it("已有 Profile 切换中时不调用 switchProfile", async () => {
+        const result = await handleSwitchContract("p3", "p1", "p2", mockSwitchProfile);
+        expect(result.called).toBe(false);
+        expect(mockSwitchProfile).not.toHaveBeenCalled();
     });
 });
 

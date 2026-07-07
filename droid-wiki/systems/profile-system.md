@@ -36,7 +36,7 @@ src/components/app/
 | `ToolSettingsSnapshot` | `src-tauri/src/profile/types.rs` | 5 工具快照：`{ morse, timer, counter, rapidfire, recognition }` |
 | `Profile` | `src-tauri/src/profile/types.rs` | `{ id, name, created_at, updated_at, snapshot }`，命名配置 |
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
-| `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` |
+| `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` + `apply_lock` 串行化 Profile 应用 |
 | `apply_snapshot_to_tools` | `src-tauri/src/profile/mod.rs` | 核心编排：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 |
 | `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
@@ -84,6 +84,10 @@ sequenceDiagram
 ```
 
 `reloadNonce` 是关键集成点：`App.tsx` 将其用作工具页容器的 `key`。递增时 React 卸载当前页（清除 400ms autosave debounce 的 `setTimeout`），重新挂载新实例调用 `xxx_get_bootstrap` 加载新 profile 的 settings。
+
+`profile_apply` 串行执行：后端使用 `apply_lock` 防止并发切换互相覆盖；前端 `switchingProfileId` 在切换期间禁用 ProfileSwitcher 操作，避免启动装载期重复触发。
+
+切换过程写入 `profile` 日志，包含 `profile_id` 和 `elapsed_ms`，用于排查卡死或窗口创建阻塞。
 
 ### 自动默认 profile
 

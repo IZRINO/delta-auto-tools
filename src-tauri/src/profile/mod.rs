@@ -38,12 +38,14 @@ const RECOGNITION_FILE: &str = "recognition_settings.json";
 /// Profile 模块运行时状态。
 pub struct ProfileState {
     settings: Mutex<ProfileSettings>,
+    apply_lock: Mutex<()>,
 }
 
 impl ProfileState {
     pub fn new(settings: ProfileSettings) -> Self {
         Self {
             settings: Mutex::new(settings),
+            apply_lock: Mutex::new(()),
         }
     }
 }
@@ -288,6 +290,17 @@ pub fn profile_apply(
     state: State<'_, ProfileState>,
     id: String,
 ) -> Result<(), String> {
+    let started_at = std::time::Instant::now();
+    let _apply_guard = state
+        .apply_lock
+        .lock()
+        .map_err(|_| "Profile 切换锁已损坏".to_string())?;
+    crate::log_info!(
+        "profile",
+        "开始切换 Profile",
+        "profile_id" => id.clone()
+    );
+
     // 先取出目标 Profile 快照（不持有锁做 IO）
     let snapshot = {
         let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
@@ -304,11 +317,17 @@ pub fn profile_apply(
     // 更新 active_profile_id 并持久化
     {
         let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        settings.active_profile_id = id;
+        settings.active_profile_id = id.clone();
         settings::save_settings(&app, &settings)?;
     }
 
     emit_profile_changed(&app, &build_bootstrap(&state));
+    crate::log_info!(
+        "profile",
+        "完成切换 Profile",
+        "profile_id" => id,
+        "elapsed_ms" => started_at.elapsed().as_millis().to_string()
+    );
     Ok(())
 }
 
@@ -798,6 +817,12 @@ mod tests {
         let boot = build_bootstrap(&state);
         assert!(boot.profiles.is_empty());
         assert_eq!(boot.active_profile_id, "");
+    }
+
+    #[test]
+    fn profile_state_initializes_apply_lock() {
+        let state = ProfileState::new(ProfileSettings::default());
+        let _guard = state.apply_lock.try_lock().expect("apply lock 应可获取");
     }
 
     #[test]

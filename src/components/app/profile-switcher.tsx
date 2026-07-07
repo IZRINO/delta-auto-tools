@@ -42,6 +42,7 @@ export function ProfileSwitcher() {
         activeProfileName,
         loading,
         error,
+        switchingProfileId,
         createDefaultProfile,
         switchProfile,
         renameProfile,
@@ -62,6 +63,7 @@ export function ProfileSwitcher() {
         () => sortProfilesForSwitcher(bootstrap?.profiles ?? [], bootstrap?.activeProfileId ?? ""),
         [bootstrap?.activeProfileId, bootstrap?.profiles],
     );
+    const profileActionBusy = busy || Boolean(switchingProfileId);
 
     const setPopoverOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -99,6 +101,7 @@ export function ProfileSwitcher() {
     };
 
     const handleSwitch = async (profile: Profile) => {
+        if (switchingProfileId) return;
         if (profile.id === activeProfile?.id) return;
         setBusy(true);
         try {
@@ -238,6 +241,8 @@ export function ProfileSwitcher() {
                     {profiles.map((profile) => {
                         const active = profile.id === activeProfile?.id;
                         const renaming = renamingId === profile.id;
+                        const switching = switchingProfileId === profile.id;
+                        const switchDisabled = busy || Boolean(switchingProfileId) || active;
                         return (
                             <div
                                 key={profile.id}
@@ -264,7 +269,7 @@ export function ProfileSwitcher() {
                                             size="icon-sm"
                                             variant="outline"
                                             onClick={() => void commitRename()}
-                                            disabled={busy}
+                                            disabled={profileActionBusy}
                                             aria-label="确认重命名"
                                         >
                                             <RiCheckLine className="size-3.5" data-icon="inline-start" aria-hidden="true"/>
@@ -276,13 +281,13 @@ export function ProfileSwitcher() {
                                             type="button"
                                             className="min-w-0 px-2 py-2 text-left hover:bg-base-200 focus:outline-none focus-visible:outline-2 focus-visible:outline-primary"
                                             onClick={() => void handleSwitch(profile)}
-                                            disabled={busy}
+                                            disabled={switchDisabled}
                                         >
                                             <span className="block truncate text-xs font-semibold">
-                                                {profile.name}
+                                                {switching ? "切换中" : profile.name}
                                             </span>
                                             <span className="mt-0.5 block font-mono text-[0.56rem] text-base-content/60">
-                                                {active ? "ACTIVE" : "READY"}
+                                                {switching ? "SWITCHING" : active ? "ACTIVE" : "READY"}
                                             </span>
                                         </button>
                                         <Button
@@ -290,7 +295,7 @@ export function ProfileSwitcher() {
                                             size="icon-sm"
                                             variant="ghost"
                                             onClick={() => void handleExport(profile)}
-                                            disabled={busy}
+                                            disabled={profileActionBusy}
                                             aria-label={`导出 ${profile.name}`}
                                         >
                                             <RiDownload2Line className="size-3.5" data-icon="inline-start" aria-hidden="true"/>
@@ -300,7 +305,7 @@ export function ProfileSwitcher() {
                                             size="icon-sm"
                                             variant="ghost"
                                             onClick={() => beginRename(profile)}
-                                            disabled={busy}
+                                            disabled={profileActionBusy}
                                             aria-label={`重命名 ${profile.name}`}
                                         >
                                             <RiEditLine className="size-3.5" data-icon="inline-start" aria-hidden="true"/>
@@ -311,7 +316,7 @@ export function ProfileSwitcher() {
                                             variant="ghost"
                                             className="mr-1"
                                             onClick={() => void handleDelete(profile)}
-                                            disabled={busy || active}
+                                            disabled={profileActionBusy || active}
                                             aria-label={active ? `不能删除当前激活配置 ${profile.name}` : `删除 ${profile.name}`}
                                             title={active ? "当前激活配置不可删除" : "删除配置"}
                                         >
@@ -329,7 +334,7 @@ export function ProfileSwitcher() {
                     variant="default"
                     className="w-full justify-start"
                     onClick={() => void handleCreate()}
-                    disabled={busy || loading}
+                    disabled={profileActionBusy || loading}
                 >
                     <RiAddLine className="size-4" data-icon="inline-start" aria-hidden="true"/>
                     新增配置
@@ -340,7 +345,7 @@ export function ProfileSwitcher() {
                     variant="outline"
                     className="w-full justify-start"
                     onClick={() => void handleImport()}
-                    disabled={busy || loading}
+                    disabled={profileActionBusy || loading}
                 >
                     <RiUpload2Line className="size-4" data-icon="inline-start" aria-hidden="true"/>
                     导入配置
@@ -368,7 +373,7 @@ export function ProfileSwitcher() {
                             size="icon-sm"
                             variant="outline"
                             onClick={() => void handleSaveAs()}
-                            disabled={busy}
+                            disabled={profileActionBusy}
                             aria-label="确认复制"
                         >
                             <RiCheckLine className="size-3.5" data-icon="inline-start" aria-hidden="true"/>
@@ -380,7 +385,7 @@ export function ProfileSwitcher() {
                         variant="outline"
                         className="w-full justify-start"
                         onClick={() => setSaveAsOpen(true)}
-                        disabled={busy || loading}
+                        disabled={profileActionBusy || loading}
                     >
                         <RiFileCopyLine className="size-4" data-icon="inline-start" aria-hidden="true"/>
                         复制

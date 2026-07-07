@@ -37,6 +37,8 @@ type ProfileContextValue = {
      * 当前工具页 unmount（清掉挂起的 autosave timer）→ remount（重新拉 bootstrap）。
      */
     reloadNonce: number;
+    /** 当前正在切换的 Profile id；无切换时为 null。 */
+    switchingProfileId: string | null;
     /** 新建一个全默认配置并立即切换过去。 */
     createDefaultProfile: () => Promise<void>;
     /** 切换到指定 Profile：写盘 + reload 各工具 + 重置计数器运行值。 */
@@ -84,6 +86,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [reloadNonce, setReloadNonce] = useState(0);
+    const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
 
     // 初始化：拉取 bootstrap
     useEffect(() => {
@@ -139,15 +142,19 @@ export function ProfileProvider({children}: ProfileProviderProps) {
 
     const switchProfile = useCallback(
         async (id: string) => {
+            if (switchingProfileId) return;
+            setSwitchingProfileId(id);
             try {
                 await invoke("profile_apply", {id});
                 await refreshAfterSwitch();
             } catch (err: unknown) {
                 setError(String(err));
                 throw err;
+            } finally {
+                setSwitchingProfileId(null);
             }
         },
-        [refreshAfterSwitch],
+        [refreshAfterSwitch, switchingProfileId],
     );
 
     const renameProfile = useCallback(async (id: string, name: string) => {
@@ -243,6 +250,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             loading,
             error,
             reloadNonce,
+            switchingProfileId,
             createDefaultProfile,
             switchProfile,
             renameProfile,
@@ -260,6 +268,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             loading,
             error,
             reloadNonce,
+            switchingProfileId,
             createDefaultProfile,
             switchProfile,
             renameProfile,

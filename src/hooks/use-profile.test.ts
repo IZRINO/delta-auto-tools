@@ -40,6 +40,14 @@ async function switchProfileContract(id: string): Promise<void> {
     await invoke("profile_get_bootstrap");
 }
 
+async function switchProfileWithBusyGuardContract(
+    id: string,
+    switchingProfileId: string | null,
+): Promise<void> {
+    if (switchingProfileId) return;
+    await switchProfileContract(id);
+}
+
 async function renameProfileContract(id: string, name: string): Promise<void> {
     const {invoke} = await import("@tauri-apps/api/core");
     await invoke("profile_rename", {id, name});
@@ -126,6 +134,12 @@ describe("switchProfile IPC 契约", () => {
         mockInvoke.mockResolvedValue({});
         await switchProfileContract("profile-456");
         expect(mockInvoke).toHaveBeenCalledWith("profile_get_bootstrap");
+    });
+
+    it("switchingProfileId 存在时不重复调用 profile_apply", async () => {
+        mockInvoke.mockResolvedValue({});
+        await switchProfileWithBusyGuardContract("profile-789", "profile-456");
+        expect(mockInvoke).not.toHaveBeenCalled();
     });
 });
 
