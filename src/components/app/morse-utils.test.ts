@@ -113,9 +113,42 @@ describe("morse-utils", () => {
         expect(normalizeHotkeyPrimaryKey("Control")).toBeNull();
     });
 
+    it("normalizes Chinese punctuation hotkeys to canonical physical keys", () => {
+        expect(normalizeHotkeyPrimaryKey("，")).toBe(",");
+        expect(normalizeHotkeyPrimaryKey("。")).toBe(".");
+        expect(normalizeHotkeyPrimaryKey("；")).toBe(";");
+        expect(normalizeHotkeyPrimaryKey("？")).toBe("/");
+        expect(normalizeHotkeyPrimaryKey("、")).toBe("/");
+        expect(normalizeHotkeyPrimaryKey("【")).toBe("[");
+        expect(normalizeHotkeyPrimaryKey("】")).toBe("]");
+        expect(normalizeHotkeyPrimaryKey("￥")).toBe("\\");
+    });
+
     it("formats comma and period hotkeys", () => {
         expect(formatRecordedHotkey({key: ",", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false})).toBe(",");
         expect(formatRecordedHotkey({key: ".", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false})).toBe("Ctrl+.");
+    });
+
+    it("formats Chinese punctuation hotkeys as canonical ASCII", () => {
+        expect(
+            formatRecordedHotkey({
+                key: "，",
+                ctrlKey: false,
+                altKey: false,
+                shiftKey: false,
+                metaKey: false,
+            } as React.KeyboardEvent<HTMLButtonElement>),
+        ).toBe(",");
+
+        expect(
+            formatRecordedHotkey({
+                key: "。",
+                ctrlKey: true,
+                altKey: false,
+                shiftKey: false,
+                metaKey: false,
+            } as React.KeyboardEvent<HTMLButtonElement>),
+        ).toBe("Ctrl+.");
     });
 
     it("formats recorded hotkeys", () => {

@@ -98,6 +98,33 @@ describe("recognition-utils", () => {
             expect(form.cardGroups?.find((group) => group.id === "legacy")?.enabled).toBe(true);
             expect(form.cardGroups?.find((group) => group.id === "disabled")?.enabled).toBe(false);
         });
+
+        it("settingsToForm 按分组顺序稳定处理重复的组内 order", () => {
+            const hotkeyEffect = (hotkey: string) => ({
+                hotkey: {hotkey, steps: [{hotkey, delayMs: 0}]},
+            });
+            const settings = {
+                recognitionEnabled: true,
+                cardGroups: [
+                    {id: "g2", name: "二组", order: 1, collapsed: false, enabled: true},
+                    {id: "g1", name: "一组", order: 0, collapsed: false, enabled: true},
+                ],
+                cards: [
+                    {...DEFAULT_RECOGNITION_CARD, id: "g2-a", groupId: "g2", order: 0, name: "G2 A", hotkey: "F1", effects: hotkeyEffect("F5")},
+                    {...DEFAULT_RECOGNITION_CARD, id: "g1-a", groupId: "g1", order: 0, name: "G1 A", hotkey: "F2", effects: hotkeyEffect("F6")},
+                    {...DEFAULT_RECOGNITION_CARD, id: "g1-b", groupId: "g1", order: 1, name: "G1 B", hotkey: "F3", effects: hotkeyEffect("F7")},
+                ],
+            };
+
+            const form = settingsToForm(settings);
+
+            expect(form.cards.map((card) => card.id)).toEqual(["g1-a", "g1-b", "g2-a"]);
+            expect(parseSettingsForm(form).cards.map((card) => [card.id, card.groupId, card.order])).toEqual([
+                ["g1-a", "g1", 0],
+                ["g1-b", "g1", 1],
+                ["g2-a", "g2", 0],
+            ]);
+        });
     });
 
     describe("parseSettingsForm", () => {

@@ -102,11 +102,11 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 
 - `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
-- 识别触发的监听热键、激活热键和按键效果热键支持字母、数字、F1-F24、方向键，以及 `,`、`.`、`;`、`/`、`\`、`[`、`]`、`-`、`=`、`+`、`` ` ``、`'` 等符号。
+- 识别触发的监听热键、激活热键和按键效果热键支持字母、数字、F1-F24、方向键，以及 `,`、`.`、`;`、`/`、`\`、`[`、`]`、`-`、`=`、`+`、`` ` ``、`'` 等符号；配置以 ASCII 物理键持久化，录制中文/全角标点时会归一到对应物理键，例如 `，` -> `,`、`。` -> `.`。
 - 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。
 - 全局开关关闭时，识别 scope 的热键与 RegionWatch / ColorWatch watcher 都被全局门控拦截；Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
 - 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。
-- 卡片支持分组、跨分组移动、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和 `order`。
+- 卡片支持分组、跨分组移动、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和组内 `order`；跨分组移动后源分组和目标分组分别归一 `order`。
 - 分组 `enabled=false` 时，组内卡片仍保留并可编辑，但不会注册 Hotkey listener、RegionWatch watcher、ColorWatch watcher，也不会继续执行已排队 activation session 的效果。
 - 旧配置缺少分组字段时自动归入 `default-recognition-group`。
 - 排查同输出按键问题时查看 `recognition` 日志：`注册识别监听热键` 确认 listener 注册，`准备执行触发效果` 和 `执行按键效果 step` 确认效果链已进入 input simulation。
