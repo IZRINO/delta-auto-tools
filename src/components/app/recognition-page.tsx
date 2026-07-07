@@ -3,7 +3,19 @@ import {invokeLogged as invoke} from "@/lib/logging";
 import {open} from "@tauri-apps/plugin-dialog";
 import {listen} from "@tauri-apps/api/event";
 import {RECOGNITION_EVENTS} from "@/lib/tauri-events";
-import {RiArrowDownLine, RiArrowUpLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiFolderOpenLine, RiPlayLine, RiVolumeUpLine,} from "@remixicon/react";
+import {
+    RiAddLine,
+    RiArrowDownLine,
+    RiArrowDownSLine,
+    RiArrowRightSLine,
+    RiArrowUpLine,
+    RiCheckLine,
+    RiCloseLine,
+    RiDeleteBinLine,
+    RiFolderOpenLine,
+    RiPlayLine,
+    RiVolumeUpLine,
+} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -25,10 +37,18 @@ import {
     SignalTile,
     TacticalCard,
 } from "@/components/app/app-ui";
-import type {RecognitionBootstrap, RecognitionCard, RecognitionSettings, RecognitionSettingsForm, ColorProbeForm} from "@/components/app/recognition-types";
+import type {
+    ColorProbeForm,
+    RecognitionBootstrap,
+    RecognitionCard,
+    RecognitionGroup,
+    RecognitionSettings,
+    RecognitionSettingsForm,
+} from "@/components/app/recognition-types";
 import {RECOGNITION_AUTOSAVE_DELAY_MS} from "@/components/app/recognition-types";
 import {
     createEmptyRecognitionCard,
+    DEFAULT_RECOGNITION_GROUP_ID,
     mergeRecognitionWatchRegionsIntoForm,
     parseSettingsForm,
     rgbToHex,
@@ -74,6 +94,37 @@ export function patchHotkeyEffectStep(
         effectHotkey: hotkeyEffectSteps[0]?.hotkey ?? "",
         hotkeyEffectSteps,
     };
+}
+
+export function cardsForGroup(form: RecognitionSettingsForm, groupId: string) {
+    return form.cards
+        .map((card, index) => ({card, index}))
+        .filter((item) => (item.card.groupId ?? DEFAULT_RECOGNITION_GROUP_ID) === groupId)
+        .sort((a, b) => (a.card.order ?? 0) - (b.card.order ?? 0));
+}
+
+export function reorderCardsWithinGroup(
+    cards: RecognitionSettingsForm["cards"],
+    groupId: string,
+    cardId: string,
+    delta: -1 | 1,
+): RecognitionSettingsForm["cards"] {
+    const groupCards = cards
+        .filter((card) => (card.groupId ?? DEFAULT_RECOGNITION_GROUP_ID) === groupId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const index = groupCards.findIndex((card) => card.id === cardId);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= groupCards.length) {
+        return cards;
+    }
+    const reordered = [...groupCards];
+    [reordered[index], reordered[nextIndex]] = [reordered[nextIndex], reordered[index]];
+    const orderById = new Map(reordered.map((card, order) => [card.id, order]));
+    return cards.map((card) =>
+        (card.groupId ?? DEFAULT_RECOGNITION_GROUP_ID) === groupId
+            ? {...card, order: orderById.get(card.id) ?? card.order}
+            : card,
+    );
 }
 
 export function RecognitionPage() {
@@ -264,6 +315,57 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         },
         [setForm],
     );
+
+    const updateGroupById = useCallback((groupId: string, patch: Partial<RecognitionGroup>) => {
+        setForm((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                cardGroups: (current.cardGroups ?? []).map((group) =>
+                    group.id === groupId ? {...group, ...patch} : group,
+                ),
+            };
+        });
+    }, [setForm]);
+
+    const moveCardWithinGroup = useCallback((groupId: string, cardId: string, delta: -1 | 1) => {
+        setForm((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                cards: reorderCardsWithinGroup(current.cards, groupId, cardId, delta),
+            };
+        });
+    }, [setForm]);
+
+    const addRecognitionGroup = useCallback(() => {
+        setForm((current) => {
+            if (!current) return current;
+            const groups = current.cardGroups ?? [];
+            const id = `recognition-group-${Date.now().toString(36)}`;
+            return {
+                ...current,
+                cardGroups: [
+                    ...groups,
+                    {id, name: "新分组", order: groups.length, collapsed: false},
+                ],
+            };
+        });
+    }, [setForm]);
+
+    const removeEmptyRecognitionGroup = useCallback((groupId: string) => {
+        setForm((current) => {
+            if (!current) return current;
+            if (groupId === DEFAULT_RECOGNITION_GROUP_ID) return current;
+            if (current.cards.some((card) => (card.groupId ?? DEFAULT_RECOGNITION_GROUP_ID) === groupId)) {
+                return current;
+            }
+            return {
+                ...current,
+                cardGroups: (current.cardGroups ?? []).filter((group) => group.id !== groupId),
+            };
+        });
+    }, [setForm]);
 
     const beginHotkeyRecording = useCallback((
         card: RecognitionSettingsForm["cards"][number],
@@ -590,6 +692,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const enabled = form?.recognitionEnabled ?? form?.audioEnabled ?? false;
     const cardCount = form?.cards.length ?? 0;
     const activeCards = form?.cards.filter((c) => c.enabled).length ?? 0;
+    const cardGroups = form?.cardGroups ?? [];
 
     return (
         <AppPage className="auto-rows-max">
@@ -653,36 +756,95 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             </TacticalCard>
 
             <TacticalCard className="col-span-12 mt-3">
-                <SectionHeader eyebrow="识别卡片" title="识别触发卡片" />
+                <div className="flex items-center justify-between gap-3 px-3 pt-3">
+                    <SectionHeader eyebrow="识别卡片" title="识别触发卡片" />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!isNativeShell || loading}
+                        onClick={addRecognitionGroup}
+                        data-icon="inline-start"
+                    >
+                        <RiAddLine className="size-4" aria-hidden="true"/>
+                        新分组
+                    </Button>
+                </div>
                 <section className="@container grid min-h-0 gap-3 p-3 @xl:grid-cols-2">
-                    {form?.cards.map((card, index) => (
-                        <RecognitionCardEditor
-                            key={card.id}
-                            card={card}
-                            index={index}
-                            isNativeShell={isNativeShell}
-                            onUpdate={(patch) => handleUpdateCard(index, patch)}
-                            onRemove={() => handleRemoveCard(index)}
-                            onTestPlay={() => handleTestPlay(card.id)}
-                            onTestMatch={() => handleTestMatch(card.id)}
-                            onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
-                            onBeginCustomClickSelection={() => handleBeginRegionSelection(card.id, undefined, "customClick")}
-                            onPickReferenceImage={() => handlePickReferenceImage(index)}
-                            onPickAudioFile={() => handlePickAudioFile(index)}
-                            onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
-                            onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
-                            onUpdateComboWindow={(fileIndex, value) => handleUpdateComboWindow(index, fileIndex, value)}
-                            onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
-                            onTestColorMatch={() => handleTestColorMatch(card.id)}
-                            onAddColorProbe={() => handleAddColorProbe(index)}
-                            onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
-                            onUpdateColorProbe={(probeIndex, patch) => handleUpdateColorProbe(index, probeIndex, patch)}
-                            recordingTarget={recordingTarget}
-                            onBeginHotkeyRecording={(field, stepIndex) => beginHotkeyRecording(card, field, stepIndex)}
-                            onHotkeyKeyDown={(field, stepIndex, event) => handleHotkeyRecorderKeyDown(card, field, stepIndex, event)}
-                            onHotkeyRecorderBlur={recorder.handleBlur}
-                        />
-                    ))}
+                    {form && cardGroups.map((group) => {
+                        const groupCards = cardsForGroup(form, group.id);
+                        return (
+                            <div key={group.id} className="contents">
+                                <div className="@xl:col-span-2 border border-base-300 bg-base-100 px-3 py-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => updateGroupById(group.id, {collapsed: !group.collapsed})}
+                                            data-icon="inline-start"
+                                            aria-label={`${group.collapsed ? "展开" : "折叠"}分组 ${group.name}`}
+                                        >
+                                            {group.collapsed
+                                                ? <RiArrowRightSLine className="size-4" aria-hidden="true"/>
+                                                : <RiArrowDownSLine className="size-4" aria-hidden="true"/>}
+                                            {group.name}
+                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                className="h-8 w-40"
+                                                value={group.name}
+                                                onChange={(event) => updateGroupById(group.id, {name: event.target.value})}
+                                                aria-label="分组名称"
+                                            />
+                                            <Badge variant="secondary">{groupCards.length} 卡片</Badge>
+                                            {group.id !== DEFAULT_RECOGNITION_GROUP_ID && groupCards.length === 0 && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => removeEmptyRecognitionGroup(group.id)}
+                                                    aria-label="删除空分组"
+                                                >
+                                                    <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                {groupCards.map(({card, index}, position) => (
+                                    <RecognitionCardEditor
+                                        key={card.id}
+                                        card={card}
+                                        index={index}
+                                        position={position}
+                                        groupSize={groupCards.length}
+                                        collapsed={group.collapsed}
+                                        isNativeShell={isNativeShell}
+                                        onUpdate={(patch) => handleUpdateCard(index, patch)}
+                                        onRemove={() => handleRemoveCard(index)}
+                                        onMoveUp={() => moveCardWithinGroup(group.id, card.id, -1)}
+                                        onMoveDown={() => moveCardWithinGroup(group.id, card.id, 1)}
+                                        onTestPlay={() => handleTestPlay(card.id)}
+                                        onTestMatch={() => handleTestMatch(card.id)}
+                                        onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
+                                        onBeginCustomClickSelection={() => handleBeginRegionSelection(card.id, undefined, "customClick")}
+                                        onPickReferenceImage={() => handlePickReferenceImage(index)}
+                                        onPickAudioFile={() => handlePickAudioFile(index)}
+                                        onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
+                                        onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
+                                        onUpdateComboWindow={(fileIndex, value) => handleUpdateComboWindow(index, fileIndex, value)}
+                                        onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
+                                        onTestColorMatch={() => handleTestColorMatch(card.id)}
+                                        onAddColorProbe={() => handleAddColorProbe(index)}
+                                        onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
+                                        onUpdateColorProbe={(probeIndex, patch) => handleUpdateColorProbe(index, probeIndex, patch)}
+                                        recordingTarget={recordingTarget}
+                                        onBeginHotkeyRecording={(field, stepIndex) => beginHotkeyRecording(card, field, stepIndex)}
+                                        onHotkeyKeyDown={(field, stepIndex, event) => handleHotkeyRecorderKeyDown(card, field, stepIndex, event)}
+                                        onHotkeyRecorderBlur={recorder.handleBlur}
+                                    />
+                                ))}
+                            </div>
+                        );
+                    })}
                     <AddCardButton
                         className="min-h-36"
                         disabled={!isNativeShell || loading}
@@ -699,9 +861,14 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
 function RecognitionCardEditor({
                              card,
                              index,
+                             position,
+                             groupSize,
+                             collapsed,
                              isNativeShell,
                              onUpdate,
                              onRemove,
+                             onMoveUp,
+                             onMoveDown,
                              onTestPlay,
                              onTestMatch,
                              onBeginRegionSelection,
@@ -723,9 +890,14 @@ function RecognitionCardEditor({
                          }: {
     card: RecognitionSettingsForm["cards"][number];
     index: number;
+    position: number;
+    groupSize: number;
+    collapsed: boolean;
     isNativeShell: boolean;
     onUpdate: (patch: Partial<RecognitionSettingsForm["cards"][number]>) => void;
     onRemove: () => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
     onTestPlay: () => void;
     onTestMatch: () => void;
     onBeginRegionSelection: (probeIndex?: number) => void;
@@ -782,6 +954,9 @@ function RecognitionCardEditor({
                 <div className="flex items-center gap-2">
                     <span
                         className="font-mono text-xs font-semibold text-primary">A-{String(index + 1).padStart(2, "0")}</span>
+                    <span className="max-w-48 truncate font-mono text-xs font-bold text-base-content">
+                        {card.name || "未命名卡片"}
+                    </span>
                     <Switch
                         checked={card.enabled}
                         onCheckedChange={(v) => onUpdate({enabled: v})}
@@ -792,6 +967,26 @@ function RecognitionCardEditor({
           </span>
                 </div>
                 <div className="flex items-center gap-1">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={position === 0}
+                        onClick={onMoveUp}
+                        title="上移卡片"
+                        aria-label="上移卡片"
+                    >
+                        <RiArrowUpLine className="size-4" aria-hidden="true"/>
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={position === groupSize - 1}
+                        onClick={onMoveDown}
+                        title="下移卡片"
+                        aria-label="下移卡片"
+                    >
+                        <RiArrowDownLine className="size-4" aria-hidden="true"/>
+                    </Button>
                     <Button variant="ghost" size="sm" onClick={onTestPlay} title="测试播放" data-icon="inline-start">
                         <RiPlayLine className="size-4" aria-hidden="true"/>
                         测试
@@ -802,7 +997,7 @@ function RecognitionCardEditor({
                 </div>
             </div>
 
-            <div className="space-y-3 p-3">
+            {!collapsed && <div className="space-y-3 p-3">
                 <FieldGroup>
                     <Field>
                         <FieldLabel>卡片名称</FieldLabel>
@@ -1524,7 +1719,7 @@ function RecognitionCardEditor({
                         </FieldContent>
                     </Field>
                 </FieldGroup>
-            </div>
+            </div>}
         </div>
     );
 }

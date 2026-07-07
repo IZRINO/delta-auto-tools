@@ -49,6 +49,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 vi.mock("@/components/app/recognition-utils", () => ({
     createEmptyRecognitionCard: vi.fn(),
+    DEFAULT_RECOGNITION_GROUP_ID: "default-recognition-group",
     mergeRecognitionWatchRegionsIntoForm: vi.fn(),
     parseSettingsForm: vi.fn(),
     rgbToHex: vi.fn(),
@@ -154,6 +155,70 @@ describe("recognition-page 按键效果步骤录制", () => {
         ]);
     });
 });
+
+describe("recognition-page 分组排序 helper", () => {
+    it("cardsForGroup 按组过滤并按 order 排序", async () => {
+        const {cardsForGroup} = await import("@/components/app/recognition-page");
+        const form = {
+            audioEnabled: true,
+            cardGroups: [
+                {id: "g1", name: "战斗", order: 0, collapsed: false},
+                {id: "g2", name: "生活", order: 1, collapsed: false},
+            ],
+            cards: [
+                makeCard("c2", "g1", 20),
+                makeCard("c3", "g2", 0),
+                makeCard("c1", "g1", 10),
+            ],
+        };
+
+        expect(cardsForGroup(form, "g1").map(({card}) => card.id)).toEqual(["c1", "c2"]);
+    });
+
+    it("reorderCardsWithinGroup 只重排同组卡片", async () => {
+        const {reorderCardsWithinGroup} = await import("@/components/app/recognition-page");
+        const cards = [
+            makeCard("a", "g1", 0),
+            makeCard("b", "g1", 1),
+            makeCard("x", "g2", 0),
+        ];
+
+        const next = reorderCardsWithinGroup(cards, "g1", "b", -1);
+
+        expect(next.find((card) => card.id === "b")?.order).toBe(0);
+        expect(next.find((card) => card.id === "a")?.order).toBe(1);
+        expect(next.find((card) => card.id === "x")?.order).toBe(0);
+    });
+});
+
+function makeCard(id: string, groupId: string, order: number) {
+    return {
+        id,
+        groupId,
+        order,
+        name: id,
+        enabled: true,
+        triggerMode: "hotkey" as const,
+        hotkey: "F1",
+        watchRegion: null,
+        watchReferenceImagePath: "",
+        watchMatchThreshold: "0.75",
+        watchPollIntervalMs: "500",
+        activationMode: "always" as const,
+        activationHotkey: "",
+        activationDurationMs: "10000",
+        activationTriggerCount: "1",
+        audioFiles: [],
+        playMode: "single" as const,
+        comboWindowMs: "60000",
+        volume: "0.8",
+        cooldownMs: "1000",
+        allowSimultaneous: false,
+        colorProbes: [],
+        colorMatchMode: "all" as const,
+        colorMatchMethod: "average" as const,
+    };
+}
 
 // ── hotkeyTriggered 事件回调行为测试 ────────────────────
 
