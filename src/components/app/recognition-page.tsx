@@ -127,6 +127,55 @@ export function reorderCardsWithinGroup(
     );
 }
 
+function normalizedGroupId(groupId: string | null | undefined): string {
+    return groupId?.trim() || DEFAULT_RECOGNITION_GROUP_ID;
+}
+
+function normalizeOrdersForGroups(
+    cards: RecognitionSettingsForm["cards"],
+    groupIds: Set<string>,
+): RecognitionSettingsForm["cards"] {
+    const orderById = new Map<string, number>();
+    for (const groupId of groupIds) {
+        cards
+            .filter((card) => normalizedGroupId(card.groupId) === groupId)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .forEach((card, order) => orderById.set(card.id, order));
+    }
+    return cards.map((card) =>
+        orderById.has(card.id) ? {...card, order: orderById.get(card.id)} : card,
+    );
+}
+
+export function moveCardToGroup(
+    cards: RecognitionSettingsForm["cards"],
+    cardId: string,
+    targetGroupId: string | null,
+): RecognitionSettingsForm["cards"] {
+    const movingCard = cards.find((card) => card.id === cardId);
+    if (!movingCard) return cards;
+
+    const sourceGroupId = normalizedGroupId(movingCard.groupId);
+    const nextGroupId = normalizedGroupId(targetGroupId);
+    if (sourceGroupId === nextGroupId) return cards;
+
+    const targetOrder = cards.filter((card) =>
+        card.id !== cardId && normalizedGroupId(card.groupId) === nextGroupId,
+    ).length;
+    const nextCards = cards.map((card) =>
+        card.id === cardId ? {...card, groupId: nextGroupId, order: targetOrder} : card,
+    );
+    return normalizeOrdersForGroups(nextCards, new Set([sourceGroupId, nextGroupId]));
+}
+
+export function patchRecognitionGroup(
+    groups: RecognitionGroup[],
+    groupId: string,
+    patch: Partial<RecognitionGroup>,
+): RecognitionGroup[] {
+    return groups.map((group) => group.id === groupId ? {...group, ...patch} : group);
+}
+
 export function RecognitionPage() {
     const isNativeShell = useNativeShell();
     return <RecognitionWorkbench isNativeShell={isNativeShell}/>;
@@ -321,9 +370,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             if (!current) return current;
             return {
                 ...current,
-                cardGroups: (current.cardGroups ?? []).map((group) =>
-                    group.id === groupId ? {...group, ...patch} : group,
-                ),
+                cardGroups: patchRecognitionGroup(current.cardGroups ?? [], groupId, patch),
             };
         });
     }, [setForm]);
@@ -338,6 +385,16 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         });
     }, [setForm]);
 
+    const moveCardToGroupId = useCallback((cardId: string, groupId: string | null) => {
+        setForm((current) => {
+            if (!current) return current;
+            return {
+                ...current,
+                cards: moveCardToGroup(current.cards, cardId, groupId),
+            };
+        });
+    }, [setForm]);
+
     const addRecognitionGroup = useCallback(() => {
         setForm((current) => {
             if (!current) return current;
@@ -347,7 +404,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 ...current,
                 cardGroups: [
                     ...groups,
-                    {id, name: "新分组", order: groups.length, collapsed: false},
+                    {id, name: "新分组", order: groups.length, collapsed: false, enabled: true},
                 ],
             };
         });
@@ -795,6 +852,14 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                                                 onChange={(event) => updateGroupById(group.id, {name: event.target.value})}
                                                 aria-label="分组名称"
                                             />
+                                            <Switch
+                                                checked={group.enabled ?? true}
+                                                onCheckedChange={(checked) => updateGroupById(group.id, {enabled: checked})}
+                                                aria-label={`${group.name} 分组开关`}
+                                            />
+                                            <Badge variant={group.enabled ?? true ? "secondary" : "outline"}>
+                                                {group.enabled ?? true ? "启用" : "禁用"}
+                                            </Badge>
                                             <Badge variant="secondary">{groupCards.length} 卡片</Badge>
                                             {group.id !== DEFAULT_RECOGNITION_GROUP_ID && groupCards.length === 0 && (
                                                 <Button
@@ -816,9 +881,11 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                                         index={index}
                                         position={position}
                                         groupSize={groupCards.length}
+                                        cardGroups={cardGroups}
                                         collapsed={group.collapsed}
                                         isNativeShell={isNativeShell}
                                         onUpdate={(patch) => handleUpdateCard(index, patch)}
+                                        onMoveToGroup={(groupId) => moveCardToGroupId(card.id, groupId)}
                                         onRemove={() => handleRemoveCard(index)}
                                         onMoveUp={() => moveCardWithinGroup(group.id, card.id, -1)}
                                         onMoveDown={() => moveCardWithinGroup(group.id, card.id, 1)}
@@ -863,9 +930,11 @@ function RecognitionCardEditor({
                              index,
                              position,
                              groupSize,
+                             cardGroups,
                              collapsed,
                              isNativeShell,
                              onUpdate,
+                             onMoveToGroup,
                              onRemove,
                              onMoveUp,
                              onMoveDown,
@@ -892,9 +961,11 @@ function RecognitionCardEditor({
     index: number;
     position: number;
     groupSize: number;
+    cardGroups: RecognitionGroup[];
     collapsed: boolean;
     isNativeShell: boolean;
     onUpdate: (patch: Partial<RecognitionSettingsForm["cards"][number]>) => void;
+    onMoveToGroup: (groupId: string | null) => void;
     onRemove: () => void;
     onMoveUp: () => void;
     onMoveDown: () => void;
@@ -1007,6 +1078,27 @@ function RecognitionCardEditor({
                                 onChange={(e) => onUpdate({name: e.target.value})}
                                 placeholder="输入卡片名称..."
                             />
+                        </FieldContent>
+                    </Field>
+
+                    <Field>
+                        <FieldLabel>分组</FieldLabel>
+                        <FieldContent>
+                            <Select
+                                value={normalizedGroupId(card.groupId)}
+                                onValueChange={(value) => onMoveToGroup(value)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {cardGroups.map((group) => (
+                                        <SelectItem key={group.id} value={group.id}>
+                                            {group.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </FieldContent>
                     </Field>
 

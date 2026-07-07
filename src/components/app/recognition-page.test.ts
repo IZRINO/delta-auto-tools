@@ -162,8 +162,8 @@ describe("recognition-page 分组排序 helper", () => {
         const form = {
             audioEnabled: true,
             cardGroups: [
-                {id: "g1", name: "战斗", order: 0, collapsed: false},
-                {id: "g2", name: "生活", order: 1, collapsed: false},
+                {id: "g1", name: "战斗", order: 0, collapsed: false, enabled: true},
+                {id: "g2", name: "生活", order: 1, collapsed: false, enabled: true},
             ],
             cards: [
                 makeCard("c2", "g1", 20),
@@ -188,6 +188,56 @@ describe("recognition-page 分组排序 helper", () => {
         expect(next.find((card) => card.id === "b")?.order).toBe(0);
         expect(next.find((card) => card.id === "a")?.order).toBe(1);
         expect(next.find((card) => card.id === "x")?.order).toBe(0);
+    });
+
+    it("moveCardToGroup 移动到目标分组末尾并重排两侧 order", async () => {
+        const {moveCardToGroup} = await import("@/components/app/recognition-page");
+        const cards = [
+            makeCard("a", "g1", 0),
+            makeCard("b", "g1", 1),
+            makeCard("x", "g2", 0),
+        ];
+
+        const next = moveCardToGroup(cards, "b", "g2");
+
+        expect(next.find((card) => card.id === "a")?.order).toBe(0);
+        expect(next.find((card) => card.id === "b")?.groupId).toBe("g2");
+        expect(next.find((card) => card.id === "b")?.order).toBe(1);
+        expect(next.find((card) => card.id === "x")?.order).toBe(0);
+    });
+    it("moveCardToGroup 移动到默认分组时保持两侧 order 连续", async () => {
+        const {moveCardToGroup} = await import("@/components/app/recognition-page");
+        const cards = [
+            makeCard("a", "g1", 0),
+            makeCard("b", "g1", 1),
+            makeCard("x", "default-recognition-group", 0),
+        ];
+
+        const next = moveCardToGroup(cards, "a", null);
+
+        expect(next.filter((card) => card.groupId === "g1").map((card) => card.order)).toEqual([0]);
+        expect(
+            next
+                .filter((card) => card.groupId === "default-recognition-group")
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((card) => [card.id, card.order]),
+        ).toEqual([
+            ["x", 0],
+            ["a", 1],
+        ]);
+    });
+
+    it("patchRecognitionGroup 为分组开关生成 settings patch", async () => {
+        const {patchRecognitionGroup} = await import("@/components/app/recognition-page");
+        const groups = [
+            {id: "g1", name: "战斗", order: 0, collapsed: false, enabled: true},
+            {id: "g2", name: "生活", order: 1, collapsed: false, enabled: true},
+        ];
+
+        const next = patchRecognitionGroup(groups, "g2", {enabled: false});
+
+        expect(next.find((group) => group.id === "g1")?.enabled).toBe(true);
+        expect(next.find((group) => group.id === "g2")?.enabled).toBe(false);
     });
 });
 

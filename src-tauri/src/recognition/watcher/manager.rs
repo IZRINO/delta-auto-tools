@@ -49,10 +49,7 @@ pub fn restart_watchers(
     // 这样当用户在 watcher 运行期间关闭识别触发模块开关时，watcher 能立即感知并停止
 
     // 为每张区域监听 / 识色卡片启动 watcher
-    for card in &settings.cards {
-        if !card.enabled {
-            continue;
-        }
+    for card in watcher_runtime_cards(settings) {
         if card.activation.mode != RecognitionActivationMode::Always || !card.effects.has_any() {
             continue;
         }
@@ -141,6 +138,12 @@ pub fn restart_watchers(
     }
 
     Ok(())
+}
+
+pub(crate) fn watcher_runtime_cards<'a>(
+    settings: &'a RecognitionSettings,
+) -> impl Iterator<Item = &'a RecognitionCard> + 'a {
+    crate::recognition::runtime_cards(settings)
 }
 
 /// 停止所有区域监听 watcher
@@ -275,7 +278,11 @@ fn card_snapshot(app: &AppHandle, card_id: &str) -> Option<RecognitionCard> {
         .settings
         .cards
         .iter()
-        .find(|card| card.id == card_id && card.enabled)
+        .find(|card| {
+            card.id == card_id
+                && card.enabled
+                && crate::recognition::card_group_enabled(&inner.settings, card)
+        })
         .cloned()
 }
 
@@ -710,5 +717,53 @@ mod tests {
             3,
             true
         ));
+    }
+
+    #[test]
+    fn watcher_runtime_cards_skip_disabled_groups() {
+        let card = RecognitionCard {
+            id: "disabled-group-card".into(),
+            group_id: Some("g1".into()),
+            order: 0,
+            name: "禁用组卡片".into(),
+            enabled: true,
+            trigger_mode: RecognitionTriggerMode::RegionWatch,
+            hotkey: None,
+            watch_region: Some(crate::morse::types::RegionRect {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            }),
+            watch_reference_image_path: Some("ref.png".into()),
+            watch_match_threshold: 0.75,
+            watch_poll_interval_ms: 500,
+            activation: crate::recognition::types::RecognitionActivation::default(),
+            effects: crate::recognition::types::RecognitionEffects::default(),
+            audio_files: Vec::new(),
+            legacy_audio_file_path: None,
+            play_mode: crate::recognition::types::PlayMode::Single,
+            combo_window_ms: 60000,
+            combo_windows: Vec::new(),
+            volume: 0.8,
+            cooldown_ms: 1000,
+            allow_simultaneous: false,
+            color_probes: Vec::new(),
+            color_match_mode: crate::recognition::types::ColorMatchMode::All,
+            color_match_method: crate::recognition::types::ColorMatchMethod::Average,
+        };
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![crate::recognition::types::RecognitionGroup {
+                id: "g1".into(),
+                name: "禁用组".into(),
+                order: 0,
+                collapsed: false,
+                enabled: false,
+            }],
+            cards: vec![card],
+        };
+
+        assert!(watcher_runtime_cards(&settings).next().is_none());
     }
 }

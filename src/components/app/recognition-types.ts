@@ -71,6 +71,7 @@ export type RecognitionGroup = {
     name: string;
     order: number;
     collapsed: boolean;
+    enabled: boolean;
 };
 
 export type RecognitionEffects = {

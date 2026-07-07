@@ -20,6 +20,7 @@ function defaultRecognitionGroup(): RecognitionGroup {
         name: "默认分组",
         order: 0,
         collapsed: false,
+        enabled: true,
     };
 }
 
@@ -30,6 +31,7 @@ function normalizeRecognitionGroups(settings: RecognitionSettings): RecognitionG
             name: group.name.trim() || "未命名分组",
             order: Number.isFinite(group.order) ? group.order : 0,
             collapsed: group.collapsed ?? false,
+            enabled: group.enabled ?? true,
         }))
         .filter((group, index, all) => all.findIndex((item) => item.id === group.id) === index);
     if (!groups.some((group) => group.id === DEFAULT_RECOGNITION_GROUP_ID)) {

@@ -79,10 +79,24 @@ describe("recognition-utils", () => {
             const form = settingsToForm(settings);
 
             expect(form.cardGroups).toEqual([
-                {id: DEFAULT_RECOGNITION_GROUP_ID, name: "默认分组", order: 0, collapsed: false},
+                {id: DEFAULT_RECOGNITION_GROUP_ID, name: "默认分组", order: 0, collapsed: false, enabled: true},
             ]);
             expect(form.cards.map((card) => card.id)).toEqual(["a", "b"]);
             expect(form.cards.every((card) => card.groupId === DEFAULT_RECOGNITION_GROUP_ID)).toBe(true);
+        });
+
+        it("settingsToForm 为旧分组补 enabled=true 并保留禁用分组", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cardGroups: [
+                    {id: "legacy", name: "旧分组", order: 1, collapsed: false} as any,
+                    {id: "disabled", name: "禁用分组", order: 2, collapsed: true, enabled: false},
+                ],
+                cards: [],
+            });
+
+            expect(form.cardGroups?.find((group) => group.id === "legacy")?.enabled).toBe(true);
+            expect(form.cardGroups?.find((group) => group.id === "disabled")?.enabled).toBe(false);
         });
     });
 
@@ -124,7 +138,7 @@ describe("recognition-utils", () => {
         it("parseSettingsForm 回写分组和卡片排序字段", () => {
             const settings = parseSettingsForm({
                 audioEnabled: true,
-                cardGroups: [{id: "g1", name: "战斗", order: 1, collapsed: true}],
+                cardGroups: [{id: "g1", name: "战斗", order: 1, collapsed: true, enabled: false}],
                 cards: [
                     {
                         id: "c1",
@@ -151,7 +165,7 @@ describe("recognition-utils", () => {
                 ],
             });
 
-            expect(settings.cardGroups).toEqual([{id: "g1", name: "战斗", order: 1, collapsed: true}]);
+            expect(settings.cardGroups).toEqual([{id: "g1", name: "战斗", order: 1, collapsed: true, enabled: false}]);
             expect(settings.cards[0].groupId).toBe("g1");
             expect(settings.cards[0].order).toBe(3);
         });

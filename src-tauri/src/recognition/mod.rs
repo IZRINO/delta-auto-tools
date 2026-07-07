@@ -32,7 +32,33 @@ fn default_recognition_group() -> types::RecognitionGroup {
         name: "默认分组".to_string(),
         order: 0,
         collapsed: false,
+        enabled: true,
     }
+}
+
+pub(crate) fn card_group_enabled(
+    settings: &RecognitionSettings,
+    card: &types::RecognitionCard,
+) -> bool {
+    card.group_id
+        .as_deref()
+        .and_then(|group_id| {
+            settings
+                .card_groups
+                .iter()
+                .find(|group| group.id == group_id)
+        })
+        .map(|group| group.enabled)
+        .unwrap_or(true)
+}
+
+pub(crate) fn runtime_cards<'a>(
+    settings: &'a RecognitionSettings,
+) -> impl Iterator<Item = &'a types::RecognitionCard> + 'a {
+    settings
+        .cards
+        .iter()
+        .filter(move |card| card.enabled && card_group_enabled(settings, card))
 }
 
 // ---- TestMatchResult ----
@@ -687,7 +713,7 @@ pub(crate) fn restart_hotkey_listeners(
     validate_hotkey_duplicates(settings)?;
 
     let mut bindings: Vec<(String, crate::hotkey_types::HotkeyAction)> = Vec::new();
-    for card in settings.cards.iter().filter(|c| c.enabled) {
+    for card in runtime_cards(settings) {
         if card.trigger_mode == RecognitionTriggerMode::Hotkey {
             if let Some(key) = card
                 .hotkey
@@ -755,7 +781,7 @@ pub(crate) fn restart_hotkey_listeners(
 
 fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), String> {
     let mut listener_set = std::collections::HashSet::<String>::new();
-    for card in settings.cards.iter().filter(|c| c.enabled) {
+    for card in runtime_cards(settings) {
         let mut keys: Vec<(String, &str)> = Vec::new();
         if card.trigger_mode == RecognitionTriggerMode::Hotkey {
             if let Some(key) = card.hotkey.as_ref().filter(|v| !v.trim().is_empty()) {
@@ -778,7 +804,7 @@ fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), Stri
         }
     }
 
-    for card in settings.cards.iter().filter(|c| c.enabled) {
+    for card in runtime_cards(settings) {
         if let Some(effect) = card.effects.hotkey.as_ref() {
             for step in effect.normalized_steps() {
                 if step.hotkey.trim().is_empty() {
@@ -1143,6 +1169,76 @@ mod tests {
             .cards
             .iter()
             .all(|card| card.group_id.as_deref() == Some(DEFAULT_RECOGNITION_GROUP_ID)));
+        assert!(normalized.card_groups[0].enabled);
+    }
+
+    #[test]
+    fn card_group_enabled_defaults_unknown_group_to_enabled() {
+        let mut card = base_card();
+        card.group_id = Some("missing".into());
+        let settings = types::RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![],
+            cards: vec![card.clone()],
+        };
+
+        assert!(card_group_enabled(&settings, &card));
+    }
+
+    #[test]
+    fn card_group_enabled_uses_group_switch() {
+        let mut card = base_card();
+        card.group_id = Some("g1".into());
+        let settings = types::RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![types::RecognitionGroup {
+                id: "g1".into(),
+                name: "战斗".into(),
+                order: 0,
+                collapsed: false,
+                enabled: false,
+            }],
+            cards: vec![card.clone()],
+        };
+
+        assert!(!card_group_enabled(&settings, &card));
+    }
+
+    #[test]
+    fn runtime_cards_skip_disabled_group_cards() {
+        let mut enabled_card = base_card();
+        enabled_card.id = "enabled-card".into();
+        enabled_card.group_id = Some("enabled-group".into());
+
+        let mut disabled_card = base_card();
+        disabled_card.id = "disabled-card".into();
+        disabled_card.group_id = Some("disabled-group".into());
+
+        let settings = types::RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![
+                types::RecognitionGroup {
+                    id: "enabled-group".into(),
+                    name: "启用".into(),
+                    order: 0,
+                    collapsed: false,
+                    enabled: true,
+                },
+                types::RecognitionGroup {
+                    id: "disabled-group".into(),
+                    name: "禁用".into(),
+                    order: 1,
+                    collapsed: false,
+                    enabled: false,
+                },
+            ],
+            cards: vec![enabled_card, disabled_card],
+        };
+
+        let ids = runtime_cards(&settings)
+            .map(|card| card.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["enabled-card"]);
     }
 
     #[test]

@@ -102,7 +102,7 @@ fn build_plan(
         .find(|c| c.id == card_id)
         .ok_or_else(|| "卡片不存在".to_string())?
         .clone();
-    if !card.enabled {
+    if !card.enabled || !super::card_group_enabled(&inner.settings, &card) {
         return Err("卡片未启用".to_string());
     }
 

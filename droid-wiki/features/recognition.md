@@ -27,7 +27,7 @@ src-tauri/src/recognition/
 | 类型 | 职责 |
 |------|------|
 | `RecognitionSettings` | 总开关 `recognition_enabled` + `card_groups` + 卡片列表，落盘为 `recognition_settings.json` |
-| `RecognitionGroup` | 识别卡片分组，包含 `id`、`name`、`order`、`collapsed`；旧配置会补 `default-recognition-group` |
+| `RecognitionGroup` | 识别卡片分组，包含 `id`、`name`、`order`、`collapsed`、`enabled`；旧配置会补 `default-recognition-group` 且旧分组默认启用 |
 | `RecognitionCard` | 分组归属 `group_id`、排序 `order`、触发来源、激活方式、效果配置、冷却、识色探针 |
 | `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey`；Hotkey 来源不使用 activation |
 | `RecognitionEffects` | 每卡最多一个音频效果、一个按键效果、一个点击效果 |
@@ -105,6 +105,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。
 - 全局开关关闭时，识别 scope 的热键与 RegionWatch / ColorWatch watcher 都被全局门控拦截；Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
 - 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。
-- 卡片支持分组、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和 `order`。
+- 卡片支持分组、跨分组移动、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和 `order`。
+- 分组 `enabled=false` 时，组内卡片仍保留并可编辑，但不会注册 Hotkey listener、RegionWatch watcher、ColorWatch watcher，也不会继续执行已排队 activation session 的效果。
 - 旧配置缺少分组字段时自动归入 `default-recognition-group`。
 - 排查同输出按键问题时查看 `recognition` 日志：`注册识别监听热键` 确认 listener 注册，`准备执行触发效果` 和 `执行按键效果 step` 确认效果链已进入 input simulation。

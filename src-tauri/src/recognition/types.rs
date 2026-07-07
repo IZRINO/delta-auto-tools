@@ -70,6 +70,8 @@ pub struct RecognitionGroup {
     pub order: i32,
     #[serde(default)]
     pub collapsed: bool,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -432,10 +434,22 @@ mod tests {
         assert_eq!(settings.card_groups[0].id, "g1");
         assert_eq!(settings.card_groups[0].order, 2);
         assert!(settings.card_groups[0].collapsed);
+        assert!(settings.card_groups[0].enabled);
 
         let json = serde_json::to_string(&settings).unwrap();
         assert!(json.contains("\"cardGroups\""));
         assert!(json.contains("\"collapsed\":true"));
+        assert!(json.contains("\"enabled\":true"));
+    }
+
+    #[test]
+    fn recognition_group_enabled_roundtrip() {
+        let settings: RecognitionSettings = serde_json::from_str(
+            r#"{"recognitionEnabled":true,"cardGroups":[{"id":"g1","name":"战斗","enabled":false}],"cards":[]}"#,
+        )
+        .unwrap();
+
+        assert!(!settings.card_groups[0].enabled);
     }
 
     #[test]
