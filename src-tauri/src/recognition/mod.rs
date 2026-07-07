@@ -947,7 +947,7 @@ pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSe
         .collect::<std::collections::HashSet<_>>();
     let mut cards = settings.cards;
 
-    for (index, card) in cards.iter_mut().enumerate() {
+    for card in cards.iter_mut() {
         // 确保每张卡片有唯一 ID
         if card.id.is_empty() {
             let now = std::time::SystemTime::now()
@@ -1012,11 +1012,50 @@ pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSe
         } else if trimmed_group_id != group_id {
             card.group_id = Some(trimmed_group_id.to_string());
         }
-        if card.order == 0 && index > 0 {
-            card.order = index as i32;
-        }
     }
-    cards.sort_by_key(|card| card.order);
+    let group_order_by_id = groups
+        .iter()
+        .enumerate()
+        .map(|(index, group)| (group.id.clone(), (group.order, index)))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut indexed_cards = cards.into_iter().enumerate().collect::<Vec<_>>();
+    indexed_cards.sort_by(|(left_index, left), (right_index, right)| {
+        let left_group = left
+            .group_id
+            .as_deref()
+            .unwrap_or(DEFAULT_RECOGNITION_GROUP_ID);
+        let right_group = right
+            .group_id
+            .as_deref()
+            .unwrap_or(DEFAULT_RECOGNITION_GROUP_ID);
+        let left_group_order = group_order_by_id
+            .get(left_group)
+            .copied()
+            .unwrap_or((i32::MAX, usize::MAX));
+        let right_group_order = group_order_by_id
+            .get(right_group)
+            .copied()
+            .unwrap_or((i32::MAX, usize::MAX));
+
+        left_group_order
+            .cmp(&right_group_order)
+            .then_with(|| left.order.cmp(&right.order))
+            .then_with(|| left_index.cmp(right_index))
+    });
+    let mut next_order_by_group = std::collections::HashMap::<String, i32>::new();
+    let cards = indexed_cards
+        .into_iter()
+        .map(|(_, mut card)| {
+            let group_id = card
+                .group_id
+                .clone()
+                .unwrap_or_else(|| DEFAULT_RECOGNITION_GROUP_ID.to_string());
+            let next_order = next_order_by_group.entry(group_id).or_insert(0);
+            card.order = *next_order;
+            *next_order += 1;
+            card
+        })
+        .collect::<Vec<_>>();
 
     RecognitionSettings {
         recognition_enabled: settings.recognition_enabled,
@@ -1170,6 +1209,60 @@ mod tests {
             .iter()
             .all(|card| card.group_id.as_deref() == Some(DEFAULT_RECOGNITION_GROUP_ID)));
         assert!(normalized.card_groups[0].enabled);
+    }
+
+    #[test]
+    fn normalize_settings_preserves_per_group_zero_orders() {
+        let mut g1_a = base_card();
+        g1_a.id = "g1-a".into();
+        g1_a.group_id = Some("g1".into());
+        g1_a.order = 0;
+
+        let mut g1_b = base_card();
+        g1_b.id = "g1-b".into();
+        g1_b.group_id = Some("g1".into());
+        g1_b.order = 1;
+
+        let mut g2_a = base_card();
+        g2_a.id = "g2-a".into();
+        g2_a.group_id = Some("g2".into());
+        g2_a.order = 0;
+
+        let normalized = normalize_settings(types::RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![
+                types::RecognitionGroup {
+                    id: "g1".into(),
+                    name: "一组".into(),
+                    order: 0,
+                    collapsed: false,
+                    enabled: true,
+                },
+                types::RecognitionGroup {
+                    id: "g2".into(),
+                    name: "二组".into(),
+                    order: 1,
+                    collapsed: false,
+                    enabled: true,
+                },
+            ],
+            cards: vec![g2_a, g1_b, g1_a],
+        });
+
+        let grouped = normalized
+            .cards
+            .iter()
+            .map(|card| (card.id.as_str(), card.group_id.as_deref(), card.order))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            grouped,
+            vec![
+                ("g1-a", Some("g1"), 0),
+                ("g1-b", Some("g1"), 1),
+                ("g2-a", Some("g2"), 0),
+            ]
+        );
     }
 
     #[test]

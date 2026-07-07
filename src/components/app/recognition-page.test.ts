@@ -212,6 +212,29 @@ describe("recognition-page 分组排序 helper", () => {
         expect(next.find((card) => card.id === "b")?.order).toBe(1);
         expect(next.find((card) => card.id === "x")?.order).toBe(0);
     });
+
+    it("moveCardToGroup 后可把新组内卡片上移到 order 0", async () => {
+        const {moveCardToGroup, reorderCardsWithinGroup} = await import("@/components/app/recognition-page");
+        const cards = [
+            makeCard("a", "g1", 0),
+            makeCard("b", "g1", 1),
+            makeCard("x", "g2", 0),
+        ];
+
+        const moved = moveCardToGroup(cards, "b", "g2");
+        const reordered = reorderCardsWithinGroup(moved, "g2", "b", -1);
+
+        expect(
+            reordered
+                .filter((card) => card.groupId === "g2")
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                .map((card) => [card.id, card.order]),
+        ).toEqual([
+            ["b", 0],
+            ["x", 1],
+        ]);
+    });
+
     it("moveCardToGroup 移动到默认分组时保持两侧 order 连续", async () => {
         const {moveCardToGroup} = await import("@/components/app/recognition-page");
         const cards = [

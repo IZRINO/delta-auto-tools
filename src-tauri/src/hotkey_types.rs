@@ -133,7 +133,27 @@ pub fn parse_modifier(segment: &str) -> Option<ModifierKey> {
     None
 }
 
+fn canonical_symbol_alias(segment: &str) -> Option<&'static str> {
+    match segment {
+        "，" => Some(","),
+        "。" => Some("."),
+        "；" => Some(";"),
+        "？" | "、" => Some("/"),
+        "【" | "「" => Some("["),
+        "】" | "」" => Some("]"),
+        "￥" | "｜" => Some("\\"),
+        "－" => Some("-"),
+        "＝" => Some("="),
+        "＋" => Some("+"),
+        "｀" => Some("`"),
+        "‘" | "’" => Some("'"),
+        _ => None,
+    }
+}
+
 pub fn parse_primary(segment: &str) -> Result<PrimaryKey, String> {
+    let segment = canonical_symbol_alias(segment).unwrap_or(segment);
+
     if segment.len() == 1 {
         let char_value = segment.chars().next().unwrap_or_default();
         if char_value.is_ascii_alphabetic() {
@@ -379,6 +399,17 @@ pub fn to_primary_key(key: willhook::event::KeyboardKey) -> Option<PrimaryKey> {
         KeyboardKey::Delete => Some(PrimaryKey::Named(NamedKey::Delete)),
         KeyboardKey::BackSpace => Some(PrimaryKey::Named(NamedKey::Backspace)),
         KeyboardKey::LeftAlt | KeyboardKey::RightAlt => Some(PrimaryKey::Named(NamedKey::Alt)),
+        KeyboardKey::SemiColon => Some(PrimaryKey::Named(NamedKey::Semicolon)),
+        KeyboardKey::Comma => Some(PrimaryKey::Named(NamedKey::Comma)),
+        KeyboardKey::Period => Some(PrimaryKey::Named(NamedKey::Period)),
+        KeyboardKey::Slash => Some(PrimaryKey::Named(NamedKey::Slash)),
+        KeyboardKey::Grave => Some(PrimaryKey::Named(NamedKey::Backquote)),
+        KeyboardKey::LeftBrace => Some(PrimaryKey::Named(NamedKey::BracketLeft)),
+        KeyboardKey::BackwardSlash => Some(PrimaryKey::Named(NamedKey::Backslash)),
+        KeyboardKey::RightBrace => Some(PrimaryKey::Named(NamedKey::BracketRight)),
+        KeyboardKey::Apostrophe => Some(PrimaryKey::Named(NamedKey::Quote)),
+        KeyboardKey::Add => Some(PrimaryKey::Named(NamedKey::Plus)),
+        KeyboardKey::Subtract => Some(PrimaryKey::Named(NamedKey::Minus)),
         KeyboardKey::Other(0xBA) => Some(PrimaryKey::Named(NamedKey::Semicolon)),
         KeyboardKey::Other(0xBB) => Some(PrimaryKey::Named(NamedKey::Equal)),
         KeyboardKey::Other(0x6B) => Some(PrimaryKey::Named(NamedKey::Plus)),
@@ -473,6 +504,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_chinese_punctuation_hotkey_aliases() {
+        assert_eq!(hotkey_to_string("，").unwrap(), ",");
+        assert_eq!(hotkey_to_string("Ctrl+。").unwrap(), "Ctrl+.");
+        assert_eq!(hotkey_to_string("；").unwrap(), ";");
+        assert_eq!(hotkey_to_string("？").unwrap(), "/");
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn maps_comma_and_period_vk_events_to_primary_keys() {
@@ -486,6 +525,22 @@ mod tests {
             to_primary_key(KeyboardKey::Other(0xBE)),
             Some(PrimaryKey::Named(NamedKey::Period))
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn maps_real_willhook_symbol_variants_to_primary_keys() {
+        use willhook::event::KeyboardKey;
+
+        assert_eq!(to_primary_key(KeyboardKey::Comma), Some(PrimaryKey::Named(NamedKey::Comma)));
+        assert_eq!(to_primary_key(KeyboardKey::Period), Some(PrimaryKey::Named(NamedKey::Period)));
+        assert_eq!(to_primary_key(KeyboardKey::Slash), Some(PrimaryKey::Named(NamedKey::Slash)));
+        assert_eq!(to_primary_key(KeyboardKey::SemiColon), Some(PrimaryKey::Named(NamedKey::Semicolon)));
+        assert_eq!(to_primary_key(KeyboardKey::Apostrophe), Some(PrimaryKey::Named(NamedKey::Quote)));
+        assert_eq!(to_primary_key(KeyboardKey::LeftBrace), Some(PrimaryKey::Named(NamedKey::BracketLeft)));
+        assert_eq!(to_primary_key(KeyboardKey::BackwardSlash), Some(PrimaryKey::Named(NamedKey::Backslash)));
+        assert_eq!(to_primary_key(KeyboardKey::RightBrace), Some(PrimaryKey::Named(NamedKey::BracketRight)));
+        assert_eq!(to_primary_key(KeyboardKey::Grave), Some(PrimaryKey::Named(NamedKey::Backquote)));
     }
 
     #[test]

@@ -280,6 +280,17 @@ pub fn keyboard_key_to_vk(key: &willhook::event::KeyboardKey) -> Option<u32> {
         KeyboardKey::RightControl => Some(0xA3),
         KeyboardKey::LeftWindows => Some(0x5B),
         KeyboardKey::RightWindows => Some(0x5C),
+        KeyboardKey::SemiColon => Some(0xBA),
+        KeyboardKey::Comma => Some(0xBC),
+        KeyboardKey::Period => Some(0xBE),
+        KeyboardKey::Slash => Some(0xBF),
+        KeyboardKey::Grave => Some(0xC0),
+        KeyboardKey::LeftBrace => Some(0xDB),
+        KeyboardKey::BackwardSlash => Some(0xDC),
+        KeyboardKey::RightBrace => Some(0xDD),
+        KeyboardKey::Apostrophe => Some(0xDE),
+        KeyboardKey::Add => Some(0x6B),
+        KeyboardKey::Subtract => Some(0x6D),
         KeyboardKey::Other(vk) => Some(*vk),
         _ => None,
     }
@@ -544,5 +555,18 @@ mod tests {
             assert_eq!(keyboard_key_to_vk(&key), Some(vk));
             assert_eq!(keyboard_key_to_vk(&vk_to_keyboard_key(vk)), Some(vk));
         }
+    }
+
+    #[test]
+    fn maps_real_willhook_symbol_variants_to_vk_codes() {
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::Comma), Some(0xBC));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::Period), Some(0xBE));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::Slash), Some(0xBF));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::SemiColon), Some(0xBA));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::Apostrophe), Some(0xDE));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::LeftBrace), Some(0xDB));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::BackwardSlash), Some(0xDC));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::RightBrace), Some(0xDD));
+        assert_eq!(keyboard_key_to_vk(&KeyboardKey::Grave), Some(0xC0));
     }
 }

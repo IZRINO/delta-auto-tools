@@ -40,6 +40,23 @@ function normalizeRecognitionGroups(settings: RecognitionSettings): RecognitionG
     return groups.sort((a, b) => a.order - b.order);
 }
 
+function normalizeRecognitionCardGroupId(groupId: string | null | undefined, groupIds: Set<string>): string {
+    const trimmed = groupId?.trim();
+    return trimmed && groupIds.has(trimmed) ? trimmed : DEFAULT_RECOGNITION_GROUP_ID;
+}
+
+function recognitionCardSortKey(
+    card: RecognitionCard,
+    index: number,
+    groupOrderById: Map<string, number>,
+    groupIds: Set<string>,
+): [number, number, number] {
+    const groupId = normalizeRecognitionCardGroupId(card.groupId, groupIds);
+    const groupOrder = groupOrderById.get(groupId) ?? Number.MAX_SAFE_INTEGER;
+    const cardOrder = Number.isFinite(card.order ?? NaN) ? card.order ?? 0 : index;
+    return [groupOrder, cardOrder, index];
+}
+
 export function rgbToHex(rgb: [number, number, number]): string {
     const [r, g, b] = rgb;
     return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
@@ -95,19 +112,23 @@ export function settingsToForm(settings: RecognitionSettings): RecognitionSettin
     const recognitionEnabled = settings.recognitionEnabled ?? settings.audioEnabled ?? true;
     const cardGroups = normalizeRecognitionGroups(settings);
     const groupIds = new Set(cardGroups.map((group) => group.id));
+    const groupOrderById = new Map(cardGroups.map((group, index) => [group.id, group.order ?? index]));
     return {
         recognitionEnabled,
         audioEnabled: recognitionEnabled,
         cardGroups,
         cards: settings.cards
-            .map((card, index) => cardToForm({
+            .map((card, index) => ({card, index, key: recognitionCardSortKey(card, index, groupOrderById, groupIds)}))
+            .sort((a, b) =>
+                a.key[0] - b.key[0]
+                || a.key[1] - b.key[1]
+                || a.key[2] - b.key[2]
+            )
+            .map(({card, index}) => cardToForm({
                 ...card,
-                groupId: card.groupId && groupIds.has(card.groupId)
-                    ? card.groupId
-                    : DEFAULT_RECOGNITION_GROUP_ID,
+                groupId: normalizeRecognitionCardGroupId(card.groupId, groupIds),
                 order: Number.isFinite(card.order ?? NaN) ? card.order : index,
-            }))
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+            })),
     };
 }
 
