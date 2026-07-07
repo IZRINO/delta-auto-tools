@@ -985,11 +985,7 @@ pub(crate) fn validate_settings(settings: &RecognitionSettings) -> Result<(), St
         }
         if let Some(effect) = &card.effects.click {
             match effect.mode {
-                types::RecognitionClickMode::CustomRegion => {
-                    if effect.custom_region.is_none() {
-                        return Err(format!("卡片 {} 的点击效果必须框选自定义区域", card.name));
-                    }
-                }
+                types::RecognitionClickMode::CustomRegion => {}
                 types::RecognitionClickMode::RecognitionRegion => {
                     if card.trigger_mode == RecognitionTriggerMode::Hotkey {
                         return Err(format!(
@@ -1663,7 +1659,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_missing_custom_click_region() {
+    fn validate_accepts_missing_custom_click_region_as_draft() {
         let mut card = base_card();
         card.effects.click = Some(types::RecognitionClickEffect {
             mode: types::RecognitionClickMode::CustomRegion,
@@ -1674,8 +1670,6 @@ mod tests {
             recognition_enabled: true,
             cards: vec![card],
         };
-        assert!(validate_settings(&settings)
-            .unwrap_err()
-            .contains("点击效果必须框选自定义区域"));
+        validate_settings(&settings).unwrap();
     }
 }

@@ -62,6 +62,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 点击目标规则：
 
 - `customRegion`：点击自定义区域中心。
+- `customRegion` 支持草稿态：启用点击效果但尚未框选区域时，配置可保存，便于打开框选 overlay；实际触发时没有点击坐标，会跳过点击。
 - RegionWatch `recognitionRegion`：点击模板命中中心。
 - ColorWatch `recognitionRegion`：只在显式选择的 probe 命中时点击；未命中则跳过点击，其他效果照常执行。
 

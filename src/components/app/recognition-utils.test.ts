@@ -819,7 +819,7 @@ describe("recognition-utils", () => {
             expect(() => parseSettingsForm(form)).toThrow("请至少添加一个音频文件");
         });
 
-        it("parseSettingsForm 自定义点击效果必须框选区域", () => {
+        it("parseSettingsForm 允许自定义点击效果尚未框选区域", () => {
             const form = {
                 audioEnabled: true,
                 cards: [
@@ -851,7 +851,12 @@ describe("recognition-utils", () => {
                     },
                 ],
             };
-            expect(() => parseSettingsForm(form)).toThrow("必须框选自定义点击区域");
+            const settings = parseSettingsForm(form);
+            expect(settings.cards[0].effects?.click).toEqual({
+                mode: "customRegion",
+                customRegion: null,
+                colorProbeIndex: null,
+            });
         });
 
         it("parseSettingsForm combo 窗口越界报错", () => {

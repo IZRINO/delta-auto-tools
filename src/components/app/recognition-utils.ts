@@ -326,9 +326,6 @@ function parseAudioEffect(form: RecognitionCardForm): RecognitionAudioEffect {
 function parseClickEffect(form: RecognitionCardForm, colorProbeCount: number): RecognitionClickEffect {
     const clickMode = form.clickMode ?? "customRegion";
     if (clickMode === "customRegion") {
-        if (!form.clickCustomRegion) {
-            throw new Error("必须框选自定义点击区域。");
-        }
         return {
             mode: "customRegion",
             customRegion: form.clickCustomRegion ?? null,
