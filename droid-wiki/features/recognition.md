@@ -93,6 +93,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 ## 集成点
 
 - 热键 scope：`recognition`，冲突策略 `ConflictPolicy::AllowHold`。
+- Recognition 同一 scope 内允许多个启用卡片复用同一个监听热键；命中后会触发所有匹配卡片。
 - Overlay mode：`?mode=recognition-overlay`。
 - 持久化：`recognition_settings.json`；旧 `audio_settings.json` 自动迁移。
 - Profile snapshot：字段 `recognition`；旧 `audio` 字段通过 serde alias 迁移。

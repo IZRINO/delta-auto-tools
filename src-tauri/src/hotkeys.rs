@@ -1003,6 +1003,39 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "windows")]
+    fn actions_for_key_state_returns_all_same_scope_duplicate_bindings() {
+        let action_a: HotkeyAction = Arc::new(|_| {});
+        let action_b: HotkeyAction = Arc::new(|_| {});
+        let registrations = Arc::new(Mutex::new(vec![
+            HotkeyRegistration {
+                scope: "recognition".into(),
+                binding: HotkeyBinding::parse("F8").unwrap(),
+                enabled: true,
+                display_name: "识别触发".into(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                action: action_a,
+            },
+            HotkeyRegistration {
+                scope: "recognition".into(),
+                binding: HotkeyBinding::parse("F8").unwrap(),
+                enabled: true,
+                display_name: "识别触发".into(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                action: action_b,
+            },
+        ]));
+        let key_state = KeyState {
+            primary: PrimaryKey::Function(8),
+            modifiers: HashSet::new(),
+        };
+
+        let actions = actions_for_key_state(&registrations, &key_state);
+
+        assert_eq!(actions.len(), 2);
+    }
+
+    #[test]
     fn replace_scope_rejects_morse_binding_when_existing_hold_binding_matches() {
         let manager = test_manager();
         let callback: HoldActionCallback = Arc::new(|_, _| {});
