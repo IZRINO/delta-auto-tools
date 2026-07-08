@@ -2,7 +2,7 @@
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。
 
-6 个工具模块 + 攻略网站工作台，前端负责交互，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 接口调用。
+6 个工具模块 + 攻略网站工作台，前端负责交互与 daisyUI 视觉层，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 接口调用。
 
 ## 功能模块
 
@@ -53,8 +53,18 @@
 - **原生能力**：Rust
 - **前端**：React 19、TypeScript、Vite
 - **包管理**：Bun
-- **UI**：daisyUI、Radix headless 组件、Tailwind CSS v4、Remix Icon
+- **UI**：daisyUI 5、Tailwind CSS v4（CSS-first）、Radix/Base UI headless 交互、本地 `src/components/ui/` 包装组件、Remix Icon
 - **本地存储**：SQLite、JSON 配置文件、Windows DPAPI 凭据加密
+
+## UI 与样式
+
+项目已移除 shadcn 组件生成器与默认视觉体系。当前 UI 约定：
+
+- **视觉层**：优先使用 daisyUI 组件 class、Tailwind CSS 工具类和 `src/App.css` 中的 daisyUI token
+- **行为层**：保留 Radix/Base UI headless 能力，用于 Dialog、Dropdown、Tooltip、Select 等焦点管理、键盘导航、Portal 和无障碍交互
+- **基础组件**：`src/components/ui/` 是项目本地包装层，不再作为 shadcn CLI 生成目录维护
+- **图标**：统一使用 `@remixicon/react`，按钮内图标保留 `data-icon="inline-start"` / `"inline-end"` 语义标记
+- **主题**：通过 daisyUI token（如 `--color-base-*`、`--color-primary`、`--radius-*`）和运行时 override 管理，不再新增旧 shadcn/战术风格桥接 token
 
 ## 测试覆盖
 
@@ -82,7 +92,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```text
 src/                        # React 前端应用
 src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、recognition-page、strategy-page 等）
-src/components/ui/          # Radix headless 行为 + daisyUI 风格基础组件
+src/components/ui/          # 本地 UI 包装层：Radix/Base UI headless 行为 + daisyUI class，非 shadcn 生成目录
 src/lib/                    # 共享工具函数与 tauri-events 常量
 src-tauri/src/              # Rust/Tauri 原生能力
 src-tauri/src/tool_base.rs  # 共享泛型基座（ToolLogic / ToolState<T>）
