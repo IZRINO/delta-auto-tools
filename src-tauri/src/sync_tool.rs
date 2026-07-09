@@ -7,6 +7,9 @@ use crate::hotkey_types::{ConflictPolicy, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
 use crate::tool_base::{ToolLogic, ToolState};
 
+/// 同步工具基座只承载计时器、计数器、连发器共享的 lifecycle。
+/// Profile 配置应用复用这些能力，但 Morse 区域框选和 Recognition watcher 不进入此 module。
+
 /// 工具 runs 同步逻辑：孤儿清理 + 缺失补齐。
 /// 不重置、不按 enabled 清理。
 ///

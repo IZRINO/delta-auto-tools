@@ -15,7 +15,8 @@
 
 ```
 src-tauri/src/profile/
-├── mod.rs       # ProfileState、命令、apply_snapshot_to_tools 跨工具编排
+├── mod.rs       # ProfileState、命令、命名、导入导出、active_profile_id
+├── apply.rs     # 配置应用：停止会话、写工具 settings、reload、reset runs、窗口 reconcile
 ├── events.rs    # profile://changed 事件名常量
 ├── types.rs     # ToolSettingsSnapshot、Profile、ProfileSettings、ProfileBootstrap
 └── settings.rs  # profile_settings.json 读写
@@ -37,7 +38,7 @@ src/components/app/
 | `Profile` | `src-tauri/src/profile/types.rs` | `{ id, name, created_at, updated_at, snapshot }`，命名配置 |
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` + `apply_lock` 串行化 Profile 应用 |
-| `apply_snapshot_to_tools` | `src-tauri/src/profile/mod.rs` | 核心编排：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 -> 调度窗口刷新 |
+| `apply_snapshot_to_tools` | `src-tauri/src/profile/apply.rs` | 配置应用入口：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 -> 调度窗口刷新 |
 | `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
 | `ProfileProvider` | `src/hooks/use-profile.tsx` | React context：bootstrap、事件监听、`reloadNonce` |
@@ -111,13 +112,13 @@ Profile state 切换阶段只写文件、换内存状态、重启热键/watchers
 ## 集成点
 
 - `src-tauri/src/lib.rs`：`profile::initialize()` 在 `setup` 中调用，6 个命令注册到 `generate_handler![]`
-- 各工具模块：`apply_snapshot_to_tools` 依赖各工具的 `pub(crate)` 函数（`normalize_settings`、`restart_hotkey_listeners`、`emit_state`、`stop_all`）；窗口刷新通过 `schedule_display_windows_reconcile_from_profile`、`schedule_counter_windows_reconcile_from_profile`、`schedule_overlay_window_reconcile_from_profile` 后台调度
+- `src-tauri/src/profile/apply.rs`：`apply_snapshot_to_tools` 依赖各工具的 `pub(crate)` 函数（`normalize_settings`、`restart_hotkey_listeners`、`emit_state`、`stop_all`）；窗口刷新通过 `schedule_display_windows_reconcile_from_profile`、`schedule_counter_windows_reconcile_from_profile`、`schedule_overlay_window_reconcile_from_profile` 后台调度
 - `src/App.tsx`：使用 `reloadNonce` 作为工具页容器 `key`
 - [主题引擎](theme-engine.md)：显式不参与 profile 快照
 
 ## 修改入口
 
-- 新增第 6 个工具到快照：在 `types.rs` 的 `ToolSettingsSnapshot` 添加字段（`#[serde(default)]`），更新 `snapshot_current_settings` 和 `build_default_snapshot`，添加 `apply_*_settings` 函数
+- 新增第 6 个工具到快照：在 `types.rs` 的 `ToolSettingsSnapshot` 添加字段（`#[serde(default)]`），更新 `snapshot_current_settings` 和 `build_default_snapshot`，在 `apply.rs` 添加 `apply_*_settings` 函数
 - 修改自动命名：编辑 `reserve_config_name`
 - 修改导入命名：编辑 `reserve_import_name`
 - 修改重载触发：编辑 `ProfileProvider.switchProfile` 和 `App.tsx` 中的 `key` 用法
@@ -126,7 +127,8 @@ Profile state 切换阶段只写文件、换内存状态、重启热键/watchers
 
 | 文件 | 用途 |
 |------|------|
-| `src-tauri/src/profile/mod.rs` | `ProfileState`、6 个命令、`apply_snapshot_to_tools`、各工具 `apply_*_settings`、`emit_profile_changed` |
+| `src-tauri/src/profile/mod.rs` | `ProfileState`、6 个命令、命名/导入导出、`emit_profile_changed` |
+| `src-tauri/src/profile/apply.rs` | 配置应用编排、各工具 `apply_*_settings`、窗口 reconcile 调度 |
 | `src-tauri/src/profile/events.rs` | `profile://changed` 事件名常量 |
 | `src-tauri/src/profile/types.rs` | `ToolSettingsSnapshot`、`Profile`、`ProfileSettings`、`ProfileBootstrap` |
 | `src-tauri/src/profile/settings.rs` | `profile_settings.json` 读写 |

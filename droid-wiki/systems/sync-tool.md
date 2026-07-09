@@ -8,6 +8,7 @@
 - 提供共享的热键重启管线（清除旧 scope -> 注册新 scope）
 - 提供共享的透明窗口位置设置状态机（移动/提交/取消）
 - 提供全局停止注册表，全局开关闭闭时统一停止所有运行态会话
+- 为 [配置系统](profile-system.md) 的配置应用提供同步工具 lifecycle 能力；Morse 和识别触发不进入此基座
 
 ## 关键抽象
 
@@ -82,6 +83,10 @@ graph TD
 
 `CounterLogic` 和 `TimerLogic` 各自实现 `RunsSync`，`save_settings` 函数体内委托调用 `sync_runs_with_settings`，不再有内联 runs 操作。
 
+### 配置应用集成
+
+Profile 的配置应用入口在 `src-tauri/src/profile/apply.rs`。它只复用同步工具已存在的 lifecycle 能力：停止运行态、重启热键、同步/重置运行值、调度 Timer/Counter/Rapidfire 透明窗口 reconcile。`sync_tool.rs` 不吸收 Morse 区域框选或识别触发 watcher 逻辑，避免把非同步工具语义塞进同步工具基座。
+
 ### 全局停止注册表
 
 `SyncToolRegistry` 在 `lib.rs` 的 `setup` 中创建并注册：
@@ -120,7 +125,7 @@ graph TD
 - 使用 [热键系统](hotkeys.md) 的 `replace_scope` / `replace_hold_scope`
 - 位置状态机驱动 [透明叠加窗](overlay-windows.md) 的位置设置窗口
 - [全局总开关](global-state.md) 通过 `ToolLifecycleRegistry` 停止所有会话（含 morse/recognition），`SyncToolRegistry` 保留以兼容直接调用
-- [配置系统](profile-system.md) 切换时复用各工具的 `restart_sync_hotkeys`
+- [配置系统](profile-system.md) 的配置应用在 `profile/apply.rs` 中调用同步工具各自的 lifecycle 函数，保持同步工具 seam 不扩大到 Morse/Recognition
 
 ## 修改入口
 
