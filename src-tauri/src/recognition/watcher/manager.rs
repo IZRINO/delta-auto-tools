@@ -593,11 +593,7 @@ async fn run_region_watcher(
             Some(captured) => {
                 let result = matching::compare_images(&captured, &reference_image);
                 if result.similarity >= threshold {
-                    if !match_gate.observe(
-                        MatchObservation::Matched,
-                        cooldown_ms,
-                        Instant::now(),
-                    ) {
+                    if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
                         continue;
                     }
                     crate::log_debug!(
@@ -630,19 +626,11 @@ async fn run_region_watcher(
                         let _ = app.emit_to("main", HOTKEY_ERROR, error);
                     }
                 } else {
-                    match_gate.observe(
-                        MatchObservation::NotMatched,
-                        cooldown_ms,
-                        Instant::now(),
-                    );
+                    match_gate.observe(MatchObservation::NotMatched, cooldown_ms, Instant::now());
                 }
             }
             None => {
-                match_gate.observe(
-                    MatchObservation::CaptureFailed,
-                    cooldown_ms,
-                    Instant::now(),
-                );
+                match_gate.observe(MatchObservation::CaptureFailed, cooldown_ms, Instant::now());
             }
         }
     }
@@ -694,11 +682,7 @@ async fn run_color_watcher(
         }
 
         if !all_captured {
-            match_gate.observe(
-                MatchObservation::CaptureFailed,
-                cooldown_ms,
-                Instant::now(),
-            );
+            match_gate.observe(MatchObservation::CaptureFailed, cooldown_ms, Instant::now());
             continue;
         }
 
@@ -709,11 +693,7 @@ async fn run_color_watcher(
             match_method.clone(),
         );
         if result.matched {
-            if !match_gate.observe(
-                MatchObservation::Matched,
-                cooldown_ms,
-                Instant::now(),
-            ) {
+            if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
                 continue;
             }
             crate::log_debug!(
@@ -740,11 +720,7 @@ async fn run_color_watcher(
                 let _ = app.emit_to("main", HOTKEY_ERROR, error);
             }
         } else {
-            match_gate.observe(
-                MatchObservation::NotMatched,
-                cooldown_ms,
-                Instant::now(),
-            );
+            match_gate.observe(MatchObservation::NotMatched, cooldown_ms, Instant::now());
         }
     }
 }
@@ -850,11 +826,7 @@ mod tests {
             0,
             start + Duration::from_secs(1)
         ));
-        assert!(!gate.observe(
-            MatchObservation::Matched,
-            0,
-            start + Duration::from_secs(2)
-        ));
+        assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(2)));
     }
 
     #[test]

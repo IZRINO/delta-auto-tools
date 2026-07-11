@@ -618,12 +618,8 @@ mod tests {
         let mut img = RgbaImage::from_pixel(3, 3, Rgba([0, 0, 0, 255]));
         img.put_pixel(0, 2, Rgba([105, 100, 100, 255]));
         img.put_pixel(2, 0, Rgba([101, 100, 100, 255]));
-        let result = scan_region_for_color(
-            &DynamicImage::ImageRgba8(img),
-            [100, 100, 100],
-            10.0,
-            true,
-        );
+        let result =
+            scan_region_for_color(&DynamicImage::ImageRgba8(img), [100, 100, 100], 10.0, true);
 
         assert_eq!(result.match_position, Some((2, 0)));
     }
