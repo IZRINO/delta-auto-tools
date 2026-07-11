@@ -1066,7 +1066,7 @@ pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSe
 
 pub(crate) fn validate_settings(settings: &RecognitionSettings) -> Result<(), String> {
     validate_hotkey_duplicates(settings)?;
-    for card in &settings.cards {
+    for card in runtime_cards(settings) {
         if card.trigger_mode == RecognitionTriggerMode::Hotkey
             && card.hotkey.as_deref().unwrap_or("").trim().is_empty()
         {
@@ -1986,5 +1986,63 @@ mod tests {
             cards: vec![card],
         };
         validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_accepts_incomplete_disabled_card() {
+        let mut card = base_card();
+        card.enabled = false;
+        card.hotkey = None;
+        card.effects.audio = Some(types::RecognitionAudioEffect {
+            audio_files: vec![],
+            play_mode: types::PlayMode::Combo,
+            combo_window_ms: 60000,
+            combo_windows: vec![],
+            volume: 0.8,
+            allow_simultaneous: false,
+        });
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![],
+            cards: vec![card],
+        };
+
+        validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_accepts_incomplete_card_in_disabled_group() {
+        let mut card = base_card();
+        card.group_id = Some("disabled".into());
+        card.hotkey = None;
+        card.effects = types::RecognitionEffects::default();
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![types::RecognitionGroup {
+                id: "disabled".into(),
+                name: "禁用组".into(),
+                order: 0,
+                collapsed: false,
+                enabled: false,
+            }],
+            cards: vec![card],
+        };
+
+        validate_settings(&settings).unwrap();
+    }
+
+    #[test]
+    fn validate_still_rejects_incomplete_enabled_card() {
+        let mut card = base_card();
+        card.hotkey = None;
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![],
+            cards: vec![card],
+        };
+
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("必须设置触发快捷键"));
     }
 }

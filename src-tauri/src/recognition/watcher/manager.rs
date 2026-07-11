@@ -217,6 +217,45 @@ pub(crate) fn watcher_should_run(global_on: bool, recognition_on: bool) -> bool 
     global_on && recognition_on
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MatchObservation {
+    CaptureFailed,
+    Matched,
+    NotMatched,
+}
+
+#[derive(Debug, Default)]
+struct MatchGate {
+    was_matched: bool,
+    last_triggered: Option<Instant>,
+}
+
+impl MatchGate {
+    fn observe(&mut self, observation: MatchObservation, cooldown_ms: u32, now: Instant) -> bool {
+        match observation {
+            MatchObservation::CaptureFailed => false,
+            MatchObservation::NotMatched => {
+                self.was_matched = false;
+                false
+            }
+            MatchObservation::Matched if self.was_matched => false,
+            MatchObservation::Matched => {
+                self.was_matched = true;
+                let ready = self
+                    .last_triggered
+                    .map(|last| {
+                        now.duration_since(last) >= Duration::from_millis(cooldown_ms as u64)
+                    })
+                    .unwrap_or(true);
+                if ready {
+                    self.last_triggered = Some(now);
+                }
+                ready
+            }
+        }
+    }
+}
+
 fn activation_session_should_continue(
     mode: RecognitionActivationMode,
     matched_count: u32,
@@ -320,6 +359,32 @@ async fn run_region_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     true
 }
 
+fn color_trigger_context(
+    result: &matching::ColorMatchResult,
+    probes: &[crate::recognition::types::ColorProbe],
+    method: &crate::recognition::types::ColorMatchMethod,
+) -> TriggerContext {
+    let matched_probes = result
+        .matched_probes
+        .iter()
+        .filter_map(|matched| {
+            let region = probes.get(matched.index)?.region.as_ref()?;
+            let (point_x, point_y) = match (method, matched.match_position) {
+                (crate::recognition::types::ColorMatchMethod::AnyPixel, Some((x, y))) => {
+                    (region.x + x as i32, region.y + y as i32)
+                }
+                _ => (region.x + region.width / 2, region.y + region.height / 2),
+            };
+            Some(ColorProbeMatch {
+                index: matched.index,
+                point_x,
+                point_y,
+            })
+        })
+        .collect();
+    TriggerContext::Color { matched_probes }
+}
+
 async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(card.color_probes.len());
     for probe in &card.color_probes {
@@ -342,25 +407,11 @@ async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
         return false;
     }
 
-    let matched_probes = result
-        .matched_indices
-        .iter()
-        .filter_map(|index| {
-            card.color_probes
-                .get(*index)
-                .and_then(|probe| probe.region.as_ref())
-                .map(|region| ColorProbeMatch {
-                    index: *index,
-                    center_x: region.x + region.width / 2,
-                    center_y: region.y + region.height / 2,
-                })
-        })
-        .collect::<Vec<_>>();
     let _ = app.emit(REGION_MATCHED, &card.id);
     if let Err(error) = effects::execute(
         app.clone(),
         card.id.clone(),
-        TriggerContext::Color { matched_probes },
+        color_trigger_context(&result, &card.color_probes, &card.color_match_method),
     )
     .await
     {
@@ -499,7 +550,7 @@ async fn run_region_watcher(
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut last_triggered: Option<Instant> = None;
+    let mut match_gate = MatchGate::default();
 
     // 加载参考图像
     let reference_image = match capture::load_reference_image(&reference_image_path) {
@@ -537,18 +588,14 @@ async fn run_region_watcher(
             continue;
         }
 
-        // 检查冷却
-        if let Some(last) = last_triggered {
-            if last.elapsed() < Duration::from_millis(cooldown_ms as u64) {
-                continue;
-            }
-        }
-
         // 截取屏幕区域
         match capture::capture_region(&region) {
             Some(captured) => {
                 let result = matching::compare_images(&captured, &reference_image);
                 if result.similarity >= threshold {
+                    if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
+                        continue;
+                    }
                     crate::log_debug!(
                         "recognition::watcher",
                         "区域识别命中",
@@ -578,11 +625,12 @@ async fn run_region_watcher(
                         );
                         let _ = app.emit_to("main", HOTKEY_ERROR, error);
                     }
-                    last_triggered = Some(Instant::now());
+                } else {
+                    match_gate.observe(MatchObservation::NotMatched, cooldown_ms, Instant::now());
                 }
             }
             None => {
-                // 截图失败，静默跳过
+                match_gate.observe(MatchObservation::CaptureFailed, cooldown_ms, Instant::now());
             }
         }
     }
@@ -602,7 +650,7 @@ async fn run_color_watcher(
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut last_triggered: Option<Instant> = None;
+    let mut match_gate = MatchGate::default();
 
     while !cancel.load(Ordering::SeqCst) {
         ticker.tick().await;
@@ -614,13 +662,6 @@ async fn run_color_watcher(
         // A-M1 修复：循环内实时重读全局开关与识别触发模块开关（不再用启动快照）
         if !watcher_should_run(global_enabled(&app), recognition_module_enabled(&app)) {
             continue;
-        }
-
-        // 检查冷却
-        if let Some(last) = last_triggered {
-            if last.elapsed() < Duration::from_millis(cooldown_ms as u64) {
-                continue;
-            }
         }
 
         // 逐个截取 probe 区域；region 缺失（None）的探针视为未就绪，跳过本轮
@@ -641,6 +682,7 @@ async fn run_color_watcher(
         }
 
         if !all_captured {
+            match_gate.observe(MatchObservation::CaptureFailed, cooldown_ms, Instant::now());
             continue;
         }
 
@@ -651,6 +693,9 @@ async fn run_color_watcher(
             match_method.clone(),
         );
         if result.matched {
+            if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
+                continue;
+            }
             crate::log_debug!(
                 "recognition::watcher",
                 "识色命中",
@@ -659,24 +704,10 @@ async fn run_color_watcher(
                 "probe_count" => probes.len()
             );
             let _ = app.emit(REGION_MATCHED, &card_id);
-            let matched_probes = result
-                .matched_indices
-                .iter()
-                .filter_map(|index| {
-                    probes
-                        .get(*index)
-                        .and_then(|probe| probe.region.as_ref())
-                        .map(|region| ColorProbeMatch {
-                            index: *index,
-                            center_x: region.x + region.width / 2,
-                            center_y: region.y + region.height / 2,
-                        })
-                })
-                .collect::<Vec<_>>();
             if let Err(error) = effects::execute(
                 app.clone(),
                 card_id.clone(),
-                TriggerContext::Color { matched_probes },
+                color_trigger_context(&result, &probes, &match_method),
             )
             .await
             {
@@ -688,7 +719,8 @@ async fn run_color_watcher(
                 );
                 let _ = app.emit_to("main", HOTKEY_ERROR, error);
             }
-            last_triggered = Some(Instant::now());
+        } else {
+            match_gate.observe(MatchObservation::NotMatched, cooldown_ms, Instant::now());
         }
     }
 }
@@ -696,6 +728,129 @@ async fn run_color_watcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn color_context_probe() -> crate::recognition::types::ColorProbe {
+        crate::recognition::types::ColorProbe {
+            region: Some(crate::morse::types::RegionRect {
+                x: 100,
+                y: 200,
+                width: 20,
+                height: 10,
+            }),
+            targets: vec![],
+            probe_match_mode: crate::recognition::types::ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
+        }
+    }
+
+    #[test]
+    fn any_pixel_context_adds_probe_origin() {
+        let result = matching::ColorMatchResult {
+            matched: true,
+            hit_count: 1,
+            matched_probes: vec![matching::MatchedColorProbe {
+                index: 0,
+                match_position: Some((3, 4)),
+            }],
+        };
+        let TriggerContext::Color { matched_probes } = color_trigger_context(
+            &result,
+            &[color_context_probe()],
+            &crate::recognition::types::ColorMatchMethod::AnyPixel,
+        ) else {
+            panic!("应生成识色上下文")
+        };
+
+        assert_eq!(
+            (matched_probes[0].point_x, matched_probes[0].point_y),
+            (103, 204)
+        );
+    }
+
+    #[test]
+    fn average_context_uses_probe_center() {
+        let result = matching::ColorMatchResult {
+            matched: true,
+            hit_count: 1,
+            matched_probes: vec![matching::MatchedColorProbe {
+                index: 0,
+                match_position: None,
+            }],
+        };
+        let TriggerContext::Color { matched_probes } = color_trigger_context(
+            &result,
+            &[color_context_probe()],
+            &crate::recognition::types::ColorMatchMethod::Average,
+        ) else {
+            panic!("应生成识色上下文")
+        };
+
+        assert_eq!(
+            (matched_probes[0].point_x, matched_probes[0].point_y),
+            (110, 205)
+        );
+    }
+
+    #[test]
+    fn match_gate_triggers_once_until_explicit_miss() {
+        let start = Instant::now();
+        let mut gate = MatchGate::default();
+
+        assert!(gate.observe(MatchObservation::Matched, 1000, start));
+        assert!(!gate.observe(
+            MatchObservation::Matched,
+            1000,
+            start + Duration::from_secs(2)
+        ));
+        assert!(!gate.observe(
+            MatchObservation::NotMatched,
+            1000,
+            start + Duration::from_secs(3)
+        ));
+        assert!(gate.observe(
+            MatchObservation::Matched,
+            1000,
+            start + Duration::from_secs(4)
+        ));
+    }
+
+    #[test]
+    fn match_gate_capture_failure_does_not_rearm() {
+        let start = Instant::now();
+        let mut gate = MatchGate::default();
+
+        assert!(gate.observe(MatchObservation::Matched, 0, start));
+        assert!(!gate.observe(
+            MatchObservation::CaptureFailed,
+            0,
+            start + Duration::from_secs(1)
+        ));
+        assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn match_gate_consumes_rising_edge_during_cooldown() {
+        let start = Instant::now();
+        let mut gate = MatchGate::default();
+
+        assert!(gate.observe(MatchObservation::Matched, 5000, start));
+        gate.observe(
+            MatchObservation::NotMatched,
+            5000,
+            start + Duration::from_secs(1),
+        );
+        assert!(!gate.observe(
+            MatchObservation::Matched,
+            5000,
+            start + Duration::from_secs(2)
+        ));
+        assert!(!gate.observe(
+            MatchObservation::Matched,
+            5000,
+            start + Duration::from_secs(6)
+        ));
+    }
 
     #[test]
     fn timed_activation_stops_after_target_trigger_count() {

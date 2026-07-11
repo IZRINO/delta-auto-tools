@@ -216,15 +216,21 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
 }
 
 export function parseSettingsForm(form: RecognitionSettingsForm): RecognitionSettings {
-    const cards = form.cards.map((card) => parseCardForm(card));
+    const cardGroups = form.cardGroups ?? [defaultRecognitionGroup()];
+    const groupEnabledById = new Map(cardGroups.map((group) => [group.id, group.enabled ?? true]));
+    const cards = form.cards.map((card) => {
+        const groupId = card.groupId?.trim() || DEFAULT_RECOGNITION_GROUP_ID;
+        const strict = card.enabled && (groupEnabledById.get(groupId) ?? true);
+        return parseCardForm(card, strict);
+    });
     return {
         recognitionEnabled: form.recognitionEnabled ?? form.audioEnabled ?? true,
-        cardGroups: form.cardGroups ?? [defaultRecognitionGroup()],
+        cardGroups,
         cards,
     };
 }
 
-function parseCardForm(form: RecognitionCardForm): RecognitionCard {
+function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCard {
     const name = form.name.trim();
     if (!name) {
         throw new Error("卡片名称不能为空。");
@@ -246,13 +252,13 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
     }
 
     const hotkey = form.triggerMode === "hotkey" ? form.hotkey.trim() || null : null;
-    if (form.triggerMode === "hotkey" && !hotkey) {
+    if (strict && form.triggerMode === "hotkey" && !hotkey) {
         throw new Error("快捷键模式下必须设置触发快捷键。");
     }
 
     const activationMode = form.triggerMode === "hotkey" ? "always" : form.activationMode ?? "always";
     const activationHotkey = activationMode === "always" ? null : form.activationHotkey?.trim() || null;
-    if (form.triggerMode !== "hotkey" && activationMode !== "always" && !activationHotkey) {
+    if (strict && form.triggerMode !== "hotkey" && activationMode !== "always" && !activationHotkey) {
         throw new Error("当前识别激活方式必须设置激活快捷键。");
     }
     let activationDurationMs = 10000;
@@ -273,7 +279,7 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
     const colorProbes = form.triggerMode === "colorWatch"
         ? form.colorProbes.map(parseProbeForm)
         : [];
-    if (form.triggerMode === "colorWatch" && colorProbes.length === 0) {
+    if (strict && form.triggerMode === "colorWatch" && colorProbes.length === 0) {
         throw new Error("识色模式下至少需要配置一个探针。");
     }
 
@@ -283,7 +289,7 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
         || form.clickEffectEnabled !== undefined;
     const audioEffectEnabled = form.audioEffectEnabled ?? (!hasExplicitEffects && form.audioFiles !== undefined);
     if (audioEffectEnabled) {
-        effects.audio = parseAudioEffect(form);
+        effects.audio = parseAudioEffect(form, strict);
     }
     if (form.hotkeyEffectEnabled) {
         const configuredSteps = form.hotkeyEffectSteps?.length
@@ -296,7 +302,7 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
             }))
             .filter((step) => step.hotkey.length > 0);
         const effectHotkey = steps[0]?.hotkey ?? "";
-        if (!effectHotkey) {
+        if (strict && !effectHotkey) {
             throw new Error("按键效果必须设置快捷键。");
         }
         if (steps.some((step) => Number.isNaN(step.delayMs) || step.delayMs < 0 || step.delayMs > 600000)) {
@@ -305,9 +311,9 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
         effects.hotkey = {hotkey: effectHotkey, steps};
     }
     if (form.clickEffectEnabled) {
-        effects.click = parseClickEffect(form, colorProbes.length);
+        effects.click = parseClickEffect(form, colorProbes.length, strict);
     }
-    if (!effects.audio && !effects.hotkey && !effects.click) {
+    if (strict && !effects.audio && !effects.hotkey && !effects.click) {
         throw new Error("每张卡片至少需要启用一个触发效果。");
     }
 
@@ -337,7 +343,7 @@ function parseCardForm(form: RecognitionCardForm): RecognitionCard {
     };
 }
 
-function parseAudioEffect(form: RecognitionCardForm): RecognitionAudioEffect {
+function parseAudioEffect(form: RecognitionCardForm, strict: boolean): RecognitionAudioEffect {
     const volume = parseFloat(form.volume);
     if (Number.isNaN(volume) || volume < 0 || volume > 1) {
         throw new Error("音量必须在 0 到 1 之间。");
@@ -347,10 +353,10 @@ function parseAudioEffect(form: RecognitionCardForm): RecognitionAudioEffect {
     const audioFiles = (form.audioFiles ?? [])
         .map((f) => f.trim())
         .filter((f) => f.length > 0);
-    if (audioFiles.length === 0) {
+    if (strict && audioFiles.length === 0) {
         throw new Error("请至少添加一个音频文件。");
     }
-    if (audioFiles.length > 0 && playMode !== "single" && audioFiles.length < 2) {
+    if (strict && playMode !== "single" && audioFiles.length < 2) {
         throw new Error("连杀或随机播放至少需要添加 2 个音频文件。");
     }
 
@@ -390,7 +396,11 @@ function parseAudioEffect(form: RecognitionCardForm): RecognitionAudioEffect {
     };
 }
 
-function parseClickEffect(form: RecognitionCardForm, colorProbeCount: number): RecognitionClickEffect {
+function parseClickEffect(
+    form: RecognitionCardForm,
+    colorProbeCount: number,
+    strict: boolean,
+): RecognitionClickEffect {
     const clickMode = form.clickMode ?? "customRegion";
     if (clickMode === "customRegion") {
         return {
@@ -399,18 +409,19 @@ function parseClickEffect(form: RecognitionCardForm, colorProbeCount: number): R
             colorProbeIndex: null,
         };
     }
-    if (form.triggerMode === "hotkey") {
+    if (strict && form.triggerMode === "hotkey") {
         throw new Error("快捷键触发的点击效果必须使用自定义区域。");
     }
     if (form.triggerMode === "colorWatch") {
         const index = parseInt(form.clickColorProbeIndex ?? "", 10);
-        if (Number.isNaN(index) || index < 0 || index >= colorProbeCount) {
+        const validIndex = !Number.isNaN(index) && index >= 0 && index < colorProbeCount;
+        if (strict && !validIndex) {
             throw new Error("识色点击效果必须选择有效探针。");
         }
         return {
             mode: "recognitionRegion",
             customRegion: null,
-            colorProbeIndex: index,
+            colorProbeIndex: validIndex ? index : null,
         };
     }
     return {

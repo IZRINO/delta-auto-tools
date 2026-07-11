@@ -8,7 +8,46 @@ import {
     parseSettingsForm,
     settingsToForm,
 } from "@/components/app/recognition-utils";
-import {DEFAULT_RECOGNITION_CARD} from "@/components/app/recognition-types";
+import {DEFAULT_RECOGNITION_CARD, type RecognitionCardForm} from "@/components/app/recognition-types";
+
+function draftCard(overrides: Partial<RecognitionCardForm> = {}): RecognitionCardForm {
+    return {
+        id: "draft",
+        groupId: DEFAULT_RECOGNITION_GROUP_ID,
+        order: 0,
+        name: "草稿卡片",
+        enabled: false,
+        triggerMode: "hotkey",
+        hotkey: "",
+        watchRegion: null,
+        watchReferenceImagePath: "",
+        watchMatchThreshold: "0.75",
+        watchPollIntervalMs: "500",
+        activationMode: "always",
+        activationHotkey: "",
+        activationDurationMs: "10000",
+        activationTriggerCount: "1",
+        audioEffectEnabled: true,
+        hotkeyEffectEnabled: false,
+        clickEffectEnabled: false,
+        effectHotkey: "",
+        hotkeyEffectSteps: [],
+        clickMode: "customRegion",
+        clickCustomRegion: null,
+        clickColorProbeIndex: "",
+        audioFiles: [],
+        playMode: "single",
+        comboWindowMs: "60000",
+        comboWindows: [],
+        volume: "0.8",
+        cooldownMs: "1000",
+        allowSimultaneous: false,
+        colorProbes: [],
+        colorMatchMode: "all",
+        colorMatchMethod: "average",
+        ...overrides,
+    };
+}
 
 describe("recognition-utils", () => {
     describe("settingsToForm", () => {
@@ -128,6 +167,37 @@ describe("recognition-utils", () => {
     });
 
     describe("parseSettingsForm", () => {
+        it("允许禁用卡片保存未完成草稿", () => {
+            const settings = parseSettingsForm({audioEnabled: true, cards: [draftCard()]});
+
+            expect(settings.cards[0].hotkey).toBeNull();
+            expect(settings.cards[0].effects?.audio?.audioFiles).toEqual([]);
+        });
+
+        it("允许禁用分组中的启用卡片保存未完成草稿", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cardGroups: [{id: "disabled", name: "禁用组", order: 0, collapsed: false, enabled: false}],
+                cards: [draftCard({enabled: true, groupId: "disabled"})],
+            });
+
+            expect(settings.cards[0].hotkey).toBeNull();
+        });
+
+        it("启用未完成草稿时恢复严格校验", () => {
+            expect(() => parseSettingsForm({
+                audioEnabled: true,
+                cards: [draftCard({enabled: true})],
+            })).toThrow("快捷键模式下必须设置触发快捷键");
+        });
+
+        it("禁用草稿仍校验数值范围", () => {
+            expect(() => parseSettingsForm({
+                audioEnabled: true,
+                cards: [draftCard({cooldownMs: "-1"})],
+            })).toThrow("冷却时间必须在 0 到 60000 毫秒之间");
+        });
+
         it("parses valid form back to settings", () => {
             const form = {
                 audioEnabled: true,
