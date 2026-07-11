@@ -20,8 +20,8 @@ pub(crate) enum TriggerContext {
 #[derive(Debug, Clone)]
 pub(crate) struct ColorProbeMatch {
     pub index: usize,
-    pub center_x: i32,
-    pub center_y: i32,
+    pub point_x: i32,
+    pub point_y: i32,
 }
 
 struct EffectPlan {
@@ -153,7 +153,7 @@ fn click_point_for_effect(
                 matched_probes
                     .iter()
                     .find(|probe| probe.index == wanted)
-                    .map(|probe| (probe.center_x, probe.center_y))
+                    .map(|probe| (probe.point_x, probe.point_y))
             }
             TriggerContext::Hotkey => None,
         },
@@ -194,8 +194,8 @@ mod tests {
         let context = TriggerContext::Color {
             matched_probes: vec![ColorProbeMatch {
                 index: 0,
-                center_x: 10,
-                center_y: 20,
+                point_x: 10,
+                point_y: 20,
             }],
         };
         assert_eq!(click_point_for_effect(&effect, &context), None);
@@ -203,11 +203,29 @@ mod tests {
         let context = TriggerContext::Color {
             matched_probes: vec![ColorProbeMatch {
                 index: 1,
-                center_x: 30,
-                center_y: 40,
+                point_x: 30,
+                point_y: 40,
             }],
         };
         assert_eq!(click_point_for_effect(&effect, &context), Some((30, 40)));
+    }
+
+    #[test]
+    fn color_click_uses_actual_match_point() {
+        let effect = RecognitionClickEffect {
+            mode: RecognitionClickMode::RecognitionRegion,
+            custom_region: None,
+            color_probe_index: Some(0),
+        };
+        let context = TriggerContext::Color {
+            matched_probes: vec![ColorProbeMatch {
+                index: 0,
+                point_x: 31,
+                point_y: 42,
+            }],
+        };
+
+        assert_eq!(click_point_for_effect(&effect, &context), Some((31, 42)));
     }
 
     #[test]

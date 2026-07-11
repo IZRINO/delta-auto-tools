@@ -320,6 +320,32 @@ async fn run_region_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     true
 }
 
+fn color_trigger_context(
+    result: &matching::ColorMatchResult,
+    probes: &[crate::recognition::types::ColorProbe],
+    method: &crate::recognition::types::ColorMatchMethod,
+) -> TriggerContext {
+    let matched_probes = result
+        .matched_probes
+        .iter()
+        .filter_map(|matched| {
+            let region = probes.get(matched.index)?.region.as_ref()?;
+            let (point_x, point_y) = match (method, matched.match_position) {
+                (crate::recognition::types::ColorMatchMethod::AnyPixel, Some((x, y))) => {
+                    (region.x + x as i32, region.y + y as i32)
+                }
+                _ => (region.x + region.width / 2, region.y + region.height / 2),
+            };
+            Some(ColorProbeMatch {
+                index: matched.index,
+                point_x,
+                point_y,
+            })
+        })
+        .collect();
+    TriggerContext::Color { matched_probes }
+}
+
 async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(card.color_probes.len());
     for probe in &card.color_probes {
@@ -342,25 +368,11 @@ async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
         return false;
     }
 
-    let matched_probes = result
-        .matched_indices
-        .iter()
-        .filter_map(|index| {
-            card.color_probes
-                .get(*index)
-                .and_then(|probe| probe.region.as_ref())
-                .map(|region| ColorProbeMatch {
-                    index: *index,
-                    center_x: region.x + region.width / 2,
-                    center_y: region.y + region.height / 2,
-                })
-        })
-        .collect::<Vec<_>>();
     let _ = app.emit(REGION_MATCHED, &card.id);
     if let Err(error) = effects::execute(
         app.clone(),
         card.id.clone(),
-        TriggerContext::Color { matched_probes },
+        color_trigger_context(&result, &card.color_probes, &card.color_match_method),
     )
     .await
     {
@@ -659,24 +671,10 @@ async fn run_color_watcher(
                 "probe_count" => probes.len()
             );
             let _ = app.emit(REGION_MATCHED, &card_id);
-            let matched_probes = result
-                .matched_indices
-                .iter()
-                .filter_map(|index| {
-                    probes
-                        .get(*index)
-                        .and_then(|probe| probe.region.as_ref())
-                        .map(|region| ColorProbeMatch {
-                            index: *index,
-                            center_x: region.x + region.width / 2,
-                            center_y: region.y + region.height / 2,
-                        })
-                })
-                .collect::<Vec<_>>();
             if let Err(error) = effects::execute(
                 app.clone(),
                 card_id.clone(),
-                TriggerContext::Color { matched_probes },
+                color_trigger_context(&result, &probes, &match_method),
             )
             .await
             {
@@ -696,6 +694,69 @@ async fn run_color_watcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn color_context_probe() -> crate::recognition::types::ColorProbe {
+        crate::recognition::types::ColorProbe {
+            region: Some(crate::morse::types::RegionRect {
+                x: 100,
+                y: 200,
+                width: 20,
+                height: 10,
+            }),
+            targets: vec![],
+            probe_match_mode: crate::recognition::types::ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
+        }
+    }
+
+    #[test]
+    fn any_pixel_context_adds_probe_origin() {
+        let result = matching::ColorMatchResult {
+            matched: true,
+            hit_count: 1,
+            matched_probes: vec![matching::MatchedColorProbe {
+                index: 0,
+                match_position: Some((3, 4)),
+            }],
+        };
+        let TriggerContext::Color { matched_probes } = color_trigger_context(
+            &result,
+            &[color_context_probe()],
+            &crate::recognition::types::ColorMatchMethod::AnyPixel,
+        ) else {
+            panic!("应生成识色上下文")
+        };
+
+        assert_eq!(
+            (matched_probes[0].point_x, matched_probes[0].point_y),
+            (103, 204)
+        );
+    }
+
+    #[test]
+    fn average_context_uses_probe_center() {
+        let result = matching::ColorMatchResult {
+            matched: true,
+            hit_count: 1,
+            matched_probes: vec![matching::MatchedColorProbe {
+                index: 0,
+                match_position: None,
+            }],
+        };
+        let TriggerContext::Color { matched_probes } = color_trigger_context(
+            &result,
+            &[color_context_probe()],
+            &crate::recognition::types::ColorMatchMethod::Average,
+        ) else {
+            panic!("应生成识色上下文")
+        };
+
+        assert_eq!(
+            (matched_probes[0].point_x, matched_probes[0].point_y),
+            (110, 205)
+        );
+    }
 
     #[test]
     fn timed_activation_stops_after_target_trigger_count() {
