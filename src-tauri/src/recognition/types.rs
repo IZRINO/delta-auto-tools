@@ -427,6 +427,18 @@ mod tests {
     }
 
     #[test]
+    fn recognition_card_migrates_legacy_reference_image_path() {
+        let card: RecognitionCard = serde_json::from_str(
+            r#"{"id":"legacy","name":"旧参考图","watchReferenceImagePath":"legacy.png"}"#,
+        )
+        .unwrap();
+
+        let json = serde_json::to_string(&card).unwrap();
+        assert!(json.contains("\"watchReferenceImagePaths\":[\"legacy.png\"]"));
+        assert!(!json.contains("\"watchReferenceImagePath\":"));
+    }
+
+    #[test]
     fn recognition_group_roundtrip_uses_camel_case() {
         let settings: RecognitionSettings = serde_json::from_str(
             r#"{"recognitionEnabled":true,"cardGroups":[{"id":"g1","name":"战斗","order":2,"collapsed":true}],"cards":[]}"#,

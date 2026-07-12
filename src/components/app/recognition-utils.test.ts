@@ -102,6 +102,20 @@ describe("recognition-utils", () => {
             expect(Reflect.get(form.cards[0], "retriggerAfterDisappear")).toBe(false);
         });
 
+        it("旧单参考图路径迁移为参考图列表", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{
+                    ...DEFAULT_RECOGNITION_CARD,
+                    id: "legacy-reference",
+                    name: "旧参考图",
+                    watchReferenceImagePath: "legacy.png",
+                }],
+            });
+
+            expect(Reflect.get(form.cards[0], "watchReferenceImagePaths")).toEqual(["legacy.png"]);
+        });
+
         it("消失后重触发字段在 settings 和 form 间保持 true", () => {
             const form = settingsToForm({
                 recognitionEnabled: true,
@@ -204,6 +218,21 @@ describe("recognition-utils", () => {
 
             expect(settings.cards[0].hotkey).toBeNull();
             expect(settings.cards[0].effects?.audio?.audioFiles).toEqual([]);
+        });
+
+        it("区域监听保存多个参考图并过滤空路径", () => {
+            const card = draftCard({
+                triggerMode: "regionWatch",
+                watchRegion: {x: 0, y: 0, width: 100, height: 100},
+            });
+            Reflect.set(card, "watchReferenceImagePaths", [" first.png ", "", "second.png"]);
+
+            const settings = parseSettingsForm({audioEnabled: true, cards: [card]});
+
+            expect(Reflect.get(settings.cards[0], "watchReferenceImagePaths")).toEqual([
+                "first.png",
+                "second.png",
+            ]);
         });
 
         it("允许禁用分组中的启用卡片保存未完成草稿", () => {

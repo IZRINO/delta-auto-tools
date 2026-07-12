@@ -19,8 +19,8 @@ mod tests {
     use super::capture::base64_encode;
     use super::manager::watcher_should_run;
     use super::matching::{
-        average_region_rgb, color_distance, compare_images, match_color_probes, probe_hit,
-        scan_region_for_color,
+        average_region_rgb, best_reference_match, color_distance, compare_images,
+        match_color_probes, probe_hit, scan_region_for_color,
     };
     use crate::morse::types::RegionRect;
     use crate::recognition::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
@@ -176,6 +176,31 @@ mod tests {
             "最佳匹配 Y 坐标应接近 20，实际 {}",
             result.best_y
         );
+    }
+
+    #[test]
+    fn best_reference_match_returns_highest_similarity_reference() {
+        let screenshot = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            8,
+            8,
+            Rgba([120, 80, 40, 255]),
+        ));
+        let references = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]))),
+            screenshot.clone(),
+        ];
+
+        let (index, result) = best_reference_match(&screenshot, &references).unwrap();
+
+        assert_eq!(index, 1);
+        assert!(result.similarity > 0.99);
+    }
+
+    #[test]
+    fn best_reference_match_returns_none_without_references() {
+        let screenshot = DynamicImage::ImageRgba8(RgbaImage::new(8, 8));
+
+        assert!(best_reference_match(&screenshot, &[]).is_none());
     }
 
     #[test]
