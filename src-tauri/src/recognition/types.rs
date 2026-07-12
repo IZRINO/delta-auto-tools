@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::morse::types::RegionRect;
 
@@ -28,6 +28,26 @@ fn default_activation_trigger_count() -> u32 {
 
 fn default_watch_match_threshold() -> f32 {
     0.75
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ReferenceImagePaths {
+    One(String),
+    Many(Vec<String>),
+}
+
+fn deserialize_reference_image_paths<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        match Option::<ReferenceImagePaths>::deserialize(deserializer)? {
+            Some(ReferenceImagePaths::One(path)) => vec![path],
+            Some(ReferenceImagePaths::Many(paths)) => paths,
+            None => Vec::new(),
+        },
+    )
 }
 
 fn default_watch_poll_interval_ms() -> u32 {
@@ -93,8 +113,12 @@ pub struct RecognitionCard {
     // 区域监听模式
     #[serde(default)]
     pub watch_region: Option<RegionRect>,
-    #[serde(default)]
-    pub watch_reference_image_path: Option<String>,
+    #[serde(
+        default,
+        alias = "watchReferenceImagePath",
+        deserialize_with = "deserialize_reference_image_paths"
+    )]
+    pub watch_reference_image_paths: Vec<String>,
     #[serde(default = "default_watch_match_threshold")]
     pub watch_match_threshold: f32,
     #[serde(default = "default_watch_poll_interval_ms")]
@@ -427,6 +451,18 @@ mod tests {
     }
 
     #[test]
+    fn recognition_card_migrates_legacy_reference_image_path() {
+        let card: RecognitionCard = serde_json::from_str(
+            r#"{"id":"legacy","name":"旧参考图","watchReferenceImagePath":"legacy.png"}"#,
+        )
+        .unwrap();
+
+        let json = serde_json::to_string(&card).unwrap();
+        assert!(json.contains("\"watchReferenceImagePaths\":[\"legacy.png\"]"));
+        assert!(!json.contains("\"watchReferenceImagePath\":"));
+    }
+
+    #[test]
     fn recognition_group_roundtrip_uses_camel_case() {
         let settings: RecognitionSettings = serde_json::from_str(
             r#"{"recognitionEnabled":true,"cardGroups":[{"id":"g1","name":"战斗","order":2,"collapsed":true}],"cards":[]}"#,
@@ -569,7 +605,7 @@ mod tests {
             trigger_mode: RecognitionTriggerMode::ColorWatch,
             hotkey: None,
             watch_region: None,
-            watch_reference_image_path: None,
+            watch_reference_image_paths: Vec::new(),
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
             retrigger_after_disappear: false,

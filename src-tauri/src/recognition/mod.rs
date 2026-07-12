@@ -533,7 +533,7 @@ pub async fn recognition_test_match(
     state: tauri::State<'_, RecognitionState>,
     card_id: String,
 ) -> Result<TestMatchResult, AppError> {
-    let (region, ref_path, threshold) = {
+    let (region, ref_paths, threshold) = {
         let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
         let card = inner
             .settings
@@ -557,26 +557,24 @@ pub async fn recognition_test_match(
             .watch_region
             .clone()
             .ok_or_else(|| AppError::from("未设置监听区域".to_string()))?;
-        let ref_path = card
-            .watch_reference_image_path
-            .clone()
-            .ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
-        if ref_path.is_empty() {
-            return Err(AppError::from("参考图像路径为空".to_string()));
+        let ref_paths = card.watch_reference_image_paths.clone();
+        if ref_paths.is_empty() {
+            return Err(AppError::from("未设置参考图像".to_string()));
         }
         let threshold = card.watch_match_threshold;
-        (region, ref_path, threshold)
+        (region, ref_paths, threshold)
     };
 
     // 截图
     let captured =
         watcher::capture_region(&region).ok_or_else(|| AppError::from("截图失败".to_string()))?;
 
-    // 加载参考图像
-    let reference_image = watcher::load_reference_image(&ref_path)
+    let reference_images: Vec<_> = ref_paths
+        .iter()
+        .filter_map(|path| watcher::load_reference_image(path))
+        .collect();
+    let (_, similarity) = watcher::best_reference_match(&captured, &reference_images)
         .ok_or_else(|| AppError::from("无法加载参考图像".to_string()))?;
-
-    let similarity = watcher::compare_images(&captured, &reference_image);
     let triggered = similarity.similarity >= threshold;
 
     Ok(TestMatchResult {
@@ -675,26 +673,9 @@ pub async fn recognition_test_color_match(
 #[tauri::command]
 pub fn recognition_read_reference_image(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, RecognitionState>,
-    card_id: String,
+    reference_image_path: String,
 ) -> Result<String, AppError> {
-    let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    let card = inner
-        .settings
-        .cards
-        .iter()
-        .find(|c| c.id == card_id)
-        .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
-
-    let ref_path = card
-        .watch_reference_image_path
-        .clone()
-        .ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
-    if ref_path.is_empty() {
-        return Err(AppError::from("参考图像路径为空".to_string()));
-    }
-
-    watcher::read_reference_image_as_data_url(&ref_path)
+    watcher::read_reference_image_as_data_url(&reference_image_path)
         .ok_or_else(|| AppError::from("无法读取参考图像".to_string()))
 }
 
@@ -1155,7 +1136,7 @@ mod tests {
             trigger_mode: types::RecognitionTriggerMode::Hotkey,
             hotkey: Some("Ctrl+F1".into()),
             watch_region: None,
-            watch_reference_image_path: None,
+            watch_reference_image_paths: Vec::new(),
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
             retrigger_after_disappear: false,
@@ -1689,7 +1670,7 @@ mod tests {
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: Some("Ctrl+F1".into()),
                 watch_region: None,
-                watch_reference_image_path: None,
+                watch_reference_image_paths: Vec::new(),
                 watch_match_threshold: 0.75,
                 watch_poll_interval_ms: 500,
                 retrigger_after_disappear: false,
@@ -1736,7 +1717,7 @@ mod tests {
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: None,
                 watch_region: None,
-                watch_reference_image_path: None,
+                watch_reference_image_paths: Vec::new(),
                 watch_match_threshold: 0.75,
                 watch_poll_interval_ms: 500,
                 retrigger_after_disappear: false,

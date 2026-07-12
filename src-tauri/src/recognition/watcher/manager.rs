@@ -56,10 +56,7 @@ pub fn restart_watchers(
         // 按触发模式校验必要字段，缺字段则跳过
         match card.trigger_mode {
             RecognitionTriggerMode::RegionWatch => {
-                let Some(ref_path) = &card.watch_reference_image_path else {
-                    continue;
-                };
-                if ref_path.is_empty() {
+                if card.watch_reference_image_paths.is_empty() {
                     continue;
                 }
                 if card.watch_region.is_none() {
@@ -94,18 +91,15 @@ pub fn restart_watchers(
                 let Some(region) = &card.watch_region else {
                     continue;
                 };
-                let Some(ref_path) = &card.watch_reference_image_path else {
-                    continue;
-                };
                 let threshold = card.watch_match_threshold;
                 let region_clone = region.clone();
-                let ref_path_clone = ref_path.clone();
+                let ref_paths_clone = card.watch_reference_image_paths.clone();
                 tauri::async_runtime::spawn(async move {
                     run_region_watcher(
                         app_clone,
                         card_id,
                         region_clone,
-                        ref_path_clone,
+                        ref_paths_clone,
                         playback_tx_clone,
                         cooldown_ms,
                         retrigger_after_disappear,
@@ -356,21 +350,27 @@ async fn run_region_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     let Some(region) = card.watch_region.as_ref() else {
         return false;
     };
-    let Some(reference_image_path) = card.watch_reference_image_path.as_ref() else {
+    if card.watch_reference_image_paths.is_empty() {
         return false;
-    };
+    }
     let Some(captured) = capture::capture_region(region) else {
         return false;
     };
-    let Some(reference_image) = capture::load_reference_image(reference_image_path) else {
+    let reference_images: Vec<_> = card
+        .watch_reference_image_paths
+        .iter()
+        .filter_map(|path| capture::load_reference_image(path))
+        .collect();
+    let Some((reference_index, result)) =
+        matching::best_reference_match(&captured, &reference_images)
+    else {
         return false;
     };
-
-    let result = matching::compare_images(&captured, &reference_image);
     if result.similarity < card.watch_match_threshold {
         return false;
     }
 
+    let reference_image = &reference_images[reference_index];
     let center_x = region.x + result.best_x as i32 + reference_image.width() as i32 / 2;
     let center_y = region.y + result.best_y as i32 + reference_image.height() as i32 / 2;
     let _ = app.emit(REGION_MATCHED, &card.id);
@@ -567,7 +567,7 @@ async fn run_region_watcher(
     app: AppHandle,
     card_id: String,
     region: crate::morse::types::RegionRect,
-    reference_image_path: String,
+    reference_image_paths: Vec<String>,
     _playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
     retrigger_after_disappear: bool,
@@ -580,29 +580,34 @@ async fn run_region_watcher(
 
     let mut match_gate = MatchGate::new(retrigger_after_disappear);
 
-    // 加载参考图像
-    let reference_image = match capture::load_reference_image(&reference_image_path) {
-        Some(img) => {
-            crate::log_debug!(
-                "recognition::watcher",
-                "参考图像加载成功",
-                "card_id" => card_id.clone(),
-                "path" => reference_image_path.clone(),
-                "width" => img.width(),
-                "height" => img.height()
-            );
-            img
-        }
-        None => {
-            crate::log_error!(
-                "recognition::watcher",
-                "无法加载参考图像",
-                "card_id" => card_id.clone(),
-                "path" => reference_image_path.clone()
-            );
-            return;
-        }
-    };
+    let reference_images: Vec<_> = reference_image_paths
+        .iter()
+        .filter_map(|path| match capture::load_reference_image(path) {
+            Some(image) => {
+                crate::log_debug!(
+                    "recognition::watcher",
+                    "参考图像加载成功",
+                    "card_id" => card_id.clone(),
+                    "path" => path.clone(),
+                    "width" => image.width(),
+                    "height" => image.height()
+                );
+                Some(image)
+            }
+            None => {
+                crate::log_error!(
+                    "recognition::watcher",
+                    "无法加载参考图像",
+                    "card_id" => card_id.clone(),
+                    "path" => path.clone()
+                );
+                None
+            }
+        })
+        .collect();
+    if reference_images.is_empty() {
+        return;
+    }
 
     while !cancel.load(Ordering::SeqCst) {
         ticker.tick().await;
@@ -619,7 +624,11 @@ async fn run_region_watcher(
         // 截取屏幕区域
         match capture::capture_region(&region) {
             Some(captured) => {
-                let result = matching::compare_images(&captured, &reference_image);
+                let Some((reference_index, result)) =
+                    matching::best_reference_match(&captured, &reference_images)
+                else {
+                    continue;
+                };
                 if result.similarity >= threshold {
                     if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
                         continue;
@@ -634,6 +643,7 @@ async fn run_region_watcher(
                         "best_y" => result.best_y
                     );
                     let _ = app.emit(REGION_MATCHED, &card_id);
+                    let reference_image = &reference_images[reference_index];
                     let center_x =
                         region.x + result.best_x as i32 + reference_image.width() as i32 / 2;
                     let center_y =
@@ -949,7 +959,7 @@ mod tests {
                 width: 10,
                 height: 10,
             }),
-            watch_reference_image_path: Some("ref.png".into()),
+            watch_reference_image_paths: vec!["ref.png".into()],
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
             retrigger_after_disappear: false,

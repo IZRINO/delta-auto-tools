@@ -633,10 +633,12 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     );
 
     const handleLoadReferencePreview = useCallback(
-        async (cardId: string): Promise<string | null> => {
+        async (referenceImagePath: string): Promise<string | null> => {
             if (!isNativeShell) return null;
             try {
-                const dataUrl = await invoke<string>("recognition_read_reference_image", {cardId});
+                const dataUrl = await invoke<string>("recognition_read_reference_image", {
+                    referenceImagePath,
+                });
                 return dataUrl;
             } catch {
                 return null;
@@ -645,24 +647,86 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         [isNativeShell],
     );
 
-    const handlePickReferenceImage = useCallback(
+    const handlePickReferenceImages = useCallback(
         async (index: number) => {
             if (!isNativeShell) return;
             try {
-                const path = await open({
-                    multiple: false,
+                const picked = await open({
+                    multiple: true,
                     directory: false,
                     filters: [{name: "图像文件", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "tiff"]}],
                 });
-                if (path && typeof path === "string") {
-                    handleUpdateCard(index, {watchReferenceImagePath: path});
-                }
+                if (!picked) return;
+                const paths = Array.isArray(picked) ? picked : [picked];
+                setForm((current) => {
+                    if (!current) return current;
+                    const card = current.cards[index];
+                    if (!card) return current;
+                    const existing = card.watchReferenceImagePaths
+                        ?? (card.watchReferenceImagePath ? [card.watchReferenceImagePath] : []);
+                    const watchReferenceImagePaths = [...new Set([...existing, ...paths])];
+                    return {
+                        ...current,
+                        cards: current.cards.map((item, cardIndex) =>
+                            cardIndex === index ? {...item, watchReferenceImagePaths} : item,
+                        ),
+                    };
+                });
             } catch (error) {
                 toast.error(getErrorMessage(error));
             }
         },
-        [isNativeShell, handleUpdateCard],
+        [isNativeShell, setForm],
     );
+
+    const handleAddReferenceImage = useCallback((index: number) => {
+        setForm((current) => {
+            if (!current) return current;
+            const card = current.cards[index];
+            if (!card) return current;
+            const existing = card.watchReferenceImagePaths
+                ?? (card.watchReferenceImagePath ? [card.watchReferenceImagePath] : []);
+            return {
+                ...current,
+                cards: current.cards.map((item, cardIndex) =>
+                    cardIndex === index
+                        ? {...item, watchReferenceImagePaths: [...existing, ""]}
+                        : item,
+                ),
+            };
+        });
+    }, [setForm]);
+
+    const handleUpdateReferenceImage = useCallback((cardIndex: number, imageIndex: number, path: string) => {
+        setForm((current) => {
+            if (!current) return current;
+            const card = current.cards[cardIndex];
+            if (!card) return current;
+            const paths = [...(card.watchReferenceImagePaths ?? [])];
+            paths[imageIndex] = path;
+            return {
+                ...current,
+                cards: current.cards.map((item, index) =>
+                    index === cardIndex ? {...item, watchReferenceImagePaths: paths} : item,
+                ),
+            };
+        });
+    }, [setForm]);
+
+    const handleRemoveReferenceImage = useCallback((cardIndex: number, imageIndex: number) => {
+        setForm((current) => {
+            if (!current) return current;
+            const card = current.cards[cardIndex];
+            if (!card) return current;
+            const paths = (card.watchReferenceImagePaths ?? []).filter((_, index) => index !== imageIndex);
+            return {
+                ...current,
+                cards: current.cards.map((item, index) =>
+                    index === cardIndex ? {...item, watchReferenceImagePaths: paths} : item,
+                ),
+            };
+        });
+    }, [setForm]);
 
     const handlePickAudioFile = useCallback(
         async (index: number) => {
@@ -895,12 +959,15 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                                         onTestMatch={() => handleTestMatch(card.id)}
                                         onBeginRegionSelection={(probeIndex) => handleBeginRegionSelection(card.id, probeIndex)}
                                         onBeginCustomClickSelection={() => handleBeginRegionSelection(card.id, undefined, "customClick")}
-                                        onPickReferenceImage={() => handlePickReferenceImage(index)}
+                                        onAddReferenceImage={() => handleAddReferenceImage(index)}
+                                        onPickReferenceImages={() => handlePickReferenceImages(index)}
+                                        onUpdateReferenceImage={(imageIndex, path) => handleUpdateReferenceImage(index, imageIndex, path)}
+                                        onRemoveReferenceImage={(imageIndex) => handleRemoveReferenceImage(index, imageIndex)}
                                         onPickAudioFile={() => handlePickAudioFile(index)}
                                         onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
                                         onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
                                         onUpdateComboWindow={(fileIndex, value) => handleUpdateComboWindow(index, fileIndex, value)}
-                                        onLoadReferencePreview={() => handleLoadReferencePreview(card.id)}
+                                        onLoadReferencePreview={handleLoadReferencePreview}
                                         onTestColorMatch={() => handleTestColorMatch(card.id)}
                                         onAddColorProbe={() => handleAddColorProbe(index)}
                                         onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
@@ -927,6 +994,76 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     );
 }
 
+function ReferenceImageRow({
+                               path,
+                               imageIndex,
+                               isNativeShell,
+                               onChange,
+                               onRemove,
+                               onLoadPreview,
+                           }: {
+    path: string;
+    imageIndex: number;
+    isNativeShell: boolean;
+    onChange: (path: string) => void;
+    onRemove: () => void;
+    onLoadPreview: () => Promise<string | null>;
+}) {
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
+    useEffect(() => {
+        if (!path.trim() || !isNativeShell) {
+            setPreviewUrl(null);
+            setPreviewLoading(false);
+            return;
+        }
+        let disposed = false;
+        setPreviewLoading(true);
+        void onLoadPreview().then((url) => {
+            if (!disposed) {
+                setPreviewUrl(url);
+                setPreviewLoading(false);
+            }
+        });
+        return () => {
+            disposed = true;
+        };
+    }, [path, isNativeShell]);
+
+    return (
+        <div className="border border-base-300 bg-base-100 p-2">
+            <div className="flex items-center gap-2">
+                <span className="w-8 shrink-0 font-mono text-xs text-base-content/60">
+                    {imageIndex + 1}
+                </span>
+                <Input
+                    className="flex-1"
+                    value={path}
+                    onChange={(event) => onChange(event.target.value)}
+                    placeholder="参考图像文件路径..."
+                />
+                <Button variant="ghost" size="sm" onClick={onRemove} title="删除参考图像"
+                        aria-label="删除参考图像" data-icon="inline-start">
+                    <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
+                </Button>
+            </div>
+            {previewUrl && (
+                <div className="mt-2 border border-base-300 bg-base-200 p-1">
+                    <img
+                        src={previewUrl}
+                        alt={`参考图像 ${imageIndex + 1} 预览`}
+                        className="max-h-32 max-w-48 object-contain"
+                    />
+                </div>
+            )}
+            {previewLoading && (
+                <p className="mt-1 text-xs text-base-content/60">加载预览中...</p>
+            )}
+        </div>
+    );
+}
+
 function RecognitionCardEditor({
                              card,
                              index,
@@ -944,7 +1081,10 @@ function RecognitionCardEditor({
                              onTestMatch,
                              onBeginRegionSelection,
                              onBeginCustomClickSelection,
-                             onPickReferenceImage,
+                             onAddReferenceImage,
+                             onPickReferenceImages,
+                             onUpdateReferenceImage,
+                             onRemoveReferenceImage,
                              onPickAudioFile,
                              onRemoveAudioFile,
                              onMoveAudioFile,
@@ -975,12 +1115,15 @@ function RecognitionCardEditor({
     onTestMatch: () => void;
     onBeginRegionSelection: (probeIndex?: number) => void;
     onBeginCustomClickSelection: () => void;
-    onPickReferenceImage: () => void;
+    onAddReferenceImage: () => void;
+    onPickReferenceImages: () => void;
+    onUpdateReferenceImage: (imageIndex: number, path: string) => void;
+    onRemoveReferenceImage: (imageIndex: number) => void;
     onPickAudioFile: () => void;
     onRemoveAudioFile: (fileIndex: number) => void;
     onMoveAudioFile: (fileIndex: number, direction: -1 | 1) => void;
     onUpdateComboWindow: (fileIndex: number, value: string) => void;
-    onLoadReferencePreview: () => Promise<string | null>;
+    onLoadReferencePreview: (path: string) => Promise<string | null>;
     onTestColorMatch: () => void;
     onAddColorProbe: () => void;
     onRemoveColorProbe: (probeIndex: number) => void;
@@ -999,26 +1142,8 @@ function RecognitionCardEditor({
     const hotkeySteps = card.hotkeyEffectSteps?.length
         ? card.hotkeyEffectSteps
         : [{hotkey: card.effectHotkey ?? "", delayMs: "0"}];
-
-    // 参考图像预览
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [previewLoading, setPreviewLoading] = useState(false);
-
-    useEffect(() => {
-        if (!isRegion || !card.watchReferenceImagePath.trim() || !isNativeShell) {
-            setPreviewUrl(null);
-            return;
-        }
-        let disposed = false;
-        setPreviewLoading(true);
-        void onLoadReferencePreview().then((url) => {
-            if (!disposed) {
-                setPreviewUrl(url);
-                setPreviewLoading(false);
-            }
-        });
-        return () => { disposed = true; };
-    }, [card.watchReferenceImagePath, isRegion, isNativeShell, onLoadReferencePreview]);
+    const referenceImagePaths = card.watchReferenceImagePaths
+        ?? (card.watchReferenceImagePath ? [card.watchReferenceImagePath] : []);
 
     return (
         <div className="border border-base-300 bg-base-200">
@@ -1243,39 +1368,39 @@ function RecognitionCardEditor({
                             </FieldContent>
                         </Field>
                         <Field>
-                            <FieldLabel>参考图像路径</FieldLabel>
+                            <FieldLabel>参考图像</FieldLabel>
                             <FieldContent>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        className="flex-1"
-                                        value={card.watchReferenceImagePath}
-                                        onChange={(e) => onUpdate({watchReferenceImagePath: e.target.value})}
-                                        placeholder="参考图像文件路径..."
-                                    />
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={onPickReferenceImage}
-                                        disabled={!isNativeShell}
-                                        title={isNativeShell ? "浏览图像文件" : "仅在桌面端可用"}
-                                        data-icon="inline-start"
-                                    >
-                                        <RiFolderOpenLine className="size-4" aria-hidden="true"/>
-                                        浏览...
-                                    </Button>
-                                </div>
-                                {previewUrl && (
-                                    <div className="mt-2 border border-base-300 bg-base-200 p-1">
-                                        <img
-                                            src={previewUrl}
-                                            alt="参考图像预览"
-                                            className="max-h-32 max-w-48 object-contain"
+                                <div className="space-y-2">
+                                    {referenceImagePaths.map((path, imageIndex) => (
+                                        <ReferenceImageRow
+                                            key={imageIndex}
+                                            path={path}
+                                            imageIndex={imageIndex}
+                                            isNativeShell={isNativeShell}
+                                            onChange={(value) => onUpdateReferenceImage(imageIndex, value)}
+                                            onRemove={() => onRemoveReferenceImage(imageIndex)}
+                                            onLoadPreview={() => onLoadReferencePreview(path)}
                                         />
+                                    ))}
+                                    <div className="flex gap-2">
+                                        <Button variant="secondary" size="sm" onClick={onAddReferenceImage}
+                                                data-icon="inline-start">
+                                            <RiAddLine className="size-4" aria-hidden="true"/>
+                                            添加路径
+                                        </Button>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={onPickReferenceImages}
+                                            disabled={!isNativeShell}
+                                            title={isNativeShell ? "浏览图像文件，可多选" : "仅在桌面端可用"}
+                                            data-icon="inline-start"
+                                        >
+                                            <RiFolderOpenLine className="size-4" aria-hidden="true"/>
+                                            浏览图像...
+                                        </Button>
                                     </div>
-                                )}
-                                {previewLoading && (
-                                    <p className="mt-1 text-xs text-base-content/60">加载预览中...</p>
-                                )}
+                                </div>
                             </FieldContent>
                         </Field>
                         <Field>
@@ -1853,7 +1978,11 @@ function cardToForm(card: RecognitionCard): RecognitionSettingsForm["cards"][num
         triggerMode: card.triggerMode,
         hotkey: card.hotkey ?? "",
         watchRegion: card.watchRegion,
-        watchReferenceImagePath: card.watchReferenceImagePath ?? "",
+        watchReferenceImagePaths: card.watchReferenceImagePaths?.length
+            ? card.watchReferenceImagePaths
+            : card.watchReferenceImagePath?.trim()
+                ? [card.watchReferenceImagePath.trim()]
+                : [],
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
         retriggerAfterDisappear: card.retriggerAfterDisappear ?? false,

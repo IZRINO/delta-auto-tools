@@ -102,6 +102,20 @@ describe("recognition-utils", () => {
             expect(Reflect.get(form.cards[0], "retriggerAfterDisappear")).toBe(false);
         });
 
+        it("旧单参考图路径迁移为参考图列表", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{
+                    ...DEFAULT_RECOGNITION_CARD,
+                    id: "legacy-reference",
+                    name: "旧参考图",
+                    watchReferenceImagePath: "legacy.png",
+                }],
+            });
+
+            expect(Reflect.get(form.cards[0], "watchReferenceImagePaths")).toEqual(["legacy.png"]);
+        });
+
         it("消失后重触发字段在 settings 和 form 间保持 true", () => {
             const form = settingsToForm({
                 recognitionEnabled: true,
@@ -204,6 +218,21 @@ describe("recognition-utils", () => {
 
             expect(settings.cards[0].hotkey).toBeNull();
             expect(settings.cards[0].effects?.audio?.audioFiles).toEqual([]);
+        });
+
+        it("区域监听保存多个参考图并过滤空路径", () => {
+            const card = draftCard({
+                triggerMode: "regionWatch",
+                watchRegion: {x: 0, y: 0, width: 100, height: 100},
+            });
+            Reflect.set(card, "watchReferenceImagePaths", [" first.png ", "", "second.png"]);
+
+            const settings = parseSettingsForm({audioEnabled: true, cards: [card]});
+
+            expect(Reflect.get(settings.cards[0], "watchReferenceImagePaths")).toEqual([
+                "first.png",
+                "second.png",
+            ]);
         });
 
         it("允许禁用分组中的启用卡片保存未完成草稿", () => {
@@ -382,8 +411,8 @@ describe("recognition-utils", () => {
                     enabled: true,
                     triggerMode: "regionWatch",
                     hotkey: "",
-                    watchRegion: null,
-                    watchReferenceImagePath: "",
+                    watchRegion: {x: 0, y: 0, width: 100, height: 100},
+                    watchReferenceImagePaths: ["reference.png"],
                     watchMatchThreshold: "0.75",
                     watchPollIntervalMs: "500",
                     activationMode: "timedHotkey",
@@ -1260,7 +1289,7 @@ describe("recognition-utils", () => {
                     ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "边界卡",
-                    // hotkey 和 watchReferenceImagePath 在 cardToForm 中用 ?? "" 回退
+                    // hotkey 和参考图列表在 cardToForm 中回退
                     // colorProbes 和 colorMatchMode/colorMatchMethod 也用 ?? 回退
                     hotkey: undefined as unknown as string,
                     watchReferenceImagePath: undefined as unknown as string,
@@ -1276,7 +1305,7 @@ describe("recognition-utils", () => {
             };
             const form = settingsToForm(settings as any);
             expect(form.cards[0].hotkey).toBe("");
-            expect(form.cards[0].watchReferenceImagePath).toBe("");
+            expect(form.cards[0].watchReferenceImagePaths).toEqual([]);
             expect(form.cards[0].colorProbes).toHaveLength(0);
             expect(form.cards[0].colorMatchMode).toBe("all");
             expect(form.cards[0].colorMatchMethod).toBe("average");
