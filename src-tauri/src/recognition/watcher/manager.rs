@@ -82,6 +82,7 @@ pub fn restart_watchers(
         let app_clone = app.clone();
         let card_id = card.id.clone();
         let cooldown_ms = card.cooldown_ms;
+        let retrigger_after_disappear = card.retrigger_after_disappear;
         let poll_interval_ms = card.watch_poll_interval_ms;
         let playback_tx_clone = playback_tx.clone();
         let cancel_clone = Arc::clone(&cancel);
@@ -107,6 +108,7 @@ pub fn restart_watchers(
                         ref_path_clone,
                         playback_tx_clone,
                         cooldown_ms,
+                        retrigger_after_disappear,
                         threshold,
                         poll_interval_ms,
                         cancel_clone,
@@ -127,6 +129,7 @@ pub fn restart_watchers(
                         match_method,
                         playback_tx_clone,
                         cooldown_ms,
+                        retrigger_after_disappear,
                         poll_interval_ms,
                         cancel_clone,
                     )
@@ -224,23 +227,47 @@ enum MatchObservation {
     NotMatched,
 }
 
+const REARM_MISS_COUNT: u8 = 2;
+
 #[derive(Debug, Default)]
 struct MatchGate {
+    retrigger_after_disappear: bool,
     was_matched: bool,
+    consecutive_misses: u8,
     last_triggered: Option<Instant>,
 }
 
 impl MatchGate {
+    fn new(retrigger_after_disappear: bool) -> Self {
+        Self {
+            retrigger_after_disappear,
+            was_matched: false,
+            consecutive_misses: 0,
+            last_triggered: None,
+        }
+    }
+
     fn observe(&mut self, observation: MatchObservation, cooldown_ms: u32, now: Instant) -> bool {
         match observation {
             MatchObservation::CaptureFailed => false,
             MatchObservation::NotMatched => {
-                self.was_matched = false;
+                if self.retrigger_after_disappear && self.was_matched {
+                    self.consecutive_misses = self.consecutive_misses.saturating_add(1);
+                    if self.consecutive_misses >= REARM_MISS_COUNT {
+                        self.was_matched = false;
+                        self.consecutive_misses = 0;
+                    }
+                }
                 false
             }
-            MatchObservation::Matched if self.was_matched => false,
             MatchObservation::Matched => {
-                self.was_matched = true;
+                self.consecutive_misses = 0;
+                if self.retrigger_after_disappear && self.was_matched {
+                    return false;
+                }
+                if self.retrigger_after_disappear {
+                    self.was_matched = true;
+                }
                 let ready = self
                     .last_triggered
                     .map(|last| {
@@ -543,6 +570,7 @@ async fn run_region_watcher(
     reference_image_path: String,
     _playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
+    retrigger_after_disappear: bool,
     threshold: f32,
     poll_interval_ms: u32,
     cancel: Arc<AtomicBool>,
@@ -550,7 +578,7 @@ async fn run_region_watcher(
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut match_gate = MatchGate::default();
+    let mut match_gate = MatchGate::new(retrigger_after_disappear);
 
     // 加载参考图像
     let reference_image = match capture::load_reference_image(&reference_image_path) {
@@ -644,13 +672,14 @@ async fn run_color_watcher(
     match_method: crate::recognition::types::ColorMatchMethod,
     _playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     cooldown_ms: u32,
+    retrigger_after_disappear: bool,
     poll_interval_ms: u32,
     cancel: Arc<AtomicBool>,
 ) {
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    let mut match_gate = MatchGate::default();
+    let mut match_gate = MatchGate::new(retrigger_after_disappear);
 
     while !cancel.load(Ordering::SeqCst) {
         ticker.tick().await;
@@ -793,63 +822,57 @@ mod tests {
     }
 
     #[test]
-    fn match_gate_triggers_once_until_explicit_miss() {
+    fn cooldown_repeat_triggers_again_after_cooldown_while_still_matched() {
         let start = Instant::now();
-        let mut gate = MatchGate::default();
+        let mut gate = MatchGate::new(false);
 
         assert!(gate.observe(MatchObservation::Matched, 1000, start));
         assert!(!gate.observe(
             MatchObservation::Matched,
             1000,
-            start + Duration::from_secs(2)
-        ));
-        assert!(!gate.observe(
-            MatchObservation::NotMatched,
-            1000,
-            start + Duration::from_secs(3)
+            start + Duration::from_millis(999),
         ));
         assert!(gate.observe(
             MatchObservation::Matched,
             1000,
-            start + Duration::from_secs(4)
+            start + Duration::from_millis(1000),
         ));
     }
 
     #[test]
-    fn match_gate_capture_failure_does_not_rearm() {
+    fn after_disappear_requires_two_consecutive_misses() {
         let start = Instant::now();
-        let mut gate = MatchGate::default();
+        let mut gate = MatchGate::new(true);
 
         assert!(gate.observe(MatchObservation::Matched, 0, start));
-        assert!(!gate.observe(
-            MatchObservation::CaptureFailed,
-            0,
-            start + Duration::from_secs(1)
-        ));
+        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(1));
         assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(2)));
+        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(3));
+        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(4));
+        assert!(gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(5)));
     }
 
     #[test]
-    fn match_gate_consumes_rising_edge_during_cooldown() {
+    fn after_disappear_capture_failure_does_not_count_as_miss() {
         let start = Instant::now();
-        let mut gate = MatchGate::default();
+        let mut gate = MatchGate::new(true);
+
+        assert!(gate.observe(MatchObservation::Matched, 0, start));
+        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(1));
+        gate.observe(MatchObservation::CaptureFailed, 0, start + Duration::from_secs(2));
+        assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(3)));
+    }
+
+    #[test]
+    fn after_disappear_consumes_rising_edge_during_cooldown() {
+        let start = Instant::now();
+        let mut gate = MatchGate::new(true);
 
         assert!(gate.observe(MatchObservation::Matched, 5000, start));
-        gate.observe(
-            MatchObservation::NotMatched,
-            5000,
-            start + Duration::from_secs(1),
-        );
-        assert!(!gate.observe(
-            MatchObservation::Matched,
-            5000,
-            start + Duration::from_secs(2)
-        ));
-        assert!(!gate.observe(
-            MatchObservation::Matched,
-            5000,
-            start + Duration::from_secs(6)
-        ));
+        gate.observe(MatchObservation::NotMatched, 5000, start + Duration::from_secs(1));
+        gate.observe(MatchObservation::NotMatched, 5000, start + Duration::from_secs(2));
+        assert!(!gate.observe(MatchObservation::Matched, 5000, start + Duration::from_secs(3)));
+        assert!(!gate.observe(MatchObservation::Matched, 5000, start + Duration::from_secs(6)));
     }
 
     #[test]
