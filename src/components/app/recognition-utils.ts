@@ -185,7 +185,11 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
         triggerMode: card.triggerMode,
         hotkey: card.hotkey ?? "",
         watchRegion: card.watchRegion,
-        watchReferenceImagePath: card.watchReferenceImagePath ?? "",
+        watchReferenceImagePaths: card.watchReferenceImagePaths?.length
+            ? card.watchReferenceImagePaths
+            : card.watchReferenceImagePath?.trim()
+                ? [card.watchReferenceImagePath.trim()]
+                : [],
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
         retriggerAfterDisappear: card.retriggerAfterDisappear ?? false,
@@ -255,6 +259,15 @@ function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCar
     const hotkey = form.triggerMode === "hotkey" ? form.hotkey.trim() || null : null;
     if (strict && form.triggerMode === "hotkey" && !hotkey) {
         throw new Error("快捷键模式下必须设置触发快捷键。");
+    }
+
+    const watchReferenceImagePaths = form.triggerMode === "regionWatch"
+        ? (form.watchReferenceImagePaths ?? (form.watchReferenceImagePath ? [form.watchReferenceImagePath] : []))
+            .map((path) => path.trim())
+            .filter((path) => path.length > 0)
+        : [];
+    if (strict && form.triggerMode === "regionWatch" && watchReferenceImagePaths.length === 0) {
+        throw new Error("区域监听至少需要设置一个参考图像。");
     }
 
     const activationMode = form.triggerMode === "hotkey" ? "always" : form.activationMode ?? "always";
@@ -327,7 +340,7 @@ function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCar
         triggerMode: form.triggerMode,
         hotkey,
         watchRegion: form.triggerMode === "regionWatch" ? form.watchRegion : null,
-        watchReferenceImagePath: form.triggerMode === "regionWatch" ? form.watchReferenceImagePath.trim() || null : null,
+        watchReferenceImagePaths,
         watchMatchThreshold,
         watchPollIntervalMs,
         retriggerAfterDisappear: form.retriggerAfterDisappear ?? false,
@@ -497,6 +510,12 @@ export function getRecognitionCardFormErrors(form: RecognitionCardForm): Record<
 
     if (form.triggerMode === "regionWatch" && !form.watchRegion) {
         errors.watchRegion = "必须设置监听区域";
+    }
+
+    const referenceImagePaths = form.watchReferenceImagePaths
+        ?? (form.watchReferenceImagePath ? [form.watchReferenceImagePath] : []);
+    if (form.triggerMode === "regionWatch" && !referenceImagePaths.some((path) => path.trim())) {
+        errors.watchReferenceImagePaths = "至少需要一个参考图像";
     }
 
     if (form.triggerMode !== "hotkey" && form.activationMode !== "always" && !form.activationHotkey?.trim()) {

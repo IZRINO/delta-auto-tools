@@ -68,6 +68,18 @@ pub(crate) fn compare_images(
     template_match(screenshot, reference)
 }
 
+/// 比较多个参考图，返回相似度最高的参考图下标与结果。
+pub(crate) fn best_reference_match<'a>(
+    screenshot: &image::DynamicImage,
+    references: impl IntoIterator<Item = &'a image::DynamicImage>,
+) -> Option<(usize, CompareResult)> {
+    references
+        .into_iter()
+        .enumerate()
+        .map(|(index, reference)| (index, compare_images(screenshot, reference)))
+        .max_by(|(_, left), (_, right)| left.similarity.total_cmp(&right.similarity))
+}
+
 /// 滑动窗口模板匹配（含多尺度加速）
 fn template_match(
     screenshot: &image::DynamicImage,

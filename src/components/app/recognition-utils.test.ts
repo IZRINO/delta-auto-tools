@@ -411,8 +411,8 @@ describe("recognition-utils", () => {
                     enabled: true,
                     triggerMode: "regionWatch",
                     hotkey: "",
-                    watchRegion: null,
-                    watchReferenceImagePath: "",
+                    watchRegion: {x: 0, y: 0, width: 100, height: 100},
+                    watchReferenceImagePaths: ["reference.png"],
                     watchMatchThreshold: "0.75",
                     watchPollIntervalMs: "500",
                     activationMode: "timedHotkey",
@@ -1289,7 +1289,7 @@ describe("recognition-utils", () => {
                     ...DEFAULT_RECOGNITION_CARD,
                     id: "c1",
                     name: "边界卡",
-                    // hotkey 和 watchReferenceImagePath 在 cardToForm 中用 ?? "" 回退
+                    // hotkey 和参考图列表在 cardToForm 中回退
                     // colorProbes 和 colorMatchMode/colorMatchMethod 也用 ?? 回退
                     hotkey: undefined as unknown as string,
                     watchReferenceImagePath: undefined as unknown as string,
@@ -1305,7 +1305,7 @@ describe("recognition-utils", () => {
             };
             const form = settingsToForm(settings as any);
             expect(form.cards[0].hotkey).toBe("");
-            expect(form.cards[0].watchReferenceImagePath).toBe("");
+            expect(form.cards[0].watchReferenceImagePaths).toEqual([]);
             expect(form.cards[0].colorProbes).toHaveLength(0);
             expect(form.cards[0].colorMatchMode).toBe("all");
             expect(form.cards[0].colorMatchMethod).toBe("average");
