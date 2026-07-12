@@ -229,7 +229,7 @@ enum MatchObservation {
 
 const REARM_MISS_COUNT: u8 = 2;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct MatchGate {
     retrigger_after_disappear: bool,
     was_matched: bool,
