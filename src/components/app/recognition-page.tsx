@@ -633,20 +633,18 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     );
 
     const handleLoadReferencePreview = useCallback(
-        async (cardId: string, referenceImageIndex: number): Promise<string | null> => {
+        async (referenceImagePath: string): Promise<string | null> => {
             if (!isNativeShell) return null;
             try {
-                await flushSettings();
                 const dataUrl = await invoke<string>("recognition_read_reference_image", {
-                    cardId,
-                    referenceImageIndex,
+                    referenceImagePath,
                 });
                 return dataUrl;
             } catch {
                 return null;
             }
         },
-        [isNativeShell, flushSettings],
+        [isNativeShell],
     );
 
     const handlePickReferenceImages = useCallback(
@@ -969,7 +967,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                                         onRemoveAudioFile={(fileIndex) => handleRemoveAudioFile(index, fileIndex)}
                                         onMoveAudioFile={(fileIndex, direction) => handleMoveAudioFile(index, fileIndex, direction)}
                                         onUpdateComboWindow={(fileIndex, value) => handleUpdateComboWindow(index, fileIndex, value)}
-                                        onLoadReferencePreview={(imageIndex) => handleLoadReferencePreview(card.id, imageIndex)}
+                                        onLoadReferencePreview={handleLoadReferencePreview}
                                         onTestColorMatch={() => handleTestColorMatch(card.id)}
                                         onAddColorProbe={() => handleAddColorProbe(index)}
                                         onRemoveColorProbe={(probeIndex) => handleRemoveColorProbe(index, probeIndex)}
@@ -1045,7 +1043,8 @@ function ReferenceImageRow({
                     onChange={(event) => onChange(event.target.value)}
                     placeholder="参考图像文件路径..."
                 />
-                <Button variant="ghost" size="sm" onClick={onRemove} title="删除参考图像">
+                <Button variant="ghost" size="sm" onClick={onRemove} title="删除参考图像"
+                        aria-label="删除参考图像" data-icon="inline-start">
                     <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
                 </Button>
             </div>
@@ -1124,7 +1123,7 @@ function RecognitionCardEditor({
     onRemoveAudioFile: (fileIndex: number) => void;
     onMoveAudioFile: (fileIndex: number, direction: -1 | 1) => void;
     onUpdateComboWindow: (fileIndex: number, value: string) => void;
-    onLoadReferencePreview: (imageIndex: number) => Promise<string | null>;
+    onLoadReferencePreview: (path: string) => Promise<string | null>;
     onTestColorMatch: () => void;
     onAddColorProbe: () => void;
     onRemoveColorProbe: (probeIndex: number) => void;
@@ -1380,7 +1379,7 @@ function RecognitionCardEditor({
                                             isNativeShell={isNativeShell}
                                             onChange={(value) => onUpdateReferenceImage(imageIndex, value)}
                                             onRemove={() => onRemoveReferenceImage(imageIndex)}
-                                            onLoadPreview={() => onLoadReferencePreview(imageIndex)}
+                                            onLoadPreview={() => onLoadReferencePreview(path)}
                                         />
                                     ))}
                                     <div className="flex gap-2">

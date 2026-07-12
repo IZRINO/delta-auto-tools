@@ -673,24 +673,9 @@ pub async fn recognition_test_color_match(
 #[tauri::command]
 pub fn recognition_read_reference_image(
     _app: tauri::AppHandle,
-    state: tauri::State<'_, RecognitionState>,
-    card_id: String,
-    reference_image_index: Option<usize>,
+    reference_image_path: String,
 ) -> Result<String, AppError> {
-    let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-    let card = inner
-        .settings
-        .cards
-        .iter()
-        .find(|c| c.id == card_id)
-        .ok_or_else(|| AppError::from("卡片不存在".to_string()))?;
-
-    let ref_path = card
-        .watch_reference_image_paths
-        .get(reference_image_index.unwrap_or(0))
-        .ok_or_else(|| AppError::from("未设置参考图像".to_string()))?;
-
-    watcher::read_reference_image_as_data_url(ref_path)
+    watcher::read_reference_image_as_data_url(&reference_image_path)
         .ok_or_else(|| AppError::from("无法读取参考图像".to_string()))
 }
 

@@ -80,7 +80,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 | `recognition_test_play` | 测试当前音频效果 |
 | `recognition_test_match` | RegionWatch 匹配测试 |
 | `recognition_test_color_match` | ColorWatch 匹配测试 |
-| `recognition_read_reference_image` | 按卡片和参考图下标读取 data URL |
+| `recognition_read_reference_image` | 按当前参考图路径读取 data URL；预览不触发 settings 落盘或 watcher 重启 |
 
 ## 事件
 
