@@ -532,42 +532,15 @@ mod tests {
     fn maps_real_willhook_symbol_variants_to_primary_keys() {
         use willhook::event::KeyboardKey;
 
-        assert_eq!(
-            to_primary_key(KeyboardKey::Comma),
-            Some(PrimaryKey::Named(NamedKey::Comma))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::Period),
-            Some(PrimaryKey::Named(NamedKey::Period))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::Slash),
-            Some(PrimaryKey::Named(NamedKey::Slash))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::SemiColon),
-            Some(PrimaryKey::Named(NamedKey::Semicolon))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::Apostrophe),
-            Some(PrimaryKey::Named(NamedKey::Quote))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::LeftBrace),
-            Some(PrimaryKey::Named(NamedKey::BracketLeft))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::BackwardSlash),
-            Some(PrimaryKey::Named(NamedKey::Backslash))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::RightBrace),
-            Some(PrimaryKey::Named(NamedKey::BracketRight))
-        );
-        assert_eq!(
-            to_primary_key(KeyboardKey::Grave),
-            Some(PrimaryKey::Named(NamedKey::Backquote))
-        );
+        assert_eq!(to_primary_key(KeyboardKey::Comma), Some(PrimaryKey::Named(NamedKey::Comma)));
+        assert_eq!(to_primary_key(KeyboardKey::Period), Some(PrimaryKey::Named(NamedKey::Period)));
+        assert_eq!(to_primary_key(KeyboardKey::Slash), Some(PrimaryKey::Named(NamedKey::Slash)));
+        assert_eq!(to_primary_key(KeyboardKey::SemiColon), Some(PrimaryKey::Named(NamedKey::Semicolon)));
+        assert_eq!(to_primary_key(KeyboardKey::Apostrophe), Some(PrimaryKey::Named(NamedKey::Quote)));
+        assert_eq!(to_primary_key(KeyboardKey::LeftBrace), Some(PrimaryKey::Named(NamedKey::BracketLeft)));
+        assert_eq!(to_primary_key(KeyboardKey::BackwardSlash), Some(PrimaryKey::Named(NamedKey::Backslash)));
+        assert_eq!(to_primary_key(KeyboardKey::RightBrace), Some(PrimaryKey::Named(NamedKey::BracketRight)));
+        assert_eq!(to_primary_key(KeyboardKey::Grave), Some(PrimaryKey::Named(NamedKey::Backquote)));
     }
 
     #[test]
