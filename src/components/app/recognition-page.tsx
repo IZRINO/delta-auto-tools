@@ -1157,6 +1157,20 @@ function RecognitionCardEditor({
                                 </Select>
                             </FieldContent>
                         </Field>
+                        {(card.activationMode ?? "always") === "always" && (
+                            <Field>
+                                <FieldLabel>重复触发</FieldLabel>
+                                <FieldContent>
+                                    <label className="flex items-center gap-2 border border-base-300 bg-base-100 px-2 py-2 text-xs font-medium">
+                                        <Switch
+                                            checked={card.retriggerAfterDisappear ?? false}
+                                            onCheckedChange={(checked) => onUpdate({retriggerAfterDisappear: checked})}
+                                        />
+                                        目标消失后再触发
+                                    </label>
+                                </FieldContent>
+                            </Field>
+                        )}
                         {(card.activationMode ?? "always") !== "always" && (
                             <HotkeyField
                                 controlsDisabled={!isNativeShell}
@@ -1842,6 +1856,7 @@ function cardToForm(card: RecognitionCard): RecognitionSettingsForm["cards"][num
         watchReferenceImagePath: card.watchReferenceImagePath ?? "",
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
+        retriggerAfterDisappear: card.retriggerAfterDisappear ?? false,
         activationMode: activation.mode,
         activationHotkey: activation.hotkey ?? "",
         activationDurationMs: String(activation.durationMs),

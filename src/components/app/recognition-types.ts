@@ -141,7 +141,7 @@ export type RecognitionCardForm = {
     watchReferenceImagePath: string;
     watchMatchThreshold: string;
     watchPollIntervalMs: string;
-    retriggerAfterDisappear: boolean;
+    retriggerAfterDisappear?: boolean;
     activationMode?: RecognitionActivationMode;
     activationHotkey?: string;
     activationDurationMs?: string;
