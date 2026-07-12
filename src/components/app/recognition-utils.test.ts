@@ -23,6 +23,7 @@ function draftCard(overrides: Partial<RecognitionCardForm> = {}): RecognitionCar
         watchReferenceImagePath: "",
         watchMatchThreshold: "0.75",
         watchPollIntervalMs: "500",
+        retriggerAfterDisappear: false,
         activationMode: "always",
         activationHotkey: "",
         activationDurationMs: "10000",
@@ -85,6 +86,37 @@ describe("recognition-utils", () => {
             expect(form.cards[0].watchPollIntervalMs).toBe("1000");
             expect(form.cards[0].hotkey).toBe("Ctrl+F1");
             expect(form.cards[0].allowSimultaneous).toBe(false);
+        });
+
+        it("旧卡片缺少消失后重触发字段时默认关闭", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{
+                    ...DEFAULT_RECOGNITION_CARD,
+                    id: "legacy",
+                    name: "旧卡片",
+                    enabled: false,
+                }],
+            });
+
+            expect(Reflect.get(form.cards[0], "retriggerAfterDisappear")).toBe(false);
+        });
+
+        it("消失后重触发字段在 settings 和 form 间保持 true", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{
+                    ...DEFAULT_RECOGNITION_CARD,
+                    id: "edge",
+                    name: "边沿触发",
+                    enabled: false,
+                    triggerMode: "regionWatch",
+                    retriggerAfterDisappear: true,
+                }],
+            });
+
+            expect(Reflect.get(form.cards[0], "retriggerAfterDisappear")).toBe(true);
+            expect(Reflect.get(parseSettingsForm(form).cards[0], "retriggerAfterDisappear")).toBe(true);
         });
 
         it("migrates legacy audio fields into audio effect form", () => {
@@ -1129,6 +1161,7 @@ describe("recognition-utils", () => {
                 watchReferenceImagePath: "",
                 watchMatchThreshold: "0.9",
                 watchPollIntervalMs: "500",
+                retriggerAfterDisappear: false,
                 audioFiles: ["only.mp3"],
                 playMode: "combo",
                 comboWindowMs: "60000",

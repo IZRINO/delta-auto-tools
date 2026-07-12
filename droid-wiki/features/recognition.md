@@ -100,7 +100,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - Profile snapshot：字段 `recognition`；旧 `audio` 字段通过 serde alias 迁移。
 ## 当前行为补充
 
-- `always` 常驻 RegionWatch / ColorWatch 按 `watchPollIntervalMs` 持续检查，但只在“未命中 → 命中”上升沿执行效果；目标持续命中不会重复触发，明确未命中后重新武装。截图失败不视为目标消失，`cooldownMs` 继续限制不同上升沿的最短触发间隔。
+- `always` 常驻 RegionWatch / ColorWatch 按 `watchPollIntervalMs` 持续检查。“目标消失后再触发”默认关闭：持续命中时按 `cooldownMs` 周期触发；开启后同一命中区间只触发一次，连续 2 次未命中后重新武装。截图失败不计入未命中，`cooldownMs` 继续限制实际触发间隔。
 - 禁用卡片或禁用分组中的卡片可保存未完成草稿；重新启用时恢复快捷键、激活方式和效果完整性校验。
 - `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。

@@ -188,6 +188,7 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
         watchReferenceImagePath: card.watchReferenceImagePath ?? "",
         watchMatchThreshold: String(card.watchMatchThreshold),
         watchPollIntervalMs: String(card.watchPollIntervalMs),
+        retriggerAfterDisappear: card.retriggerAfterDisappear ?? false,
         activationMode: activation.mode ?? "always",
         activationHotkey: activation.hotkey ?? "",
         activationDurationMs: String(activation.durationMs ?? 10000),
@@ -329,6 +330,7 @@ function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCar
         watchReferenceImagePath: form.triggerMode === "regionWatch" ? form.watchReferenceImagePath.trim() || null : null,
         watchMatchThreshold,
         watchPollIntervalMs,
+        retriggerAfterDisappear: form.retriggerAfterDisappear ?? false,
         activation: {
             mode: activationMode,
             hotkey: activationHotkey,

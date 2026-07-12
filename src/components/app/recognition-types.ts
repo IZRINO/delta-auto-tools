@@ -92,6 +92,7 @@ export type RecognitionCard = {
     watchReferenceImagePath: string | null;
     watchMatchThreshold: number;
     watchPollIntervalMs: number;
+    retriggerAfterDisappear?: boolean;
     activation?: RecognitionActivation | null;
     effects?: RecognitionEffects | null;
     cooldownMs: number;
@@ -140,6 +141,7 @@ export type RecognitionCardForm = {
     watchReferenceImagePath: string;
     watchMatchThreshold: string;
     watchPollIntervalMs: string;
+    retriggerAfterDisappear?: boolean;
     activationMode?: RecognitionActivationMode;
     activationHotkey?: string;
     activationDurationMs?: string;
@@ -176,6 +178,7 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     watchReferenceImagePath: null,
     watchMatchThreshold: 0.75,
     watchPollIntervalMs: 500,
+    retriggerAfterDisappear: false,
     activation: {mode: "always", hotkey: null, durationMs: 10000, triggerCount: 1},
     effects: {
         audio: {
