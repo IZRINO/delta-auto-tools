@@ -845,10 +845,22 @@ mod tests {
         let mut gate = MatchGate::new(true);
 
         assert!(gate.observe(MatchObservation::Matched, 0, start));
-        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(1));
+        gate.observe(
+            MatchObservation::NotMatched,
+            0,
+            start + Duration::from_secs(1),
+        );
         assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(2)));
-        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(3));
-        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(4));
+        gate.observe(
+            MatchObservation::NotMatched,
+            0,
+            start + Duration::from_secs(3),
+        );
+        gate.observe(
+            MatchObservation::NotMatched,
+            0,
+            start + Duration::from_secs(4),
+        );
         assert!(gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(5)));
     }
 
@@ -858,8 +870,16 @@ mod tests {
         let mut gate = MatchGate::new(true);
 
         assert!(gate.observe(MatchObservation::Matched, 0, start));
-        gate.observe(MatchObservation::NotMatched, 0, start + Duration::from_secs(1));
-        gate.observe(MatchObservation::CaptureFailed, 0, start + Duration::from_secs(2));
+        gate.observe(
+            MatchObservation::NotMatched,
+            0,
+            start + Duration::from_secs(1),
+        );
+        gate.observe(
+            MatchObservation::CaptureFailed,
+            0,
+            start + Duration::from_secs(2),
+        );
         assert!(!gate.observe(MatchObservation::Matched, 0, start + Duration::from_secs(3)));
     }
 
@@ -869,10 +889,26 @@ mod tests {
         let mut gate = MatchGate::new(true);
 
         assert!(gate.observe(MatchObservation::Matched, 5000, start));
-        gate.observe(MatchObservation::NotMatched, 5000, start + Duration::from_secs(1));
-        gate.observe(MatchObservation::NotMatched, 5000, start + Duration::from_secs(2));
-        assert!(!gate.observe(MatchObservation::Matched, 5000, start + Duration::from_secs(3)));
-        assert!(!gate.observe(MatchObservation::Matched, 5000, start + Duration::from_secs(6)));
+        gate.observe(
+            MatchObservation::NotMatched,
+            5000,
+            start + Duration::from_secs(1),
+        );
+        gate.observe(
+            MatchObservation::NotMatched,
+            5000,
+            start + Duration::from_secs(2),
+        );
+        assert!(!gate.observe(
+            MatchObservation::Matched,
+            5000,
+            start + Duration::from_secs(3)
+        ));
+        assert!(!gate.observe(
+            MatchObservation::Matched,
+            5000,
+            start + Duration::from_secs(6)
+        ));
     }
 
     #[test]
