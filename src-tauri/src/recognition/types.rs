@@ -99,6 +99,9 @@ pub struct RecognitionCard {
     pub watch_match_threshold: f32,
     #[serde(default = "default_watch_poll_interval_ms")]
     pub watch_poll_interval_ms: u32,
+    /// 常驻识别是否等待目标消失后再触发。
+    #[serde(default)]
+    pub retrigger_after_disappear: bool,
     #[serde(default)]
     pub activation: RecognitionActivation,
     #[serde(default)]
@@ -569,6 +572,7 @@ mod tests {
             watch_reference_image_path: None,
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
+            retrigger_after_disappear: false,
             activation: RecognitionActivation::default(),
             effects: RecognitionEffects {
                 audio: Some(RecognitionAudioEffect {
@@ -660,5 +664,20 @@ mod tests {
     #[test]
     fn color_match_method_default_value_is_average_enum() {
         assert_eq!(ColorMatchMethod::default(), ColorMatchMethod::Average);
+    }
+
+    #[test]
+    fn recognition_card_retrigger_defaults_false_and_serializes_camel_case() {
+        let mut card: RecognitionCard = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "name": "旧卡片"
+        }))
+        .expect("旧卡片应可反序列化");
+
+        assert!(!card.retrigger_after_disappear);
+
+        card.retrigger_after_disappear = true;
+        let value = serde_json::to_value(card).expect("卡片应可序列化");
+        assert_eq!(value["retriggerAfterDisappear"], true);
     }
 }

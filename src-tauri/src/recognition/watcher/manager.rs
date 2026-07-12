@@ -893,6 +893,7 @@ mod tests {
             watch_reference_image_path: Some("ref.png".into()),
             watch_match_threshold: 0.75,
             watch_poll_interval_ms: 500,
+            retrigger_after_disappear: false,
             activation: crate::recognition::types::RecognitionActivation::default(),
             effects: crate::recognition::types::RecognitionEffects::default(),
             audio_files: Vec::new(),
