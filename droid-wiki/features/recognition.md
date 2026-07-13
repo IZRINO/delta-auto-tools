@@ -28,18 +28,18 @@ src-tauri/src/recognition/
 |------|------|
 | `RecognitionSettings` | 总开关 `recognition_enabled` + `card_groups` + 卡片列表，落盘为 `recognition_settings.json` |
 | `RecognitionGroup` | 识别卡片分组，包含 `id`、`name`、`order`、`collapsed`、`enabled`；旧配置会补 `default-recognition-group` 且旧分组默认启用 |
-| `RecognitionCard` | 分组归属 `group_id`、排序 `order`、触发来源、激活方式、效果配置、冷却、识色探针 |
+| `RecognitionCard` | 分组归属 `group_id`、排序 `order`、触发来源、激活方式、效果配置、冷却、RegionWatch 参考图列表、识色探针 |
 | `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey`；Hotkey 来源不使用 activation |
 | `RecognitionEffects` | 每卡最多一个音频效果、一个按键效果、一个点击效果 |
 | `RecognitionAudioEffect` | 音频文件、Single/Combo/Random、音量、并发策略 |
 | `RecognitionClickEffect` | 自定义区域中心或识别命中中心；ColorWatch 需显式选择 probe |
 
-旧 `audioEnabled`、`audioFiles`、`playMode`、`volume`、`comboWindows`、`allowSimultaneous` 会在 `normalize_settings` 中迁移到新字段。
+旧 `audioEnabled`、`audioFiles`、`playMode`、`volume`、`comboWindows`、`allowSimultaneous` 会在 `normalize_settings` 中迁移到新字段。旧单值 `watchReferenceImagePath` 会在反序列化时迁移为 `watchReferenceImagePaths` 单元素列表。
 
 ## 触发来源
 
 1. **Hotkey**：`restart_hotkey_listeners` 在 scope `"recognition"` 注册触发热键，命中后调用 `effects::spawn_execute(...TriggerContext::Hotkey)`。
-2. **RegionWatch**：`watcher::run_region_watcher` 轮询截图，与参考图做 RGB NCC 模板匹配；命中后传入模板中心坐标。
+2. **RegionWatch**：`watcher::run_region_watcher` 轮询截图，逐个与 `watchReferenceImagePaths` 中参考图做 RGB NCC 模板匹配；任一参考图达到阈值即命中，使用最高相似度参考图计算模板中心坐标。
 3. **ColorWatch**：`watcher::run_color_watcher` 轮询 probe，按 Average 或 AnyPixel 匹配目标色；命中后传入命中 probe 的中心坐标。
 
 RegionWatch / ColorWatch 可选激活方式：
@@ -65,7 +65,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - `customRegion`：点击自定义区域中心。
 - `customRegion` 支持草稿态：启用点击效果但尚未框选区域时，配置可保存，便于打开框选 overlay；实际触发时没有点击坐标，会跳过点击。
 - RegionWatch `recognitionRegion`：点击模板命中中心。
-- ColorWatch `recognitionRegion`：只在显式选择的 probe 命中时点击；未命中则跳过点击，其他效果照常执行。
+- ColorWatch `recognitionRegion`：只在显式选择的 probe 命中时点击；`anyPixel` 点击该 probe 内与目标色距离最小的实际命中像素，`average` 点击 probe 区域中心。指定 probe 未命中时跳过点击，其他效果照常执行。
 
 ## Tauri Commands
 
@@ -80,7 +80,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 | `recognition_test_play` | 测试当前音频效果 |
 | `recognition_test_match` | RegionWatch 匹配测试 |
 | `recognition_test_color_match` | ColorWatch 匹配测试 |
-| `recognition_read_reference_image` | 读取参考图 data URL |
+| `recognition_read_reference_image` | 按当前参考图路径读取 data URL；预览不触发 settings 落盘或 watcher 重启 |
 
 ## 事件
 
@@ -100,6 +100,9 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - Profile snapshot：字段 `recognition`；旧 `audio` 字段通过 serde alias 迁移。
 ## 当前行为补充
 
+- `always` 常驻 RegionWatch / ColorWatch 按 `watchPollIntervalMs` 持续检查。“目标消失后再触发”默认关闭：持续命中时按 `cooldownMs` 周期触发；开启后同一命中区间只触发一次，连续 2 次未命中后重新武装。截图失败不计入未命中，`cooldownMs` 继续限制实际触发间隔。
+- RegionWatch 支持多参考图；文件选择器可多选，也可逐项输入、删除和预览。无法加载的单个参考图会跳过；全部参考图均无法加载时 watcher 不启动。
+- 禁用卡片或禁用分组中的卡片可保存未完成草稿；重新启用时恢复快捷键、激活方式和效果完整性校验。
 - `RecognitionActivation` 的 `timedHotkey` 支持 `triggerCount`，默认 `1`；会话在限时内命中 N 次或超时后结束。
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
 - 识别触发的监听热键、激活热键和按键效果热键支持字母、数字、F1-F24、方向键，以及 `,`、`.`、`;`、`/`、`\`、`[`、`]`、`-`、`=`、`+`、`` ` ``、`'` 等符号；配置以 ASCII 物理键持久化，录制中文/全角标点时会归一到对应物理键，例如 `，` -> `,`、`。` -> `.`。

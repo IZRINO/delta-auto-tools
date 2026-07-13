@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。四个原生能力模块：Morse
-摩斯识别、计时器、计数器、连发器。外加攻略网站工作台。
+Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力包括 Morse
+摩斯识别、计时器、计数器、连发器、识别触发；识别触发支持快捷键、多参考图区域匹配、多区域识色。外加攻略网站工作台。
 
 ## Commands
 
@@ -155,6 +155,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | timer        | `src-tauri/src/timer/`          | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic>                                     |
 | counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，计数器运行态独立持久化；CounterState 包装 ToolState<CounterLogic>                                   |
 | rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距；RapidfireState = ToolState<RapidfireLogic>       |
+| recognition  | `src-tauri/src/recognition/`    | 快捷键、多参考图区域匹配、多区域识色三种触发来源；执行音频、按键、点击效果                                                   |
 | hotkeys      | `src-tauri/src/hotkeys.rs`      | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy）                           |
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |
 | strategy     | `src-tauri/src/strategy/`       | 兼容入口：`strategy_open_window` 创建子 WebView，`strategy_fetch_page` Chrome 头抓取+JS 重定向跟随               |

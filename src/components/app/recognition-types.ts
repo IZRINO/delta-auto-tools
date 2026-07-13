@@ -89,9 +89,12 @@ export type RecognitionCard = {
     triggerMode: RecognitionTriggerMode;
     hotkey: string | null;
     watchRegion: RegionRect | null;
-    watchReferenceImagePath: string | null;
+    watchReferenceImagePaths?: string[];
+    /** 旧配置兼容；加载时迁移到 watchReferenceImagePaths。 */
+    watchReferenceImagePath?: string | null;
     watchMatchThreshold: number;
     watchPollIntervalMs: number;
+    retriggerAfterDisappear?: boolean;
     activation?: RecognitionActivation | null;
     effects?: RecognitionEffects | null;
     cooldownMs: number;
@@ -137,9 +140,12 @@ export type RecognitionCardForm = {
     triggerMode: RecognitionTriggerMode;
     hotkey: string;
     watchRegion: RegionRect | null;
-    watchReferenceImagePath: string;
+    watchReferenceImagePaths?: string[];
+    /** 旧表单兼容；保存时迁移到 watchReferenceImagePaths。 */
+    watchReferenceImagePath?: string;
     watchMatchThreshold: string;
     watchPollIntervalMs: string;
+    retriggerAfterDisappear?: boolean;
     activationMode?: RecognitionActivationMode;
     activationHotkey?: string;
     activationDurationMs?: string;
@@ -173,9 +179,10 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     triggerMode: "hotkey",
     hotkey: null,
     watchRegion: null,
-    watchReferenceImagePath: null,
+    watchReferenceImagePaths: [],
     watchMatchThreshold: 0.75,
     watchPollIntervalMs: 500,
+    retriggerAfterDisappear: false,
     activation: {mode: "always", hotkey: null, durationMs: 10000, triggerCount: 1},
     effects: {
         audio: {

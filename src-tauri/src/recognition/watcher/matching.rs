@@ -68,6 +68,18 @@ pub(crate) fn compare_images(
     template_match(screenshot, reference)
 }
 
+/// 比较多个参考图，返回相似度最高的参考图下标与结果。
+pub(crate) fn best_reference_match<'a>(
+    screenshot: &image::DynamicImage,
+    references: impl IntoIterator<Item = &'a image::DynamicImage>,
+) -> Option<(usize, CompareResult)> {
+    references
+        .into_iter()
+        .enumerate()
+        .map(|(index, reference)| (index, compare_images(screenshot, reference)))
+        .max_by(|(_, left), (_, right)| left.similarity.total_cmp(&right.similarity))
+}
+
 /// 滑动窗口模板匹配（含多尺度加速）
 fn template_match(
     screenshot: &image::DynamicImage,
@@ -401,8 +413,14 @@ pub(crate) struct ColorMatchResult {
     pub matched: bool,
     /// 命中的 probe 数量
     pub hit_count: usize,
-    /// 命中的 probe 索引
-    pub matched_indices: Vec<usize>,
+    /// 命中的 probe 与局部像素坐标
+    pub matched_probes: Vec<MatchedColorProbe>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MatchedColorProbe {
+    pub index: usize,
+    pub match_position: Option<(u32, u32)>,
 }
 
 /// 计算两个 RGB 颜色的欧氏距离
@@ -451,11 +469,13 @@ pub(crate) struct PixelScanResult {
     pub nearest_color: [u8; 3],
     /// nearest_color 与目标的欧氏距离
     pub nearest_distance: f32,
+    /// 容差内与目标色距离最小的像素坐标
+    pub match_position: Option<(u32, u32)>,
 }
 
 /// 扫描区域，返回命中像素数与最接近目标色的像素。
 ///
-/// - `count_only=true`：命中首个像素即早退，`matching_count` 至多为 1（watcher 用，性能优先）。
+/// - `count_only=true`：精确命中（距离 0）时早退；非精确命中全扫以选择距离最小的像素。
 /// - `count_only=false`：全扫，`matching_count` 为真实命中数（test 用，调试优先）。
 ///
 /// `nearest_color`/`nearest_distance` 始终为全图最接近目标的像素（命中时即目标色本身，距离 0）。
@@ -471,6 +491,8 @@ pub(crate) fn scan_region_for_color(
     let mut matching_count: usize = 0;
     let mut nearest_color: [u8; 3] = [0, 0, 0];
     let mut nearest_distance: f32 = f32::INFINITY;
+    let mut best_match_distance = f32::INFINITY;
+    let mut match_position = None;
 
     for y in 0..h {
         for x in 0..w {
@@ -486,12 +508,16 @@ pub(crate) fn scan_region_for_color(
             }
             if dist <= tolerance {
                 matching_count += 1;
-                if count_only {
-                    // 早退：nearest 已更新为目标色（距离 0）
+                if dist < best_match_distance {
+                    best_match_distance = dist;
+                    match_position = Some((x, y));
+                }
+                if count_only && dist == 0.0 {
                     return PixelScanResult {
                         matching_count,
                         nearest_color,
                         nearest_distance,
+                        match_position,
                     };
                 }
             }
@@ -507,6 +533,7 @@ pub(crate) fn scan_region_for_color(
         matching_count,
         nearest_color,
         nearest_distance,
+        match_position,
     }
 }
 
@@ -525,6 +552,8 @@ pub(crate) struct ProbeHit {
     pub tolerance: u8,
     /// anyPixel 命中像素数（聚合摘要，取最近目标的）；average 恒 0
     pub matching_pixel_count: usize,
+    /// anyPixel 实际命中像素坐标；average 为 None
+    pub match_position: Option<(u32, u32)>,
 }
 
 /// 单个目标颜色的命中详情（供 test 命令与多目标聚合使用）
@@ -536,11 +565,12 @@ pub(crate) struct TargetHit {
     pub sampled_color: [u8; 3],
     pub distance: f32,
     pub matching_pixel_count: usize,
+    pub match_position: Option<(u32, u32)>,
 }
 
 /// 单探针内多目标判定：对 `probe.targets` 每个目标分别按 method 判定，返回每个目标的命中详情。
 ///
-/// - `count_only=true`：anyPixel 命中即早退（watcher 用，性能优先）。
+/// - `count_only=true`：anyPixel 精确命中时早退，非精确命中全扫以保留最佳坐标。
 /// - `count_only=false`：全扫拿真实命中数与最近像素（test 用，调试优先）。
 ///
 /// 返回值顺序与 `probe.targets` 一致。
@@ -562,6 +592,7 @@ pub(crate) fn probe_hit_targets(
                 sampled_color: hit.sampled_color,
                 distance: hit.distance,
                 matching_pixel_count: hit.matching_pixel_count,
+                match_position: hit.match_position,
             }
         })
         .collect()
@@ -573,6 +604,7 @@ struct SingleTargetHit {
     sampled_color: [u8; 3],
     distance: f32,
     matching_pixel_count: usize,
+    match_position: Option<(u32, u32)>,
 }
 
 /// 单探针对单个 `ColorTarget` 的判定：按 method 计算 sampled 与目标色的距离。
@@ -591,6 +623,7 @@ fn probe_hit_single_target(
                 sampled_color: avg,
                 distance: dist,
                 matching_pixel_count: 0,
+                match_position: None,
             }
         }
         ColorMatchMethod::AnyPixel => {
@@ -605,6 +638,7 @@ fn probe_hit_single_target(
                 sampled_color: scan.nearest_color,
                 distance: scan.nearest_distance,
                 matching_pixel_count: scan.matching_count,
+                match_position: scan.match_position,
             }
         }
     }
@@ -626,6 +660,7 @@ fn aggregate_probe_hits(hits: &[TargetHit], probe_match_mode: ColorMatchMode) ->
             target_color: [0, 0, 0],
             tolerance: 0,
             matching_pixel_count: 0,
+            match_position: None,
         };
     }
     let hit_count = hits.iter().filter(|h| h.matched).count();
@@ -642,6 +677,15 @@ fn aggregate_probe_hits(hits: &[TargetHit], probe_match_mode: ColorMatchMode) ->
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .unwrap();
+    let match_position = hits
+        .iter()
+        .filter(|hit| hit.matched)
+        .min_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .and_then(|hit| hit.match_position);
     ProbeHit {
         matched,
         sampled_color: nearest.sampled_color,
@@ -649,6 +693,7 @@ fn aggregate_probe_hits(hits: &[TargetHit], probe_match_mode: ColorMatchMode) ->
         target_color: nearest.target_color,
         tolerance: nearest.tolerance,
         matching_pixel_count: nearest.matching_pixel_count,
+        match_position,
     }
 }
 
@@ -662,7 +707,7 @@ pub(crate) fn aggregate_probe_hits_pub(
 
 /// 单探针判定：对 `probe.targets` 按 `probe.probe_match_mode` 聚合后返回探针级摘要。
 ///
-/// - `count_only=true`：anyPixel 命中即早退（watcher 用，性能优先）。
+/// - `count_only=true`：anyPixel 精确命中时早退，非精确命中全扫以保留最佳坐标。
 /// - `count_only=false`：全扫拿真实命中数与最近像素（test 用，调试优先）。
 pub(crate) fn probe_hit(
     screenshot: &image::DynamicImage,
@@ -685,15 +730,19 @@ pub(crate) fn match_color_probes(
         return ColorMatchResult {
             matched: false,
             hit_count: 0,
-            matched_indices: Vec::new(),
+            matched_probes: Vec::new(),
         };
     }
     let mut hit_count = 0usize;
-    let mut matched_indices = Vec::new();
+    let mut matched_probes = Vec::new();
     for (i, probe) in probes.iter().enumerate() {
-        if probe_hit(&screenshots[i], probe, method.clone(), true).matched {
+        let hit = probe_hit(&screenshots[i], probe, method.clone(), true);
+        if hit.matched {
             hit_count += 1;
-            matched_indices.push(i);
+            matched_probes.push(MatchedColorProbe {
+                index: i,
+                match_position: hit.match_position,
+            });
         }
     }
     let matched = match mode {
@@ -703,6 +752,6 @@ pub(crate) fn match_color_probes(
     ColorMatchResult {
         matched,
         hit_count,
-        matched_indices,
+        matched_probes,
     }
 }

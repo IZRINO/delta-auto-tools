@@ -12,15 +12,15 @@ pub(crate) mod matching;
 // Re-export 公开接口，保持与旧 watcher.rs 兼容的导入路径
 pub(crate) use capture::{capture_region, load_reference_image, read_reference_image_as_data_url};
 pub(crate) use manager::{restart_watchers, start_activation_session, stop_all_watchers};
-pub(crate) use matching::{aggregate_probe_hits_pub, compare_images, probe_hit_targets};
+pub(crate) use matching::{aggregate_probe_hits_pub, best_reference_match, probe_hit_targets};
 
 #[cfg(test)]
 mod tests {
     use super::capture::base64_encode;
     use super::manager::watcher_should_run;
     use super::matching::{
-        average_region_rgb, color_distance, compare_images, match_color_probes, probe_hit,
-        scan_region_for_color,
+        average_region_rgb, best_reference_match, color_distance, compare_images,
+        match_color_probes, probe_hit, scan_region_for_color,
     };
     use crate::morse::types::RegionRect;
     use crate::recognition::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
@@ -176,6 +176,28 @@ mod tests {
             "最佳匹配 Y 坐标应接近 20，实际 {}",
             result.best_y
         );
+    }
+
+    #[test]
+    fn best_reference_match_returns_highest_similarity_reference() {
+        let screenshot =
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, Rgba([120, 80, 40, 255])));
+        let references = vec![
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 255]))),
+            screenshot.clone(),
+        ];
+
+        let (index, result) = best_reference_match(&screenshot, &references).unwrap();
+
+        assert_eq!(index, 1);
+        assert!(result.similarity > 0.99);
+    }
+
+    #[test]
+    fn best_reference_match_returns_none_without_references() {
+        let screenshot = DynamicImage::ImageRgba8(RgbaImage::new(8, 8));
+
+        assert!(best_reference_match(&screenshot, &[]).is_none());
     }
 
     #[test]
@@ -611,6 +633,77 @@ mod tests {
         let dyn_img = DynamicImage::ImageRgba8(img);
         let result = scan_region_for_color(&dyn_img, [100, 100, 100], 10.0, false);
         assert!(result.matching_count >= 1, "距离恰等于容差应命中");
+    }
+
+    #[test]
+    fn any_pixel_returns_closest_matching_position() {
+        let mut img = RgbaImage::from_pixel(3, 3, Rgba([0, 0, 0, 255]));
+        img.put_pixel(0, 2, Rgba([105, 100, 100, 255]));
+        img.put_pixel(2, 0, Rgba([101, 100, 100, 255]));
+        let result =
+            scan_region_for_color(&DynamicImage::ImageRgba8(img), [100, 100, 100], 10.0, true);
+
+        assert_eq!(result.match_position, Some((2, 0)));
+    }
+
+    #[test]
+    fn match_color_probes_keeps_match_position() {
+        let mut img = RgbaImage::from_pixel(3, 3, Rgba([0, 0, 0, 255]));
+        img.put_pixel(1, 2, Rgba([100, 100, 100, 255]));
+        let probes = vec![ColorProbe {
+            region: Some(RegionRect {
+                x: 10,
+                y: 20,
+                width: 3,
+                height: 3,
+            }),
+            targets: vec![ColorTarget {
+                color: [100, 100, 100],
+                tolerance: 0,
+            }],
+            probe_match_mode: ColorMatchMode::Any,
+            legacy_target_color: None,
+            legacy_tolerance: None,
+        }];
+        let result = match_color_probes(
+            &[DynamicImage::ImageRgba8(img)],
+            &probes,
+            ColorMatchMode::All,
+            ColorMatchMethod::AnyPixel,
+        );
+
+        assert_eq!(result.matched_probes[0].match_position, Some((1, 2)));
+    }
+
+    #[test]
+    fn multi_target_probe_uses_closest_matched_position() {
+        let mut img = RgbaImage::from_pixel(3, 1, Rgba([0, 0, 0, 255]));
+        img.put_pixel(0, 0, Rgba([102, 0, 0, 255]));
+        img.put_pixel(2, 0, Rgba([0, 100, 0, 255]));
+        let image = DynamicImage::ImageRgba8(img);
+
+        for probe_match_mode in [ColorMatchMode::Any, ColorMatchMode::All] {
+            let probe = ColorProbe {
+                region: None,
+                targets: vec![
+                    ColorTarget {
+                        color: [100, 0, 0],
+                        tolerance: 5,
+                    },
+                    ColorTarget {
+                        color: [0, 100, 0],
+                        tolerance: 0,
+                    },
+                ],
+                probe_match_mode,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            };
+
+            let hit = probe_hit(&image, &probe, ColorMatchMethod::AnyPixel, true);
+            assert!(hit.matched);
+            assert_eq!(hit.match_position, Some((2, 0)));
+        }
     }
 
     // ---- probe_hit ----
