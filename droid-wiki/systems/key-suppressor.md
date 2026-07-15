@@ -27,11 +27,13 @@ KeySuppressor 不在启动时安装。仅当连发器卡片启用 `ignore_trigge
 3. worker 线程将吞噬的事件通过 crossbeam channel 转发给热键监听线程
 4. 热键监听线程通过共享 `VkBitset` 过滤 willhook 的重复事件（同一物理事件不会被两个钩子各处理一次）
 
-钩子 callback 不获取 `Mutex`，也不执行阻塞发送。channel 满时仍返回 `1` 吞键，`dropped_events` 递增并丢弃本次转发事件。
+进程级 `CALLBACK_CONTEXT` 是可替换的 `RwLock<Option<Arc<CallbackContext>>>`。每次安装 hook 前写入当前 `VkBitset`、sender 和丢弃计数；安装失败或卸载后仅在 slot 仍指向自身时清理，避免旧 worker 清除新 context。钩子 callback 只调用 `try_read`，不获取 `Mutex`，锁竞争时立即放行；持有的 `Arc` 保证读取期间 context 不被释放。
+
+callback 不执行阻塞发送。channel 满时仍返回 `1` 吞键，`dropped_events` 递增并丢弃本次转发事件。
 
 ### 清理
 
-当所有 `ignore_trigger_key` 卡片被禁用或删除时，`stop_suppressor()` 只清空 `VkBitset`，保留 hook、sender 和 receiver。后续启用会复用同一实例与 callback context。`HotkeyManager` drop 时最终卸载 hook 并 join KeySuppressor worker。
+当所有 `ignore_trigger_key` 卡片被禁用或删除时，`stop_suppressor()` 只清空 `VkBitset`，保留 hook、sender 和 receiver。后续启用会复用同一实例与 callback context。`HotkeyManager` drop 时最终卸载 hook、清理对应 callback context 并 join KeySuppressor worker；新 manager 安装时会替换 slot，不会读取旧实例的 bitset 或 sender。
 
 ## 关键抽象
 

@@ -10,6 +10,8 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::sync::{OnceLock, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -83,6 +85,64 @@ fn try_forward_suppressed_event(
         }
         result => result,
     }
+}
+
+#[cfg(target_os = "windows")]
+struct CallbackContext {
+    suppressed_keys: Arc<VkBitset>,
+    event_sender: Sender<SuppressedKeyboardEvent>,
+    dropped_events: Arc<AtomicU64>,
+}
+
+#[cfg(target_os = "windows")]
+type CallbackContextSlot = RwLock<Option<Arc<CallbackContext>>>;
+
+#[cfg(target_os = "windows")]
+static CALLBACK_CONTEXT: OnceLock<CallbackContextSlot> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+fn callback_context_slot() -> &'static CallbackContextSlot {
+    CALLBACK_CONTEXT.get_or_init(|| RwLock::new(None))
+}
+
+#[cfg(target_os = "windows")]
+fn replace_callback_context(slot: &CallbackContextSlot, context: Arc<CallbackContext>) {
+    let mut current = slot.write().unwrap_or_else(|error| error.into_inner());
+    *current = Some(context);
+}
+
+#[cfg(target_os = "windows")]
+fn clear_callback_context(slot: &CallbackContextSlot, expected: &Arc<CallbackContext>) {
+    let mut current = slot.write().unwrap_or_else(|error| error.into_inner());
+    if current
+        .as_ref()
+        .is_some_and(|context| Arc::ptr_eq(context, expected))
+    {
+        *current = None;
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn try_forward_from_callback_context(
+    slot: &CallbackContextSlot,
+    event: SuppressedKeyboardEvent,
+) -> bool {
+    let Ok(current) = slot.try_read() else {
+        return false;
+    };
+    let Some(context) = current.as_ref() else {
+        return false;
+    };
+    if !context.suppressed_keys.contains(event.vk_code) {
+        return false;
+    }
+
+    let _ = try_forward_suppressed_event(
+        &context.event_sender,
+        event,
+        context.dropped_events.as_ref(),
+    );
+    true
 }
 
 pub struct KeySuppressor {
@@ -492,16 +552,14 @@ fn run_suppressor_hook(
     // 自定义退出消息，对应 Drop 中的 PostThreadMessage
     const WM_USER_SHUTDOWN: u32 = 0x0400 + 1;
 
-    // 全局共享状态：使用全局静态变量让钩子回调能访问
-    // 由于 WH_KEYBOARD_LL 钩子回调必须是 extern "system" fn，不能直接捕获环境
-    static SUPPRESSED_KEYS: std::sync::OnceLock<Arc<VkBitset>> = std::sync::OnceLock::new();
-    static EVENT_SENDER: std::sync::OnceLock<Sender<SuppressedKeyboardEvent>> =
-        std::sync::OnceLock::new();
-    static DROPPED_EVENTS: std::sync::OnceLock<Arc<AtomicU64>> = std::sync::OnceLock::new();
-
-    SUPPRESSED_KEYS.get_or_init(|| suppressed_keys);
-    EVENT_SENDER.get_or_init(|| event_sender);
-    DROPPED_EVENTS.get_or_init(|| dropped_events);
+    // extern callback 通过可替换 slot 读取当前 hook context。
+    // callback 仅 try_read；生命周期写入可阻塞，但不会发生在 callback 中。
+    let callback_context = Arc::new(CallbackContext {
+        suppressed_keys,
+        event_sender,
+        dropped_events,
+    });
+    replace_callback_context(callback_context_slot(), Arc::clone(&callback_context));
 
     unsafe extern "system" fn hook_callback(code: i32, w_param: usize, l_param: isize) -> isize {
         if code < 0 {
@@ -518,27 +576,16 @@ fn run_suppressor_hook(
             return CallNextHookEx(ptr::null_mut(), code, w_param, l_param);
         }
 
-        // 检查该键是否在抑制列表中
-        let should_suppress = SUPPRESSED_KEYS
-            .get()
-            .map(|keys| keys.contains(vk_code))
-            .unwrap_or(false);
-
-        if should_suppress {
+        if try_forward_from_callback_context(
+            callback_context_slot(),
+            SuppressedKeyboardEvent {
+                vk_code,
+                scan_code: kb.scan_code,
+                is_key_up,
+                is_injected: false,
+            },
+        ) {
             // 吞噬事件：return 1 阻止事件传递到前台应用
-            // 同时转发给热键监听线程，使热键回调仍能触发
-            if let (Some(tx), Some(dropped_events)) = (EVENT_SENDER.get(), DROPPED_EVENTS.get()) {
-                let _ = try_forward_suppressed_event(
-                    tx,
-                    SuppressedKeyboardEvent {
-                        vk_code,
-                        scan_code: kb.scan_code,
-                        is_key_up,
-                        is_injected: false,
-                    },
-                    dropped_events,
-                );
-            }
             return 1;
         }
 
@@ -557,6 +604,7 @@ fn run_suppressor_hook(
 
     if hook_handle.is_null() {
         let error_code = unsafe { GetLastError() };
+        clear_callback_context(callback_context_slot(), &callback_context);
         let _ = install_sender.send(Err(format!(
             "安装按键抑制钩子失败，系统错误码: {error_code}"
         )));
@@ -585,6 +633,7 @@ fn run_suppressor_hook(
     unsafe {
         UnhookWindowsHookEx(hook_handle);
     }
+    clear_callback_context(callback_context_slot(), &callback_context);
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -654,6 +703,83 @@ mod tests {
 
         assert!(matches!(result, Err(TrySendError::Full(_))));
         assert_eq!(dropped_events.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn callback_context_replacement_and_cleanup_never_reuses_previous_context() {
+        let slot = std::sync::RwLock::new(None);
+        let (sender_a, receiver_a) = crossbeam_channel::bounded(4);
+        let keys_a = Arc::new(VkBitset::default());
+        keys_a.insert(0x70);
+        let context_a = Arc::new(CallbackContext {
+            suppressed_keys: keys_a,
+            event_sender: sender_a,
+            dropped_events: Arc::new(AtomicU64::new(0)),
+        });
+        let (sender_b, receiver_b) = crossbeam_channel::bounded(4);
+        let keys_b = Arc::new(VkBitset::default());
+        keys_b.insert(0x71);
+        let context_b = Arc::new(CallbackContext {
+            suppressed_keys: keys_b,
+            event_sender: sender_b,
+            dropped_events: Arc::new(AtomicU64::new(0)),
+        });
+
+        replace_callback_context(&slot, Arc::clone(&context_a));
+        assert!(try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x70)
+        ));
+        assert_eq!(
+            receiver_a
+                .try_recv()
+                .expect("context A 应接收首个事件")
+                .vk_code,
+            0x70
+        );
+
+        replace_callback_context(&slot, Arc::clone(&context_b));
+        assert!(!try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x70)
+        ));
+        assert!(receiver_a.try_recv().is_err());
+        assert!(try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x71)
+        ));
+        assert_eq!(
+            receiver_b
+                .try_recv()
+                .expect("context B 应接收替换后的事件")
+                .vk_code,
+            0x71
+        );
+
+        clear_callback_context(&slot, &context_a);
+        assert!(try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x71)
+        ));
+        assert_eq!(
+            receiver_b
+                .try_recv()
+                .expect("旧 context 清理不得移除当前 context")
+                .vk_code,
+            0x71
+        );
+
+        clear_callback_context(&slot, &context_b);
+        assert!(!try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x70)
+        ));
+        assert!(!try_forward_from_callback_context(
+            &slot,
+            suppressed_event(0x71)
+        ));
+        assert!(receiver_a.try_recv().is_err());
+        assert!(receiver_b.try_recv().is_err());
     }
 
     #[test]

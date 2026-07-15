@@ -47,7 +47,7 @@ graph TD
 
 `HotkeyManager` 首次收到抑制请求时安装 KeySuppressor。`stop_suppressor()` 只清空当前 suppression，不销毁 hook、sender、receiver 或 callback context；下一次 `start_suppressor()` 复用原实例。`HotkeyManager` drop 时才最终卸载抑制 hook 并 join worker，因此同一 manager 生命周期内不会安装第二个抑制 hook。
 
-抑制 callback 通过 `try_send` 非阻塞转发事件。队列满时继续吞键并增加 `dropped_events`，避免 `WH_KEYBOARD_LL` callback 阻塞。
+跨 `HotkeyManager` 生命周期时，新 hook 会替换进程级 callback context；安装失败或卸载只清理仍属于自身的 context，避免 stale bitset、stale sender 和旧 worker 清理新实例。抑制 callback 通过 `RwLock::try_read` 获取当前 context，并通过 `try_send` 非阻塞转发事件。锁竞争时立即放行；队列满时继续吞键并增加 `dropped_events`。
 
 ### Scope 注册
 
