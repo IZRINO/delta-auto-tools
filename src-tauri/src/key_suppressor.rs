@@ -8,7 +8,7 @@
 //! 被抑制的按键事件，同时通过 crossbeam channel 将事件转发给热键监听线程，
 //! 使热键回调仍能正常触发。
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 #[cfg(target_os = "windows")]
 use std::sync::{OnceLock, RwLock};
@@ -87,6 +87,48 @@ fn try_forward_suppressed_event(
     }
 }
 
+fn prepare_worker_thread(
+    stopped: &AtomicBool,
+    worker_thread_id: &AtomicU32,
+    thread_id: u32,
+) -> bool {
+    worker_thread_id.store(thread_id, Ordering::SeqCst);
+    !stopped.load(Ordering::SeqCst)
+}
+
+fn request_worker_stop(stopped: &AtomicBool, worker_thread_id: &AtomicU32) -> Option<u32> {
+    stopped.store(true, Ordering::SeqCst);
+    let thread_id = worker_thread_id.load(Ordering::SeqCst);
+    (thread_id != 0).then_some(thread_id)
+}
+
+#[cfg(target_os = "windows")]
+fn wake_worker_thread(thread_id: u32) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
+    const WM_USER_SHUTDOWN: u32 = 0x0400 + 1;
+    unsafe {
+        PostThreadMessageW(thread_id, WM_USER_SHUTDOWN, 0, 0);
+    }
+}
+
+fn stop_worker(stopped: &AtomicBool, worker_thread_id: &AtomicU32) {
+    if let Some(thread_id) = request_worker_stop(stopped, worker_thread_id) {
+        #[cfg(target_os = "windows")]
+        wake_worker_thread(thread_id);
+        #[cfg(not(target_os = "windows"))]
+        let _ = thread_id;
+    }
+}
+
+fn stop_and_join_worker(
+    stopped: &AtomicBool,
+    worker_thread_id: &AtomicU32,
+    worker: JoinHandle<()>,
+) {
+    stop_worker(stopped, worker_thread_id);
+    let _ = worker.join();
+}
+
 #[cfg(target_os = "windows")]
 struct CallbackContext {
     suppressed_keys: Arc<VkBitset>,
@@ -154,8 +196,7 @@ pub struct KeySuppressor {
     stopped: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     /// worker 线程 ID，用于 PostThreadMessage 唤醒
-    #[cfg(target_os = "windows")]
-    worker_thread_id: Option<u32>,
+    worker_thread_id: Arc<AtomicU32>,
 }
 
 impl KeySuppressor {
@@ -173,20 +214,30 @@ impl KeySuppressor {
         let worker_stopped = Arc::clone(&stopped);
         let worker_tx = tx.clone();
         let worker_dropped_events = Arc::clone(&dropped_events);
+        let worker_thread_id = Arc::new(AtomicU32::new(0));
+        let worker_id = Arc::clone(&worker_thread_id);
         let (install_tx, install_rx) = mpsc::channel();
-
-        #[cfg(target_os = "windows")]
-        let (tid_tx, tid_rx) = mpsc::channel();
 
         let worker = thread::Builder::new()
             .name("key-suppressor".to_string())
             .spawn(move || {
                 #[cfg(target_os = "windows")]
                 {
-                    // Windows 线程 ID 来自 GetCurrentThreadId
-                    let win_tid =
+                    use std::ptr;
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        PeekMessageW, MSG, PM_NOREMOVE,
+                    };
+
+                    // 先创建消息队列，再发布 thread ID，确保后续 PostThreadMessage 可唤醒。
+                    let mut msg: MSG = unsafe { std::mem::zeroed() };
+                    unsafe {
+                        PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_NOREMOVE);
+                    }
+                    let thread_id =
                         unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
-                    let _ = tid_tx.send(win_tid);
+                    if !prepare_worker_thread(&worker_stopped, &worker_id, thread_id) {
+                        return;
+                    }
                 }
                 let _ = (); // suppress unused variable warning on non-windows
                 run_suppressor_hook(
@@ -199,21 +250,14 @@ impl KeySuppressor {
             })
             .map_err(|e| format!("启动按键抑制线程失败: {e}"))?;
 
-        #[cfg(target_os = "windows")]
-        let worker_thread_id = tid_rx.recv_timeout(Duration::from_secs(2)).ok();
-        #[cfg(not(target_os = "windows"))]
-        let worker_thread_id: Option<u32> = None;
-
         match install_rx.recv_timeout(Duration::from_secs(2)) {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-                stopped.store(true, Ordering::SeqCst);
-                let _ = worker.join();
+                stop_and_join_worker(stopped.as_ref(), worker_thread_id.as_ref(), worker);
                 return Err(error);
             }
             Err(_) => {
-                stopped.store(true, Ordering::SeqCst);
-                let _ = worker.join();
+                stop_and_join_worker(stopped.as_ref(), worker_thread_id.as_ref(), worker);
                 return Err("按键抑制钩子安装超时".to_string());
             }
         }
@@ -260,18 +304,12 @@ impl KeySuppressor {
 
 impl Drop for KeySuppressor {
     fn drop(&mut self) {
-        self.stopped.store(true, Ordering::SeqCst);
-        // 通过 PostThreadMessage 唤醒 GetMessageW 阻塞的 worker 线程
-        #[cfg(target_os = "windows")]
-        if let Some(tid) = self.worker_thread_id {
-            use windows_sys::Win32::UI::WindowsAndMessaging::PostThreadMessageW;
-            const WM_USER_SHUTDOWN: u32 = 0x0400 + 1; // WM_USER + 1
-            unsafe {
-                PostThreadMessageW(tid, WM_USER_SHUTDOWN, 0, 0);
-            }
-        }
         if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
+            stop_and_join_worker(
+                self.stopped.as_ref(),
+                self.worker_thread_id.as_ref(),
+                worker,
+            );
         }
     }
 }
@@ -661,6 +699,34 @@ mod tests {
             is_key_up: false,
             is_injected: false,
         }
+    }
+
+    #[test]
+    fn worker_stopped_before_install_does_not_start_hook() {
+        let stopped = AtomicBool::new(true);
+        let worker_thread_id = std::sync::atomic::AtomicU32::new(0);
+
+        assert!(!prepare_worker_thread(&stopped, &worker_thread_id, 42));
+        assert_eq!(worker_thread_id.load(Ordering::SeqCst), 42);
+    }
+
+    #[test]
+    fn stopping_worker_with_known_thread_id_requests_wake() {
+        let stopped = AtomicBool::new(false);
+        let worker_thread_id = std::sync::atomic::AtomicU32::new(42);
+
+        assert_eq!(request_worker_stop(&stopped, &worker_thread_id), Some(42));
+        assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn worker_starting_after_unknown_id_stop_exits_before_install() {
+        let stopped = AtomicBool::new(false);
+        let worker_thread_id = std::sync::atomic::AtomicU32::new(0);
+
+        assert_eq!(request_worker_stop(&stopped, &worker_thread_id), None);
+        assert!(!prepare_worker_thread(&stopped, &worker_thread_id, 42));
+        assert_eq!(worker_thread_id.load(Ordering::SeqCst), 42);
     }
 
     #[test]

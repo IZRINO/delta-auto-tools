@@ -35,6 +35,8 @@ callback 不执行阻塞发送。channel 满时仍返回 `1` 吞键，`dropped_e
 
 当所有 `ignore_trigger_key` 卡片被禁用或删除时，`stop_suppressor()` 只清空 `VkBitset`，保留 hook、sender 和 receiver。后续启用会复用同一实例与 callback context。`HotkeyManager` drop 时最终卸载 hook、清理对应 callback context 并 join KeySuppressor worker；新 manager 安装时会替换 slot，不会读取旧实例的 bitset 或 sender。
 
+worker 通过共享 `AtomicU32` 发布 Windows thread ID。父线程停止时先设置 `stopped`，已发布 ID 则用 `PostThreadMessageW` 唤醒 `GetMessageW`；ID 尚未发布时，worker 发布 ID 后检查 `stopped`，取消 hook 安装并直接退出。安装失败、安装超时和正常 drop 共用同一 stop + wake + join 路径。
+
 ## 关键抽象
 
 | 类型 | 文件 | 说明 |
