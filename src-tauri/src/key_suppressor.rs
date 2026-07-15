@@ -129,6 +129,23 @@ fn stop_and_join_worker(
     let _ = worker.join();
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstallWaitAction {
+    Retain,
+    Join,
+    Detach,
+}
+
+fn install_wait_action(
+    result: &Result<Result<(), String>, mpsc::RecvTimeoutError>,
+) -> InstallWaitAction {
+    match result {
+        Ok(Ok(())) => InstallWaitAction::Retain,
+        Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => InstallWaitAction::Join,
+        Err(mpsc::RecvTimeoutError::Timeout) => InstallWaitAction::Detach,
+    }
+}
+
 #[cfg(target_os = "windows")]
 struct CallbackContext {
     suppressed_keys: Arc<VkBitset>,
@@ -250,14 +267,22 @@ impl KeySuppressor {
             })
             .map_err(|e| format!("启动按键抑制线程失败: {e}"))?;
 
-        match install_rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => {
+        let install_result = install_rx.recv_timeout(Duration::from_secs(2));
+        match install_wait_action(&install_result) {
+            InstallWaitAction::Retain => {}
+            InstallWaitAction::Join => {
                 stop_and_join_worker(stopped.as_ref(), worker_thread_id.as_ref(), worker);
-                return Err(error);
+                return Err(match install_result {
+                    Ok(Err(error)) => error,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        "按键抑制钩子安装线程异常退出".to_string()
+                    }
+                    _ => unreachable!(),
+                });
             }
-            Err(_) => {
-                stop_and_join_worker(stopped.as_ref(), worker_thread_id.as_ref(), worker);
+            InstallWaitAction::Detach => {
+                stop_worker(stopped.as_ref(), worker_thread_id.as_ref());
+                drop(worker);
                 return Err("按键抑制钩子安装超时".to_string());
             }
         }
@@ -648,6 +673,15 @@ fn run_suppressor_hook(
         )));
         return;
     }
+
+    if stopped.load(Ordering::SeqCst) {
+        unsafe {
+            UnhookWindowsHookEx(hook_handle);
+        }
+        clear_callback_context(callback_context_slot(), &callback_context);
+        return;
+    }
+
     let _ = install_sender.send(Ok(()));
 
     // 消息循环：使用 GetMessageW 阻塞等待，零延迟响应键盘事件。
@@ -727,6 +761,27 @@ mod tests {
         assert_eq!(request_worker_stop(&stopped, &worker_thread_id), None);
         assert!(!prepare_worker_thread(&stopped, &worker_thread_id, 42));
         assert_eq!(worker_thread_id.load(Ordering::SeqCst), 42);
+    }
+
+    #[test]
+    fn install_timeout_detaches_worker_without_joining() {
+        assert_eq!(
+            install_wait_action(&Err(mpsc::RecvTimeoutError::Timeout)),
+            InstallWaitAction::Detach,
+        );
+    }
+
+    #[test]
+    fn disconnected_install_channel_joins_finished_worker() {
+        assert_eq!(
+            install_wait_action(&Err(mpsc::RecvTimeoutError::Disconnected)),
+            InstallWaitAction::Join,
+        );
+    }
+
+    #[test]
+    fn successful_install_retains_worker() {
+        assert_eq!(install_wait_action(&Ok(Ok(()))), InstallWaitAction::Retain,);
     }
 
     #[test]
