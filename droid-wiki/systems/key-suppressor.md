@@ -11,31 +11,34 @@
 ```mermaid
 graph TD
     PhysKey["物理按键事件"] --> LLHook["WH_KEYBOARD_LL 钩子<br/>(key-suppressor 线程)"]
-    LLHook -->|VK 在 suppressed_keys 中？| Check{"是"}
+    LLHook -->|VK 在 4×AtomicU64 bitset 中？| Check{"是"}
     Check -->|是| Swallow["return 1 吞噬事件<br/>不传递给前台应用"]
     Check -->|否| Pass["return 0 放行"]
-    Swallow --> Forward["通过 crossbeam channel<br/>转发 SuppressedKeyboardEvent"]
+    Swallow --> Forward["通过 try_send 非阻塞转发<br/>SuppressedKeyboardEvent"]
     Forward --> HotkeyListener["shared-hotkey-listener 线程<br/>处理热键回调"]
 ```
 
 ### 懒加载
 
-KeySuppressor 不在启动时安装。仅当连发器卡片启用 `ignore_trigger_key` 时，`HotkeyManager` 才懒加载创建 KeySuppressor：
+KeySuppressor 不在启动时安装。仅当连发器卡片启用 `ignore_trigger_key` 时，`HotkeyManager` 才懒加载创建 KeySuppressor；单个 `HotkeyManager` 生命周期内最多安装一次：
 
-1. 将目标 VK 加入 `suppressed_keys` 集合
+1. 将目标 VK 加入覆盖 `0..=255` 的无锁 `VkBitset`
 2. 如果 KeySuppressor 尚未启动，启动 worker 线程安装第二个 `WH_KEYBOARD_LL` 钩子
 3. worker 线程将吞噬的事件通过 crossbeam channel 转发给热键监听线程
-4. 热键监听线程通过 `suppressed_vk_set` 过滤 willhook 的重复事件（同一物理事件不会被两个钩子各处理一次）
+4. 热键监听线程通过共享 `VkBitset` 过滤 willhook 的重复事件（同一物理事件不会被两个钩子各处理一次）
+
+钩子 callback 不获取 `Mutex`，也不执行阻塞发送。channel 满时仍返回 `1` 吞键，`dropped_events` 递增并丢弃本次转发事件。
 
 ### 清理
 
-当所有 `ignore_trigger_key` 卡片被禁用或删除时，`clear_all_suppressions()` 清空 `suppressed_keys` 集合。KeySuppressor worker 线程在应用关闭时停止。
+当所有 `ignore_trigger_key` 卡片被禁用或删除时，`stop_suppressor()` 只清空 `VkBitset`，保留 hook、sender 和 receiver。后续启用会复用同一实例与 callback context。`HotkeyManager` drop 时最终卸载 hook 并 join KeySuppressor worker。
 
 ## 关键抽象
 
 | 类型 | 文件 | 说明 |
 |------|------|------|
-| `KeySuppressor` | `src-tauri/src/key_suppressor.rs` | 抑制器主体，持有 `suppressed_keys`、worker 线程句柄、事件发送端 |
+| `KeySuppressor` | `src-tauri/src/key_suppressor.rs` | 抑制器主体，持有 `VkBitset`、worker 线程句柄、事件发送端和丢弃计数 |
+| `VkBitset` | `src-tauri/src/key_suppressor.rs` | 4 个 `AtomicU64` 覆盖 Windows VK `0..=255`，供 callback 和 willhook 去重查询 |
 | `SuppressedKeyboardEvent` | `src-tauri/src/key_suppressor.rs` | 被抑制的键盘事件：`vk_code`、`scan_code`、`is_key_up`、`is_injected` |
 
 ## 集成点
@@ -46,8 +49,8 @@ KeySuppressor 不在启动时安装。仅当连发器卡片启用 `ignore_trigge
 
 ## 修改入口
 
-- 修改抑制的按键范围：调整 `suppressed_keys` 集合的添加/移除逻辑
-- 修改事件转发：调整 crossbeam channel 的发送/接收逻辑
+- 修改抑制的按键范围：调整 `VkBitset` 的添加/移除逻辑
+- 修改事件转发：调整 `try_forward_suppressed_event` 和 crossbeam channel 的接收逻辑
 - 新增使用抑制器的工具：在 `HotkeyManager` 中调用抑制器的 `add` / `remove` 方法
 
 ## 关键源文件

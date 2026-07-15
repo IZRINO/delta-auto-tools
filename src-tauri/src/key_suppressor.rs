@@ -8,13 +8,12 @@
 //! 被抑制的按键事件，同时通过 crossbeam channel 将事件转发给热键监听线程，
 //! 使热键回调仍能正常触发。
 
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, TrySendError};
 use std::sync::mpsc;
 
 /// 被抑制的键盘事件，从 KeySuppressor 转发给热键监听线程
@@ -27,10 +26,71 @@ pub struct SuppressedKeyboardEvent {
     pub is_injected: bool,
 }
 
+pub struct VkBitset {
+    words: [AtomicU64; 4],
+}
+
+impl Default for VkBitset {
+    fn default() -> Self {
+        Self {
+            words: std::array::from_fn(|_| AtomicU64::new(0)),
+        }
+    }
+}
+
+impl VkBitset {
+    pub fn insert(&self, vk_code: u32) -> bool {
+        let Some((word, mask)) = Self::word_and_mask(vk_code) else {
+            return false;
+        };
+        self.words[word].fetch_or(mask, Ordering::Relaxed) & mask == 0
+    }
+
+    pub fn remove(&self, vk_code: u32) -> bool {
+        let Some((word, mask)) = Self::word_and_mask(vk_code) else {
+            return false;
+        };
+        self.words[word].fetch_and(!mask, Ordering::Relaxed) & mask != 0
+    }
+
+    pub fn contains(&self, vk_code: u32) -> bool {
+        let Some((word, mask)) = Self::word_and_mask(vk_code) else {
+            return false;
+        };
+        self.words[word].load(Ordering::Relaxed) & mask != 0
+    }
+
+    pub fn clear(&self) {
+        for word in &self.words {
+            word.store(0, Ordering::Relaxed);
+        }
+    }
+
+    fn word_and_mask(vk_code: u32) -> Option<(usize, u64)> {
+        (vk_code <= 255).then(|| ((vk_code / 64) as usize, 1_u64 << (vk_code % 64)))
+    }
+}
+
+fn try_forward_suppressed_event(
+    event_sender: &Sender<SuppressedKeyboardEvent>,
+    event: SuppressedKeyboardEvent,
+    dropped_events: &AtomicU64,
+) -> Result<(), TrySendError<SuppressedKeyboardEvent>> {
+    match event_sender.try_send(event) {
+        Err(TrySendError::Full(event)) => {
+            dropped_events.fetch_add(1, Ordering::Relaxed);
+            Err(TrySendError::Full(event))
+        }
+        result => result,
+    }
+}
+
 pub struct KeySuppressor {
-    suppressed_keys: Arc<Mutex<HashSet<u32>>>,
+    suppressed_keys: Arc<VkBitset>,
     #[allow(dead_code)]
     event_sender: Sender<SuppressedKeyboardEvent>,
+    #[allow(dead_code)]
+    dropped_events: Arc<AtomicU64>,
     stopped: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     /// worker 线程 ID，用于 PostThreadMessage 唤醒
@@ -45,12 +105,14 @@ impl KeySuppressor {
     /// Receiver 用于接收被抑制的事件并转发给热键监听线程。
     pub fn start() -> Result<(Self, Receiver<SuppressedKeyboardEvent>), String> {
         let (tx, rx) = crossbeam_channel::bounded(256);
-        let suppressed_keys = Arc::new(Mutex::new(HashSet::new()));
+        let suppressed_keys = Arc::new(VkBitset::default());
+        let dropped_events = Arc::new(AtomicU64::new(0));
         let stopped = Arc::new(AtomicBool::new(false));
 
         let worker_suppressed = Arc::clone(&suppressed_keys);
         let worker_stopped = Arc::clone(&stopped);
         let worker_tx = tx.clone();
+        let worker_dropped_events = Arc::clone(&dropped_events);
         let (install_tx, install_rx) = mpsc::channel();
 
         #[cfg(target_os = "windows")]
@@ -67,7 +129,13 @@ impl KeySuppressor {
                     let _ = tid_tx.send(win_tid);
                 }
                 let _ = (); // suppress unused variable warning on non-windows
-                run_suppressor_hook(worker_suppressed, worker_stopped, worker_tx, install_tx);
+                run_suppressor_hook(
+                    worker_suppressed,
+                    worker_stopped,
+                    worker_tx,
+                    worker_dropped_events,
+                    install_tx,
+                );
             })
             .map_err(|e| format!("启动按键抑制线程失败: {e}"))?;
 
@@ -94,6 +162,7 @@ impl KeySuppressor {
             Self {
                 suppressed_keys,
                 event_sender: tx,
+                dropped_events,
                 stopped,
                 worker: Some(worker),
                 worker_thread_id,
@@ -104,41 +173,28 @@ impl KeySuppressor {
 
     /// 添加一个按键到抑制列表。返回该键之前是否未被抑制。
     pub fn suppress(&self, vk_code: u32) -> bool {
-        if let Ok(mut keys) = self.suppressed_keys.lock() {
-            keys.insert(vk_code)
-        } else {
-            false
-        }
+        self.suppressed_keys.insert(vk_code)
     }
 
     /// 从抑制列表移除一个按键。返回该键之前是否被抑制。
     pub fn unsuppress(&self, vk_code: u32) -> bool {
-        if let Ok(mut keys) = self.suppressed_keys.lock() {
-            keys.remove(&vk_code)
-        } else {
-            false
-        }
+        self.suppressed_keys.remove(vk_code)
     }
 
     /// 查询指定按键当前是否在抑制列表中
     #[allow(dead_code)]
     pub fn is_suppressing(&self, vk_code: u32) -> bool {
-        self.suppressed_keys
-            .lock()
-            .map(|keys| keys.contains(&vk_code))
-            .unwrap_or(false)
+        self.suppressed_keys.contains(vk_code)
     }
 
     /// 返回抑制键集合的共享引用，供热键监听线程过滤 willhook 重复事件
-    pub fn suppressed_keys_ref(&self) -> Arc<Mutex<HashSet<u32>>> {
+    pub fn suppressed_keys_ref(&self) -> Arc<VkBitset> {
         Arc::clone(&self.suppressed_keys)
     }
 
     /// 取消所有抑制
     pub fn clear_all(&self) {
-        if let Ok(mut keys) = self.suppressed_keys.lock() {
-            keys.clear();
-        }
+        self.suppressed_keys.clear();
     }
 }
 
@@ -407,9 +463,10 @@ pub fn suppressed_event_to_willhook_event(
 
 #[cfg(target_os = "windows")]
 fn run_suppressor_hook(
-    suppressed_keys: Arc<Mutex<HashSet<u32>>>,
+    suppressed_keys: Arc<VkBitset>,
     stopped: Arc<AtomicBool>,
     event_sender: Sender<SuppressedKeyboardEvent>,
+    dropped_events: Arc<AtomicU64>,
     install_sender: mpsc::Sender<Result<(), String>>,
 ) {
     use std::ptr;
@@ -437,13 +494,14 @@ fn run_suppressor_hook(
 
     // 全局共享状态：使用全局静态变量让钩子回调能访问
     // 由于 WH_KEYBOARD_LL 钩子回调必须是 extern "system" fn，不能直接捕获环境
-    static SUPPRESSED_KEYS: std::sync::OnceLock<Arc<Mutex<HashSet<u32>>>> =
-        std::sync::OnceLock::new();
+    static SUPPRESSED_KEYS: std::sync::OnceLock<Arc<VkBitset>> = std::sync::OnceLock::new();
     static EVENT_SENDER: std::sync::OnceLock<Sender<SuppressedKeyboardEvent>> =
         std::sync::OnceLock::new();
+    static DROPPED_EVENTS: std::sync::OnceLock<Arc<AtomicU64>> = std::sync::OnceLock::new();
 
     SUPPRESSED_KEYS.get_or_init(|| suppressed_keys);
     EVENT_SENDER.get_or_init(|| event_sender);
+    DROPPED_EVENTS.get_or_init(|| dropped_events);
 
     unsafe extern "system" fn hook_callback(code: i32, w_param: usize, l_param: isize) -> isize {
         if code < 0 {
@@ -463,20 +521,24 @@ fn run_suppressor_hook(
         // 检查该键是否在抑制列表中
         let should_suppress = SUPPRESSED_KEYS
             .get()
-            .and_then(|keys| keys.lock().map(|k| k.contains(&vk_code)).ok())
+            .map(|keys| keys.contains(vk_code))
             .unwrap_or(false);
 
         if should_suppress {
             // 吞噬事件：return 1 阻止事件传递到前台应用
             // 同时转发给热键监听线程，使热键回调仍能触发
-            let _ = EVENT_SENDER.get().map(|tx| {
-                tx.send(SuppressedKeyboardEvent {
-                    vk_code,
-                    scan_code: kb.scan_code,
-                    is_key_up,
-                    is_injected: false,
-                })
-            });
+            if let (Some(tx), Some(dropped_events)) = (EVENT_SENDER.get(), DROPPED_EVENTS.get()) {
+                let _ = try_forward_suppressed_event(
+                    tx,
+                    SuppressedKeyboardEvent {
+                        vk_code,
+                        scan_code: kb.scan_code,
+                        is_key_up,
+                        is_injected: false,
+                    },
+                    dropped_events,
+                );
+            }
             return 1;
         }
 
@@ -527,9 +589,10 @@ fn run_suppressor_hook(
 
 #[cfg(not(target_os = "windows"))]
 fn run_suppressor_hook(
-    _suppressed_keys: Arc<Mutex<HashSet<u32>>>,
+    _suppressed_keys: Arc<VkBitset>,
     _stopped: Arc<AtomicBool>,
     _event_sender: Sender<SuppressedKeyboardEvent>,
+    _dropped_events: Arc<AtomicU64>,
     install_sender: mpsc::Sender<Result<(), String>>,
 ) {
     let _ = install_sender.send(Err("当前仅 Windows 支持按键抑制".to_string()));
@@ -539,7 +602,59 @@ fn run_suppressor_hook(
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::*;
+    use crossbeam_channel::TrySendError;
     use willhook::event::KeyboardKey;
+
+    fn suppressed_event(vk_code: u32) -> SuppressedKeyboardEvent {
+        SuppressedKeyboardEvent {
+            vk_code,
+            scan_code: 0,
+            is_key_up: false,
+            is_injected: false,
+        }
+    }
+
+    #[test]
+    fn vk_bitset_handles_boundaries_and_rejects_out_of_range_codes() {
+        let keys = VkBitset::default();
+
+        for vk in [0, 63, 64, 255] {
+            assert!(keys.insert(vk));
+            assert!(keys.contains(vk));
+        }
+        assert!(!keys.insert(256));
+        assert!(!keys.contains(256));
+    }
+
+    #[test]
+    fn vk_bitset_insert_remove_are_idempotent_and_clear_resets_all_words() {
+        let keys = VkBitset::default();
+
+        assert!(keys.insert(63));
+        assert!(!keys.insert(63));
+        assert!(keys.remove(63));
+        assert!(!keys.remove(63));
+
+        for vk in [0, 64, 255] {
+            assert!(keys.insert(vk));
+        }
+        keys.clear();
+        for vk in [0, 64, 255] {
+            assert!(!keys.contains(vk));
+        }
+    }
+
+    #[test]
+    fn forwarding_full_channel_increments_dropped_counter_without_blocking() {
+        let (tx, _rx) = crossbeam_channel::bounded(1);
+        tx.send(suppressed_event(0x70)).expect("应先填满有界队列");
+        let dropped_events = AtomicU64::new(0);
+
+        let result = try_forward_suppressed_event(&tx, suppressed_event(0x71), &dropped_events);
+
+        assert!(matches!(result, Err(TrySendError::Full(_))));
+        assert_eq!(dropped_events.load(Ordering::SeqCst), 1);
+    }
 
     #[test]
     fn keyboard_key_vk_roundtrip_supports_common_keys() {

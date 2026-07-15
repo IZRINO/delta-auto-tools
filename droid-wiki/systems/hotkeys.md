@@ -30,7 +30,7 @@
 graph TD
     Hook["willhook WH_KEYBOARD_LL"] -->|InputEvent::Keyboard| Listener["run_listener worker 线程"]
     Listener -->|检查全局开关| Global["GlobalState"]
-    Listener -->|过滤已抑制按键| Suppress["KeySuppressor VK 集合"]
+    Listener -->|过滤已抑制按键| Suppress["KeySuppressor<br/>4×AtomicU64 VK bitset"]
     Listener -->|匹配 hold 绑定| HoldApps["HoldAction 回调"]
     Listener -->|HotkeyMatcher| Match["KeyState"]
     Match -->|匹配普通绑定| NormalApps["HotkeyAction 回调"]
@@ -42,6 +42,12 @@ graph TD
 2. 检查按键是否被 KeySuppressor 抑制，跳过 willhook 事件（已抑制事件会通过抑制通道到达）
 3. 匹配 hold 绑定，触发 `HoldAction::Down` 或 `Up` 回调
 4. 将事件送入 `HotkeyMatcher`，它跟踪修饰键状态，在主键按下时触发普通热键回调
+
+### KeySuppressor 生命周期
+
+`HotkeyManager` 首次收到抑制请求时安装 KeySuppressor。`stop_suppressor()` 只清空当前 suppression，不销毁 hook、sender、receiver 或 callback context；下一次 `start_suppressor()` 复用原实例。`HotkeyManager` drop 时才最终卸载抑制 hook 并 join worker，因此同一 manager 生命周期内不会安装第二个抑制 hook。
+
+抑制 callback 通过 `try_send` 非阻塞转发事件。队列满时继续吞键并增加 `dropped_events`，避免 `WH_KEYBOARD_LL` callback 阻塞。
 
 ### Scope 注册
 
@@ -81,7 +87,7 @@ hold 匹配器处理组合触发键（如 `Shift+-`）。按下 `Shift+1` 会同
 - [连发器](../features/rapidfire.md) 使用 hold scope `"rapidfire"`，策略 `AllowHold`
 - [识别触发](../features/recognition.md) 使用 scope `"recognition"`，策略 `AllowHold`
 - [全局总开关](global-state.md)：监听线程每个事件都检查 `GlobalState::enabled()`
-- [按键抑制器](key-suppressor.md)：共享 VK 集合过滤重复事件
+- [按键抑制器](key-suppressor.md)：共享原子 VK bitset 过滤重复事件，生命周期由 `HotkeyManager` 统一持有
 
 ## 修改入口
 

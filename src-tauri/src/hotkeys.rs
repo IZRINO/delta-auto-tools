@@ -40,7 +40,7 @@ pub struct HotkeyManager {
     suppressed_rx: Arc<Mutex<Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>>>,
     /// 被抑制按键 VK 集合的共享引用，用于 run_listener 过滤 willhook 重复事件
     #[cfg(target_os = "windows")]
-    suppressed_vk_set: Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
+    suppressed_vk_set: Arc<Mutex<Option<Arc<crate::key_suppressor::VkBitset>>>>,
     #[cfg(target_os = "windows")]
     worker: Option<JoinHandle<()>>,
     #[cfg(not(target_os = "windows"))]
@@ -181,34 +181,16 @@ impl HotkeyManager {
         Ok(())
     }
 
-    /// 停止 KeySuppressor（当所有抑制需求消失时调用）
+    /// 停止抑制：清空当前按键，保留 hook 与事件 channel 供后续复用
     #[cfg(target_os = "windows")]
     pub fn stop_suppressor(&self) -> Result<(), String> {
-        let mut suppressor_guard = self
+        let suppressor_guard = self
             .key_suppressor
             .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
-        if suppressor_guard.is_none() {
-            return Ok(()); // 已经停止
-        }
-
-        // 先清理抑制列表，再 Drop suppressor（触发钩子卸载）
-        if let Some(suppressor) = suppressor_guard.take() {
+        if let Some(suppressor) = suppressor_guard.as_ref() {
             suppressor.clear_all();
         }
-
-        let mut rx_guard = self
-            .suppressed_rx
-            .lock()
-            .map_err(|_| "热键监听状态已损坏".to_string())?;
-        *rx_guard = None;
-
-        let mut vk_guard = self
-            .suppressed_vk_set
-            .lock()
-            .map_err(|_| "热键监听状态已损坏".to_string())?;
-        *vk_guard = None;
-
         Ok(())
     }
 
@@ -516,6 +498,11 @@ impl Drop for HotkeyManager {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+
+        #[cfg(target_os = "windows")]
+        if let Ok(mut suppressor) = self.key_suppressor.lock() {
+            suppressor.take();
+        }
     }
 }
 
@@ -534,16 +521,15 @@ fn keyboard_event_to_vk(event: &KeyboardEvent) -> Option<u32> {
 #[cfg(target_os = "windows")]
 fn is_event_suppressed(
     event: &KeyboardEvent,
-    suppressed_vk_set: &Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
+    suppressed_vk_set: &Arc<Mutex<Option<Arc<crate::key_suppressor::VkBitset>>>>,
 ) -> bool {
     suppressed_vk_set
         .lock()
         .ok()
         .and_then(|guard| {
-            guard.as_ref().and_then(|vk_set| {
-                keyboard_event_to_vk(event)
-                    .map(|vk| vk_set.lock().map(|set| set.contains(&vk)).unwrap_or(false))
-            })
+            guard
+                .as_ref()
+                .and_then(|vk_set| keyboard_event_to_vk(event).map(|vk| vk_set.contains(vk)))
         })
         .unwrap_or(false)
 }
@@ -556,7 +542,7 @@ fn run_listener(
     hold_registrations: Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     stopped: Arc<AtomicBool>,
     suppressed_rx: Arc<Mutex<Option<Receiver<crate::key_suppressor::SuppressedKeyboardEvent>>>>,
-    suppressed_vk_set: Arc<Mutex<Option<Arc<Mutex<std::collections::HashSet<u32>>>>>>,
+    suppressed_vk_set: Arc<Mutex<Option<Arc<crate::key_suppressor::VkBitset>>>>,
 ) {
     let mut matcher = HotkeyMatcher::new();
     let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
@@ -1246,16 +1232,60 @@ mod tests {
     fn suppressed_willhook_event_is_detected_without_consuming_loop() {
         use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
 
-        let suppressed = Arc::new(Mutex::new(Some(Arc::new(Mutex::new(HashSet::from([
-            0x70,
-        ]))))));
+        let vk_set = Arc::new(crate::key_suppressor::VkBitset::default());
+        vk_set.insert(0x70);
+        let suppressed = Arc::new(Mutex::new(Some(vk_set)));
         let event = keyboard_event(KeyboardKey::F1, KeyPress::Down(IsSystemKeyPress::Normal));
         let other_event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
 
         assert!(is_event_suppressed(&event, &suppressed));
         assert!(!is_event_suppressed(&other_event, &suppressed));
-        let empty: Arc<Mutex<Option<Arc<Mutex<HashSet<u32>>>>>> = Arc::new(Mutex::new(None));
+        let empty: Arc<Mutex<Option<Arc<crate::key_suppressor::VkBitset>>>> =
+            Arc::new(Mutex::new(None));
         assert!(!is_event_suppressed(&event, &empty));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn stop_then_start_reuses_suppressor_channel_and_accepts_new_suppression() {
+        let manager = test_manager();
+
+        manager.suppress_key("F1").expect("首轮抑制应成功");
+        let first_rx = manager
+            .suppressed_rx
+            .lock()
+            .expect("接收端状态应可访问")
+            .as_ref()
+            .expect("首轮接收端应存在")
+            .clone();
+
+        manager.stop_suppressor().expect("停止抑制器应成功");
+        assert!(!manager
+            .key_suppressor
+            .lock()
+            .expect("抑制器状态应可访问")
+            .as_ref()
+            .expect("停止后应保留抑制器")
+            .is_suppressing(0x70));
+
+        manager.start_suppressor().expect("再次启动应成功");
+        let second_rx = manager
+            .suppressed_rx
+            .lock()
+            .expect("接收端状态应可访问")
+            .as_ref()
+            .expect("第二轮接收端应存在")
+            .clone();
+        assert!(first_rx.same_channel(&second_rx));
+
+        manager.suppress_key("F2").expect("第二轮抑制应成功");
+        assert!(manager
+            .key_suppressor
+            .lock()
+            .expect("抑制器状态应可访问")
+            .as_ref()
+            .expect("第二轮抑制器应存在")
+            .is_suppressing(0x71));
     }
 
     #[test]
