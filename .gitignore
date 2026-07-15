@@ -26,6 +26,7 @@ test-results/
 *.sln
 *.sw?
 .worktrees/
+.superpowers/
 .claude/worktrees/
 .claude/settings.local.json
 temp/
