@@ -3,6 +3,8 @@ import {invokeLogged as invoke} from "@/lib/logging";
 import {computeIsDirty, isStaleSave} from "@/hooks/use-bootstrap-form-logic";
 import {getErrorMessage} from "@/lib/error-utils";
 import {invokeWithStartupRetry} from "@/lib/tauri-startup-retry";
+import {LatestSaveQueue} from "@/hooks/autosave-queue";
+import {useProfile} from "@/hooks/use-profile";
 
 /** 定义工具页与 Rust 后端交互的规范 */
 export interface BootstrapFormSpec<TBootstrap extends { settings: Record<string, unknown> }, TSettings, TForm> {
@@ -90,12 +92,19 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         useStartTransition: shouldUseStartTransition = false,
         beforeUpdateForm,
     } = options;
+    const {bootstrap: profileBootstrap} = useProfile();
 
     // 稳定 spec 引用，避免页面级内联对象字面量导致无限循环（Issues #47/#48）
     const specRef = useRef(spec);
     specRef.current = spec;
 
     const autosaveVersionRef = useRef(0);
+    const saveQueueRef = useRef<LatestSaveQueue<{
+        settingsValue: TSettings;
+        pendingVersion?: number;
+        settingsRevision: number;
+    }> | null>(null);
+    saveQueueRef.current ??= new LatestSaveQueue();
     const [bootstrap, setBootstrap] = useState<TBootstrap | null>(null);
     const [form, setForm] = useState<TForm | null>(null);
     const formRef = useRef(form);
@@ -142,15 +151,21 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         [beforeUpdateForm],
     );
 
-    // saveSettings（含 stale guard）
-    const saveSettings = useCallback(
-        async (settingsValue: TSettings, pendingVersion?: number) => {
+    const performSave = useCallback(
+        async ({settingsValue, pendingVersion, settingsRevision}: {
+            settingsValue: TSettings;
+            pendingVersion?: number;
+            settingsRevision: number;
+        }) => {
             try {
                 setSaving(true);
                 if (saveInProgressMessage) {
                     setStatusMessage(saveInProgressMessage);
                 }
-                const next = await invoke<TBootstrap>(specRef.current.saveSettingsCommand, {settingsValue});
+                const next = await invoke<TBootstrap>(specRef.current.saveSettingsCommand, {
+                    settingsValue,
+                    settingsRevision,
+                });
 
                 if (isStaleSave(pendingVersion, autosaveVersionRef)) {
                     return;
@@ -173,11 +188,26 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
                 const message = getErrorMessage(error);
                 setPageError(message);
                 setStatusMessage(message);
+                throw error;
             } finally {
                 setSaving(false);
             }
         },
         [autosaveVersionRef, saveInProgressMessage, saveSuccessMessage, updateState],
+    );
+
+    // 手动保存与 autosave 共用 latest-wins queue，同一工具最多一个 in-flight 请求。
+    const saveSettings = useCallback(
+        (settingsValue: TSettings, pendingVersion?: number) =>
+            saveQueueRef.current!.enqueue(
+                {
+                    settingsValue,
+                    pendingVersion,
+                    settingsRevision: profileBootstrap?.settingsRevision ?? 0,
+                },
+                performSave,
+            ),
+        [performSave, profileBootstrap?.settingsRevision],
     );
 
     // syncBootstrap

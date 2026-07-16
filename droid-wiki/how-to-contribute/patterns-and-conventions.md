@@ -14,7 +14,9 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 容器页（`morse-page.tsx`、`timer-page.tsx` 等）同时持有 `bootstrap` 状态（来自 Rust，不可变）和 `form` 状态（本地草稿）。两者通过 `JSON.stringify` 比较检测脏状态。`useBootstrapForm` hook（`src/hooks/use-bootstrap-form.ts`）封装此逻辑。form 分歧时，通过 `useAutosave`（`src/hooks/use-autosave.ts`）触发 400ms 防抖 autosave，调用工具的 `xxx_save_settings` 命令。
 
-`autosaveVersionRef` 计数器防止陈旧保存覆盖新 form：每个保存请求携带排队时的版本号，如当前版本更高则丢弃保存。
+`LatestSaveQueue` 保证每个工具最多只有一个 in-flight save；保存期间继续编辑时，等待区只保留最新 snapshot。当前 save 失败不会阻断等待中的最新 snapshot，各 caller 只接收自己所属保存批次的结果。`autosaveVersionRef` 仅阻止旧响应回写较新的本地 form，不承担后端并发控制。
+
+所有会持久化 5 类工具 settings 的命令都必须携带 Profile `settingsRevision`，包括主 `xxx_save_settings` 与 position/region overlay commit。Rust `SettingsCoordinator::with_revision` 在同一 guard 内完成磁盘写入、runtime 更新和 active Profile snapshot 更新；Profile 切换通过 `with_profile_change` 串行执行并递增 revision，旧页面写入在产生副作用前返回陈旧错误。
 
 ## Settings/form 转换层
 

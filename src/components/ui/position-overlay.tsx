@@ -2,7 +2,9 @@ import {useCallback, useEffect, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 
 import {Badge} from "@/components/ui/badge";
+import {getSettingsRevision} from "@/components/app/profile-utils";
 import {getErrorMessage} from "@/lib/error-utils";
+import {useProfile} from "@/hooks/use-profile";
 
 /** 位置设置 overlay 的 Tauri 命令集 */
 export interface PositionOverlayCommands {
@@ -31,6 +33,7 @@ export interface PositionOverlayProps {
  * 拖拽定位 → Enter 保存 / Esc 取消 / 实时 moveTo 通知 Rust。
  */
 export function PositionOverlay({isNativeShell, label, commands, initialStatusSuffix = ""}: PositionOverlayProps) {
+    const {bootstrap: profileBootstrap} = useProfile();
     const [statusMessage, setStatusMessage] = useState(
         `拖动此固定大小框到目标位置，按 Enter 保存，按 Esc 退出修改。${initialStatusSuffix}`,
     );
@@ -50,11 +53,11 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
         }
         setStatusMessage(`正在保存${label}透明窗口位置...`);
         try {
-            await invoke(commands.commit);
+            await invoke(commands.commit, {settingsRevision: getSettingsRevision(profileBootstrap)});
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
         }
-    }, [isNativeShell, label, commands]);
+    }, [isNativeShell, label, commands, profileBootstrap]);
 
     const cancel = useCallback(async () => {
         if (!isNativeShell) {

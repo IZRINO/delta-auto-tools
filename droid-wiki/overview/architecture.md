@@ -56,10 +56,10 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明�
 
 - **bootstrap**：Rust 返回的不可变规范态，包含 settings + 运行态数据
 - **form**：本地可编辑草稿，脏检测通过 `JSON.stringify` 往返比较
-- **Autosave**：表单变更后 debounce 400ms 调用 `xxx_save_settings`，`autosaveVersionRef` 防止陈旧保存覆盖
+- **Autosave**：表单变更后 debounce 400ms；`LatestSaveQueue` 保证每个工具最多一个 in-flight save，并只保留等待中的最新 snapshot
 
 共享 hooks 在 `src/hooks/` 中实现：
-- `useBootstrapForm`（`src/hooks/use-bootstrap-form.ts`）：管理 bootstrap + form 双状态、syncBootstrap、saveSettings（含 stale guard）
+- `useBootstrapForm`（`src/hooks/use-bootstrap-form.ts`）：管理 bootstrap + form 双状态、syncBootstrap、latest-wins save queue 与 Profile revision
 - `useAutosave`（`src/hooks/use-autosave.ts`）：debounce + versionRef 防陈旧覆盖 + 卸载清理
 - `useHotkeyRecorder`（`src/hooks/use-hotkey-recorder.ts`）：热键录制循环
 - `useNativeShell`（`src/hooks/use-native-shell.ts`）：检测 `__TAURI_INTERNALS__`，浏览器预览模式禁用原生命令
@@ -105,8 +105,8 @@ graph TD
 ## Tauri IPC 模式
 
 - **命令调用**：`invoke<XxxBootstrap>("tool_action", { params })`
-- **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`
-- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `RECOGNITION_EVENTS` / `GLOBAL_EVENTS` / `ABOUT_EVENTS` / `THEME_EVENTS` / `PROFILE_EVENTS`（字符串常量）与显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)` 订阅
+- **事件监听**：`subscribeTauriEvent<XxxPayload>(EVENTS.xxx, callback)`，事件名格式 `{tool}://{event}`
+- 后端在 `src-tauri/src/*/events.rs` 定义事件常量，前端通过 `src/lib/tauri-events.ts` 的事件常量与 `src/lib/tauri-listener.ts` helper 订阅
 
 ## 设置持久化
 
@@ -123,7 +123,7 @@ graph TD
 | `theme_settings.json` | 主题配置 |
 | `profile_settings.json` | 配置快照元数据 |
 
-通用读写逻辑在 `src-tauri/src/settings.rs` 中实现。
+通用读写逻辑在 `src-tauri/src/settings.rs` 中实现。写入使用唯一 temp 文件后原子替换；`SettingsCoordinator` 串行化 5 类工具保存与 Profile 切换，并用 `settingsRevision` 拒绝旧页面写入。
 
 ## 透明窗口系统
 

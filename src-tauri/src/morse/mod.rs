@@ -17,6 +17,7 @@ use crate::app_error::AppError;
 use crate::hotkey_types;
 use crate::hotkeys::{HotkeyAction, HotkeyManager};
 use crate::profile::{self, ActiveProfileSnapshotPatch};
+use crate::settings::SettingsCoordinator;
 
 use self::{
     overlay::PendingSelection,
@@ -274,47 +275,51 @@ pub fn morse_get_bootstrap(state: State<'_, MorseState>) -> Result<MorseBootstra
 #[tauri::command]
 pub async fn morse_save_settings(
     settings_value: MorseSettings,
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, MorseState>,
     hotkey_manager: State<'_, HotkeyManager>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<MorseBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
-    let previous_settings = {
-        let inner = state
+    settings_coordinator.with_revision(settings_revision, || {
+        let previous_settings = {
+            let inner = state
+                .inner
+                .lock()
+                .map_err(|_| "摩斯状态已损坏".to_string())?;
+            inner.settings.clone()
+        };
+
+        let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
+
+        if let Err(error) = settings::save_settings(&app, &settings_value) {
+            return Err(AppError::from(error));
+        }
+
+        if hotkey_changed {
+            if let Err(error) =
+                restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
+            {
+                let _ = settings::save_settings(&app, &previous_settings);
+                return Err(AppError::from(error));
+            }
+        }
+
+        let mut inner = state
             .inner
             .lock()
             .map_err(|_| "摩斯状态已损坏".to_string())?;
-        inner.settings.clone()
-    };
+        inner.settings = settings_value.clone();
 
-    let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
-
-    if let Err(error) = settings::save_settings(&app, &settings_value) {
-        return Err(AppError::from(error));
-    }
-
-    if hotkey_changed {
-        if let Err(error) =
-            restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
-        {
-            let _ = settings::save_settings(&app, &previous_settings);
-            return Err(AppError::from(error));
-        }
-    }
-
-    let mut inner = state
-        .inner
-        .lock()
-        .map_err(|_| "摩斯状态已损坏".to_string())?;
-    inner.settings = settings_value.clone();
-
-    let bootstrap = crate::tool_base::ToolLogic::build_bootstrap(&inner);
-    drop(inner);
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Morse(settings_value),
-    )?;
-    Ok(bootstrap)
+        let bootstrap = crate::tool_base::ToolLogic::build_bootstrap(&inner);
+        drop(inner);
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Morse(settings_value),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]
@@ -341,33 +346,37 @@ pub async fn morse_begin_region_selection(
 pub fn morse_overlay_submit_selection(
     slot: usize,
     rect: RegionRect,
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, MorseState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<RegionSelectionProgress, AppError> {
-    let prepared = overlay::prepare_selection(slot, rect, &state)?;
-    let progress = prepared.progress.clone();
-    let is_complete = prepared.is_complete;
+    settings_coordinator.with_revision(settings_revision, || {
+        let prepared = overlay::prepare_selection(slot, rect, &state)?;
+        let progress = prepared.progress.clone();
+        let is_complete = prepared.is_complete;
 
-    overlay::commit_selection(&app, prepared, &state)?;
+        overlay::commit_selection(&app, prepared, &state)?;
 
-    if is_complete {
-        let settings_snapshot = {
-            let inner = state
-                .inner
-                .lock()
-                .map_err(|_| "摩斯状态已损坏".to_string())?;
-            inner.settings.clone()
-        };
-        settings::save_settings(&app, &settings_snapshot)?;
-        profile::update_active_profile_snapshot(
-            &app,
-            ActiveProfileSnapshotPatch::Morse(settings_snapshot),
-        )?;
-    }
+        if is_complete {
+            let settings_snapshot = {
+                let inner = state
+                    .inner
+                    .lock()
+                    .map_err(|_| "摩斯状态已损坏".to_string())?;
+                inner.settings.clone()
+            };
+            settings::save_settings(&app, &settings_snapshot)?;
+            profile::update_active_profile_snapshot(
+                &app,
+                ActiveProfileSnapshotPatch::Morse(settings_snapshot),
+            )?;
+        }
 
-    let _ = app.emit_to("main", events::SELECTION_PROGRESS, progress.clone());
+        let _ = app.emit_to("main", events::SELECTION_PROGRESS, progress.clone());
 
-    Ok(progress)
+        Ok(progress)
+    })
 }
 
 #[tauri::command]
@@ -382,23 +391,27 @@ pub fn morse_overlay_cancel_selection(
 /// 提前结束点击区域选择（Enter 键触发），保存当前已选区域。
 #[tauri::command]
 pub fn morse_overlay_finish_early(
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, MorseState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<(), AppError> {
-    overlay::finish_early(&app, &state)?;
-    let settings_snapshot = {
-        let inner = state
-            .inner
-            .lock()
-            .map_err(|_| "摩斯状态已损坏".to_string())?;
-        inner.settings.clone()
-    };
-    settings::save_settings(&app, &settings_snapshot)?;
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Morse(settings_snapshot),
-    )?;
-    Ok(())
+    settings_coordinator.with_revision(settings_revision, || {
+        overlay::finish_early(&app, &state)?;
+        let settings_snapshot = {
+            let inner = state
+                .inner
+                .lock()
+                .map_err(|_| "摩斯状态已损坏".to_string())?;
+            inner.settings.clone()
+        };
+        settings::save_settings(&app, &settings_snapshot)?;
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Morse(settings_snapshot),
+        )?;
+        Ok(())
+    })
 }
 
 #[tauri::command]

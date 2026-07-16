@@ -68,6 +68,11 @@ export function getProfileDisplayName(boot: ProfileBootstrap | null): string {
     return getActiveProfile(boot)?.name ?? "配置1";
 }
 
+/** 获取配置写入 revision；bootstrap 未就绪时返回必然被后端拒绝的 0。 */
+export function getSettingsRevision(boot: ProfileBootstrap | null): number {
+    return boot?.settingsRevision ?? 0;
+}
+
 /**
  * 按 Switcher 下拉需求排序：当前激活配置排在首位，其余保持原顺序。
  */

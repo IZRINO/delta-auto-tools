@@ -28,7 +28,7 @@
 | `hotkeys` | 共享 willhook 键盘钩子，scope 注册，`ConflictPolicy`（Strict / AllowHold），跨 scope 冲突检测 |
 | `overlay-windows` | 透明窗口：无边框、置顶、点击穿透；位置设置窗口保留校准靶风格 |
 | `theme-engine` | 3 套 daisyUI 内置主题 + 自定义 + token override |
-| `profile-system` | 多配置快照切换、复制、删除、单配置导入/导出 |
+| `profile-system` | 多配置快照切换、revision 防陈旧写入、复制、删除、单配置导入/导出 |
 | `logging` | 混合格式日志 + 按天轮转 + 链路追踪 |
 
 ### 架构改进
@@ -70,8 +70,8 @@
 
 | 层 | 数量 |
 |----|------|
-| Rust 单元测试 | 386 |
-| 前端单元测试 | 346 |
+| Rust 单元测试 | 462 |
+| 前端单元测试 | 396 |
 | 编译检查 | `cargo check` clean |
 | 前端构建 | `bun run build` clean |
 

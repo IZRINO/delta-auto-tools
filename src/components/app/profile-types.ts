@@ -44,4 +44,5 @@ export interface ProfileSettings {
 export interface ProfileBootstrap {
     profiles: Profile[];
     activeProfileId: string;
+    settingsRevision: number;
 }

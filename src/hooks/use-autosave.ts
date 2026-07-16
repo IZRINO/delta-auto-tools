@@ -69,7 +69,11 @@ export function useAutosave<TForm>(options: UseAutosaveOptions<TForm>): UseAutos
         saveTimeoutRef.current = window.setTimeout(() => {
             try {
                 if (formSnapshot) {
-                    void onSaveRef.current(formSnapshot, nextVersion);
+                    void onSaveRef.current(formSnapshot, nextVersion).catch((error: unknown) => {
+                        if (nextVersion !== autosaveVersionRef.current) return;
+                        const message = error instanceof Error ? error.message : String(error);
+                        onErrorRef.current?.(message);
+                    });
                 }
             } catch (error) {
                 if (nextVersion !== autosaveVersionRef.current) {

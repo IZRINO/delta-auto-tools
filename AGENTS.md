@@ -237,9 +237,9 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 详细实现请通过 codegraph 探索，以下为核心架构锚点：
 
-**前端**：`index.html` → `src/main.tsx` → `src/App.tsx`。App.tsx 通过 `useState<ToolId>` 切换工具页；overlay/display/position 模式通过 `?mode=` 查询参数分支。每个工具页遵循 Bootstrap/Form 双状态 + autosave debounce 400ms 模式。
+**前端**：`index.html` → `src/main.tsx` → `src/App.tsx`。App.tsx 通过 `useState<ToolId>` 切换工具页；overlay/display/position 模式通过 `?mode=` 查询参数分支。每个工具页遵循 Bootstrap/Form 双状态 + autosave debounce 400ms + `LatestSaveQueue` latest-wins 模式；所有持久化工具配置的命令（含 position/region overlay commit）必须携带 Profile `settingsRevision`。
 
-**后端**：`src-tauri/src/lib.rs` 的 `run()` 在 `setup` 中依次初始化各工具模块并 `app.manage()` 注册状态。工具模块共享 `ToolBase` 泛型基座（`ToolLogic` trait、`ToolState<T>`）。
+**后端**：`src-tauri/src/lib.rs` 的 `run()` 在 `setup` 中依次初始化各工具模块并 `app.manage()` 注册状态。工具模块共享 `ToolBase` 泛型基座（`ToolLogic` trait、`ToolState<T>`）；5 类工具保存与 Profile 切换必须通过全局 `SettingsCoordinator` 串行化并校验 revision。
 
 **工具模块**（详见 codegraph）：
 - `morse/` — 截屏→二值化→轮廓检测→摩斯解码→自动输入

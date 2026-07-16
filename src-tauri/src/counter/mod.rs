@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::MutexGuard,
+    sync::{Arc, MutexGuard},
 };
 
 use tauri::{
@@ -17,6 +17,7 @@ use crate::overlay_utils::{
     hide_window, safe_label_component,
 };
 use crate::profile::{self, ActiveProfileSnapshotPatch};
+use crate::settings::SettingsCoordinator;
 use crate::sync_tool::{
     apply_position_event, count_enabled_items_by_group, group_enabled, normalize_sync_settings,
     HotkeyBindingSet, PendingPosition, PositionEvent, PositionKinds, RunsSync, SyncGroup, SyncItem,
@@ -783,38 +784,42 @@ pub fn counter_get_bootstrap(state: State<'_, CounterState>) -> Result<CounterBo
 #[tauri::command]
 pub async fn counter_save_settings(
     settings_value: CounterSettings,
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, CounterState>,
     hotkey_manager: State<'_, HotkeyManager>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<CounterBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
-    settings::save_settings(&app, &settings_value)?;
+    settings_coordinator.with_revision(settings_revision, || {
+        settings::save_settings(&app, &settings_value)?;
 
-    if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "计数器状态已损坏".to_string())?;
-        inner.hotkey_error = Some(error.clone());
-        return Err(AppError::from(error));
-    }
+        if let Err(error) = restart_hotkey_listeners(&state, &hotkey_manager, &settings_value) {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "计数器状态已损坏".to_string())?;
+            inner.hotkey_error = Some(error.clone());
+            return Err(AppError::from(error));
+        }
 
-    let bootstrap = {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "计数器状态已损坏".to_string())?;
-        inner.settings = settings_value.clone();
-        inner.hotkey_error = None;
-        CounterLogic::sync_runs_with_settings(&mut inner.logic.runs, &settings_value);
-        CounterLogic::build_bootstrap(&inner)
-    };
+        let bootstrap = {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "计数器状态已损坏".to_string())?;
+            inner.settings = settings_value.clone();
+            inner.hotkey_error = None;
+            CounterLogic::sync_runs_with_settings(&mut inner.logic.runs, &settings_value);
+            CounterLogic::build_bootstrap(&inner)
+        };
 
-    ensure_display_windows(&app, &bootstrap.settings)?;
-    emit_state(&app, bootstrap.clone());
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
-    )?;
-    Ok(bootstrap)
+        ensure_display_windows(&app, &bootstrap.settings)?;
+        emit_state(&app, bootstrap.clone());
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]
@@ -981,72 +986,76 @@ pub async fn counter_begin_position_selection(
 
 #[tauri::command]
 pub fn counter_position_commit(
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, CounterState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<CounterBootstrap, AppError> {
-    let pending = {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        inner.logic.pending_position.take()
-    };
-    let Some(pending) = pending else {
-        return Err(AppError::Message("没有正在进行的位置设置".to_string()));
-    };
-    let (sync_pending, sender) = pending_counter_to_sync(pending);
-    let staged_rect = sync_pending.staged_rect.clone();
-    let group_id = sync_pending.group_id.clone();
-    let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
-        Some(sync_pending),
-        PositionEvent::Commit,
-    )?;
+    settings_coordinator.with_revision(settings_revision, || {
+        let pending = {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+            inner.logic.pending_position.take()
+        };
+        let Some(pending) = pending else {
+            return Err(AppError::Message("没有正在进行的位置设置".to_string()));
+        };
+        let (sync_pending, sender) = pending_counter_to_sync(pending);
+        let staged_rect = sync_pending.staged_rect.clone();
+        let group_id = sync_pending.group_id.clone();
+        let decision = apply_position_event::<CounterRect, CounterSelectionKind>(
+            Some(sync_pending),
+            PositionEvent::Commit,
+        )?;
 
-    if decision.save {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        if let Some(group) = inner
-            .settings
-            .counter_groups
-            .iter_mut()
-            .find(|group| group.id == group_id)
-        {
-            group.display.rect = staged_rect.clone();
+        if decision.save {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+            if let Some(group) = inner
+                .settings
+                .counter_groups
+                .iter_mut()
+                .find(|group| group.id == group_id)
+            {
+                group.display.rect = staged_rect.clone();
+            }
+            if group_id == DEFAULT_COUNTER_GROUP_ID {
+                inner.settings.display.rect = staged_rect;
+            }
+            inner.settings.display = group_display(
+                &inner.settings.counter_groups,
+                DEFAULT_COUNTER_GROUP_ID,
+                DEFAULT_COUNTER_GROUP_ID,
+            )
+            .cloned()
+            .unwrap_or_default();
+            settings::save_settings(&app, &inner.settings)?;
         }
-        if group_id == DEFAULT_COUNTER_GROUP_ID {
-            inner.settings.display.rect = staged_rect;
+
+        if let Some(kind) = decision.send {
+            let _ = sender.send(kind);
         }
-        inner.settings.display = group_display(
-            &inner.settings.counter_groups,
-            DEFAULT_COUNTER_GROUP_ID,
-            DEFAULT_COUNTER_GROUP_ID,
-        )
-        .cloned()
-        .unwrap_or_default();
-        settings::save_settings(&app, &inner.settings)?;
-    }
+        if decision.destroy_window {
+            destroy_window(&app, &position_label_for_group(&group_id));
+        }
 
-    if let Some(kind) = decision.send {
-        let _ = sender.send(kind);
-    }
-    if decision.destroy_window {
-        destroy_window(&app, &position_label_for_group(&group_id));
-    }
+        let bootstrap = {
+            let inner = state
+                .lock_inner()
+                .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
+            CounterLogic::build_bootstrap(&inner)
+        };
 
-    let bootstrap = {
-        let inner = state
-            .lock_inner()
-            .map_err(|_| "计数器位置设置状态已损坏".to_string())?;
-        CounterLogic::build_bootstrap(&inner)
-    };
-
-    ensure_display_windows(&app, &bootstrap.settings)?;
-    emit_state(&app, bootstrap.clone());
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
-    )?;
-    Ok(bootstrap)
+        ensure_display_windows(&app, &bootstrap.settings)?;
+        emit_state(&app, bootstrap.clone());
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Counter(bootstrap.settings.clone()),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]

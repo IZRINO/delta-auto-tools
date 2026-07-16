@@ -20,7 +20,7 @@ mod apply;
 use std::{
     fs,
     path::Path,
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -29,6 +29,7 @@ use crate::counter;
 use crate::morse;
 use crate::rapidfire;
 use crate::recognition;
+use crate::settings::SettingsCoordinator;
 use crate::timer;
 
 use self::apply::apply_snapshot_to_tools;
@@ -38,13 +39,23 @@ use self::types::{Profile, ProfileBootstrap, ProfileSettings};
 pub struct ProfileState {
     settings: Mutex<ProfileSettings>,
     apply_lock: Mutex<()>,
+    settings_coordinator: Arc<SettingsCoordinator>,
 }
 
 impl ProfileState {
+    #[cfg(test)]
     pub fn new(settings: ProfileSettings) -> Self {
+        Self::with_coordinator(settings, Arc::new(SettingsCoordinator::new()))
+    }
+
+    fn with_coordinator(
+        settings: ProfileSettings,
+        settings_coordinator: Arc<SettingsCoordinator>,
+    ) -> Self {
         Self {
             settings: Mutex::new(settings),
             apply_lock: Mutex::new(()),
+            settings_coordinator,
         }
     }
 }
@@ -57,9 +68,15 @@ fn acquire_apply_lock(state: &ProfileState) -> Result<MutexGuard<'_, ()>, String
 }
 
 /// 初始化 Profile 状态：加载持久化 `profile_settings.json`，缺失则用默认值。
-pub fn initialize(app: &AppHandle) -> Result<ProfileState, String> {
+pub fn initialize(
+    app: &AppHandle,
+    settings_coordinator: Arc<SettingsCoordinator>,
+) -> Result<ProfileState, String> {
     let settings = settings::load_settings(app).unwrap_or_default();
-    Ok(ProfileState::new(settings))
+    Ok(ProfileState::with_coordinator(
+        settings,
+        settings_coordinator,
+    ))
 }
 
 /// 生成新 Profile id：`p` + 毫秒时间戳 + 2 位递增计数。
@@ -193,12 +210,14 @@ fn write_profile_json(path: &str, json: &str) -> Result<(), String> {
 }
 
 /// 构建 Profile bootstrap。
-fn build_bootstrap(state: &ProfileState) -> ProfileBootstrap {
-    let settings = state.settings.lock().expect("Profile 状态锁被污染");
-    ProfileBootstrap {
+fn build_bootstrap(state: &ProfileState) -> Result<ProfileBootstrap, String> {
+    let settings_revision = state.settings_coordinator.current_revision()?;
+    let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+    Ok(ProfileBootstrap {
         profiles: settings.profiles.clone(),
         active_profile_id: settings.active_profile_id.clone(),
-    }
+        settings_revision,
+    })
 }
 
 /// 向 main 窗口 emit profile://changed 事件，payload 为最新 bootstrap。
@@ -241,7 +260,7 @@ pub fn profile_get_bootstrap(
         settings::save_settings(&app, &settings)?;
     }
 
-    Ok(build_bootstrap(&state))
+    build_bootstrap(&state)
 }
 
 #[tauri::command]
@@ -250,16 +269,19 @@ pub fn profile_save_current(
     state: State<'_, ProfileState>,
     name: String,
 ) -> Result<Profile, String> {
-    let snapshot = snapshot_current_settings(&app)?;
+    let (profile, _) = state
+        .settings_coordinator
+        .with_profile_change(|side_effect_started| {
+            let snapshot = snapshot_current_settings(&app)?;
+            let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+            *side_effect_started = true;
+            let profile = append_profile(&mut settings, name.trim().to_string(), snapshot);
+            settings::save_settings(&app, &settings)?;
+            Ok::<Profile, String>(profile)
+        })?;
 
-    let profile = {
-        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        let profile = append_profile(&mut settings, name.trim().to_string(), snapshot);
-        settings::save_settings(&app, &settings)?;
-        profile
-    };
-
-    emit_profile_changed(&app, &build_bootstrap(&state));
+    let bootstrap = build_bootstrap(&state)?;
+    emit_profile_changed(&app, &bootstrap);
     Ok(profile)
 }
 
@@ -269,24 +291,27 @@ pub async fn profile_create_default(
     state: State<'_, ProfileState>,
 ) -> Result<ProfileBootstrap, String> {
     let _apply_guard = acquire_apply_lock(&state)?;
-    let snapshot = build_default_snapshot();
-    let profile_id = {
-        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        let name = reserve_config_name(&mut settings);
-        let profile = append_profile(&mut settings, name, snapshot.clone());
-        settings::save_settings(&app, &settings)?;
-        profile.id
-    };
+    state
+        .settings_coordinator
+        .with_profile_change(|side_effect_started| {
+            let snapshot = build_default_snapshot();
+            let profile_id = {
+                let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+                *side_effect_started = true;
+                let name = reserve_config_name(&mut settings);
+                let profile = append_profile(&mut settings, name, snapshot.clone());
+                settings::save_settings(&app, &settings)?;
+                profile.id
+            };
 
-    apply_snapshot_to_tools(&app, &snapshot)?;
+            apply_snapshot_to_tools(&app, &snapshot)?;
 
-    {
-        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        settings.active_profile_id = profile_id;
-        settings::save_settings(&app, &settings)?;
-    }
+            let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+            settings.active_profile_id = profile_id;
+            settings::save_settings(&app, &settings)
+        })?;
 
-    let bootstrap = build_bootstrap(&state);
+    let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
 }
@@ -305,27 +330,30 @@ pub async fn profile_apply(
         "profile_id" => id.clone()
     );
 
-    // 先取出目标 Profile 快照（不持有锁做 IO）
-    let snapshot = {
-        let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        let profile = settings
-            .profiles
-            .iter()
-            .find(|p| p.id == id)
-            .ok_or_else(|| format!("找不到配置: {id}"))?;
-        profile.snapshot.clone()
-    };
+    state
+        .settings_coordinator
+        .with_profile_change(|side_effect_started| {
+            // 先取出目标 Profile 快照（不持有 Profile 锁做 IO）
+            let snapshot = {
+                let settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+                let profile = settings
+                    .profiles
+                    .iter()
+                    .find(|p| p.id == id)
+                    .ok_or_else(|| format!("找不到配置: {id}"))?;
+                profile.snapshot.clone()
+            };
 
-    apply_snapshot_to_tools(&app, &snapshot)?;
+            *side_effect_started = true;
+            apply_snapshot_to_tools(&app, &snapshot)?;
 
-    // 更新 active_profile_id 并持久化
-    {
-        let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
-        settings.active_profile_id = id.clone();
-        settings::save_settings(&app, &settings)?;
-    }
+            let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
+            settings.active_profile_id = id.clone();
+            settings::save_settings(&app, &settings)
+        })?;
 
-    emit_profile_changed(&app, &build_bootstrap(&state));
+    let bootstrap = build_bootstrap(&state)?;
+    emit_profile_changed(&app, &bootstrap);
     crate::log_info!(
         "profile",
         "完成切换 Profile",
@@ -349,7 +377,7 @@ pub fn profile_delete(
         settings.profiles.retain(|p| p.id != id);
         settings::save_settings(&app, &settings)?;
     }
-    let bootstrap = build_bootstrap(&state);
+    let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
 }
@@ -384,7 +412,7 @@ pub fn profile_import(
         import_profile(&mut settings, &json)?;
         settings::save_settings(&app, &settings)?;
     }
-    let bootstrap = build_bootstrap(&state);
+    let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
 }
@@ -401,7 +429,7 @@ pub fn profile_import_from_path(
         import_profile(&mut settings, &json)?;
         settings::save_settings(&app, &settings)?;
     }
-    let bootstrap = build_bootstrap(&state);
+    let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
 }
@@ -424,7 +452,7 @@ pub fn profile_rename(
         profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
         settings::save_settings(&app, &settings)?;
     }
-    let bootstrap = build_bootstrap(&state);
+    let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
 }
@@ -550,9 +578,23 @@ mod tests {
     #[test]
     fn default_profile_settings_empty() {
         let state = ProfileState::new(ProfileSettings::default());
-        let boot = build_bootstrap(&state);
+        let boot = build_bootstrap(&state).unwrap();
         assert!(boot.profiles.is_empty());
         assert_eq!(boot.active_profile_id, "");
+    }
+
+    #[test]
+    fn build_bootstrap_returns_error_when_profile_state_is_poisoned() {
+        let state = Arc::new(ProfileState::new(ProfileSettings::default()));
+        let poisoned_state = Arc::clone(&state);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoned_state.settings.lock().unwrap();
+            panic!("污染 Profile 状态锁");
+        })
+        .join();
+
+        let error = build_bootstrap(&state).unwrap_err();
+        assert_eq!(error, "Profile 状态锁已损坏");
     }
 
     #[test]
@@ -583,7 +625,7 @@ mod tests {
             next_profile_number: 1,
         };
         let state = ProfileState::new(settings);
-        let boot = build_bootstrap(&state);
+        let boot = build_bootstrap(&state).unwrap();
         assert_eq!(boot.profiles.len(), 1);
         assert_eq!(boot.profiles[0].id, "p1");
         assert_eq!(boot.active_profile_id, "p1");
@@ -768,10 +810,12 @@ mod tests {
             next_profile_number: 1,
         };
         let state = ProfileState::new(settings);
-        let bootstrap = build_bootstrap(&state);
+        let bootstrap = build_bootstrap(&state).unwrap();
         let json = serde_json::to_string(&bootstrap);
         assert!(json.is_ok(), "ProfileBootstrap 应可序列化为 emit payload");
-        assert!(json.unwrap().contains("profiles"));
+        let json = json.unwrap();
+        assert!(json.contains("profiles"));
+        assert!(json.contains("\"settingsRevision\":1"));
     }
 
     /// 验证 ProfileBootstrap 实现 Clone（emit_to 需要）。
@@ -789,7 +833,7 @@ mod tests {
             next_profile_number: 1,
         };
         let state = ProfileState::new(settings);
-        let bootstrap = build_bootstrap(&state);
+        let bootstrap = build_bootstrap(&state).unwrap();
         let cloned = bootstrap.clone();
         assert_eq!(cloned.profiles.len(), 1);
         assert_eq!(cloned.active_profile_id, "p1");

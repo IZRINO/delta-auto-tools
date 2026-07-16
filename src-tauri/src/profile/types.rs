@@ -98,6 +98,8 @@ pub struct ProfileBootstrap {
     pub profiles: Vec<Profile>,
     /// 当前激活 Profile id。
     pub active_profile_id: String,
+    /// 当前工具配置 revision；Profile 切换后递增。
+    pub settings_revision: u64,
 }
 
 #[cfg(test)]

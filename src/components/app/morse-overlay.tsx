@@ -14,8 +14,11 @@ import {
     type RegionTuple,
 } from "@/components/app/morse-types";
 import {getErrorMessage, getSelectionRect, parseOverlayTarget} from "@/components/app/morse-utils";
+import {getSettingsRevision} from "@/components/app/profile-utils";
+import {useProfile} from "@/hooks/use-profile";
 
 export function RegionSelectionOverlay({slots}: { slots: number[] }) {
+    const {bootstrap: profileBootstrap} = useProfile();
     const target = useMemo(() => parseOverlayTarget(), []);
     const labels = target === "click" ? CLICK_REGION_LABELS : REGION_LABELS;
     const [dragStart, setDragStart] = useState<Point | null>(null);
@@ -64,12 +67,14 @@ export function RegionSelectionOverlay({slots}: { slots: number[] }) {
         setStatusMessage("正在提交已选区域...");
 
         try {
-            await invoke("morse_overlay_finish_early");
+            await invoke("morse_overlay_finish_early", {
+                settingsRevision: getSettingsRevision(profileBootstrap),
+            });
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
             setSubmitting(false);
         }
-    }, [completedSlots, submitting]);
+    }, [completedSlots, profileBootstrap, submitting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -128,6 +133,7 @@ export function RegionSelectionOverlay({slots}: { slots: number[] }) {
             const progress = await invoke<RegionSelectionProgress>("morse_overlay_submit_selection", {
                 slot: currentSlot,
                 rect,
+                settingsRevision: getSettingsRevision(profileBootstrap),
             });
             setRegions(progress.regions);
             setCompletedSlots(progress.completedSlots);

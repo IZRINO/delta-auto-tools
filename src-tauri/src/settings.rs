@@ -1,6 +1,10 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        LazyLock, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -85,6 +89,91 @@ fn backup_settings(path: &Path, kind: &str) -> Result<PathBuf, String> {
     Ok(backup_path)
 }
 
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+// ponytail: replace 很短且配置写入低频；实测需要串行化 Windows MoveFileExW。
+static SETTINGS_REPLACE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+pub struct SettingsCoordinator {
+    revision: Mutex<u64>,
+}
+
+impl Default for SettingsCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SettingsCoordinator {
+    pub fn new() -> Self {
+        Self {
+            revision: Mutex::new(1),
+        }
+    }
+
+    pub fn current_revision(&self) -> Result<u64, String> {
+        self.revision
+            .lock()
+            .map(|revision| *revision)
+            .map_err(|_| "配置写入协调器已损坏".to_string())
+    }
+
+    pub fn with_revision<T, E>(
+        &self,
+        expected_revision: u64,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<String>,
+    {
+        let revision = self
+            .revision
+            .lock()
+            .map_err(|_| E::from("配置写入协调器已损坏".to_string()))?;
+        if *revision != expected_revision {
+            return Err(E::from(format!(
+                "配置保存已陈旧：页面 revision {expected_revision}，当前 revision {}",
+                *revision
+            )));
+        }
+        operation()
+    }
+
+    pub fn with_profile_change<T, E>(
+        &self,
+        operation: impl FnOnce(&mut bool) -> Result<T, E>,
+    ) -> Result<(T, u64), E>
+    where
+        E: From<String>,
+    {
+        let mut revision = self
+            .revision
+            .lock()
+            .map_err(|_| E::from("配置写入协调器已损坏".to_string()))?;
+        let mut side_effect_started = false;
+        let result = operation(&mut side_effect_started);
+        if result.is_ok() || side_effect_started {
+            *revision = revision.saturating_add(1);
+        }
+        result.map(|value| (value, *revision))
+    }
+}
+
+fn temp_settings_path(path: &Path) -> Result<PathBuf, String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("无法解析配置文件目录 {}", path.display()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("配置文件名无效 {}", path.display()))?;
+    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    Ok(parent.join(format!(
+        ".{file_name}.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    )))
+}
+
 pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(), String> {
     let content = serde_json::to_string_pretty(settings).map_err(|error| {
         crate::log_error!(
@@ -100,13 +189,10 @@ pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(
         .ok_or_else(|| format!("无法解析配置文件目录 {}", path.display()))?;
     ensure_config_dir(parent)?;
 
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| format!("配置文件名无效 {}", path.display()))?;
-    let temp_path = parent.join(format!(".{file_name}.tmp"));
+    let temp_path = temp_settings_path(path)?;
 
-    fs::write(&temp_path, content).map_err(|error| {
+    if let Err(error) = fs::write(&temp_path, content) {
+        let _ = fs::remove_file(&temp_path);
         crate::log_error!(
             "settings",
             "写入临时配置文件失败",
@@ -114,9 +200,19 @@ pub fn save_settings<T: serde::Serialize>(path: &Path, settings: &T) -> Result<(
             "target_path" => path.display().to_string(),
             "error" => error.to_string()
         );
-        format!("无法写入临时配置文件 {}: {error}", temp_path.display())
-    })?;
+        return Err(format!(
+            "无法写入临时配置文件 {}: {error}",
+            temp_path.display()
+        ));
+    }
 
+    let _replace_guard = match SETTINGS_REPLACE_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            let _ = fs::remove_file(&temp_path);
+            return Err("配置文件替换锁已损坏".to_string());
+        }
+    };
     replace_settings_file(&temp_path, path).map_err(|error| {
         crate::log_error!(
             "settings",
@@ -220,5 +316,159 @@ mod tests {
             fs::read_to_string(backup).unwrap(),
             "{\"valid_json\":\"bad_semantics\"}"
         );
+    }
+
+    #[test]
+    fn concurrent_writes_use_distinct_temp_paths() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let target = temp_dir.path().join("settings.json");
+
+        let first = temp_settings_path(&target).unwrap();
+        let second = temp_settings_path(&target).unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(first.parent(), target.parent());
+        assert!(first
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(".settings.json."));
+        assert_eq!(
+            first.extension().and_then(|value| value.to_str()),
+            Some("tmp")
+        );
+    }
+
+    #[test]
+    fn thirty_two_concurrent_writers_leave_complete_json_without_temp_files() {
+        use std::sync::{Arc, Barrier};
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let target = Arc::new(temp_dir.path().join("concurrent.json"));
+        let barrier = Arc::new(Barrier::new(32));
+        let writers = (0..32)
+            .map(|index| {
+                let target = Arc::clone(&target);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    save_settings(
+                        target.as_ref(),
+                        &TestSettings {
+                            value: format!("writer-{index}"),
+                        },
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for writer in writers {
+            writer.join().unwrap().unwrap();
+        }
+
+        let saved = load_settings::<TestSettings>(target.as_ref()).unwrap();
+        assert!(saved.value.starts_with("writer-"));
+        let leftovers = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn profile_revision_rejects_old_save_after_switch() {
+        let coordinator = SettingsCoordinator::new();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let disk_path = temp_dir.path().join("profile-barrier.json");
+        let runtime = Mutex::new(TestSettings {
+            value: "initial".to_string(),
+        });
+        let profile_snapshot = Mutex::new(TestSettings {
+            value: "initial".to_string(),
+        });
+        let initial_revision = coordinator.current_revision().unwrap();
+
+        coordinator
+            .with_profile_change(|side_effect_started| {
+                *side_effect_started = true;
+                runtime.lock().unwrap().value = "new-profile".to_string();
+                save_settings(
+                    &disk_path,
+                    &TestSettings {
+                        value: "new-profile".to_string(),
+                    },
+                )?;
+                profile_snapshot.lock().unwrap().value = "new-profile".to_string();
+                Ok::<(), String>(())
+            })
+            .unwrap();
+
+        let stale = coordinator.with_revision(initial_revision, || {
+            runtime.lock().unwrap().value = "stale-save".to_string();
+            save_settings(
+                &disk_path,
+                &TestSettings {
+                    value: "stale-save".to_string(),
+                },
+            )?;
+            profile_snapshot.lock().unwrap().value = "stale-save".to_string();
+            Ok::<(), String>(())
+        });
+
+        assert!(stale.unwrap_err().contains("陈旧"));
+        assert_eq!(runtime.lock().unwrap().value, "new-profile");
+        assert_eq!(
+            load_settings::<TestSettings>(&disk_path).unwrap().value,
+            "new-profile"
+        );
+        assert_eq!(profile_snapshot.lock().unwrap().value, "new-profile");
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 1
+        );
+    }
+
+    #[test]
+    fn profile_revision_advances_when_change_fails_after_side_effect() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+        let value = Mutex::new("initial");
+
+        let result = coordinator.with_profile_change(|side_effect_started| {
+            *side_effect_started = true;
+            *value.lock().unwrap() = "partial-profile";
+            Err::<(), String>("应用 Profile 失败".to_string())
+        });
+
+        assert_eq!(result.unwrap_err(), "应用 Profile 失败");
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 1
+        );
+        let stale = coordinator.with_revision(initial_revision, || {
+            *value.lock().unwrap() = "stale-save";
+            Ok::<(), String>(())
+        });
+        assert!(stale.unwrap_err().contains("陈旧"));
+        assert_eq!(*value.lock().unwrap(), "partial-profile");
+    }
+
+    #[test]
+    fn profile_revision_stays_when_change_fails_before_side_effect() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+
+        let result = coordinator.with_profile_change(|_side_effect_started| {
+            Err::<(), String>("读取 Profile 失败".to_string())
+        });
+
+        assert_eq!(result.unwrap_err(), "读取 Profile 失败");
+        assert_eq!(coordinator.current_revision().unwrap(), initial_revision);
     }
 }

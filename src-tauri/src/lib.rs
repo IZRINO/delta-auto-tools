@@ -24,7 +24,7 @@ mod tool_base;
 #[link(name = "resource", kind = "static")]
 extern "C" {}
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use tauri::{Manager, WindowEvent};
 
@@ -136,9 +136,12 @@ pub fn run() {
             let log_writer = logging::init_logger(app.handle())?;
             app.manage(log_writer);
             let theme_state = theme::initialize(app.handle())?;
-            let profile_state = profile::initialize(app.handle())?;
+            let settings_coordinator = Arc::new(settings::SettingsCoordinator::new());
+            let profile_state =
+                profile::initialize(app.handle(), Arc::clone(&settings_coordinator))?;
             let global_state = global_state::GlobalState::new(true);
             app.manage(theme_state);
+            app.manage(settings_coordinator);
             app.manage(profile_state);
             app.manage(global_state);
 

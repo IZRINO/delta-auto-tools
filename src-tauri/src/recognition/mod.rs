@@ -6,6 +6,7 @@ use crate::app_error::AppError;
 use crate::hotkey_types::ConflictPolicy;
 use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
+use crate::settings::SettingsCoordinator;
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 mod effects;
@@ -270,45 +271,59 @@ pub async fn recognition_save_settings(
     app: tauri::AppHandle,
     state: tauri::State<'_, RecognitionState>,
     settings_value: RecognitionSettings,
+    settings_revision: u64,
+    settings_coordinator: tauri::State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<RecognitionBootstrap, AppError> {
     let normalized = normalize_settings(settings_value);
     validate_settings(&normalized).map_err(AppError::from)?;
-    let previous_settings = {
-        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        inner.settings.clone()
-    };
+    settings_coordinator.with_revision(settings_revision, || {
+        let previous_settings = {
+            let inner = state.lock_inner().map_err(AppError::from)?;
+            inner.settings.clone()
+        };
 
-    // 先保存到磁盘，失败时直接返回错误，不重启 listeners
-    settings::write_settings(&app, &normalized).map_err(|e| AppError::from(e))?;
+        // 先保存到磁盘，失败时直接返回错误，不重启 listeners
+        settings::write_settings(&app, &normalized).map_err(AppError::from)?;
 
-    let playback_tx = {
-        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        inner.settings = normalized.clone();
-        inner.logic.playback_tx.clone()
-    };
+        let playback_tx = {
+            let mut inner = state.lock_inner().map_err(AppError::from)?;
+            inner.settings = normalized.clone();
+            inner.logic.playback_tx.clone()
+        };
 
-    // 然后重启热键和 watcher。不要持有 RecognitionState 锁做 watcher IPC。
-    let hotkey_manager = app.state::<HotkeyManager>();
-    if let Err(e) = restart_hotkey_listeners(&hotkey_manager, &normalized) {
-        let _ = settings::write_settings(&app, &previous_settings);
-        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        inner.settings = previous_settings;
-        inner.hotkey_error = Some(e.clone());
-        return Err(AppError::from(e));
-    }
-    let _ = watcher::restart_watchers(&app, &normalized, playback_tx);
+        // 然后重启热键和 watcher。不要持有 RecognitionState 锁做 watcher IPC。
+        let hotkey_manager = app.state::<HotkeyManager>();
+        if let Err(error) = restart_hotkey_listeners(&hotkey_manager, &normalized) {
+            let _ = settings::write_settings(&app, &previous_settings);
+            let mut inner = state.lock_inner().map_err(AppError::from)?;
+            inner.settings = previous_settings;
+            inner.hotkey_error = Some(error.clone());
+            return Err(AppError::from(error));
+        }
+        if let Err(error) = watcher::restart_watchers(&app, &normalized, playback_tx.clone()) {
+            {
+                let mut inner = state.lock_inner().map_err(AppError::from)?;
+                inner.settings = previous_settings.clone();
+                inner.hotkey_error = Some(error.clone());
+            }
+            let _ = settings::write_settings(&app, &previous_settings);
+            let _ = restart_hotkey_listeners(&hotkey_manager, &previous_settings);
+            let _ = watcher::restart_watchers(&app, &previous_settings, playback_tx);
+            return Err(AppError::from(error));
+        }
 
-    let bootstrap = {
-        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        inner.hotkey_error = None;
-        RecognitionLogic::build_bootstrap(&inner)
-    };
-    RecognitionLogic::emit_state(&app, &bootstrap);
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Recognition(bootstrap.settings.clone()),
-    )?;
-    Ok(bootstrap)
+        let bootstrap = {
+            let mut inner = state.lock_inner().map_err(AppError::from)?;
+            inner.hotkey_error = None;
+            RecognitionLogic::build_bootstrap(&inner)
+        };
+        RecognitionLogic::emit_state(&app, &bootstrap);
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Recognition(bootstrap.settings.clone()),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]
@@ -427,61 +442,76 @@ pub async fn recognition_overlay_submit_selection(
     region: RegionRect,
     selection_target: Option<String>,
     probe_index: Option<usize>,
+    settings_revision: u64,
 ) -> Result<(), AppError> {
-    // 关闭 overlay 窗口
-    let overlay_label = format!(
-        "{}-{}",
-        RECOGNITION_OVERLAY_LABEL,
-        safe_label_component(&card_id)
-    );
-    destroy_window(&app, &overlay_label);
+    let settings_coordinator = app.state::<Arc<SettingsCoordinator>>();
+    settings_coordinator.with_revision(settings_revision, || {
+        let overlay_label = format!(
+            "{}-{}",
+            RECOGNITION_OVERLAY_LABEL,
+            safe_label_component(&card_id)
+        );
 
-    // 更新卡片区域
-    let (settings_snapshot, bootstrap, playback_tx) = {
-        let mut inner = state.lock_inner().map_err(|e| AppError::from(e))?;
-        let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
-            return Err(AppError::from("卡片不存在".to_string()));
-        };
+        // 更新卡片区域
+        let (previous_settings, settings_snapshot, bootstrap, playback_tx) = {
+            let mut inner = state.lock_inner().map_err(AppError::from)?;
+            let previous_settings = inner.settings.clone();
+            let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
+                return Err(AppError::from("卡片不存在".to_string()));
+            };
 
-        if selection_target.as_deref() == Some("customClick") {
-            let click = card
-                .effects
-                .click
-                .get_or_insert(types::RecognitionClickEffect {
-                    mode: types::RecognitionClickMode::CustomRegion,
-                    custom_region: None,
-                    color_probe_index: None,
-                });
-            click.mode = types::RecognitionClickMode::CustomRegion;
-            click.custom_region = Some(region);
-        } else if let Some(idx) = probe_index {
-            if matches!(card.trigger_mode, types::RecognitionTriggerMode::ColorWatch) {
-                let probe = card
-                    .color_probes
-                    .get_mut(idx)
-                    .ok_or_else(|| AppError::from("探针已变更，请重新框选".to_string()))?;
-                probe.region = Some(region);
+            if selection_target.as_deref() == Some("customClick") {
+                let click = card
+                    .effects
+                    .click
+                    .get_or_insert(types::RecognitionClickEffect {
+                        mode: types::RecognitionClickMode::CustomRegion,
+                        custom_region: None,
+                        color_probe_index: None,
+                    });
+                click.mode = types::RecognitionClickMode::CustomRegion;
+                click.custom_region = Some(region);
+            } else if let Some(idx) = probe_index {
+                if matches!(card.trigger_mode, types::RecognitionTriggerMode::ColorWatch) {
+                    let probe = card
+                        .color_probes
+                        .get_mut(idx)
+                        .ok_or_else(|| AppError::from("探针已变更，请重新框选".to_string()))?;
+                    probe.region = Some(region);
+                } else {
+                    card.watch_region = Some(region);
+                }
             } else {
                 card.watch_region = Some(region);
             }
-        } else {
-            card.watch_region = Some(region);
-        }
-        settings::write_settings(&app, &inner.settings).map_err(|e| AppError::from(e))?;
-        (
-            inner.settings.clone(),
-            RecognitionLogic::build_bootstrap(&inner),
-            inner.logic.playback_tx.clone(),
-        )
-    };
+            settings::write_settings(&app, &inner.settings).map_err(AppError::from)?;
+            (
+                previous_settings,
+                inner.settings.clone(),
+                RecognitionLogic::build_bootstrap(&inner),
+                inner.logic.playback_tx.clone(),
+            )
+        };
 
-    watcher::restart_watchers(&app, &settings_snapshot, playback_tx).map_err(AppError::from)?;
-    RecognitionLogic::emit_state(&app, &bootstrap);
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Recognition(settings_snapshot),
-    )?;
-    Ok(())
+        if let Err(error) = watcher::restart_watchers(&app, &settings_snapshot, playback_tx.clone())
+        {
+            {
+                let mut inner = state.lock_inner().map_err(AppError::from)?;
+                inner.settings = previous_settings.clone();
+                inner.hotkey_error = Some(error.clone());
+            }
+            let _ = settings::write_settings(&app, &previous_settings);
+            let _ = watcher::restart_watchers(&app, &previous_settings, playback_tx);
+            return Err(AppError::from(error));
+        }
+        RecognitionLogic::emit_state(&app, &bootstrap);
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Recognition(settings_snapshot),
+        )?;
+        destroy_window(&app, &overlay_label);
+        Ok(())
+    })
 }
 
 #[tauri::command]

@@ -62,6 +62,8 @@ import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
 import {useAutosave} from "@/hooks/use-autosave";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {useGlobalEnabled} from "@/hooks/use-global-enabled";
+import {useProfile} from "@/hooks/use-profile";
+import {getSettingsRevision} from "@/components/app/profile-utils";
 
 type RecognitionRecordingTarget = {
     cardId: string;
@@ -444,16 +446,11 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         recorder.handleKeyDown(event);
     }, [recordingTarget, recorder]);
 
-    // 操作前强制把当前 form 落盘到后端内存：避免「新建卡片/改字段后未等 400ms autosave 落地就调后端命令」
-    // 导致后端按 cardId 查不到卡或读到旧字段（「卡片不存在」/「只有识色模式才可测试」）。
-    // 直接 invoke save 命令、不经 useBootstrapForm.saveSettings，不重置前端 form 草稿；
-    // 失败（如必填项缺失）时 toast 提示并抛出带标记的 Error，让调用方中断后续命令且不重复弹窗。
+    // 操作前通过同一 queue 强制保存当前 form，避免测试命令读到 autosave 尚未落地的旧设置。
     const flushSettings = useCallback(async (): Promise<void> => {
         if (!isNativeShell || !form) return;
         try {
-            await invoke(RECOGNITION_BOOTSTRAP_SPEC.saveSettingsCommand, {
-                settingsValue: parseSettingsForm(form),
-            });
+            await saveSettings(parseSettingsForm(form));
         } catch (error) {
             const message = getErrorMessage(error);
             toast.error(`保存设置失败：${message}`);
@@ -462,7 +459,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             wrapped.name = "FlushSettingsError";
             throw wrapped;
         }
-    }, [isNativeShell, form]);
+    }, [isNativeShell, form, saveSettings]);
 
     const handleTestPlay = useCallback(
         async (cardId: string) => {
@@ -2005,6 +2002,7 @@ function cardToForm(card: RecognitionCard): RecognitionSettingsForm["cards"][num
 }
 
 export function RecognitionRegionOverlay() {
+    const {bootstrap: profileBootstrap} = useProfile();
     const params = useMemo(() => new URLSearchParams(window.location.search), []);
     const cardId = params.get("recognition_card") ?? "";
     const selectionTarget = params.get("selection_target") ?? undefined;
@@ -2056,12 +2054,18 @@ export function RecognitionRegionOverlay() {
         setSubmitting(true);
         setStatusMessage("正在提交...");
         try {
-            await invoke("recognition_overlay_submit_selection", {cardId, probeIndex, selectionTarget, region: rect});
+            await invoke("recognition_overlay_submit_selection", {
+                cardId,
+                probeIndex,
+                selectionTarget,
+                region: rect,
+                settingsRevision: getSettingsRevision(profileBootstrap),
+            });
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
             setSubmitting(false);
         }
-    }, [cardId, probeIndex, selectionTarget, committedRect, submitting]);
+    }, [cardId, probeIndex, selectionTarget, committedRect, profileBootstrap, submitting]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {

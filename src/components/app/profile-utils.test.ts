@@ -7,6 +7,7 @@ import {
     formatProfileTimestamp,
     getActiveProfile,
     getProfileDisplayName,
+    getSettingsRevision,
     isActiveProfile,
     sortProfilesForSwitcher,
     snapshotTools,
@@ -113,12 +114,12 @@ describe("countIncludedTools", () => {
 
 describe("isActiveProfile", () => {
     it("激活时返回 true", () => {
-        const boot: ProfileBootstrap = {profiles: [makeProfile("a")], activeProfileId: "a"};
+        const boot: ProfileBootstrap = {profiles: [makeProfile("a")], activeProfileId: "a", settingsRevision: 1};
         expect(isActiveProfile(boot, "a")).toBe(true);
     });
 
     it("非激活时返回 false", () => {
-        const boot: ProfileBootstrap = {profiles: [makeProfile("a")], activeProfileId: "b"};
+        const boot: ProfileBootstrap = {profiles: [makeProfile("a")], activeProfileId: "b", settingsRevision: 1};
         expect(isActiveProfile(boot, "a")).toBe(false);
     });
 
@@ -132,6 +133,7 @@ describe("getActiveProfile", () => {
         const boot: ProfileBootstrap = {
             profiles: [makeProfile("a", "配置1"), makeProfile("b", "配置2")],
             activeProfileId: "b",
+            settingsRevision: 1,
         };
         expect(getActiveProfile(boot)?.name).toBe("配置2");
     });
@@ -144,6 +146,7 @@ describe("getActiveProfile", () => {
         const boot: ProfileBootstrap = {
             profiles: [makeProfile("a")],
             activeProfileId: "missing",
+            settingsRevision: 1,
         };
         expect(getActiveProfile(boot)).toBeNull();
     });
@@ -155,15 +158,32 @@ describe("getProfileDisplayName", () => {
     });
 
     it("空 profiles 时显示配置1", () => {
-        expect(getProfileDisplayName({profiles: [], activeProfileId: ""})).toBe("配置1");
+        expect(getProfileDisplayName({profiles: [], activeProfileId: "", settingsRevision: 1})).toBe("配置1");
     });
 
     it("有激活配置时显示配置名称", () => {
         const boot: ProfileBootstrap = {
             profiles: [makeProfile("a", "配置A")],
             activeProfileId: "a",
+            settingsRevision: 1,
         };
         expect(getProfileDisplayName(boot)).toBe("配置A");
+    });
+});
+
+describe("getSettingsRevision", () => {
+    it("overlay 保存参数沿用窗口初始化时的 revision", () => {
+        const boot: ProfileBootstrap = {
+            profiles: [makeProfile("a")],
+            activeProfileId: "a",
+            settingsRevision: 41,
+        };
+
+        expect(getSettingsRevision(boot)).toBe(41);
+    });
+
+    it("bootstrap 尚未加载时返回必然陈旧的 revision", () => {
+        expect(getSettingsRevision(null)).toBe(0);
     });
 });
 

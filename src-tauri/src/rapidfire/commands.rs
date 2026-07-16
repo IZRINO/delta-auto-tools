@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use tauri::{AppHandle, Manager, PhysicalPosition, State};
 use tokio::sync::oneshot;
@@ -6,6 +6,7 @@ use tokio::sync::oneshot;
 use crate::app_error::AppError;
 use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
+use crate::settings::SettingsCoordinator;
 use crate::sync_tool::group_enabled;
 use crate::tool_base::ToolLogic;
 
@@ -33,101 +34,106 @@ pub fn rapidfire_get_bootstrap(
 #[tauri::command]
 pub async fn rapidfire_save_settings(
     settings_value: RapidfireSettings,
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, RapidfireState>,
     hotkey_manager: State<'_, HotkeyManager>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<super::types::RapidfireBootstrap, AppError> {
     let settings_value = super::normalize_settings(settings_value)?;
-    let previous_settings = {
-        let inner = state
-            .lock_inner()
-            .map_err(|_| "连发器状态已损坏".to_string())?;
-        inner.settings.clone()
-    };
+    settings_coordinator.with_revision(settings_revision, || {
+        let previous_settings = {
+            let inner = state
+                .lock_inner()
+                .map_err(|_| "连发器状态已损坏".to_string())?;
+            inner.settings.clone()
+        };
 
-    settings::save_settings(&app, &settings_value)?;
+        settings::save_settings(&app, &settings_value)?;
 
-    if let Err(error) =
-        super::restart_hotkey_listeners(&state, &hotkey_manager, &settings_value, false)
-    {
-        let _ = settings::save_settings(&app, &previous_settings);
-        let _ = super::restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings, true);
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "连发器状态已损坏".to_string())?;
-        inner.hotkey_error = Some(error.clone());
-        return Err(AppError::from(error));
-    }
-
-    let (bootstrap, suppressions_to_clear, should_stop_suppressor) = {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "连发器状态已损坏".to_string())?;
-        inner.settings = settings_value.clone();
-        inner.hotkey_error = None;
-
-        let active_card_ids: Vec<String> = settings_value
-            .cards
-            .iter()
-            .filter(|c| c.enabled && group_enabled(&settings_value.groups, &c.group_id))
-            .map(|c| c.id.clone())
-            .collect();
-        worker::stop_removed_or_disabled_sessions(&mut inner.logic.runs, &active_card_ids);
-
-        let should_suppress: HashSet<String> = settings_value
-            .cards
-            .iter()
-            .filter(|c| {
-                c.enabled
-                    && c.ignore_trigger_key
-                    && group_enabled(&settings_value.groups, &c.group_id)
-            })
-            .map(|c| c.trigger_key.clone())
-            .collect();
-        let previous_should_suppress: HashSet<String> = previous_settings
-            .cards
-            .iter()
-            .filter(|c| {
-                c.enabled
-                    && c.ignore_trigger_key
-                    && group_enabled(&previous_settings.groups, &c.group_id)
-            })
-            .map(|c| c.trigger_key.clone())
-            .collect();
-
-        if !settings_value.rapidfire_enabled {
-            worker::stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
-            inner.logic.runs.clear();
+        if let Err(error) =
+            super::restart_hotkey_listeners(&state, &hotkey_manager, &settings_value, false)
+        {
+            let _ = settings::save_settings(&app, &previous_settings);
+            let _ =
+                super::restart_hotkey_listeners(&state, &hotkey_manager, &previous_settings, true);
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "连发器状态已损坏".to_string())?;
+            inner.hotkey_error = Some(error.clone());
+            return Err(AppError::from(error));
         }
 
-        (
-            RapidfireLogic::build_bootstrap(&inner),
-            previous_should_suppress
-                .difference(&should_suppress)
-                .cloned()
-                .collect::<Vec<_>>(),
-            (should_suppress.is_empty() && !previous_should_suppress.is_empty())
-                || !settings_value.rapidfire_enabled,
-        )
-    };
+        let (bootstrap, suppressions_to_clear, should_stop_suppressor) = {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "连发器状态已损坏".to_string())?;
+            inner.settings = settings_value.clone();
+            inner.hotkey_error = None;
 
-    for trigger_key in suppressions_to_clear {
-        let _ = hotkey_manager.unsuppress_key(&trigger_key);
-    }
-    if !settings_value.rapidfire_enabled {
-        hotkey_manager.clear_all_suppressions();
-    }
-    if should_stop_suppressor {
-        let _ = hotkey_manager.stop_suppressor();
-    }
+            let active_card_ids: Vec<String> = settings_value
+                .cards
+                .iter()
+                .filter(|c| c.enabled && group_enabled(&settings_value.groups, &c.group_id))
+                .map(|c| c.id.clone())
+                .collect();
+            worker::stop_removed_or_disabled_sessions(&mut inner.logic.runs, &active_card_ids);
 
-    ensure_overlay_window(&app, &bootstrap.settings)?;
-    super::emit_state(&app, bootstrap.clone());
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
-    )?;
-    Ok(bootstrap)
+            let should_suppress: HashSet<String> = settings_value
+                .cards
+                .iter()
+                .filter(|c| {
+                    c.enabled
+                        && c.ignore_trigger_key
+                        && group_enabled(&settings_value.groups, &c.group_id)
+                })
+                .map(|c| c.trigger_key.clone())
+                .collect();
+            let previous_should_suppress: HashSet<String> = previous_settings
+                .cards
+                .iter()
+                .filter(|c| {
+                    c.enabled
+                        && c.ignore_trigger_key
+                        && group_enabled(&previous_settings.groups, &c.group_id)
+                })
+                .map(|c| c.trigger_key.clone())
+                .collect();
+
+            if !settings_value.rapidfire_enabled {
+                worker::stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
+                inner.logic.runs.clear();
+            }
+
+            (
+                RapidfireLogic::build_bootstrap(&inner),
+                previous_should_suppress
+                    .difference(&should_suppress)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                (should_suppress.is_empty() && !previous_should_suppress.is_empty())
+                    || !settings_value.rapidfire_enabled,
+            )
+        };
+
+        for trigger_key in suppressions_to_clear {
+            let _ = hotkey_manager.unsuppress_key(&trigger_key);
+        }
+        if !settings_value.rapidfire_enabled {
+            hotkey_manager.clear_all_suppressions();
+        }
+        if should_stop_suppressor {
+            let _ = hotkey_manager.stop_suppressor();
+        }
+
+        ensure_overlay_window(&app, &bootstrap.settings)?;
+        super::emit_state(&app, bootstrap.clone());
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]
@@ -290,48 +296,52 @@ pub async fn rapidfire_begin_position_selection(
 
 #[tauri::command]
 pub fn rapidfire_position_commit(
+    settings_revision: u64,
     app: AppHandle,
     state: State<'_, RapidfireState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
 ) -> Result<super::types::RapidfireBootstrap, AppError> {
-    let (sender, group_id, bootstrap) = {
-        let mut inner = state
-            .lock_inner()
-            .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
-        let Some(pending) = inner.logic.pending_position.take() else {
-            return Err(AppError::Message(
-                "当前没有等待中的位置设置流程".to_string(),
-            ));
+    settings_coordinator.with_revision(settings_revision, || {
+        let (sender, group_id, bootstrap) = {
+            let mut inner = state
+                .lock_inner()
+                .map_err(|_| "连发器位置设置状态已损坏".to_string())?;
+            let Some(pending) = inner.logic.pending_position.take() else {
+                return Err(AppError::Message(
+                    "当前没有等待中的位置设置流程".to_string(),
+                ));
+            };
+
+            let group_id = pending.group_id.clone();
+            if let Some(group) = inner
+                .settings
+                .groups
+                .iter_mut()
+                .find(|group| group.id == group_id)
+            {
+                group.overlay_position = Some(pending.staged_position.clone());
+            }
+            if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
+                inner.settings.overlay_position = Some(pending.staged_position.clone());
+            }
+            settings::save_settings(&app, &inner.settings)?;
+            (
+                pending.sender,
+                group_id,
+                RapidfireLogic::build_bootstrap(&inner),
+            )
         };
 
-        let group_id = pending.group_id.clone();
-        if let Some(group) = inner
-            .settings
-            .groups
-            .iter_mut()
-            .find(|group| group.id == group_id)
-        {
-            group.overlay_position = Some(pending.staged_position.clone());
-        }
-        if group_id == DEFAULT_RAPIDFIRE_GROUP_ID {
-            inner.settings.overlay_position = Some(pending.staged_position.clone());
-        }
-        settings::save_settings(&app, &inner.settings)?;
-        (
-            pending.sender,
-            group_id,
-            RapidfireLogic::build_bootstrap(&inner),
-        )
-    };
-
-    let _ = sender.send(RapidfireSelectionKind::Selected);
-    crate::overlay_utils::destroy_window(&app, &position_label_for_group(&group_id));
-    ensure_overlay_window(&app, &bootstrap.settings)?;
-    super::emit_state(&app, bootstrap.clone());
-    profile::update_active_profile_snapshot(
-        &app,
-        ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
-    )?;
-    Ok(bootstrap)
+        let _ = sender.send(RapidfireSelectionKind::Selected);
+        crate::overlay_utils::destroy_window(&app, &position_label_for_group(&group_id));
+        ensure_overlay_window(&app, &bootstrap.settings)?;
+        super::emit_state(&app, bootstrap.clone());
+        profile::update_active_profile_snapshot(
+            &app,
+            ActiveProfileSnapshotPatch::Rapidfire(bootstrap.settings.clone()),
+        )?;
+        Ok(bootstrap)
+    })
 }
 
 #[tauri::command]

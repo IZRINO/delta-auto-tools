@@ -124,7 +124,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 - **Bootstrap/FormData 双状态**：`bootstrap`（Rust 返回的不可变规范态）+ `form`（本地可编辑草稿），脏检测通过 `JSON.stringify`
   比较
-- **Autosave**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）调用 `xxx_save_settings`，`autosaveVersionRef` 防止陈旧保存覆盖
+- **Autosave**：表单变更后 debounce 400ms（`AUTOSAVE_DELAY_MS`）；`LatestSaveQueue` 保证每个工具最多一个 in-flight save，等待区只保留最新 snapshot；所有持久化工具配置的命令（含 position/region overlay commit）必须携带 Profile `settingsRevision`
 - **Form↔Settings 转层**：`settingsToForm()`（int→string 供 Input）和 `parseSettingsForm()`（验证+string→int 供 Rust）
 - 容器页（`morse-page.tsx` 等）负责状态编排，子组件只接收 props
 
