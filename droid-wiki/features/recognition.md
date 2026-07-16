@@ -22,6 +22,8 @@ src-tauri/src/recognition/
     └── capture.rs      # 截图和参考图读取
 ```
 
+前端 `recognition-page.tsx` 负责编排 bootstrap、autosave 与原生副作用；`recognition-card-reducer.ts` 是卡片不可变更新 seam，`recognition-card-editor.tsx` 承载 memo 化卡片编辑器，`recognition-overlay.tsx` 独立承载 `?mode=recognition-overlay` 框选界面。
+
 ## 数据模型
 
 | 类型 | 职责 |

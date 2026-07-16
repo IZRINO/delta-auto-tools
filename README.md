@@ -105,6 +105,8 @@ src-tauri/src/timer/        # 计时器
 src-tauri/src/counter/      # 计数器
 src-tauri/src/rapidfire/    # 连发器（keys / worker / overlay / commands）
 src-tauri/src/recognition/  # 识别触发（effects / manager / matching / capture / player）
+src/components/app/recognition-{page,card-editor,overlay}.tsx  # 识别编排、卡片编辑与框选模块
+src/components/app/recognition-card-reducer.ts                # 识别卡片不可变更新 seam
 src-tauri/src/strategy/     # 攻略网站 WebView2 子视图
 src-tauri/src/about/        # 关于面板 + Tauri 官方更新器
 src-tauri/src/delta/        # Delta 登录、账号与游戏数据

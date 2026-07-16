@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力包括 Morse
-摩斯识别、计时器、计数器、连发器、识别触发；识别触发支持快捷键、多参考图区域匹配、多区域识色，截图/NCC 通过全局 `Semaphore(2)` 调度到 `spawn_blocking`，旧 watcher generation 不得继续触发效果。外加攻略网站工作台。
+摩斯识别、计时器、计数器、连发器、识别触发；识别触发支持快捷键、多参考图区域匹配、多区域识色，截图/NCC 通过全局 `Semaphore(2)` 调度到 `spawn_blocking`，旧 watcher generation 不得继续触发效果；前端 reducer、CardEditor、overlay 分模块维护。外加攻略网站工作台。
 
 ## Commands
 
