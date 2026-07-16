@@ -48,7 +48,8 @@ import {
     type FavoriteCardKind,
     type FavoriteItem,
     favoriteKey,
-    type FavoritesView
+    type FavoritesView,
+    settleFavoriteBootstraps,
 } from "@/components/app/favorites-utils";
 
 type TimerFavoriteDetail = {
@@ -92,35 +93,18 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
 
         setLoading(true);
 
-        void invoke<TimerBootstrap>("timer_get_bootstrap")
-            .then((next) => {
-                if (!disposed) {
-                    setTimerBootstrap(next);
-                }
-            })
-            .catch(() => {
-                // 浏览器预览 / 调用失败时静默忽略
-            });
-
-        void invoke<RapidfireBootstrap>("rapidfire_get_bootstrap")
-            .then((next) => {
-                if (!disposed) {
-                    setRapidfireBootstrap(next);
-                }
-            })
-            .catch(() => {
-                // 浏览器预览 / 调用失败时静默忽略
-            });
-
-        void invoke<CounterBootstrap>("counter_get_bootstrap")
-            .then((next) => {
-                if (!disposed) {
-                    setCounterBootstrap(next);
-                }
-            })
-            .catch(() => {
-                // 浏览器预览 / 调用失败时静默忽略
-            });
+        void settleFavoriteBootstraps(
+            invoke<TimerBootstrap>("timer_get_bootstrap"),
+            invoke<CounterBootstrap>("counter_get_bootstrap"),
+            invoke<RapidfireBootstrap>("rapidfire_get_bootstrap"),
+        ).then((next) => {
+            if (disposed) return;
+            setTimerBootstrap(next.timer);
+            setCounterBootstrap(next.counter);
+            setRapidfireBootstrap(next.rapidfire);
+        }).finally(() => {
+            if (!disposed) setLoading(false);
+        });
 
         const unlistenTimerState = subscribeTauriEvent<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
@@ -236,27 +220,19 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             }
         }
         return result;
-    }, [items, timerSettingsForm, rapidfireSettingsForm, timerRunsById, counterRunsById]);
+    }, [items, timerSettingsForm, counterSettingsForm, rapidfireSettingsForm, timerRunsById, counterRunsById]);
 
-    // 在 detail 变化时清理孤儿收藏。
-    // 注意：数据未加载完成时（timerSettingsForm 和 rapidfireSettingsForm 均为 null）
-    // 不能执行 prune，否则会把所有收藏项当作孤儿清空。
+    // 三类数据全部 ready 后清理孤儿收藏；任一加载失败时保留现有收藏。
     useEffect(() => {
-        // 任一表单未加载完成就跳过 prune，避免在异步加载期间误清空
-        if (timerSettingsForm === null || rapidfireSettingsForm === null) {
+        if (timerSettingsForm === null || counterSettingsForm === null || rapidfireSettingsForm === null) {
             return;
         }
-        const validKeys = new Set<string>();
-        for (const entry of details) {
-            if (entry.detail) {
-                validKeys.add(favoriteKey(entry.item.kind, entry.item.cardId));
-            }
-        }
-        if (validKeys.size === items.length && items.every((item) => validKeys.has(favoriteKey(item.kind, item.cardId)))) {
-            return;
-        }
-        prune(validKeys);
-    }, [details, items, prune, timerSettingsForm, rapidfireSettingsForm]);
+        prune({
+            timer: new Set(timerSettingsForm.timers.map((timer) => timer.id)),
+            counter: new Set(counterSettingsForm.counters.map((counter) => counter.id)),
+            rapidfire: new Set(rapidfireSettingsForm.cards.map((card) => card.id)),
+        });
+    }, [counterSettingsForm, prune, rapidfireSettingsForm, timerSettingsForm]);
 
     const handleMoveUp = useCallback((index: number) => {
         if (index <= 0) {

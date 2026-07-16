@@ -5,11 +5,12 @@ import {
     DEFAULT_FAVORITES_STATE,
     type FavoriteCardKind,
     type FavoriteItem,
+    type FavoriteSourceIds,
     type FavoritesState,
     type FavoritesView,
     isFavorite as isFavoriteUtil,
     moveFavorite as moveFavoriteUtil,
-    pruneFavorites,
+    pruneFavoritesWithSources,
     readStoredFavorites,
     removeFavorite as removeFavoriteUtil,
     toggleFavorite as toggleFavoriteUtil,
@@ -38,8 +39,8 @@ type FavoritesContextValue = {
     }) => void;
     /** 更新视图偏好 */
     updateView: (patch: Partial<FavoritesView>) => void;
-    /** 清理孤儿收藏项：传入当前所有有效 key */
-    prune: (validKeys: ReadonlySet<string>) => void;
+    /** 三类来源全部 ready 后清理孤儿收藏项。 */
+    prune: (sources: FavoriteSourceIds) => void;
 };
 
 const FavoritesContext = createContext<FavoritesContextValue | null>(null);
@@ -88,8 +89,8 @@ export function FavoritesProvider({children}: FavoritesProviderProps) {
         setState((current) => updateFavoritesViewUtil(current, patch));
     }, []);
 
-    const prune = useCallback((validKeys: ReadonlySet<string>) => {
-        setState((current) => pruneFavorites(current, validKeys));
+    const prune = useCallback((sources: FavoriteSourceIds) => {
+        setState((current) => pruneFavoritesWithSources(current, sources));
     }, []);
 
     const isFavoriteFn = useCallback(

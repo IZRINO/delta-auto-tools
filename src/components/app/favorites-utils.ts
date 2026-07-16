@@ -46,6 +46,8 @@ export type FavoritesState = {
     view: FavoritesView;
 };
 
+export type FavoriteSourceIds = Partial<Record<FavoriteCardKind, ReadonlySet<string>>>;
+
 /**
  * 默认 view 偏好：全部显示。
  */
@@ -280,6 +282,39 @@ export function pruneFavorites(
         return state;
     }
     return {...state, items: filtered};
+}
+
+export function pruneFavoritesWithSources(
+    state: FavoritesState,
+    sources: FavoriteSourceIds,
+): FavoritesState {
+    const {timer, counter, rapidfire} = sources;
+    if (!timer || !counter || !rapidfire) {
+        return state;
+    }
+
+    const validKeys = new Set<string>();
+    for (const cardId of timer) validKeys.add(favoriteKey("timer", cardId));
+    for (const cardId of counter) validKeys.add(favoriteKey("counter", cardId));
+    for (const cardId of rapidfire) validKeys.add(favoriteKey("rapidfire", cardId));
+    return pruneFavorites(state, validKeys);
+}
+
+export async function settleFavoriteBootstraps<Timer, Counter, Rapidfire>(
+    timerLoad: Promise<Timer>,
+    counterLoad: Promise<Counter>,
+    rapidfireLoad: Promise<Rapidfire>,
+): Promise<{timer: Timer | null; counter: Counter | null; rapidfire: Rapidfire | null}> {
+    const [timer, counter, rapidfire] = await Promise.allSettled([
+        timerLoad,
+        counterLoad,
+        rapidfireLoad,
+    ] as const);
+    return {
+        timer: timer.status === "fulfilled" ? timer.value : null,
+        counter: counter.status === "fulfilled" ? counter.value : null,
+        rapidfire: rapidfire.status === "fulfilled" ? rapidfire.value : null,
+    };
 }
 
 const STORAGE_KEY = "delta-auto-tools:favorites:v1";

@@ -10,14 +10,26 @@ import {
     moveFavorite,
     parseFavoriteKey,
     pruneFavorites,
+    pruneFavoritesWithSources,
     readStoredFavorites,
     removeFavorite,
     renumberFavorites,
     sortFavorites,
+    settleFavoriteBootstraps,
     toggleFavorite,
     updateFavoritesView,
     writeStoredFavorites,
 } from "@/components/app/favorites-utils";
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((promiseResolve, promiseReject) => {
+        resolve = promiseResolve;
+        reject = promiseReject;
+    });
+    return {promise, reject, resolve};
+}
 
 function makeStub() {
     const data = new Map<string, string>();
@@ -212,6 +224,77 @@ describe("favorites-utils", () => {
             const s = makeState([{kind: "timer", cardId: "a", sortKey: 1}]);
             const validKeys = new Set([favoriteKey("timer", "a")]);
             expect(pruneFavorites(s, validKeys)).toBe(s);
+        });
+
+        it("Counter 尚未加载或加载失败时保留全部收藏", () => {
+            const state = makeState([
+                {kind: "timer", cardId: "timer-1", sortKey: 1},
+                {kind: "counter", cardId: "counter-1", sortKey: 2},
+                {kind: "rapidfire", cardId: "rapidfire-1", sortKey: 3},
+            ]);
+
+            expect(pruneFavoritesWithSources(state, {
+                timer: new Set(["timer-1"]),
+                rapidfire: new Set(["rapidfire-1"]),
+            })).toBe(state);
+        });
+
+        it("三类来源全部 ready 后才删除孤儿收藏", () => {
+            const state = makeState([
+                {kind: "timer", cardId: "timer-1", sortKey: 1},
+                {kind: "counter", cardId: "missing-counter", sortKey: 2},
+                {kind: "rapidfire", cardId: "rapidfire-1", sortKey: 3},
+            ]);
+
+            const next = pruneFavoritesWithSources(state, {
+                timer: new Set(["timer-1"]),
+                counter: new Set(["counter-1"]),
+                rapidfire: new Set(["rapidfire-1"]),
+            });
+
+            expect(next.items.map((item) => item.cardId)).toEqual(["timer-1", "rapidfire-1"]);
+        });
+    });
+
+    describe("settleFavoriteBootstraps", () => {
+        it("等待 delayed Counter 后再结束三类加载", async () => {
+            const counter = deferred<string>();
+            let settled = false;
+            const result = settleFavoriteBootstraps(
+                Promise.resolve("timer"),
+                counter.promise,
+                Promise.resolve("rapidfire"),
+            ).finally(() => {
+                settled = true;
+            });
+
+            await Promise.resolve();
+            expect(settled).toBe(false);
+
+            counter.resolve("counter");
+            await expect(result).resolves.toEqual({
+                timer: "timer",
+                counter: "counter",
+                rapidfire: "rapidfire",
+            });
+            expect(settled).toBe(true);
+        });
+
+        it("Counter reject 时保留其失败状态且消费 rejection", async () => {
+            const counter = deferred<string>();
+            const result = settleFavoriteBootstraps(
+                Promise.resolve("timer"),
+                counter.promise,
+                Promise.resolve("rapidfire"),
+            );
+
+            counter.reject(new Error("Counter 加载失败"));
+
+            await expect(result).resolves.toEqual({
+                timer: "timer",
+                counter: null,
+                rapidfire: "rapidfire",
+            });
         });
     });
 
