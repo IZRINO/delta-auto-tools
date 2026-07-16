@@ -52,6 +52,14 @@ RegionWatch / ColorWatch 可选激活方式：
 
 Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配置；`onceHotkey` / `timedHotkey` 只表示“快捷键激活区域/识色识别窗口”。
 
+## Watcher 调度
+
+- `WATCHER_TASK_MAP` 为每张常驻监听卡保存 `{generation, cancel, JoinHandle}`。restart/stop 先推进全局 generation，再设置 cancel、abort 旧任务，并由 cleanup task await handles 收敛。
+- 截图和 NCC/识色匹配通过 `spawn_blocking` 执行，避免阻塞 Tokio worker。
+- 全局 `Semaphore(2)` 限制 blocking 并发；permit 已满时跳过当前帧，不排队积压旧帧。
+- blocking 结果返回后、发送 `region-matched` 或执行效果前再次检查 generation/cancel。旧配置即使完成截图或匹配，也不得继续 emit、按键、点击或播放音频。
+- restart/stop 同时取消 activation session，避免 Profile 切换后旧激活会话继续执行。
+
 ## 效果执行
 
 `effects::execute` 在锁内构建执行计划，释放锁后按固定顺序执行：

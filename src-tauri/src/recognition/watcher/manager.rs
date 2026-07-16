@@ -1,12 +1,13 @@
 //! Watcher 生命周期管理（restart / stop / run 循环）
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use tokio::sync::Semaphore;
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::global_state::GlobalState;
@@ -21,9 +22,78 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::capture;
 use super::matching;
 
-/// 全局 watcher 状态：卡片 ID -> 取消标记
-static WATCHER_CANCEL_MAP: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+struct WatcherTask {
+    generation: u64,
+    cancel: Arc<AtomicBool>,
+    handle: tauri::async_runtime::JoinHandle<()>,
+}
+
+/// 全局 watcher 状态：卡片 ID -> 当前 generation、取消标记和任务 handle。
+static WATCHER_TASK_MAP: OnceLock<Mutex<HashMap<String, WatcherTask>>> = OnceLock::new();
 static ACTIVATION_CANCEL_MAP: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+static BLOCKING_PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+static WATCHER_GENERATIONS: WatcherGenerations = WatcherGenerations::new();
+
+struct WatcherGenerations(AtomicU64);
+
+impl WatcherGenerations {
+    const fn new() -> Self {
+        Self(AtomicU64::new(0))
+    }
+
+    fn next(&self) -> u64 {
+        self.0.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn is_current(&self, generation: u64) -> bool {
+        self.0.load(Ordering::SeqCst) == generation
+    }
+}
+
+impl Default for WatcherGenerations {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+async fn run_blocking_limited<T, F>(job: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let permit = BLOCKING_PERMITS
+        .get_or_init(|| Arc::new(Semaphore::new(2)))
+        .clone()
+        .try_acquire_owned()
+        .ok()?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        job()
+    })
+    .await
+    .ok()
+}
+
+fn watcher_is_current(generation: u64, cancel: &AtomicBool) -> bool {
+    !cancel.load(Ordering::SeqCst) && WATCHER_GENERATIONS.is_current(generation)
+}
+
+fn cancel_watcher_tasks(task_map: &mut HashMap<String, WatcherTask>, generation: u64) {
+    let mut handles = Vec::with_capacity(task_map.len());
+    for (_, task) in task_map.drain() {
+        debug_assert!(task.generation < generation);
+        task.cancel.store(true, Ordering::SeqCst);
+        task.handle.abort();
+        handles.push(task.handle);
+    }
+    if !handles.is_empty() {
+        tauri::async_runtime::spawn(async move {
+            for handle in handles {
+                let _ = handle.await;
+            }
+        });
+    }
+}
 
 /// 启动/重启所有区域监听 watcher
 pub fn restart_watchers(
@@ -35,13 +105,19 @@ pub fn restart_watchers(
         return stop_all_watchers(app);
     }
 
-    let mut cancel_map = WATCHER_CANCEL_MAP
+    let generation = WATCHER_GENERATIONS.next();
+    let mut task_map = WATCHER_TASK_MAP
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .map_err(|_| "识别监听状态已损坏".to_string())?;
 
     // 先取消所有现有 watcher
-    for (_, cancel) in cancel_map.drain() {
+    cancel_watcher_tasks(&mut task_map, generation);
+    let mut activations = ACTIVATION_CANCEL_MAP
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map_err(|_| "识别激活会话状态已损坏".to_string())?;
+    for (_, cancel) in activations.drain() {
         cancel.store(true, Ordering::SeqCst);
     }
 
@@ -83,10 +159,9 @@ pub fn restart_watchers(
         let poll_interval_ms = card.watch_poll_interval_ms;
         let playback_tx_clone = playback_tx.clone();
         let cancel_clone = Arc::clone(&cancel);
+        let task_card_id = card_id.clone();
 
-        cancel_map.insert(card_id.clone(), cancel);
-
-        match card.trigger_mode {
+        let handle = match card.trigger_mode {
             RecognitionTriggerMode::RegionWatch => {
                 let Some(region) = &card.watch_region else {
                     continue;
@@ -97,7 +172,7 @@ pub fn restart_watchers(
                 tauri::async_runtime::spawn(async move {
                     run_region_watcher(
                         app_clone,
-                        card_id,
+                        task_card_id,
                         region_clone,
                         ref_paths_clone,
                         playback_tx_clone,
@@ -106,9 +181,10 @@ pub fn restart_watchers(
                         threshold,
                         poll_interval_ms,
                         cancel_clone,
+                        generation,
                     )
                     .await;
-                });
+                })
             }
             RecognitionTriggerMode::ColorWatch => {
                 let probes = card.color_probes.clone();
@@ -117,7 +193,7 @@ pub fn restart_watchers(
                 tauri::async_runtime::spawn(async move {
                     run_color_watcher(
                         app_clone,
-                        card_id,
+                        task_card_id,
                         probes,
                         match_mode,
                         match_method,
@@ -126,12 +202,21 @@ pub fn restart_watchers(
                         retrigger_after_disappear,
                         poll_interval_ms,
                         cancel_clone,
+                        generation,
                     )
                     .await;
-                });
+                })
             }
-            RecognitionTriggerMode::Hotkey => {}
-        }
+            RecognitionTriggerMode::Hotkey => continue,
+        };
+        task_map.insert(
+            card_id,
+            WatcherTask {
+                generation,
+                cancel,
+                handle,
+            },
+        );
     }
 
     Ok(())
@@ -145,11 +230,17 @@ pub(crate) fn watcher_runtime_cards<'a>(
 
 /// 停止所有区域监听 watcher
 pub fn stop_all_watchers(_app: &AppHandle) -> Result<(), String> {
-    let mut cancel_map = WATCHER_CANCEL_MAP
+    let generation = WATCHER_GENERATIONS.next();
+    let mut task_map = WATCHER_TASK_MAP
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .map_err(|_| "识别监听状态已损坏".to_string())?;
-    for (_, cancel) in cancel_map.drain() {
+    cancel_watcher_tasks(&mut task_map, generation);
+    let mut activations = ACTIVATION_CANCEL_MAP
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map_err(|_| "识别激活会话状态已损坏".to_string())?;
+    for (_, cancel) in activations.drain() {
         cancel.store(true, Ordering::SeqCst);
     }
     Ok(())
@@ -307,8 +398,8 @@ async fn run_activation_session(app: AppHandle, card_id: String, cancel: Arc<Ato
         }
         if watcher_should_run(global_enabled(&app), recognition_module_enabled(&app)) {
             let matched = match card.trigger_mode {
-                RecognitionTriggerMode::RegionWatch => run_region_once(&app, &card).await,
-                RecognitionTriggerMode::ColorWatch => run_color_once(&app, &card).await,
+                RecognitionTriggerMode::RegionWatch => run_region_once(&app, &card, &cancel).await,
+                RecognitionTriggerMode::ColorWatch => run_color_once(&app, &card, &cancel).await,
                 RecognitionTriggerMode::Hotkey => false,
             };
             if matched {
@@ -346,23 +437,26 @@ fn card_snapshot(app: &AppHandle, card_id: &str) -> Option<RecognitionCard> {
         .cloned()
 }
 
-async fn run_region_once(app: &AppHandle, card: &RecognitionCard) -> bool {
+async fn run_region_once(app: &AppHandle, card: &RecognitionCard, cancel: &AtomicBool) -> bool {
     let Some(region) = card.watch_region.as_ref() else {
         return false;
     };
     if card.watch_reference_image_paths.is_empty() {
         return false;
     }
-    let Some(captured) = capture::capture_region(region) else {
-        return false;
-    };
-    let reference_images: Vec<_> = card
-        .watch_reference_image_paths
-        .iter()
-        .filter_map(|path| capture::load_reference_image(path))
-        .collect();
-    let Some((reference_index, result)) =
-        matching::best_reference_match(&captured, &reference_images)
+    let region_for_job = region.clone();
+    let paths = card.watch_reference_image_paths.clone();
+    let Some(Some((result, reference_width, reference_height))) = run_blocking_limited(move || {
+        let captured = capture::capture_region(&region_for_job)?;
+        let references: Vec<_> = paths
+            .iter()
+            .filter_map(|path| capture::load_reference_image(path))
+            .collect();
+        let (reference_index, result) = matching::best_reference_match(&captured, &references)?;
+        let reference = &references[reference_index];
+        Some((result, reference.width(), reference.height()))
+    })
+    .await
     else {
         return false;
     };
@@ -370,9 +464,11 @@ async fn run_region_once(app: &AppHandle, card: &RecognitionCard) -> bool {
         return false;
     }
 
-    let reference_image = &reference_images[reference_index];
-    let center_x = region.x + result.best_x as i32 + reference_image.width() as i32 / 2;
-    let center_y = region.y + result.best_y as i32 + reference_image.height() as i32 / 2;
+    if cancel.load(Ordering::SeqCst) {
+        return false;
+    }
+    let center_x = region.x + result.best_x as i32 + reference_width as i32 / 2;
+    let center_y = region.y + result.best_y as i32 + reference_height as i32 / 2;
     let _ = app.emit(REGION_MATCHED, &card.id);
     if let Err(error) = effects::execute(
         app.clone(),
@@ -412,25 +508,31 @@ fn color_trigger_context(
     TriggerContext::Color { matched_probes }
 }
 
-async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
-    let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(card.color_probes.len());
-    for probe in &card.color_probes {
-        let Some(region) = probe.region.as_ref() else {
-            return false;
-        };
-        let Some(img) = capture::capture_region(region) else {
-            return false;
-        };
-        screenshots.push(img);
-    }
-
-    let result = matching::match_color_probes(
-        &screenshots,
-        &card.color_probes,
-        card.color_match_mode.clone(),
-        card.color_match_method.clone(),
-    );
+async fn run_color_once(app: &AppHandle, card: &RecognitionCard, cancel: &AtomicBool) -> bool {
+    let probes = card.color_probes.clone();
+    let probes_for_job = probes.clone();
+    let match_mode = card.color_match_mode.clone();
+    let match_method = card.color_match_method.clone();
+    let Some(Some(result)) = run_blocking_limited(move || {
+        let mut screenshots = Vec::with_capacity(probes_for_job.len());
+        for probe in &probes_for_job {
+            screenshots.push(capture::capture_region(probe.region.as_ref()?)?);
+        }
+        Some(matching::match_color_probes(
+            &screenshots,
+            &probes_for_job,
+            match_mode,
+            match_method,
+        ))
+    })
+    .await
+    else {
+        return false;
+    };
     if !result.matched {
+        return false;
+    }
+    if cancel.load(Ordering::SeqCst) {
         return false;
     }
 
@@ -438,7 +540,7 @@ async fn run_color_once(app: &AppHandle, card: &RecognitionCard) -> bool {
     if let Err(error) = effects::execute(
         app.clone(),
         card.id.clone(),
-        color_trigger_context(&result, &card.color_probes, &card.color_match_method),
+        color_trigger_context(&result, &probes, &card.color_match_method),
     )
     .await
     {
@@ -574,6 +676,7 @@ async fn run_region_watcher(
     threshold: f32,
     poll_interval_ms: u32,
     cancel: Arc<AtomicBool>,
+    generation: u64,
 ) {
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -608,11 +711,12 @@ async fn run_region_watcher(
     if reference_images.is_empty() {
         return;
     }
+    let reference_images = Arc::new(reference_images);
 
-    while !cancel.load(Ordering::SeqCst) {
+    while watcher_is_current(generation, &cancel) {
         ticker.tick().await;
 
-        if cancel.load(Ordering::SeqCst) {
+        if !watcher_is_current(generation, &cancel) {
             break;
         }
 
@@ -621,14 +725,24 @@ async fn run_region_watcher(
             continue;
         }
 
-        // 截取屏幕区域
-        match capture::capture_region(&region) {
-            Some(captured) => {
-                let Some((reference_index, result)) =
-                    matching::best_reference_match(&captured, &reference_images)
-                else {
-                    continue;
-                };
+        let region_for_job = region.clone();
+        let references_for_job = Arc::clone(&reference_images);
+        let Some(frame) = run_blocking_limited(move || {
+            let captured = capture::capture_region(&region_for_job)?;
+            let (reference_index, result) =
+                matching::best_reference_match(&captured, references_for_job.iter())?;
+            let reference = &references_for_job[reference_index];
+            Some((result, reference.width(), reference.height()))
+        })
+        .await
+        else {
+            continue;
+        };
+        match frame {
+            Some((result, reference_width, reference_height)) => {
+                if !watcher_is_current(generation, &cancel) {
+                    break;
+                }
                 if result.similarity >= threshold {
                     if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
                         continue;
@@ -642,12 +756,12 @@ async fn run_region_watcher(
                         "best_x" => result.best_x,
                         "best_y" => result.best_y
                     );
+                    if !watcher_is_current(generation, &cancel) {
+                        break;
+                    }
                     let _ = app.emit(REGION_MATCHED, &card_id);
-                    let reference_image = &reference_images[reference_index];
-                    let center_x =
-                        region.x + result.best_x as i32 + reference_image.width() as i32 / 2;
-                    let center_y =
-                        region.y + result.best_y as i32 + reference_image.height() as i32 / 2;
+                    let center_x = region.x + result.best_x as i32 + reference_width as i32 / 2;
+                    let center_y = region.y + result.best_y as i32 + reference_height as i32 / 2;
                     if let Err(error) = effects::execute(
                         app.clone(),
                         card_id.clone(),
@@ -685,16 +799,18 @@ async fn run_color_watcher(
     retrigger_after_disappear: bool,
     poll_interval_ms: u32,
     cancel: Arc<AtomicBool>,
+    generation: u64,
 ) {
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     let mut match_gate = MatchGate::new(retrigger_after_disappear);
+    let probes = Arc::new(probes);
 
-    while !cancel.load(Ordering::SeqCst) {
+    while watcher_is_current(generation, &cancel) {
         ticker.tick().await;
 
-        if cancel.load(Ordering::SeqCst) {
+        if !watcher_is_current(generation, &cancel) {
             break;
         }
 
@@ -703,34 +819,34 @@ async fn run_color_watcher(
             continue;
         }
 
-        // 逐个截取 probe 区域；region 缺失（None）的探针视为未就绪，跳过本轮
-        let mut screenshots: Vec<image::DynamicImage> = Vec::with_capacity(probes.len());
-        let mut all_captured = true;
-        for probe in &probes {
-            let Some(region) = probe.region.as_ref() else {
-                all_captured = false;
-                break;
-            };
-            match capture::capture_region(region) {
-                Some(img) => screenshots.push(img),
-                None => {
-                    all_captured = false;
-                    break;
-                }
+        let probes_for_job = Arc::clone(&probes);
+        let match_mode_for_job = match_mode.clone();
+        let match_method_for_job = match_method.clone();
+        let Some(frame) = run_blocking_limited(move || {
+            let mut screenshots = Vec::with_capacity(probes_for_job.len());
+            for probe in probes_for_job.iter() {
+                let region = probe.region.as_ref()?;
+                screenshots.push(capture::capture_region(region)?);
             }
-        }
+            Some(matching::match_color_probes(
+                &screenshots,
+                &probes_for_job,
+                match_mode_for_job,
+                match_method_for_job,
+            ))
+        })
+        .await
+        else {
+            continue;
+        };
 
-        if !all_captured {
+        let Some(result) = frame else {
             match_gate.observe(MatchObservation::CaptureFailed, cooldown_ms, Instant::now());
             continue;
+        };
+        if !watcher_is_current(generation, &cancel) {
+            break;
         }
-
-        let result = matching::match_color_probes(
-            &screenshots,
-            &probes,
-            match_mode.clone(),
-            match_method.clone(),
-        );
         if result.matched {
             if !match_gate.observe(MatchObservation::Matched, cooldown_ms, Instant::now()) {
                 continue;
@@ -742,6 +858,9 @@ async fn run_color_watcher(
                 "hit_count" => result.hit_count,
                 "probe_count" => probes.len()
             );
+            if !watcher_is_current(generation, &cancel) {
+                break;
+            }
             let _ = app.emit(REGION_MATCHED, &card_id);
             if let Err(error) = effects::execute(
                 app.clone(),
@@ -767,6 +886,84 @@ async fn run_color_watcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newer_watcher_generation_invalidates_old_work() {
+        let generations = WatcherGenerations::default();
+        let first = generations.next();
+        let second = generations.next();
+
+        assert!(!generations.is_current(first));
+        assert!(generations.is_current(second));
+    }
+
+    #[test]
+    fn watcher_validity_rejects_cancelled_or_stale_results() {
+        let cancel = AtomicBool::new(false);
+        let generation = WATCHER_GENERATIONS.next();
+        assert!(watcher_is_current(generation, &cancel));
+
+        WATCHER_GENERATIONS.next();
+        assert!(!watcher_is_current(generation, &cancel));
+
+        let current = WATCHER_GENERATIONS.next();
+        cancel.store(true, Ordering::SeqCst);
+        assert!(!watcher_is_current(current, &cancel));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn blocking_scheduler_skips_third_job_while_two_are_running() {
+        let started = Arc::new(std::sync::Barrier::new(3));
+        let release = Arc::new(std::sync::Barrier::new(3));
+        let mut jobs = Vec::new();
+
+        for _ in 0..2 {
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            jobs.push(tokio::spawn(async move {
+                run_blocking_limited(move || {
+                    started.wait();
+                    release.wait();
+                    1
+                })
+                .await
+            }));
+        }
+
+        started.wait();
+        assert_eq!(run_blocking_limited(|| 3).await, None);
+        release.wait();
+        for job in jobs {
+            assert_eq!(job.await.unwrap(), Some(1));
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn blocking_result_becomes_stale_when_generation_changes() {
+        let started = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let generation = WATCHER_GENERATIONS.next();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let job = {
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            tokio::spawn(async move {
+                run_blocking_limited(move || {
+                    started.wait();
+                    release.wait();
+                    "旧匹配结果"
+                })
+                .await
+            })
+        };
+
+        started.wait();
+        WATCHER_GENERATIONS.next();
+        release.wait();
+
+        assert_eq!(job.await.unwrap(), Some("旧匹配结果"));
+        assert!(!watcher_is_current(generation, &cancel));
+    }
 
     fn color_context_probe() -> crate::recognition::types::ColorProbe {
         crate::recognition::types::ColorProbe {
