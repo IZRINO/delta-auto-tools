@@ -35,7 +35,7 @@ callback 不执行阻塞发送。channel 满时仍返回 `1` 吞键，`dropped_e
 
 当所有 `ignore_trigger_key` 卡片被禁用或删除时，`stop_suppressor()` 只清空 `VkBitset`，保留 hook、sender 和 receiver。后续启用会复用同一实例与 callback context。`HotkeyManager` drop 时最终卸载 hook、清理对应 callback context 并 join KeySuppressor worker；新 manager 安装时会替换 slot，不会读取旧实例的 bitset 或 sender。
 
-worker 通过共享 `AtomicU32` 发布 Windows thread ID。父线程停止时先设置 `stopped`，已发布 ID 则用 `PostThreadMessageW` 唤醒 `GetMessageW`；ID 尚未发布时，worker 发布 ID 后检查 `stopped`，取消 hook 安装并直接退出。显式安装失败和正常 drop 执行 stop + wake + join；安装超时只请求停止并 detach，避免 `SetWindowsHookExW` 卡住时阻塞调用方。该系统调用返回后，worker 会在进入消息循环前检查 `stopped`、卸载 hook 并清理 callback context。
+worker 通过共享 `AtomicU32` 发布 Windows thread ID。父线程停止时先设置 `stopped`，已发布 ID 则用 `PostThreadMessageW` 唤醒 `GetMessageW`；ID 尚未发布时，worker 发布 ID 后检查 `stopped`，取消 hook 安装并直接退出。显式安装失败和正常 drop 执行 stop + wake + join；安装超时只请求停止并 detach，避免 `SetWindowsHookExW` 卡住时阻塞调用方。进程级 active slot 由 worker 持有至退出，timeout cleanup 完成前的新安装会直接报错，不会累积 detached worker。该系统调用返回后，worker 会在进入消息循环前检查 `stopped`、卸载 hook 并清理 callback context。
 
 ## 关键抽象
 

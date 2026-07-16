@@ -129,6 +129,27 @@ fn stop_and_join_worker(
     let _ = worker.join();
 }
 
+static ACTIVE_HOOK_WORKER: AtomicBool = AtomicBool::new(false);
+
+struct ActiveHookGuard<'a> {
+    active: &'a AtomicBool,
+}
+
+impl<'a> ActiveHookGuard<'a> {
+    fn acquire(active: &'a AtomicBool) -> Result<Self, ()> {
+        active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self { active })
+            .map_err(|_| ())
+    }
+}
+
+impl Drop for ActiveHookGuard<'_> {
+    fn drop(&mut self) {
+        self.active.store(false, Ordering::Release);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallWaitAction {
     Retain,
@@ -222,6 +243,8 @@ impl KeySuppressor {
     /// 返回 (KeySuppressor, Receiver<SuppressedKeyboardEvent>)，
     /// Receiver 用于接收被抑制的事件并转发给热键监听线程。
     pub fn start() -> Result<(Self, Receiver<SuppressedKeyboardEvent>), String> {
+        let active_hook = ActiveHookGuard::acquire(&ACTIVE_HOOK_WORKER)
+            .map_err(|_| "按键抑制钩子仍在清理中，请稍后重试".to_string())?;
         let (tx, rx) = crossbeam_channel::bounded(256);
         let suppressed_keys = Arc::new(VkBitset::default());
         let dropped_events = Arc::new(AtomicU64::new(0));
@@ -238,6 +261,7 @@ impl KeySuppressor {
         let worker = thread::Builder::new()
             .name("key-suppressor".to_string())
             .spawn(move || {
+                let _active_hook = active_hook;
                 #[cfg(target_os = "windows")]
                 {
                     use std::ptr;
@@ -761,6 +785,17 @@ mod tests {
         assert_eq!(request_worker_stop(&stopped, &worker_thread_id), None);
         assert!(!prepare_worker_thread(&stopped, &worker_thread_id, 42));
         assert_eq!(worker_thread_id.load(Ordering::SeqCst), 42);
+    }
+
+    #[test]
+    fn active_hook_slot_rejects_retry_until_worker_exits() {
+        let active = AtomicBool::new(false);
+        let first = ActiveHookGuard::acquire(&active).expect("首个 worker 应占用 hook slot");
+
+        assert!(ActiveHookGuard::acquire(&active).is_err());
+
+        drop(first);
+        assert!(ActiveHookGuard::acquire(&active).is_ok());
     }
 
     #[test]
