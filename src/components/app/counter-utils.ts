@@ -10,6 +10,7 @@ import type {
     CounterItem,
     CounterItemForm,
     CounterRunState,
+    CounterRunsChanged,
     CounterSettings,
     CounterSettingsForm,
     TimerDisplaySettings,
@@ -291,7 +292,11 @@ export function isCounterDirty(bootstrap: CounterBootstrap | null, form: Counter
     }
 }
 
-export function useCounterOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: CounterBootstrap) => void) {
+export function useCounterOverlayBootstrap(
+    isNativeShell: boolean,
+    setBootstrap: React.Dispatch<React.SetStateAction<CounterBootstrap | null>>,
+    setRuntimeRuns: React.Dispatch<React.SetStateAction<CounterRunState[] | null>>,
+) {
     useEffect(() => {
         document.body.dataset.overlayMode = "true";
         return () => {
@@ -318,9 +323,23 @@ export function useCounterOverlayBootstrap(isNativeShell: boolean, setBootstrap:
             }
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<CounterRunsChanged>(
+            COUNTER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.counterRuns);
+            },
+            undefined,
+            () => {
+                void invoke<CounterBootstrap>("counter_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.counterRuns);
+                }, () => undefined);
+            },
+        );
+
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
         };
-    }, [isNativeShell, setBootstrap]);
+    }, [isNativeShell, setBootstrap, setRuntimeRuns]);
 }

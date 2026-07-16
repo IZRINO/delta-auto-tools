@@ -104,4 +104,18 @@ describe("subscribeTauriEvent", () => {
 
         expect(cleanup).toBeTypeOf("function");
     });
+
+    it("listen 注册完成后调用 onReady", async () => {
+        const pending = deferred<UnlistenFn>();
+        const onReady = vi.fn();
+        mockListen.mockReturnValueOnce(pending.promise);
+
+        subscribeTauriEvent("test://event", vi.fn(), undefined, onReady);
+        expect(onReady).not.toHaveBeenCalled();
+
+        pending.resolve(vi.fn());
+        await pending.promise;
+
+        expect(onReady).toHaveBeenCalledOnce();
+    });
 });

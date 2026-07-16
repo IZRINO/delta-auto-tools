@@ -90,11 +90,6 @@ fn apply_snapshot_to_tool_state(
         hotkey_manager.as_ref().map(|v| &**v),
     )?;
 
-    // 4. counter 运行值重置为目标 Profile 的 start_value 并落盘。
-    if let Some(counter_state) = app.try_state::<counter::CounterState>() {
-        counter::reset_runs_to_start_values(app, &counter_state)?;
-    }
-
     Ok(())
 }
 
@@ -197,26 +192,11 @@ fn apply_counter_settings(
             .map_err(|_| "计数器状态已损坏".to_string())?;
         inner.settings = normalized.clone();
         inner.hotkey_error = None;
-        inner
-            .logic
-            .runs
-            .retain(|id, _| normalized.counters.iter().any(|c| c.id == *id));
-        for counter in &normalized.counters {
-            inner
-                .logic
-                .runs
-                .entry(counter.id.clone())
-                .or_insert(counter.start_value);
-        }
-        if !normalized.counter_enabled {
-            inner.logic.runs = normalized
-                .counters
-                .iter()
-                .map(|c| (c.id.clone(), c.start_value))
-                .collect();
-        }
+        counter::reset_runs_for_settings(&mut inner.logic.runs, &normalized);
+        counter::persist_counter_runs(&state, &inner);
         crate::tool_base::ToolLogic::build_bootstrap(&inner)
     };
+    counter::emit_runs(app, bootstrap.counter_runs.clone());
     counter::emit_state(app, bootstrap);
     Ok(())
 }

@@ -1,7 +1,8 @@
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 
 import {Badge} from "@/components/ui/badge";
+import {PositionMoveQueue} from "@/components/ui/position-move-queue";
 import {getSettingsRevision} from "@/components/app/profile-utils";
 import {getErrorMessage} from "@/lib/error-utils";
 import {useProfile} from "@/hooks/use-profile";
@@ -39,6 +40,22 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
     );
     const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; x: number; y: number } | null>(null);
     const [position, setPosition] = useState({x: window.screenX, y: window.screenY, width: window.innerWidth});
+    const moveQueueRef = useRef<PositionMoveQueue | null>(null);
+
+    useEffect(() => {
+        if (!isNativeShell) return;
+        const queue = new PositionMoveQueue({
+            invoke: (point) => invoke<void>(commands.moved, point, {log: false}),
+            requestFrame: (callback) => requestAnimationFrame(callback),
+            cancelFrame: (id) => cancelAnimationFrame(id),
+            onError: (error) => setStatusMessage(getErrorMessage(error)),
+        });
+        moveQueueRef.current = queue;
+        return () => {
+            queue.dispose();
+            moveQueueRef.current = null;
+        };
+    }, [commands.moved, isNativeShell]);
 
     useEffect(() => {
         document.body.dataset.overlayMode = "true";
@@ -53,6 +70,7 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
         }
         setStatusMessage(`正在保存${label}透明窗口位置...`);
         try {
+            await moveQueueRef.current?.flush();
             await invoke(commands.commit, {settingsRevision: getSettingsRevision(profileBootstrap)});
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
@@ -65,6 +83,7 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
         }
         setStatusMessage(`正在退出${label}透明窗口位置设置...`);
         try {
+            await moveQueueRef.current?.flush();
             await invoke(commands.cancel);
         } catch (error) {
             setStatusMessage(getErrorMessage(error));
@@ -87,17 +106,13 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [cancel, commit]);
 
-    const moveTo = useCallback(async (x: number, y: number) => {
+    const moveTo = useCallback((x: number, y: number) => {
         setPosition((current) => ({...current, x, y}));
         if (!isNativeShell) {
             return;
         }
-        try {
-            await invoke(commands.moved, {x, y});
-        } catch (error) {
-            setStatusMessage(getErrorMessage(error));
-        }
-    }, [isNativeShell, commands]);
+        moveQueueRef.current?.move({x, y});
+    }, [isNativeShell]);
 
     return (
         <div
@@ -112,9 +127,12 @@ export function PositionOverlay({isNativeShell, label, commands, initialStatusSu
                 if (!dragStart) {
                     return;
                 }
-                void moveTo(dragStart.x + event.screenX - dragStart.mouseX, dragStart.y + event.screenY - dragStart.mouseY);
+                moveTo(dragStart.x + event.screenX - dragStart.mouseX, dragStart.y + event.screenY - dragStart.mouseY);
             }}
-            onMouseUp={() => setDragStart(null)}
+            onMouseUp={() => {
+                setDragStart(null);
+                void moveQueueRef.current?.flush();
+            }}
         >
             <div className="text-center">
                 <Badge variant="secondary">{label}透明窗口位置</Badge>

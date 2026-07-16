@@ -142,7 +142,7 @@ pub fn rapidfire_stop(
     state: State<'_, RapidfireState>,
     hotkey_manager: State<'_, HotkeyManager>,
 ) -> Result<super::types::RapidfireBootstrap, AppError> {
-    let bootstrap = {
+    let (bootstrap, runs_changed) = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
@@ -150,9 +150,11 @@ pub fn rapidfire_stop(
         inner.logic.runs.clear();
         hotkey_manager.clear_all_suppressions();
         let _ = hotkey_manager.stop_suppressor();
-        RapidfireLogic::build_bootstrap(&inner)
+        let bootstrap = RapidfireLogic::build_bootstrap(&inner);
+        let runs_changed = super::force_runs_changed(&mut inner);
+        (bootstrap, runs_changed)
     };
-    super::emit_state(&app, bootstrap.clone());
+    super::emit_runs(&app, runs_changed);
     Ok(bootstrap)
 }
 

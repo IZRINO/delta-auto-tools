@@ -46,6 +46,7 @@ import type {
   RapidfireCardForm,
   RapidfireGroupForm,
   RapidfireRunState,
+  RapidfireRunsChanged,
   RapidfireSelectionOutcome,
   RapidfireSettings,
   RapidfireSettingsForm,
@@ -163,6 +164,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
     }, [isNativeShell]);
 
     const [activeTab, setActiveTab] = useState<"cards" | "global" | "display">("cards");
+    const [runtimeRuns, setRuntimeRuns] = useState<RapidfireRunState[] | null>(null);
 
     const beforeUpdateFormRef = useRef<() => void>(() => {
     });
@@ -238,6 +240,19 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             setBootstrap(event.payload);
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<RapidfireRunsChanged>(
+            RAPIDFIRE_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.runs);
+            },
+            undefined,
+            () => {
+                void invoke<RapidfireBootstrap>("rapidfire_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.runs);
+                }, () => undefined);
+            },
+        );
+
         const unlistenHotkeyError = subscribeTauriEvent<string>(RAPIDFIRE_EVENTS.hotkeyError, (event) => {
             if (disposed) return;
             setPageError(event.payload);
@@ -247,20 +262,22 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
             unlistenHotkeyError();
         };
     }, [isNativeShell]);
 
-    const runsById = useMemo(() => rapidfireRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
+    const runs = runtimeRuns ?? bootstrap?.runs ?? [];
+    const runsById = useMemo(() => rapidfireRunsById(runs), [runs]);
     const controlsDisabled = loading || !isNativeShell;
     const activeRunCount = useMemo(
-        () => (bootstrap?.runs ?? []).filter((run) => run.status !== "idle").length,
-        [bootstrap?.runs],
+        () => runs.filter((run) => run.status !== "idle").length,
+        [runs],
     );
     const enabledCount = rapidfireEnabledCards(form);
     const totalFireCount = useMemo(
-        () => (bootstrap?.runs ?? []).reduce((total, run) => total + run.count, 0),
-        [bootstrap?.runs],
+        () => runs.reduce((total, run) => total + run.count, 0),
+        [runs],
     );
 
     const updateCard = useCallback((id: string, value: Partial<RapidfireCardForm>) => {
@@ -1206,10 +1223,12 @@ function KeyRecorderButton({
 
 function RapidfireDisplayOverlay({groupId, isNativeShell}: { groupId: string; isNativeShell: boolean }) {
     const [bootstrap, setBootstrap] = useState<RapidfireBootstrap | null>(null);
+    const [runtimeRuns, setRuntimeRuns] = useState<RapidfireRunState[] | null>(null);
 
-    useRapidfireOverlayBootstrap(isNativeShell, setBootstrap);
+    useRapidfireOverlayBootstrap(isNativeShell, setBootstrap, setRuntimeRuns);
 
-    const runsById = useMemo(() => rapidfireRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
+    const runs = runtimeRuns ?? bootstrap?.runs ?? [];
+    const runsById = useMemo(() => rapidfireRunsById(runs), [runs]);
     const group = bootstrap?.settings.groups?.find((item) => item.id === groupId);
     const enabledCards = bootstrap?.settings.cards.filter((card) => card.enabled && card.groupId === groupId && (group?.enabled ?? true)) ?? [];
 
@@ -1269,7 +1288,11 @@ function RapidfirePositionOverlay({isNativeShell}: { isNativeShell: boolean }) {
     );
 }
 
-function useRapidfireOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: RapidfireBootstrap) => void) {
+function useRapidfireOverlayBootstrap(
+    isNativeShell: boolean,
+    setBootstrap: React.Dispatch<React.SetStateAction<RapidfireBootstrap | null>>,
+    setRuntimeRuns: React.Dispatch<React.SetStateAction<RapidfireRunState[] | null>>,
+) {
     useEffect(() => {
         document.body.dataset.overlayMode = "true";
         return () => {
@@ -1290,11 +1313,25 @@ function useRapidfireOverlayBootstrap(isNativeShell: boolean, setBootstrap: (val
             if (!disposed) setBootstrap(event.payload);
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<RapidfireRunsChanged>(
+            RAPIDFIRE_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.runs);
+            },
+            undefined,
+            () => {
+                void invoke<RapidfireBootstrap>("rapidfire_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.runs);
+                }, () => undefined);
+            },
+        );
+
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
         };
-    }, [isNativeShell, setBootstrap]);
+    }, [isNativeShell, setBootstrap, setRuntimeRuns]);
 }
 
 function RapidfireCardDragHandle({disabled, onDragStart}: { disabled: boolean; onDragStart: () => void }) {

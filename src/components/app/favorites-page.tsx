@@ -35,9 +35,11 @@ import type {
     CounterBootstrap,
     CounterItem,
     CounterRunState,
+    CounterRunsChanged,
     TimerBootstrap,
     TimerItem,
     TimerRunState,
+    TimerRunsChanged,
 } from "@/components/app/timer-types";
 import {counterSettingsToForm} from "@/components/app/counter-utils";
 import {timerSettingsToForm} from "@/components/app/timer-utils";
@@ -83,6 +85,8 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
     const [timerBootstrap, setTimerBootstrap] = useState<TimerBootstrap | null>(null);
     const [counterBootstrap, setCounterBootstrap] = useState<CounterBootstrap | null>(null);
     const [rapidfireBootstrap, setRapidfireBootstrap] = useState<RapidfireBootstrap | null>(null);
+    const [timerRuntimeRuns, setTimerRuntimeRuns] = useState<TimerRunState[] | null>(null);
+    const [counterRuntimeRuns, setCounterRuntimeRuns] = useState<CounterRunState[] | null>(null);
     const [loading, setLoading] = useState(isNativeShell);
 
     useEffect(() => {
@@ -112,6 +116,19 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             }
         });
 
+        const unlistenTimerRuns = subscribeTauriEvent<TimerRunsChanged>(
+            TIMER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setTimerRuntimeRuns(event.payload.runs);
+            },
+            undefined,
+            () => {
+                void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
+                    if (!disposed) setTimerRuntimeRuns((current) => current ?? next.runs);
+                }, () => undefined);
+            },
+        );
+
         const unlistenRapidfireState = subscribeTauriEvent<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setRapidfireBootstrap(event.payload);
@@ -124,10 +141,25 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             }
         });
 
+        const unlistenCounterRuns = subscribeTauriEvent<CounterRunsChanged>(
+            COUNTER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setCounterRuntimeRuns(event.payload.counterRuns);
+            },
+            undefined,
+            () => {
+                void invoke<CounterBootstrap>("counter_get_bootstrap").then((next) => {
+                    if (!disposed) setCounterRuntimeRuns((current) => current ?? next.counterRuns);
+                }, () => undefined);
+            },
+        );
+
         return () => {
             disposed = true;
             unlistenTimerState();
+            unlistenTimerRuns();
             unlistenCounterState();
+            unlistenCounterRuns();
             unlistenRapidfireState();
             setLoading(false);
         };
@@ -144,11 +176,11 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
 
     const timerRunsById = useMemo(() => {
         const map = new Map<string, TimerRunState>();
-        for (const run of timerBootstrap?.runs ?? []) {
+        for (const run of timerRuntimeRuns ?? timerBootstrap?.runs ?? []) {
             map.set(run.id, run);
         }
         return map;
-    }, [timerBootstrap?.runs]);
+    }, [timerBootstrap?.runs, timerRuntimeRuns]);
 
     const counterSettingsForm = useMemo(
         () => (counterBootstrap ? counterSettingsToForm(counterBootstrap.settings) : null),
@@ -157,11 +189,11 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
 
     const counterRunsById = useMemo(() => {
         const map = new Map<string, CounterRunState>();
-        for (const run of counterBootstrap?.counterRuns ?? []) {
+        for (const run of counterRuntimeRuns ?? counterBootstrap?.counterRuns ?? []) {
             map.set(run.id, run);
         }
         return map;
-    }, [counterBootstrap?.counterRuns]);
+    }, [counterBootstrap?.counterRuns, counterRuntimeRuns]);
 
     // 解析每个收藏项的详情；孤儿收藏（卡片已删除）会被自动清理。
     const details = useMemo(() => {

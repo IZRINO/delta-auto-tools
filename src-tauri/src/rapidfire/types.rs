@@ -325,6 +325,12 @@ pub struct RapidfireRunState {
     pub count: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RapidfireRunsChanged {
+    pub runs: Vec<RapidfireRunState>,
+}
+
 /// 初始状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -463,5 +469,15 @@ mod tests {
         assert_eq!(settings.cards[0].min_press_spacing_ms, 0);
         assert_eq!(settings.cards[0].trigger_jitter_max_ms, 5);
         assert!(settings.cards[0].cancel_jitter_on_release);
+    }
+
+    #[test]
+    fn runs_changed_payload_contains_no_settings() {
+        let payload = RapidfireRunsChanged { runs: Vec::new() };
+
+        assert_eq!(
+            serde_json::to_value(payload).expect("运行态应可序列化"),
+            serde_json::json!({"runs": []})
+        );
     }
 }

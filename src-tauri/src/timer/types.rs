@@ -172,6 +172,12 @@ pub struct TimerRunState {
     pub recovery_start_pool: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimerRunsChanged {
+    pub runs: Vec<TimerRunState>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TimerBootstrap {
@@ -237,5 +243,15 @@ mod tests {
 
         assert!(settings.timer_groups.is_empty());
         assert_eq!(settings.timers[0].group_id, DEFAULT_TIMER_GROUP_ID);
+    }
+
+    #[test]
+    fn runs_changed_payload_contains_no_settings() {
+        let payload = TimerRunsChanged { runs: Vec::new() };
+
+        assert_eq!(
+            serde_json::to_value(payload).expect("运行态应可序列化"),
+            serde_json::json!({"runs": []})
+        );
     }
 }

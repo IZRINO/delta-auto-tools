@@ -42,7 +42,8 @@ src/components/app/
 | `TimerDirection` | `timer/types.rs` | 计时方向枚举：`Countdown` / `Countup` |
 | `TimerTriggerMode` | `timer/types.rs` | 触发模式枚举：`Press` / `Release` |
 | `TimerRuntime` | `timer/mod.rs` | 运行态（非序列化）：started_at_ms、ends_at_ms、current_seconds、remaining_seconds、status、多段池 |
-| `TimerRunState` | `timer/types.rs` | 序列化的运行态快照：随 Bootstrap 返回前端 |
+| `TimerRunState` | `timer/types.rs` | 序列化的运行态快照：随 Bootstrap 或 `runs-changed` 返回前端 |
+| `TimerRunsChanged` | `timer/types.rs` | 轻量运行态事件载荷，仅含 `runs`，不含 settings |
 | `TimerRunStatus` | `timer/types.rs` | 运行状态枚举：`Running` / `Finished` |
 | `TimerLogic` | `timer/mod.rs` | `SyncToolLogic` + `RunsSync` 实现，持有 `runs: HashMap<String, TimerRuntime>` 与位置设置会话 |
 | `TimerState` | `timer/mod.rs` | 顶层状态：`ToolState<TimerLogic>` + tick 任务句柄 |
@@ -65,7 +66,7 @@ flowchart TD
     G --> H{每 250ms tick}
     H --> I[update_timer_runtime 每个 runtime]
     I --> J{有变化?}
-    J -- 是 --> K[build_bootstrap + emit_state]
+    J -- 是 --> K[build runs + emit_runs]
     J -- 否 --> H
 
     L[热键触发] --> M[trigger_hotkey_targets]
@@ -84,7 +85,7 @@ flowchart TD
 1. 锁定 `ToolStateInner`，对每个 `TimerRuntime` 调用 `update_timer_runtime`。
 2. 单段计时器：根据 `started_at_ms` 与 `ends_at_ms` 计算 `current_seconds` / `remaining_seconds`，归零时标记 `Finished`。
 3. 多段计时器：根据 `recovery_start_pool` + 已经过的秒数计算恢复后的池值。
-4. 若任一 runtime 发生变化，构建新的 Bootstrap 并 `emit_state` 推送到主窗口与各分组显示窗口。
+4. 若任一 runtime 发生变化，仅构建 `TimerRunsChanged` 并通过 `timer://runs-changed` 推送到主窗口与各分组显示窗口；tick 不 clone/序列化 settings。
 
 ### 多段计时（Segment）
 
@@ -164,11 +165,12 @@ flowchart TD
 
 | 事件名 | 常量 | Payload | 说明 |
 |--------|------|---------|------|
-| `timer://state-changed` | `events::STATE_CHANGED` | `TimerBootstrap` | 状态变更（tick 更新、触发、保存）广播到主窗口与各显示窗口 |
+| `timer://state-changed` | `events::STATE_CHANGED` | `TimerBootstrap` | settings 或结构变化广播到主窗口与各显示窗口 |
+| `timer://runs-changed` | `events::RUNS_CHANGED` | `TimerRunsChanged` | tick、触发、停止产生的轻量运行态更新 |
 | `timer://hotkey-error` | `events::HOTKEY_ERROR` | `String` | 热键触发执行失败时的错误信息 |
 | `timer://hotkey-triggered` | `events::HOTKEY_TRIGGERED` | `string[]` | 成功触发的计时器 ID 列表 |
 
-前端通过 `src/lib/tauri-events.ts` 的 `TIMER_EVENTS` 字符串常量与显式泛型 `listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, callback)` 订阅。
+前端通过 `src/lib/tauri-events.ts` 的 `TIMER_EVENTS` 常量与显式泛型 `subscribeTauriEvent` 订阅。工作台把 runs 保存在独立 state，运行态事件不会触发 settings→form 转换。
 
 ## 修改入口
 

@@ -4,6 +4,7 @@ export function subscribeTauriEvent<T>(
     event: string,
     handler: EventCallback<T>,
     onError?: (error: unknown) => void,
+    onReady?: () => void,
 ): () => void {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
@@ -21,6 +22,7 @@ export function subscribeTauriEvent<T>(
         (nextUnlisten) => {
             unlisten = nextUnlisten;
             if (disposed) disposeListener();
+            else onReady?.();
         },
         (error: unknown) => {
             onError?.(error);

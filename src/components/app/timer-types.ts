@@ -91,6 +91,14 @@ export type CounterRunState = {
     value: number;
 };
 
+export type TimerRunsChanged = {
+    runs: TimerRunState[];
+};
+
+export type CounterRunsChanged = {
+    counterRuns: CounterRunState[];
+};
+
 /** 计时器 Bootstrap */
 export type TimerBootstrap = {
     settings: TimerSettings;

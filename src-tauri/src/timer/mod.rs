@@ -33,7 +33,8 @@ use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
 use self::types::{
     TimerDirection, TimerDisplaySettings, TimerGroup, TimerRect, TimerRunState, TimerRunStatus,
-    TimerSelectionKind, TimerSelectionOutcome, TimerTriggerMode, DEFAULT_TIMER_GROUP_ID,
+    TimerRunsChanged, TimerSelectionKind, TimerSelectionOutcome, TimerTriggerMode,
+    DEFAULT_TIMER_GROUP_ID,
 };
 
 mod events;
@@ -556,6 +557,16 @@ pub(crate) fn emit_state(app: &AppHandle, bootstrap: TimerBootstrap) {
     TimerLogic::emit_state(app, &bootstrap);
 }
 
+fn emit_runs(app: &AppHandle, runs: Vec<TimerRunState>) {
+    let payload = TimerRunsChanged { runs };
+    let _ = app.emit_to("main", events::RUNS_CHANGED, payload.clone());
+    for label in app.webview_windows().keys() {
+        if label.starts_with(TIMER_DISPLAY_LABEL) {
+            let _ = app.emit_to(label, events::RUNS_CHANGED, payload.clone());
+        }
+    }
+}
+
 fn ensure_overlay_window(
     app: &AppHandle,
     label: &str,
@@ -874,7 +885,7 @@ fn tick(app: &AppHandle) -> Result<(), String> {
         // 状态尚未注册（setup 期间），跳过本次 tick
         return Ok(());
     };
-    let bootstrap = {
+    let runs = {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "计时器状态已损坏".to_string())?;
@@ -888,10 +899,10 @@ fn tick(app: &AppHandle) -> Result<(), String> {
             return Ok(());
         }
 
-        TimerLogic::build_bootstrap(&inner)
+        run_states(&inner)
     };
 
-    emit_state(app, bootstrap);
+    emit_runs(app, runs);
     Ok(())
 }
 
@@ -1015,7 +1026,7 @@ fn trigger_hotkey_targets(
         TimerLogic::build_bootstrap(&inner)
     };
 
-    emit_state(app, bootstrap.clone());
+    emit_runs(app, bootstrap.runs.clone());
     ensure_display_windows(app, &bootstrap.settings)?;
     if !timer_ids.is_empty() {
         let _ = app.emit_to("main", events::HOTKEY_TRIGGERED, timer_ids);
@@ -1059,17 +1070,17 @@ pub fn shutdown(app: &AppHandle, state: &TimerState, hotkey_manager: &HotkeyMana
 }
 
 pub fn stop_all(app: &AppHandle, state: &TimerState) {
-    let bootstrap = {
+    let runs = {
         let Ok(mut inner) = state.lock_inner() else {
             return;
         };
         inner.logic.runs.clear();
-        TimerLogic::build_bootstrap(&inner)
+        run_states(&inner)
     };
     // 全局开关关闭时只隐藏透明窗口（不销毁），重新打开时 ensure_display_windows 直接 show 恢复，
     // 避免窗口重建导致的 label 冲突与加载空白。
     crate::overlay_utils::hide_windows_with_prefix(app, TIMER_DISPLAY_LABEL);
-    emit_state(app, bootstrap);
+    emit_runs(app, runs);
 }
 
 pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {

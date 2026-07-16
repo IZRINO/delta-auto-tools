@@ -15,6 +15,7 @@ export const MORSE_EVENTS = {
 // ——— timer ——— timer/events.rs
 export const TIMER_EVENTS = {
     stateChanged: "timer://state-changed",
+    runsChanged: "timer://runs-changed",
     hotkeyError: "timer://hotkey-error",
     hotkeyTriggered: "timer://hotkey-triggered",
 } as const;
@@ -22,6 +23,7 @@ export const TIMER_EVENTS = {
 // ——— counter ——— counter/events.rs
 export const COUNTER_EVENTS = {
     stateChanged: "counter://state-changed",
+    runsChanged: "counter://runs-changed",
     hotkeyError: "counter://hotkey-error",
     hotkeyTriggered: "counter://hotkey-triggered",
 } as const;
@@ -29,6 +31,7 @@ export const COUNTER_EVENTS = {
 // ——— rapidfire ——— rapidfire/events.rs
 export const RAPIDFIRE_EVENTS = {
     stateChanged: "rapidfire://state-changed",
+    runsChanged: "rapidfire://runs-changed",
     hotkeyError: "rapidfire://hotkey-error",
 } as const;
 

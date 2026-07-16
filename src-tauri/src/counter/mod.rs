@@ -25,10 +25,10 @@ use crate::sync_tool::{
 };
 use crate::tool_base::{ToolLogic, ToolState, ToolStateInner};
 
-use self::counter_state::CounterRunStateSnapshot;
+use self::counter_state::{CounterRunStateSnapshot, CounterStateWriter};
 use self::types::{
-    CounterDisplaySettings, CounterGroup, CounterRect, CounterRunState, CounterSelectionKind,
-    CounterSelectionOutcome, DEFAULT_COUNTER_GROUP_ID,
+    CounterDisplaySettings, CounterGroup, CounterRect, CounterRunState, CounterRunsChanged,
+    CounterSelectionKind, CounterSelectionOutcome, DEFAULT_COUNTER_GROUP_ID,
 };
 
 pub(crate) mod counter_state;
@@ -51,6 +51,7 @@ pub struct CounterLogic {
 
 pub struct CounterState {
     pub tool: ToolState<CounterLogic>,
+    state_writer: CounterStateWriter,
 }
 
 impl CounterState {
@@ -224,40 +225,40 @@ impl PositionKinds for CounterSelectionKind {
     }
 }
 
-pub(crate) fn persist_counter_runs(app: &AppHandle, inner: &ToolStateInner<CounterLogic>) {
+fn counter_runs_snapshot(inner: &ToolStateInner<CounterLogic>) -> CounterRunStateSnapshot {
     let mut runs = std::collections::BTreeMap::new();
     for counter in &inner.settings.counters {
         if let Some(value) = inner.logic.runs.get(&counter.id) {
             runs.insert(counter.id.clone(), *value);
         }
     }
-    let state = CounterRunStateSnapshot { runs };
-    let _ = counter_state::save(app, &state);
+    CounterRunStateSnapshot { runs }
 }
 
-/// 将所有 counter 运行值重置为其 `start_value` 并落盘到 `counter_state.json`。
-///
-/// 供 Profile 切换编排调用：切到新 Profile 时按用户决策「重置为 start_value」。
-/// 必须在 `inner.settings` 已替换为目标 Profile 的 counters 之后调用。
-pub(crate) fn reset_runs_to_start_values(
-    app: &AppHandle,
-    state: &CounterState,
-) -> Result<(), String> {
-    let mut inner = state
-        .lock_inner()
-        .map_err(|_| "计数器状态已损坏".to_string())?;
-    inner.logic.runs = inner
-        .settings
+pub(crate) fn persist_counter_runs(state: &CounterState, inner: &ToolStateInner<CounterLogic>) {
+    let _ = state.state_writer.save_latest(counter_runs_snapshot(inner));
+}
+
+pub(crate) fn reset_runs_for_settings(runs: &mut HashMap<String, i64>, settings: &CounterSettings) {
+    *runs = settings
         .counters
         .iter()
         .map(|counter| (counter.id.clone(), counter.start_value))
         .collect();
-    persist_counter_runs(app, &inner);
-    Ok(())
 }
 
 pub(crate) fn emit_state(app: &AppHandle, bootstrap: CounterBootstrap) {
     CounterLogic::emit_state(app, &bootstrap);
+}
+
+pub(crate) fn emit_runs(app: &AppHandle, counter_runs: Vec<CounterRunState>) {
+    let payload = CounterRunsChanged { counter_runs };
+    let _ = app.emit_to("main", events::RUNS_CHANGED, payload.clone());
+    for label in app.webview_windows().keys() {
+        if label.starts_with(COUNTER_DISPLAY_LABEL) {
+            let _ = app.emit_to(label, events::RUNS_CHANGED, payload.clone());
+        }
+    }
 }
 
 fn display_height(item_count: usize) -> i32 {
@@ -698,13 +699,13 @@ fn trigger_hotkey_targets(
             apply_counter_trigger(&settings_snapshot, &mut inner.logic.runs, &counter_ids);
 
         if counter_changed {
-            persist_counter_runs(app, &inner);
+            persist_counter_runs(&state, &inner);
         }
 
         CounterLogic::build_bootstrap(&inner)
     };
 
-    emit_state(app, bootstrap.clone());
+    emit_runs(app, bootstrap.counter_runs.clone());
     ensure_display_windows(app, &bootstrap.settings)?;
     if !triggered_ids.is_empty() {
         let _ = app.emit_to("main", events::HOTKEY_TRIGGERED, triggered_ids);
@@ -714,22 +715,24 @@ fn trigger_hotkey_targets(
 
 pub fn shutdown(app: &AppHandle, state: &CounterState, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("counter");
-    if let Ok(inner) = state.lock_inner() {
-        persist_counter_runs(app, &inner);
-    }
+    let snapshot = state
+        .lock_inner()
+        .map(|inner| counter_runs_snapshot(&inner))
+        .unwrap_or_default();
+    let _ = state.state_writer.shutdown(snapshot);
     destroy_position_windows(app);
     destroy_display_windows(app);
 }
 
 pub fn stop_all(app: &AppHandle, state: &CounterState) {
-    let bootstrap = {
+    let counter_runs = {
         let Ok(inner) = state.lock_inner() else {
             return;
         };
-        CounterLogic::build_bootstrap(&inner)
+        counter_run_states(&inner)
     };
     crate::overlay_utils::hide_windows_with_prefix(app, COUNTER_DISPLAY_LABEL);
-    emit_state(app, bootstrap);
+    emit_runs(app, counter_runs);
 }
 
 pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
@@ -754,7 +757,10 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Cou
         pending_position: None,
     };
     let tool = ToolState::new(logic, settings.clone());
-    let state = CounterState { tool };
+    let state = CounterState {
+        tool,
+        state_writer: CounterStateWriter::new(app)?,
+    };
 
     if settings.counter_enabled {
         if let Err(error) = restart_hotkey_listeners(&state, hotkey_manager, &settings) {
@@ -847,11 +853,11 @@ pub fn counter_reset(counter_id: String, app: AppHandle) -> Result<CounterBootst
             return Err(AppError::Message("未找到计数器".to_string()));
         };
         inner.logic.runs.insert(id, start_value);
-        persist_counter_runs(&app, &inner);
+        persist_counter_runs(&state, &inner);
         CounterLogic::build_bootstrap(&inner)
     };
 
-    emit_state(&app, bootstrap.clone());
+    emit_runs(&app, bootstrap.counter_runs.clone());
     ensure_display_windows(&app, &bootstrap.settings)?;
     Ok(bootstrap)
 }
@@ -888,11 +894,11 @@ pub fn counter_adjust(
         let new_value = (*current + delta as i64).max(0);
         *current = new_value;
 
-        persist_counter_runs(&app, &inner);
+        persist_counter_runs(&state, &inner);
         CounterLogic::build_bootstrap(&inner)
     };
 
-    emit_state(&app, bootstrap.clone());
+    emit_runs(&app, bootstrap.counter_runs.clone());
     Ok(bootstrap)
 }
 
@@ -1339,6 +1345,26 @@ mod tests {
         CounterLogic::sync_runs_with_settings(&mut runs, &settings);
 
         assert_eq!(runs.get("c"), Some(&7), "缺失计数器应补齐为 start_value");
+    }
+
+    #[test]
+    fn profile_apply_resets_all_runs_before_building_bootstrap() {
+        let mut first = sample_counter("a", "F3");
+        first.start_value = 7;
+        let mut second = sample_counter("b", "F4");
+        second.start_value = -2;
+        let settings = CounterSettings {
+            counters: vec![first, second],
+            ..CounterSettings::default()
+        };
+        let mut runs = HashMap::from([("a".to_string(), 99), ("orphan".to_string(), 8)]);
+
+        reset_runs_for_settings(&mut runs, &settings);
+
+        assert_eq!(
+            runs,
+            HashMap::from([("a".to_string(), 7), ("b".to_string(), -2)])
+        );
     }
 
     #[test]

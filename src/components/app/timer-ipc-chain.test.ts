@@ -4,6 +4,7 @@ import {timerSettingsToForm, parseTimerSettingsForm} from "@/components/app/time
 import type {
     TimerBootstrap,
     TimerRunState,
+    TimerRunsChanged,
     TimerSettings,
     TimerSettingsForm,
 } from "@/components/app/timer-types";
@@ -102,6 +103,7 @@ function createTimerPageStateMachine() {
     const ipc = createMockIPC();
     let bootstrap: TimerBootstrap | null = null;
     let form: TimerSettingsForm | null = null;
+    let runtimeRuns: TimerRunState[] | null = null;
     let statusMessage = "正在加载...";
     let pageError: string | null = null;
     let disposed = false;
@@ -109,7 +111,7 @@ function createTimerPageStateMachine() {
 
     return {
         ipc,
-        getState: () => ({bootstrap, form, statusMessage, pageError, disposed}),
+        getState: () => ({bootstrap, form, runtimeRuns, statusMessage, pageError, disposed}),
         getUnlistenCallbacks: () => unlistenCallbacks,
 
         /** 模拟 mount：加载 bootstrap + 订阅事件 */
@@ -131,11 +133,17 @@ function createTimerPageStateMachine() {
             });
             unlistenCallbacks.push(unlisten1);
 
-            const unlisten2 = await ipc.listenMock(TIMER_EVENTS.hotkeyTriggered, (evt: {payload: unknown}) => {
+            const unlisten2 = await ipc.listenMock(TIMER_EVENTS.runsChanged, (evt: {payload: unknown}) => {
+                if (disposed) return;
+                runtimeRuns = (evt.payload as TimerRunsChanged).runs;
+            });
+            unlistenCallbacks.push(unlisten2);
+
+            const unlisten3 = await ipc.listenMock(TIMER_EVENTS.hotkeyTriggered, (evt: {payload: unknown}) => {
                 if (disposed) return;
                 statusMessage = `快捷键已触发 ${(evt.payload as string[]).length} 个计时器。运行中的计时器会忽略重复触发。`;
             });
-            unlistenCallbacks.push(unlisten2);
+            unlistenCallbacks.push(unlisten3);
         },
 
         /** 模拟 unmount */
@@ -156,10 +164,15 @@ function createTimerPageStateMachine() {
 
         /** 模拟 hotkeyTriggered 事件到达 */
         simulateHotkeyTriggered(timerIds: string[]) {
-            const callback = ipc.listenMock.mock.calls[1]?.[1] as ((event: {payload: unknown}) => void) | undefined;
+            const callback = ipc.listenMock.mock.calls[2]?.[1] as ((event: {payload: unknown}) => void) | undefined;
             if (callback) {
                 callback({payload: timerIds});
             }
+        },
+
+        simulateRunsChanged(runs: TimerRunState[]) {
+            const callback = ipc.listenMock.mock.calls[1]?.[1] as ((event: {payload: unknown}) => void) | undefined;
+            if (callback) callback({payload: {runs} satisfies TimerRunsChanged});
         },
 
         /** 模拟 saveSettings */
@@ -242,6 +255,34 @@ describe("timer-page 完整 IPC 链路：invoke bootstrap → 渲染 → listenE
         expect(state.statusMessage).toContain("快捷键已触发 2 个计时器");
     });
 
+    it("runsChanged 只更新运行态，不替换 settings 或 form", async () => {
+        const machine = createTimerPageStateMachine();
+        await machine.mount();
+        const before = machine.getState();
+        const runs = [makeRunState({id: "t1", currentSeconds: 12})];
+
+        machine.simulateRunsChanged(runs);
+
+        const after = machine.getState();
+        expect(after.runtimeRuns).toBe(runs);
+        expect(after.bootstrap?.settings).toBe(before.bootstrap?.settings);
+        expect(after.form).toBe(before.form);
+    });
+
+    it("较旧 stateChanged 不回滚较新的运行态", async () => {
+        const machine = createTimerPageStateMachine();
+        await machine.mount();
+        const latestRuns = [makeRunState({id: "t1", currentSeconds: 27})];
+        machine.simulateRunsChanged(latestRuns);
+
+        machine.simulateStateChanged({
+            ...machine.getState().bootstrap!,
+            runs: [makeRunState({id: "t1", currentSeconds: 9})],
+        });
+
+        expect(machine.getState().runtimeRuns).toBe(latestRuns);
+    });
+
     it("unmount 后 stateChanged 回调不执行副作用", async () => {
         const machine = createTimerPageStateMachine();
         await machine.mount();
@@ -282,12 +323,13 @@ describe("timer-page 完整 IPC 链路：invoke bootstrap → 渲染 → listenE
         await machine.mount();
 
         const unlistenCallbacks = machine.getUnlistenCallbacks();
-        expect(unlistenCallbacks).toHaveLength(2);
+        expect(unlistenCallbacks).toHaveLength(3);
 
         machine.unmount();
 
         expect(unlistenCallbacks[0]).toHaveBeenCalled();
         expect(unlistenCallbacks[1]).toHaveBeenCalled();
+        expect(unlistenCallbacks[2]).toHaveBeenCalled();
     });
 });
 

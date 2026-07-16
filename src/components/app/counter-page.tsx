@@ -41,6 +41,7 @@ import type {
   CounterBootstrap,
   CounterItemForm,
   CounterRunState,
+  CounterRunsChanged,
   CounterSelectionOutcome,
   CounterSettings,
   CounterSettingsForm,
@@ -137,6 +138,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
     } = bf;
 
     const [recordingTarget, setRecordingTarget] = useState<{ type: "counter"; id: string } | null>(null);
+    const [runtimeRuns, setRuntimeRuns] = useState<CounterRunState[] | null>(null);
     const draggingCounterIdRef = useRef<string | null>(null);
     const [draggingCounterId, setDraggingCounterId] = useState<string | null>(null);
     const favorites = useFavorites();
@@ -171,6 +173,19 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
             setBootstrap(event.payload);
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<CounterRunsChanged>(
+            COUNTER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.counterRuns);
+            },
+            undefined,
+            () => {
+                void invoke<CounterBootstrap>("counter_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.counterRuns);
+                }, () => undefined);
+            },
+        );
+
         const unlistenCounterTriggered = subscribeTauriEvent<string[]>(COUNTER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
@@ -181,11 +196,13 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
             unlistenCounterTriggered();
         };
     }, [isNativeShell]);
 
-    const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
+    const runs = runtimeRuns ?? bootstrap?.counterRuns ?? [];
+    const counterRunsByIdMap = useMemo(() => counterRunsById(runs), [runs]);
     const controlsDisabled = loading || !isNativeShell;
 
     const updateCounter = useCallback((id: string, value: Partial<CounterItemForm>) => {
@@ -433,7 +450,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                         <SignalTile
                             label="计数矩阵"
                             value={form?.counters.length ?? 0}
-                            detail={`${bootstrap?.counterRuns.length ?? 0} 个计数状态`}
+                            detail={`${runs.length} 个计数状态`}
                         />
                         <SignalTile
                             label="保存信号"
@@ -461,7 +478,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                     {id: "counter", state: form?.counterEnabled ? "active" : "idle", label: "计数通道"},
                     {
                         id: "counted",
-                        state: (bootstrap?.counterRuns.filter((run) => run.value > 0).length ?? 0) > 0 ? "active" : "idle",
+                        state: runs.some((run) => run.value > 0) ? "active" : "idle",
                         label: "已计数"
                     },
                     {

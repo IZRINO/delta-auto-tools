@@ -196,6 +196,32 @@ describe("logging", () => {
       });
     });
 
+    it("log=false 时执行 command 但不写开始和完成日志", async () => {
+      const origWindow = globalThis.window;
+      Object.defineProperty(globalThis, "window", {
+        value: { __TAURI_INTERNALS__: {} },
+        writable: true,
+        configurable: true,
+      });
+
+      mockInvoke.mockImplementation((command: string) => {
+        if (command === "timer_position_moved") return Promise.resolve(undefined);
+        if (command === "log_write_frontend") return Promise.resolve(undefined);
+        return Promise.resolve("abc123");
+      });
+
+      await invokeLogged("timer_position_moved", {x: 12, y: 34}, {log: false});
+
+      expect(mockInvoke).toHaveBeenCalledWith("timer_position_moved", {x: 12, y: 34});
+      expect(mockInvoke.mock.calls.filter(([command]) => command === "log_write_frontend")).toHaveLength(0);
+
+      Object.defineProperty(globalThis, "window", {
+        value: origWindow,
+        writable: true,
+        configurable: true,
+      });
+    });
+
     it("command 失败时记录 error 并透传原错误", async () => {
       const origWindow = globalThis.window;
       Object.defineProperty(globalThis, "window", {

@@ -7,8 +7,22 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::events;
 use super::keys::{self, KeyEmitter, RAPIDFIRE_INITIAL_SETTLE_MS, RAPIDFIRE_MIN_INTERVAL_MS};
-use super::RapidfireLogic;
-use crate::tool_base::ToolLogic;
+
+const RUNS_EMIT_INTERVAL: Duration = Duration::from_nanos(1_000_000_000 / 60);
+
+pub(crate) fn should_emit_run_update(
+    last_emit_at: &mut Option<Instant>,
+    now: Instant,
+    force: bool,
+) -> bool {
+    if !force
+        && last_emit_at.is_some_and(|last| now.saturating_duration_since(last) < RUNS_EMIT_INTERVAL)
+    {
+        return false;
+    }
+    *last_emit_at = Some(now);
+    true
+}
 
 // ---- Session 控制 ----
 
@@ -37,6 +51,7 @@ pub struct CardRuntime {
     pub sessions: std::collections::HashMap<String, RapidfireSessionRuntime>,
     pub active_session_ids: Vec<String>,
     pub last_press_at: Arc<Mutex<Instant>>,
+    completed_count: u64,
 }
 
 impl Default for CardRuntime {
@@ -45,6 +60,7 @@ impl Default for CardRuntime {
             sessions: std::collections::HashMap::new(),
             active_session_ids: Vec::new(),
             last_press_at: Arc::new(Mutex::new(Instant::now())),
+            completed_count: 0,
         }
     }
 }
@@ -59,7 +75,19 @@ impl CardRuntime {
     }
 
     pub fn aggregate_count(&self) -> u64 {
-        self.sessions.values().map(|session| session.count).sum()
+        self.completed_count
+            + self
+                .sessions
+                .values()
+                .map(|session| session.count)
+                .sum::<u64>()
+    }
+
+    fn complete_session(&mut self, session_id: &str) {
+        if let Some(session) = self.sessions.remove(session_id) {
+            self.completed_count += session.count;
+        }
+        self.active_session_ids.retain(|id| id != session_id);
     }
 }
 
@@ -409,7 +437,7 @@ fn wait_for_next_fire(
 
 pub fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, count: u64) -> bool {
     let state = app.state::<super::RapidfireState>();
-    let bootstrap = {
+    let payload = {
         let Ok(mut inner) = state.lock_inner() else {
             emit_hotkey_error(app, "连发器状态已损坏".to_string());
             return false;
@@ -423,37 +451,56 @@ pub fn update_session_count(app: &AppHandle, card_id: &str, session_id: &str, co
         };
 
         session.count = count;
-        RapidfireLogic::build_bootstrap(&inner)
+        if !should_emit_run_update(&mut inner.logic.last_runs_emit_at, Instant::now(), false) {
+            return true;
+        }
+        super::RapidfireRunsChanged {
+            runs: super::run_states(&inner),
+        }
     };
 
-    super::emit_state(app, bootstrap);
+    super::emit_runs(app, payload);
     true
+}
+
+fn preserve_final_count(
+    runs: &mut [super::types::RapidfireRunState],
+    card_id: &str,
+    final_count: u64,
+) {
+    if let Some(run) = runs.iter_mut().find(|run| run.card_id == card_id) {
+        run.count = final_count;
+    }
 }
 
 pub fn finish_session(app: &AppHandle, card_id: &str, session_id: &str) {
     let state = app.state::<super::RapidfireState>();
-    let bootstrap = {
+    let payload = {
         let Ok(mut inner) = state.lock_inner() else {
             emit_hotkey_error(app, "连发器状态已损坏".to_string());
             return;
         };
 
-        let should_remove_run = if let Some(run) = inner.logic.runs.get_mut(card_id) {
-            run.sessions.remove(session_id);
-            run.active_session_ids.retain(|id| id != session_id);
-            run.sessions.is_empty()
+        let (final_count, should_remove_run) = if let Some(run) = inner.logic.runs.get_mut(card_id)
+        {
+            run.complete_session(session_id);
+            (run.aggregate_count(), run.sessions.is_empty())
         } else {
-            false
+            (0, false)
         };
 
         if should_remove_run {
             inner.logic.runs.remove(card_id);
         }
 
-        RapidfireLogic::build_bootstrap(&inner)
+        let mut payload = super::force_runs_changed(&mut inner);
+        if should_remove_run {
+            preserve_final_count(&mut payload.runs, card_id, final_count);
+        }
+        payload
     };
 
-    super::emit_state(app, bootstrap);
+    super::emit_runs(app, payload);
 }
 
 pub fn stop_latest_active_session(run: &mut CardRuntime, control: SessionControl) -> bool {
@@ -587,6 +634,104 @@ mod tests {
         );
         assert_eq!(runtime.aggregate_count(), 3);
         assert_eq!(runtime.sessions.len(), 2);
+    }
+
+    #[test]
+    fn completed_session_count_is_retained_until_card_returns_idle() {
+        let mut runtime = CardRuntime::default();
+        let (tx1, _rx1) = std::sync::mpsc::channel();
+        let (tx2, _rx2) = std::sync::mpsc::channel();
+        runtime.sessions.insert(
+            "session-1".to_string(),
+            RapidfireSessionRuntime {
+                count: 10,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx1),
+                compensate_now: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        runtime.sessions.insert(
+            "session-2".to_string(),
+            RapidfireSessionRuntime {
+                count: 5,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(tx2),
+                compensate_now: Arc::new(AtomicBool::new(false)),
+            },
+        );
+
+        runtime.complete_session("session-2");
+        assert_eq!(runtime.aggregate_count(), 15);
+        assert_eq!(
+            runtime.aggregate_status(),
+            super::super::types::RapidfireRunStatus::Firing
+        );
+
+        runtime.complete_session("session-1");
+        assert_eq!(runtime.aggregate_count(), 15);
+        assert_eq!(
+            runtime.aggregate_status(),
+            super::super::types::RapidfireRunStatus::Idle
+        );
+    }
+
+    #[test]
+    fn high_frequency_count_updates_keep_final_count_within_emit_budget() {
+        let start = Instant::now();
+        let mut last_emit_at = None;
+        let mut runtime = CardRuntime::default();
+        let (control_tx, _control_rx) = std::sync::mpsc::channel();
+        runtime.sessions.insert(
+            "session".to_string(),
+            RapidfireSessionRuntime {
+                count: 0,
+                status: RapidfireSessionStatus::Firing,
+                control_tx: Some(control_tx),
+                compensate_now: Arc::new(AtomicBool::new(false)),
+            },
+        );
+
+        let mut emit_count = 0;
+        for millisecond in 0..10_000u64 {
+            runtime.sessions.get_mut("session").unwrap().count = millisecond + 1;
+            if should_emit_run_update(
+                &mut last_emit_at,
+                start + Duration::from_millis(millisecond),
+                false,
+            ) {
+                emit_count += 1;
+            }
+        }
+
+        assert_eq!(runtime.aggregate_count(), 10_000);
+        assert!(emit_count <= 600, "普通事件超过 60Hz budget: {emit_count}");
+        assert!(should_emit_run_update(
+            &mut last_emit_at,
+            start + Duration::from_secs(10),
+            true,
+        ));
+        emit_count += 1;
+        assert!(
+            emit_count <= 601,
+            "结束事件超过 budget + final: {emit_count}"
+        );
+    }
+
+    #[test]
+    fn final_event_preserves_last_session_count_while_marking_card_idle() {
+        let mut runs = vec![super::super::types::RapidfireRunState {
+            card_id: "card".to_string(),
+            status: super::super::types::RapidfireRunStatus::Idle,
+            count: 0,
+        }];
+
+        preserve_final_count(&mut runs, "card", 42);
+
+        assert_eq!(
+            runs[0].status,
+            super::super::types::RapidfireRunStatus::Idle
+        );
+        assert_eq!(runs[0].count, 42);
     }
 
     #[test]

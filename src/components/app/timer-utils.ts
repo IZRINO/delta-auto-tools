@@ -12,6 +12,7 @@ import type {
   TimerItem,
   TimerItemForm,
   TimerRunState,
+  TimerRunsChanged,
   TimerSettings,
   TimerSettingsForm
 } from "@/components/app/timer-types";
@@ -328,7 +329,11 @@ export function isTimerDirty(bootstrap: TimerBootstrap | null, form: TimerSettin
     }
 }
 
-export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (value: TimerBootstrap) => void) {
+export function useTimerOverlayBootstrap(
+    isNativeShell: boolean,
+    setBootstrap: React.Dispatch<React.SetStateAction<TimerBootstrap | null>>,
+    setRuntimeRuns: React.Dispatch<React.SetStateAction<TimerRunState[] | null>>,
+) {
     useEffect(() => {
         document.body.dataset.overlayMode = "true";
         return () => {
@@ -355,11 +360,25 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
             }
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<TimerRunsChanged>(
+            TIMER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.runs);
+            },
+            undefined,
+            () => {
+                void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.runs);
+                }, () => undefined);
+            },
+        );
+
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
         };
-    }, [isNativeShell, setBootstrap]);
+    }, [isNativeShell, setBootstrap, setRuntimeRuns]);
 }
 
 export function timerSignalChar(timer: { enabled: boolean }, run?: TimerRunState): string {

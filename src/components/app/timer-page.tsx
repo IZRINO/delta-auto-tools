@@ -36,6 +36,7 @@ import type {
   TimerGroupForm,
   TimerItemForm,
   TimerRunState,
+  TimerRunsChanged,
   TimerSelectionOutcome,
   TimerSettings,
   TimerSettingsForm,
@@ -128,6 +129,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
     } = bf;
 
     const [recordingTarget, setRecordingTarget] = useState<{ type: "timer"; id: string } | null>(null);
+    const [runtimeRuns, setRuntimeRuns] = useState<TimerRunState[] | null>(null);
     const draggingTimerIdRef = useRef<string | null>(null);
     const [draggingTimerId, setDraggingTimerId] = useState<string | null>(null);
     const favorites = useFavorites();
@@ -162,6 +164,19 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
             setBootstrap(event.payload);
         });
 
+        const unlistenRunsChanged = subscribeTauriEvent<TimerRunsChanged>(
+            TIMER_EVENTS.runsChanged,
+            (event) => {
+                if (!disposed) setRuntimeRuns(event.payload.runs);
+            },
+            undefined,
+            () => {
+                void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
+                    if (!disposed) setRuntimeRuns((current) => current ?? next.runs);
+                }, () => undefined);
+            },
+        );
+
         const unlistenHotkeyTriggered = subscribeTauriEvent<string[]>(TIMER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
@@ -172,11 +187,13 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
         return () => {
             disposed = true;
             unlistenStateChanged();
+            unlistenRunsChanged();
             unlistenHotkeyTriggered();
         };
     }, [isNativeShell, setBootstrap, setStatusMessage]);
 
-    const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
+    const runs = runtimeRuns ?? bootstrap?.runs ?? [];
+    const runsById = useMemo(() => timerRunsById(runs), [runs]);
     const controlsDisabled = loading || !isNativeShell;
 
     const updateTimer = useCallback((id: string, value: Partial<TimerItemForm>) => {
@@ -397,7 +414,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                         <SignalTile
                             label="计时矩阵"
                             value={form?.timers.length ?? 0}
-                            detail={`${bootstrap?.runs.filter((run) => run.status === "running").length ?? 0} 个运行中`}
+                            detail={`${runs.filter((run) => run.status === "running").length} 个运行中`}
                         />
                         <SignalTile
                             label="保存信号"
@@ -425,7 +442,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                     {id: "timer", state: form?.timerEnabled ? "active" : "idle", label: "计时通道"},
                     {
                         id: "running",
-                        state: (bootstrap?.runs.filter((run) => run.status === "running").length ?? 0) > 0 ? "active" : "idle",
+                        state: runs.some((run) => run.status === "running") ? "active" : "idle",
                         label: "计时运行"
                     },
                     {

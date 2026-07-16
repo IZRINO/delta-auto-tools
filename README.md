@@ -10,8 +10,8 @@
 |------|------|
 | **Morse** | 区域框选 → 二值化 → 轮廓检测 → 摩斯解码 → 自动输入；快捷键触发、历史记录 |
 | **Timer** | 多计时器，250ms tick 循环，独立总开关，置顶透明显示窗口，位置校准 |
-| **Counter** | 多计数器，运行态独立持久化，独立总开关，置顶透明显示窗口，位置校准 |
-| **Rapidfire** | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距策略 |
+| **Counter** | 多计数器，运行态独立持久化与 latest-wins 合并写入，独立总开关，置顶透明显示窗口，位置校准 |
+| **Rapidfire** | 按住触发键连发，每 session 独立 OS worker 线程，运行态事件限制 60Hz，卡片级不追加/抖动/间距策略 |
 | **Recognition** | 快捷键、多参考图区域匹配、多区域识色三种识别来源；可执行音频、按键、点击三类效果 |
 | **Strategy** | 主窗口内嵌 `strategy-content` 子 WebView2，站点切换、自定义站点、刷新档位 |
 
@@ -37,11 +37,12 @@
 - **RunsSync trait**：`runs` narrowing 逻辑下放到 Logic 层，Rust 侧通过 trait 约束统一调用
 - **Rapidfire 模块拆分**：`keys` / `worker` / `overlay` / `commands` 四个子模块，职责清晰
 - **Recognition watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
-- **事件对齐**：前端 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 模式，事件名通过 `src/lib/tauri-events.ts` 常量订阅，统一处理异步 cleanup
+- **事件对齐**：前端 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 模式；`state-changed` 只传 settings/结构，`runs-changed` 传轻量运行态
+- **运行态热路径**：Rapidfire count emit 最多 60Hz；Counter 单 writer 线程合并磁盘写入；位置拖动按 rAF 合并且最多一个 invoke in-flight
 
 ### 事件模式
 
-事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `EVENTS` 常量和 `src/lib/tauri-listener.ts` 的显式泛型 helper 订阅。
+事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `EVENTS` 常量和 `src/lib/tauri-listener.ts` 的显式泛型 helper 订阅。Timer/Counter/Rapidfire 将 settings/结构事件与运行态事件拆分，避免高频序列化完整 Bootstrap。
 
 ### Overlay 约束
 

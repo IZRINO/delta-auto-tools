@@ -114,6 +114,12 @@ pub struct CounterRunState {
     pub value: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CounterRunsChanged {
+    pub counter_runs: Vec<CounterRunState>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CounterBootstrap {
@@ -177,5 +183,17 @@ mod tests {
 
         assert!(settings.counter_groups.is_empty());
         assert_eq!(settings.counters[0].group_id, DEFAULT_COUNTER_GROUP_ID);
+    }
+
+    #[test]
+    fn runs_changed_payload_contains_no_settings() {
+        let payload = CounterRunsChanged {
+            counter_runs: Vec::new(),
+        };
+
+        assert_eq!(
+            serde_json::to_value(payload).expect("运行态应可序列化"),
+            serde_json::json!({"counterRuns": []})
+        );
     }
 }

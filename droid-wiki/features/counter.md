@@ -10,7 +10,7 @@
 
 - **多计数器**：不限数量的计数器条目，按分组组织，每个分组拥有独立的透明显示窗口。
 - **起始值**：每个计数器可配置 `startValue`，重置时回到该值。
-- **运行态持久化**：计数器实际累加到的值独立保存到 `counter_state.json`，与配置文件分离，应用重启后恢复。
+- **运行态持久化**：计数器实际累加到的值独立保存到 `counter_state.json`；50ms latest-wins writer 合并高频写入，应用关闭时强制落盘最终快照。
 - **热键递增**：每个计数器绑定独立热键，按下即递增 1。
 - **手动调整**：`counter_adjust` 支持任意正负 delta（下限为 0）。
 - **重置**：`counter_reset` 将指定计数器回到 `startValue`。
@@ -43,8 +43,10 @@ src/components/app/
 | `CounterGroup` | `counter/types.rs` | 计数器分组：id、name、enabled、display（独立透明窗位置与透明度） |
 | `CounterRunState` | `counter/types.rs` | 序列化的运行态：id + 当前累加值，随 Bootstrap 返回前端 |
 | `CounterRunStateSnapshot` | `counter/counter_state.rs` | 运行态持久化结构：`BTreeMap<counter_id, value>`，key 有序便于 diff |
+| `CounterStateWriter` | `counter/counter_state.rs` | 单 OS writer 线程，50ms 合并窗口只写每批最新 snapshot，shutdown 时 join |
+| `CounterRunsChanged` | `counter/types.rs` | 轻量运行态事件载荷，仅含 `counterRuns` |
 | `CounterLogic` | `counter/mod.rs` | `SyncToolLogic` + `RunsSync` 实现，持有 `runs: HashMap<String, i64>` 与位置设置会话 |
-| `CounterState` | `counter/mod.rs` | 顶层状态：`ToolState<CounterLogic>` |
+| `CounterState` | `counter/mod.rs` | 顶层状态：`ToolState<CounterLogic>` + `CounterStateWriter` |
 | `CounterBootstrap` | `counter/types.rs` | 前端拉取的完整快照：settings + counter_runs + hotkey_error |
 
 ## 工作原理
@@ -84,7 +86,7 @@ flowchart TD
 | 文件 | 内容 | 写入时机 |
 |------|------|----------|
 | `counter_settings.json` | 配置（总开关、分组、计数器列表、显示位置） | `counter_save_settings` |
-| `counter_state.json` | 运行态（每个 counter id 的当前值） | 每次累加、每次重置、每次 adjust、应用关闭兜底 |
+| `counter_state.json` | 运行态（每个 counter id 的当前值） | 累加/重置/adjust 入 latest-wins 队列；50ms 合并写入；应用关闭强制写最终 snapshot |
 
 `counter_state.rs` 的 `load` 函数：
 
@@ -95,6 +97,8 @@ flowchart TD
 `initialize` 时合并配置与运行态：遍历 `settings.counters`，若 `counter_state` 中有对应 id 则用保存的值，否则用 `startValue`。孤儿 ID（配置中已删除但状态文件中残留）被丢弃。
 
 > 使用 `BTreeMap` 而非 `HashMap`，让 JSON 序列化的 key 有序，方便 diff 与 git 跟踪。
+
+业务线程只调用 `CounterStateWriter::save_latest` 入队，不执行文件 I/O。writer 线程串行写入；一个写入进行期间到达的 snapshot 在下一批取 latest，避免热键路径阻塞和旧值覆盖新值。
 
 ### 热键绑定
 
@@ -168,18 +172,19 @@ flowchart TD
 
 | 事件名 | 常量 | Payload | 说明 |
 |--------|------|---------|------|
-| `counter://state-changed` | `events::STATE_CHANGED` | `CounterBootstrap` | 状态变更（触发、重置、调整、保存）广播到主窗口与各显示窗口 |
+| `counter://state-changed` | `events::STATE_CHANGED` | `CounterBootstrap` | settings 或结构变化广播到主窗口与各显示窗口 |
+| `counter://runs-changed` | `events::RUNS_CHANGED` | `CounterRunsChanged` | 触发、重置、调整、停止产生的轻量运行态更新 |
 | `counter://hotkey-error` | `events::HOTKEY_ERROR` | `String` | 热键触发执行失败时的错误信息 |
 | `counter://hotkey-triggered` | `events::HOTKEY_TRIGGERED` | `string[]` | 成功触发的计数器 ID 列表 |
 
-前端通过 `src/lib/tauri-events.ts` 的 `COUNTER_EVENTS` 字符串常量与显式泛型 `listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, callback)` 订阅。
+前端通过 `src/lib/tauri-events.ts` 的 `COUNTER_EVENTS` 常量与显式泛型 `subscribeTauriEvent` 分别订阅结构态与运行态。
 
 ## 修改入口
 
 | 需求 | 修改位置 |
 |------|----------|
 | 新增计数器配置字段 | `counter/types.rs`（`CounterItem`）+ `counter/mod.rs`（`normalize_counter`、`trigger_hotkey_targets`）+ `timer-types.ts`（`CounterItem`）+ `counter-utils.ts` |
-| 修改运行态持久化 | `counter/counter_state.rs`（`CounterRunStateSnapshot`、`load`、`save`） |
+| 修改运行态持久化 | `counter/counter_state.rs`（`CounterRunStateSnapshot`、`CounterStateWriter`、`load`） |
 | 修改全局开关行为 | `counter/mod.rs` 的 `stop_all`（保留 runs + 隐藏窗口） |
 | 新增透明窗口行为 | `counter/mod.rs` 的 `ensure_overlay_window` / `ensure_display_windows` |
 | 修改位置校准逻辑 | `counter/mod.rs` 的 `counter_position_*` commands（调用 `sync_tool::apply_position_event`） |

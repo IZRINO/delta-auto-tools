@@ -37,11 +37,22 @@
 
 1. 前端调用 `xxx_begin_position_selection` 打开位置窗口
 2. 用户拖拽窗口到目标屏幕位置
-3. 拖拽过程中触发 `xxx_position_moved`，存储临时坐标
-4. `xxx_position_commit`（Enter 键）保存坐标到设置并关闭窗口
+3. `PositionMoveQueue` 用 `requestAnimationFrame` 合并同帧坐标；最多一个 `xxx_position_moved` in-flight，调用使用 `log: false`
+4. mouseup / Enter / Escape 先 `flush()` 最终坐标；`xxx_position_commit`（Enter 键）不会越过尚未完成的 moved invoke
 5. `xxx_position_cancel`（Escape 键）放弃并关闭
 
 位置状态机的核心逻辑在 [同步工具基座](sync-tool.md) 的 `apply_position_event` 中实现。
+
+### 阶段 4 热路径对比（2026-07-16）
+
+| 场景 | 改动前 | 改动后 |
+|------|--------|--------|
+| Rapidfire 1ms 更新 10 秒 | 10,000 次 count 更新逐次发完整 Bootstrap，结束再发 1 次 | 普通事件不超过 600 次，结束 final 额外 1 次；减少至少 94.0% |
+| 同一帧 500 次位置 move | 500 次 `position_moved` invoke + 1,000 条 start/success 日志 | 1 次 invoke，0 条 start/success 日志 |
+| Timer 代表性 tick payload | 798B 完整 Bootstrap | 273B runs payload，减少 65.8% |
+| Timer debug 序列化 CPU proxy（100,000 次） | 7303ms | 2488ms，减少 65.9% |
+
+CPU 数据是同机 debug 构建的 serde 序列化 microbenchmark，不等同于端到端整机 CPU profiler；它只量化本阶段移除 settings clone/序列化后的热点差异。
 
 ## 区域选择叠加窗
 
@@ -54,6 +65,7 @@ Morse 和识别触发使用全屏透明叠加窗（`morse-overlay` / `recognitio
 | 组件 | 文件 | 用途 |
 |------|------|------|
 | `SyncOverlayWindow` | `src/components/app/sync-overlay-window.tsx` | 计时器/计数器/连发器共享的显示/位置窗口包装 |
+| `PositionMoveQueue` | `src/components/ui/position-move-queue.ts` | rAF latest-point 合并、单 in-flight 与最终坐标 flush barrier |
 | `MorseOverlay` / `RegionSelectionOverlay` | `src/components/app/morse-overlay.tsx` | Morse 区域选择全屏叠加窗 |
 | `RecognitionRegionOverlay` | `src/components/app/recognition-page.tsx` | 识别触发区域/探针/点击区域选择叠加窗 |
 
@@ -63,7 +75,7 @@ Morse 和识别触发使用全屏透明叠加窗（`morse-overlay` / `recognitio
 - [Morse](../features/morse.md) 拥有区域选择叠加窗
 - [识别触发](../features/recognition.md) 共享 overlay 流程用于监听区域、探针和点击区域选择
 - `src-tauri/src/overlay_utils.rs` 提供共享的叠加窗创建与尺寸计算工具函数
-- 状态变更同时 emit 到 `main` 和显示窗口 label，使 overlay 实时更新
+- settings/结构变化通过 `state-changed`，运行态通过轻量 `runs-changed` 同时发到 `main` 和显示窗口
 
 ## 修改入口
 

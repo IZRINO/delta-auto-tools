@@ -135,6 +135,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
   `morse/events.rs`、`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义常量，前端通过
   `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS`
   和显式泛型 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名和异步 cleanup 竞态。
+- **运行态事件**：Timer/Counter/Rapidfire 的 `state-changed` 只用于 settings/结构变化；`runs-changed` 只携带运行态。工作台将 runs 与 Bootstrap/Form 分开存储，禁止 tick/count 触发表单转换。
 - **原生 shell 检测**：`useNativeShell()` 检查 `__TAURI_INTERNALS__`，浏览器预览模式下禁用所有原生命令
 
 ### Overlay 窗口系统
@@ -153,8 +154,8 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | global_state | `src-tauri/src/global_state.rs` | 全局总开关（GlobalState）与 enabled-changed 事件                                                          |
 | morse        | `src-tauri/src/morse/`          | 屏幕截取→二值化→轮廓检测→摩斯解码→自动输入；overlay 多步骤框选会话；MorseState = ToolState<MorseLogic>                      |
 | timer        | `src-tauri/src/timer/`          | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic>                                     |
-| counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，计数器运行态独立持久化；CounterState 包装 ToolState<CounterLogic>                                   |
-| rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，卡片级不追加/抖动/间距；RapidfireState = ToolState<RapidfireLogic>       |
+| counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，运行态通过单 writer 线程 50ms latest-wins 合并持久化；CounterState 包装 ToolState<CounterLogic>          |
+| rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget；RapidfireState = ToolState<RapidfireLogic>  |
 | recognition  | `src-tauri/src/recognition/`    | 快捷键、多参考图区域匹配、多区域识色三种触发来源；执行音频、按键、点击效果                                                   |
 | hotkeys      | `src-tauri/src/hotkeys.rs`      | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy）                           |
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |

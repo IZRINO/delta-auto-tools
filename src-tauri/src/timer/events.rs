@@ -1,3 +1,4 @@
 pub const STATE_CHANGED: &str = "timer://state-changed";
+pub const RUNS_CHANGED: &str = "timer://runs-changed";
 pub const HOTKEY_ERROR: &str = "timer://hotkey-error";
 pub const HOTKEY_TRIGGERED: &str = "timer://hotkey-triggered";

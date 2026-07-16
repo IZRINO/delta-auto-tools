@@ -55,6 +55,10 @@ export type RapidfireRunState = {
     count: number;
 };
 
+export type RapidfireRunsChanged = {
+    runs: RapidfireRunState[];
+};
+
 export type RapidfireBootstrap = {
     settings: RapidfireSettings;
     runs: RapidfireRunState[];

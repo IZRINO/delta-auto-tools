@@ -15,6 +15,7 @@ interface InvokeLogOptions {
   source?: string;
   location?: string;
   payload?: Record<string, unknown>;
+  log?: boolean;
 }
 
 let _sessionId: string | null = null;
@@ -118,6 +119,10 @@ export async function invokeLogged<T>(
   args?: InvokeArgs,
   options: InvokeLogOptions = {},
 ): Promise<T> {
+  if (options.log === false) {
+    return rawInvoke<T>(command, args);
+  }
+
   const source = options.source ?? `${command.split("_")[0] || "app"}-command`;
   const location = options.location ?? command;
   const category = classifyCommand(command);

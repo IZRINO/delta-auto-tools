@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
+use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::sync::oneshot;
@@ -22,7 +23,8 @@ pub mod worker;
 pub use self::overlay::ensure_overlay_window;
 pub use self::types::{
     RapidfireBootstrap, RapidfireCard, RapidfireGroup, RapidfireRect, RapidfireRunState,
-    RapidfireRunStatus, RapidfireSelectionKind, RapidfireSettings, DEFAULT_RAPIDFIRE_GROUP_ID,
+    RapidfireRunStatus, RapidfireRunsChanged, RapidfireSelectionKind, RapidfireSettings,
+    DEFAULT_RAPIDFIRE_GROUP_ID,
 };
 pub use self::worker::{
     CardRuntime, RapidfireSessionRuntime, RapidfireSessionStatus, RapidfireSessionWorker,
@@ -40,7 +42,8 @@ use self::overlay::{
     hide_display_windows,
 };
 use self::worker::{
-    next_session_id, spawn_session_worker, stop_all_sessions, stop_latest_active_session,
+    next_session_id, should_emit_run_update, spawn_session_worker, stop_all_sessions,
+    stop_latest_active_session,
 };
 
 // ---- State ----
@@ -48,6 +51,7 @@ use self::worker::{
 pub struct RapidfireLogic {
     pub runs: HashMap<String, CardRuntime>,
     pub pending_position: Option<PendingRapidfirePosition>,
+    pub last_runs_emit_at: Option<Instant>,
 }
 
 pub type RapidfireState = ToolState<RapidfireLogic>;
@@ -241,6 +245,24 @@ pub(crate) fn emit_state(app: &AppHandle, bootstrap: RapidfireBootstrap) {
     RapidfireLogic::emit_state(app, &bootstrap);
 }
 
+pub(crate) fn emit_runs(app: &AppHandle, payload: RapidfireRunsChanged) {
+    let _ = app.emit_to("main", events::RUNS_CHANGED, payload.clone());
+    for label in app.webview_windows().keys() {
+        if label.starts_with("rapidfire-display") {
+            let _ = app.emit_to(label, events::RUNS_CHANGED, payload.clone());
+        }
+    }
+}
+
+pub(crate) fn force_runs_changed(
+    inner: &mut ToolStateInner<RapidfireLogic>,
+) -> RapidfireRunsChanged {
+    should_emit_run_update(&mut inner.logic.last_runs_emit_at, Instant::now(), true);
+    RapidfireRunsChanged {
+        runs: run_states(inner),
+    }
+}
+
 // ---- Hotkey handling ----
 
 async fn handle_hold_event(
@@ -403,20 +425,20 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
     }
 
     if spawned_count > 0 {
-        let bootstrap = {
-            let inner = state
+        let payload = {
+            let mut inner = state
                 .lock_inner()
                 .map_err(|_| "连发器状态已损坏".to_string())?;
-            RapidfireLogic::build_bootstrap(&inner)
+            force_runs_changed(&mut inner)
         };
-        emit_state(app, bootstrap);
+        emit_runs(app, payload);
     }
     Ok(())
 }
 
 async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), String> {
     let state = app.state::<RapidfireState>();
-    let stopped_count = {
+    {
         let mut inner = state
             .lock_inner()
             .map_err(|_| "连发器状态已损坏".to_string())?;
@@ -432,12 +454,9 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             .map(|c| c.trigger_key.clone())
             .collect();
 
-        let mut stopped_count = 0usize;
         for card_id in &card_ids {
             if let Some(run) = inner.logic.runs.get_mut(card_id) {
-                if stop_latest_active_session(run, SessionControl::StopWithCompensation) {
-                    stopped_count += 1;
-                }
+                stop_latest_active_session(run, SessionControl::StopWithCompensation);
             }
         }
 
@@ -473,16 +492,6 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
                 }
             }
         }
-        stopped_count
-    };
-
-    if stopped_count > 0 {
-        emit_state(app, {
-            let inner = state
-                .lock_inner()
-                .map_err(|_| "连发器状态已损坏".to_string())?;
-            RapidfireLogic::build_bootstrap(&inner)
-        });
     }
     Ok(())
 }
@@ -719,20 +728,20 @@ pub fn shutdown(app: &AppHandle, state: &RapidfireState, hotkey_manager: &Hotkey
 
 /// 停止所有正在运行的连发器会话（用于全局总开关关闭）。
 pub fn stop_all(app: &AppHandle, state: &RapidfireState, hotkey_manager: Option<&HotkeyManager>) {
-    let bootstrap = {
+    let payload = {
         let Ok(mut inner) = state.lock_inner() else {
             return;
         };
         stop_all_sessions(&mut inner.logic.runs, SessionControl::Cancel);
         inner.logic.runs.clear();
-        RapidfireLogic::build_bootstrap(&inner)
+        force_runs_changed(&mut inner)
     };
     if let Some(hm) = hotkey_manager {
         hm.clear_all_suppressions();
         let _ = hm.stop_suppressor();
     }
     hide_display_windows(app);
-    emit_state(app, bootstrap);
+    emit_runs(app, payload);
 }
 
 pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
@@ -752,6 +761,7 @@ pub fn initialize(
     let logic = RapidfireLogic {
         runs: HashMap::new(),
         pending_position: None,
+        last_runs_emit_at: None,
     };
     let state = RapidfireState::new(logic, settings.clone());
 

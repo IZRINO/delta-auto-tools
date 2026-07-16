@@ -244,15 +244,15 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 **工具模块**（详见 codegraph）：
 - `morse/` — 截屏→二值化→轮廓检测→摩斯解码→自动输入
 - `timer/` — 多计时器，250ms tick，透明窗口
-- `counter/` — 多计数器，运行态独立持久化（counter_state.json）
-- `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程
+- `counter/` — 多计数器，运行态通过单 writer 线程 50ms latest-wins 合并持久化（counter_state.json）
+- `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget
 - `recognition/` — 快捷键/多参考图区域监听/识色三种识别来源 + 音频/按键/点击效果
 - `strategy/` — 攻略网站 WebView2 嵌入
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
 
-**事件模式**：事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `EVENTS` 常量与显式泛型 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名和异步 cleanup 竞态。
+**事件模式**：事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `src/lib/tauri-events.ts` 的 `EVENTS` 常量与显式泛型 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 订阅。Timer/Counter/Rapidfire 的 `state-changed` 只用于 settings/结构变化，`runs-changed` 只携带运行态；禁止高频路径发送完整 Bootstrap。
 
 ## Testing
 

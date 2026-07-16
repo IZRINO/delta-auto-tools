@@ -42,7 +42,7 @@ src/components/app/
 | `RapidfireGroup` | `types.rs` | 分组：id、名称、启用、透明窗口显示/位置/宽度 |
 | `RapidfireBootstrap` | `types.rs` | 初始规范态：settings + runs（每卡片运行状态）+ hotkey_error |
 | `CardRuntime` | `mod.rs` | 单张卡片的运行态：多 session map、活跃 session id 栈、`last_press_at` 间距锁 |
-| `RapidfireSessionRuntime` | `mod.rs` | 单个 session 运行态：count、status、control_tx、compensate_now |
+| `RapidfireSessionRuntime` | `mod.rs` | 单个 session 运行态：count、status、control_tx、compensate_now；卡片级 `CardRuntime` 额外累计已结束 session 的 count |
 | `RapidfireSessionWorker` | `mod.rs` | worker 线程参数包：卡片配置快照 + mpsc 控制通道 + 间距锁 |
 | `PendingRapidfirePosition` | `mod.rs` | 位置设置会话状态：group_id、原始位置、暂存位置、oneshot sender |
 
@@ -65,7 +65,7 @@ flowchart TD
     I -- 是 --> J[HotkeyManager.suppress_key 抑制触发键]
     I -- 否 --> K
     J --> K[spawn_session_worker 每卡片独立 OS 线程]
-    K --> L[emit rapidfire://state-changed]
+    K --> L[emit rapidfire://runs-changed]
     L --> M[worker: 首次开火前 INITIAL_SETTLE_MS 稳定延迟]
     M --> N{trigger_jitter_max_ms > 0?}
     N -- 是 --> O[抖动等待期]
@@ -76,7 +76,11 @@ flowchart TD
     R --> S[主循环: 按 interval_ms 间隔连发]
     S --> T[ensure_press_spacing 最小间距节流]
     T --> U[press_release_target_key enigo 按下/抬起目标键]
-    U --> V[count += 1, emit state-changed]
+    U --> V[内存 count += 1]
+    V --> VB{共享 60Hz budget 放行?}
+    VB -- 是 --> VC[emit rapidfire://runs-changed]
+    VB -- 否 --> W
+    VC --> W
     V --> W{收到 StopWithCompensation?}
     W -- 否 --> S
     W -- 是 --> X
@@ -106,14 +110,13 @@ sequenceDiagram
     alt 无活跃 ignore session
         HM->>HM: unsuppress_key(触发键)
     end
-    HK-->>HK: emit rapidfire://state-changed
     S->>S: 主循环退出
     alt count 奇数且未 skip
         S->>S: 等待 compensation_delay
         S->>S: press_release_target_key 补发一次
     end
     S->>ST: finish_session 移除 session
-    ST-->>ST: emit rapidfire://state-changed
+    ST-->>ST: emit rapidfire://runs-changed final
 ```
 
 ### Session 模型
@@ -124,6 +127,8 @@ sequenceDiagram
 - `Cancel`：立即取消，不补齐
 
 `NEXT_RAPIDFIRE_SESSION_ID`（`AtomicU64`）为每个 session 分配全局唯一 id。`CardRuntime` 用 `active_session_ids` 栈记录活跃 session，`stop_latest_active_session` 只停止最近一个。
+
+worker 每次开火只更新内存 count。`RapidfireLogic.last_runs_emit_at` 对所有卡片共享 60Hz budget；budget 放行时才发送 `RapidfireRunsChanged`，session 结束绕过 budget 强制发送最终运行态。
 
 ### 关键参数
 
@@ -221,7 +226,8 @@ sequenceDiagram
 
 | 事件名 | 触发时机 | 载荷 |
 |--------|----------|------|
-| `rapidfire://state-changed` | session 创建/计数更新/结束、设置保存、停止 | `RapidfireBootstrap` |
+| `rapidfire://state-changed` | 设置保存、位置提交等 settings/结构变化 | `RapidfireBootstrap` |
+| `rapidfire://runs-changed` | session 创建、受 60Hz 限制的 count 更新、session 结束与停止 | `RapidfireRunsChanged` |
 | `rapidfire://hotkey-error` | 热键回调执行失败、worker 线程启动失败 | `String`（错误信息） |
 
-> `rapidfire://state-changed` 会同时 emit 到 `main` 窗口与各分组的 display 窗口（`emit_to(display_label_for_group)`），确保透明窗口实时刷新。
+> 两类事件都会发到 `main` 与现有 display 窗口；高频运行态载荷不含 settings。

@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from "react";
 
-import type {CounterBootstrap, TimerBootstrap, TimerRunState} from "@/components/app/timer-types";
+import type {CounterBootstrap, CounterRunState, TimerBootstrap, TimerRunState} from "@/components/app/timer-types";
 import {
     isTimerRunActive,
     timerProgressPercent,
@@ -16,9 +16,10 @@ import {cn} from "@/lib/utils";
 
 export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string; isNativeShell: boolean }) {
     const [bootstrap, setBootstrap] = useState<TimerBootstrap | null>(null);
+    const [runtimeRuns, setRuntimeRuns] = useState<TimerRunState[] | null>(null);
     const [now, setNow] = useState(Date.now);
 
-    useTimerOverlayBootstrap(isNativeShell, setBootstrap);
+    useTimerOverlayBootstrap(isNativeShell, setBootstrap, setRuntimeRuns);
 
     useEffect(() => {
         let rafId: number;
@@ -30,7 +31,8 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
         return () => cancelAnimationFrame(rafId);
     }, []);
 
-    const runsById = useMemo(() => timerRunsById(bootstrap?.runs ?? []), [bootstrap?.runs]);
+    const runs = runtimeRuns ?? bootstrap?.runs ?? [];
+    const runsById = useMemo(() => timerRunsById(runs), [runs]);
     const group = bootstrap?.settings.timerGroups?.find((item) => item.id === groupId);
     const opacity = group?.display.fontOpacity ?? bootstrap?.settings.display.fontOpacity ?? 0.92;
 
@@ -136,10 +138,12 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
 
 export function CounterDisplayOverlay({groupId, isNativeShell}: { groupId: string; isNativeShell: boolean }) {
     const [bootstrap, setBootstrap] = useState<CounterBootstrap | null>(null);
+    const [runtimeRuns, setRuntimeRuns] = useState<CounterRunState[] | null>(null);
 
-    useCounterOverlayBootstrap(isNativeShell, setBootstrap);
+    useCounterOverlayBootstrap(isNativeShell, setBootstrap, setRuntimeRuns);
 
-    const counterRunsByIdMap = useMemo(() => counterRunsById(bootstrap?.counterRuns ?? []), [bootstrap?.counterRuns]);
+    const runs = runtimeRuns ?? bootstrap?.counterRuns ?? [];
+    const counterRunsByIdMap = useMemo(() => counterRunsById(runs), [runs]);
     const group = bootstrap?.settings.counterGroups?.find((item) => item.id === groupId);
     const opacity = group?.display.fontOpacity ?? bootstrap?.settings.display.fontOpacity ?? 0.92;
 
