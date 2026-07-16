@@ -37,11 +37,11 @@
 - **RunsSync trait**：`runs` narrowing 逻辑下放到 Logic 层，Rust 侧通过 trait 约束统一调用
 - **Rapidfire 模块拆分**：`keys` / `worker` / `overlay` / `commands` 四个子模块，职责清晰
 - **Recognition watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
-- **事件对齐**：前端 `listen<PayloadType>(EVENTS.xxx, handler)` 模式，事件名通过 `src/lib/tauri-events.ts` 常量订阅，杜绝硬编码
+- **事件对齐**：前端 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 模式，事件名通过 `src/lib/tauri-events.ts` 常量订阅，统一处理异步 cleanup
 
 ### 事件模式
 
-事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `EVENTS` 常量与显式泛型订阅。
+事件名格式 `{tool}://{event}`，后端在 `*/events.rs` 定义常量，前端通过 `EVENTS` 常量和 `src/lib/tauri-listener.ts` 的显式泛型 helper 订阅。
 
 ### Overlay 约束
 

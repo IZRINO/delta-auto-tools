@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {TIMER_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {RiAddLine, RiDeleteBinLine, RiStarFill, RiStarLine, RiTimerLine,} from "@remixicon/react";
 import {toast} from "sonner";
 
@@ -154,31 +154,25 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
         }
 
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
-        let unlistenHotkeyTriggered: (() => void) | undefined;
 
-        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (disposed) {
                 return;
             }
             setBootstrap(event.payload);
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
-        void listen<string[]>(TIMER_EVENTS.hotkeyTriggered, (event) => {
+        const unlistenHotkeyTriggered = subscribeTauriEvent<string[]>(TIMER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
             }
             setStatusMessage(`快捷键已触发 ${event.payload.length} 个计时器。运行中的计时器会忽略重复触发。`);
-        }).then((dispose) => {
-            unlistenHotkeyTriggered = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
-            unlistenHotkeyTriggered?.();
+            unlistenStateChanged();
+            unlistenHotkeyTriggered();
         };
     }, [isNativeShell, setBootstrap, setStatusMessage]);
 

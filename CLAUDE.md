@@ -134,7 +134,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 - **事件监听**：`listen<XxxPayload>("tool://event-name", callback)`，事件名格式 `{tool}://{event}`。后端在
   `morse/events.rs`、`timer/events.rs`、`counter/events.rs`、`rapidfire/events.rs` 定义常量，前端通过
   `src/lib/tauri-events.ts` 的 `MORSE_EVENTS` / `TIMER_EVENTS` / `COUNTER_EVENTS` / `RAPIDFIRE_EVENTS` / `GLOBAL_EVENTS`
-  和显式泛型 `listen<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名。
+  和显式泛型 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 订阅，避免硬编码事件名和异步 cleanup 竞态。
 - **原生 shell 检测**：`useNativeShell()` 检查 `__TAURI_INTERNALS__`，浏览器预览模式下禁用所有原生命令
 
 ### Overlay 窗口系统

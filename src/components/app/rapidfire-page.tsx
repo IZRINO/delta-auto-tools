@@ -1,8 +1,8 @@
 import type React from "react";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {RAPIDFIRE_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
   RiAddLine,
   RiArrowDownSLine,
@@ -232,28 +232,22 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
         if (!isNativeShell) return;
 
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
-        let unlistenHotkeyError: (() => void) | undefined;
 
-        void listen<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
             if (disposed) return;
             setBootstrap(event.payload);
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
-        void listen<string>(RAPIDFIRE_EVENTS.hotkeyError, (event) => {
+        const unlistenHotkeyError = subscribeTauriEvent<string>(RAPIDFIRE_EVENTS.hotkeyError, (event) => {
             if (disposed) return;
             setPageError(event.payload);
             setStatusMessage(event.payload);
-        }).then((dispose) => {
-            unlistenHotkeyError = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
-            unlistenHotkeyError?.();
+            unlistenStateChanged();
+            unlistenHotkeyError();
         };
     }, [isNativeShell]);
 
@@ -1287,21 +1281,18 @@ function useRapidfireOverlayBootstrap(isNativeShell: boolean, setBootstrap: (val
         if (!isNativeShell) return;
 
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
 
         void invoke<RapidfireBootstrap>("rapidfire_get_bootstrap").then((next) => {
             if (!disposed) setBootstrap(next);
         });
 
-        void listen<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
             if (!disposed) setBootstrap(event.payload);
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
+            unlistenStateChanged();
         };
     }, [isNativeShell, setBootstrap]);
 }

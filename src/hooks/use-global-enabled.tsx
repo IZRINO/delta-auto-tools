@@ -1,7 +1,7 @@
 import {createContext, type ReactNode, useCallback, useContext, useEffect, useState,} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {GLOBAL_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {invokeWithStartupRetry} from "@/lib/tauri-startup-retry";
 
 import {useNativeShell} from "@/hooks/use-native-shell";
@@ -33,7 +33,6 @@ export function GlobalEnabledProvider({children}: { children: ReactNode }) {
         if (!isNativeShell) return;
 
         let disposed = false;
-        let unlisten: (() => void) | undefined;
 
         void invokeWithStartupRetry<boolean>("global_get_enabled").then((enabled) => {
             if (disposed) return;
@@ -44,20 +43,18 @@ export function GlobalEnabledProvider({children}: { children: ReactNode }) {
             }
         });
 
-        void listen<boolean>(GLOBAL_EVENTS.enabledChanged, (event) => {
+        const unlisten = subscribeTauriEvent<boolean>(GLOBAL_EVENTS.enabledChanged, (event) => {
             if (disposed) return;
             setGlobalEnabledState(event.payload);
             try {
                 window.localStorage.setItem(GLOBAL_ENABLED_STORAGE_KEY, String(event.payload));
             } catch {
             }
-        }).then((dispose) => {
-            unlisten = dispose;
         });
 
         return () => {
             disposed = true;
-            unlisten?.();
+            unlisten();
         };
     }, [isNativeShell]);
 

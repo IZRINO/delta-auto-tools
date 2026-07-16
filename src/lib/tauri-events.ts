@@ -2,7 +2,7 @@
  * 前端事件名常量 —— 与后端各模块 events.rs 一一对齐。
  *
  * 调用方使用显式泛型：
- *   listen<MorseRunResult>(MORSE_EVENTS.runFinished, (event) => { ... })
+ *   subscribeTauriEvent<MorseRunResult>(MORSE_EVENTS.runFinished, (event) => { ... })
  */
 
 // ——— morse ——— morse/events.rs

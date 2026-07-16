@@ -9,8 +9,8 @@ import {
     RiTimerLine,
 } from "@remixicon/react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {COUNTER_EVENTS, RAPIDFIRE_EVENTS, TIMER_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -89,9 +89,6 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
             return;
         }
         let disposed = false;
-        let unlistenTimerState: (() => void) | undefined;
-        let unlistenCounterState: (() => void) | undefined;
-        let unlistenRapidfireState: (() => void) | undefined;
 
         setLoading(true);
 
@@ -125,35 +122,29 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
                 // 浏览器预览 / 调用失败时静默忽略
             });
 
-        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
+        const unlistenTimerState = subscribeTauriEvent<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setTimerBootstrap(event.payload);
             }
-        }).then((dispose) => {
-            unlistenTimerState = dispose;
         });
 
-        void listen<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
+        const unlistenRapidfireState = subscribeTauriEvent<RapidfireBootstrap>(RAPIDFIRE_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setRapidfireBootstrap(event.payload);
             }
-        }).then((dispose) => {
-            unlistenRapidfireState = dispose;
         });
 
-        void listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
+        const unlistenCounterState = subscribeTauriEvent<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setCounterBootstrap(event.payload);
             }
-        }).then((dispose) => {
-            unlistenCounterState = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenTimerState?.();
-            unlistenCounterState?.();
-            unlistenRapidfireState?.();
+            unlistenTimerState();
+            unlistenCounterState();
+            unlistenRapidfireState();
             setLoading(false);
         };
     }, [isNativeShell]);

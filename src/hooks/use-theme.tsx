@@ -10,8 +10,8 @@ import {
 } from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 
-import {listen} from "@tauri-apps/api/event";
 import {THEME_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {
     type ThemeBootstrap,
@@ -154,13 +154,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         if (!isNativeShell) return;
 
         let disposed = false;
-        let unlisten: (() => void) | undefined;
 
-        void listen<ThemeTokenOverride[]>(THEME_EVENTS.changed, (event) => {
+        const unlisten = subscribeTauriEvent<ThemeTokenOverride[]>(THEME_EVENTS.changed, (event) => {
             if (disposed) return;
             applyTokens(event.payload);
-        }).then((dispose) => {
-            unlisten = dispose;
         });
 
         // 同时刷新 bootstrap 以拿到最新的 customThemes 列表
@@ -180,7 +177,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
 
         return () => {
             disposed = true;
-            unlisten?.();
+            unlisten();
         };
     }, [isNativeShell, applyTokens]);
 

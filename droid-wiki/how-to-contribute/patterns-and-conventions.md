@@ -27,7 +27,9 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 事件命名
 
-事件名为字符串常量。后端在 `events.rs` 文件（`src-tauri/src/<tool>/events.rs`）中定义。前端在 `src/lib/tauri-events.ts` 中以字符串常量镜像（`MORSE_EVENTS`、`TIMER_EVENTS` 等），调用方使用显式泛型 `listen<PayloadType>(EVENTS.xxx, callback)`。两层均不硬编码事件名字符串。
+事件名为字符串常量。后端在 `events.rs` 文件（`src-tauri/src/<tool>/events.rs`）中定义。前端在 `src/lib/tauri-events.ts` 中以字符串常量镜像（`MORSE_EVENTS`、`TIMER_EVENTS` 等），调用方使用显式泛型 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, callback)`。两层均不硬编码事件名字符串。
+
+生产代码统一通过 `src/lib/tauri-listener.ts` 的 `subscribeTauriEvent` 订阅 Tauri 事件，不直接调用 `@tauri-apps/api/event` 的 `listen`。helper 同步返回幂等 cleanup；即使 React cleanup 早于 `listen()` Promise resolve，listener 就绪后也会立即 unlisten。helper 还会阻止 disposed 后的业务 callback，并消费 `listen()` reject；调用方需要展示订阅错误时传入 `onError`。
 
 ## 原生 shell 检测
 

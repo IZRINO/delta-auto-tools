@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {COUNTER_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
   RiAddLine,
   RiDeleteBinLine,
@@ -163,31 +163,25 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
         }
 
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
-        let unlistenCounterTriggered: (() => void) | undefined;
 
-        void listen<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<CounterBootstrap>(COUNTER_EVENTS.stateChanged, (event) => {
             if (disposed) {
                 return;
             }
             setBootstrap(event.payload);
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
-        void listen<string[]>(COUNTER_EVENTS.hotkeyTriggered, (event) => {
+        const unlistenCounterTriggered = subscribeTauriEvent<string[]>(COUNTER_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) {
                 return;
             }
             setStatusMessage(`快捷键已触发 ${event.payload.length} 个计数器。`);
-        }).then((dispose) => {
-            unlistenCounterTriggered = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
-            unlistenCounterTriggered?.();
+            unlistenStateChanged();
+            unlistenCounterTriggered();
         };
     }, [isNativeShell]);
 

@@ -1,8 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 import {open} from "@tauri-apps/plugin-dialog";
-import {listen} from "@tauri-apps/api/event";
 import {RECOGNITION_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     RiAddLine,
     RiArrowDownLine,
@@ -292,52 +292,40 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     useEffect(() => {
         if (!isNativeShell) return;
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
-        let unlistenHotkeyError: (() => void) | undefined;
-        let unlistenHotkeyTriggered: (() => void) | undefined;
-        let unlistenRegionMatched: (() => void) | undefined;
 
-        void listen<RecognitionBootstrap>(RECOGNITION_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<RecognitionBootstrap>(RECOGNITION_EVENTS.stateChanged, (event) => {
             if (disposed) return;
             const next = event.payload;
             setBootstrap(next);
             setForm((current) => mergeRecognitionWatchRegionsIntoForm(current, next.settings));
             setPageError(null);
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
-        void listen<string>(RECOGNITION_EVENTS.hotkeyError, (event) => {
+        const unlistenHotkeyError = subscribeTauriEvent<string>(RECOGNITION_EVENTS.hotkeyError, (event) => {
             if (disposed) return;
             setPageError(event.payload);
             setStatusMessage(event.payload);
             toast.error(event.payload);
-        }).then((dispose) => {
-            unlistenHotkeyError = dispose;
         });
 
-        void listen<string>(RECOGNITION_EVENTS.hotkeyTriggered, (event) => {
+        const unlistenHotkeyTriggered = subscribeTauriEvent<string>(RECOGNITION_EVENTS.hotkeyTriggered, (event) => {
             if (disposed) return;
             toast.info(`快捷键触发：卡片 ${event.payload}`);
             setStatusMessage(`快捷键触发：卡片 ${event.payload}`);
-        }).then((dispose) => {
-            unlistenHotkeyTriggered = dispose;
         });
 
-        void listen<string>(RECOGNITION_EVENTS.regionMatched, (event) => {
+        const unlistenRegionMatched = subscribeTauriEvent<string>(RECOGNITION_EVENTS.regionMatched, (event) => {
             if (disposed) return;
             toast.info(`区域匹配触发：卡片 ${event.payload}`);
             setStatusMessage(`区域匹配触发：卡片 ${event.payload}`);
-        }).then((dispose) => {
-            unlistenRegionMatched = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
-            unlistenHotkeyError?.();
-            unlistenHotkeyTriggered?.();
-            unlistenRegionMatched?.();
+            unlistenStateChanged();
+            unlistenHotkeyError();
+            unlistenHotkeyTriggered();
+            unlistenRegionMatched();
         };
     }, [isNativeShell, setBootstrap, setForm, setPageError, setStatusMessage]);
 

@@ -2,8 +2,8 @@ import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from
 import {invokeLogged as invoke} from "@/lib/logging";
 import {RiCheckboxCircleLine, RiHistoryLine, RiLayoutGridLine, RiRefreshLine,} from "@remixicon/react";
 
-import {listen} from "@tauri-apps/api/event";
 import {MORSE_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {useAutosave} from "@/hooks/use-autosave";
 import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
@@ -165,11 +165,8 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             return;
         }
         let isDisposed = false;
-        let unlistenRunFinished: (() => void) | undefined;
-        let unlistenSelectionProgress: (() => void) | undefined;
-        let unlistenHotkeyError: (() => void) | undefined;
 
-        void listen<MorseRunResult>(MORSE_EVENTS.runFinished, async (event) => {
+        const unlistenRunFinished = subscribeTauriEvent<MorseRunResult>(MORSE_EVENTS.runFinished, async (event) => {
             if (isDisposed) return;
             const result = event.payload;
             startTransition(() => {
@@ -183,11 +180,9 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                     setPageError(getErrorMessage(error));
                 }
             }
-        }).then((dispose) => {
-            unlistenRunFinished = dispose;
         });
 
-        void listen<RegionSelectionProgress>(MORSE_EVENTS.selectionProgress, (event) => {
+        const unlistenSelectionProgress = subscribeTauriEvent<RegionSelectionProgress>(MORSE_EVENTS.selectionProgress, (event) => {
             if (isDisposed) return;
             const progress = event.payload;
             startTransition(() => {
@@ -198,24 +193,20 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                     current ? {...current, regions: progress.regions} : current
                 );
             });
-        }).then((dispose) => {
-            unlistenSelectionProgress = dispose;
         });
 
-        void listen<string>(MORSE_EVENTS.hotkeyError, (event) => {
+        const unlistenHotkeyError = subscribeTauriEvent<string>(MORSE_EVENTS.hotkeyError, (event) => {
             if (isDisposed) return;
             startTransition(() => {
                 setBootstrap((current) => (current ? {...current, hotkeyError: event.payload} : current));
             });
-        }).then((dispose) => {
-            unlistenHotkeyError = dispose;
         });
 
         return () => {
             isDisposed = true;
-            unlistenRunFinished?.();
-            unlistenSelectionProgress?.();
-            unlistenHotkeyError?.();
+            unlistenRunFinished();
+            unlistenSelectionProgress();
+            unlistenHotkeyError();
         };
     }, [isNativeShell, overlayMode, syncBootstrap]);
 

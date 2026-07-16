@@ -1,8 +1,8 @@
 import type React from "react";
 import {useEffect} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {listen} from "@tauri-apps/api/event";
 import {TIMER_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 
 import type {
   TimerBootstrap,
@@ -342,7 +342,6 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
         }
 
         let disposed = false;
-        let unlistenStateChanged: (() => void) | undefined;
 
         void invoke<TimerBootstrap>("timer_get_bootstrap").then((next) => {
             if (!disposed) {
@@ -350,17 +349,15 @@ export function useTimerOverlayBootstrap(isNativeShell: boolean, setBootstrap: (
             }
         });
 
-        void listen<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
+        const unlistenStateChanged = subscribeTauriEvent<TimerBootstrap>(TIMER_EVENTS.stateChanged, (event) => {
             if (!disposed) {
                 setBootstrap(event.payload);
             }
-        }).then((dispose) => {
-            unlistenStateChanged = dispose;
         });
 
         return () => {
             disposed = true;
-            unlistenStateChanged?.();
+            unlistenStateChanged();
         };
     }, [isNativeShell, setBootstrap]);
 }

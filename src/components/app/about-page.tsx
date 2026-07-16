@@ -12,8 +12,8 @@ import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {DataWell, FieldUnit, StatusMatrix} from "@/components/app/app-ui";
 import {DEPENDENCIES} from "@/components/app/about-deps";
 import type {AboutBootstrap, UpdateInfo, UpdateProgress} from "@/components/app/about-types";
-import {listen} from "@tauri-apps/api/event";
 import {ABOUT_EVENTS} from "@/lib/tauri-events";
+import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {cn} from "@/lib/utils";
 import {getLogSettings, setLogSettings as saveLogSettings, type LogSettings, type FrontendLogLevel} from "@/lib/logging";
@@ -64,16 +64,13 @@ export function AboutPanel({active}: AboutPanelProps) {
     useEffect(() => {
         if (!active || !isNativeShell) return;
         let disposed = false;
-        let unlisten: (() => void) | undefined;
-        void listen<UpdateProgress>(ABOUT_EVENTS.updateProgress, (event) => {
+        const unlisten = subscribeTauriEvent<UpdateProgress>(ABOUT_EVENTS.updateProgress, (event) => {
             if (disposed) return;
             setProgress(event.payload);
-        }).then((dispose) => {
-            unlisten = dispose;
         });
         return () => {
             disposed = true;
-            unlisten?.();
+            unlisten();
         };
     }, [active, isNativeShell]);
 
