@@ -61,11 +61,21 @@ where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
-    let permit = BLOCKING_PERMITS
-        .get_or_init(|| Arc::new(Semaphore::new(2)))
-        .clone()
-        .try_acquire_owned()
-        .ok()?;
+    run_blocking_with_permits(
+        BLOCKING_PERMITS
+            .get_or_init(|| Arc::new(Semaphore::new(2)))
+            .clone(),
+        job,
+    )
+    .await
+}
+
+async fn run_blocking_with_permits<T, F>(permits: Arc<Semaphore>, job: F) -> Option<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let permit = permits.try_acquire_owned().ok()?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         job()
@@ -913,6 +923,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn blocking_scheduler_skips_third_job_while_two_are_running() {
+        let permits = Arc::new(Semaphore::new(2));
         let started = Arc::new(std::sync::Barrier::new(3));
         let release = Arc::new(std::sync::Barrier::new(3));
         let mut jobs = Vec::new();
@@ -920,8 +931,9 @@ mod tests {
         for _ in 0..2 {
             let started = Arc::clone(&started);
             let release = Arc::clone(&release);
+            let permits = Arc::clone(&permits);
             jobs.push(tokio::spawn(async move {
-                run_blocking_limited(move || {
+                run_blocking_with_permits(permits, move || {
                     started.wait();
                     release.wait();
                     1
@@ -931,7 +943,10 @@ mod tests {
         }
 
         started.wait();
-        assert_eq!(run_blocking_limited(|| 3).await, None);
+        assert_eq!(
+            run_blocking_with_permits(Arc::clone(&permits), || 3).await,
+            None
+        );
         release.wait();
         for job in jobs {
             assert_eq!(job.await.unwrap(), Some(1));
@@ -940,6 +955,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn blocking_result_becomes_stale_when_generation_changes() {
+        let permits = Arc::new(Semaphore::new(2));
         let started = Arc::new(std::sync::Barrier::new(2));
         let release = Arc::new(std::sync::Barrier::new(2));
         let generation = WATCHER_GENERATIONS.next();
@@ -947,8 +963,9 @@ mod tests {
         let job = {
             let started = Arc::clone(&started);
             let release = Arc::clone(&release);
+            let permits = Arc::clone(&permits);
             tokio::spawn(async move {
-                run_blocking_limited(move || {
+                run_blocking_with_permits(permits, move || {
                     started.wait();
                     release.wait();
                     "旧匹配结果"
