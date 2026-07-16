@@ -3,7 +3,7 @@ use thiserror::Error;
 
 /// 统一应用错误类型接缝。
 ///
-/// Morse / Timer / Rapidfire / Strategy 命令返回 `Result<T, AppError>`，
+/// Morse / Timer / Rapidfire 等命令返回 `Result<T, AppError>`，
 /// 内部仍返回 `Result<T, String>`，通过 `From<String>` 在 `?` 处自动转换。
 ///
 /// 序列化为字符串，前端行为与当前 String 错误一致。

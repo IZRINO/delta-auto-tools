@@ -51,14 +51,6 @@ impl crate::tool_base::ToolLogic for MorseLogic {
     type Bootstrap = MorseBootstrap;
     const NAME: &'static str = "摩斯";
 
-    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String> {
-        settings::load_settings(app)
-    }
-
-    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String> {
-        settings::save_settings(app, settings)
-    }
-
     fn build_bootstrap(inner: &crate::tool_base::ToolStateInner<Self>) -> Self::Bootstrap {
         MorseBootstrap {
             settings: inner.settings.clone(),

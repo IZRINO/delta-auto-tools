@@ -14,9 +14,9 @@ Delta Auto Tools 中可能对新读者不直观的术语。
 | Hold action | 在按下和松开时都触发的热键（连发器使用），与仅在按下时触发一次的普通热键相对。 |
 | ConflictPolicy | `Strict`（禁止跨 scope 复用按键）或 `AllowHold`（允许 hold scope 与普通 scope 在同键共存）。计时器/计数器和连发器使用 AllowHold；Morse 使用 Strict。 |
 | KeySuppressor | 第二个 `WH_KEYBOARD_LL` 钩子，吞噬物理按键事件使其不到达前台应用，同时仍触发热键回调。懒加载启动。 |
-| ToolBase | `src-tauri/src/tool_base.rs` 中的泛型层，通过 `ToolState<T: ToolLogic>` 为每个工具模块提供共享的 settings/bootstrap/error 处理。 |
-| ToolLogic | 每个工具实现的 trait，接入 ToolBase：`load_settings`、`save_settings`、`build_bootstrap`、`emit_state`。 |
-| SyncTool | `src-tauri/src/sync_tool.rs` 中的同步工具基座，扩展 ToolBase，为计时器/计数器/连发器提供分组规范化、热键重启、位置状态机、全局停止注册表。 |
+| ToolBase | `src-tauri/src/tool_base.rs` 中的泛型层，通过 `ToolState<T: ToolLogic>` 为每个工具模块提供共享 settings/bootstrap/error 状态。 |
+| ToolLogic | 每个工具实现的 trait，接入 ToolBase：`build_bootstrap`、`emit_state`。 |
+| SyncTool | `src-tauri/src/sync_tool.rs` 中的同步工具基座，扩展 ToolBase，为计时器/计数器/连发器提供分组规范化、热键重启、位置状态机与运行值同步。 |
 | GlobalState | 单个 `AtomicBool` 开关。关闭时所有热键回调和自动化暂停，运行态会话停止。 |
 | 区域选择（Region selection） | 用户拖拽选择屏幕区域（Morse）或识色探针区域（音频）的 overlay 流程。多步骤，使用 `oneshot` channel。 |
 | Session | 单次连发器激活生命周期：按下创建 session，松开停止。每个 session 在独立 OS worker 线程运行。 |

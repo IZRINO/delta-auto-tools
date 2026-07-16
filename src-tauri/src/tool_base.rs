@@ -3,8 +3,8 @@ use tauri::{AppHandle, Runtime};
 
 /// 工具模块共享逻辑 trait。
 ///
-/// 三个工具模块（morse、timer、rapidfire）共享以下模式：
-/// - Settings 持久化（settings.json）
+/// Morse、Timer、Counter、Rapidfire 与 Recognition 共享以下模式：
+/// - Settings 运行态
 /// - Bootstrap 构建（get_bootstrap 返回的初始状态）
 /// - 事件 emit（emit_state）
 /// - 运行时锁污染检查（"已损坏"错误）
@@ -22,10 +22,6 @@ pub trait ToolLogic: Send + 'static {
 
     const NAME: &'static str;
 
-    #[allow(dead_code)]
-    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String>;
-    #[allow(dead_code)]
-    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String>;
     fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap
     where
         Self: Sized;

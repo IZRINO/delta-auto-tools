@@ -1,13 +1,13 @@
 # 同步工具基座
 
-`src-tauri/src/sync_tool.rs` 中的同步工具基座扩展 [工具基座](tool-base.md)，为计时器、计数器、连发器提供共享生命周期管理：分组/条目规范化、热键重启、位置状态机、全局停止注册表。v0.17.5（2026-06-24）新增，收敛了三个工具模块此前各自重复实现的生命周期代码。
+`src-tauri/src/sync_tool.rs` 中的同步工具基座扩展 [工具基座](tool-base.md)，为计时器、计数器、连发器提供共享生命周期管理：分组/条目规范化、热键重启、位置状态机和运行值同步。v0.17.5（2026-06-24）新增，收敛了三个工具模块此前各自重复实现的生命周期代码。
 
 ## 用途
 
 - 统一计时器/计数器/连发器的分组（group）和条目（item）数据模型与规范化逻辑
 - 提供共享的热键重启管线（清除旧 scope -> 注册新 scope）
 - 提供共享的透明窗口位置设置状态机（移动/提交/取消）
-- 提供全局停止注册表，全局开关闭闭时统一停止所有运行态会话
+- 通过 `ToolLifecycleRegistry` 为全局开关提供统一停止入口
 - 为 [配置系统](profile-system.md) 的配置应用提供同步工具 lifecycle 能力；Morse 和识别触发不进入此基座
 
 ## 关键抽象
@@ -22,7 +22,6 @@
 | `PositionEvent` | `src-tauri/src/sync_tool.rs` | 位置事件枚举：`Moved { x, y }`、`Commit`、`Cancel` |
 | `PendingPosition<R>` | `src-tauri/src/sync_tool.rs` | 待定位置设置：`group_id`、`original_rect`、`staged_rect` |
 | `PositionDecision<R, K>` | `src-tauri/src/sync_tool.rs` | 位置事件决策：是否保存、是否发送通知、是否销毁窗口、是否移动窗口 |
-| `SyncToolRegistry` | `src-tauri/src/sync_tool.rs` | 全局停止注册表，注册各工具的 `stop_all` 函数 |
 | `RunsSync` | `src-tauri/src/sync_tool.rs` | runs 同步逻辑 trait：声明 `sync_runs_with_settings`，孤儿清理 + 缺失补齐 |
 | `ToolLifecycleRegistry` | `src-tauri/src/sync_tool.rs` | 统一停止注册表，接纳所有工具（含 morse/recognition）的 stop handler |
 
@@ -87,14 +86,6 @@ graph TD
 
 Profile 的配置应用入口在 `src-tauri/src/profile/apply.rs`。它只复用同步工具已存在的 lifecycle 能力：停止运行态、重启热键、同步/重置运行值、调度 Timer/Counter/Rapidfire 透明窗口 reconcile。`sync_tool.rs` 不吸收 Morse 区域框选或识别触发 watcher 逻辑，避免把非同步工具语义塞进同步工具基座。
 
-### 全局停止注册表
-
-`SyncToolRegistry` 在 `lib.rs` 的 `setup` 中创建并注册：
-
-- `"counter"` -> `counter::stop_registered`
-- `"timer"` -> `timer::stop_registered`
-- `"rapidfire"` -> `rapidfire::stop_registered`
-
 ### ToolLifecycleRegistry（统一停止入口）
 
 `ToolLifecycleRegistry` 在 `lib.rs` 的 `setup` 中创建并注册，统一管理所有工具（含非 SyncToolLogic 工具）的停止入口：
@@ -124,12 +115,12 @@ Profile 的配置应用入口在 `src-tauri/src/profile/apply.rs`。它只复用
 - 扩展 [工具基座](tool-base.md) 的 `ToolLogic` trait
 - 使用 [热键系统](hotkeys.md) 的 `replace_scope` / `replace_hold_scope`
 - 位置状态机驱动 [透明叠加窗](overlay-windows.md) 的位置设置窗口
-- [全局总开关](global-state.md) 通过 `ToolLifecycleRegistry` 停止所有会话（含 morse/recognition），`SyncToolRegistry` 保留以兼容直接调用
+- [全局总开关](global-state.md) 通过 `ToolLifecycleRegistry` 停止所有会话（含 morse/recognition）
 - [配置系统](profile-system.md) 的配置应用在 `profile/apply.rs` 中调用同步工具各自的 lifecycle 函数，保持同步工具 seam 不扩大到 Morse/Recognition
 
 ## 修改入口
 
-- 新增同步工具：定义 `Logic` 实现 `SyncToolLogic`，定义 `Settings` 实现 `SyncSettings`，在 `lib.rs` 注册 `SyncToolRegistry`
+- 新增同步工具：定义 `Logic` 实现 `SyncToolLogic`，定义 `Settings` 实现 `SyncSettings`；如需全局停止，在 `lib.rs` 注册 `ToolLifecycleRegistry`
 - 修改规范化规则：调整 `normalize_sync_settings` 或各工具的 `normalize_groups` / `normalize_item`
 - 修改位置状态机：调整 `apply_position_event`（注意计数器直接复用此函数）
 
@@ -137,4 +128,4 @@ Profile 的配置应用入口在 `src-tauri/src/profile/apply.rs`。它只复用
 
 | 文件 | 用途 |
 |------|------|
-| `src-tauri/src/sync_tool.rs` | `SyncItem`/`SyncGroup`/`SyncSettings`/`SyncToolLogic` trait、规范化、位置状态机、注册表 |
+| `src-tauri/src/sync_tool.rs` | `SyncItem`/`SyncGroup`/`SyncSettings`/`SyncToolLogic` trait、规范化、位置状态机、生命周期注册表 |

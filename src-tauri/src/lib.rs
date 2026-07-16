@@ -13,7 +13,6 @@ mod profile;
 mod rapidfire;
 mod recognition;
 mod settings;
-mod strategy;
 mod sync_tool;
 mod theme;
 mod timer;
@@ -176,10 +175,6 @@ pub fn run() {
                 &["recognition_settings.json", "audio_settings.json"],
                 || recognition::initialize(app.handle(), &hotkey_manager),
             )?;
-            let mut sync_tool_registry = sync_tool::SyncToolRegistry::default();
-            sync_tool_registry.register("counter", counter::stop_registered);
-            sync_tool_registry.register("timer", timer::stop_registered);
-            sync_tool_registry.register("rapidfire", rapidfire::stop_registered);
             let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
             lifecycle_registry.register(
                 "timer",
@@ -212,7 +207,6 @@ pub fn run() {
             app.manage(counter_state);
             app.manage(rapidfire_state);
             app.manage(recognition_state);
-            app.manage(sync_tool_registry);
             app.manage(lifecycle_registry);
             Ok(())
         })
@@ -298,9 +292,6 @@ pub fn run() {
             recognition::recognition_test_match,
             recognition::recognition_read_reference_image,
             recognition::recognition_test_color_match,
-            // ── strategy ──
-            strategy::webview::strategy_open_window,
-            strategy::fetch::strategy_fetch_page,
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,

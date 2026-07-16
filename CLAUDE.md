@@ -159,14 +159,14 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | recognition  | `src-tauri/src/recognition/`    | 快捷键、多参考图区域匹配、多区域识色三种触发来源；执行音频、按键、点击效果                                                   |
 | hotkeys      | `src-tauri/src/hotkeys.rs`      | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy）                           |
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |
-| strategy     | `src-tauri/src/strategy/`       | 兼容入口：`strategy_open_window` 创建子 WebView，`strategy_fetch_page` Chrome 头抓取+JS 重定向跟随               |
+| strategy     | `src/components/app/strategy-page.tsx` | 主窗口内嵌 `strategy-content` 子 WebView，不使用 Rust command 或 HTTP 抓取层                         |
 
 新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和
 `src-tauri/capabilities/default.json`。
 
 ### 更新器（Tauri Updater）
 
-项目已接入 `tauri-plugin-updater`（Rust）与 `@tauri-apps/plugin-updater`（前端）+ `@tauri-apps/plugin-process`（relaunch）。
+项目通过 Rust `tauri-plugin-updater` 执行更新检查/安装，前端仅使用 `@tauri-apps/plugin-process` 执行 relaunch。
 
 - `tauri.conf.json` 中 `plugins.updater` 配置了 GitHub Releases 端点与 `installMode: "passive"`；`pubkey` 字段需运行
   `scripts/setup-update-key.ps1` 生成密钥后填入

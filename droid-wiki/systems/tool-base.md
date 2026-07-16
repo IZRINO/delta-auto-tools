@@ -1,10 +1,10 @@
 # 工具基座
 
-`src-tauri/src/tool_base.rs` 中的工具基座层为每个工具模块提供共享的泛型结构，统一处理 settings 持久化、bootstrap 构造与错误处理。它消除了每个模块在 settings/bootstrap/error 循环上的重复样板代码。
+`src-tauri/src/tool_base.rs` 中的工具基座层为每个工具模块提供共享泛型状态、bootstrap 构造与 mutex 错误处理。settings 持久化仍由各工具的 `settings.rs` 和 command 流程负责。
 
 ## 用途
 
-- 为所有工具模块提供统一的泛型基座，避免每个模块各自实现 settings 读取/保存、bootstrap 构造、错误返回逻辑
+- 为所有工具模块提供统一泛型状态、bootstrap 构造和错误返回逻辑
 - 通过 `ToolLogic` trait 约定工具实现契约，通过 `ToolState<T>` 封装共享运行时状态
 - 统一 mutex 损坏时的中文错误返回
 
@@ -12,7 +12,7 @@
 
 | 类型 | 文件 | 说明 |
 |------|------|------|
-| `ToolLogic` | `src-tauri/src/tool_base.rs` | 每个工具实现的 trait：`load_settings`、`save_settings`、`build_bootstrap`、`emit_state`，以及关联类型 `Settings`/`Bootstrap` 和常量 `NAME` |
+| `ToolLogic` | `src-tauri/src/tool_base.rs` | 每个工具实现的 trait：`build_bootstrap`、`emit_state`，以及关联类型 `Settings`/`Bootstrap` 和常量 `NAME` |
 | `ToolState<T>` | `src-tauri/src/tool_base.rs` | 包装 `Arc<Mutex<ToolStateInner<T>>>`；每个模块起别名（如 `MorseState = ToolState<MorseLogic>`） |
 | `ToolStateInner<T>` | `src-tauri/src/tool_base.rs` | 持有 `logic: T`（工具特有字段）、`settings: T::Settings`、`hotkey_error: Option<String>` |
 | `get_bootstrap<T>` | `src-tauri/src/tool_base.rs` | 通用 command 实现；各模块提供薄 `#[tauri::command]` 包装 |
@@ -38,8 +38,6 @@ pub trait ToolLogic: Send + 'static {
     type Settings: Serialize + Deserialize + Default + Clone + Send + 'static;
     type Bootstrap: Serialize + Send + 'static;
     const NAME: &'static str;
-    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String>;
-    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String>;
     fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap;
     fn emit_state<R: Runtime>(app: &AppHandle<R>, bootstrap: &Self::Bootstrap);
 }

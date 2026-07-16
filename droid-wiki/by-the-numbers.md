@@ -156,7 +156,6 @@ xychart-beta
 | `src-tauri/src/morse` | 8 | 236 |
 | `src-tauri/src/about` | 2 | 216 |
 | `src-tauri/src/theme` | 6 | 155 |
-| `src-tauri/src/strategy` | 4 | 102 |
 
 #### 前端
 

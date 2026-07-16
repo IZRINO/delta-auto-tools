@@ -87,11 +87,6 @@ fn built_in_dependencies() -> Vec<Dependency> {
             "https://tauri.app",
         ),
         (
-            "@tauri-apps/plugin-updater",
-            "MIT/Apache-2.0",
-            "https://tauri.app",
-        ),
-        (
             "@tauri-apps/plugin-process",
             "MIT/Apache-2.0",
             "https://tauri.app",
@@ -99,7 +94,6 @@ fn built_in_dependencies() -> Vec<Dependency> {
         ("radix-ui", "MIT", "https://www.radix-ui.com"),
         ("tailwindcss 4", "MIT", "https://tailwindcss.com"),
         ("sonner", "MIT", "https://sonner.emilkowal.dev"),
-        ("date-fns", "MIT", "https://date-fns.org"),
     ];
     for (name, license, url) in frontend {
         deps.push(Dependency {
@@ -129,11 +123,6 @@ fn built_in_dependencies() -> Vec<Dependency> {
             "MIT/Apache-2.0",
             "https://tauri.app",
         ),
-        (
-            "reqwest",
-            "MIT/Apache-2.0",
-            "https://github.com/seanmonstar/reqwest",
-        ),
         ("enigo", "MIT", "https://github.com/enigo-rs/enigo"),
         ("willhook", "MIT", "https://github.com/2hndr/willhook"),
         ("xcap", "MIT", "https://github.com/nicedoc/xcap"),
@@ -153,11 +142,6 @@ fn built_in_dependencies() -> Vec<Dependency> {
             "serde_json",
             "MIT/Apache-2.0",
             "https://github.com/serde-rs/json",
-        ),
-        (
-            "regex",
-            "MIT/Apache-2.0",
-            "https://github.com/rust-lang/regex",
         ),
         (
             "thiserror",

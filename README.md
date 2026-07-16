@@ -94,7 +94,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```text
 src/                        # React 前端应用
 src/components/app/         # 业务页面（morse-page、timer-page、counter-page、rapidfire-page、recognition-page、strategy-page 等）
-src/components/ui/          # 本地 UI 包装层：Radix/Base UI headless 行为 + daisyUI class，非 shadcn 生成目录
+src/components/ui/          # 本地 UI 包装层：Radix headless 行为 + daisyUI class，非 shadcn 生成目录
 src/lib/                    # 共享工具函数与 tauri-events 常量
 src-tauri/src/              # Rust/Tauri 原生能力
 src-tauri/src/tool_base.rs  # 共享泛型基座（ToolLogic / ToolState<T>）
@@ -107,7 +107,8 @@ src-tauri/src/rapidfire/    # 连发器（keys / worker / overlay / commands）
 src-tauri/src/recognition/  # 识别触发（effects / manager / matching / capture / player）
 src/components/app/recognition-{page,card-editor,overlay}.tsx  # 识别编排、卡片编辑与框选模块
 src/components/app/recognition-card-reducer.ts                # 识别卡片不可变更新 seam
-src-tauri/src/strategy/     # 攻略网站 WebView2 子视图
+src/components/app/strategy-page.tsx          # 攻略网站 WebView2 子视图
+src/components/app/strategy-utils.ts          # 攻略站点、刷新档位与 bounds 工具
 src-tauri/src/about/        # 关于面板 + Tauri 官方更新器
 src-tauri/src/delta/        # Delta 登录、账号与游戏数据
 scripts/                    # 发布流水线脚本

@@ -69,14 +69,13 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明�
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | tool_base | `src-tauri/src/tool_base.rs` | 工具模块共享泛型基座：ToolLogic trait、ToolState<T> |
-| sync_tool | `src-tauri/src/sync_tool.rs` | 同步工具基座：分组/条目规范化、热键重启、位置状态机、全局停止注册表 |
+| sync_tool | `src-tauri/src/sync_tool.rs` | 同步工具基座：分组/条目规范化、热键重启、位置状态机、生命周期注册表 |
 | global_state | `src-tauri/src/global_state.rs` | 全局总开关与 enabled-changed 事件 |
 | morse | `src-tauri/src/morse/` | 截屏 -> 二值化 -> 轮廓检测 -> 摩斯解码 -> 自动输入 |
 | timer | `src-tauri/src/timer/` | 多计时器，250ms tick 循环，透明窗口 |
 | counter | `src-tauri/src/counter/` | 多计数器，运行态独立持久化 |
 | rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程 |
 | recognition | `src-tauri/src/recognition/` | 快捷键/区域监听/识色三种识别来源，执行音频/按键/点击效果 |
-| strategy | `src-tauri/src/strategy/` | 攻略网站 WebView2 嵌入与 HTTP 抓取 |
 | hotkeys | `src-tauri/src/hotkeys.rs` | 全局共享 willhook 键盘钩子，scope 注册，冲突检测 |
 | key_suppressor | `src-tauri/src/key_suppressor.rs` | WH_KEYBOARD_LL 钩子吞噬指定按键 |
 | theme | `src-tauri/src/theme/` | 3 套 daisyUI 内置主题 + 自定义 + token override |

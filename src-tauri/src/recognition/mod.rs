@@ -237,14 +237,6 @@ impl ToolLogic for RecognitionLogic {
 
     const NAME: &'static str = "识别触发";
 
-    fn load_settings(app: &tauri::AppHandle) -> Result<Self::Settings, String> {
-        settings::read_settings(app)
-    }
-
-    fn save_settings(app: &tauri::AppHandle, settings: &Self::Settings) -> Result<(), String> {
-        settings::write_settings(app, settings)
-    }
-
     fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap {
         RecognitionBootstrap {
             settings: inner.settings.clone(),

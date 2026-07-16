@@ -147,14 +147,6 @@ impl ToolLogic for TimerLogic {
     type Bootstrap = TimerBootstrap;
     const NAME: &'static str = "计时器";
 
-    fn load_settings(app: &AppHandle) -> Result<Self::Settings, String> {
-        settings::load_settings(app)
-    }
-
-    fn save_settings(app: &AppHandle, settings: &Self::Settings) -> Result<(), String> {
-        settings::save_settings(app, settings)
-    }
-
     fn build_bootstrap(inner: &ToolStateInner<Self>) -> Self::Bootstrap {
         TimerBootstrap {
             settings: inner.settings.clone(),

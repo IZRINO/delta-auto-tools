@@ -83,7 +83,6 @@
 | `image` | 0.25.10 | 图像处理 | 二值化、轮廓检测、识色的图像运算底座。 |
 | `rodio` | 0.20 | 音频播放 | v0.15.0 引入音频功能后加入。 |
 | `windows-sys` | 0.61 | Windows API | 连发器 worker 线程、键位抑制等底层调用。 |
-| `reqwest` | 0.12.28 | HTTP 客户端 | 早期为 Delta 鉴权/游戏数据引入；Delta 移除后大概仍服务于攻略站抓取。 |
 
 最有「考古感」的是 `enigo 0.6.1`：在一个 2026 年的项目里 pin 在 0.6 系列，说明它的 API 正好满足自动输入需求，且升级成本可能不低，于是被长期保留。
 
@@ -96,6 +95,5 @@
 | `daisyui` | ^5.6.10 | daisyUI 组件 class 与主题 token。 |
 | `@remixicon/react` | ^4.9.0 | 图标库；按约定 Button 内图标必须设置 `data-icon="inline-start"` / `"inline-end"`。 |
 | `vite` | 7.3.5 | 构建器。 |
-| `recharts` | 3.8.1 | 图表库，大概用于游戏数据/统计可视化（Delta 移除后用途可能已收窄）。 |
 
 前端栈整体偏「新」：React 19 + Tailwind v4 + Vite + daisyUI 5，都是 2025–2026 年的主力方向。这与 Rust 侧 `enigo 0.6.1` 的「老成」形成有趣对照——前端追新，后端在关键底层库上求稳。

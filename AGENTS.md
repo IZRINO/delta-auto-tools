@@ -247,7 +247,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `counter/` — 多计数器，运行态通过单 writer 线程 50ms latest-wins 合并持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget
 - `recognition/` — 快捷键/多参考图区域监听/识色三种识别来源 + 音频/按键/点击效果；截图/NCC 使用全局 `Semaphore(2)` 的 `spawn_blocking` 调度，watcher restart/stop 必须使旧 generation 失效；前端卡片更新、编辑器、框选分别位于 `recognition-card-reducer.ts`、`recognition-card-editor.tsx`、`recognition-overlay.tsx`
-- `strategy/` — 攻略网站 WebView2 嵌入
+- `strategy/` — 前端管理主窗口 `strategy-content` WebView2 嵌入，无专用 Rust command
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
