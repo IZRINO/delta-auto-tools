@@ -217,7 +217,9 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 新增 Tauri command 必须同时注册到：
 1. `src-tauri/src/lib.rs` 的 `generate_handler![]`
-2. `src-tauri/capabilities/default.json`
+2. 实际调用窗口对应的 capability：main 用 `default.json`，overlay 用 `overlays.json`，remote Strategy WebView 用 `strategy.json`
+
+Capability 不得重新使用 `core:default`、`opener:default`、`updater:default` 或 `process:default`；新增前端 Tauri API 调用时只增加对应 `allow-*` permission。生产 CSP 不得恢复为 `null` 或加入远程通配源。
 
 ### 版本号同步
 

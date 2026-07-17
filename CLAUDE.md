@@ -161,8 +161,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |
 | strategy     | `src/components/app/strategy-page.tsx` | 主窗口内嵌 `strategy-content` 子 WebView，不使用 Rust command 或 HTTP 抓取层                         |
 
-新增 Tauri command 必须同时注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]` 和
-`src-tauri/capabilities/default.json`。
+新增 Tauri command 必须注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]`，并在实际调用窗口的 capability 中保留所需最小权限：`default.json`（main）、`overlays.json`（本地叠加窗）、`strategy.json`（remote Strategy WebView）。禁止恢复 `*:default` 宽权限或 `csp: null`。
 
 ### 更新器（Tauri Updater）
 

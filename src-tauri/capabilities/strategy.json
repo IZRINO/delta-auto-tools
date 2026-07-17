@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "strategy",
+  "description": "Remote strategy content WebView with no IPC permissions",
+  "local": false,
+  "remote": {
+    "urls": [
+      "http://*",
+      "https://*"
+    ]
+  },
+  "webviews": [
+    "strategy-content"
+  ],
+  "permissions": []
+}

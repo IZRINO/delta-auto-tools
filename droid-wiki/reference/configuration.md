@@ -25,14 +25,23 @@
 - 窗口：1280x800，最小 1280x800
 - Bundle target：`nsis`
 - Updater：GitHub Releases 端点，`installMode: "passive"`，`pubkey`（公开签名密钥）
-- CSP：null（无内容安全策略限制）
+- 生产 CSP：默认仅允许 `'self'`；`connect-src` 额外允许 Tauri `ipc:` / `http://ipc.localhost`；图片额外允许 `asset:` / `http://asset.localhost` / `data:` / `blob:`；仅 style 允许现有 inline 样式
+- 开发 CSP：在生产规则上额外放行 `ws://localhost:1420` / `ws://localhost:1421` 供 Vite HMR
 - `createUpdaterArtifacts: true`（构建时生成 .sig 文件）
 
 `src-tauri/tauri.beta.conf.json` 是 beta 构建覆盖配置，仅将 `bundle.createUpdaterArtifacts` 设为 `false`。beta 发布命令使用 `bun run tauri build --config src-tauri/tauri.beta.conf.json`，避免无签名环境下因 updater artifact 签名失败。
 
 ## Capabilities
 
-`src-tauri/capabilities/default.json` 定义前端可调用的 Tauri 命令。新增命令必须添加到此处，否则 `invoke()` 会失败。
+Capability 按窗口信任边界拆分：
+
+| 文件 | 匹配窗口/WebView | 权限边界 |
+|------|------------------|----------|
+| `default.json` | `main` | event listen/unlisten；Strategy 子 WebView 创建与窗口几何/可见性/销毁；dialog open/save；HTTP(S) open-url；restart |
+| `overlays.json` | Morse/Timer/Counter/Rapidfire/Recognition 的 display/position/selection 窗口 | event listen/unlisten 和最小窗口几何/显示/隐藏/销毁权限；无 dialog/opener/process/updater |
+| `strategy.json` | remote `strategy-content` WebView | `permissions: []`，远程页不得访问 IPC |
+
+不使用 `core:default`、`opener:default`、`updater:default`、`process:default` 权限集。新增前端 Tauri API 调用时，必须根据实际调用窗口将单个 `allow-*` permission 加到对应 capability。
 
 ## 环境变量
 

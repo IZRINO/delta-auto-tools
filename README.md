@@ -30,6 +30,7 @@
 | `theme-engine` | 3 套 daisyUI 内置主题 + 自定义 + token override |
 | `profile-system` | 多配置快照切换、revision 防陈旧写入、复制、删除、单配置导入/导出 |
 | `logging` | 混合格式日志 + 按天轮转 + 链路追踪 |
+| `security` | main / overlay / Strategy remote WebView 独立 capability；生产 CSP 仅允许本地资源、Tauri IPC 与 data/blob 图片 |
 
 ### 架构改进
 
@@ -40,6 +41,7 @@
 - **Recognition 调度隔离**：截图与 NCC 在 `spawn_blocking` 中执行，全局最多 2 个并发任务；restart/stop 通过 generation + abort 阻止旧 watcher 继续触发效果
 - **事件对齐**：前端 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 模式；`state-changed` 只传 settings/结构，`runs-changed` 传轻量运行态
 - **运行态热路径**：Rapidfire count emit 最多 60Hz；Counter 单 writer 线程合并磁盘写入；位置拖动按 rAF 合并且最多一个 invoke in-flight
+- **权限分区**：`default.json` 只覆盖 main，`overlays.json` 只给本地叠加窗事件/窗口权限，`strategy.json` 对 remote `strategy-content` 授权为空
 
 ### 事件模式
 

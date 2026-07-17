@@ -1,44 +1,35 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Main window capability with only required frontend APIs",
   "windows": [
-    "main",
-    "morse-overlay",
-    "timer-display",
-    "timer-display-*",
-    "timer-position",
-    "timer-position-*",
-    "counter-display",
-    "counter-display-*",
-    "counter-position",
-    "counter-position-*",
-    "rapidfire-display",
-    "rapidfire-display-*",
-    "rapidfire-position",
-    "rapidfire-position-*",
-    "recognition-overlay",
-    "recognition-overlay-*",
-    "strategy-view-*",
-    "strategy-content"
+    "main"
   ],
   "permissions": [
-    "core:default",
-    "opener:default",
-    "window-state:default",
-    "core:webview:allow-create-webview",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:webview:allow-create-webview-window",
-    "core:webview:allow-webview-close",
-    "core:webview:allow-set-webview-position",
-    "core:webview:allow-set-webview-size",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-scale-factor",
+    "core:window:allow-inner-position",
     "core:window:allow-destroy",
     "core:window:allow-hide",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
     "core:window:allow-show",
-    "updater:default",
-    "process:default",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "http://*"
+        },
+        {
+          "url": "https://*"
+        }
+      ]
+    },
+    "process:allow-restart"
   ]
 }
