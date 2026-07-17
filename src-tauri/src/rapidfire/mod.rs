@@ -34,8 +34,8 @@ pub use self::worker::{
 // 内部引用：mod.rs 自身代码使用
 use self::keys::{
     parse_target_key, RAPIDFIRE_DISPLAY_MAX_WIDTH, RAPIDFIRE_DISPLAY_MIN_WIDTH,
-    RAPIDFIRE_GLOBAL_DELAY_MAX_MS, RAPIDFIRE_GLOBAL_DELAY_MIN_MS, RAPIDFIRE_MIN_INTERVAL_MS,
-    RAPIDFIRE_PRESS_JITTER_MAX_MS, RAPIDFIRE_PRESS_JITTER_MIN_MS, RAPIDFIRE_TRIGGER_JITTER_MAX_MS,
+    RAPIDFIRE_GLOBAL_DELAY_MAX_MS, RAPIDFIRE_MIN_INTERVAL_MS, RAPIDFIRE_PRESS_JITTER_MAX_MS,
+    RAPIDFIRE_PRESS_JITTER_MIN_MS, RAPIDFIRE_TRIGGER_JITTER_MAX_MS,
 };
 use self::overlay::{
     destroy_display_windows, destroy_position_windows, display_label_for_group,
@@ -226,7 +226,7 @@ impl SyncToolLogic for RapidfireLogic {
             return Ok(());
         };
         let hotkey_manager = app.try_state::<HotkeyManager>();
-        stop_all(app, &state, hotkey_manager.as_ref().map(|v| &**v));
+        stop_all(app, &state, hotkey_manager.as_deref());
         Ok(())
     }
 }
@@ -285,7 +285,7 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
         let compensation_delay_min_ms = inner.settings.compensation_delay_min_ms;
         let compensation_delay_max_ms = inner.settings.compensation_delay_max_ms;
 
-        let mut card_infos: Vec<(
+        type CardInfo = (
             String,
             String,
             String,
@@ -297,7 +297,8 @@ async fn handle_key_down(app: &AppHandle, card_ids: Vec<String>) -> Result<(), S
             bool,
             bool,
             bool,
-        )> = Vec::new();
+        );
+        let mut card_infos: Vec<CardInfo> = Vec::new();
         for card_id in &card_ids {
             let cid = card_id.clone();
             if let Some(info) = inner
@@ -518,12 +519,10 @@ pub(crate) fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, Stri
     let interval_ms = card.interval_ms.max(RAPIDFIRE_MIN_INTERVAL_MS);
     let press_jitter_min_ms = card
         .press_jitter_min_ms
-        .max(RAPIDFIRE_PRESS_JITTER_MIN_MS)
-        .min(RAPIDFIRE_PRESS_JITTER_MAX_MS);
+        .clamp(RAPIDFIRE_PRESS_JITTER_MIN_MS, RAPIDFIRE_PRESS_JITTER_MAX_MS);
     let press_jitter_max_ms = card
         .press_jitter_max_ms
-        .max(RAPIDFIRE_PRESS_JITTER_MIN_MS)
-        .min(RAPIDFIRE_PRESS_JITTER_MAX_MS);
+        .clamp(RAPIDFIRE_PRESS_JITTER_MIN_MS, RAPIDFIRE_PRESS_JITTER_MAX_MS);
     if card.min_press_spacing_ms > RAPIDFIRE_GLOBAL_DELAY_MAX_MS {
         return Err(format!(
             "{} 的按键最小间距不能大于 {}ms",
@@ -609,8 +608,7 @@ fn normalize_groups(settings_value: &RapidfireSettings) -> Result<Vec<RapidfireG
         }
         group.overlay_width = group
             .overlay_width
-            .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
-            .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
+            .clamp(RAPIDFIRE_DISPLAY_MIN_WIDTH, RAPIDFIRE_DISPLAY_MAX_WIDTH);
         normalized.push(group);
     }
     Ok(normalized)
@@ -632,8 +630,7 @@ pub(crate) fn normalize_settings(
 ) -> Result<RapidfireSettings, String> {
     settings_value.overlay_width = settings_value
         .overlay_width
-        .max(RAPIDFIRE_DISPLAY_MIN_WIDTH)
-        .min(RAPIDFIRE_DISPLAY_MAX_WIDTH);
+        .clamp(RAPIDFIRE_DISPLAY_MIN_WIDTH, RAPIDFIRE_DISPLAY_MAX_WIDTH);
     if settings_value.compensation_delay_min_ms > settings_value.compensation_delay_max_ms {
         return Err("补齐延迟最小值不能大于最大值".to_string());
     }
@@ -651,7 +648,6 @@ pub(crate) fn normalize_settings(
     }
     settings_value.min_press_spacing_ms = settings_value
         .min_press_spacing_ms
-        .max(RAPIDFIRE_GLOBAL_DELAY_MIN_MS)
         .min(RAPIDFIRE_GLOBAL_DELAY_MAX_MS);
     settings_value.trigger_jitter_max_ms = settings_value
         .trigger_jitter_max_ms
@@ -741,7 +737,7 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     };
     let hotkey_manager = app.try_state::<HotkeyManager>();
-    stop_all(app, &state, hotkey_manager.as_ref().map(|v| &**v));
+    stop_all(app, &state, hotkey_manager.as_deref());
     Ok(())
 }
 
@@ -933,23 +929,29 @@ mod tests {
 
     #[test]
     fn normalize_settings_rejects_duplicate_card_ids() {
-        let mut s = RapidfireSettings::default();
-        s.cards = vec![sample_card("same", "F1"), sample_card("same", "F2")];
+        let s = RapidfireSettings {
+            cards: vec![sample_card("same", "F1"), sample_card("same", "F2")],
+            ..Default::default()
+        };
         assert!(normalize_settings(s).unwrap_err().contains("ID 重复"));
     }
 
     #[test]
     fn normalize_settings_rejects_inverted_global_compensation_delay() {
-        let mut s = RapidfireSettings::default();
-        s.compensation_delay_min_ms = 180;
-        s.compensation_delay_max_ms = 120;
+        let s = RapidfireSettings {
+            compensation_delay_min_ms: 180,
+            compensation_delay_max_ms: 120,
+            ..Default::default()
+        };
         assert!(normalize_settings(s).unwrap_err().contains("补齐延迟"));
     }
 
     #[test]
     fn normalize_settings_rejects_too_large_global_delays() {
-        let mut s = RapidfireSettings::default();
-        s.compensation_delay_max_ms = RAPIDFIRE_GLOBAL_DELAY_MAX_MS + 1;
+        let s = RapidfireSettings {
+            compensation_delay_max_ms: RAPIDFIRE_GLOBAL_DELAY_MAX_MS + 1,
+            ..Default::default()
+        };
         assert!(normalize_settings(s).unwrap_err().contains("补齐延迟"));
     }
 

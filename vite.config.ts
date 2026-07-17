@@ -19,7 +19,16 @@ export default defineConfig({
         coverage: {
             provider: "v8",
             reporter: ["text", "json-summary"],
-            include: ["src/components/app/morse-utils.ts"],
+            include: ["src/**/*.{ts,tsx}"],
+            thresholds: {
+                lines: 25.49,
+                statements: 25.67,
+                functions: 22.31,
+                branches: 25.76,
+                "src/hooks/autosave-queue.ts": {lines: 90},
+                "src/lib/tauri-listener.ts": {lines: 90},
+                "src/components/app/recognition-card-reducer.ts": {lines: 90},
+            },
         },
     },
     clearScreen: false,

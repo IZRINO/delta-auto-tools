@@ -467,18 +467,20 @@ mod tests {
 
     #[test]
     fn normalize_settings_truncates_click_regions_to_seven() {
-        let mut settings = MorseSettings::default();
-        settings.click_regions = (0..8)
-            .map(|index| super::types::ClickRegion {
-                rect: RegionRect {
-                    x: index,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                },
-                delay_ms: 500,
-            })
-            .collect();
+        let settings = MorseSettings {
+            click_regions: (0..8)
+                .map(|index| super::types::ClickRegion {
+                    rect: RegionRect {
+                        x: index,
+                        y: 0,
+                        width: 10,
+                        height: 10,
+                    },
+                    delay_ms: 500,
+                })
+                .collect(),
+            ..Default::default()
+        };
 
         let normalized = normalize_settings(settings).unwrap();
 
@@ -487,8 +489,10 @@ mod tests {
 
     #[test]
     fn normalize_settings_normalizes_after_click_hotkey() {
-        let mut settings = MorseSettings::default();
-        settings.after_click_hotkey = Some(" shift+ctrl+- ".to_string());
+        let settings = MorseSettings {
+            after_click_hotkey: Some(" shift+ctrl+- ".to_string()),
+            ..Default::default()
+        };
 
         let normalized = normalize_settings(settings).unwrap();
 

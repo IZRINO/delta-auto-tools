@@ -1445,8 +1445,10 @@ mod tests {
 
     #[test]
     fn empty_enabled_group_does_not_need_display_window() {
-        let mut settings = TimerSettings::default();
-        settings.timer_enabled = true;
+        let mut settings = TimerSettings {
+            timer_enabled: true,
+            ..Default::default()
+        };
         settings.timer_groups.push(TimerGroup {
             id: "empty-group".to_string(),
             name: "空分组".to_string(),

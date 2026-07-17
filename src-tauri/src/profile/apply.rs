@@ -39,7 +39,7 @@ fn apply_snapshot_to_tool_state(
 
     // 1. 先停止所有运行态会话，避免旧 session 残留。
     if let Some(rapidfire_state) = app.try_state::<rapidfire::RapidfireState>() {
-        rapidfire::stop_all(app, &rapidfire_state, hotkey_manager.as_ref().map(|v| &**v));
+        rapidfire::stop_all(app, &rapidfire_state, hotkey_manager.as_deref());
     }
     if let Some(timer_state) = app.try_state::<timer::TimerState>() {
         timer::stop_all(app, &timer_state);
@@ -72,23 +72,11 @@ fn apply_snapshot_to_tool_state(
     }
 
     // 3. 逐工具 reload 内存状态。
-    apply_morse_settings(app, &snapshot.morse, hotkey_manager.as_ref().map(|v| &**v))?;
-    apply_timer_settings(app, &snapshot.timer, hotkey_manager.as_ref().map(|v| &**v))?;
-    apply_counter_settings(
-        app,
-        &snapshot.counter,
-        hotkey_manager.as_ref().map(|v| &**v),
-    )?;
-    apply_rapidfire_settings(
-        app,
-        &snapshot.rapidfire,
-        hotkey_manager.as_ref().map(|v| &**v),
-    )?;
-    apply_recognition_settings(
-        app,
-        &snapshot.recognition,
-        hotkey_manager.as_ref().map(|v| &**v),
-    )?;
+    apply_morse_settings(app, &snapshot.morse, hotkey_manager.as_deref())?;
+    apply_timer_settings(app, &snapshot.timer, hotkey_manager.as_deref())?;
+    apply_counter_settings(app, &snapshot.counter, hotkey_manager.as_deref())?;
+    apply_rapidfire_settings(app, &snapshot.rapidfire, hotkey_manager.as_deref())?;
+    apply_recognition_settings(app, &snapshot.recognition, hotkey_manager.as_deref())?;
 
     Ok(())
 }
@@ -255,11 +243,10 @@ fn apply_recognition_settings(
         .lock_inner()
         .map_err(|_| "识别触发状态已损坏".to_string())?;
     inner.settings = normalized.clone();
-    let playback_tx = inner.logic.playback_tx.clone();
     drop(inner);
 
     recognition::restart_hotkey_listeners(hm, &normalized)?;
-    crate::recognition::watcher::restart_watchers(app, &normalized, playback_tx)?;
+    crate::recognition::watcher::restart_watchers(app, &normalized)?;
 
     let mut inner = state
         .lock_inner()

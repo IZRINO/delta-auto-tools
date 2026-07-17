@@ -277,11 +277,10 @@ pub async fn recognition_save_settings(
         // 先保存到磁盘，失败时直接返回错误，不重启 listeners
         settings::write_settings(&app, &normalized).map_err(AppError::from)?;
 
-        let playback_tx = {
+        {
             let mut inner = state.lock_inner().map_err(AppError::from)?;
             inner.settings = normalized.clone();
-            inner.logic.playback_tx.clone()
-        };
+        }
 
         // 然后重启热键和 watcher。不要持有 RecognitionState 锁做 watcher IPC。
         let hotkey_manager = app.state::<HotkeyManager>();
@@ -292,7 +291,7 @@ pub async fn recognition_save_settings(
             inner.hotkey_error = Some(error.clone());
             return Err(AppError::from(error));
         }
-        if let Err(error) = watcher::restart_watchers(&app, &normalized, playback_tx.clone()) {
+        if let Err(error) = watcher::restart_watchers(&app, &normalized) {
             {
                 let mut inner = state.lock_inner().map_err(AppError::from)?;
                 inner.settings = previous_settings.clone();
@@ -300,7 +299,7 @@ pub async fn recognition_save_settings(
             }
             let _ = settings::write_settings(&app, &previous_settings);
             let _ = restart_hotkey_listeners(&hotkey_manager, &previous_settings);
-            let _ = watcher::restart_watchers(&app, &previous_settings, playback_tx);
+            let _ = watcher::restart_watchers(&app, &previous_settings);
             return Err(AppError::from(error));
         }
 
@@ -336,7 +335,7 @@ pub async fn recognition_begin_region_selection(
     selection_target: Option<String>,
     probe_index: Option<usize>,
 ) -> Result<(), AppError> {
-    let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+    let inner = state.lock_inner().map_err(AppError::from)?;
     if !inner.settings.recognition_enabled {
         return Err(AppError::from("识别触发功能未启用".to_string()));
     }
@@ -445,7 +444,7 @@ pub async fn recognition_overlay_submit_selection(
         );
 
         // 更新卡片区域
-        let (previous_settings, settings_snapshot, bootstrap, playback_tx) = {
+        let (previous_settings, settings_snapshot, bootstrap) = {
             let mut inner = state.lock_inner().map_err(AppError::from)?;
             let previous_settings = inner.settings.clone();
             let Some(card) = inner.settings.cards.iter_mut().find(|c| c.id == card_id) else {
@@ -481,19 +480,17 @@ pub async fn recognition_overlay_submit_selection(
                 previous_settings,
                 inner.settings.clone(),
                 RecognitionLogic::build_bootstrap(&inner),
-                inner.logic.playback_tx.clone(),
             )
         };
 
-        if let Err(error) = watcher::restart_watchers(&app, &settings_snapshot, playback_tx.clone())
-        {
+        if let Err(error) = watcher::restart_watchers(&app, &settings_snapshot) {
             {
                 let mut inner = state.lock_inner().map_err(AppError::from)?;
                 inner.settings = previous_settings.clone();
                 inner.hotkey_error = Some(error.clone());
             }
             let _ = settings::write_settings(&app, &previous_settings);
-            let _ = watcher::restart_watchers(&app, &previous_settings, playback_tx);
+            let _ = watcher::restart_watchers(&app, &previous_settings);
             return Err(AppError::from(error));
         }
         RecognitionLogic::emit_state(&app, &bootstrap);
@@ -556,7 +553,7 @@ pub async fn recognition_test_match(
     card_id: String,
 ) -> Result<TestMatchResult, AppError> {
     let (region, ref_paths, threshold) = {
-        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        let inner = state.lock_inner().map_err(AppError::from)?;
         let card = inner
             .settings
             .cards
@@ -616,7 +613,7 @@ pub async fn recognition_test_color_match(
     card_id: String,
 ) -> Result<ColorTestResult, AppError> {
     let (probes, match_mode, match_method) = {
-        let inner = state.lock_inner().map_err(|e| AppError::from(e))?;
+        let inner = state.lock_inner().map_err(AppError::from)?;
         let card = inner
             .settings
             .cards
@@ -897,7 +894,7 @@ pub fn initialize(
     let (playback_tx, _worker) = player::start_audio_thread();
 
     // 启动区域监听 watcher
-    let _ = watcher::restart_watchers(app, &settings, playback_tx.clone());
+    let _ = watcher::restart_watchers(app, &settings);
 
     let logic = RecognitionLogic {
         playback_tx,
@@ -1407,9 +1404,11 @@ mod tests {
     fn pick_combo_at_last_index_holds_within_window() {
         let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
         let t0 = Instant::now();
-        let mut state = PlayState::default();
-        state.current_index = 2; // 已在末首
-        state.last_trigger_at = Some(t0);
+        let mut state = PlayState {
+            current_index: 2,
+            last_trigger_at: Some(t0),
+            ..Default::default()
+        };
         // 窗口内再触发 → 保持末首（不越界）
         let path = pick_audio_file(
             &f,
@@ -1427,9 +1426,11 @@ mod tests {
     fn pick_combo_after_window_resets_to_first() {
         let f = files(&["a.mp3", "b.mp3", "c.mp3"]);
         let t0 = Instant::now();
-        let mut state = PlayState::default();
-        state.current_index = 2; // 已在末首
-        state.last_trigger_at = Some(t0);
+        let mut state = PlayState {
+            current_index: 2,
+            last_trigger_at: Some(t0),
+            ..Default::default()
+        };
         // 61s 后（超时）→ 复位第 0 首
         let path = pick_audio_file(
             &f,
@@ -1610,9 +1611,11 @@ mod tests {
     #[test]
     fn pick_random_does_not_repeat_last_index() {
         let f = files(&["a.mp3", "b.mp3"]);
-        let mut state = PlayState::default();
         // 上一次选了 0，下次必须不选 0 → 只能是 1
-        state.last_random_index = Some(0);
+        let mut state = PlayState {
+            last_random_index: Some(0),
+            ..Default::default()
+        };
         let path = pick_audio_file(
             &f,
             types::PlayMode::Random,

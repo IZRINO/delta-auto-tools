@@ -187,11 +187,13 @@ mod tests {
 
     #[test]
     fn build_bootstrap_applies_overrides() {
-        let mut settings = ThemeSettings::default();
-        settings.overrides = vec![ThemeTokenOverride {
-            key: "--color-primary".to_string(),
-            value: "oklch(50% 0.2 20)".to_string(),
-        }];
+        let settings = ThemeSettings {
+            overrides: vec![ThemeTokenOverride {
+                key: "--color-primary".to_string(),
+                value: "oklch(50% 0.2 20)".to_string(),
+            }],
+            ..Default::default()
+        };
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin);
@@ -244,8 +246,10 @@ mod tests {
 
     #[test]
     fn current_merged_tokens_falls_back_to_valentine_when_active_id_missing() {
-        let mut settings = ThemeSettings::default();
-        settings.active_theme_id = "industrial-light".to_string();
+        let settings = ThemeSettings {
+            active_theme_id: "industrial-light".to_string(),
+            ..Default::default()
+        };
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let valentine = builtin
@@ -260,8 +264,10 @@ mod tests {
 
     #[test]
     fn build_bootstrap_falls_back_to_valentine_when_active_id_missing() {
-        let mut settings = ThemeSettings::default();
-        settings.active_theme_id = "nonexistent".to_string();
+        let settings = ThemeSettings {
+            active_theme_id: "nonexistent".to_string(),
+            ..Default::default()
+        };
         let state = ThemeState::new(settings);
         let builtin = builtins::builtin_themes();
         let boot = build_bootstrap(&state, builtin.clone());

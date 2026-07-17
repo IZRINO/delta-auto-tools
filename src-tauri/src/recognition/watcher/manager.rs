@@ -13,7 +13,6 @@ use tokio::time::{interval, MissedTickBehavior};
 use crate::global_state::GlobalState;
 use crate::recognition::effects::{self, ColorProbeMatch, TriggerContext};
 use crate::recognition::events::{HOTKEY_ERROR, REGION_MATCHED};
-use crate::recognition::player;
 use crate::recognition::types::{
     RecognitionActivationMode, RecognitionCard, RecognitionSettings, RecognitionTriggerMode,
 };
@@ -26,6 +25,28 @@ struct WatcherTask {
     generation: u64,
     cancel: Arc<AtomicBool>,
     handle: tauri::async_runtime::JoinHandle<()>,
+}
+
+struct WatcherRunContext {
+    app: AppHandle,
+    card_id: String,
+    cooldown_ms: u32,
+    retrigger_after_disappear: bool,
+    poll_interval_ms: u32,
+    cancel: Arc<AtomicBool>,
+    generation: u64,
+}
+
+struct RegionWatcherConfig {
+    region: crate::morse::types::RegionRect,
+    reference_image_paths: Vec<String>,
+    threshold: f32,
+}
+
+struct ColorWatcherConfig {
+    probes: Vec<crate::recognition::types::ColorProbe>,
+    match_mode: crate::recognition::types::ColorMatchMode,
+    match_method: crate::recognition::types::ColorMatchMethod,
 }
 
 /// 全局 watcher 状态：卡片 ID -> 当前 generation、取消标记和任务 handle。
@@ -106,11 +127,7 @@ fn cancel_watcher_tasks(task_map: &mut HashMap<String, WatcherTask>, generation:
 }
 
 /// 启动/重启所有区域监听 watcher
-pub fn restart_watchers(
-    app: &AppHandle,
-    settings: &RecognitionSettings,
-    playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
-) -> Result<(), String> {
+pub fn restart_watchers(app: &AppHandle, settings: &RecognitionSettings) -> Result<(), String> {
     if !settings.recognition_enabled {
         return stop_all_watchers(app);
     }
@@ -167,7 +184,6 @@ pub fn restart_watchers(
         let cooldown_ms = card.cooldown_ms;
         let retrigger_after_disappear = card.retrigger_after_disappear;
         let poll_interval_ms = card.watch_poll_interval_ms;
-        let playback_tx_clone = playback_tx.clone();
         let cancel_clone = Arc::clone(&cancel);
         let task_card_id = card_id.clone();
 
@@ -181,17 +197,20 @@ pub fn restart_watchers(
                 let ref_paths_clone = card.watch_reference_image_paths.clone();
                 tauri::async_runtime::spawn(async move {
                     run_region_watcher(
-                        app_clone,
-                        task_card_id,
-                        region_clone,
-                        ref_paths_clone,
-                        playback_tx_clone,
-                        cooldown_ms,
-                        retrigger_after_disappear,
-                        threshold,
-                        poll_interval_ms,
-                        cancel_clone,
-                        generation,
+                        WatcherRunContext {
+                            app: app_clone,
+                            card_id: task_card_id,
+                            cooldown_ms,
+                            retrigger_after_disappear,
+                            poll_interval_ms,
+                            cancel: cancel_clone,
+                            generation,
+                        },
+                        RegionWatcherConfig {
+                            region: region_clone,
+                            reference_image_paths: ref_paths_clone,
+                            threshold,
+                        },
                     )
                     .await;
                 })
@@ -202,17 +221,20 @@ pub fn restart_watchers(
                 let match_method = card.color_match_method.clone();
                 tauri::async_runtime::spawn(async move {
                     run_color_watcher(
-                        app_clone,
-                        task_card_id,
-                        probes,
-                        match_mode,
-                        match_method,
-                        playback_tx_clone,
-                        cooldown_ms,
-                        retrigger_after_disappear,
-                        poll_interval_ms,
-                        cancel_clone,
-                        generation,
+                        WatcherRunContext {
+                            app: app_clone,
+                            card_id: task_card_id,
+                            cooldown_ms,
+                            retrigger_after_disappear,
+                            poll_interval_ms,
+                            cancel: cancel_clone,
+                            generation,
+                        },
+                        ColorWatcherConfig {
+                            probes,
+                            match_mode,
+                            match_method,
+                        },
                     )
                     .await;
                 })
@@ -559,135 +581,21 @@ async fn run_color_once(app: &AppHandle, card: &RecognitionCard, cancel: &Atomic
     true
 }
 
-// ── 可注入的 watcher 循环步进 ──────────────────────────────────
-// 从 run_region_watcher / run_color_watcher 循环体提取的核心逻辑，
-// 接受可替换的依赖（截图/匹配/回放），便于测试。
-
-/// Watcher 循环每轮的可替换依赖。
-/// 生产代码使用真实实现，测试代码注入 mock。
-#[cfg(test)]
-pub trait WatcherDeps {
-    /// 截取指定区域。
-    fn capture(&self, region: &crate::morse::types::RegionRect) -> Option<image::DynamicImage>;
-
-    /// 比较截图与参考图像，返回相似度。
-    fn compare(&self, screenshot: &image::DynamicImage, reference: &image::DynamicImage) -> f32;
-
-    /// 分派回放命令。
-    fn dispatch_playback(&self, command: player::AudioCommand);
-}
-
-/// 区域监听 watcher 每轮 tick 的纯逻辑。
-///
-/// 返回 `true` 表示本轮匹配成功且已分派回放；`false` 表示未匹配或未分派。
-/// 调用方负责冷却检查和更新 last_triggered。
-#[cfg(test)]
-pub fn region_watcher_step(
-    deps: &dyn WatcherDeps,
-    global_on: bool,
-    recognition_on: bool,
-    region: &crate::morse::types::RegionRect,
-    reference_image: &image::DynamicImage,
-    threshold: f32,
-    _card_id: &str,
-    playback_tx: &std::sync::mpsc::Sender<player::AudioCommand>,
-    resolved_play: Option<&crate::recognition::ResolvedPlay>,
-) -> bool {
-    // 门控检查
-    if !watcher_should_run(global_on, recognition_on) {
-        return false;
-    }
-
-    // 截图
-    let Some(captured) = deps.capture(region) else {
-        return false;
-    };
-
-    // 比较
-    let similarity = deps.compare(&captured, reference_image);
-    if similarity < threshold {
-        return false;
-    }
-
-    // 匹配成功 → 分派回放
-    if let Some(resolved) = resolved_play {
-        let exclusive = !resolved.allow_simultaneous;
-        let _ = playback_tx.send(player::AudioCommand::Play {
-            path: resolved.path.clone(),
-            volume: resolved.volume,
-            exclusive,
-        });
-        deps.dispatch_playback(player::AudioCommand::Play {
-            path: resolved.path.clone(),
-            volume: resolved.volume,
-            exclusive,
-        });
-    }
-
-    true
-}
-
-/// 识色 watcher 每轮 tick 的纯逻辑。
-///
-/// 返回 `true` 表示本轮匹配成功且已分派回放；`false` 表示未匹配或未分派。
-#[cfg(test)]
-pub fn color_watcher_step(
-    deps: &dyn WatcherDeps,
-    global_on: bool,
-    recognition_on: bool,
-    screenshots: &[image::DynamicImage],
-    probes: &[crate::recognition::types::ColorProbe],
-    match_mode: &crate::recognition::types::ColorMatchMode,
-    match_method: &crate::recognition::types::ColorMatchMethod,
-    playback_tx: &std::sync::mpsc::Sender<player::AudioCommand>,
-    resolved_play: Option<&crate::recognition::ResolvedPlay>,
-) -> bool {
-    // 门控检查
-    if !watcher_should_run(global_on, recognition_on) {
-        return false;
-    }
-
-    let result = matching::match_color_probes(
-        screenshots,
-        probes,
-        match_mode.clone(),
-        match_method.clone(),
-    );
-    if !result.matched {
-        return false;
-    }
-
-    // 匹配成功 → 分派回放
-    if let Some(resolved) = resolved_play {
-        let exclusive = !resolved.allow_simultaneous;
-        let _ = playback_tx.send(player::AudioCommand::Play {
-            path: resolved.path.clone(),
-            volume: resolved.volume,
-            exclusive,
-        });
-        deps.dispatch_playback(player::AudioCommand::Play {
-            path: resolved.path.clone(),
-            volume: resolved.volume,
-            exclusive,
-        });
-    }
-
-    true
-}
-
-async fn run_region_watcher(
-    app: AppHandle,
-    card_id: String,
-    region: crate::morse::types::RegionRect,
-    reference_image_paths: Vec<String>,
-    _playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
-    cooldown_ms: u32,
-    retrigger_after_disappear: bool,
-    threshold: f32,
-    poll_interval_ms: u32,
-    cancel: Arc<AtomicBool>,
-    generation: u64,
-) {
+async fn run_region_watcher(context: WatcherRunContext, config: RegionWatcherConfig) {
+    let WatcherRunContext {
+        app,
+        card_id,
+        cooldown_ms,
+        retrigger_after_disappear,
+        poll_interval_ms,
+        cancel,
+        generation,
+    } = context;
+    let RegionWatcherConfig {
+        region,
+        reference_image_paths,
+        threshold,
+    } = config;
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -798,19 +706,21 @@ async fn run_region_watcher(
     }
 }
 
-async fn run_color_watcher(
-    app: AppHandle,
-    card_id: String,
-    probes: Vec<crate::recognition::types::ColorProbe>,
-    match_mode: crate::recognition::types::ColorMatchMode,
-    match_method: crate::recognition::types::ColorMatchMethod,
-    _playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
-    cooldown_ms: u32,
-    retrigger_after_disappear: bool,
-    poll_interval_ms: u32,
-    cancel: Arc<AtomicBool>,
-    generation: u64,
-) {
+async fn run_color_watcher(context: WatcherRunContext, config: ColorWatcherConfig) {
+    let WatcherRunContext {
+        app,
+        card_id,
+        cooldown_ms,
+        retrigger_after_disappear,
+        poll_interval_ms,
+        cancel,
+        generation,
+    } = context;
+    let ColorWatcherConfig {
+        probes,
+        match_mode,
+        match_method,
+    } = config;
     let mut ticker = interval(Duration::from_millis(poll_interval_ms.max(100) as u64));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
 

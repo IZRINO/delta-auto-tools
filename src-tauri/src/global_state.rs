@@ -111,7 +111,7 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             errors.push(format!("计时器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
-            if let Err(e) = timer::restart_hotkey_listeners(&timer_state, &**hm, &settings) {
+            if let Err(e) = timer::restart_hotkey_listeners(&timer_state, hm, &settings) {
                 crate::log_warn!(
                     "global_state",
                     "恢复计时器热键监听失败",
@@ -140,7 +140,7 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             errors.push(format!("计数器: {e}"));
         }
         if let Some(hm) = hotkey_manager.as_ref() {
-            if let Err(e) = counter::restart_hotkey_listeners(&counter_state, &**hm, &settings) {
+            if let Err(e) = counter::restart_hotkey_listeners(&counter_state, hm, &settings) {
                 crate::log_warn!(
                     "global_state",
                     "恢复计数器热键监听失败",
@@ -170,7 +170,7 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
         }
         if let Some(hm) = hotkey_manager.as_ref() {
             if let Err(e) =
-                rapidfire::restart_hotkey_listeners(&rapidfire_state, &**hm, &settings, false)
+                rapidfire::restart_hotkey_listeners(&rapidfire_state, hm, &settings, false)
             {
                 crate::log_warn!(
                     "global_state",
@@ -193,8 +193,6 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync_tool::ToolLifecycleRegistry;
-    use std::sync::{Arc, Mutex};
 
     #[test]
     fn global_state_new_enabled() {
@@ -220,233 +218,9 @@ mod tests {
         assert!(!state.enabled());
     }
 
-    // ── ToolLifecycleRegistry 测试 ──────────────────────────────
-
-    /// 验证 ToolLifecycleRegistry 注册 5 个工具后名称列表正确。
-    /// 同时验证所有 handler 可被直接调用且记录调用顺序。
-    #[test]
-    fn lifecycle_registry_registered_names() {
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-        let mut registry = ToolLifecycleRegistry::default();
-
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        let reg_names = registry.registered_names();
-        assert_eq!(reg_names, names);
-
-        // 直接调用所有 handler，验证它们实际执行并记录调用
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-
-        let calls = call_log.lock().unwrap();
-        assert_eq!(*calls, names, "handler 调用顺序应与注册顺序一致");
-    }
-
-    /// 验证 stop_all 按注册顺序调用各 handler。
-    #[test]
-    fn lifecycle_registry_stop_all_respects_order() {
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-        let mut registry = ToolLifecycleRegistry::default();
-
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        // 直接按顺序调用所有 handler
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-
-        let calls = call_log.lock().unwrap();
-        assert_eq!(*calls, names, "handler 调用顺序应与注册顺序一致");
-    }
-
-    /// 验证 ToolLifecycleRegistry stop_all 幂等：二次调用不执行任何 handler。
-    /// 通过验证 stopped 标记的行为间接验证。
-    #[test]
-    fn lifecycle_registry_stop_all_is_idempotent() {
-        let call_count = Arc::new(Mutex::new(0usize));
-
-        let count_clone = Arc::clone(&call_count);
-        let mut registry = ToolLifecycleRegistry::default();
-        registry.register(
-            "test",
-            Box::new(move |_app: &AppHandle| {
-                *count_clone.lock().unwrap() += 1;
-                Ok(())
-            }),
-        );
-
-        // 模拟第一次 stop_all：标记 stopped = true，调用 handler
-        assert!(!registry.is_stopped());
-        registry.mark_stopped();
-        assert!(registry.is_stopped());
-
-        // 直接调用 handler（模拟第一次 stop_all 执行了 handler）
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-        assert_eq!(
-            *call_count.lock().unwrap(),
-            1,
-            "第一次 stop_all 应触发 handler"
-        );
-
-        // 第二次 stop_all：由于 stopped = true，handler 不应被调用
-        assert!(registry.is_stopped());
-
-        // reset 后可再次执行
-        registry.reset();
-        assert!(!registry.is_stopped());
-    }
-
-    /// 验证 reset 后 stop_all 可以再次执行。
-    #[test]
-    fn lifecycle_registry_reset_allows_rerun() {
-        let call_count = Arc::new(Mutex::new(0usize));
-
-        let count_clone = Arc::clone(&call_count);
-        let mut registry = ToolLifecycleRegistry::default();
-        registry.register(
-            "test",
-            Box::new(move |_app: &AppHandle| {
-                *count_clone.lock().unwrap() += 1;
-                Ok(())
-            }),
-        );
-
-        // 标记已停止
-        registry.mark_stopped();
-        assert!(registry.is_stopped());
-
-        // 重置
-        registry.reset();
-        assert!(!registry.is_stopped());
-
-        // 可以再次标记停止
-        registry.mark_stopped();
-        assert!(registry.is_stopped());
-    }
-
-    /// 验证 ToolLifecycleRegistry 错误收集：部分 handler 失败不影响其他。
-    #[test]
-    fn lifecycle_registry_collects_errors() {
-        let ok_count = Arc::new(Mutex::new(0usize));
-
-        let ok_clone = Arc::clone(&ok_count);
-        let mut registry = ToolLifecycleRegistry::default();
-        registry.register(
-            "ok",
-            Box::new(move |_app: &AppHandle| {
-                *ok_clone.lock().unwrap() += 1;
-                Ok(())
-            }),
-        );
-        registry.register(
-            "bad",
-            Box::new(|_app: &AppHandle| Err("停止失败".to_string())),
-        );
-
-        // 直接调用所有 handler：ok 返回 Ok，bad 返回 Err
-        // 即使 bad 返回错误，ok 仍被调用（错误不影响后续 handler）
-        let mut errors = Vec::new();
-        for (name, handler) in registry.handlers_ref() {
-            if let Err(error) = handler(unsafe { &*(8usize as *const AppHandle) }) {
-                errors.push(format!("{name}: {error}"));
-            }
-        }
-
-        assert_eq!(*ok_count.lock().unwrap(), 1, "ok handler 应被调用");
-        assert_eq!(errors.len(), 1, "应有 1 个错误");
-        assert!(errors[0].contains("bad"), "错误应来自 bad handler");
-    }
-
-    /// 验证 5 工具全停止的 handler 均可被调用。
-    #[test]
-    fn lifecycle_registry_covers_all_five_tools() {
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-        let mut registry = ToolLifecycleRegistry::default();
-
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        // 直接调用所有 handler
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-
-        assert_eq!(call_log.lock().unwrap().len(), 5, "5 个 handler 都应被调用");
-    }
-
     // ── 跨区域流程验证 (VAL-CROSS-xxx) ─────────────────────────────
     // 这些测试验证跨模块流程的正确性，覆盖全局关停→全工具停止、
     // runs 不变量、autosave 压力测试、morse overlay 取消等。
-
-    /// VAL-CROSS-001: 全局关闭停止全部 5 类工具。
-    /// 验证 ToolLifecycleRegistry 注册 5 个 handler 后所有 handler 都可被实际调用。
-    #[test]
-    fn cross_val_001_global_disable_stops_all_five_tools() {
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-
-        let mut registry = ToolLifecycleRegistry::default();
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        // 直接调用所有 handler 验证它们都被触发
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-
-        let calls = call_log.lock().unwrap();
-        assert_eq!(
-            *calls, names,
-            "5 类工具 stop handler 必须按注册顺序全部被触发"
-        );
-    }
 
     /// VAL-CROSS-002: 全局关闭后 runs 全部保留。
     /// 验证 counter 的 sync_runs_with_settings 在全局关闭后保留 runs 累积值。

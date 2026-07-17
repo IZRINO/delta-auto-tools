@@ -9,7 +9,7 @@ const SETTINGS_FILE_NAME: &str = "theme_settings.json";
 
 pub fn load_settings(app: &AppHandle) -> Result<ThemeSettings, String> {
     let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
-    Ok(settings::load_settings::<ThemeSettings>(&path)?)
+    settings::load_settings::<ThemeSettings>(&path)
 }
 
 pub fn save_settings(app: &AppHandle, settings_value: &ThemeSettings) -> Result<(), String> {

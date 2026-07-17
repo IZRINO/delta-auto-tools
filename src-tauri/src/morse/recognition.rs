@@ -118,15 +118,14 @@ pub fn missing_regions_details(regions: &[Option<RegionRect>; 3]) -> Vec<MorseRe
     regions
         .iter()
         .enumerate()
-        .filter_map(|(slot, region)| {
-            region.is_none().then(|| MorseRegionDetail {
-                slot,
-                threshold_mode: "not-run".to_string(),
-                contour_count: 0,
-                morse: None,
-                digit: None,
-                error: Some("该区域尚未配置".to_string()),
-            })
+        .filter(|&(_slot, region)| region.is_none())
+        .map(|(slot, _region)| MorseRegionDetail {
+            slot,
+            threshold_mode: "not-run".to_string(),
+            contour_count: 0,
+            morse: None,
+            digit: None,
+            error: Some("该区域尚未配置".to_string()),
         })
         .collect()
 }

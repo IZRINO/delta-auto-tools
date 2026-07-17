@@ -9,7 +9,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use chrono;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Manager;
@@ -180,16 +179,16 @@ pub fn log_write(
         });
     }
 
-    let line = format::format_log_line(
-        &timestamp,
+    let line = format::format_log_line(format::LogLine {
+        timestamp: &timestamp,
         level,
-        &origin,
+        origin: &origin,
         location,
-        &trace_id,
-        session_id(),
+        trace_id: &trace_id,
+        session_id: session_id(),
         message,
-        Some(&enriched_payload),
-    );
+        payload: Some(&enriched_payload),
+    });
 
     if let Some(app_handle) = GLOBAL_APP_HANDLE.get() {
         if let Some(log_writer) = app_handle.try_state::<LogWriter>() {
@@ -243,18 +242,18 @@ pub fn init_logger(app_handle: &tauri::AppHandle) -> Result<LogWriter, String> {
 
     // 记录实际日志目录
     let timestamp = chrono::Local::now();
-    let line = format::format_log_line(
-        &timestamp,
-        LogLevel::Info,
-        "[RUST]·logging",
-        "mod.rs:init",
-        "--",
-        session_id(),
-        &format!("日志目录: {}", log_dir.display()),
-        Some(
-            &serde_json::json!({"msg": format!("日志目录: {}", log_dir.display()), "log_dir": log_dir.display().to_string()}),
-        ),
-    );
+    let message = format!("日志目录: {}", log_dir.display());
+    let payload = serde_json::json!({"msg": message, "log_dir": log_dir.display().to_string()});
+    let line = format::format_log_line(format::LogLine {
+        timestamp: &timestamp,
+        level: LogLevel::Info,
+        origin: "[RUST]·logging",
+        location: "mod.rs:init",
+        trace_id: "--",
+        session_id: session_id(),
+        message: &message,
+        payload: Some(&payload),
+    });
     writer.write(LogLevel::Info, "[RUST]·logging", &line);
 
     Ok(writer)
@@ -319,16 +318,16 @@ pub fn log_write_frontend(request: FrontendLogRequest) -> Result<(), String> {
         payload = serde_json::json!({"msg": request.message});
     }
 
-    let line = format::format_log_line(
-        &timestamp,
-        request.level,
-        &origin,
-        &request.location,
-        &trace_tag,
-        &session,
-        &request.message,
-        Some(&payload),
-    );
+    let line = format::format_log_line(format::LogLine {
+        timestamp: &timestamp,
+        level: request.level,
+        origin: &origin,
+        location: &request.location,
+        trace_id: &trace_tag,
+        session_id: &session,
+        message: &request.message,
+        payload: Some(&payload),
+    });
 
     if let Some(app_handle) = GLOBAL_APP_HANDLE.get() {
         if let Some(log_writer) = app_handle.try_state::<LogWriter>() {

@@ -2,7 +2,7 @@
 
 ## 前端测试（Vitest）
 
-前端测试与源文件同目录放在 `src/` 下，使用 Vitest。运行全部测试用 `bun run test`，带覆盖率用 `bun run test:coverage`（覆盖率目前仅覆盖 `morse-utils.ts`）。
+前端测试与源文件同目录放在 `src/` 下，使用 Vitest。运行全部测试用 `bun run test`，带覆盖率用 `bun run test:coverage`。coverage 统计 `src/**/*.{ts,tsx}`，全局阈值为 lines 25.49%、statements 25.67%、functions 22.31%、branches 25.76%；`autosave-queue.ts`、`tauri-listener.ts`、`recognition-card-reducer.ts` 的 lines 阈值为 90%。
 
 运行单个文件：
 
@@ -47,6 +47,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 ```
+
+## 统一质量门禁
+
+Windows 本地与 GitHub Actions 共用 `bun run check`。脚本按依赖顺序执行 TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests，任一步失败立即退出。CI 定义位于 `.github/workflows/ci.yml`。
 
 ### 测试覆盖
 

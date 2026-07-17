@@ -179,8 +179,10 @@ bun run dev                    # Vite 前端开发服务器（端口 1420，stri
 bun run tauri dev              # 完整桌面开发（Vite + Tauri）
 bun run build                  # tsc && vite build
 bun run test                   # Vitest 前端单元测试
-bun run test:coverage          # 前端覆盖率（仅 morse-utils.ts）
+bun run test:coverage          # 全量前端覆盖率与阈值检查
+bun run check                  # Windows 全量质量门禁
 cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```
 
@@ -260,7 +262,8 @@ Capability 不得重新使用 `core:default`、`opener:default`、`updater:defau
 
 - **前端**：Vitest，测试文件 `*.test.ts` 紧邻源文件。运行 `bun run test`
 - **Rust**：`cargo test`，测试内联在模块中。运行 `cargo test --manifest-path src-tauri/Cargo.toml`
-- Vitest coverage 配置只包含 `morse-utils.ts`
+- **统一门禁**：`bun run check` 依次执行 TypeScript、Vitest、全量 coverage、Rust fmt、Clippy `-D warnings`、Rust tests；Windows CI 复用同一命令
+- Vitest coverage 统计 `src/**/*.{ts,tsx}`；全局阈值为 lines 25.49%、statements 25.67%、functions 22.31%、branches 25.76%，新 queue/listener/reducer module 的 lines 阈值为 90%
 
 ## Commit Guidelines
 

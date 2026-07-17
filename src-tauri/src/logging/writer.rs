@@ -2,7 +2,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -44,7 +44,7 @@ impl LogWriter {
     }
 
     /// 创建内部 writer
-    fn create_inner(log_dir: &PathBuf, date_str: &str) -> Result<LogWriterInner, String> {
+    fn create_inner(log_dir: &Path, date_str: &str) -> Result<LogWriterInner, String> {
         let filename = format!("delta-{}.log", date_str);
         let path = log_dir.join(&filename);
         let file = OpenOptions::new()
@@ -55,7 +55,7 @@ impl LogWriter {
         Ok(LogWriterInner {
             writer: BufWriter::new(file),
             current_date: date_str.to_string(),
-            log_dir: log_dir.clone(),
+            log_dir: log_dir.to_path_buf(),
         })
     }
 
@@ -161,7 +161,7 @@ fn cleanup_old_logs(log_dir: &PathBuf) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.extension().is_some_and(|ext| ext == "log") {
+        if path.extension().is_none_or(|ext| ext != "log") {
             continue;
         }
 
@@ -226,7 +226,7 @@ pub fn resolve_log_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     }
 
     // 回退路径：app_local_data_dir
-    if let Some(data_dir) = app_handle.path().app_local_data_dir().ok() {
+    if let Ok(data_dir) = app_handle.path().app_local_data_dir() {
         let log_dir = data_dir.join("logs");
         let _ = fs::create_dir_all(&log_dir);
         return log_dir;

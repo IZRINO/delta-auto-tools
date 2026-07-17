@@ -680,14 +680,8 @@ fn run_suppressor_hook(
     }
 
     // 安装钩子
-    let hook_handle = unsafe {
-        SetWindowsHookExW(
-            WH_KEYBOARD_LL as i32,
-            Some(hook_callback),
-            ptr::null_mut(),
-            0,
-        )
-    };
+    let hook_handle =
+        unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_callback), ptr::null_mut(), 0) };
 
     if hook_handle.is_null() {
         let error_code = unsafe { GetLastError() };

@@ -7,8 +7,8 @@ use crate::hotkey_types::{ConflictPolicy, HoldActionCallback, HotkeyAction};
 use crate::hotkeys::HotkeyManager;
 use crate::tool_base::{ToolLogic, ToolState};
 
-/// 同步工具基座只承载计时器、计数器、连发器共享的 lifecycle。
-/// Profile 配置应用复用这些能力，但 Morse 区域框选和 Recognition watcher 不进入此 module。
+// 同步工具基座只承载计时器、计数器、连发器共享的 lifecycle。
+// Profile 配置应用复用这些能力，但 Morse 区域框选和 Recognition watcher 不进入此 module。
 
 /// 工具 runs 同步逻辑：孤儿清理 + 缺失补齐。
 /// 不重置、不按 enabled 清理。
@@ -301,6 +301,19 @@ impl Default for ToolLifecycleRegistry {
     }
 }
 
+fn collect_handler_errors<T>(
+    handlers: &[(&'static str, T)],
+    mut invoke: impl FnMut(&T) -> Result<(), String>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (name, handler) in handlers {
+        if let Err(error) = invoke(handler) {
+            errors.push(format!("{name}: {error}"));
+        }
+    }
+    errors
+}
+
 impl ToolLifecycleRegistry {
     /// 注册工具停止 handler。
     /// 注册顺序决定 stop_all 调用顺序。
@@ -312,17 +325,14 @@ impl ToolLifecycleRegistry {
     /// 按注册顺序调用所有 handler，收集错误但不中断。
     /// 幂等：第二次调用时所有 handler 被跳过（stopped 标记为 true）。
     pub fn stop_all(&self, app: &AppHandle) -> Vec<String> {
-        // 幂等保护：已停止则直接返回，不重复执行
-        if self.stopped.swap(true, Ordering::SeqCst) {
+        if !self.begin_stop() {
             return Vec::new();
         }
-        let mut errors = Vec::new();
-        for (name, handler) in &self.handlers {
-            if let Err(error) = handler(app) {
-                errors.push(format!("{name}: {error}"));
-            }
-        }
-        errors
+        collect_handler_errors(&self.handlers, |handler| handler(app))
+    }
+
+    fn begin_stop(&self) -> bool {
+        !self.stopped.swap(true, Ordering::SeqCst)
     }
 
     /// 重置 stopped 标记（用于全局开关重新打开后再关闭的场景）。
@@ -330,35 +340,15 @@ impl ToolLifecycleRegistry {
         self.stopped.store(false, Ordering::SeqCst);
     }
 
-    /// 返回已注册的工具名称列表（按注册顺序）。
     #[cfg(test)]
-    pub fn registered_names(&self) -> Vec<&'static str> {
+    fn registered_names(&self) -> Vec<&'static str> {
         self.handlers.iter().map(|(name, _)| *name).collect()
-    }
-
-    /// 仅测试使用：返回 handler 列表的引用，便于直接调用 handler。
-    #[cfg(test)]
-    pub fn handlers_ref(&self) -> &Vec<(&'static str, LifecycleStopHandler)> {
-        &self.handlers
-    }
-
-    /// 标记为已停止状态（仅测试使用）。
-    #[cfg(test)]
-    pub fn mark_stopped(&self) {
-        self.stopped.store(true, Ordering::SeqCst);
-    }
-
-    /// 查询是否已停止（仅测试使用）。
-    #[cfg(test)]
-    pub fn is_stopped(&self) -> bool {
-        self.stopped.load(Ordering::SeqCst)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct TestItem {
@@ -608,152 +598,34 @@ mod tests {
         assert!(decision.destroy_window);
     }
 
-    // ── ToolLifecycleRegistry 单元测试 ──────────────────────────
-
-    /// 验证 ToolLifecycleRegistry 注册 5 个工具后名称列表正确且顺序一致，
-    /// 且所有 handler 可被直接调用（无需 AppHandle）。
     #[test]
-    fn lifecycle_registry_five_tools_registered_and_firable() {
+    fn lifecycle_registry_tracks_names_and_stop_state() {
         let mut registry = ToolLifecycleRegistry::default();
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        registry.register("timer", Box::new(|_| Ok(())));
+        registry.register("counter", Box::new(|_| Ok(())));
 
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        assert_eq!(registry.registered_names(), names);
-
-        // 直接调用每个 handler 验证其功能
-        for (_, handler) in registry.handlers_ref() {
-            // 构造一个空 AppHandle 引用（handler 不会实际使用它）
-            let _ = handler(unsafe { &*(8usize as *const AppHandle) });
-        }
-
-        // 验证所有 handler 已正确注册
-        assert_eq!(registry.handlers_ref().len(), 5);
-        assert_eq!(registry.registered_names(), names);
-    }
-
-    /// 验证 stop_all 幂等：第二次调用所有 handler 被跳过。
-    /// 通过直接测试 stopped 标记和 reset 行为。
-    #[test]
-    fn lifecycle_registry_stop_all_idempotent() {
-        let call_count = Arc::new(Mutex::new(0usize));
-
-        let count_clone = Arc::clone(&call_count);
-        let mut registry = ToolLifecycleRegistry::default();
-        registry.register(
-            "test",
-            Box::new(move |_app: &AppHandle| {
-                *count_clone.lock().unwrap() += 1;
-                Ok(())
-            }),
-        );
-
-        // 模拟 stop_all 的行为：
-        // 第一次调用：stopped 从 false -> true
-        assert!(!registry.is_stopped());
-        registry.mark_stopped(); // 模拟 stop_all 内的 swap
-        assert!(registry.is_stopped());
-
-        // 第二次调用：stopped 已为 true，handler 不被调用
-        assert!(registry.is_stopped());
-
-        // reset 后可再次执行
+        assert_eq!(registry.registered_names(), vec!["timer", "counter"]);
+        assert!(registry.begin_stop());
+        assert!(!registry.begin_stop());
         registry.reset();
-        assert!(!registry.is_stopped());
-
-        // 再次标记停止
-        registry.mark_stopped();
-        assert!(registry.is_stopped());
-
-        // call_count 未被递增（因为未通过 AppHandle 调用 stop_all）
-        // 但 stopped 标记行为正确
+        assert!(registry.begin_stop());
     }
 
-    /// 验证 stop_all 收集所有 handler 的错误但不中断。
-    /// 通过直接调用 handler 验证错误收集语义。
     #[test]
-    fn lifecycle_registry_stop_all_collects_errors() {
-        let ok_count = Arc::new(Mutex::new(0usize));
-        let err_count = Arc::new(Mutex::new(0usize));
+    fn lifecycle_error_collection_preserves_order_and_continues() {
+        let handlers = [("ok", 0), ("bad", 1), ("late", 2)];
+        let mut calls = Vec::new();
 
-        let ok_clone = Arc::clone(&ok_count);
-        let mut registry = ToolLifecycleRegistry::default();
-        registry.register(
-            "ok",
-            Box::new(move |_app: &AppHandle| {
-                *ok_clone.lock().unwrap() += 1;
-                Ok(())
-            }),
-        );
-
-        let err_clone = Arc::clone(&err_count);
-        registry.register(
-            "bad",
-            Box::new(move |_app: &AppHandle| {
-                *err_clone.lock().unwrap() += 1;
+        let errors = collect_handler_errors(&handlers, |handler| {
+            calls.push(*handler);
+            if *handler == 1 {
                 Err("停止失败".to_string())
-            }),
-        );
+            } else {
+                Ok(())
+            }
+        });
 
-        // 模拟 stop_all 行为：按顺序调用所有 handler
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8 as *const AppHandle) });
-        }
-
-        assert_eq!(*ok_count.lock().unwrap(), 1, "ok handler 应被调用 1 次");
-        assert_eq!(*err_count.lock().unwrap(), 1, "bad handler 应被调用 1 次");
-    }
-
-    /// 验证空 registry 的 stop_all 不 panic。
-    #[test]
-    fn lifecycle_registry_empty_no_panic() {
-        let registry = ToolLifecycleRegistry::default();
-        assert!(registry.registered_names().is_empty());
-        assert!(!registry.is_stopped());
-        // 标记为已停止也不 panic
-        registry.mark_stopped();
-        assert!(registry.is_stopped());
-        registry.reset();
-        assert!(!registry.is_stopped());
-    }
-
-    /// 验证 stop_all 按注册顺序调用各 handler。
-    #[test]
-    fn lifecycle_registry_stop_all_respects_order() {
-        let call_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let names = vec!["timer", "counter", "rapidfire", "morse", "recognition"];
-        let mut registry = ToolLifecycleRegistry::default();
-
-        for name in &names {
-            let log = Arc::clone(&call_log);
-            let name_owned = name.to_string();
-            registry.register(
-                name,
-                Box::new(move |_app: &AppHandle| {
-                    log.lock().unwrap().push(name_owned.clone());
-                    Ok(())
-                }),
-            );
-        }
-
-        // 按注册顺序调用所有 handler
-        for (_, handler) in registry.handlers_ref() {
-            let _ = handler(unsafe { &*(8 as *const AppHandle) });
-        }
-
-        let calls = call_log.lock().unwrap();
-        assert_eq!(*calls, names, "handler 调用顺序应与注册顺序一致");
+        assert_eq!(calls, vec![0, 1, 2]);
+        assert_eq!(errors, vec!["bad: 停止失败"]);
     }
 }

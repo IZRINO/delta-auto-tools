@@ -1224,9 +1224,11 @@ mod tests {
 
     #[test]
     fn counter_build_hotkey_bindings_groups_same_hotkey() {
-        let mut settings = CounterSettings::default();
-        settings.counter_enabled = true;
-        settings.enabled = true;
+        let mut settings = CounterSettings {
+            counter_enabled: true,
+            enabled: true,
+            ..Default::default()
+        };
         settings.counters.push(CounterItem {
             id: "counter-2".to_string(),
             group_id: DEFAULT_COUNTER_GROUP_ID.to_string(),
@@ -1301,6 +1303,7 @@ mod tests {
     /// 使用 CounterLogic::sync_runs_with_settings 验证 runs 收窄逻辑：
     /// 1. retain(id ∈ settings.counters) — 孤儿清理
     /// 2. entry(id).or_insert(start_value) — 缺失补齐
+    ///
     /// 不重置、不按 enabled 清理。
 
     #[test]

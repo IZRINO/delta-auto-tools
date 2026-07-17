@@ -36,11 +36,9 @@ pub(crate) fn capture_region(
                 continue;
             };
 
-            let Some(rgba) = image::RgbaImage::from_raw(
-                capture.width() as u32,
-                capture.height() as u32,
-                capture.into_raw(),
-            ) else {
+            let Some(rgba) =
+                image::RgbaImage::from_raw(capture.width(), capture.height(), capture.into_raw())
+            else {
                 continue;
             };
 
@@ -81,7 +79,7 @@ pub(crate) fn read_reference_image_as_data_url(path: &str) -> Option<String> {
 /// 简易 base64 编码（不引入额外 crate）
 pub(crate) fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut i = 0;
     while i + 3 <= data.len() {
         let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | (data[i + 2] as u32);

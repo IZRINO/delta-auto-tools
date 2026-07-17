@@ -13,7 +13,6 @@ pub const RAPIDFIRE_TRIGGER_RELEASE_SETTLE_MS: u64 = 2;
 pub const RAPIDFIRE_INITIAL_SETTLE_MS: u64 = 8;
 pub const RAPIDFIRE_PRESS_JITTER_MIN_MS: u64 = 1;
 pub const RAPIDFIRE_PRESS_JITTER_MAX_MS: u64 = 2000;
-pub const RAPIDFIRE_GLOBAL_DELAY_MIN_MS: u64 = 0;
 pub const RAPIDFIRE_GLOBAL_DELAY_MAX_MS: u64 = 10_000;
 pub const RAPIDFIRE_TRIGGER_JITTER_MAX_MS: u64 = 99_999;
 pub const RAPIDFIRE_MIN_INTERVAL_MS: u64 = 1;
@@ -72,7 +71,7 @@ impl KeyEmitter for EnigoKeyEmitter {
         }
 
         self.enigo
-            .key(plan.target_key.clone(), Direction::Press)
+            .key(plan.target_key, Direction::Press)
             .map_err(|error| format!("按下连发目标键 {key_str} 失败: {error}"))?;
         std::thread::sleep(Duration::from_millis(press_jitter_duration_ms(
             press_jitter_min_ms,

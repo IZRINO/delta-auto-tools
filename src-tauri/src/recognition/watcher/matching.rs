@@ -102,14 +102,9 @@ fn template_match(
             &s_rgba,
             &r_rgba,
             r_has_alpha,
-            sw,
-            sh,
             rw,
             rh,
-            0,
-            0,
-            sw - rw,
-            sh - rh,
+            SearchBounds::new(0, 0, sw - rw, sh - rh),
         );
         return CompareResult {
             similarity: ncc_to_similarity(best_ncc),
@@ -139,14 +134,9 @@ fn template_match(
             &s_rgba,
             &r_rgba,
             r_has_alpha,
-            sw,
-            sh,
             rw,
             rh,
-            0,
-            0,
-            sw - rw,
-            sh - rh,
+            SearchBounds::new(0, 0, sw - rw, sh - rh),
         );
         return CompareResult {
             similarity: ncc_to_similarity(best_ncc),
@@ -166,14 +156,9 @@ fn template_match(
         &s_small,
         &r_small,
         false,
-        new_sw,
-        new_sh,
         new_rw,
         new_rh,
-        0,
-        0,
-        new_sw - new_rw,
-        new_sh - new_rh,
+        SearchBounds::new(0, 0, new_sw - new_rw, new_sh - new_rh),
     );
 
     // 将粗搜索位置映射回全分辨率
@@ -193,14 +178,9 @@ fn template_match(
         &s_rgba,
         &r_rgba,
         r_has_alpha,
-        sw,
-        sh,
         rw,
         rh,
-        x_start,
-        y_start,
-        x_end,
-        y_end,
+        SearchBounds::new(x_start, y_start, x_end, y_end),
     );
 
     CompareResult {
@@ -222,26 +202,40 @@ fn choose_scale(sw: u32, _sh: u32, rw: u32, rh: u32) -> u32 {
     }
 }
 
-/// 滑动窗口搜索：在 [x_start..=x_end, y_start..=y_end] 范围内搜索最佳匹配
-fn sliding_search(
-    s_rgba: &image::RgbaImage,
-    r_rgba: &image::RgbaImage,
-    r_has_alpha: bool,
-    _sw: u32,
-    _sh: u32,
-    rw: u32,
-    rh: u32,
+/// 滑动窗口搜索：在指定边界内搜索最佳匹配。
+#[derive(Clone, Copy)]
+struct SearchBounds {
     x_start: u32,
     y_start: u32,
     x_end: u32,
     y_end: u32,
+}
+
+impl SearchBounds {
+    const fn new(x_start: u32, y_start: u32, x_end: u32, y_end: u32) -> Self {
+        Self {
+            x_start,
+            y_start,
+            x_end,
+            y_end,
+        }
+    }
+}
+
+fn sliding_search(
+    s_rgba: &image::RgbaImage,
+    r_rgba: &image::RgbaImage,
+    r_has_alpha: bool,
+    rw: u32,
+    rh: u32,
+    bounds: SearchBounds,
 ) -> (f32, u32, u32) {
     let mut best_ncc: f32 = f32::NEG_INFINITY;
     let mut best_x: u32 = 0;
     let mut best_y: u32 = 0;
 
-    for y in y_start..=y_end {
-        for x in x_start..=x_end {
+    for y in bounds.y_start..=bounds.y_end {
+        for x in bounds.x_start..=bounds.x_end {
             let ncc = compute_ncc_rgb(s_rgba, r_rgba, r_has_alpha, x, y, rw, rh);
             if ncc > best_ncc {
                 best_ncc = ncc;

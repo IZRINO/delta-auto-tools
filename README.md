@@ -72,12 +72,12 @@
 
 ## 测试覆盖
 
-| 层 | 数量 |
+| 层 | 门禁 |
 |----|------|
-| Rust 单元测试 | 462 |
-| 前端单元测试 | 396 |
-| 编译检查 | `cargo check` clean |
-| 前端构建 | `bun run build` clean |
+| 前端单元测试 | `bun run test` |
+| 前端全量覆盖率 | lines 25.49% / statements 25.67% / functions 22.31% / branches 25.76% |
+| Rust | `cargo fmt` + `cargo clippy --all-targets -D warnings` + `cargo test` |
+| Windows 统一门禁 | `bun run check` |
 
 ## 本地开发
 
@@ -87,6 +87,8 @@ bun run dev                       # Vite 前端开发服务器（端口 1420）
 bun run tauri dev                 # 完整桌面开发（Vite + Tauri）
 bun run build                     # tsc && vite build
 bun run test                      # Vitest 前端单元测试
+bun run test:coverage             # 全量前端覆盖率与阈值检查
+bun run check                     # TypeScript、测试、coverage、fmt、Clippy、Rust 测试
 cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
 cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```

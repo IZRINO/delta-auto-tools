@@ -4,11 +4,11 @@
 
 ### Vite
 
-前端使用 Vite 7 + `@vitejs/plugin-react`。开发服务器运行在端口 1420（strictPort，被占用则失败而非递增）。配置在 `vite.config.ts`。Tailwind v4 通过 `@tailwindcss/vite` 集成。
+前端使用 Vite 8 + `@vitejs/plugin-react`。开发服务器运行在端口 1420（strictPort，被占用则失败而非递增）。配置在 `vite.config.ts`。Tailwind v4 通过 `@tailwindcss/vite` 集成。
 
 ### TypeScript
 
-TypeScript 5.8，strict 模式。`bun run build` 执行 `tsc && vite build`。路径别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`（在 tsconfig 和 vite 中配置）。
+TypeScript 6，strict 模式。`bun run build` 执行 `tsc && vite build`。路径别名：`@/components`、`@/components/ui`、`@/lib`、`@/hooks`（在 tsconfig 和 vite 中配置）。
 
 ### Tailwind CSS v4
 
@@ -18,9 +18,11 @@ CSS-first 配置，不存在 `tailwind.config.js`。主题 token 在 `src/App.cs
 
 Bun 是包管理器和脚本运行器。不要使用 npm/pnpm/yarn。`bun install` 读取 `bun.lock`。
 
+`bun run check` 由 Bun 启动，但其中 Vitest 与 V8 coverage 固定使用 Node.js 24 runtime；Windows CI 通过 `actions/setup-node` 显式安装该版本。Node.js 不参与依赖安装。
+
 ### Tauri 2
 
-Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`。权限在 `src-tauri/capabilities/default.json`。
+Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`。权限按 main、overlay、remote Strategy WebView 拆分到 `src-tauri/capabilities/default.json`、`overlays.json`、`strategy.json`。
 
 ## Rust 工具链
 
@@ -46,6 +48,7 @@ Tauri CLI 通过 `bun run tauri` 可用。配置在 `src-tauri/tauri.conf.json`�
 | 脚本 | 用途 |
 |------|------|
 | `scripts/build-release.ps1` | 一键签名构建：设置 TAURI_SIGNING_PRIVATE_KEY，执行 tauri build，生成 .sig |
+| `scripts/check.ps1` | Windows 全量质量门禁；本地与 GitHub Actions 共用 |
 | `scripts/generate-latest-json.ps1` | 从 .sig 文件生成 `latest.json`（Tauri 更新器清单） |
 | `scripts/setup-update-key.ps1` | 生成 Tauri 签名密钥对（首次设置） |
 | `scripts/wait-for-port.cjs` | 等待端口 1420 可用（PM2 使用） |

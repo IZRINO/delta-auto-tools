@@ -15,8 +15,10 @@ bun run dev                    # Vite 前端开发服务器（端口 1420，stri
 bun run tauri dev              # 完整桌面开发（Vite + Tauri）
 bun run build                  # tsc && vite build
 bun run test                   # Vitest 前端单元测试
-bun run test:coverage          # 前端覆盖率（仅 morse-utils.ts）
+bun run test:coverage          # 全量前端覆盖率与阈值检查
+bun run check                  # Windows 全量质量门禁
 cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```
 
@@ -416,9 +418,8 @@ Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agen
 
 - 使用 **Bun**，不要切换到 npm/pnpm/yarn
 - 不存在 `tailwind.config.js`
-- 前端测试覆盖已扩展至 `morse-utils.ts` + `timer-utils.ts` + `favorites-utils.ts` +
-  `use-bootstrap-form-logic.ts` +
-  `use-hotkey-recorder.ts` + `use-autosave.ts` + `about-deps.ts`（Vitest coverage 配置仍只包含 `morse-utils.ts`）
+- Vitest coverage 统计全部 `src/**/*.{ts,tsx}`；全局阈值为 lines 25.49%、statements 25.67%、functions 22.31%、branches 25.76%，`autosave-queue`、`tauri-listener`、`recognition-card-reducer` 的 lines 阈值为 90%
+- `bun run check` 是本地与 Windows GitHub Actions 共用门禁，顺序执行 TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests
 - `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
 - 修改代码时，如果改动涉及 `droid-wiki/` 已记录的内容，必须同步更新对应 wiki 页面（改动工具模块行为→`features/<tool>.md`/`systems/<system>.md`；改动架构/约定→`overview/architecture.md`/`how-to-contribute/patterns-and-conventions.md`；改动配置/依赖→`reference/`；改动发布流程→`deployment.md`）；纯文案或纯重构无需更新

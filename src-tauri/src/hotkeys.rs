@@ -515,7 +515,7 @@ fn matches_binding(binding: &HotkeyBinding, key_state: &KeyState) -> bool {
 #[cfg(target_os = "windows")]
 fn keyboard_event_to_vk(event: &KeyboardEvent) -> Option<u32> {
     use crate::key_suppressor::keyboard_key_to_vk;
-    event.key.as_ref().and_then(|k| keyboard_key_to_vk(k))
+    event.key.as_ref().and_then(keyboard_key_to_vk)
 }
 
 #[cfg(target_os = "windows")]

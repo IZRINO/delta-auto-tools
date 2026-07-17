@@ -9,7 +9,7 @@ const SETTINGS_FILE_NAME: &str = "profile_settings.json";
 
 pub fn load_settings(app: &AppHandle) -> Result<ProfileSettings, String> {
     let path = settings::settings_path(app, SETTINGS_FILE_NAME)?;
-    Ok(settings::load_settings::<ProfileSettings>(&path)?)
+    settings::load_settings::<ProfileSettings>(&path)
 }
 
 pub fn save_settings(app: &AppHandle, settings_value: &ProfileSettings) -> Result<(), String> {

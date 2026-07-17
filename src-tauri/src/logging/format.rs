@@ -5,6 +5,17 @@ use serde_json::Value;
 
 use super::LogLevel;
 
+pub struct LogLine<'a> {
+    pub timestamp: &'a DateTime<Local>,
+    pub level: LogLevel,
+    pub origin: &'a str,
+    pub location: &'a str,
+    pub trace_id: &'a str,
+    pub session_id: &'a str,
+    pub message: &'a str,
+    pub payload: Option<&'a Value>,
+}
+
 /// 格式化时间戳为 `yyyy-MM-dd HH:mm:ss.SSS +ZZZZ`
 fn format_timestamp(dt: &DateTime<Local>) -> String {
     let ms = dt.timestamp_subsec_millis();
@@ -41,16 +52,17 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// 格式化完整日志行
 ///
 /// 格式：`{timestamp} | {level} | {origin} | {location} | {trace} | {session} | {message} | {json_payload}`
-pub fn format_log_line(
-    timestamp: &DateTime<Local>,
-    level: LogLevel,
-    origin: &str,
-    location: &str,
-    trace_id: &str,
-    session_id: &str,
-    message: &str,
-    payload: Option<&Value>,
-) -> String {
+pub fn format_log_line(line: LogLine<'_>) -> String {
+    let LogLine {
+        timestamp,
+        level,
+        origin,
+        location,
+        trace_id,
+        session_id,
+        message,
+        payload,
+    } = line;
     let ts = format_timestamp(timestamp);
     let lvl = format_level(level);
     let origin_trunc = truncate(origin, 24);
@@ -134,19 +146,19 @@ mod tests {
     #[test]
     fn test_format_log_line_basic() {
         let dt = Local::now();
-        let line = format_log_line(
-            &dt,
-            LogLevel::Info,
-            "[RUST]·morse::mod",
-            "mod.rs:142",
-            "a7f3",
-            "8k2m9p",
-            "识别完成，结果: 1234",
-            Some(&serde_json::json!({
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Info,
+            origin: "[RUST]·morse::mod",
+            location: "mod.rs:142",
+            trace_id: "a7f3",
+            session_id: "8k2m9p",
+            message: "识别完成，结果: 1234",
+            payload: Some(&serde_json::json!({
                 "ctx": {"result": "1234", "regions": 3},
                 "duration_ms": 234
             })),
-        );
+        });
 
         // 检查各段存在
         assert!(line.contains("INFO"));
@@ -162,16 +174,16 @@ mod tests {
     #[test]
     fn test_format_log_line_no_trace() {
         let dt = Local::now();
-        let line = format_log_line(
-            &dt,
-            LogLevel::Error,
-            "[RUST]·delta::commands",
-            "commands.rs:88",
-            "",
-            "8k2m9p",
-            "查询失败",
-            None,
-        );
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Error,
+            origin: "[RUST]·delta::commands",
+            location: "commands.rs:88",
+            trace_id: "",
+            session_id: "8k2m9p",
+            message: "查询失败",
+            payload: None,
+        });
 
         assert!(line.contains("trace:--"));
         assert!(line.contains("查询失败"));
@@ -181,16 +193,16 @@ mod tests {
     fn test_format_log_line_origin_truncation() {
         let dt = Local::now();
         let long_origin = "[RUST]·delta::services::game::very_long_module_name";
-        let line = format_log_line(
-            &dt,
-            LogLevel::Info,
-            long_origin,
-            "mod.rs:1",
-            "abcd",
-            "123456",
-            "测试截断",
-            None,
-        );
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Info,
+            origin: long_origin,
+            location: "mod.rs:1",
+            trace_id: "abcd",
+            session_id: "123456",
+            message: "测试截断",
+            payload: None,
+        });
 
         // origin 不应超过 24 字符
         let parts: Vec<&str> = line.split(" | ").collect();
@@ -201,16 +213,16 @@ mod tests {
     fn test_format_log_line_location_truncation() {
         let dt = Local::now();
         let long_loc = "very_long_file_name_with_many_chars.rs:999";
-        let line = format_log_line(
-            &dt,
-            LogLevel::Info,
-            "[RUST]·test",
-            long_loc,
-            "abcd",
-            "123456",
-            "测试截断",
-            None,
-        );
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Info,
+            origin: "[RUST]·test",
+            location: long_loc,
+            trace_id: "abcd",
+            session_id: "123456",
+            message: "测试截断",
+            payload: None,
+        });
 
         // location 不应超过 20 字符
         let parts: Vec<&str> = line.split(" | ").collect();
@@ -221,16 +233,16 @@ mod tests {
     fn test_format_log_line_payload_msg_matches() {
         let dt = Local::now();
         let payload = serde_json::json!({"ctx": {"key": "val"}});
-        let line = format_log_line(
-            &dt,
-            LogLevel::Info,
-            "[RUST]·test",
-            "test.rs:1",
-            "abcd",
-            "123456",
-            "我的消息",
-            Some(&payload),
-        );
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Info,
+            origin: "[RUST]·test",
+            location: "test.rs:1",
+            trace_id: "abcd",
+            session_id: "123456",
+            message: "我的消息",
+            payload: Some(&payload),
+        });
 
         // payload 中的 msg 应与 message 一致
         assert!(line.contains("\"msg\":\"我的消息\""));
@@ -240,16 +252,16 @@ mod tests {
     #[test]
     fn test_format_log_line_no_payload_escapes_json() {
         let dt = Local::now();
-        let line = format_log_line(
-            &dt,
-            LogLevel::Warn,
-            "[RUST]·settings",
-            "settings.rs:1",
-            "--",
-            "123456",
-            "配置包含引号\"和换行\n",
-            None,
-        );
+        let line = format_log_line(LogLine {
+            timestamp: &dt,
+            level: LogLevel::Warn,
+            origin: "[RUST]·settings",
+            location: "settings.rs:1",
+            trace_id: "--",
+            session_id: "123456",
+            message: "配置包含引号\"和换行\n",
+            payload: None,
+        });
 
         let payload = line.split(" | ").last().unwrap();
         let parsed: Value = serde_json::from_str(payload).unwrap();

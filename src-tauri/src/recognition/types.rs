@@ -323,16 +323,12 @@ pub enum RecognitionClickMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum RecognitionTriggerMode {
+    #[default]
     Hotkey,
     RegionWatch,
     ColorWatch,
-}
-
-impl Default for RecognitionTriggerMode {
-    fn default() -> Self {
-        Self::Hotkey
-    }
 }
 
 /// 音频播放方式：叠加在触发模式之上的文件选择策略。

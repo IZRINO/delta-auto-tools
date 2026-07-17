@@ -233,7 +233,7 @@ pub async fn about_check_for_update(app: AppHandle) -> Result<UpdateInfo, String
 
     let update = app
         .updater()
-        .map_err(|e| classify_updater_error(e))?
+        .map_err(classify_updater_error)?
         .check()
         .await
         .map_err(|e| classify_check_error(&e))?;
@@ -330,7 +330,7 @@ pub async fn about_download_and_install(app: AppHandle) -> Result<(), String> {
                     events::UPDATE_PROGRESS,
                     UpdateProgress::Downloading {
                         downloaded,
-                        total: content_length.map(|l| l as u64),
+                        total: content_length,
                     },
                 );
             },

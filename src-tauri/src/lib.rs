@@ -77,48 +77,6 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-    use std::fs;
-
-    use super::*;
-
-    #[test]
-    fn initialize_with_settings_recovery_backs_up_invalid_file_and_retries() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let path = temp_dir.path().join("timer_settings.json");
-        fs::write(&path, r#"{"timerEnabled":true,"timers":[{"name":""}]}"#).unwrap();
-        let attempts = Cell::new(0);
-
-        let result = initialize_with_settings_recovery_paths("timer", vec![path.clone()], || {
-            let next = attempts.get() + 1;
-            attempts.set(next);
-            if next == 1 {
-                Err("计时器名称不能为空".to_string())
-            } else {
-                Ok("default-state")
-            }
-        })
-        .unwrap();
-
-        assert_eq!(result, "default-state");
-        assert_eq!(attempts.get(), 2);
-        assert!(!path.exists());
-        let backups = fs::read_dir(temp_dir.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("timer_settings.json.invalid-")
-            })
-            .count();
-        assert_eq!(backups, 1);
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -323,4 +281,46 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn initialize_with_settings_recovery_backs_up_invalid_file_and_retries() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("timer_settings.json");
+        fs::write(&path, r#"{"timerEnabled":true,"timers":[{"name":""}]}"#).unwrap();
+        let attempts = Cell::new(0);
+
+        let result = initialize_with_settings_recovery_paths("timer", vec![path.clone()], || {
+            let next = attempts.get() + 1;
+            attempts.set(next);
+            if next == 1 {
+                Err("计时器名称不能为空".to_string())
+            } else {
+                Ok("default-state")
+            }
+        })
+        .unwrap();
+
+        assert_eq!(result, "default-state");
+        assert_eq!(attempts.get(), 2);
+        assert!(!path.exists());
+        let backups = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("timer_settings.json.invalid-")
+            })
+            .count();
+        assert_eq!(backups, 1);
+    }
 }
