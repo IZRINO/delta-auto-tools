@@ -883,18 +883,11 @@ pub(crate) fn resolve_audio_effect_path(
 
 // ---- 初始化与关闭 ----
 
-pub fn initialize(
-    app: &tauri::AppHandle,
-    hotkey_manager: &HotkeyManager,
-) -> Result<RecognitionState, String> {
+pub fn initialize(app: &tauri::AppHandle) -> Result<RecognitionState, String> {
     let settings = settings::read_settings(app)?;
-    let _ = restart_hotkey_listeners(hotkey_manager, &settings);
 
     // 启动音频播放线程
     let (playback_tx, _worker) = player::start_audio_thread();
-
-    // 启动区域监听 watcher
-    let _ = watcher::restart_watchers(app, &settings);
 
     let logic = RecognitionLogic {
         playback_tx,
@@ -902,6 +895,39 @@ pub fn initialize(
     };
 
     Ok(RecognitionState::new(logic, settings))
+}
+
+/// 在 RecognitionState 和 HotkeyManager 均已注册后启动原生 runtime。
+pub fn start_runtime(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<RecognitionState>()
+        .ok_or_else(|| "识别触发状态尚未初始化".to_string())?;
+    let settings = state.lock_inner()?.settings.clone();
+    let hotkey_manager = app
+        .try_state::<HotkeyManager>()
+        .ok_or_else(|| "热键管理器尚未初始化".to_string())?;
+    let mut errors = Vec::new();
+
+    if let Err(error) = restart_hotkey_listeners(&hotkey_manager, &settings) {
+        crate::log_error!(
+            "recognition",
+            "初始化热键监听失败",
+            "error" => error.clone()
+        );
+        errors.push(format!("热键监听: {error}"));
+    }
+    if let Err(error) = watcher::restart_watchers(app, &settings) {
+        crate::log_error!(
+            "recognition",
+            "初始化识别 watcher 失败",
+            "error" => error.clone()
+        );
+        errors.push(format!("识别 watcher: {error}"));
+    }
+
+    let mut inner = state.lock_inner()?;
+    inner.hotkey_error = (!errors.is_empty()).then(|| errors.join("; "));
+    Ok(())
 }
 
 pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {

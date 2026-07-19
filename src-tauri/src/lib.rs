@@ -131,7 +131,7 @@ pub fn run() {
                 app.handle(),
                 "recognition",
                 &["recognition_settings.json", "audio_settings.json"],
-                || recognition::initialize(app.handle(), &hotkey_manager),
+                || recognition::initialize(app.handle()),
             )?;
             let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
             lifecycle_registry.register(
@@ -166,6 +166,7 @@ pub fn run() {
             app.manage(rapidfire_state);
             app.manage(recognition_state);
             app.manage(lifecycle_registry);
+            recognition::start_runtime(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {

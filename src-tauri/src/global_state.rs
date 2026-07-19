@@ -89,6 +89,7 @@ fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
 fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
     use crate::counter;
     use crate::rapidfire;
+    use crate::recognition;
     use crate::timer;
 
     let hotkey_manager = app.try_state::<crate::hotkeys::HotkeyManager>();
@@ -181,6 +182,25 @@ fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             }
         }
         rapidfire::emit_state(app, bootstrap);
+    }
+
+    // 识别触发：全局关闭时 watcher 会被停止，重新开启后按当前配置恢复。
+    if let Some(recognition_state) = app.try_state::<recognition::RecognitionState>() {
+        let (settings, bootstrap) = {
+            let inner = recognition_state.lock_inner()?;
+            let settings = inner.settings.clone();
+            let bootstrap = recognition::RecognitionLogic::build_bootstrap(&inner);
+            (settings, bootstrap)
+        };
+        if let Err(error) = recognition::watcher::restart_watchers(app, &settings) {
+            crate::log_warn!(
+                "global_state",
+                "恢复识别 watcher 失败",
+                "error" => error.clone()
+            );
+            errors.push(format!("识别触发: {error}"));
+        }
+        recognition::RecognitionLogic::emit_state(app, &bootstrap);
     }
 
     if errors.is_empty() {

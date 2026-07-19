@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use super::events::{HOTKEY_ERROR, HOTKEY_TRIGGERED};
 use super::types::{RecognitionClickEffect, RecognitionClickMode, RecognitionHotkeyEffectStep};
@@ -86,12 +86,14 @@ pub(crate) fn spawn_execute(app: AppHandle, card_id: String, context: TriggerCon
     });
 }
 
-fn build_plan(
-    app: &AppHandle,
+fn build_plan<R: Runtime>(
+    app: &AppHandle<R>,
     card_id: &str,
     context: &TriggerContext,
 ) -> Result<EffectPlan, String> {
-    let state = app.state::<RecognitionState>();
+    let state = app
+        .try_state::<RecognitionState>()
+        .ok_or_else(|| "识别触发状态尚未初始化".to_string())?;
     let inner = state.lock_inner()?;
     if !inner.settings.recognition_enabled {
         return Err("识别触发功能未启用".to_string());
@@ -165,6 +167,17 @@ mod tests {
     use super::*;
     use crate::morse::types::RegionRect;
     use crate::recognition::types::{RecognitionClickEffect, RecognitionClickMode};
+
+    #[test]
+    fn build_plan_returns_error_before_state_is_managed() {
+        let app = tauri::test::mock_app();
+
+        let error = build_plan(app.handle(), "card", &TriggerContext::Hotkey)
+            .err()
+            .unwrap();
+
+        assert_eq!(error, "识别触发状态尚未初始化");
+    }
 
     #[test]
     fn custom_click_uses_region_center() {

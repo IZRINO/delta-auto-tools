@@ -56,6 +56,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 
 ## Watcher 调度
 
+- Recognition 采用两阶段启动：先构造并 `manage` state，再注册热键与启动 watcher，禁止 watcher 在 `RecognitionState` 可用前执行效果。
 - `WATCHER_TASK_MAP` 为每张常驻监听卡保存 `{generation, cancel, JoinHandle}`。restart/stop 先推进全局 generation，再设置 cancel、abort 旧任务，并由 cleanup task await handles 收敛。
 - 截图和 NCC/识色匹配通过 `spawn_blocking` 执行，避免阻塞 Tokio worker。
 - 全局 `Semaphore(2)` 限制 blocking 并发；permit 已满时跳过当前帧，不排队积压旧帧。

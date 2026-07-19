@@ -40,4 +40,5 @@ windows-sys = { version = "0.61", features = [
 ] }
 
 [dev-dependencies]
+tauri = { version = "2.11.2", features = ["test"] }
 tempfile = "3.27.0"
