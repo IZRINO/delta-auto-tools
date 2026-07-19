@@ -12,7 +12,7 @@
 | **Timer** | 多计时器，250ms tick 循环，独立总开关，置顶透明显示窗口，位置校准 |
 | **Counter** | 多计数器，运行态独立持久化与 latest-wins 合并写入，独立总开关，置顶透明显示窗口，位置校准 |
 | **Rapidfire** | 按住触发键连发，每 session 独立 OS worker 线程，运行态事件限制 60Hz，卡片级不追加/抖动/间距策略 |
-| **Recognition** | 快捷键、多参考图区域匹配、多区域识色三种识别来源；可执行音频、按键、点击三类效果 |
+| **Recognition** | 快捷键、多参考图区域匹配、多区域识色三种识别来源；快捷键支持按下单次或按住持续触发，可执行音频、按键、点击三类效果 |
 | **Strategy** | 主窗口内嵌 `strategy-content` 子 WebView2，站点切换、自定义站点、刷新档位 |
 
 其他能力：Delta 账号管理与游戏数据查询（本地凭据 DPAPI 加密）、关于面板与 Tauri 官方更新器。
@@ -39,6 +39,7 @@
 - **Rapidfire 模块拆分**：`keys` / `worker` / `overlay` / `commands` 四个子模块，职责清晰
 - **Recognition watcher 拆分**：`manager` / `matching` / `capture` 三层，匹配逻辑与捕获逻辑分离
 - **Recognition 调度隔离**：截图与 NCC 在 `spawn_blocking` 中执行，全局最多 2 个并发任务；restart/stop 通过 generation + abort 阻止旧 watcher 继续触发效果
+- **Recognition 持续触发**：每张卡片维护独立 hold session，Down 立即执行，之后按冷却串行执行，Up、保存、禁用、Profile 切换或全局关闭时取消
 - **事件对齐**：前端 `subscribeTauriEvent<PayloadType>(EVENTS.xxx, handler)` 模式；`state-changed` 只传 settings/结构，`runs-changed` 传轻量运行态
 - **运行态热路径**：Rapidfire count emit 最多 60Hz；Counter 单 writer 线程合并磁盘写入；位置拖动按 rAF 合并且最多一个 invoke in-flight
 - **权限分区**：`default.json` 只覆盖 main，`overlays.json` 只给本地叠加窗事件/窗口权限，`strategy.json` 对 remote `strategy-content` 授权为空

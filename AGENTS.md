@@ -207,7 +207,8 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 `ConflictPolicy` 枚举：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
 
-- Timer / Counter 普通 scope 与 Rapidfire hold scope 允许同键共存（双方均用 `AllowHold`）
+- Timer / Counter 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均用 `AllowHold`）
+- Recognition 使用混合 scope，普通与 hold 注册必须通过 `replace_mixed_scope` 原子替换；热键录制同时暂停两类注册
 - Morse 与任何其他 scope 冲突必须拒绝（Morse 用 `Strict`）
 - 录制热键时暂停对应 scope
 
@@ -250,7 +251,7 @@ Capability 不得重新使用 `core:default`、`opener:default`、`updater:defau
 - `timer/` — 多计时器，250ms tick，透明窗口
 - `counter/` — 多计数器，运行态通过单 writer 线程 50ms latest-wins 合并持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget
-- `recognition/` — 快捷键/多参考图区域监听/识色三种识别来源 + 音频/按键/点击效果；截图/NCC 使用全局 `Semaphore(2)` 的 `spawn_blocking` 调度，watcher restart/stop 必须使旧 generation 失效；前端卡片更新、编辑器、框选分别位于 `recognition-card-reducer.ts`、`recognition-card-editor.tsx`、`recognition-overlay.tsx`
+- `recognition/` — 快捷键/多参考图区域监听/识色三种识别来源 + 音频/按键/点击效果；Hotkey 卡片支持 `once` / `whileHeld`，持续模式使用 per-card session 串行执行；截图/NCC 使用全局 `Semaphore(2)` 的 `spawn_blocking` 调度，watcher restart/stop 必须使旧 generation 失效；前端卡片更新、编辑器、框选分别位于 `recognition-card-reducer.ts`、`recognition-card-editor.tsx`、`recognition-overlay.tsx`
 - `strategy/` — 前端管理主窗口 `strategy-content` WebView2 嵌入，无专用 Rust command
 - `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出

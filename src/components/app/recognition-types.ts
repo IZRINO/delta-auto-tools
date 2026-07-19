@@ -28,6 +28,8 @@ export type ColorProbeForm = {
 
 export type RecognitionTriggerMode = "hotkey" | "regionWatch" | "colorWatch";
 
+export type RecognitionHotkeyRepeatMode = "once" | "whileHeld";
+
 export type RecognitionPlayMode = "single" | "combo" | "random";
 
 export type RecognitionActivationMode = "always" | "onceHotkey" | "timedHotkey";
@@ -88,6 +90,7 @@ export type RecognitionCard = {
     enabled: boolean;
     triggerMode: RecognitionTriggerMode;
     hotkey: string | null;
+    hotkeyRepeatMode?: RecognitionHotkeyRepeatMode;
     watchRegion: RegionRect | null;
     watchReferenceImagePaths?: string[];
     /** 旧配置兼容；加载时迁移到 watchReferenceImagePaths。 */
@@ -139,6 +142,7 @@ export type RecognitionCardForm = {
     enabled: boolean;
     triggerMode: RecognitionTriggerMode;
     hotkey: string;
+    hotkeyRepeatMode?: RecognitionHotkeyRepeatMode;
     watchRegion: RegionRect | null;
     watchReferenceImagePaths?: string[];
     /** 旧表单兼容；保存时迁移到 watchReferenceImagePaths。 */
@@ -178,6 +182,7 @@ export const DEFAULT_RECOGNITION_CARD: RecognitionCard = {
     enabled: true,
     triggerMode: "hotkey",
     hotkey: null,
+    hotkeyRepeatMode: "once",
     watchRegion: null,
     watchReferenceImagePaths: [],
     watchMatchThreshold: 0.75,

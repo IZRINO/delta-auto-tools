@@ -110,6 +110,8 @@ pub struct RecognitionCard {
     // 快捷键模式
     #[serde(default)]
     pub hotkey: Option<String>,
+    #[serde(default)]
+    pub hotkey_repeat_mode: RecognitionHotkeyRepeatMode,
     // 区域监听模式
     #[serde(default)]
     pub watch_region: Option<RegionRect>,
@@ -331,6 +333,14 @@ pub enum RecognitionTriggerMode {
     ColorWatch,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum RecognitionHotkeyRepeatMode {
+    #[default]
+    Once,
+    WhileHeld,
+}
+
 /// 音频播放方式：叠加在触发模式之上的文件选择策略。
 /// Single=单文件；Combo=连杀（窗口内按序递增，末首后保持，超时复位）；Random=随机（不重复上一次）。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -438,12 +448,28 @@ mod tests {
         assert_eq!(card.id, "c1");
         assert!(card.enabled);
         assert_eq!(card.trigger_mode, RecognitionTriggerMode::Hotkey);
+        assert_eq!(card.hotkey_repeat_mode, RecognitionHotkeyRepeatMode::Once);
         assert_eq!(card.volume, 0.8);
         assert_eq!(card.cooldown_ms, 1000);
         assert_eq!(card.watch_match_threshold, 0.75);
         assert!(card.group_id.is_none());
         assert_eq!(card.order, 0);
         assert!(!card.allow_simultaneous);
+    }
+
+    #[test]
+    fn recognition_hotkey_repeat_mode_roundtrips_as_camel_case() {
+        let card: RecognitionCard =
+            serde_json::from_str(r#"{"id":"c1","name":"持续触发","hotkeyRepeatMode":"whileHeld"}"#)
+                .unwrap();
+
+        assert_eq!(
+            card.hotkey_repeat_mode,
+            RecognitionHotkeyRepeatMode::WhileHeld
+        );
+        assert!(serde_json::to_string(&card)
+            .unwrap()
+            .contains("\"hotkeyRepeatMode\":\"whileHeld\""));
     }
 
     #[test]
@@ -600,6 +626,7 @@ mod tests {
             enabled: true,
             trigger_mode: RecognitionTriggerMode::ColorWatch,
             hotkey: None,
+            hotkey_repeat_mode: RecognitionHotkeyRepeatMode::Once,
             watch_region: None,
             watch_reference_image_paths: Vec::new(),
             watch_match_threshold: 0.75,

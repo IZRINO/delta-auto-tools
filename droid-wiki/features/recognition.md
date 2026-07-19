@@ -31,6 +31,7 @@ src-tauri/src/recognition/
 | `RecognitionSettings` | 总开关 `recognition_enabled` + `card_groups` + 卡片列表，落盘为 `recognition_settings.json` |
 | `RecognitionGroup` | 识别卡片分组，包含 `id`、`name`、`order`、`collapsed`、`enabled`；旧配置会补 `default-recognition-group` 且旧分组默认启用 |
 | `RecognitionCard` | 分组归属 `group_id`、排序 `order`、触发来源、激活方式、效果配置、冷却、RegionWatch 参考图列表、识色探针 |
+| `RecognitionHotkeyRepeatMode` | Hotkey 来源重复模式：`once` 单次触发或 `whileHeld` 按住持续触发；旧配置默认 `once` |
 | `RecognitionActivation` | RegionWatch / ColorWatch 的激活方式：`always` / `onceHotkey` / `timedHotkey`；Hotkey 来源不使用 activation |
 | `RecognitionEffects` | 每卡最多一个音频效果、一个按键效果、一个点击效果 |
 | `RecognitionAudioEffect` | 音频文件、Single/Combo/Random、音量、并发策略 |
@@ -40,7 +41,7 @@ src-tauri/src/recognition/
 
 ## 触发来源
 
-1. **Hotkey**：`restart_hotkey_listeners` 在 scope `"recognition"` 注册触发热键，命中后调用 `effects::spawn_execute(...TriggerContext::Hotkey)`。
+1. **Hotkey**：`restart_hotkey_listeners` 在 scope `"recognition"` 注册触发热键。`once` 在 Down 时调用 `effects::spawn_execute(...TriggerContext::Hotkey)`；`whileHeld` 在 Down 时启动 per-card session，立即执行一次，再按 `cooldownMs` 串行执行，Up 时停止。
 2. **RegionWatch**：`watcher::run_region_watcher` 轮询截图，逐个与 `watchReferenceImagePaths` 中参考图做 RGB NCC 模板匹配；任一参考图达到阈值即命中，使用最高相似度参考图计算模板中心坐标。
 3. **ColorWatch**：`watcher::run_color_watcher` 轮询 probe，按 Average 或 AnyPixel 匹配目标色；命中后传入命中 probe 的中心坐标。
 
@@ -54,6 +55,8 @@ RegionWatch / ColorWatch 可选激活方式：
 
 Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配置；`onceHotkey` / `timedHotkey` 只表示“快捷键激活区域/识色识别窗口”。
 
+同一快捷键可绑定多张单次或持续卡片。单次卡片各执行一次，持续卡片各自运行独立 session；同一卡片重复 Down 不创建重复 session。持续模式要求 `cooldownMs >= 10`，runtime 对手工篡改配置仍使用 10ms 下限。
+
 ## Watcher 调度
 
 - Recognition 采用两阶段启动：先构造并 `manage` state，再注册热键与启动 watcher，禁止 watcher 在 `RecognitionState` 可用前执行效果。
@@ -62,6 +65,13 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - 全局 `Semaphore(2)` 限制 blocking 并发；permit 已满时跳过当前帧，不排队积压旧帧。
 - blocking 结果返回后、发送 `region-matched` 或执行效果前再次检查 generation/cancel。旧配置即使完成截图或匹配，也不得继续 emit、按键、点击或播放音频。
 - restart/stop 同时取消 activation session，避免 Profile 切换后旧激活会话继续执行。
+
+## Hotkey 持续触发 session
+
+- `RecognitionLogic::hold_sessions` 按卡片 ID 保存 session ID 与取消 channel。不同卡片可并发，同一卡片各周期串行且不重叠。
+- 取消只阻止下一周期；正在执行的音频/按键/点击序列会完整结束，避免按键序列被中途截断。
+- 首次成功后只发送一次 `recognition://hotkey-triggered`；首次或后续执行失败时发送一次 `recognition://hotkey-error` 并终止 session。
+- 保存设置、禁用卡片/分组、Profile 切换、全局关闭和应用退出都会取消旧 session。配置写盘、热键注册或 watcher 重启失败时保留旧 session 并回滚设置。
 
 ## 效果执行
 
@@ -83,8 +93,8 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 | 命令 | 作用 |
 |------|------|
 | `recognition_get_bootstrap` | 返回 settings + hotkey error |
-| `recognition_save_settings` | normalize → 写盘 → 更新内存 → 重启热键/watcher → emit state → 更新 Profile |
-| `recognition_set_hotkey_recording` | 热键录制期间暂停/恢复 recognition scope |
+| `recognition_save_settings` | normalize → 写盘 → 更新内存 → 原子替换普通/hold 热键 → 重启 watcher → 更新 Profile → 取消旧 hold session → emit state |
+| `recognition_set_hotkey_recording` | 热键录制期间同时暂停/恢复 recognition 普通与 hold 注册 |
 | `recognition_begin_region_selection` | 打开 `recognition-overlay-{cardId}` 框选监听区域、probe 区域或自定义点击区域 |
 | `recognition_overlay_submit_selection` | 提交框选区域并重启 watcher |
 | `recognition_overlay_cancel_selection` | 取消并关闭 overlay |
@@ -98,13 +108,13 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 | 事件 | 说明 |
 |------|------|
 | `recognition://state-changed` | settings/bootstrap 更新 |
-| `recognition://hotkey-triggered` | 快捷键触发效果执行完成 |
+| `recognition://hotkey-triggered` | 快捷键触发效果执行完成；持续 session 首次成功后只发送一次 |
 | `recognition://region-matched` | RegionWatch / ColorWatch 命中 |
 | `recognition://hotkey-error` | 效果执行或热键错误 |
 
 ## 集成点
 
-- 热键 scope：`recognition`，冲突策略 `ConflictPolicy::AllowHold`。
+- 热键 scope：`recognition`，冲突策略 `ConflictPolicy::AllowHold`；普通与 hold 注册通过 `replace_mixed_scope` 原子替换。
 - Recognition 同一 scope 内允许多个启用卡片复用同一个监听热键；命中后会触发所有匹配卡片。
 - Overlay mode：`?mode=recognition-overlay`。
 - 持久化：`recognition_settings.json`；旧 `audio_settings.json` 自动迁移。
@@ -118,7 +128,7 @@ Hotkey 来源表示“快捷键直接触发效果”，不展示 activation 配�
 - `RecognitionHotkeyEffect` 支持 `steps: [{ hotkey, delayMs }]` 序列；旧 `{ hotkey }` 配置会迁移为单步序列。
 - 识别触发的监听热键、激活热键和按键效果热键支持字母、数字、F1-F24、方向键，以及 `,`、`.`、`;`、`/`、`\`、`[`、`]`、`-`、`=`、`+`、`` ` ``、`'` 等符号；配置以 ASCII 物理键持久化，录制中文/全角标点时会归一到对应物理键，例如 `，` -> `,`、`。` -> `.`。
 - 按键效果执行顺序为 audio 入队、hotkey steps 逐步执行、click effect；每个 step 的 `delayMs` 在对应 hotkey 执行前等待。
-- 全局开关关闭时，识别 scope 的热键与 RegionWatch / ColorWatch watcher 都被全局门控拦截；Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
+- 全局开关关闭时，识别 scope 的热键 callback 与 RegionWatch / ColorWatch watcher 都被全局门控拦截，已有 hold session 被取消；底层热键状态机仍处理 Down/Up，避免关闭期间松键留下陈旧状态。Recognition 页面会显示“全局开关关闭，识别触发不会响应”。
 - 按键效果 step 属于输出动作，不参与 output-output 重复冲突校验；同一卡片或不同卡片可以复用输出按键。为防递归，step 不得等于任意已注册监听热键（Hotkey 触发热键或 RegionWatch / ColorWatch 激活热键）。
 - 卡片支持分组、跨分组移动、组内排序和折叠。分组持久化字段为 `cardGroups`，卡片持久化字段为 `groupId` 和组内 `order`；跨分组移动后源分组和目标分组分别归一 `order`。
 - 分组 `enabled=false` 时，组内卡片仍保留并可编辑，但不会注册 Hotkey listener、RegionWatch watcher、ColorWatch watcher，也不会继续执行已排队 activation session 的效果。

@@ -6,7 +6,7 @@
 
 - 统一管理所有工具的全局热键，避免每个工具各自安装键盘钩子
 - 支持 scope 注册与冲突检测，防止不同工具的热键互相干扰
-- 支持普通热键（按下触发）和 hold 热键（按下/松开双向回调，供连发器使用）
+- 支持普通热键（按下触发）和 hold 热键（按下/松开双向回调，供连发器与识别持续触发使用）
 
 ## 关键抽象
 
@@ -15,7 +15,7 @@
 | `HotkeyManager` | `src-tauri/src/hotkeys.rs` | 共享管理器，持有 willhook 钩子、worker 线程和所有注册项 |
 | `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | 解析后的按键绑定：`primary: PrimaryKey` + `modifiers: HashSet<ModifierKey>` |
 | `HotkeyRegistration` | `src-tauri/src/hotkey_types.rs` | 普通 scope 热键注册项：scope、binding、enabled、action 回调、冲突策略 |
-| `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | hold scope 热键注册项（连发器专用）：按下触发 Down，松开触发 Up |
+| `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | hold scope 热键注册项：按下触发 Down，松开触发 Up |
 | `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict`（禁止跨 scope 复用）或 `AllowHold`（允许与 hold scope 共存） |
 | `HotkeyAction` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle) + Send + Sync>`，普通热键回调 |
 | `HoldActionCallback` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync>`，hold 热键回调 |
@@ -38,7 +38,7 @@ graph TD
 
 监听线程处理两个事件源：普通 willhook 事件和 [按键抑制器](key-suppressor.md) 转发的已抑制事件。对每个键盘事件：
 
-1. 检查 `GlobalState::enabled()`，全局开关关闭时跳过所有回调
+1. 检查 `GlobalState::enabled()`；全局关闭时仍更新普通/hold 按键状态，只跳过 callback 分发
 2. 检查按键是否被 KeySuppressor 抑制，跳过 willhook 事件（已抑制事件会通过抑制通道到达）
 3. 匹配 hold 绑定，触发 `HoldAction::Down` 或 `Up` 回调
 4. 将事件送入 `HotkeyMatcher`，它跟踪修饰键状态，在主键按下时触发普通热键回调
@@ -54,9 +54,10 @@ graph TD
 工具通过 scope 名称注册热键：
 
 - `replace_scope(scope, bindings, display_name, conflict_policy)`：普通热键，替换该 scope 的所有现有注册
-- `replace_hold_scope(scope, bindings, display_name, conflict_policy)`：hold 热键（仅连发器使用）
+- `replace_hold_scope(scope, bindings, display_name, conflict_policy)`：hold 热键
+- `replace_mixed_scope(scope, bindings, hold_bindings, display_name, conflict_policy)`：一次解析、校验并原子替换同一 scope 的普通与 hold 注册
 - `clear_scope(scope)` / `clear_hold_scope(scope)`：清除该 scope 的所有注册
-- `set_scope_enabled(scope, enabled)`：临时禁用 scope（热键录制时使用）
+- `set_scope_enabled(scope, enabled)`：同时临时禁用该 scope 的普通与 hold 注册（热键录制时使用）
 
 ### 冲突检测
 
@@ -66,8 +67,10 @@ graph TD
 |---------|---------|--------|
 | Morse（Strict） | 任何其他 scope，同键 | 否 |
 | Timer/Counter（AllowHold） | Rapidfire hold（AllowHold），同键 | 是 |
+| Timer/Counter（AllowHold） | Recognition hold（AllowHold），同键 | 是 |
 | Timer/Counter（AllowHold） | 其他普通 scope，同键 | 否 |
 | Rapidfire hold（AllowHold） | Timer/Counter 普通（AllowHold），同键 | 是 |
+| Recognition 普通与 hold（同 scope） | 同键 | 是 |
 
 运行时，同一按键同时触发 hold 和普通绑定时，先分发 hold Down/Up，再分发普通热键。这样单个按键可以同时启动连发器会话和触发计时器。
 
@@ -85,7 +88,7 @@ hold 匹配器处理组合触发键（如 `Shift+-`）。按下 `Shift+1` 会同
 - [Morse](../features/morse.md) 使用 scope `"morse"`，策略 `Strict`
 - [计时器](../features/timer.md) 和 [计数器](../features/counter.md) 使用 scope `"timer"`/`"counter"`，策略 `AllowHold`
 - [连发器](../features/rapidfire.md) 使用 hold scope `"rapidfire"`，策略 `AllowHold`
-- [识别触发](../features/recognition.md) 使用 scope `"recognition"`，策略 `AllowHold`
+- [识别触发](../features/recognition.md) 使用混合 scope `"recognition"`，策略 `AllowHold`
 - [全局总开关](global-state.md)：监听线程每个事件都检查 `GlobalState::enabled()`
 - [按键抑制器](key-suppressor.md)：共享原子 VK bitset 过滤重复事件，生命周期由 `HotkeyManager` 统一持有
 

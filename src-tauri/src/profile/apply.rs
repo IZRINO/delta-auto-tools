@@ -239,6 +239,7 @@ fn apply_recognition_settings(
     };
 
     let normalized = recognition::normalize_settings(new_settings.clone());
+    recognition::stop_all_hold_sessions(app)?;
     let mut inner = state
         .lock_inner()
         .map_err(|_| "识别触发状态已损坏".to_string())?;

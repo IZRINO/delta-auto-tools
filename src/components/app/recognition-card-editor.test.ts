@@ -1,6 +1,11 @@
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
 import {describe, expect, it} from "vitest";
 
-import {RecognitionCardEditor} from "@/components/app/recognition-card-editor";
+import {
+    RecognitionCardEditor,
+    type RecognitionCardEditorAdapter,
+} from "@/components/app/recognition-card-editor";
 import {recognitionCardReducer} from "@/components/app/recognition-card-reducer";
 import type {RecognitionCardForm} from "@/components/app/recognition-types";
 
@@ -33,6 +38,20 @@ const compare = (RecognitionCardEditor as unknown as {
 
 const cardGroups: never[] = [];
 const dispatch = () => undefined;
+const adapter: RecognitionCardEditorAdapter = {
+    moveToGroup: () => undefined,
+    moveWithinGroup: () => undefined,
+    testPlay: () => undefined,
+    testMatch: () => undefined,
+    beginRegionSelection: () => undefined,
+    pickReferenceImages: () => undefined,
+    pickAudioFile: () => undefined,
+    loadReferencePreview: async () => null,
+    testColorMatch: () => undefined,
+    beginHotkeyRecording: () => undefined,
+    hotkeyKeyDown: () => undefined,
+    hotkeyRecorderBlur: () => undefined,
+};
 
 function props(cardValue: RecognitionCardForm, adapter: object) {
     return {
@@ -67,5 +86,29 @@ describe("RecognitionCardEditor memo", () => {
     it("副作用 adapter 变化时必须刷新 callback", () => {
         const value = card("a");
         expect(compare(props(value, {}), props(value, {}))).toBe(false);
+    });
+});
+
+describe("RecognitionCardEditor 快捷键持续触发设置", () => {
+    it("Hotkey 卡片展示双选 segmented control", () => {
+        const markup = renderToStaticMarkup(createElement(RecognitionCardEditor, {
+            ...props({...card("hotkey"), hotkeyRepeatMode: "whileHeld"}, adapter),
+            adapter,
+        }));
+
+        expect(markup).toContain("快捷键触发方式");
+        expect(markup).toContain("按下触发一次");
+        expect(markup).toContain("按住持续触发");
+        expect(markup).toContain('data-state="on" role="radio" aria-checked="true"');
+    });
+
+    it("RegionWatch 卡片不展示快捷键持续触发设置", () => {
+        const markup = renderToStaticMarkup(createElement(RecognitionCardEditor, {
+            ...props({...card("region"), triggerMode: "regionWatch"}, adapter),
+            adapter,
+        }));
+
+        expect(markup).not.toContain("快捷键触发方式");
+        expect(markup).not.toContain("按住持续触发");
     });
 });

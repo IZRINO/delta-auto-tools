@@ -102,6 +102,15 @@ describe("recognition-utils", () => {
             expect(Reflect.get(form.cards[0], "retriggerAfterDisappear")).toBe(false);
         });
 
+        it("旧卡片缺少快捷键重复模式时默认单次触发", () => {
+            const form = settingsToForm({
+                recognitionEnabled: true,
+                cards: [{...DEFAULT_RECOGNITION_CARD, id: "legacy-repeat", name: "旧卡片"}],
+            });
+
+            expect(form.cards[0].hotkeyRepeatMode).toBe("once");
+        });
+
         it("旧单参考图路径迁移为参考图列表", () => {
             const form = settingsToForm({
                 recognitionEnabled: true,
@@ -257,6 +266,53 @@ describe("recognition-utils", () => {
                 audioEnabled: true,
                 cards: [draftCard({cooldownMs: "-1"})],
             })).toThrow("冷却时间必须在 0 到 60000 毫秒之间");
+        });
+
+        it("按住持续触发拒绝小于 10ms 的冷却", () => {
+            expect(() => parseSettingsForm({
+                audioEnabled: true,
+                cards: [draftCard({
+                    enabled: true,
+                    hotkey: "F1",
+                    hotkeyRepeatMode: "whileHeld",
+                    cooldownMs: "9",
+                    audioFiles: ["a.mp3"],
+                })],
+            })).toThrow("按住持续触发的冷却时间不能小于 10 毫秒");
+        });
+
+        it("按住持续触发模式完整往返", () => {
+            const settings = parseSettingsForm({
+                audioEnabled: true,
+                cards: [draftCard({
+                    enabled: true,
+                    hotkey: "F1",
+                    hotkeyRepeatMode: "whileHeld",
+                    cooldownMs: "10",
+                    audioFiles: ["a.mp3"],
+                })],
+            });
+
+            expect(settings.cards[0].hotkeyRepeatMode).toBe("whileHeld");
+            expect(settingsToForm(settings).cards[0].hotkeyRepeatMode).toBe("whileHeld");
+        });
+
+        it("autosave payload 保留快捷键持续触发模式", () => {
+            const settingsValue = parseSettingsForm({
+                audioEnabled: true,
+                cards: [draftCard({
+                    enabled: true,
+                    hotkey: "F1",
+                    hotkeyRepeatMode: "whileHeld",
+                    cooldownMs: "10",
+                    audioFiles: ["a.mp3"],
+                })],
+            });
+
+            expect(settingsValue.cards[0]).toMatchObject({
+                hotkeyRepeatMode: "whileHeld",
+                cooldownMs: 10,
+            });
         });
 
         it("parses valid form back to settings", () => {

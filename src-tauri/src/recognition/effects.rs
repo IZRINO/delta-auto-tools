@@ -8,6 +8,7 @@ use crate::input_simulation;
 #[derive(Debug, Clone)]
 pub(crate) enum TriggerContext {
     Hotkey,
+    HotkeyContinuous,
     Region {
         center_x: i32,
         center_y: i32,
@@ -37,14 +38,26 @@ pub(crate) async fn execute(
     context: TriggerContext,
 ) -> Result<(), String> {
     let plan = build_plan(&app, &card_id, &context)?;
-    crate::log_info!(
-        "recognition",
-        "准备执行触发效果",
-        "card_id" => card_id.clone(),
-        "hotkey_step_count" => plan.hotkey_steps.len(),
-        "has_click" => plan.click_point.is_some(),
-        "has_audio" => plan.audio.is_some()
-    );
+    let continuous = matches!(context, TriggerContext::HotkeyContinuous);
+    if continuous {
+        crate::log_debug!(
+            "recognition",
+            "执行持续触发效果",
+            "card_id" => card_id.clone(),
+            "hotkey_step_count" => plan.hotkey_steps.len(),
+            "has_click" => plan.click_point.is_some(),
+            "has_audio" => plan.audio.is_some()
+        );
+    } else {
+        crate::log_info!(
+            "recognition",
+            "准备执行触发效果",
+            "card_id" => card_id.clone(),
+            "hotkey_step_count" => plan.hotkey_steps.len(),
+            "has_click" => plan.click_point.is_some(),
+            "has_audio" => plan.audio.is_some()
+        );
+    }
 
     if let Some(audio) = plan.audio {
         let _ = plan.playback_tx.send(player::AudioCommand::Play {
@@ -55,13 +68,23 @@ pub(crate) async fn execute(
     }
 
     for step in plan.hotkey_steps {
-        crate::log_info!(
-            "recognition",
-            "执行按键效果 step",
-            "card_id" => card_id.clone(),
-            "hotkey" => step.hotkey.clone(),
-            "delay_ms" => step.delay_ms
-        );
+        if continuous {
+            crate::log_debug!(
+                "recognition",
+                "执行持续触发按键 step",
+                "card_id" => card_id.clone(),
+                "hotkey" => step.hotkey.clone(),
+                "delay_ms" => step.delay_ms
+            );
+        } else {
+            crate::log_info!(
+                "recognition",
+                "执行按键效果 step",
+                "card_id" => card_id.clone(),
+                "hotkey" => step.hotkey.clone(),
+                "delay_ms" => step.delay_ms
+            );
+        }
         if step.delay_ms > 0 {
             tokio::time::sleep(std::time::Duration::from_millis(step.delay_ms as u64)).await;
         }
@@ -157,7 +180,7 @@ fn click_point_for_effect(
                     .find(|probe| probe.index == wanted)
                     .map(|probe| (probe.point_x, probe.point_y))
             }
-            TriggerContext::Hotkey => None,
+            TriggerContext::Hotkey | TriggerContext::HotkeyContinuous => None,
         },
     }
 }

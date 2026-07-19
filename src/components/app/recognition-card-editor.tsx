@@ -7,7 +7,8 @@ import {Field, FieldContent, FieldGroup, FieldLabel} from "@/components/ui/field
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
-import {HotkeyField} from "@/components/app/app-ui";
+import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
+import {HotkeyField, SurfaceToggleGroup} from "@/components/app/app-ui";
 import type {RecognitionCardAction} from "@/components/app/recognition-card-reducer";
 import type {ColorProbeForm, RecognitionCard, RecognitionGroup, RecognitionSettingsForm} from "@/components/app/recognition-types";
 
@@ -345,6 +346,35 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                             onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", undefined, event)}
                             onHotkeyRecorderBlur={onHotkeyRecorderBlur}
                         />
+                        <Field>
+                            <FieldLabel>快捷键触发方式</FieldLabel>
+                            <FieldContent>
+                                <SurfaceToggleGroup>
+                                    <ToggleGroup
+                                        className="w-full"
+                                        type="single"
+                                        value={card.hotkeyRepeatMode ?? "once"}
+                                        variant="outline"
+                                        onValueChange={(value) => value
+                                            ? onUpdate({hotkeyRepeatMode: value as "once" | "whileHeld"})
+                                            : undefined}
+                                    >
+                                        <ToggleGroupItem
+                                            className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                            value="once"
+                                        >
+                                            按下触发一次
+                                        </ToggleGroupItem>
+                                        <ToggleGroupItem
+                                            className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                            value="whileHeld"
+                                        >
+                                            按住持续触发
+                                        </ToggleGroupItem>
+                                    </ToggleGroup>
+                                </SurfaceToggleGroup>
+                            </FieldContent>
+                        </Field>
                     </FieldGroup>
                 )}
 
@@ -1031,7 +1061,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                         <FieldContent>
                             <Input
                                 type="number"
-                                min={0}
+                                min={isHotkey && (card.hotkeyRepeatMode ?? "once") === "whileHeld" ? 10 : 0}
                                 max={60000}
                                 step={100}
                                 value={card.cooldownMs}

@@ -418,16 +418,104 @@ impl HotkeyManager {
     }
 
     pub fn set_scope_enabled(&self, scope: &str, enabled: bool) -> Result<(), String> {
+        {
+            let mut registrations = self
+                .registrations
+                .lock()
+                .map_err(|_| "热键监听状态已损坏".to_string())?;
+            for registration in registrations
+                .iter_mut()
+                .filter(|registration| registration.scope == scope)
+            {
+                registration.enabled = enabled;
+            }
+        }
+        let mut hold_registrations = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        if let Some(registrations) = hold_registrations.get_mut(scope) {
+            for registration in registrations {
+                registration.enabled = enabled;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn replace_mixed_scope(
+        &self,
+        scope: &str,
+        bindings: Vec<(String, HotkeyAction)>,
+        hold_bindings: Vec<(String, HoldActionCallback)>,
+        display_name: String,
+        conflict_policy: ConflictPolicy,
+    ) -> Result<(), String> {
+        if !bindings.is_empty() || !hold_bindings.is_empty() {
+            if let Some(error) = &self.install_error {
+                return Err(error.clone());
+            }
+        }
+
+        let mut next_registrations = Vec::with_capacity(bindings.len());
+        for (hotkey, action) in bindings {
+            next_registrations.push(HotkeyRegistration {
+                scope: scope.to_string(),
+                binding: HotkeyBinding::parse(&hotkey)?,
+                enabled: true,
+                display_name: display_name.clone(),
+                conflict_policy,
+                action,
+            });
+        }
+        let mut next_hold_registrations = Vec::with_capacity(hold_bindings.len());
+        for (hotkey, action) in hold_bindings {
+            next_hold_registrations.push(HoldRegistration {
+                scope: scope.to_string(),
+                binding: HotkeyBinding::parse(&hotkey)?,
+                enabled: true,
+                display_name: display_name.clone(),
+                conflict_policy,
+                action,
+            });
+        }
+
+        let parsed_bindings = next_registrations
+            .iter()
+            .map(|registration| registration.binding.clone())
+            .collect::<Vec<_>>();
+        let parsed_hold_bindings = next_hold_registrations
+            .iter()
+            .map(|registration| registration.binding.clone())
+            .collect::<Vec<_>>();
+        self.validate_scope_conflicts(scope, parsed_bindings.as_slice(), conflict_policy)?;
+        self.validate_hold_scope_conflicts(
+            scope,
+            parsed_hold_bindings.as_slice(),
+            conflict_policy,
+        )?;
+
         let mut registrations = self
             .registrations
             .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
-        for registration in registrations
-            .iter_mut()
-            .filter(|registration| registration.scope == scope)
-        {
-            registration.enabled = enabled;
+        let mut hold_registrations = self
+            .hold_registrations
+            .lock()
+            .map_err(|_| "热键监听状态已损坏".to_string())?;
+        registrations.retain(|registration| registration.scope != scope);
+        registrations.extend(next_registrations);
+        hold_registrations.remove(scope);
+        if !next_hold_registrations.is_empty() {
+            hold_registrations.insert(scope.to_string(), next_hold_registrations);
         }
+        crate::log_info!(
+            "hotkeys",
+            "混合热键 scope 已注册",
+            "scope" => scope,
+            "display_name" => display_name,
+            "count" => parsed_bindings.len(),
+            "hold_count" => parsed_hold_bindings.len()
+        );
         Ok(())
     }
 
@@ -564,22 +652,22 @@ fn run_listener(
                 // 为避免同一事件被处理两次，跳过 willhook 对被抑制键的事件。
                 let is_suppressed = is_event_suppressed(&event, &suppressed_vk_set);
 
-                if global_enabled && !is_suppressed {
+                if !is_suppressed {
                     let hold_actions = hold_actions_for_event(
                         &hold_registrations,
                         event,
                         &mut active_hold_keys,
                         &mut active_hold_modifiers,
                     );
-                    for (action, hold_action) in hold_actions {
-                        action(app.clone(), hold_action);
-                    }
-
-                    if let Some(key_state) = matcher.handle_event(event) {
-                        let actions = actions_for_key_state(&registrations, &key_state);
-
-                        for action in actions {
-                            action(app.clone());
+                    let key_state = matcher.handle_event(event);
+                    if global_enabled {
+                        for (action, hold_action) in hold_actions {
+                            action(app.clone(), hold_action);
+                        }
+                        if let Some(key_state) = key_state {
+                            for action in actions_for_key_state(&registrations, &key_state) {
+                                action(app.clone());
+                            }
                         }
                     }
                 }
@@ -598,10 +686,6 @@ fn run_listener(
                     .try_state::<GlobalState>()
                     .map(|state| state.enabled())
                     .unwrap_or(true);
-                if !global_enabled {
-                    continue;
-                }
-
                 // 将被抑制事件转换为 willhook KeyboardEvent
                 let event =
                     crate::key_suppressor::suppressed_event_to_willhook_event(&suppressed_event);
@@ -612,15 +696,15 @@ fn run_listener(
                     &mut active_hold_keys,
                     &mut active_hold_modifiers,
                 );
-                for (action, hold_action) in hold_actions {
-                    action(app.clone(), hold_action);
-                }
-
-                if let Some(key_state) = matcher.handle_event(event) {
-                    let actions = actions_for_key_state(&registrations, &key_state);
-
-                    for action in actions {
-                        action(app.clone());
+                let key_state = matcher.handle_event(event);
+                if global_enabled {
+                    for (action, hold_action) in hold_actions {
+                        action(app.clone(), hold_action);
+                    }
+                    if let Some(key_state) = key_state {
+                        for action in actions_for_key_state(&registrations, &key_state) {
+                            action(app.clone());
+                        }
                     }
                 }
             }
@@ -986,6 +1070,110 @@ mod tests {
             #[cfg(not(target_os = "windows"))]
             _worker: (),
         }
+    }
+
+    #[test]
+    fn replace_mixed_scope_registers_and_pauses_normal_and_hold_bindings() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        let hold_action: HoldActionCallback = Arc::new(|_, _| {});
+
+        manager
+            .replace_mixed_scope(
+                "recognition",
+                vec![("F1".into(), action)],
+                vec![("F1".into(), hold_action)],
+                "识别触发".into(),
+                ConflictPolicy::AllowHold,
+            )
+            .unwrap();
+        manager.set_scope_enabled("recognition", false).unwrap();
+
+        assert_eq!(manager.registrations.lock().unwrap().len(), 1);
+        assert!(!manager.registrations.lock().unwrap()[0].enabled);
+        let hold_registrations = manager.hold_registrations.lock().unwrap();
+        assert_eq!(hold_registrations["recognition"].len(), 1);
+        assert!(!hold_registrations["recognition"][0].enabled);
+    }
+
+    #[test]
+    fn replace_mixed_scope_keeps_previous_bindings_when_parsing_fails() {
+        let manager = test_manager();
+        manager
+            .replace_mixed_scope(
+                "recognition",
+                vec![("F1".into(), Arc::new(|_| {}))],
+                vec![("F1".into(), Arc::new(|_, _| {}))],
+                "识别触发".into(),
+                ConflictPolicy::AllowHold,
+            )
+            .unwrap();
+
+        assert!(manager
+            .replace_mixed_scope(
+                "recognition",
+                vec![("F2".into(), Arc::new(|_| {}))],
+                vec![("F25".into(), Arc::new(|_, _| {}))],
+                "识别触发".into(),
+                ConflictPolicy::AllowHold,
+            )
+            .is_err());
+
+        assert_eq!(
+            manager.registrations.lock().unwrap()[0].binding,
+            HotkeyBinding::parse("F1").unwrap()
+        );
+        assert_eq!(
+            manager.hold_registrations.lock().unwrap()["recognition"][0].binding,
+            HotkeyBinding::parse("F1").unwrap()
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn disabled_dispatch_still_tracks_hold_release_before_next_press() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
+            "recognition".to_string(),
+            vec![HoldRegistration {
+                scope: "recognition".to_string(),
+                binding: HotkeyBinding::parse("F3").unwrap(),
+                enabled: true,
+                display_name: "识别触发".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                action: callback,
+            }],
+        )])));
+        let mut active_hold_keys = HashMap::new();
+        let mut active_hold_modifiers = HashSet::new();
+
+        // 模拟全局关闭期间：状态机处理事件，但调用方不分发返回的 callback。
+        let disabled_down = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::F3, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        let disabled_up = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::F3, KeyPress::Up(IsSystemKeyPress::Normal)),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+
+        assert_eq!(disabled_down[0].1, HoldAction::Down);
+        assert_eq!(disabled_up[0].1, HoldAction::Up);
+
+        let enabled_down = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::F3, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut active_hold_keys,
+            &mut active_hold_modifiers,
+        );
+        assert_eq!(enabled_down.len(), 1);
+        assert_eq!(enabled_down[0].1, HoldAction::Down);
     }
 
     #[test]

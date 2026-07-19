@@ -155,9 +155,7 @@ pub fn run() {
             );
             lifecycle_registry.register(
                 "recognition",
-                Box::new(|app: &tauri::AppHandle| {
-                    crate::recognition::watcher::stop_all_watchers(app)
-                }),
+                Box::new(|app: &tauri::AppHandle| crate::recognition::stop_registered(app)),
             );
             app.manage(hotkey_manager);
             app.manage(state);

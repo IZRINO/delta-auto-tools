@@ -1077,6 +1077,7 @@ mod tests {
             enabled: true,
             trigger_mode: RecognitionTriggerMode::RegionWatch,
             hotkey: None,
+            hotkey_repeat_mode: crate::recognition::types::RecognitionHotkeyRepeatMode::Once,
             watch_region: Some(crate::morse::types::RegionRect {
                 x: 0,
                 y: 0,

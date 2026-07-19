@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 use crate::app_error::AppError;
-use crate::hotkey_types::ConflictPolicy;
+use crate::hotkey_types::{ConflictPolicy, HoldAction};
 use crate::hotkeys::HotkeyManager;
 use crate::profile::{self, ActiveProfileSnapshotPatch};
 use crate::settings::SettingsCoordinator;
@@ -136,9 +136,70 @@ pub struct RecognitionLogic {
     pub playback_tx: std::sync::mpsc::Sender<player::AudioCommand>,
     /// 连杀/随机播放的 per-card 运行时状态（纯内存，重启归零，不持久化）。
     pub play_states: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, PlayState>>>,
+    hold_sessions:
+        std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, RecognitionHoldSession>>>,
 }
 
 pub type RecognitionState = ToolState<RecognitionLogic>;
+
+struct RecognitionHoldSession {
+    id: u64,
+    cancel: tokio::sync::watch::Sender<bool>,
+}
+
+fn insert_hold_session(
+    sessions: &mut std::collections::HashMap<String, RecognitionHoldSession>,
+    card_id: String,
+    session: RecognitionHoldSession,
+) -> bool {
+    if sessions.contains_key(&card_id) {
+        return false;
+    }
+    sessions.insert(card_id, session);
+    true
+}
+
+fn cancel_hold_sessions_in_registry(
+    sessions: &mut std::collections::HashMap<String, RecognitionHoldSession>,
+    card_ids: &[String],
+) -> usize {
+    let mut cancelled = 0;
+    for card_id in card_ids {
+        if let Some(session) = sessions.remove(card_id) {
+            let _ = session.cancel.send(true);
+            cancelled += 1;
+        }
+    }
+    cancelled
+}
+
+fn cancel_all_hold_sessions_in_registry(
+    sessions: &mut std::collections::HashMap<String, RecognitionHoldSession>,
+) -> usize {
+    let cancelled = sessions.len();
+    for (_, session) in sessions.drain() {
+        let _ = session.cancel.send(true);
+    }
+    cancelled
+}
+
+fn remove_finished_hold_session(
+    sessions: &mut std::collections::HashMap<String, RecognitionHoldSession>,
+    card_id: &str,
+    session_id: u64,
+) -> bool {
+    if sessions
+        .get(card_id)
+        .is_some_and(|session| session.id == session_id)
+    {
+        sessions.remove(card_id);
+        return true;
+    }
+    false
+}
+
+const MIN_HOLD_COOLDOWN_MS: u32 = 10;
+static NEXT_HOLD_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// 连杀/随机播放的卡片级运行时状态。
 /// - current_index：连杀当前播放到第几个文件
@@ -302,17 +363,45 @@ pub async fn recognition_save_settings(
             let _ = watcher::restart_watchers(&app, &previous_settings);
             return Err(AppError::from(error));
         }
-
         let bootstrap = {
             let mut inner = state.lock_inner().map_err(AppError::from)?;
             inner.hotkey_error = None;
             RecognitionLogic::build_bootstrap(&inner)
         };
-        RecognitionLogic::emit_state(&app, &bootstrap);
-        profile::update_active_profile_snapshot(
+        if let Err(error) = profile::update_active_profile_snapshot(
             &app,
             ActiveProfileSnapshotPatch::Recognition(bootstrap.settings.clone()),
-        )?;
+        ) {
+            {
+                let mut inner = state.lock_inner().map_err(AppError::from)?;
+                inner.settings = previous_settings.clone();
+                inner.hotkey_error = Some(error.clone());
+            }
+            let _ = settings::write_settings(&app, &previous_settings);
+            let _ = restart_hotkey_listeners(&hotkey_manager, &previous_settings);
+            let _ = watcher::restart_watchers(&app, &previous_settings);
+            let _ = profile::update_active_profile_snapshot(
+                &app,
+                ActiveProfileSnapshotPatch::Recognition(previous_settings),
+            );
+            return Err(AppError::from(error));
+        }
+        if let Err(error) = stop_all_hold_sessions(&app) {
+            {
+                let mut inner = state.lock_inner().map_err(AppError::from)?;
+                inner.settings = previous_settings.clone();
+                inner.hotkey_error = Some(error.clone());
+            }
+            let _ = settings::write_settings(&app, &previous_settings);
+            let _ = restart_hotkey_listeners(&hotkey_manager, &previous_settings);
+            let _ = watcher::restart_watchers(&app, &previous_settings);
+            let _ = profile::update_active_profile_snapshot(
+                &app,
+                ActiveProfileSnapshotPatch::Recognition(previous_settings),
+            );
+            return Err(AppError::from(error));
+        }
+        RecognitionLogic::emit_state(&app, &bootstrap);
         Ok(bootstrap)
     })
 }
@@ -704,15 +793,19 @@ pub(crate) fn restart_hotkey_listeners(
     hotkey_manager: &HotkeyManager,
     settings: &RecognitionSettings,
 ) -> Result<(), String> {
-    let _ = hotkey_manager.clear_scope("recognition");
-
     if !settings.recognition_enabled {
-        return Ok(());
+        return hotkey_manager.replace_mixed_scope(
+            "recognition",
+            Vec::new(),
+            Vec::new(),
+            "识别触发".to_string(),
+            ConflictPolicy::AllowHold,
+        );
     }
-
     validate_hotkey_duplicates(settings)?;
 
     let mut bindings: Vec<(String, crate::hotkey_types::HotkeyAction)> = Vec::new();
+    let mut hold_cards_by_key = std::collections::HashMap::<String, Vec<String>>::new();
     for card in runtime_cards(settings) {
         if card.trigger_mode == RecognitionTriggerMode::Hotkey {
             if let Some(key) = card
@@ -720,6 +813,13 @@ pub(crate) fn restart_hotkey_listeners(
                 .as_ref()
                 .filter(|value| !value.trim().is_empty())
             {
+                if card.hotkey_repeat_mode == types::RecognitionHotkeyRepeatMode::WhileHeld {
+                    hold_cards_by_key
+                        .entry(key.clone())
+                        .or_default()
+                        .push(card.id.clone());
+                    continue;
+                }
                 let card_id = card.id.clone();
                 let action: crate::hotkey_types::HotkeyAction =
                     Arc::new(move |app: tauri::AppHandle| {
@@ -767,16 +867,194 @@ pub(crate) fn restart_hotkey_listeners(
         }
     }
 
-    if !bindings.is_empty() {
-        hotkey_manager.replace_scope(
-            "recognition",
-            bindings,
-            "识别触发".to_string(),
-            ConflictPolicy::AllowHold,
-        )?;
-    }
+    let hold_bindings = hold_cards_by_key
+        .into_iter()
+        .map(|(key, card_ids)| {
+            let action: crate::hotkey_types::HoldActionCallback =
+                Arc::new(move |app: tauri::AppHandle, hold_action| {
+                    if let Err(error) = handle_hold_event(&app, card_ids.clone(), hold_action) {
+                        let _ = app.emit_to("main", HOTKEY_ERROR, error);
+                    }
+                });
+            (key, action)
+        })
+        .collect();
+
+    hotkey_manager.replace_mixed_scope(
+        "recognition",
+        bindings,
+        hold_bindings,
+        "识别触发".to_string(),
+        ConflictPolicy::AllowHold,
+    )?;
 
     Ok(())
+}
+
+fn handle_hold_event(
+    app: &tauri::AppHandle,
+    card_ids: Vec<String>,
+    hold_action: HoldAction,
+) -> Result<(), String> {
+    match hold_action {
+        HoldAction::Down => start_hold_sessions(app, card_ids),
+        HoldAction::Up => stop_hold_sessions(app, &card_ids),
+    }
+}
+
+fn start_hold_sessions(app: &tauri::AppHandle, card_ids: Vec<String>) -> Result<(), String> {
+    let state = app
+        .try_state::<RecognitionState>()
+        .ok_or_else(|| "识别触发状态尚未初始化".to_string())?;
+    let (sessions, cards) = {
+        let inner = state.lock_inner()?;
+        if !inner.settings.recognition_enabled {
+            return Ok(());
+        }
+        let cards = card_ids
+            .into_iter()
+            .filter_map(|card_id| {
+                inner
+                    .settings
+                    .cards
+                    .iter()
+                    .find(|card| {
+                        card.id == card_id
+                            && card.enabled
+                            && card_group_enabled(&inner.settings, card)
+                            && card.trigger_mode == RecognitionTriggerMode::Hotkey
+                            && card.hotkey_repeat_mode
+                                == types::RecognitionHotkeyRepeatMode::WhileHeld
+                    })
+                    .map(|card| (card.id.clone(), card.cooldown_ms.max(MIN_HOLD_COOLDOWN_MS)))
+            })
+            .collect::<Vec<_>>();
+        (Arc::clone(&inner.logic.hold_sessions), cards)
+    };
+
+    let mut session_map = sessions
+        .lock()
+        .map_err(|_| "持续触发会话状态已损坏".to_string())?;
+    for (card_id, cooldown_ms) in cards {
+        let session_id = NEXT_HOLD_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (cancel, cancel_rx) = tokio::sync::watch::channel(false);
+        if !insert_hold_session(
+            &mut session_map,
+            card_id.clone(),
+            RecognitionHoldSession {
+                id: session_id,
+                cancel,
+            },
+        ) {
+            continue;
+        }
+        tauri::async_runtime::spawn(run_hold_session(
+            app.clone(),
+            card_id,
+            session_id,
+            cooldown_ms,
+            cancel_rx,
+            Arc::clone(&sessions),
+        ));
+    }
+    Ok(())
+}
+
+fn stop_hold_sessions(app: &tauri::AppHandle, card_ids: &[String]) -> Result<(), String> {
+    let Some(state) = app.try_state::<RecognitionState>() else {
+        return Ok(());
+    };
+    let sessions = Arc::clone(&state.lock_inner()?.logic.hold_sessions);
+    let mut session_map = sessions
+        .lock()
+        .map_err(|_| "持续触发会话状态已损坏".to_string())?;
+    cancel_hold_sessions_in_registry(&mut session_map, card_ids);
+    Ok(())
+}
+
+pub(crate) fn stop_all_hold_sessions(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<RecognitionState>() else {
+        return Ok(());
+    };
+    let sessions = Arc::clone(&state.lock_inner()?.logic.hold_sessions);
+    let mut session_map = sessions
+        .lock()
+        .map_err(|_| "持续触发会话状态已损坏".to_string())?;
+    cancel_all_hold_sessions_in_registry(&mut session_map);
+    Ok(())
+}
+
+async fn run_hold_session(
+    app: tauri::AppHandle,
+    card_id: String,
+    session_id: u64,
+    cooldown_ms: u32,
+    mut cancel: tokio::sync::watch::Receiver<bool>,
+    sessions: Arc<std::sync::Mutex<std::collections::HashMap<String, RecognitionHoldSession>>>,
+) {
+    crate::log_info!(
+        "recognition",
+        "持续触发会话已启动",
+        "card_id" => card_id.clone(),
+        "session_id" => session_id
+    );
+    let mut emitted = false;
+    loop {
+        if *cancel.borrow() {
+            break;
+        }
+        let started_at = tokio::time::Instant::now();
+        if let Err(error) = effects::execute(
+            app.clone(),
+            card_id.clone(),
+            effects::TriggerContext::HotkeyContinuous,
+        )
+        .await
+        {
+            crate::log_error!(
+                "recognition",
+                "持续触发会话执行失败",
+                "card_id" => card_id.clone(),
+                "session_id" => session_id,
+                "error" => error.clone()
+            );
+            let _ = app.emit_to("main", HOTKEY_ERROR, error);
+            break;
+        }
+        if !emitted {
+            let _ = app.emit(HOTKEY_TRIGGERED, card_id.clone());
+            emitted = true;
+        }
+        if *cancel.borrow() {
+            break;
+        }
+
+        let elapsed = started_at.elapsed();
+        let cooldown = std::time::Duration::from_millis(cooldown_ms as u64);
+        let wait = cooldown.saturating_sub(elapsed);
+        if wait.is_zero() {
+            tokio::task::yield_now().await;
+            continue;
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(wait) => {}
+            changed = cancel.changed() => {
+                if changed.is_err() || *cancel.borrow() {
+                    break;
+                }
+            }
+        }
+    }
+
+    if let Ok(mut session_map) = sessions.lock() {
+        remove_finished_hold_session(&mut session_map, &card_id, session_id);
+    }
+    crate::log_info!(
+        "recognition",
+        "持续触发会话已停止",
+        "card_id" => card_id,
+        "session_id" => session_id
+    );
 }
 
 fn validate_hotkey_duplicates(settings: &RecognitionSettings) -> Result<(), String> {
@@ -892,6 +1170,7 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<RecognitionState, String> {
     let logic = RecognitionLogic {
         playback_tx,
         play_states: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        hold_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     Ok(RecognitionState::new(logic, settings))
@@ -932,13 +1211,20 @@ pub fn start_runtime(app: &tauri::AppHandle) -> Result<(), String> {
 
 pub fn shutdown(app: &tauri::AppHandle, hotkey_manager: &HotkeyManager) {
     let _ = hotkey_manager.clear_scope("recognition");
+    let _ = hotkey_manager.clear_hold_scope("recognition");
     hotkey_manager.clear_all_suppressions();
     let _ = watcher::stop_all_watchers(app);
+    let _ = stop_all_hold_sessions(app);
 
     // 通知音频线程关闭
     if let Ok(inner) = app.state::<RecognitionState>().lock_inner() {
         let _ = inner.logic.playback_tx.send(player::AudioCommand::Shutdown);
     };
+}
+
+pub(crate) fn stop_registered(app: &tauri::AppHandle) -> Result<(), String> {
+    watcher::stop_all_watchers(app)?;
+    stop_all_hold_sessions(app)
 }
 
 // ---- 设置规范化 ----
@@ -1004,6 +1290,10 @@ pub(crate) fn normalize_settings(settings: RecognitionSettings) -> RecognitionSe
                 volume: card.volume,
                 allow_simultaneous: card.allow_simultaneous,
             });
+        }
+
+        if card.trigger_mode != RecognitionTriggerMode::Hotkey {
+            card.hotkey_repeat_mode = types::RecognitionHotkeyRepeatMode::Once;
         }
 
         // Issue #65：迁移旧 ColorProbe 单值 targetColor/tolerance → targets 单元素
@@ -1098,6 +1388,15 @@ pub(crate) fn validate_settings(settings: &RecognitionSettings) -> Result<(), St
         {
             return Err(format!("卡片 {} 必须设置触发快捷键", card.name));
         }
+        if card.trigger_mode == RecognitionTriggerMode::Hotkey
+            && card.hotkey_repeat_mode == types::RecognitionHotkeyRepeatMode::WhileHeld
+            && card.cooldown_ms < 10
+        {
+            return Err(format!(
+                "卡片 {} 的按住持续触发冷却不能小于 10ms",
+                card.name
+            ));
+        }
         if card.trigger_mode != RecognitionTriggerMode::Hotkey
             && card.activation.mode != types::RecognitionActivationMode::Always
             && card
@@ -1180,6 +1479,7 @@ mod tests {
             enabled: true,
             trigger_mode: types::RecognitionTriggerMode::Hotkey,
             hotkey: Some("Ctrl+F1".into()),
+            hotkey_repeat_mode: types::RecognitionHotkeyRepeatMode::Once,
             watch_region: None,
             watch_reference_image_paths: Vec::new(),
             watch_match_threshold: 0.75,
@@ -1199,6 +1499,118 @@ mod tests {
             color_match_mode: types::ColorMatchMode::All,
             color_match_method: types::ColorMatchMethod::Average,
         }
+    }
+
+    #[test]
+    fn hold_session_insert_is_idempotent_and_cancelable() {
+        let mut sessions = std::collections::HashMap::new();
+        let (first_cancel, first_rx) = tokio::sync::watch::channel(false);
+        let (second_cancel, _second_rx) = tokio::sync::watch::channel(false);
+
+        assert!(insert_hold_session(
+            &mut sessions,
+            "card".into(),
+            RecognitionHoldSession {
+                id: 1,
+                cancel: first_cancel,
+            },
+        ));
+        assert!(!insert_hold_session(
+            &mut sessions,
+            "card".into(),
+            RecognitionHoldSession {
+                id: 2,
+                cancel: second_cancel,
+            },
+        ));
+        assert_eq!(sessions.len(), 1);
+
+        sessions.remove("card").unwrap().cancel.send(true).unwrap();
+        assert!(*first_rx.borrow());
+    }
+
+    #[test]
+    fn hold_session_up_cancels_only_matching_cards() {
+        let mut sessions = std::collections::HashMap::new();
+        let (first_cancel, first_rx) = tokio::sync::watch::channel(false);
+        let (second_cancel, second_rx) = tokio::sync::watch::channel(false);
+        sessions.insert(
+            "first".into(),
+            RecognitionHoldSession {
+                id: 1,
+                cancel: first_cancel,
+            },
+        );
+        sessions.insert(
+            "second".into(),
+            RecognitionHoldSession {
+                id: 2,
+                cancel: second_cancel,
+            },
+        );
+
+        assert_eq!(
+            cancel_hold_sessions_in_registry(&mut sessions, &["first".into()]),
+            1
+        );
+        assert!(*first_rx.borrow());
+        assert!(!*second_rx.borrow());
+        assert!(!sessions.contains_key("first"));
+        assert!(sessions.contains_key("second"));
+    }
+
+    #[test]
+    fn hold_session_bulk_cleanup_cancels_all_sessions() {
+        let mut sessions = std::collections::HashMap::new();
+        let (first_cancel, first_rx) = tokio::sync::watch::channel(false);
+        let (second_cancel, second_rx) = tokio::sync::watch::channel(false);
+        sessions.insert(
+            "first".into(),
+            RecognitionHoldSession {
+                id: 1,
+                cancel: first_cancel,
+            },
+        );
+        sessions.insert(
+            "second".into(),
+            RecognitionHoldSession {
+                id: 2,
+                cancel: second_cancel,
+            },
+        );
+
+        assert_eq!(cancel_all_hold_sessions_in_registry(&mut sessions), 2);
+        assert!(sessions.is_empty());
+        assert!(*first_rx.borrow());
+        assert!(*second_rx.borrow());
+    }
+
+    #[test]
+    fn stale_hold_session_completion_does_not_remove_replacement() {
+        let mut sessions = std::collections::HashMap::new();
+        let (cancel, _rx) = tokio::sync::watch::channel(false);
+        sessions.insert("card".into(), RecognitionHoldSession { id: 2, cancel });
+
+        assert!(!remove_finished_hold_session(&mut sessions, "card", 1));
+        assert_eq!(sessions["card"].id, 2);
+        assert!(remove_finished_hold_session(&mut sessions, "card", 2));
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_while_held_cooldown_below_minimum() {
+        let mut card = base_card();
+        card.hotkey_repeat_mode = types::RecognitionHotkeyRepeatMode::WhileHeld;
+        card.cooldown_ms = 9;
+        let settings = RecognitionSettings {
+            recognition_enabled: true,
+            card_groups: vec![],
+            cards: vec![card],
+        };
+
+        assert!(validate_settings(&settings)
+            .unwrap_err()
+            .contains("按住持续触发冷却不能小于 10ms"));
     }
 
     #[test]
@@ -1720,6 +2132,7 @@ mod tests {
                 enabled: true,
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: Some("Ctrl+F1".into()),
+                hotkey_repeat_mode: types::RecognitionHotkeyRepeatMode::Once,
                 watch_region: None,
                 watch_reference_image_paths: Vec::new(),
                 watch_match_threshold: 0.75,
@@ -1767,6 +2180,7 @@ mod tests {
                 enabled: true,
                 trigger_mode: types::RecognitionTriggerMode::Hotkey,
                 hotkey: None,
+                hotkey_repeat_mode: types::RecognitionHotkeyRepeatMode::Once,
                 watch_region: None,
                 watch_reference_image_paths: Vec::new(),
                 watch_match_threshold: 0.75,

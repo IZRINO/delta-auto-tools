@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Delta Auto Tools — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力包括 Morse
-摩斯识别、计时器、计数器、连发器、识别触发；识别触发支持快捷键、多参考图区域匹配、多区域识色，截图/NCC 通过全局 `Semaphore(2)` 调度到 `spawn_blocking`，旧 watcher generation 不得继续触发效果；前端 reducer、CardEditor、overlay 分模块维护。外加攻略网站工作台。
+摩斯识别、计时器、计数器、连发器、识别触发；识别触发支持快捷键单次/按住持续、多参考图区域匹配、多区域识色，截图/NCC 通过全局 `Semaphore(2)` 调度到 `spawn_blocking`，旧 watcher generation 不得继续触发效果；前端 reducer、CardEditor、overlay 分模块维护。外加攻略网站工作台。
 
 ## Commands
 
@@ -158,7 +158,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | timer        | `src-tauri/src/timer/`          | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic>                                     |
 | counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，运行态通过单 writer 线程 50ms latest-wins 合并持久化；CounterState 包装 ToolState<CounterLogic>          |
 | rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget；RapidfireState = ToolState<RapidfireLogic>  |
-| recognition  | `src-tauri/src/recognition/`    | 快捷键、多参考图区域匹配、多区域识色三种触发来源；执行音频、按键、点击效果                                                   |
+| recognition  | `src-tauri/src/recognition/`    | 快捷键单次/按住持续、多参考图区域匹配、多区域识色三种触发来源；执行音频、按键、点击效果                                      |
 | hotkeys      | `src-tauri/src/hotkeys.rs`      | 全局共享 willhook 键盘钩子，scope 注册，普通/hold 两种绑定，跨 scope 冲突检测（ConflictPolicy）                           |
 | about        | `src-tauri/src/about/`          | 关于面板（版本/协议/依赖致谢）+ Tauri 官方更新器（check/download_and_install），进度事件 `about://update-progress`        |
 | strategy     | `src/components/app/strategy-page.tsx` | 主窗口内嵌 `strategy-content` 子 WebView，不使用 Rust command 或 HTTP 抓取层                         |
@@ -208,10 +208,9 @@ Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9
 ### 热键冲突规则
 
 - `ConflictPolicy` 枚举声明冲突策略：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
-- `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` 接收该参数。
-- Timer 普通 scope 与 Counter 普通 scope 与 Rapidfire hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`
-  ）；运行时会先分发连发器 hold Down/Up，再分发计时器/计数器普通快捷键。Morse 与 Timer 普通快捷键冲突、Morse 与 Counter
-  普通快捷键冲突、Morse 与 Rapidfire hold 冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
+- `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` / `replace_mixed_scope` 接收该参数。
+- Timer / Counter 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时先分发 hold Down/Up，再分发普通快捷键。Recognition 同一按键可同时绑定单次与持续卡片。
+- Morse 与 Timer / Counter / Recognition 普通快捷键或 Rapidfire / Recognition hold 触发键冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
 - 其他跨 scope 冲突必须拒绝。录制热键时暂停对应 scope。
 
 ### Overlay 透明窗口约束

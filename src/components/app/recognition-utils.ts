@@ -184,6 +184,7 @@ function cardToForm(card: RecognitionCard): RecognitionCardForm {
         enabled: card.enabled,
         triggerMode: card.triggerMode,
         hotkey: card.hotkey ?? "",
+        hotkeyRepeatMode: card.hotkeyRepeatMode ?? "once",
         watchRegion: card.watchRegion,
         watchReferenceImagePaths: card.watchReferenceImagePaths?.length
             ? card.watchReferenceImagePaths
@@ -244,6 +245,14 @@ function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCar
     const cooldownMs = parseInt(form.cooldownMs, 10);
     if (Number.isNaN(cooldownMs) || cooldownMs < 0 || cooldownMs > 60000) {
         throw new Error("冷却时间必须在 0 到 60000 毫秒之间。");
+    }
+    if (
+        strict
+        && form.triggerMode === "hotkey"
+        && (form.hotkeyRepeatMode ?? "once") === "whileHeld"
+        && cooldownMs < 10
+    ) {
+        throw new Error("按住持续触发的冷却时间不能小于 10 毫秒。");
     }
 
     const watchMatchThreshold = parseFloat(form.watchMatchThreshold);
@@ -339,6 +348,7 @@ function parseCardForm(form: RecognitionCardForm, strict = true): RecognitionCar
         enabled: form.enabled,
         triggerMode: form.triggerMode,
         hotkey,
+        hotkeyRepeatMode: form.triggerMode === "hotkey" ? form.hotkeyRepeatMode ?? "once" : "once",
         watchRegion: form.triggerMode === "regionWatch" ? form.watchRegion : null,
         watchReferenceImagePaths,
         watchMatchThreshold,
