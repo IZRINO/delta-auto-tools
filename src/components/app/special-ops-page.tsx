@@ -126,22 +126,11 @@ export function SpecialOpsPage() {
         ...bootstrap.settings,
         calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id ? {...item, ...patch} : item),
     });
-    const addEnvironment = () => {
-        const id = crypto.randomUUID();
-        save({
-            ...bootstrap.settings,
-            activeCalibrationId: id,
-            calibrationEnvironments: [...bootstrap.settings.calibrationEnvironments, {
-                id,
-                name: `显示环境 ${bootstrap.settings.calibrationEnvironments.length + 1}`,
-                monitor: "主显示器",
-                resolutionWidth: window.screen.width,
-                resolutionHeight: window.screen.height,
-                dpiScale: window.devicePixelRatio,
-                windowMode: "无边框窗口",
-                targets: [],
-            }],
-        });
+    const removeEnvironment = (environment: CalibrationEnvironment) => {
+        if (bootstrap.settings.calibrationEnvironments.length <= 1) return;
+        if (!window.confirm(`删除显示环境“${environment.name}”？`)) return;
+        const remaining = bootstrap.settings.calibrationEnvironments.filter((item) => item.id !== environment.id);
+        save({...bootstrap.settings, calibrationEnvironments: remaining, activeCalibrationId: remaining[0]?.id ?? null});
     };
     const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => void invoke(
         "special_ops_begin_calibration_selection",
@@ -203,10 +192,9 @@ export function SpecialOpsPage() {
 
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><h2 className="text-lg font-semibold">显示环境与点击区域校准</h2><p className="text-xs text-base-content/60">坐标不按账号复制。分辨率、DPI 或窗口模式变化时必须新建或明确覆盖。</p></div>
-                <Button size="sm" variant="outline" onClick={addEnvironment}><RiAddLine data-icon="inline-start"/>新建显示环境</Button>
+                <div><h2 className="text-lg font-semibold">显示环境与点击区域校准</h2><p className="text-xs text-base-content/60">坐标不按账号复制。分辨率、DPI 或窗口模式变化后需更新环境并重新校准。</p></div>
             </div>
-            {bootstrap.settings.calibrationEnvironments.length > 1 && <div className="flex flex-wrap gap-2">{bootstrap.settings.calibrationEnvironments.map((environment) => <Button key={environment.id} size="sm" variant={environment.id === activeEnvironment?.id ? "default" : "outline"} onClick={() => save({...bootstrap.settings, activeCalibrationId: environment.id})}>{environment.name}</Button>)}</div>}
+            {bootstrap.settings.calibrationEnvironments.length > 1 && <div className="flex flex-wrap gap-2">{bootstrap.settings.calibrationEnvironments.map((environment) => <div key={environment.id} className="join"><Button className="join-item" size="sm" variant={environment.id === activeEnvironment?.id ? "default" : "outline"} onClick={() => save({...bootstrap.settings, activeCalibrationId: environment.id})}>{environment.name}</Button><Button className="join-item" size="icon-sm" variant="outline" title={`删除 ${environment.name}`} onClick={() => removeEnvironment(environment)}><RiDeleteBinLine/></Button></div>)}</div>}
             {activeEnvironment && <>
                 <div className="grid gap-3 md:grid-cols-5">
                     <label className="form-control gap-1"><span className="label-text">环境名称</span><DraftInput value={activeEnvironment.name} onCommit={(name) => updateEnvironment(activeEnvironment, {name})}/></label>

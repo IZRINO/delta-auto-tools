@@ -331,14 +331,8 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
         if account.stations.len() > 4 {
             return Err(format!("账号 {} 的制作台数量不能超过 4 个", account.id));
         }
-        for station in &account.stations {
-            if station.enabled
-                && (station.item_name.trim().is_empty()
-                    || !(1..=10_080).contains(&station.duration_minutes))
-            {
-                return Err(format!("账号 {} 的制作台配置无效", account.id));
-            }
-        }
+        // 允许先启用制作台再填写物品/时长，配置页需要保存未完成草稿。
+        // 调度只处理存在完成时间的制作任务，真正执行前再做完整配置校验。
         let mut stations = StationKind::all()
             .into_iter()
             .map(StationPlan::default_for)
@@ -503,10 +497,33 @@ pub fn special_ops_set_paused(
 #[tauri::command]
 pub fn special_ops_begin_calibration_selection(
     app: AppHandle,
+    state: State<'_, SpecialOpsState>,
     environment_id: String,
     target_key: String,
     settings_revision: u64,
 ) -> Result<(), AppError> {
+    let target_kind = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| AppError::from("特勤处状态已损坏"))?;
+        let target = settings
+            .calibration_environments
+            .iter()
+            .find(|item| item.id == environment_id)
+            .and_then(|environment| {
+                environment
+                    .targets
+                    .iter()
+                    .find(|item| item.key == target_key)
+            })
+            .ok_or_else(|| AppError::from("校准目标不存在"))?;
+        match &target.kind {
+            CalibrationTargetKind::ClickPoint => "clickPoint",
+            CalibrationTargetKind::InputRegion => "inputRegion",
+            CalibrationTargetKind::RecognitionRegion => "recognitionRegion",
+        }
+    };
     let label = format!(
         "special-ops-calibration-{}-{}",
         safe_label_component(&environment_id),
@@ -526,9 +543,10 @@ pub fn special_ops_begin_calibration_selection(
         })
         .unwrap_or((0, 0, 1920, 1080));
     let url = format!(
-        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}",
+        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&target_kind={}&settings_revision={}",
         encoded_query_value(&environment_id),
         encoded_query_value(&target_key),
+        target_kind,
         settings_revision
     );
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
@@ -932,5 +950,25 @@ mod tests {
             default_calibration_targets().len()
         );
         assert_eq!(normalized.active_calibration_id.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn normalize_allows_incomplete_enabled_station_draft() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "draft",
+            AccountStatus::Ready,
+            vec![StationPlan {
+                kind: StationKind::TechnicalCenter,
+                enabled: true,
+                item_name: String::new(),
+                duration_minutes: 0,
+                started_at_ms: None,
+                finishes_at_ms: None,
+                status: StationStatus::Idle,
+            }],
+        ));
+
+        assert!(normalize_settings(settings).is_ok());
     }
 }

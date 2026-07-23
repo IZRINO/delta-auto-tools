@@ -20,6 +20,8 @@ export function SpecialOpsCalibrationOverlay() {
     const params = useMemo(() => new URLSearchParams(window.location.search), []);
     const environmentId = params.get("environment_id") ?? "";
     const targetKey = params.get("target_key") ?? "";
+    const targetKind = params.get("target_kind") ?? "recognitionRegion";
+    const isClickPoint = targetKind === "clickPoint";
     const settingsRevision = Number(params.get("settings_revision") ?? "0");
     const [start, setStart] = useState<Point | null>(null);
     const [current, setCurrent] = useState<Point | null>(null);
@@ -60,20 +62,32 @@ export function SpecialOpsCalibrationOverlay() {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [cancel, submit]);
 
+    const commitPoint = (point: Point) => setCommitted({x: point.x - 4, y: point.y - 4, width: 8, height: 8});
+
     return <div
         className="fixed inset-0 cursor-crosshair select-none text-white"
         onContextMenu={(event) => { event.preventDefault(); void cancel(); }}
-        onMouseDown={(event) => { if (event.button !== 0 || submitting) return; const point = {x: event.clientX, y: event.clientY}; setCommitted(null); setStart(point); setCurrent(point); }}
-        onMouseMove={(event) => { if (start && !submitting) setCurrent({x: event.clientX, y: event.clientY}); }}
-        onMouseUp={() => { if (!start || !current) return; const rect = selectionRect(start, current); setStart(null); setCurrent(null); if (rect.width > 2 && rect.height > 2) setCommitted(rect); }}
+        onMouseDown={(event) => {
+            if (event.button !== 0 || submitting) return;
+            const point = {x: event.clientX, y: event.clientY};
+            if (isClickPoint) {
+                commitPoint(point);
+                return;
+            }
+            setCommitted(null);
+            setStart(point);
+            setCurrent(point);
+        }}
+        onMouseMove={(event) => { if (!isClickPoint && start && !submitting) setCurrent({x: event.clientX, y: event.clientY}); }}
+        onMouseUp={() => { if (isClickPoint || !start || !current) return; const rect = selectionRect(start, current); setStart(null); setCurrent(null); if (rect.width > 2 && rect.height > 2) setCommitted(rect); }}
     >
         {activeRect && <div className="pointer-events-none absolute border-2 border-primary bg-primary/20" style={{left: activeRect.x, top: activeRect.y, width: activeRect.width, height: activeRect.height}}/>}
-        <div className="pointer-events-none absolute left-6 top-6 max-w-md rounded-box bg-base-100/90 p-4 text-base-content shadow-xl backdrop-blur">
+        <div className="pointer-events-none absolute bottom-6 left-1/2 w-[min(92vw,640px)] -translate-x-1/2 rounded-box bg-base-100/90 p-3 text-base-content shadow-xl backdrop-blur">
             <h1 className="font-semibold">特勤处校准</h1>
-            <p className="mt-1 text-sm text-base-content/60">拖拽框选目标区域。点击点会使用区域中心。Enter 确认，Esc 取消。</p>
+            <p className="mt-1 text-sm text-base-content/60">{isClickPoint ? "单击目标位置取点。" : "拖拽框选目标区域。"} Enter 确认，Esc 取消。</p>
             <p className="mt-2 font-mono text-xs">{targetKey}{activeRect ? ` · X ${activeRect.x} Y ${activeRect.y} W ${activeRect.width} H ${activeRect.height}` : ""}</p>
         </div>
-        <div className="absolute right-6 top-6 flex gap-2 rounded-box bg-base-100/90 p-3">
+        <div className="absolute right-6 top-6 flex gap-2 rounded-box bg-base-100/90 p-3" onMouseDown={(event) => event.stopPropagation()} onMouseUp={(event) => event.stopPropagation()}>
             <Button disabled={!committed || submitting} onClick={() => void submit()}><RiCheckLine data-icon="inline-start"/>确认</Button>
             <Button variant="secondary" disabled={submitting} onClick={() => void cancel()}><RiCloseLine data-icon="inline-start"/>取消</Button>
         </div>
