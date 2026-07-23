@@ -188,7 +188,14 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "四制作台页面识别区域",
             RecognitionRegion,
         ),
-        ("craft.station", "制作台点击区域", ClickPoint),
+        (
+            "craft.station.technicalCenter",
+            "技术中心点击区域",
+            ClickPoint,
+        ),
+        ("craft.station.workbench", "工作台点击区域", ClickPoint),
+        ("craft.station.pharmacy", "制药台点击区域", ClickPoint),
+        ("craft.station.armorBench", "防具台点击区域", ClickPoint),
         (
             "craft.claimReady.technicalCenter",
             "技术中心可收取感叹号",
@@ -1072,6 +1079,36 @@ mod tests {
             targets
                 .iter()
                 .filter(|target| target.key.starts_with("craft.claimReady."))
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn normalize_replaces_shared_station_click_with_station_targets() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.calibration_environments[0]
+            .targets
+            .push(CalibrationTarget {
+                key: "craft.station".to_string(),
+                label: "旧通用制作台点击区域".to_string(),
+                kind: CalibrationTargetKind::ClickPoint,
+                rect: Some(CalibrationRect {
+                    x: 1,
+                    y: 2,
+                    width: 3,
+                    height: 4,
+                }),
+            });
+
+        let normalized = normalize_settings(settings).unwrap();
+        let targets = &normalized.calibration_environments[0].targets;
+
+        assert!(!targets.iter().any(|target| target.key == "craft.station"));
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| target.key.starts_with("craft.station."))
                 .count(),
             4
         );
