@@ -13,6 +13,7 @@ mod profile;
 mod rapidfire;
 mod recognition;
 mod settings;
+mod special_ops;
 mod sync_tool;
 mod theme;
 mod timer;
@@ -133,6 +134,12 @@ pub fn run() {
                 &["recognition_settings.json", "audio_settings.json"],
                 || recognition::initialize(app.handle()),
             )?;
+            let special_ops_state = initialize_with_settings_recovery(
+                app.handle(),
+                "special_ops",
+                &["special_ops_settings.json"],
+                || special_ops::initialize(app.handle()),
+            )?;
             let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
             lifecycle_registry.register(
                 "timer",
@@ -157,12 +164,17 @@ pub fn run() {
                 "recognition",
                 Box::new(|app: &tauri::AppHandle| crate::recognition::stop_registered(app)),
             );
+            lifecycle_registry.register(
+                "special_ops",
+                Box::new(|app: &tauri::AppHandle| crate::special_ops::stop_registered(app)),
+            );
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
             app.manage(counter_state);
             app.manage(rapidfire_state);
             app.manage(recognition_state);
+            app.manage(special_ops_state);
             app.manage(lifecycle_registry);
             recognition::start_runtime(app.handle())?;
             Ok(())
@@ -249,6 +261,10 @@ pub fn run() {
             recognition::recognition_test_match,
             recognition::recognition_read_reference_image,
             recognition::recognition_test_color_match,
+            // ── 特勤处自动化 ──
+            special_ops::special_ops_get_bootstrap,
+            special_ops::special_ops_save_settings,
+            special_ops::special_ops_set_paused,
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,

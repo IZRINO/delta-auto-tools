@@ -10,6 +10,7 @@ import {
     RiStarFill,
     RiTimerLine,
     RiVolumeUpLine,
+    RiShieldLine,
 } from "@remixicon/react";
 
 import {FavoritesProvider, useFavorites} from "@/hooks/use-favorites";
@@ -56,6 +57,9 @@ const FavoritesPage = lazy(() =>
 const RecognitionPage = lazy(() =>
     import("@/components/app/recognition-page").then((module) => ({default: module.RecognitionPage})),
 );
+const SpecialOpsPage = lazy(() =>
+    import("@/components/app/special-ops-page").then((module) => ({default: module.SpecialOpsPage})),
+);
 
 const RecognitionRegionOverlay = lazy(() =>
     import("@/components/app/recognition-page").then((module) => ({default: module.RecognitionRegionOverlay})),
@@ -74,6 +78,7 @@ const tools = [
 ];
 
 const deltaTools = [
+    {id: "specialOps" as const, icon: RiShieldLine, label: "特勤处", short: "Special Ops"},
     {id: "morse" as const, icon: RiRadarLine, label: "摩斯密码解析", short: "Morse"},
 ];
 
@@ -130,6 +135,8 @@ function renderToolPage(
             return <RecognitionPage/>;
         case "morse":
             return <MorsePage/>;
+        case "specialOps":
+            return <SpecialOpsPage/>;
     }
 }
 

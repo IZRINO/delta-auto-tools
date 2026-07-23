@@ -1,0 +1,645 @@
+use chrono::{FixedOffset, TimeZone, Timelike, Utc};
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::{app_error::AppError, settings::SettingsCoordinator};
+
+const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
+pub const STATE_CHANGED: &str = "special-ops://state-changed";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum StationKind {
+    TechnicalCenter,
+    Workbench,
+    Pharmacy,
+    ArmorBench,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum StationStatus {
+    Idle,
+    Crafting,
+    Ready,
+    Uncertain,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StationPlan {
+    pub kind: StationKind,
+    pub enabled: bool,
+    pub item_name: String,
+    pub duration_minutes: u32,
+    pub started_at_ms: Option<i64>,
+    pub finishes_at_ms: Option<i64>,
+    pub status: StationStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AccountStatus {
+    Ready,
+    NeedsManualLogin,
+    LoginFailed,
+    Uncertain,
+    Isolated,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AmmoTarget {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub seasonal: bool,
+    pub order: u32,
+    pub last_success_day: Option<String>,
+    pub retry_count: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountPlan {
+    pub id: String,
+    pub qq_account: String,
+    pub password: String,
+    pub wegame_id: String,
+    pub enabled: bool,
+    pub initialized: bool,
+    pub order: u32,
+    pub status: AccountStatus,
+    pub stations: Vec<StationPlan>,
+    pub ammo_targets: Vec<AmmoTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecialOpsSettings {
+    pub enabled: bool,
+    pub paused: bool,
+    pub daily_exchange_time: String,
+    pub emergency_hotkey: String,
+    pub accounts: Vec<AccountPlan>,
+}
+
+impl Default for SpecialOpsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            paused: true,
+            daily_exchange_time: "08:00".to_string(),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DueAccount {
+    pub account_id: String,
+    pub station_kinds: Vec<StationKind>,
+    pub ammo_target_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleSnapshot {
+    pub due_accounts: Vec<DueAccount>,
+    pub next_wake_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecialOpsBootstrap {
+    pub settings: SpecialOpsSettings,
+    pub schedule: ScheduleSnapshot,
+    pub settings_revision: u64,
+    pub now_ms: i64,
+}
+
+pub struct SpecialOpsState {
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+}
+
+impl StationKind {
+    fn all() -> [Self; 4] {
+        [
+            Self::TechnicalCenter,
+            Self::Workbench,
+            Self::Pharmacy,
+            Self::ArmorBench,
+        ]
+    }
+}
+
+impl StationStatus {
+    fn default_for_new() -> Self {
+        Self::Idle
+    }
+}
+
+impl StationPlan {
+    fn default_for(kind: StationKind) -> Self {
+        Self {
+            kind,
+            enabled: false,
+            item_name: String::new(),
+            duration_minutes: 240,
+            started_at_ms: None,
+            finishes_at_ms: None,
+            status: StationStatus::default_for_new(),
+        }
+    }
+}
+
+fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSettings, String> {
+    if daily_exchange_minutes(&settings.daily_exchange_time).is_none() {
+        return Err("每日兑换时间必须是 HH:mm，范围 00:00-23:59".to_string());
+    }
+    if settings.emergency_hotkey.trim().is_empty() {
+        return Err("紧急停止快捷键不能为空".to_string());
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    for (index, account) in settings.accounts.iter_mut().enumerate() {
+        account.id = account.id.trim().to_string();
+        account.qq_account = account.qq_account.trim().to_string();
+        account.wegame_id = account.wegame_id.trim().to_string();
+        if account.id.is_empty() || !ids.insert(account.id.clone()) {
+            return Err("账号 ID 必须非空且唯一".to_string());
+        }
+        account.order = index as u32;
+        if account.stations.len() > 4 {
+            return Err(format!("账号 {} 的制作台数量不能超过 4 个", account.id));
+        }
+        for station in &account.stations {
+            if station.enabled
+                && (station.item_name.trim().is_empty()
+                    || !(1..=10_080).contains(&station.duration_minutes))
+            {
+                return Err(format!("账号 {} 的制作台配置无效", account.id));
+            }
+        }
+        let mut stations = StationKind::all()
+            .into_iter()
+            .map(StationPlan::default_for)
+            .collect::<Vec<_>>();
+        for configured in account.stations.drain(..) {
+            if let Some(target) = stations
+                .iter_mut()
+                .find(|station| station.kind == configured.kind)
+            {
+                *target = configured;
+            }
+        }
+        account.stations = stations;
+        account.ammo_targets.sort_by_key(|target| target.order);
+        for (order, target) in account.ammo_targets.iter_mut().enumerate() {
+            target.id = target.id.trim().to_string();
+            target.name = target.name.trim().to_string();
+            target.order = order as u32;
+        }
+    }
+    Ok(settings)
+}
+
+fn now_ms() -> i64 {
+    Utc::now().timestamp_millis()
+}
+
+fn settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    crate::settings::settings_path(app, SETTINGS_FILE_NAME)
+}
+
+fn load_settings(app: &AppHandle) -> Result<SpecialOpsSettings, String> {
+    let path = settings_path(app)?;
+    let settings = crate::settings::load_settings(&path)?;
+    normalize_settings(settings)
+}
+
+fn save_settings(app: &AppHandle, settings: &SpecialOpsSettings) -> Result<(), String> {
+    let path = settings_path(app)?;
+    crate::settings::save_settings(&path, settings)
+}
+
+fn build_bootstrap(
+    settings: SpecialOpsSettings,
+    settings_revision: u64,
+    current_ms: i64,
+) -> SpecialOpsBootstrap {
+    SpecialOpsBootstrap {
+        schedule: build_schedule(&settings, current_ms),
+        settings,
+        settings_revision,
+        now_ms: current_ms,
+    }
+}
+
+fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
+    let _ = app.emit_to("main", STATE_CHANGED, bootstrap);
+}
+
+pub fn initialize(app: &AppHandle) -> Result<SpecialOpsState, String> {
+    let settings = load_settings(app)?;
+    Ok(SpecialOpsState {
+        settings: Arc::new(Mutex::new(settings)),
+    })
+}
+
+pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<SpecialOpsState>() else {
+        return Ok(());
+    };
+    let settings = {
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        settings.paused = true;
+        settings.clone()
+    };
+    save_settings(app, &settings)?;
+    if let Some(coordinator) = app.try_state::<Arc<SettingsCoordinator>>() {
+        let revision = coordinator.current_revision()?;
+        emit_state(app, &build_bootstrap(settings, revision, now_ms()));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn special_ops_get_bootstrap(
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?
+        .clone();
+    Ok(build_bootstrap(
+        settings,
+        settings_coordinator.current_revision()?,
+        now_ms(),
+    ))
+}
+
+#[tauri::command]
+pub fn special_ops_save_settings(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    settings_value: SpecialOpsSettings,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    let settings_value = normalize_settings(settings_value)?;
+    settings_coordinator
+        .with_revision(
+            settings_revision,
+            || -> Result<SpecialOpsBootstrap, String> {
+                save_settings(&app, &settings_value)?;
+                {
+                    let mut settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?;
+                    *settings = settings_value.clone();
+                }
+                let bootstrap = build_bootstrap(settings_value, settings_revision, now_ms());
+                emit_state(&app, &bootstrap);
+                Ok(bootstrap)
+            },
+        )
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn special_ops_set_paused(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    paused: bool,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    settings_coordinator
+        .with_revision(
+            settings_revision,
+            || -> Result<SpecialOpsBootstrap, String> {
+                let settings = {
+                    let mut settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?;
+                    settings.paused = paused;
+                    settings.clone()
+                };
+                save_settings(&app, &settings)?;
+                let bootstrap = build_bootstrap(settings, settings_revision, now_ms());
+                emit_state(&app, &bootstrap);
+                Ok(bootstrap)
+            },
+        )
+        .map_err(AppError::from)
+}
+
+fn local_day_and_minute(now_ms: i64) -> (String, u32) {
+    let offset = FixedOffset::east_opt(8 * 60 * 60).expect("固定东八区偏移有效");
+    let local = chrono::DateTime::<Utc>::from_timestamp_millis(now_ms)
+        .unwrap_or_else(|| {
+            Utc.timestamp_millis_opt(0)
+                .single()
+                .expect("Unix epoch 有效")
+        })
+        .with_timezone(&offset);
+    (
+        local.format("%Y-%m-%d").to_string(),
+        local.hour() * 60 + local.minute(),
+    )
+}
+
+fn daily_exchange_minutes(value: &str) -> Option<u32> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 5
+        || bytes[2] != b':'
+        || !bytes[..2].iter().all(u8::is_ascii_digit)
+        || !bytes[3..].iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+    let (hours, minutes) = value.split_once(':')?;
+    let hours = hours.parse::<u32>().ok()?;
+    let minutes = minutes.parse::<u32>().ok()?;
+    (hours < 24 && minutes < 60).then_some(hours * 60 + minutes)
+}
+
+fn daily_exchange_at_ms(now_ms: i64, exchange_minute: u32) -> Option<i64> {
+    let offset = FixedOffset::east_opt(8 * 60 * 60)?;
+    let local = chrono::DateTime::<Utc>::from_timestamp_millis(now_ms)?.with_timezone(&offset);
+    let date = local.date_naive();
+    let candidate = date
+        .and_hms_opt(exchange_minute / 60, exchange_minute % 60, 0)?
+        .and_local_timezone(offset)
+        .single()?
+        .timestamp_millis();
+    Some(candidate)
+}
+
+pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSnapshot {
+    if !settings.enabled || settings.paused {
+        return ScheduleSnapshot {
+            due_accounts: Vec::new(),
+            next_wake_at_ms: None,
+        };
+    }
+
+    let mut accounts = settings.accounts.iter().collect::<Vec<_>>();
+    accounts.sort_by_key(|account| account.order);
+
+    let exchange_minute = daily_exchange_minutes(&settings.daily_exchange_time);
+    let today = local_day_and_minute(now_ms).0;
+    let exchange_at_ms = exchange_minute.and_then(|minute| daily_exchange_at_ms(now_ms, minute));
+    let mut due_accounts = Vec::new();
+    let mut next_wake_at_ms = None;
+    for account in accounts {
+        if !account.enabled || !account.initialized || account.status != AccountStatus::Ready {
+            continue;
+        }
+
+        let mut station_kinds = Vec::new();
+        for station in &account.stations {
+            if !station.enabled || station.status != StationStatus::Crafting {
+                continue;
+            }
+            let Some(finishes_at_ms) = station.finishes_at_ms else {
+                continue;
+            };
+            if finishes_at_ms <= now_ms {
+                let defer_to_exchange = exchange_at_ms
+                    .filter(|exchange_at| *exchange_at > now_ms)
+                    .is_some_and(|exchange_at| exchange_at - now_ms <= 5 * 60 * 1000);
+                if defer_to_exchange {
+                    next_wake_at_ms = exchange_at_ms;
+                } else {
+                    station_kinds.push(station.kind.clone());
+                }
+            } else {
+                next_wake_at_ms = Some(
+                    next_wake_at_ms
+                        .map_or(finishes_at_ms, |current: i64| current.min(finishes_at_ms)),
+                );
+            }
+        }
+
+        let mut ammo_target_ids = account
+            .ammo_targets
+            .iter()
+            .filter(|target| target.enabled)
+            .filter(|target| target.last_success_day.as_deref() != Some(today.as_str()))
+            .filter(|_| {
+                exchange_minute.is_some_and(|minute| local_day_and_minute(now_ms).1 >= minute)
+            })
+            .map(|target| (target.order, target.id.clone()))
+            .collect::<Vec<_>>();
+        ammo_target_ids.sort_by_key(|(order, _)| *order);
+        let ammo_target_ids = ammo_target_ids
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect::<Vec<_>>();
+
+        if station_kinds.is_empty() && ammo_target_ids.is_empty() {
+            if let Some(exchange_at) = exchange_at_ms.filter(|exchange_at| *exchange_at > now_ms) {
+                let has_pending_ammo = account.ammo_targets.iter().any(|target| {
+                    target.enabled && target.last_success_day.as_deref() != Some(today.as_str())
+                });
+                if has_pending_ammo {
+                    next_wake_at_ms = Some(
+                        next_wake_at_ms.map_or(exchange_at, |current| current.min(exchange_at)),
+                    );
+                }
+            }
+        }
+        if !station_kinds.is_empty() || !ammo_target_ids.is_empty() {
+            due_accounts.push(DueAccount {
+                account_id: account.id.clone(),
+                station_kinds,
+                ammo_target_ids,
+            });
+        }
+    }
+
+    ScheduleSnapshot {
+        due_accounts,
+        next_wake_at_ms,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn station(kind: StationKind, finishes_at_ms: i64) -> StationPlan {
+        StationPlan {
+            kind,
+            enabled: true,
+            item_name: "测试物品".to_string(),
+            duration_minutes: 240,
+            started_at_ms: Some(finishes_at_ms - 14_400_000),
+            finishes_at_ms: Some(finishes_at_ms),
+            status: StationStatus::Crafting,
+        }
+    }
+
+    fn account(id: &str, status: AccountStatus, stations: Vec<StationPlan>) -> AccountPlan {
+        AccountPlan {
+            id: id.to_string(),
+            qq_account: id.to_string(),
+            password: "password".to_string(),
+            wegame_id: id.to_string(),
+            enabled: true,
+            initialized: true,
+            order: 0,
+            status,
+            stations,
+            ammo_targets: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn schedule_groups_all_due_stations_and_skips_isolated_accounts() {
+        let now = 10_000_000;
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: vec![
+                account(
+                    "active",
+                    AccountStatus::Ready,
+                    vec![
+                        station(StationKind::TechnicalCenter, now - 1),
+                        station(StationKind::Workbench, now - 2),
+                    ],
+                ),
+                account(
+                    "isolated",
+                    AccountStatus::Isolated,
+                    vec![station(StationKind::Pharmacy, now - 1)],
+                ),
+            ],
+        };
+
+        let snapshot = build_schedule(&settings, now);
+
+        assert_eq!(snapshot.due_accounts.len(), 1);
+        assert_eq!(snapshot.due_accounts[0].account_id, "active");
+        assert_eq!(
+            snapshot.due_accounts[0].station_kinds,
+            vec![StationKind::TechnicalCenter, StationKind::Workbench]
+        );
+    }
+
+    #[test]
+    fn schedule_includes_only_unredeemed_ammo_after_daily_time() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T09:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: vec![AccountPlan {
+                ammo_targets: vec![
+                    AmmoTarget {
+                        id: "alpha".to_string(),
+                        name: "目标 A".to_string(),
+                        enabled: true,
+                        seasonal: false,
+                        order: 1,
+                        last_success_day: None,
+                        retry_count: 0,
+                    },
+                    AmmoTarget {
+                        id: "beta".to_string(),
+                        name: "目标 B".to_string(),
+                        enabled: true,
+                        seasonal: false,
+                        order: 2,
+                        last_success_day: Some("2026-07-23".to_string()),
+                        retry_count: 0,
+                    },
+                ],
+                ..account("active", AccountStatus::Ready, Vec::new())
+            }],
+        };
+
+        let snapshot = build_schedule(&settings, now);
+
+        assert_eq!(snapshot.due_accounts[0].ammo_target_ids, vec!["alpha"]);
+    }
+
+    #[test]
+    fn schedule_wakes_at_daily_exchange_time_before_exchange() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T07:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: vec![AccountPlan {
+                ammo_targets: vec![AmmoTarget {
+                    id: "alpha".to_string(),
+                    name: "鐩爣 A".to_string(),
+                    enabled: true,
+                    seasonal: false,
+                    order: 0,
+                    last_success_day: None,
+                    retry_count: 0,
+                }],
+                ..account("active", AccountStatus::Ready, Vec::new())
+            }],
+        };
+
+        let snapshot = build_schedule(&settings, now);
+
+        assert!(snapshot.due_accounts.is_empty());
+        assert_eq!(snapshot.next_wake_at_ms, Some(now + 60 * 60 * 1000));
+    }
+
+    #[test]
+    fn due_crafting_within_five_minutes_of_exchange_is_deferred() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T07:57:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: vec![account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, now - 1)],
+            )],
+        };
+
+        let snapshot = build_schedule(&settings, now);
+
+        assert!(snapshot.due_accounts.is_empty());
+        assert_eq!(snapshot.next_wake_at_ms, Some(now + 3 * 60 * 1000));
+    }
+
+    #[test]
+    fn daily_exchange_time_requires_hh_mm() {
+        assert_eq!(daily_exchange_minutes("08:00"), Some(480));
+        assert_eq!(daily_exchange_minutes("8:00"), None);
+        assert_eq!(daily_exchange_minutes("08:0"), None);
+        assert_eq!(daily_exchange_minutes("24:00"), None);
+    }
+}
