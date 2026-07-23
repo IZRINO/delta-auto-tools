@@ -530,26 +530,30 @@ pub fn special_ops_begin_calibration_selection(
         safe_label_component(&target_key)
     );
     destroy_window(&app, &label);
-    let (screen_x, screen_y, screen_w, screen_h) = xcap::Monitor::all()
-        .ok()
-        .and_then(|monitors| monitors.into_iter().next())
-        .map(|monitor| {
-            (
-                monitor.x().unwrap_or(0),
-                monitor.y().unwrap_or(0),
-                monitor.width().unwrap_or(1920),
-                monitor.height().unwrap_or(1080),
-            )
-        })
-        .unwrap_or((0, 0, 1920, 1080));
+    let (screen_x, screen_y, screen_w, screen_h) = virtual_desktop_bounds(
+        xcap::Monitor::all()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|monitor| {
+                Some((
+                    monitor.x().ok()?,
+                    monitor.y().ok()?,
+                    monitor.width().ok()?,
+                    monitor.height().ok()?,
+                ))
+            }),
+    )
+    .unwrap_or((0, 0, 1920, 1080));
     let url = format!(
-        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&target_kind={}&settings_revision={}",
+        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&target_kind={}&settings_revision={}&screen_x={}&screen_y={}",
         encoded_query_value(&environment_id),
         encoded_query_value(&target_key),
         target_kind,
-        settings_revision
+        settings_revision,
+        screen_x,
+        screen_y
     );
-    let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
         .title("特勤处校准")
         .decorations(false)
         .transparent(true)
@@ -563,8 +567,30 @@ pub fn special_ops_begin_calibration_selection(
         .position(screen_x as f64, screen_y as f64)
         .build()
         .map_err(|error| AppError::from(format!("创建特勤处校准窗口失败: {error}")))?;
-    let _ = window.maximize();
     Ok(())
+}
+
+fn virtual_desktop_bounds(
+    monitors: impl IntoIterator<Item = (i32, i32, u32, u32)>,
+) -> Option<(i32, i32, u32, u32)> {
+    let mut monitors = monitors.into_iter();
+    let (first_x, first_y, first_width, first_height) = monitors.next()?;
+    let mut left = first_x as i64;
+    let mut top = first_y as i64;
+    let mut right = left + first_width as i64;
+    let mut bottom = top + first_height as i64;
+    for (x, y, width, height) in monitors {
+        left = left.min(x as i64);
+        top = top.min(y as i64);
+        right = right.max(x as i64 + width as i64);
+        bottom = bottom.max(y as i64 + height as i64);
+    }
+    Some((
+        i32::try_from(left).ok()?,
+        i32::try_from(top).ok()?,
+        u32::try_from(right - left).ok()?,
+        u32::try_from(bottom - top).ok()?,
+    ))
 }
 
 #[tauri::command]
@@ -970,5 +996,12 @@ mod tests {
         ));
 
         assert!(normalize_settings(settings).is_ok());
+    }
+
+    #[test]
+    fn virtual_desktop_bounds_include_secondary_monitor_negative_coordinates() {
+        let bounds = virtual_desktop_bounds([(-1920, -200, 1920, 1080), (0, 0, 2560, 1440)]);
+
+        assert_eq!(bounds, Some((-1920, -200, 4480, 1640)));
     }
 }

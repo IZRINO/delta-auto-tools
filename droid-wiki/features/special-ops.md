@@ -8,6 +8,8 @@
 
 工作台通过 `special_ops_begin_calibration_selection` 打开全屏透明框选窗口。确认调用 `special_ops_submit_calibration_selection`，取消调用 `special_ops_cancel_calibration_selection`。校准窗口 label 使用 `special-ops-calibration-*`，由 `overlays.json` 授权。
 
+校准窗口覆盖所有显示器组成的虚拟桌面，不调用窗口最大化。保存坐标时将 WebView 局部坐标加上虚拟桌面原点，支持副屏负坐标。校准期间窗口捕获鼠标以记录点位/框选；底层画面可见，但不会接收该次点击。
+
 分辨率、DPI 或窗口模式变化时，不按比例缩放旧坐标。用户必须切回已校准环境、新建环境，或明确覆盖现有环境。
 
 ## 当前边界

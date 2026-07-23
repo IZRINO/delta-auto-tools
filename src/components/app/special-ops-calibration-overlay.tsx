@@ -23,6 +23,8 @@ export function SpecialOpsCalibrationOverlay() {
     const targetKind = params.get("target_kind") ?? "recognitionRegion";
     const isClickPoint = targetKind === "clickPoint";
     const settingsRevision = Number(params.get("settings_revision") ?? "0");
+    const screenX = Number(params.get("screen_x") ?? "0");
+    const screenY = Number(params.get("screen_y") ?? "0");
     const [start, setStart] = useState<Point | null>(null);
     const [current, setCurrent] = useState<Point | null>(null);
     const [committed, setCommitted] = useState<CalibrationRect | null>(null);
@@ -45,13 +47,13 @@ export function SpecialOpsCalibrationOverlay() {
             await invoke("special_ops_submit_calibration_selection", {
                 environmentId,
                 targetKey,
-                region: committed,
+                region: {...committed, x: committed.x + screenX, y: committed.y + screenY},
                 settingsRevision,
             });
         } catch {
             setSubmitting(false);
         }
-    }, [committed, environmentId, settingsRevision, submitting, targetKey]);
+    }, [committed, environmentId, screenX, screenY, settingsRevision, submitting, targetKey]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -84,7 +86,7 @@ export function SpecialOpsCalibrationOverlay() {
         {activeRect && <div className="pointer-events-none absolute border-2 border-primary bg-primary/20" style={{left: activeRect.x, top: activeRect.y, width: activeRect.width, height: activeRect.height}}/>}
         <div className="pointer-events-none absolute bottom-6 left-1/2 w-[min(92vw,640px)] -translate-x-1/2 rounded-box bg-base-100/90 p-3 text-base-content shadow-xl backdrop-blur">
             <h1 className="font-semibold">特勤处校准</h1>
-            <p className="mt-1 text-sm text-base-content/60">{isClickPoint ? "单击目标位置取点。" : "拖拽框选目标区域。"} Enter 确认，Esc 取消。</p>
+            <p className="mt-1 text-sm text-base-content/60">底层画面保持可见但不会接收点击。{isClickPoint ? "单击目标位置取点。" : "按住左键拖拽框选目标区域。"} Enter 确认，Esc 取消。</p>
             <p className="mt-2 font-mono text-xs">{targetKey}{activeRect ? ` · X ${activeRect.x} Y ${activeRect.y} W ${activeRect.width} H ${activeRect.height}` : ""}</p>
         </div>
         <div className="absolute right-6 top-6 flex gap-2 rounded-box bg-base-100/90 p-3" onMouseDown={(event) => event.stopPropagation()} onMouseUp={(event) => event.stopPropagation()}>
