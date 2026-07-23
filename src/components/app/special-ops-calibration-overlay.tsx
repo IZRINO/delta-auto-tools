@@ -10,6 +10,8 @@ export function SpecialOpsCalibrationOverlay() {
     const environmentId = params.get("environment_id") ?? "";
     const targetKey = params.get("target_key") ?? "";
     const settingsRevision = Number(params.get("settings_revision") ?? "0");
+    const screenX = Number(params.get("screen_x") ?? "0");
+    const screenY = Number(params.get("screen_y") ?? "0");
     const [dragStart, setDragStart] = useState<Point | null>(null);
     const [dragCurrent, setDragCurrent] = useState<Point | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -44,18 +46,22 @@ export function SpecialOpsCalibrationOverlay() {
     return <div
         className="fixed inset-0 cursor-crosshair select-none text-white"
         onContextMenu={(event) => { event.preventDefault(); void cancel(); }}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
             if (event.button !== 0 || submitting) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
             const point = {x: event.clientX, y: event.clientY};
             setDragStart(point);
             setDragCurrent(point);
             setStatus("正在框选区域...");
         }}
-        onMouseMove={(event) => {
+        onPointerMove={(event) => {
             if (dragStart && !submitting) setDragCurrent({x: event.clientX, y: event.clientY});
         }}
-        onMouseUp={(event) => {
+        onPointerUp={(event) => {
             if (!dragStart || submitting) return;
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }
             const rect = getSelectionRect(dragStart, {x: event.clientX, y: event.clientY});
             setDragStart(null);
             setDragCurrent(null);
@@ -68,12 +74,20 @@ export function SpecialOpsCalibrationOverlay() {
             void invoke("special_ops_submit_calibration_selection", {
                 environmentId,
                 targetKey,
-                region: rect,
+                region: {...rect, x: rect.x + screenX, y: rect.y + screenY},
                 settingsRevision,
             }).catch((error) => {
                 setStatus(String(error));
                 setSubmitting(false);
             });
+        }}
+        onPointerCancel={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+            setDragStart(null);
+            setDragCurrent(null);
+            setStatus("框选已中断，请重新拖拽。");
         }}
     >
         {currentRect && <div className="pointer-events-none absolute border-2 border-primary bg-primary/16" style={{left: currentRect.x, top: currentRect.y, width: currentRect.width, height: currentRect.height}}/>}
