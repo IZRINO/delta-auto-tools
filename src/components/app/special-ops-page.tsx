@@ -119,19 +119,7 @@ export function SpecialOpsPage() {
         if (!window.confirm(`删除账号 ${account.wegameId || account.qqAccount || "未命名账号"}？`)) return;
         save({...bootstrap.settings, accounts: bootstrap.settings.accounts.filter((item) => item.id !== account.id)});
     };
-    const activeEnvironment = bootstrap.settings.calibrationEnvironments.find(
-        (item) => item.id === bootstrap.settings.activeCalibrationId,
-    ) ?? bootstrap.settings.calibrationEnvironments[0];
-    const updateEnvironment = (environment: CalibrationEnvironment, patch: Partial<CalibrationEnvironment>) => save({
-        ...bootstrap.settings,
-        calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id ? {...item, ...patch} : item),
-    });
-    const removeEnvironment = (environment: CalibrationEnvironment) => {
-        if (bootstrap.settings.calibrationEnvironments.length <= 1) return;
-        if (!window.confirm(`删除显示环境“${environment.name}”？`)) return;
-        const remaining = bootstrap.settings.calibrationEnvironments.filter((item) => item.id !== environment.id);
-        save({...bootstrap.settings, calibrationEnvironments: remaining, activeCalibrationId: remaining[0]?.id ?? null});
-    };
+    const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
     const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => void invoke(
         "special_ops_begin_calibration_selection",
         {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
@@ -192,18 +180,9 @@ export function SpecialOpsPage() {
 
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><h2 className="text-lg font-semibold">显示环境与点击区域校准</h2><p className="text-xs text-base-content/60">坐标不按账号复制。分辨率、DPI 或窗口模式变化后需更新环境并重新校准。</p></div>
+                <div><h2 className="text-lg font-semibold">点击区域校准</h2><p className="text-xs text-base-content/60">坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。</p></div>
             </div>
-            {bootstrap.settings.calibrationEnvironments.length > 1 && <div className="flex flex-wrap gap-2">{bootstrap.settings.calibrationEnvironments.map((environment) => <div key={environment.id} className="join"><Button className="join-item" size="sm" variant={environment.id === activeEnvironment?.id ? "default" : "outline"} onClick={() => save({...bootstrap.settings, activeCalibrationId: environment.id})}>{environment.name}</Button><Button className="join-item" size="icon-sm" variant="outline" title={`删除 ${environment.name}`} onClick={() => removeEnvironment(environment)}><RiDeleteBinLine/></Button></div>)}</div>}
             {activeEnvironment && <>
-                <div className="grid gap-3 md:grid-cols-5">
-                    <label className="form-control gap-1"><span className="label-text">环境名称</span><DraftInput value={activeEnvironment.name} onCommit={(name) => updateEnvironment(activeEnvironment, {name})}/></label>
-                    <label className="form-control gap-1"><span className="label-text">显示器</span><DraftInput value={activeEnvironment.monitor} onCommit={(monitor) => updateEnvironment(activeEnvironment, {monitor})}/></label>
-                    <label className="form-control gap-1"><span className="label-text">分辨率宽</span><DraftInput type="number" value={String(activeEnvironment.resolutionWidth)} onCommit={(value) => updateEnvironment(activeEnvironment, {resolutionWidth: Number(value)})}/></label>
-                    <label className="form-control gap-1"><span className="label-text">分辨率高</span><DraftInput type="number" value={String(activeEnvironment.resolutionHeight)} onCommit={(value) => updateEnvironment(activeEnvironment, {resolutionHeight: Number(value)})}/></label>
-                    <label className="form-control gap-1"><span className="label-text">DPI 缩放</span><DraftInput type="number" step="0.25" value={String(activeEnvironment.dpiScale)} onCommit={(value) => updateEnvironment(activeEnvironment, {dpiScale: Number(value)})}/></label>
-                    <label className="form-control gap-1 md:col-span-2"><span className="label-text">游戏窗口模式</span><DraftInput value={activeEnvironment.windowMode} onCommit={(windowMode) => updateEnvironment(activeEnvironment, {windowMode})}/></label>
-                </div>
                 <div className="overflow-x-auto rounded-box border border-base-300">
                     <table className="table table-sm">
                         <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th className="text-right">操作</th></tr></thead>

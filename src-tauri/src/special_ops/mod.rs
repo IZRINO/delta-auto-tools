@@ -282,6 +282,16 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
             .calibration_environments
             .push(default_calibration_environment());
     }
+    if let Some(active_id) = settings.active_calibration_id.as_deref() {
+        if let Some(index) = settings
+            .calibration_environments
+            .iter()
+            .position(|item| item.id == active_id)
+        {
+            settings.calibration_environments.swap(0, index);
+        }
+    }
+    settings.calibration_environments.truncate(1);
     let required_targets = default_calibration_targets();
     let mut environment_ids = std::collections::HashSet::new();
     for environment in &mut settings.calibration_environments {
@@ -502,12 +512,12 @@ pub fn special_ops_begin_calibration_selection(
     target_key: String,
     settings_revision: u64,
 ) -> Result<(), AppError> {
-    let target_kind = {
+    {
         let settings = state
             .settings
             .lock()
             .map_err(|_| AppError::from("特勤处状态已损坏"))?;
-        let target = settings
+        settings
             .calibration_environments
             .iter()
             .find(|item| item.id == environment_id)
@@ -518,42 +528,23 @@ pub fn special_ops_begin_calibration_selection(
                     .find(|item| item.key == target_key)
             })
             .ok_or_else(|| AppError::from("校准目标不存在"))?;
-        match &target.kind {
-            CalibrationTargetKind::ClickPoint => "clickPoint",
-            CalibrationTargetKind::InputRegion => "inputRegion",
-            CalibrationTargetKind::RecognitionRegion => "recognitionRegion",
-        }
-    };
+    }
     let label = format!(
         "special-ops-calibration-{}-{}",
         safe_label_component(&environment_id),
         safe_label_component(&target_key)
     );
     destroy_window(&app, &label);
-    let (screen_x, screen_y, screen_w, screen_h) = virtual_desktop_bounds(
-        xcap::Monitor::all()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|monitor| {
-                Some((
-                    monitor.x().ok()?,
-                    monitor.y().ok()?,
-                    monitor.width().ok()?,
-                    monitor.height().ok()?,
-                ))
-            }),
-    )
-    .unwrap_or((0, 0, 1920, 1080));
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.hide();
+    }
     let url = format!(
-        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&target_kind={}&settings_revision={}&screen_x={}&screen_y={}",
+        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}",
         encoded_query_value(&environment_id),
         encoded_query_value(&target_key),
-        target_kind,
-        settings_revision,
-        screen_x,
-        screen_y
+        settings_revision
     );
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+    let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
         .title("特勤处校准")
         .decorations(false)
         .transparent(true)
@@ -563,34 +554,22 @@ pub fn special_ops_begin_calibration_selection(
         .focused(true)
         .visible(true)
         .resizable(false)
-        .inner_size(screen_w as f64, screen_h as f64)
-        .position(screen_x as f64, screen_y as f64)
+        .fullscreen(true)
         .build()
-        .map_err(|error| AppError::from(format!("创建特勤处校准窗口失败: {error}")))?;
+        .map_err(|error| {
+            restore_main_window(&app);
+            AppError::from(format!("创建特勤处校准窗口失败: {error}"))
+        })?;
+    let close_app = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Destroyed | tauri::WindowEvent::CloseRequested { .. }
+        ) {
+            restore_main_window(&close_app);
+        }
+    });
     Ok(())
-}
-
-fn virtual_desktop_bounds(
-    monitors: impl IntoIterator<Item = (i32, i32, u32, u32)>,
-) -> Option<(i32, i32, u32, u32)> {
-    let mut monitors = monitors.into_iter();
-    let (first_x, first_y, first_width, first_height) = monitors.next()?;
-    let mut left = first_x as i64;
-    let mut top = first_y as i64;
-    let mut right = left + first_width as i64;
-    let mut bottom = top + first_height as i64;
-    for (x, y, width, height) in monitors {
-        left = left.min(x as i64);
-        top = top.min(y as i64);
-        right = right.max(x as i64 + width as i64);
-        bottom = bottom.max(y as i64 + height as i64);
-    }
-    Some((
-        i32::try_from(left).ok()?,
-        i32::try_from(top).ok()?,
-        u32::try_from(right - left).ok()?,
-        u32::try_from(bottom - top).ok()?,
-    ))
 }
 
 #[tauri::command]
@@ -642,6 +621,7 @@ pub fn special_ops_submit_calibration_selection(
                 safe_label_component(&target_key)
             );
             destroy_window(&app, &label);
+            restore_main_window(&app);
             Ok(())
         })
         .map_err(AppError::from)
@@ -659,7 +639,15 @@ pub fn special_ops_cancel_calibration_selection(
         safe_label_component(&target_key)
     );
     destroy_window(&app, &label);
+    restore_main_window(&app);
     Ok(())
+}
+
+fn restore_main_window(app: &AppHandle) {
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.set_focus();
+    }
 }
 
 fn local_day_and_minute(now_ms: i64) -> (String, u32) {
@@ -999,9 +987,16 @@ mod tests {
     }
 
     #[test]
-    fn virtual_desktop_bounds_include_secondary_monitor_negative_coordinates() {
-        let bounds = virtual_desktop_bounds([(-1920, -200, 1920, 1080), (0, 0, 2560, 1440)]);
+    fn normalize_keeps_only_active_calibration_environment() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut second = default_calibration_environment();
+        second.id = "second".to_string();
+        settings.calibration_environments.push(second);
+        settings.active_calibration_id = Some("second".to_string());
 
-        assert_eq!(bounds, Some((-1920, -200, 4480, 1640)));
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(normalized.calibration_environments.len(), 1);
+        assert_eq!(normalized.calibration_environments[0].id, "second");
     }
 }
