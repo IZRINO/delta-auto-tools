@@ -569,7 +569,9 @@ pub fn special_ops_begin_calibration_selection(
         .skip_taskbar(true)
         .focused(true)
         .visible(true)
-        .resizable(false)
+        .resizable(true)
+        .inner_size(screen_width as f64, screen_height as f64)
+        .position(screen_x as f64, screen_y as f64)
         .build()
         .map_err(|error| {
             restore_main_window(&app);
@@ -594,6 +596,9 @@ pub fn special_ops_begin_calibration_selection(
             restore_main_window(&app);
             AppError::from(format!("设置校准窗口尺寸失败: {error}"))
         })?;
+    window
+        .set_resizable(false)
+        .map_err(|error| AppError::from(format!("锁定校准窗口尺寸失败: {error}")))?;
     let close_app = app.clone();
     window.on_window_event(move |event| {
         if matches!(

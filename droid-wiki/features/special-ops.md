@@ -8,7 +8,7 @@
 
 框选行为沿用摩斯区域框选交互：先隐藏主窗口，再打开透明 overlay；按住左键拖拽，松开后立即提交并关闭。区域过小时要求重新框选，Esc 或右键取消。提交、取消或窗口异常关闭后恢复主窗口。点击动作执行时使用所选矩形中心。
 
-窗口不使用 `fullscreen(true)` 或 `maximize()`。当前 WebView2 多屏环境中透明 fullscreen 可能退化为 `16x16` 命中区域。后端汇总全部显示器的物理边界，创建窗口后通过 `PhysicalPosition` 与 `PhysicalSize` 显式覆盖完整虚拟桌面；前端使用 Pointer Events 与 pointer capture 接收拖拽，并将局部坐标换算为虚拟桌面绝对坐标。
+窗口不使用 `fullscreen(true)` 或 `maximize()`。当前 WebView2 多屏环境中透明 fullscreen 可能退化为 `16x16` 命中区域。后端汇总全部显示器的物理边界，窗口先以可调整状态创建，再通过 `PhysicalPosition` 与 `PhysicalSize` 显式覆盖完整虚拟桌面，最后锁定尺寸；前端使用 Pointer Events 与 pointer capture 接收拖拽，并将局部坐标换算为虚拟桌面绝对坐标。
 
 工作台通过 `special_ops_begin_calibration_selection` 打开框选窗口。提交调用 `special_ops_submit_calibration_selection`，取消调用 `special_ops_cancel_calibration_selection`。窗口 label 使用 `special-ops-calibration-*`，由 `overlays.json` 授权。
 
