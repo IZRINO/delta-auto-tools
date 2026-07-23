@@ -505,7 +505,7 @@ pub fn special_ops_set_paused(
 }
 
 #[tauri::command]
-pub fn special_ops_begin_calibration_selection(
+pub async fn special_ops_begin_calibration_selection(
     app: AppHandle,
     state: State<'_, SpecialOpsState>,
     environment_id: String,
@@ -535,31 +535,14 @@ pub fn special_ops_begin_calibration_selection(
         safe_label_component(&target_key)
     );
     destroy_window(&app, &label);
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.hide();
-    }
-    let (screen_x, screen_y, screen_width, screen_height) = virtual_desktop_bounds(
-        xcap::Monitor::all()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|monitor| {
-                Some((
-                    monitor.x().ok()?,
-                    monitor.y().ok()?,
-                    monitor.width().ok()?,
-                    monitor.height().ok()?,
-                ))
-            }),
-    )
-    .unwrap_or((0, 0, 1920, 1080));
     let url = format!(
-        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}&screen_x={}&screen_y={}",
+        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}",
         encoded_query_value(&environment_id),
         encoded_query_value(&target_key),
-        settings_revision,
-        screen_x,
-        screen_y
+        settings_revision
     );
+    let load_app = app.clone();
+    let load_label = label.clone();
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
         .title("特勤处校准")
         .decorations(false)
@@ -567,38 +550,36 @@ pub fn special_ops_begin_calibration_selection(
         .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .focused(true)
+        .focused(false)
         .visible(true)
-        .resizable(true)
-        .inner_size(screen_width as f64, screen_height as f64)
-        .position(screen_x as f64, screen_y as f64)
+        .resizable(false)
+        .on_page_load(move |window, payload| {
+            if !matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                return;
+            }
+            let ready_app = load_app.clone();
+            let ready_label = load_label.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if let Err(error) = window.set_fullscreen(true) {
+                    crate::log_error!(
+                        "special_ops::calibration",
+                        "校准窗口进入全屏失败",
+                        "error" => error.to_string()
+                    );
+                    destroy_window(&ready_app, &ready_label);
+                    restore_main_window(&ready_app);
+                    return;
+                }
+                let _ = window.show();
+                let _ = window.set_focus();
+            });
+        })
         .build()
         .map_err(|error| {
             restore_main_window(&app);
             AppError::from(format!("创建特勤处校准窗口失败: {error}"))
         })?;
-    window
-        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            screen_x, screen_y,
-        )))
-        .map_err(|error| {
-            destroy_window(&app, &label);
-            restore_main_window(&app);
-            AppError::from(format!("设置校准窗口位置失败: {error}"))
-        })?;
-    window
-        .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            screen_width,
-            screen_height,
-        )))
-        .map_err(|error| {
-            destroy_window(&app, &label);
-            restore_main_window(&app);
-            AppError::from(format!("设置校准窗口尺寸失败: {error}"))
-        })?;
-    window
-        .set_resizable(false)
-        .map_err(|error| AppError::from(format!("锁定校准窗口尺寸失败: {error}")))?;
     let close_app = app.clone();
     window.on_window_event(move |event| {
         if matches!(
@@ -608,30 +589,16 @@ pub fn special_ops_begin_calibration_selection(
             restore_main_window(&close_app);
         }
     });
+    let timeout_app = app.clone();
+    let timeout_label = label.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        if timeout_app.get_webview_window(&timeout_label).is_some() {
+            destroy_window(&timeout_app, &timeout_label);
+            restore_main_window(&timeout_app);
+        }
+    });
     Ok(())
-}
-
-fn virtual_desktop_bounds(
-    monitors: impl IntoIterator<Item = (i32, i32, u32, u32)>,
-) -> Option<(i32, i32, u32, u32)> {
-    let mut monitors = monitors.into_iter();
-    let (first_x, first_y, first_width, first_height) = monitors.next()?;
-    let mut left = first_x as i64;
-    let mut top = first_y as i64;
-    let mut right = left + first_width as i64;
-    let mut bottom = top + first_height as i64;
-    for (x, y, width, height) in monitors {
-        left = left.min(x as i64);
-        top = top.min(y as i64);
-        right = right.max(x as i64 + width as i64);
-        bottom = bottom.max(y as i64 + height as i64);
-    }
-    Some((
-        i32::try_from(left).ok()?,
-        i32::try_from(top).ok()?,
-        u32::try_from(right - left).ok()?,
-        u32::try_from(bottom - top).ok()?,
-    ))
 }
 
 #[tauri::command]
@@ -1060,13 +1027,5 @@ mod tests {
 
         assert_eq!(normalized.calibration_environments.len(), 1);
         assert_eq!(normalized.calibration_environments[0].id, "second");
-    }
-
-    #[test]
-    fn virtual_desktop_bounds_include_all_monitors() {
-        assert_eq!(
-            virtual_desktop_bounds([(-1920, -200, 1920, 1080), (0, 0, 2560, 1440)]),
-            Some((-1920, -200, 4480, 1640))
-        );
     }
 }
