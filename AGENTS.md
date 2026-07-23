@@ -131,6 +131,8 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 
 ## Project Overview
 
+新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。校准按显示环境全局保存，通过 `special-ops-calibration-*` overlay 框选点击点、输入区域与识别区域。
+
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
 
 开发环境：Windows，仓库路径 `D:/code/ai/sjz/delta-auto-tools`，所有命令在 Windows + Bun 下测试通过。

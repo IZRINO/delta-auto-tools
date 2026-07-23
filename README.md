@@ -1,5 +1,7 @@
 # Delta Auto Tools
 
+> 特勤处自动化开发中：已提供账号、制作台、每日兑换调度及按显示环境保存的全屏区域校准；真实 WeGame/OCR/键鼠执行尚未接入。
+
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。
 
 6 个工具模块 + 攻略网站工作台，前端负责交互与 daisyUI 视觉层，Rust/Tauri 负责快捷键、透明窗口、屏幕识别、本地存储和 Delta 接口调用。

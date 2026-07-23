@@ -6,6 +6,7 @@ import {
     RiPlayLine,
     RiRefreshLine,
     RiShieldCheckLine,
+    RiCrosshair2Line,
 } from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
     type AccountPlan,
+    type CalibrationEnvironment,
     type SpecialOpsBootstrap,
     type StationKind,
     type StationPlan,
@@ -31,6 +33,8 @@ const emptyBootstrap: SpecialOpsBootstrap = {
         dailyExchangeTime: "08:00",
         emergencyHotkey: "Ctrl+Shift+F12",
         accounts: [],
+        activeCalibrationId: null,
+        calibrationEnvironments: [],
     },
     schedule: {dueAccounts: [], nextWakeAtMs: null},
     settingsRevision: 0,
@@ -115,6 +119,34 @@ export function SpecialOpsPage() {
         if (!window.confirm(`删除账号 ${account.wegameId || account.qqAccount || "未命名账号"}？`)) return;
         save({...bootstrap.settings, accounts: bootstrap.settings.accounts.filter((item) => item.id !== account.id)});
     };
+    const activeEnvironment = bootstrap.settings.calibrationEnvironments.find(
+        (item) => item.id === bootstrap.settings.activeCalibrationId,
+    ) ?? bootstrap.settings.calibrationEnvironments[0];
+    const updateEnvironment = (environment: CalibrationEnvironment, patch: Partial<CalibrationEnvironment>) => save({
+        ...bootstrap.settings,
+        calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id ? {...item, ...patch} : item),
+    });
+    const addEnvironment = () => {
+        const id = crypto.randomUUID();
+        save({
+            ...bootstrap.settings,
+            activeCalibrationId: id,
+            calibrationEnvironments: [...bootstrap.settings.calibrationEnvironments, {
+                id,
+                name: `显示环境 ${bootstrap.settings.calibrationEnvironments.length + 1}`,
+                monitor: "主显示器",
+                resolutionWidth: window.screen.width,
+                resolutionHeight: window.screen.height,
+                dpiScale: window.devicePixelRatio,
+                windowMode: "无边框窗口",
+                targets: [],
+            }],
+        });
+    };
+    const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => void invoke(
+        "special_ops_begin_calibration_selection",
+        {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
+    ).catch((cause) => setError(String(cause)));
 
     return <main className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -167,6 +199,30 @@ export function SpecialOpsPage() {
                     <div className="mt-3 flex items-center gap-2 text-xs text-base-content/60"><RiShieldCheckLine/>兑换目标：{due?.ammoTargetIds.length ?? 0} 个待处理</div>
                 </article>;
             })}
+        </section>
+
+        <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div><h2 className="text-lg font-semibold">显示环境与点击区域校准</h2><p className="text-xs text-base-content/60">坐标不按账号复制。分辨率、DPI 或窗口模式变化时必须新建或明确覆盖。</p></div>
+                <Button size="sm" variant="outline" onClick={addEnvironment}><RiAddLine data-icon="inline-start"/>新建显示环境</Button>
+            </div>
+            {bootstrap.settings.calibrationEnvironments.length > 1 && <div className="flex flex-wrap gap-2">{bootstrap.settings.calibrationEnvironments.map((environment) => <Button key={environment.id} size="sm" variant={environment.id === activeEnvironment?.id ? "default" : "outline"} onClick={() => save({...bootstrap.settings, activeCalibrationId: environment.id})}>{environment.name}</Button>)}</div>}
+            {activeEnvironment && <>
+                <div className="grid gap-3 md:grid-cols-5">
+                    <label className="form-control gap-1"><span className="label-text">环境名称</span><DraftInput value={activeEnvironment.name} onCommit={(name) => updateEnvironment(activeEnvironment, {name})}/></label>
+                    <label className="form-control gap-1"><span className="label-text">显示器</span><DraftInput value={activeEnvironment.monitor} onCommit={(monitor) => updateEnvironment(activeEnvironment, {monitor})}/></label>
+                    <label className="form-control gap-1"><span className="label-text">分辨率宽</span><DraftInput type="number" value={String(activeEnvironment.resolutionWidth)} onCommit={(value) => updateEnvironment(activeEnvironment, {resolutionWidth: Number(value)})}/></label>
+                    <label className="form-control gap-1"><span className="label-text">分辨率高</span><DraftInput type="number" value={String(activeEnvironment.resolutionHeight)} onCommit={(value) => updateEnvironment(activeEnvironment, {resolutionHeight: Number(value)})}/></label>
+                    <label className="form-control gap-1"><span className="label-text">DPI 缩放</span><DraftInput type="number" step="0.25" value={String(activeEnvironment.dpiScale)} onCommit={(value) => updateEnvironment(activeEnvironment, {dpiScale: Number(value)})}/></label>
+                    <label className="form-control gap-1 md:col-span-2"><span className="label-text">游戏窗口模式</span><DraftInput value={activeEnvironment.windowMode} onCommit={(windowMode) => updateEnvironment(activeEnvironment, {windowMode})}/></label>
+                </div>
+                <div className="overflow-x-auto rounded-box border border-base-300">
+                    <table className="table table-sm">
+                        <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th className="text-right">操作</th></tr></thead>
+                        <tbody>{activeEnvironment.targets.map((target) => <tr key={target.key}><td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div></td><td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : "识别区域"}</td><td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td><td className="text-right"><Button size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button></td></tr>)}</tbody>
+                    </table>
+                </div>
+            </>}
         </section>
     </main>;
 }

@@ -17,7 +17,8 @@
     "rapidfire-position",
     "rapidfire-position-*",
     "recognition-overlay",
-    "recognition-overlay-*"
+    "recognition-overlay-*",
+    "special-ops-calibration-*"
   ],
   "permissions": [
     "core:event:allow-listen",

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::overlay_utils::{destroy_window, encoded_query_value, safe_label_component};
 use crate::{app_error::AppError, settings::SettingsCoordinator};
 
 const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
@@ -77,12 +78,55 @@ pub struct AccountPlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CalibrationRect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CalibrationTargetKind {
+    ClickPoint,
+    InputRegion,
+    RecognitionRegion,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrationTarget {
+    pub key: String,
+    pub label: String,
+    pub kind: CalibrationTargetKind,
+    pub rect: Option<CalibrationRect>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrationEnvironment {
+    pub id: String,
+    pub name: String,
+    pub monitor: String,
+    pub resolution_width: u32,
+    pub resolution_height: u32,
+    pub dpi_scale: f64,
+    pub window_mode: String,
+    pub targets: Vec<CalibrationTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct SpecialOpsSettings {
     pub enabled: bool,
     pub paused: bool,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
     pub accounts: Vec<AccountPlan>,
+    #[serde(default)]
+    pub active_calibration_id: Option<String>,
+    #[serde(default)]
+    pub calibration_environments: Vec<CalibrationEnvironment>,
 }
 
 impl Default for SpecialOpsSettings {
@@ -93,8 +137,77 @@ impl Default for SpecialOpsSettings {
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
             accounts: Vec::new(),
+            active_calibration_id: Some("default".to_string()),
+            calibration_environments: vec![default_calibration_environment()],
         }
     }
+}
+
+fn default_calibration_environment() -> CalibrationEnvironment {
+    CalibrationEnvironment {
+        id: "default".to_string(),
+        name: "默认显示环境".to_string(),
+        monitor: "主显示器".to_string(),
+        resolution_width: 1920,
+        resolution_height: 1080,
+        dpi_scale: 1.0,
+        window_mode: "无边框窗口".to_string(),
+        targets: default_calibration_targets(),
+    }
+}
+
+fn default_calibration_targets() -> Vec<CalibrationTarget> {
+    use CalibrationTargetKind::{ClickPoint, InputRegion, RecognitionRegion};
+    [
+        ("wegame.loginMode", "WeGame QQ 账号密码登录入口", ClickPoint),
+        ("wegame.account", "QQ 账号输入区域", InputRegion),
+        ("wegame.password", "QQ 密码输入区域", InputRegion),
+        ("wegame.login", "WeGame 登录按钮", ClickPoint),
+        ("wegame.avatar", "WeGame 头像菜单", ClickPoint),
+        ("wegame.profile", "个人主页入口", ClickPoint),
+        ("wegame.id", "WeGame ID 识别区域", RecognitionRegion),
+        ("wegame.launchPage", "游戏启动前置界面入口", ClickPoint),
+        ("wegame.launch", "启动游戏按钮", ClickPoint),
+        ("game.modeReady", "模式选择可用识别区域", RecognitionRegion),
+        ("game.beaconMode", "烽火地带入口", ClickPoint),
+        ("game.startGame", "开始游戏识别区域", RecognitionRegion),
+        ("game.specialOps", "特勤处识别与点击区域", RecognitionRegion),
+        (
+            "game.stationGrid",
+            "四制作台页面识别区域",
+            RecognitionRegion,
+        ),
+        ("craft.station", "制作台点击区域", ClickPoint),
+        (
+            "craft.claimReady",
+            "可收取感叹号识别区域",
+            RecognitionRegion,
+        ),
+        ("craft.reward", "获得奖励页面识别区域", RecognitionRegion),
+        ("craft.idle", "空闲中文字识别区域", RecognitionRegion),
+        ("craft.recipe", "置顶配方点击区域", ClickPoint),
+        ("craft.fill", "一键补齐识别与点击区域", RecognitionRegion),
+        ("craft.purchase", "购买材料按钮", ClickPoint),
+        ("craft.produce", "生产按钮识别与点击区域", RecognitionRegion),
+        ("craft.abort", "中止按钮识别区域", RecognitionRegion),
+        ("ammo.department", "部门入口", ClickPoint),
+        ("ammo.supply", "军需处入口", ClickPoint),
+        ("ammo.tactical", "战术部门入口", ClickPoint),
+        ("ammo.seasonal", "赛季限定入口", ClickPoint),
+        ("ammo.list", "子弹兑换列表区域", RecognitionRegion),
+        ("ammo.target", "目标子弹点击区域", ClickPoint),
+        ("ammo.fill", "子弹一键补齐区域", RecognitionRegion),
+        ("ammo.exchange", "兑换按钮区域", RecognitionRegion),
+        ("ammo.success", "兑换成功灰色按钮区域", RecognitionRegion),
+    ]
+    .into_iter()
+    .map(|(key, label, kind)| CalibrationTarget {
+        key: key.to_string(),
+        label: label.to_string(),
+        kind,
+        rect: None,
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -112,7 +225,7 @@ pub struct ScheduleSnapshot {
     pub next_wake_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecialOpsBootstrap {
     pub settings: SpecialOpsSettings,
@@ -162,6 +275,48 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
     }
     if settings.emergency_hotkey.trim().is_empty() {
         return Err("紧急停止快捷键不能为空".to_string());
+    }
+
+    if settings.calibration_environments.is_empty() {
+        settings
+            .calibration_environments
+            .push(default_calibration_environment());
+    }
+    let required_targets = default_calibration_targets();
+    let mut environment_ids = std::collections::HashSet::new();
+    for environment in &mut settings.calibration_environments {
+        environment.id = environment.id.trim().to_string();
+        environment.name = environment.name.trim().to_string();
+        if environment.id.is_empty() || !environment_ids.insert(environment.id.clone()) {
+            return Err("显示环境 ID 必须非空且唯一".to_string());
+        }
+        if environment.name.is_empty()
+            || environment.resolution_width == 0
+            || environment.resolution_height == 0
+            || !environment.dpi_scale.is_finite()
+            || environment.dpi_scale <= 0.0
+        {
+            return Err(format!("显示环境 {} 配置无效", environment.id));
+        }
+        for target in &required_targets {
+            if !environment
+                .targets
+                .iter()
+                .any(|item| item.key == target.key)
+            {
+                environment.targets.push(target.clone());
+            }
+        }
+    }
+    if settings
+        .active_calibration_id
+        .as_ref()
+        .is_none_or(|id| !environment_ids.contains(id))
+    {
+        settings.active_calibration_id = settings
+            .calibration_environments
+            .first()
+            .map(|item| item.id.clone());
     }
 
     let mut ids = std::collections::HashSet::new();
@@ -343,6 +498,124 @@ pub fn special_ops_set_paused(
             },
         )
         .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn special_ops_begin_calibration_selection(
+    app: AppHandle,
+    environment_id: String,
+    target_key: String,
+    settings_revision: u64,
+) -> Result<(), AppError> {
+    let label = format!(
+        "special-ops-calibration-{}-{}",
+        safe_label_component(&environment_id),
+        safe_label_component(&target_key)
+    );
+    destroy_window(&app, &label);
+    let (screen_x, screen_y, screen_w, screen_h) = xcap::Monitor::all()
+        .ok()
+        .and_then(|monitors| monitors.into_iter().next())
+        .map(|monitor| {
+            (
+                monitor.x().unwrap_or(0),
+                monitor.y().unwrap_or(0),
+                monitor.width().unwrap_or(1920),
+                monitor.height().unwrap_or(1080),
+            )
+        })
+        .unwrap_or((0, 0, 1920, 1080));
+    let url = format!(
+        "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}",
+        encoded_query_value(&environment_id),
+        encoded_query_value(&target_key),
+        settings_revision
+    );
+    let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+        .title("特勤处校准")
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true)
+        .visible(true)
+        .resizable(false)
+        .inner_size(screen_w as f64, screen_h as f64)
+        .position(screen_x as f64, screen_y as f64)
+        .build()
+        .map_err(|error| AppError::from(format!("创建特勤处校准窗口失败: {error}")))?;
+    let _ = window.maximize();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn special_ops_submit_calibration_selection(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    environment_id: String,
+    target_key: String,
+    region: CalibrationRect,
+    settings_revision: u64,
+) -> Result<(), AppError> {
+    settings_coordinator
+        .with_revision(settings_revision, || -> Result<(), String> {
+            if region.width <= 2 || region.height <= 2 {
+                return Err("校准区域太小".to_string());
+            }
+            let settings = {
+                let settings = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?;
+                let mut next = settings.clone();
+                let environment = next
+                    .calibration_environments
+                    .iter_mut()
+                    .find(|item| item.id == environment_id)
+                    .ok_or_else(|| "显示环境不存在".to_string())?;
+                let target = environment
+                    .targets
+                    .iter_mut()
+                    .find(|item| item.key == target_key)
+                    .ok_or_else(|| "校准目标不存在".to_string())?;
+                target.rect = Some(region);
+                next
+            };
+            save_settings(&app, &settings)?;
+            *state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+            emit_state(
+                &app,
+                &build_bootstrap(settings, settings_revision, now_ms()),
+            );
+            let label = format!(
+                "special-ops-calibration-{}-{}",
+                safe_label_component(&environment_id),
+                safe_label_component(&target_key)
+            );
+            destroy_window(&app, &label);
+            Ok(())
+        })
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn special_ops_cancel_calibration_selection(
+    app: AppHandle,
+    environment_id: String,
+    target_key: String,
+) -> Result<(), AppError> {
+    let label = format!(
+        "special-ops-calibration-{}-{}",
+        safe_label_component(&environment_id),
+        safe_label_component(&target_key)
+    );
+    destroy_window(&app, &label);
+    Ok(())
 }
 
 fn local_day_and_minute(now_ms: i64) -> (String, u32) {
@@ -530,6 +803,7 @@ mod tests {
                     vec![station(StationKind::Pharmacy, now - 1)],
                 ),
             ],
+            ..SpecialOpsSettings::default()
         };
 
         let snapshot = build_schedule(&settings, now);
@@ -575,6 +849,7 @@ mod tests {
                 ],
                 ..account("active", AccountStatus::Ready, Vec::new())
             }],
+            ..SpecialOpsSettings::default()
         };
 
         let snapshot = build_schedule(&settings, now);
@@ -604,6 +879,7 @@ mod tests {
                 }],
                 ..account("active", AccountStatus::Ready, Vec::new())
             }],
+            ..SpecialOpsSettings::default()
         };
 
         let snapshot = build_schedule(&settings, now);
@@ -627,6 +903,7 @@ mod tests {
                 AccountStatus::Ready,
                 vec![station(StationKind::TechnicalCenter, now - 1)],
             )],
+            ..SpecialOpsSettings::default()
         };
 
         let snapshot = build_schedule(&settings, now);
@@ -641,5 +918,19 @@ mod tests {
         assert_eq!(daily_exchange_minutes("8:00"), None);
         assert_eq!(daily_exchange_minutes("08:0"), None);
         assert_eq!(daily_exchange_minutes("24:00"), None);
+    }
+
+    #[test]
+    fn normalize_restores_required_calibration_targets() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.calibration_environments[0].targets.clear();
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert_eq!(
+            normalized.calibration_environments[0].targets.len(),
+            default_calibration_targets().len()
+        );
+        assert_eq!(normalized.active_calibration_id.as_deref(), Some("default"));
     }
 }

@@ -265,6 +265,9 @@ pub fn run() {
             special_ops::special_ops_get_bootstrap,
             special_ops::special_ops_save_settings,
             special_ops::special_ops_set_paused,
+            special_ops::special_ops_begin_calibration_selection,
+            special_ops::special_ops_submit_calibration_selection,
+            special_ops::special_ops_cancel_calibration_selection,
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,
