@@ -1,12 +1,14 @@
 import {type ComponentProps, useEffect, useState} from "react";
 import {
     RiAddLine,
+    RiArrowDownLine,
+    RiArrowUpLine,
+    RiCrosshair2Line,
     RiDeleteBinLine,
     RiPauseLine,
     RiPlayLine,
     RiRefreshLine,
     RiShieldCheckLine,
-    RiCrosshair2Line,
 } from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
@@ -19,6 +21,7 @@ import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
     type AccountPlan,
+    type AmmoTarget,
     type CalibrationEnvironment,
     type SpecialOpsBootstrap,
     type StationKind,
@@ -68,6 +71,19 @@ function createAccount(order: number): AccountPlan {
     };
 }
 
+function createAmmoTarget(order: number): AmmoTarget {
+    return {
+        id: crypto.randomUUID(),
+        name: "",
+        enabled: true,
+        seasonal: false,
+        scrollSteps: 0,
+        order,
+        lastSuccessDay: null,
+        retryCount: 0,
+    };
+}
+
 function DraftInput({value, onCommit, ...props}: Omit<ComponentProps<typeof Input>, "value" | "onChange"> & {
     value: string;
     onCommit: (value: string) => void;
@@ -111,6 +127,25 @@ export function SpecialOpsPage() {
     const updateStation = (account: AccountPlan, station: StationPlan, patch: Partial<StationPlan>) => updateAccount(account, {
         stations: account.stations.map((item) => item.kind === station.kind ? {...item, ...patch} : item),
     });
+    const updateAmmoTarget = (account: AccountPlan, target: AmmoTarget, patch: Partial<AmmoTarget>) => updateAccount(account, {
+        ammoTargets: account.ammoTargets.map((item) => item.id === target.id ? {...item, ...patch} : item),
+    });
+    const addAmmoTarget = (account: AccountPlan) => updateAccount(account, {
+        ammoTargets: [...account.ammoTargets, createAmmoTarget(account.ammoTargets.length)],
+    });
+    const removeAmmoTarget = (account: AccountPlan, target: AmmoTarget) => updateAccount(account, {
+        ammoTargets: account.ammoTargets
+            .filter((item) => item.id !== target.id)
+            .map((item, order) => ({...item, order})),
+    });
+    const moveAmmoTarget = (account: AccountPlan, index: number, offset: -1 | 1) => {
+        const nextIndex = index + offset;
+        if (nextIndex < 0 || nextIndex >= account.ammoTargets.length) return;
+        const ammoTargets = [...account.ammoTargets];
+        const [moved] = ammoTargets.splice(index, 1);
+        ammoTargets.splice(nextIndex, 0, moved);
+        updateAccount(account, {ammoTargets: ammoTargets.map((item, order) => ({...item, order}))});
+    };
     const addAccount = () => save({
         ...bootstrap.settings,
         accounts: [...bootstrap.settings.accounts, createAccount(bootstrap.settings.accounts.length)],
@@ -173,7 +208,30 @@ export function SpecialOpsPage() {
                             <div className="mt-2 text-xs text-base-content/60">{station.status}{due?.stationKinds.includes(station.kind) ? " · 到期" : ""}</div>
                         </div>)}
                     </div>
-                    <div className="mt-3 flex items-center gap-2 text-xs text-base-content/60"><RiShieldCheckLine/>兑换目标：{due?.ammoTargetIds.length ?? 0} 个待处理</div>
+                    <div className="mt-3 border-t border-base-300 pt-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2"><RiShieldCheckLine/><h4 className="text-sm font-medium">子弹兑换顺序</h4><span className="text-xs text-base-content/60">{due?.ammoTargetIds.length ?? 0} 个待处理</span></div>
+                            <Button size="sm" variant="outline" onClick={() => addAmmoTarget(account)}><RiAddLine data-icon="inline-start"/>添加子弹</Button>
+                        </div>
+                        {account.ammoTargets.length === 0 ? <p className="mt-2 text-xs text-base-content/60">未配置兑换目标</p> : (
+                            <ul className="list mt-2">
+                                {account.ammoTargets.map((target, targetIndex) => <li key={target.id} className="list-row items-center gap-2 border-t border-base-300 px-0">
+                                    <span className="font-mono text-xs text-base-content/50">{String(targetIndex + 1).padStart(2, "0")}</span>
+                                    <div className="list-col-grow grid min-w-0 gap-2 sm:grid-cols-[minmax(10rem,1fr)_7rem_auto_auto] sm:items-end">
+                                        <label className="form-control gap-1"><span className="label-text text-xs">子弹类型</span><DraftInput value={target.name} placeholder="例如：5.45×39mm BT" onCommit={(name) => updateAmmoTarget(account, target, {name})}/></label>
+                                        <label className="form-control gap-1"><span className="label-text text-xs">相对滚轮步数</span><DraftInput type="number" min={0} step={1} value={String(target.scrollSteps)} onCommit={(value) => updateAmmoTarget(account, target, {scrollSteps: Math.max(0, Math.trunc(Number(value) || 0))})}/></label>
+                                        <label className="flex h-9 items-center gap-2 text-xs"><Switch checked={target.seasonal} onCheckedChange={(seasonal) => updateAmmoTarget(account, target, {seasonal})}/>赛季限定</label>
+                                        <label className="flex h-9 items-center gap-2 text-xs"><Switch checked={target.enabled} onCheckedChange={(enabled) => updateAmmoTarget(account, target, {enabled})}/>启用</label>
+                                    </div>
+                                    <div className="join">
+                                        <Button className="join-item" disabled={targetIndex === 0} size="icon-sm" title="上移" variant="ghost" onClick={() => moveAmmoTarget(account, targetIndex, -1)}><RiArrowUpLine data-icon="inline-start"/></Button>
+                                        <Button className="join-item" disabled={targetIndex === account.ammoTargets.length - 1} size="icon-sm" title="下移" variant="ghost" onClick={() => moveAmmoTarget(account, targetIndex, 1)}><RiArrowDownLine data-icon="inline-start"/></Button>
+                                        <Button className="join-item" size="icon-sm" title="删除子弹" variant="ghost" onClick={() => removeAmmoTarget(account, target)}><RiDeleteBinLine data-icon="inline-start"/></Button>
+                                    </div>
+                                </li>)}
+                            </ul>
+                        )}
+                    </div>
                 </article>;
             })}
         </section>

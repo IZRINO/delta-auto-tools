@@ -56,6 +56,8 @@ pub struct AmmoTarget {
     pub name: String,
     pub enabled: bool,
     pub seasonal: bool,
+    #[serde(default)]
+    pub scroll_steps: u32,
     pub order: u32,
     pub last_success_day: Option<String>,
     pub retry_count: u8,
@@ -168,8 +170,17 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         ("wegame.id", "WeGame ID 识别区域", RecognitionRegion),
         ("wegame.launchPage", "游戏启动前置界面入口", ClickPoint),
         ("wegame.launch", "启动游戏按钮", ClickPoint),
-        ("game.modeReady", "模式选择可用识别区域", RecognitionRegion),
+        (
+            "game.modeReady",
+            "模式选择可用状态参考区域",
+            RecognitionRegion,
+        ),
         ("game.beaconMode", "烽火地带入口", ClickPoint),
+        (
+            "game.activityPopup",
+            "烽火地带活动弹窗识别区域（命中按空格）",
+            RecognitionRegion,
+        ),
         ("game.startGame", "开始游戏识别区域", RecognitionRegion),
         ("game.specialOps", "特勤处识别与点击区域", RecognitionRegion),
         (
@@ -179,8 +190,23 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         ),
         ("craft.station", "制作台点击区域", ClickPoint),
         (
-            "craft.claimReady",
-            "可收取感叹号识别区域",
+            "craft.claimReady.technicalCenter",
+            "技术中心可收取感叹号",
+            RecognitionRegion,
+        ),
+        (
+            "craft.claimReady.workbench",
+            "工作台可收取感叹号",
+            RecognitionRegion,
+        ),
+        (
+            "craft.claimReady.pharmacy",
+            "制药台可收取感叹号",
+            RecognitionRegion,
+        ),
+        (
+            "craft.claimReady.armorBench",
+            "防具台可收取感叹号",
             RecognitionRegion,
         ),
         ("craft.reward", "获得奖励页面识别区域", RecognitionRegion),
@@ -308,15 +334,22 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
         {
             return Err(format!("显示环境 {} 配置无效", environment.id));
         }
-        for target in &required_targets {
-            if !environment
-                .targets
-                .iter()
-                .any(|item| item.key == target.key)
-            {
-                environment.targets.push(target.clone());
-            }
-        }
+        let mut existing_targets = environment
+            .targets
+            .drain(..)
+            .map(|target| (target.key.clone(), target))
+            .collect::<std::collections::HashMap<_, _>>();
+        environment.targets = required_targets
+            .iter()
+            .map(|required| {
+                let mut target = existing_targets
+                    .remove(&required.key)
+                    .unwrap_or_else(|| required.clone());
+                target.label = required.label.clone();
+                target.kind = required.kind.clone();
+                target
+            })
+            .collect();
     }
     if settings
         .active_calibration_id
@@ -357,9 +390,13 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
         }
         account.stations = stations;
         account.ammo_targets.sort_by_key(|target| target.order);
+        let mut ammo_ids = std::collections::HashSet::new();
         for (order, target) in account.ammo_targets.iter_mut().enumerate() {
             target.id = target.id.trim().to_string();
             target.name = target.name.trim().to_string();
+            if target.id.is_empty() || !ammo_ids.insert(target.id.clone()) {
+                return Err(format!("账号 {} 的子弹目标 ID 必须非空且唯一", account.id));
+            }
             target.order = order as u32;
         }
     }
@@ -894,6 +931,7 @@ mod tests {
                         name: "目标 A".to_string(),
                         enabled: true,
                         seasonal: false,
+                        scroll_steps: 0,
                         order: 1,
                         last_success_day: None,
                         retry_count: 0,
@@ -903,6 +941,7 @@ mod tests {
                         name: "目标 B".to_string(),
                         enabled: true,
                         seasonal: false,
+                        scroll_steps: 2,
                         order: 2,
                         last_success_day: Some("2026-07-23".to_string()),
                         retry_count: 0,
@@ -934,6 +973,7 @@ mod tests {
                     name: "鐩爣 A".to_string(),
                     enabled: true,
                     seasonal: false,
+                    scroll_steps: 0,
                     order: 0,
                     last_success_day: None,
                     retry_count: 0,
@@ -982,6 +1022,16 @@ mod tests {
     }
 
     #[test]
+    fn ammo_target_defaults_scroll_steps_for_legacy_settings() {
+        let target: AmmoTarget = serde_json::from_str(
+            r#"{"id":"ammo-1","name":"测试子弹","enabled":true,"seasonal":false,"order":0,"lastSuccessDay":null,"retryCount":0}"#,
+        )
+        .expect("旧配置应兼容新增滚轮步数字段");
+
+        assert_eq!(target.scroll_steps, 0);
+    }
+
+    #[test]
     fn normalize_restores_required_calibration_targets() {
         let mut settings = SpecialOpsSettings::default();
         settings.calibration_environments[0].targets.clear();
@@ -993,6 +1043,38 @@ mod tests {
             default_calibration_targets().len()
         );
         assert_eq!(normalized.active_calibration_id.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn normalize_replaces_shared_claim_ready_with_station_targets() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.calibration_environments[0]
+            .targets
+            .push(CalibrationTarget {
+                key: "craft.claimReady".to_string(),
+                label: "旧通用感叹号".to_string(),
+                kind: CalibrationTargetKind::RecognitionRegion,
+                rect: Some(CalibrationRect {
+                    x: 1,
+                    y: 2,
+                    width: 3,
+                    height: 4,
+                }),
+            });
+
+        let normalized = normalize_settings(settings).unwrap();
+        let targets = &normalized.calibration_environments[0].targets;
+
+        assert!(!targets
+            .iter()
+            .any(|target| target.key == "craft.claimReady"));
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| target.key.starts_with("craft.claimReady."))
+                .count(),
+            4
+        );
     }
 
     #[test]
