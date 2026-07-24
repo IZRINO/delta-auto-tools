@@ -60,28 +60,30 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
     open: vi.fn(),
 }));
 
+const recognitionPageModule = await import("@/components/app/recognition-page");
+
 describe("recognition-page 全局开关提示", () => {
     it("全局关闭时返回识别不可响应提示", async () => {
-        const {getRecognitionGlobalStatusMessage} = await import("@/components/app/recognition-page");
+        const {getRecognitionGlobalStatusMessage} = await recognitionPageModule;
         expect(getRecognitionGlobalStatusMessage(false)).toBe("全局开关关闭，识别触发不会响应。");
     });
 
     it("全局开启时不返回提示", async () => {
-        const {getRecognitionGlobalStatusMessage} = await import("@/components/app/recognition-page");
+        const {getRecognitionGlobalStatusMessage} = await recognitionPageModule;
         expect(getRecognitionGlobalStatusMessage(true)).toBeNull();
     });
 });
 
 describe("recognition-page 按键效果步骤录制", () => {
     it("暴露标点热键录制提示", async () => {
-        const {RECOGNITION_HOTKEY_HELPER_TEXT} = await import("@/components/app/recognition-page");
+        const {RECOGNITION_HOTKEY_HELPER_TEXT} = await recognitionPageModule;
 
         expect(RECOGNITION_HOTKEY_HELPER_TEXT).toContain("F1-F24");
         expect(RECOGNITION_HOTKEY_HELPER_TEXT).toContain(", . ; / \\ [ ] - = + ` '");
     });
 
     it("录制第二步只更新第二步并保留首步 effectHotkey", async () => {
-        const {patchHotkeyEffectStep} = await import("@/components/app/recognition-page");
+        const {patchHotkeyEffectStep} = await recognitionPageModule;
         const patch = patchHotkeyEffectStep({
             id: "card-1",
             name: "卡片",
@@ -123,7 +125,7 @@ describe("recognition-page 按键效果步骤录制", () => {
     });
 
     it("录制首步同步更新 effectHotkey", async () => {
-        const {patchHotkeyEffectStep} = await import("@/components/app/recognition-page");
+        const {patchHotkeyEffectStep} = await recognitionPageModule;
         const patch = patchHotkeyEffectStep({
             id: "card-1",
             name: "卡片",
@@ -165,7 +167,7 @@ describe("recognition-page 按键效果步骤录制", () => {
 
 describe("recognition-page 分组排序 helper", () => {
     it("cardsForGroup 按组过滤并按 order 排序", async () => {
-        const {cardsForGroup} = await import("@/components/app/recognition-page");
+        const {cardsForGroup} = await recognitionPageModule;
         const form = {
             audioEnabled: true,
             cardGroups: [
@@ -183,7 +185,7 @@ describe("recognition-page 分组排序 helper", () => {
     });
 
     it("reorderCardsWithinGroup 只重排同组卡片", async () => {
-        const {reorderCardsWithinGroup} = await import("@/components/app/recognition-page");
+        const {reorderCardsWithinGroup} = await recognitionPageModule;
         const cards = [
             makeCard("a", "g1", 0),
             makeCard("b", "g1", 1),
@@ -198,7 +200,7 @@ describe("recognition-page 分组排序 helper", () => {
     });
 
     it("moveCardToGroup 移动到目标分组末尾并重排两侧 order", async () => {
-        const {moveCardToGroup} = await import("@/components/app/recognition-page");
+        const {moveCardToGroup} = await recognitionPageModule;
         const cards = [
             makeCard("a", "g1", 0),
             makeCard("b", "g1", 1),
@@ -214,7 +216,7 @@ describe("recognition-page 分组排序 helper", () => {
     });
 
     it("moveCardToGroup 后可把新组内卡片上移到 order 0", async () => {
-        const {moveCardToGroup, reorderCardsWithinGroup} = await import("@/components/app/recognition-page");
+        const {moveCardToGroup, reorderCardsWithinGroup} = await recognitionPageModule;
         const cards = [
             makeCard("a", "g1", 0),
             makeCard("b", "g1", 1),
@@ -236,7 +238,7 @@ describe("recognition-page 分组排序 helper", () => {
     });
 
     it("moveCardToGroup 移动到默认分组时保持两侧 order 连续", async () => {
-        const {moveCardToGroup} = await import("@/components/app/recognition-page");
+        const {moveCardToGroup} = await recognitionPageModule;
         const cards = [
             makeCard("a", "g1", 0),
             makeCard("b", "g1", 1),
@@ -258,7 +260,7 @@ describe("recognition-page 分组排序 helper", () => {
     });
 
     it("patchRecognitionGroup 为分组开关生成 settings patch", async () => {
-        const {patchRecognitionGroup} = await import("@/components/app/recognition-page");
+        const {patchRecognitionGroup} = await recognitionPageModule;
         const groups = [
             {id: "g1", name: "战斗", order: 0, collapsed: false, enabled: true},
             {id: "g2", name: "生活", order: 1, collapsed: false, enabled: true},

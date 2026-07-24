@@ -22,9 +22,11 @@ import {SPECIAL_OPS_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
+    formatCalibrationTemplateTestResult,
     type AccountPlan,
     type AmmoTarget,
     type CalibrationEnvironment,
+    type CalibrationTemplateTestResult,
     type CalibrationTarget,
     type SpecialOpsBootstrap,
     type StationKind,
@@ -100,6 +102,8 @@ export function SpecialOpsPage() {
     const isNativeShell = useNativeShell();
     const [bootstrap, setBootstrap] = useState(emptyBootstrap);
     const [error, setError] = useState<string | null>(null);
+    const [testingTargetKey, setTestingTargetKey] = useState<string | null>(null);
+    const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
 
     const applyResult = (next: SpecialOpsBootstrap) => {
         setBootstrap(next);
@@ -158,20 +162,26 @@ export function SpecialOpsPage() {
         save({...bootstrap.settings, accounts: bootstrap.settings.accounts.filter((item) => item.id !== account.id)});
     };
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
-    const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => void invoke(
-        "special_ops_begin_calibration_selection",
-        {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
-    ).catch((cause) => setError(String(cause)));
+    const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => {
+        setCalibrationTestResult(null);
+        void invoke(
+            "special_ops_begin_calibration_selection",
+            {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
+        ).catch((cause) => setError(String(cause)));
+    };
     const updateCalibrationTarget = (
         environment: CalibrationEnvironment,
         target: CalibrationTarget,
         patch: Partial<CalibrationTarget>,
-    ) => save({
-        ...bootstrap.settings,
-        calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id
-            ? {...item, targets: item.targets.map((candidate) => candidate.key === target.key ? {...candidate, ...patch} : candidate)}
-            : item),
-    });
+    ) => {
+        setCalibrationTestResult(null);
+        save({
+            ...bootstrap.settings,
+            calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id
+                ? {...item, targets: item.targets.map((candidate) => candidate.key === target.key ? {...candidate, ...patch} : candidate)}
+                : item),
+        });
+    };
     const pickReferenceImage = async (environment: CalibrationEnvironment, target: CalibrationTarget) => {
         if (!isNativeShell) return;
         try {
@@ -183,6 +193,23 @@ export function SpecialOpsPage() {
             if (typeof picked === "string") updateCalibrationTarget(environment, target, {referenceImagePath: picked});
         } catch (cause) {
             setError(String(cause));
+        }
+    };
+    const testCalibrationTarget = async (environment: CalibrationEnvironment, target: CalibrationTarget) => {
+        if (!isNativeShell) return;
+        setTestingTargetKey(target.key);
+        setCalibrationTestResult(null);
+        setError(null);
+        try {
+            const result = await invoke<CalibrationTemplateTestResult>("special_ops_test_calibration_target", {
+                environmentId: environment.id,
+                targetKey: target.key,
+            });
+            setCalibrationTestResult(formatCalibrationTemplateTestResult(target.label, result));
+        } catch (cause) {
+            setError(String(cause));
+        } finally {
+            setTestingTargetKey(null);
         }
     };
 
@@ -266,6 +293,7 @@ export function SpecialOpsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div><h2 className="text-lg font-semibold">点击区域校准</h2><p className="text-xs text-base-content/60">坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。</p></div>
             </div>
+            {calibrationTestResult && <div role="alert" className="alert alert-info"><span>{calibrationTestResult}</span></div>}
             {activeEnvironment && <>
                 <div className="overflow-x-auto rounded-box border border-base-300">
                     <table className="table table-sm">
@@ -281,6 +309,7 @@ export function SpecialOpsPage() {
                                 <div className="join">
                                     {target.recognitionMethod === "template" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
                                     {target.recognitionMethod === "template" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
+                                    {target.recognitionMethod && <Button className="join-item" disabled={testingTargetKey === target.key} size="sm" variant="outline" onClick={() => void testCalibrationTarget(activeEnvironment, target)}><RiPlayLine data-icon="inline-start"/>{testingTargetKey === target.key ? "测试中" : "测试"}</Button>}
                                     <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
                                 </div>
                             </td>

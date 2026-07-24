@@ -117,6 +117,12 @@ pub struct CalibrationTarget {
     pub guard_any_of: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CalibrationTemplateTestResult {
+    pub sample_similarities: [f32; 2],
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalibrationEnvironment {
@@ -174,6 +180,7 @@ fn default_calibration_environment() -> CalibrationEnvironment {
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
     match key {
         "wegame.account" | "wegame.password" => &["wegame.loginFormReady"],
+        "wegame.profileId" => &["wegame.profileReady"],
         "craft.station.technicalCenter" => &["craft.claimReady.technicalCenter"],
         "craft.station.workbench" => &["craft.claimReady.workbench"],
         "craft.station.pharmacy" => &["craft.claimReady.pharmacy"],
@@ -227,6 +234,21 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         (
+            "wegame.launchPage",
+            "游戏启动前置界面入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.launchPageReady",
+            "游戏启动前置界面就绪区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.launchId",
+            "游戏启动前置界面 ID OCR 区域",
+            RecognitionRegion,
+        ),
+        (
             "wegame.avatar",
             "WeGame 头像识别与点击区域",
             RecognitionRegion,
@@ -236,20 +258,16 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "WeGame 头像菜单展开状态区域",
             RecognitionRegion,
         ),
-        ("wegame.id", "WeGame ID OCR 区域", RecognitionRegion),
+        (
+            "wegame.profile",
+            "个人主页入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        ("wegame.profileReady", "个人主页就绪区域", RecognitionRegion),
+        ("wegame.profileId", "个人主页 ID 双击复制区域", ClickPoint),
         (
             "wegame.switchAccount",
             "切换账号入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.launchPage",
-            "游戏启动前置界面入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.launchPageReady",
-            "游戏启动前置界面就绪区域",
             RecognitionRegion,
         ),
         (
@@ -436,7 +454,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
     .into_iter()
     .map(|(key, label, kind)| {
         let recognition_method = match (&kind, key) {
-            (RecognitionRegion, "wegame.id" | "ammo.selectedTargetName") => {
+            (RecognitionRegion, "wegame.launchId" | "ammo.selectedTargetName") => {
                 Some(CalibrationRecognitionMethod::Ocr)
             }
             (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
@@ -664,12 +682,15 @@ fn required_execution_target_keys(
         "wegame.humanVerification",
         "wegame.loginFailed",
         "wegame.loggedIn",
-        "wegame.avatar",
-        "wegame.avatarMenuReady",
-        "wegame.id",
-        "wegame.switchAccount",
         "wegame.launchPage",
         "wegame.launchPageReady",
+        "wegame.launchId",
+        "wegame.avatar",
+        "wegame.avatarMenuReady",
+        "wegame.profile",
+        "wegame.profileReady",
+        "wegame.profileId",
+        "wegame.switchAccount",
         "wegame.launch",
         "game.modeReady",
         "game.beaconMode",
@@ -820,6 +841,69 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
     Ok(())
 }
 
+fn calibration_template_test_input(
+    settings: &SpecialOpsSettings,
+    environment_id: &str,
+    target_key: &str,
+) -> Result<(crate::morse::types::RegionRect, String), String> {
+    let target = settings
+        .calibration_environments
+        .iter()
+        .find(|environment| environment.id == environment_id)
+        .and_then(|environment| {
+            environment
+                .targets
+                .iter()
+                .find(|target| target.key == target_key)
+        })
+        .ok_or_else(|| "校准目标不存在".to_string())?;
+    if target.recognition_method != Some(CalibrationRecognitionMethod::Template) {
+        return Err(
+            if target.recognition_method == Some(CalibrationRecognitionMethod::Ocr) {
+                "OCR 测试尚未接入，不能伪造识别结果".to_string()
+            } else {
+                "点击点和输入区域不支持模板测试".to_string()
+            },
+        );
+    }
+    let rect = target
+        .rect
+        .as_ref()
+        .ok_or_else(|| format!("{} 尚未框选", target.label))?;
+    let reference_image_path = target
+        .reference_image_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
+    Ok((
+        crate::morse::types::RegionRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        },
+        reference_image_path.to_string(),
+    ))
+}
+
+async fn sample_template_similarity(
+    region: crate::morse::types::RegionRect,
+    reference_image_path: String,
+) -> Result<f32, String> {
+    tokio::task::spawn_blocking(move || {
+        let captured = crate::recognition::watcher::capture_region(&region)
+            .ok_or_else(|| "截取校准区域失败".to_string())?;
+        let reference = crate::recognition::watcher::load_reference_image(&reference_image_path)
+            .ok_or_else(|| "无法读取参考图".to_string())?;
+        let (_, result) =
+            crate::recognition::watcher::best_reference_match(&captured, [&reference])
+                .ok_or_else(|| "模板匹配失败".to_string())?;
+        Ok(result.similarity)
+    })
+    .await
+    .map_err(|error| format!("模板测试任务失败: {error}"))?
+}
+
 fn now_ms() -> i64 {
     Utc::now().timestamp_millis()
 }
@@ -968,6 +1052,27 @@ pub fn special_ops_set_paused(
             },
         )
         .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn special_ops_test_calibration_target(
+    state: State<'_, SpecialOpsState>,
+    environment_id: String,
+    target_key: String,
+) -> Result<CalibrationTemplateTestResult, AppError> {
+    let (region, reference_image_path) = {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| AppError::from("特勤处状态已损坏"))?;
+        calibration_template_test_input(&settings, &environment_id, &target_key)?
+    };
+    let first = sample_template_similarity(region.clone(), reference_image_path.clone()).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let second = sample_template_similarity(region, reference_image_path).await?;
+    Ok(CalibrationTemplateTestResult {
+        sample_similarities: [first, second],
+    })
 }
 
 #[tauri::command]
@@ -1590,14 +1695,14 @@ mod tests {
                         && target.kind == CalibrationTargetKind::RecognitionRegion
                 })));
         }
-        assert_eq!(action_count, 15);
+        assert_eq!(action_count, 16);
     }
 
     #[test]
     fn default_dynamic_text_targets_use_ocr() {
         let targets = default_calibration_targets();
 
-        for key in ["wegame.id", "ammo.selectedTargetName"] {
+        for key in ["wegame.launchId", "ammo.selectedTargetName"] {
             let target = targets.iter().find(|target| target.key == key).unwrap();
             assert_eq!(
                 target.recognition_method,
@@ -1613,9 +1718,77 @@ mod tests {
                 .recognition_method,
             Some(CalibrationRecognitionMethod::Template)
         );
-        assert!(!targets
+        assert!(targets.iter().any(|target| target.key == "wegame.profile"));
+        assert!(targets
             .iter()
-            .any(|target| target.key == "wegame.profile" || target.key == "wegame.profileReady"));
+            .any(|target| target.key == "wegame.profileReady"));
+    }
+
+    #[test]
+    fn wegame_id_validation_targets_follow_ocr_then_copy_fallback_order() {
+        let targets = default_calibration_targets();
+        let position = |key: &str| {
+            targets
+                .iter()
+                .position(|target| target.key == key)
+                .unwrap_or_else(|| panic!("缺少 WeGame ID 校准目标 {key}"))
+        };
+        let ordered_keys = [
+            "wegame.launchPage",
+            "wegame.launchPageReady",
+            "wegame.launchId",
+            "wegame.avatar",
+            "wegame.avatarMenuReady",
+            "wegame.profile",
+            "wegame.profileReady",
+            "wegame.profileId",
+            "wegame.launch",
+        ];
+
+        assert!(ordered_keys
+            .windows(2)
+            .all(|pair| position(pair[0]) < position(pair[1])));
+        assert_eq!(
+            targets[position("wegame.launchId")].recognition_method,
+            Some(CalibrationRecognitionMethod::Ocr)
+        );
+        assert_eq!(
+            targets[position("wegame.profileId")].guard_any_of,
+            vec!["wegame.profileReady"]
+        );
+    }
+
+    #[test]
+    fn calibration_template_test_requires_template_region_and_reference() {
+        let mut settings = SpecialOpsSettings::default();
+        assert_eq!(
+            calibration_template_test_input(&settings, "default", "wegame.loginMode").unwrap_err(),
+            "WeGame QQ 账号密码登录入口识别与点击区域 尚未框选"
+        );
+
+        let target = settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        target.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+        });
+        target.reference_image_path = Some("reference.png".to_string());
+        let (region, path) =
+            calibration_template_test_input(&settings, "default", "wegame.loginMode").unwrap();
+        assert_eq!(
+            (region.x, region.y, region.width, region.height),
+            (10, 20, 30, 40)
+        );
+        assert_eq!(path, "reference.png");
+        assert_eq!(
+            calibration_template_test_input(&settings, "default", "wegame.launchId").unwrap_err(),
+            "OCR 测试尚未接入，不能伪造识别结果"
+        );
     }
 
     #[test]
