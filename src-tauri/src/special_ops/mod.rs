@@ -97,6 +97,13 @@ pub enum CalibrationTargetKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub enum CalibrationRecognitionMethod {
+    Template,
+    Ocr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CalibrationTarget {
     pub key: String,
     pub label: String,
@@ -104,6 +111,10 @@ pub struct CalibrationTarget {
     pub rect: Option<CalibrationRect>,
     #[serde(default)]
     pub reference_image_path: Option<String>,
+    #[serde(default)]
+    pub recognition_method: Option<CalibrationRecognitionMethod>,
+    #[serde(default)]
+    pub guard_any_of: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,24 +171,102 @@ fn default_calibration_environment() -> CalibrationEnvironment {
     }
 }
 
+fn default_guard_any_of(key: &str) -> &'static [&'static str] {
+    match key {
+        "wegame.account" | "wegame.password" => &["wegame.loginFormReady"],
+        "craft.station.technicalCenter" => &["craft.claimReady.technicalCenter"],
+        "craft.station.workbench" => &["craft.claimReady.workbench"],
+        "craft.station.pharmacy" => &["craft.claimReady.pharmacy"],
+        "craft.station.armorBench" => &["craft.claimReady.armorBench"],
+        "craft.openRecipeList.technicalCenter" => &["craft.idle.technicalCenter"],
+        "craft.openRecipeList.workbench" => &["craft.idle.workbench"],
+        "craft.openRecipeList.pharmacy" => &["craft.idle.pharmacy"],
+        "craft.openRecipeList.armorBench" => &["craft.idle.armorBench"],
+        "craft.recipe.technicalCenter" => &["craft.recipeListReady.technicalCenter"],
+        "craft.recipe.workbench" => &["craft.recipeListReady.workbench"],
+        "craft.recipe.pharmacy" => &["craft.recipeListReady.pharmacy"],
+        "craft.recipe.armorBench" => &["craft.recipeListReady.armorBench"],
+        "ammo.target" => &["ammo.list", "ammo.seasonalList"],
+        _ => &[],
+    }
+}
+
 fn default_calibration_targets() -> Vec<CalibrationTarget> {
     use CalibrationTargetKind::{ClickPoint, InputRegion, RecognitionRegion};
     [
-        ("wegame.loginMode", "WeGame QQ 账号密码登录入口", ClickPoint),
+        (
+            "wegame.loginMode",
+            "WeGame QQ 账号密码登录入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.loginFormReady",
+            "QQ 账号密码登录表单就绪区域",
+            RecognitionRegion,
+        ),
         ("wegame.account", "QQ 账号输入区域", InputRegion),
         ("wegame.password", "QQ 密码输入区域", InputRegion),
-        ("wegame.login", "WeGame 登录按钮", ClickPoint),
-        ("wegame.avatar", "WeGame 头像菜单", ClickPoint),
-        ("wegame.profile", "个人主页入口", ClickPoint),
-        ("wegame.id", "WeGame ID 识别区域", RecognitionRegion),
-        ("wegame.launchPage", "游戏启动前置界面入口", ClickPoint),
-        ("wegame.launch", "启动游戏按钮", ClickPoint),
+        (
+            "wegame.login",
+            "WeGame 登录按钮识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.humanVerification",
+            "WeGame 人工验证提示区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.loginFailed",
+            "WeGame 登录失败提示区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.loggedIn",
+            "WeGame 最大化后登录成功状态区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.avatar",
+            "WeGame 头像识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.avatarMenuReady",
+            "WeGame 头像菜单展开状态区域",
+            RecognitionRegion,
+        ),
+        ("wegame.id", "WeGame ID OCR 区域", RecognitionRegion),
+        (
+            "wegame.switchAccount",
+            "切换账号入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.launchPage",
+            "游戏启动前置界面入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.launchPageReady",
+            "游戏启动前置界面就绪区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.launch",
+            "启动游戏按钮识别与点击区域",
+            RecognitionRegion,
+        ),
         (
             "game.modeReady",
             "模式选择可用状态参考区域",
             RecognitionRegion,
         ),
-        ("game.beaconMode", "烽火地带入口", ClickPoint),
+        (
+            "game.beaconMode",
+            "烽火地带入口识别与点击区域",
+            RecognitionRegion,
+        ),
         (
             "game.activityPopup",
             "烽火地带活动弹窗识别区域（命中按空格）",
@@ -240,6 +329,46 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         (
+            "craft.openRecipeList.technicalCenter",
+            "技术中心进入制作列表点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.openRecipeList.workbench",
+            "工作台进入制作列表点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.openRecipeList.pharmacy",
+            "制药台进入制作列表点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.openRecipeList.armorBench",
+            "防具台进入制作列表点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.recipeListReady.technicalCenter",
+            "技术中心制作列表就绪区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.recipeListReady.workbench",
+            "工作台制作列表就绪区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.recipeListReady.pharmacy",
+            "制药台制作列表就绪区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.recipeListReady.armorBench",
+            "防具台制作列表就绪区域",
+            RecognitionRegion,
+        ),
+        (
             "craft.recipe.technicalCenter",
             "技术中心置顶配方点击区域",
             ClickPoint,
@@ -260,26 +389,71 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             ClickPoint,
         ),
         ("craft.fill", "一键补齐识别与点击区域", RecognitionRegion),
-        ("craft.purchase", "购买材料按钮", ClickPoint),
+        (
+            "craft.purchase",
+            "购买材料按钮识别与点击区域",
+            RecognitionRegion,
+        ),
         ("craft.produce", "生产按钮识别与点击区域", RecognitionRegion),
         ("craft.abort", "中止按钮识别区域", RecognitionRegion),
-        ("ammo.department", "部门入口", ClickPoint),
-        ("ammo.supply", "军需处入口", ClickPoint),
-        ("ammo.tactical", "战术部门入口", ClickPoint),
-        ("ammo.seasonal", "赛季限定入口", ClickPoint),
+        (
+            "ammo.department",
+            "部门入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        ("ammo.supply", "军需处入口识别与点击区域", RecognitionRegion),
+        (
+            "ammo.tactical",
+            "战术部门入口识别与点击区域",
+            RecognitionRegion,
+        ),
         ("ammo.list", "子弹兑换列表区域", RecognitionRegion),
+        (
+            "ammo.seasonal",
+            "赛季限定入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "ammo.seasonalList",
+            "赛季限定子弹列表就绪区域",
+            RecognitionRegion,
+        ),
         ("ammo.target", "目标子弹点击区域", ClickPoint),
+        (
+            "ammo.selectedTargetName",
+            "已选目标子弹名称 OCR 区域",
+            RecognitionRegion,
+        ),
         ("ammo.fill", "子弹一键补齐区域", RecognitionRegion),
+        (
+            "ammo.purchase",
+            "子弹材料购买按钮识别与点击区域",
+            RecognitionRegion,
+        ),
         ("ammo.exchange", "兑换按钮区域", RecognitionRegion),
         ("ammo.success", "兑换成功灰色按钮区域", RecognitionRegion),
     ]
     .into_iter()
-    .map(|(key, label, kind)| CalibrationTarget {
-        key: key.to_string(),
-        label: label.to_string(),
-        kind,
-        rect: None,
-        reference_image_path: None,
+    .map(|(key, label, kind)| {
+        let recognition_method = match (&kind, key) {
+            (RecognitionRegion, "wegame.id" | "ammo.selectedTargetName") => {
+                Some(CalibrationRecognitionMethod::Ocr)
+            }
+            (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
+            _ => None,
+        };
+        CalibrationTarget {
+            key: key.to_string(),
+            label: label.to_string(),
+            kind,
+            rect: None,
+            reference_image_path: None,
+            recognition_method,
+            guard_any_of: default_guard_any_of(key)
+                .iter()
+                .map(|guard| (*guard).to_string())
+                .collect(),
+        }
     })
     .collect()
 }
@@ -320,6 +494,15 @@ impl StationKind {
             Self::Pharmacy,
             Self::ArmorBench,
         ]
+    }
+
+    fn calibration_suffix(&self) -> &'static str {
+        match self {
+            Self::TechnicalCenter => "technicalCenter",
+            Self::Workbench => "workbench",
+            Self::Pharmacy => "pharmacy",
+            Self::ArmorBench => "armorBench",
+        }
     }
 }
 
@@ -395,6 +578,11 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
                     .unwrap_or_else(|| required.clone());
                 target.label = required.label.clone();
                 target.kind = required.kind.clone();
+                target.recognition_method = required.recognition_method.clone();
+                target.guard_any_of = required.guard_any_of.clone();
+                if target.recognition_method != Some(CalibrationRecognitionMethod::Template) {
+                    target.reference_image_path = None;
+                }
                 target
             })
             .collect();
@@ -449,6 +637,187 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
         }
     }
     Ok(settings)
+}
+
+fn required_execution_target_keys(
+    settings: &SpecialOpsSettings,
+) -> std::collections::HashSet<String> {
+    let active_accounts = settings
+        .accounts
+        .iter()
+        .filter(|account| account.enabled && account.status == AccountStatus::Ready)
+        .filter(|account| {
+            account.stations.iter().any(|station| station.enabled)
+                || account.ammo_targets.iter().any(|target| target.enabled)
+        })
+        .collect::<Vec<_>>();
+    if active_accounts.is_empty() {
+        return std::collections::HashSet::new();
+    }
+
+    let mut keys = [
+        "wegame.loginMode",
+        "wegame.loginFormReady",
+        "wegame.account",
+        "wegame.password",
+        "wegame.login",
+        "wegame.humanVerification",
+        "wegame.loginFailed",
+        "wegame.loggedIn",
+        "wegame.avatar",
+        "wegame.avatarMenuReady",
+        "wegame.id",
+        "wegame.switchAccount",
+        "wegame.launchPage",
+        "wegame.launchPageReady",
+        "wegame.launch",
+        "game.modeReady",
+        "game.beaconMode",
+        "game.activityPopup",
+        "game.startGame",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<std::collections::HashSet<_>>();
+
+    let has_crafting = active_accounts
+        .iter()
+        .any(|account| account.stations.iter().any(|station| station.enabled));
+    if has_crafting {
+        keys.extend(
+            [
+                "game.specialOps",
+                "game.stationGrid",
+                "craft.reward",
+                "craft.fill",
+                "craft.purchase",
+                "craft.produce",
+                "craft.abort",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+        for kind in StationKind::all() {
+            if active_accounts.iter().any(|account| {
+                account
+                    .stations
+                    .iter()
+                    .any(|station| station.enabled && station.kind == kind)
+            }) {
+                let suffix = kind.calibration_suffix();
+                for prefix in [
+                    "craft.station",
+                    "craft.claimReady",
+                    "craft.idle",
+                    "craft.openRecipeList",
+                    "craft.recipeListReady",
+                    "craft.recipe",
+                ] {
+                    keys.insert(format!("{prefix}.{suffix}"));
+                }
+            }
+        }
+    }
+
+    let has_ammo = active_accounts
+        .iter()
+        .any(|account| account.ammo_targets.iter().any(|target| target.enabled));
+    if has_ammo {
+        keys.extend(
+            [
+                "ammo.department",
+                "ammo.supply",
+                "ammo.tactical",
+                "ammo.list",
+                "ammo.target",
+                "ammo.selectedTargetName",
+                "ammo.fill",
+                "ammo.purchase",
+                "ammo.exchange",
+                "ammo.success",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+        if active_accounts.iter().any(|account| {
+            account
+                .ammo_targets
+                .iter()
+                .any(|target| target.enabled && target.seasonal)
+        }) {
+            keys.insert("ammo.seasonal".to_string());
+            keys.insert("ammo.seasonalList".to_string());
+        }
+    }
+    keys
+}
+
+fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String> {
+    let required_keys = required_execution_target_keys(settings);
+    if required_keys.is_empty() {
+        return Ok(());
+    }
+    for account in settings
+        .accounts
+        .iter()
+        .filter(|account| account.enabled && account.status == AccountStatus::Ready)
+        .filter(|account| {
+            account.stations.iter().any(|station| station.enabled)
+                || account.ammo_targets.iter().any(|target| target.enabled)
+        })
+    {
+        if account.qq_account.trim().is_empty()
+            || account.password.is_empty()
+            || account.wegame_id.trim().is_empty()
+        {
+            return Err(format!(
+                "账号 {} 的 QQ、密码与 WeGame ID 必须完整",
+                account.id
+            ));
+        }
+        for station in account.stations.iter().filter(|station| station.enabled) {
+            if station.item_name.trim().is_empty()
+                || !(1..=168 * 60).contains(&station.duration_minutes)
+            {
+                return Err(format!("账号 {} 的制作台配置不完整", account.id));
+            }
+        }
+        if account
+            .ammo_targets
+            .iter()
+            .any(|target| target.enabled && target.name.trim().is_empty())
+        {
+            return Err(format!("账号 {} 存在未命名的子弹目标", account.id));
+        }
+    }
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "校准未完成：缺少显示环境".to_string())?;
+    for required in default_calibration_targets()
+        .into_iter()
+        .filter(|target| required_keys.contains(&target.key))
+    {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == required.key)
+            .ok_or_else(|| format!("校准未完成：缺少步骤 {}", required.label))?;
+        if target.rect.is_none() {
+            return Err(format!("校准未完成：{} 尚未框选", target.label));
+        }
+        if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
+            let path = target
+                .reference_image_path
+                .as_deref()
+                .filter(|path| !path.trim().is_empty())
+                .ok_or_else(|| format!("校准未完成：{} 尚未上传参考图", target.label))?;
+            if !std::path::Path::new(path).is_file() {
+                return Err(format!("校准未完成：{} 的参考图文件不存在", target.label));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn now_ms() -> i64 {
@@ -540,6 +909,9 @@ pub fn special_ops_save_settings(
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
     let settings_value = normalize_settings(settings_value)?;
+    if settings_value.enabled && !settings_value.paused {
+        validate_execution_ready(&settings_value)?;
+    }
     settings_coordinator
         .with_revision(
             settings_revision,
@@ -572,6 +944,15 @@ pub fn special_ops_set_paused(
         .with_revision(
             settings_revision,
             || -> Result<SpecialOpsBootstrap, String> {
+                if !paused {
+                    let settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?;
+                    if settings.enabled {
+                        validate_execution_ready(&settings)?;
+                    }
+                }
                 let settings = {
                     let mut settings = state
                         .settings
@@ -1070,6 +1451,99 @@ mod tests {
     }
 
     #[test]
+    fn execution_preflight_allows_no_active_work_and_rejects_missing_calibration() {
+        assert!(validate_execution_ready(&SpecialOpsSettings::default()).is_ok());
+
+        let active = account(
+            "active",
+            AccountStatus::Ready,
+            vec![station(StationKind::TechnicalCenter, 1)],
+        );
+        let settings = SpecialOpsSettings {
+            accounts: vec![active.clone()],
+            ..SpecialOpsSettings::default()
+        };
+
+        assert_eq!(
+            validate_execution_ready(&settings).unwrap_err(),
+            "校准未完成：WeGame QQ 账号密码登录入口识别与点击区域 尚未框选"
+        );
+
+        let mut invalid_account = active;
+        invalid_account.password.clear();
+        let settings = SpecialOpsSettings {
+            accounts: vec![invalid_account],
+            ..SpecialOpsSettings::default()
+        };
+        assert_eq!(
+            validate_execution_ready(&settings).unwrap_err(),
+            "账号 active 的 QQ、密码与 WeGame ID 必须完整"
+        );
+    }
+
+    #[test]
+    fn execution_preflight_reports_deleted_target_in_execution_order() {
+        let mut settings = SpecialOpsSettings {
+            accounts: vec![account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, 1)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+        let environment = &mut settings.calibration_environments[0];
+        for target in &mut environment.targets {
+            target.rect = Some(CalibrationRect {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            });
+            if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
+                target.reference_image_path =
+                    Some(std::env::current_exe().unwrap().display().to_string());
+            }
+        }
+        environment
+            .targets
+            .retain(|target| target.key != "wegame.loginFormReady");
+
+        assert_eq!(
+            validate_execution_ready(&settings).unwrap_err(),
+            "校准未完成：缺少步骤 QQ 账号密码登录表单就绪区域"
+        );
+    }
+
+    #[test]
+    fn required_execution_targets_follow_enabled_features() {
+        let mut active = account(
+            "active",
+            AccountStatus::Ready,
+            vec![station(StationKind::TechnicalCenter, 1)],
+        );
+        active.ammo_targets.push(AmmoTarget {
+            id: "ammo".to_string(),
+            name: "测试子弹".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_count: 0,
+        });
+        let settings = SpecialOpsSettings {
+            accounts: vec![active],
+            ..SpecialOpsSettings::default()
+        };
+
+        let keys = required_execution_target_keys(&settings);
+        assert!(keys.contains("craft.station.technicalCenter"));
+        assert!(!keys.contains("craft.station.workbench"));
+        assert!(keys.contains("ammo.target"));
+        assert!(!keys.contains("ammo.seasonal"));
+    }
+
+    #[test]
     fn ammo_target_defaults_scroll_steps_for_legacy_settings() {
         let target: AmmoTarget = serde_json::from_str(
             r#"{"id":"ammo-1","name":"测试子弹","enabled":true,"seasonal":false,"order":0,"lastSuccessDay":null,"retryCount":0}"#,
@@ -1087,6 +1561,61 @@ mod tests {
         .expect("旧校准配置应兼容新增参考图字段");
 
         assert_eq!(target.reference_image_path, None);
+        assert_eq!(target.recognition_method, None);
+        assert!(target.guard_any_of.is_empty());
+    }
+
+    #[test]
+    fn default_click_and_input_targets_have_recognition_guards() {
+        let targets = default_calibration_targets();
+        let actions = targets.iter().filter(|target| {
+            matches!(
+                target.kind,
+                CalibrationTargetKind::ClickPoint | CalibrationTargetKind::InputRegion
+            )
+        });
+        let mut action_count = 0;
+        for action in actions {
+            action_count += 1;
+            assert!(
+                !action.guard_any_of.is_empty(),
+                "动作 {} 缺少识别守卫",
+                action.key
+            );
+            assert!(action
+                .guard_any_of
+                .iter()
+                .all(|guard_key| targets.iter().any(|target| {
+                    target.key == *guard_key
+                        && target.kind == CalibrationTargetKind::RecognitionRegion
+                })));
+        }
+        assert_eq!(action_count, 15);
+    }
+
+    #[test]
+    fn default_dynamic_text_targets_use_ocr() {
+        let targets = default_calibration_targets();
+
+        for key in ["wegame.id", "ammo.selectedTargetName"] {
+            let target = targets.iter().find(|target| target.key == key).unwrap();
+            assert_eq!(
+                target.recognition_method,
+                Some(CalibrationRecognitionMethod::Ocr)
+            );
+            assert_eq!(target.reference_image_path, None);
+        }
+        assert_eq!(
+            targets
+                .iter()
+                .find(|target| target.key == "wegame.loginFormReady")
+                .unwrap()
+                .recognition_method,
+            Some(CalibrationRecognitionMethod::Template)
+        );
+        assert!(!targets
+            .iter()
+            .any(|target| target.key == "wegame.profile" || target.key == "wegame.profileReady"));
     }
 
     #[test]
@@ -1119,6 +1648,8 @@ mod tests {
                     height: 4,
                 }),
                 reference_image_path: None,
+                recognition_method: None,
+                guard_any_of: Vec::new(),
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1152,6 +1683,8 @@ mod tests {
                     height: 4,
                 }),
                 reference_image_path: None,
+                recognition_method: None,
+                guard_any_of: Vec::new(),
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1177,6 +1710,8 @@ mod tests {
                 kind: CalibrationTargetKind::ClickPoint,
                 rect: None,
                 reference_image_path: None,
+                recognition_method: None,
+                guard_any_of: Vec::new(),
             },
             CalibrationTarget {
                 key: "craft.idle".to_string(),
@@ -1184,6 +1719,8 @@ mod tests {
                 kind: CalibrationTargetKind::RecognitionRegion,
                 rect: None,
                 reference_image_path: None,
+                recognition_method: None,
+                guard_any_of: Vec::new(),
             },
         ]);
 

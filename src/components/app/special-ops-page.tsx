@@ -271,16 +271,16 @@ export function SpecialOpsPage() {
                     <table className="table table-sm">
                         <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th>参考图</th><th className="text-right">操作</th></tr></thead>
                         <tbody>{activeEnvironment.targets.map((target) => <tr key={target.key}>
-                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div></td>
-                            <td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : "识别区域"}</td>
+                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-[11px] text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
+                            <td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : target.recognitionMethod === "ocr" ? "OCR 区域" : "模板识别区域"}</td>
                             <td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td>
                             <td className="max-w-40 truncate text-xs" title={target.referenceImagePath ?? undefined}>
-                                {target.kind === "recognitionRegion" ? target.referenceImagePath?.split(/[\\/]/).pop() ?? "未上传" : "-"}
+                                {target.recognitionMethod === "template" ? target.referenceImagePath?.split(/[\\/]/).pop() ?? "未上传" : target.recognitionMethod === "ocr" ? "按业务配置比对文本" : "-"}
                             </td>
                             <td className="text-right">
                                 <div className="join">
-                                    {target.kind === "recognitionRegion" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
-                                    {target.kind === "recognitionRegion" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
+                                    {target.recognitionMethod === "template" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
+                                    {target.recognitionMethod === "template" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
                                     <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
                                 </div>
                             </td>
