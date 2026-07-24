@@ -484,6 +484,22 @@ pub struct SpecialOpsBootstrap {
     pub now_ms: i64,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpecialOpsStateChanged {
+    pub settings_revision: u64,
+    pub now_ms: i64,
+}
+
+impl From<&SpecialOpsBootstrap> for SpecialOpsStateChanged {
+    fn from(bootstrap: &SpecialOpsBootstrap) -> Self {
+        Self {
+            settings_revision: bootstrap.settings_revision,
+            now_ms: bootstrap.now_ms,
+        }
+    }
+}
+
 pub struct SpecialOpsState {
     settings: Arc<Mutex<SpecialOpsSettings>>,
 }
@@ -1131,7 +1147,11 @@ fn build_bootstrap(
 }
 
 fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
-    let _ = app.emit_to("main", STATE_CHANGED, bootstrap);
+    let _ = app.emit_to(
+        "main",
+        STATE_CHANGED,
+        SpecialOpsStateChanged::from(bootstrap),
+    );
 }
 
 pub fn initialize(app: &AppHandle) -> Result<SpecialOpsState, String> {
@@ -2125,6 +2145,25 @@ mod tests {
         assert_eq!(target.match_threshold, 0.75);
         assert_eq!(target.verified_signature, None);
         assert_eq!(target.verified_at_ms, None);
+    }
+
+    #[test]
+    fn state_changed_payload_excludes_settings_accounts_and_passwords() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut selected = account("selected", AccountStatus::Ready, Vec::new());
+        selected.password = "test-secret-placeholder".to_string();
+        settings.accounts.push(selected);
+        let bootstrap = build_bootstrap(settings, 17, 23);
+
+        let payload = SpecialOpsStateChanged::from(&bootstrap);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(!json.contains("test-secret-placeholder"));
+        assert!(!json.contains("\"password\""));
+        assert!(!json.contains("\"settings\""));
+        assert!(!json.contains("\"accounts\""));
+        let value = serde_json::to_value(payload).unwrap();
+        assert_eq!(value["settingsRevision"], 17);
+        assert_eq!(value["nowMs"], 23);
     }
 
     #[test]

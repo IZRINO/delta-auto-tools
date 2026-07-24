@@ -15,6 +15,7 @@ export type SpecialOpsCalibrationTestArgs = {environmentId: string; targetKey: s
 export type CalibrationEnvironment = {id: string; name: string; monitor: string; resolutionWidth: number; resolutionHeight: number; dpiScale: number; windowMode: string; targets: CalibrationTarget[]};
 export type SpecialOpsSettings = { enabled: boolean; paused: boolean; dailyExchangeTime: string; emergencyHotkey: string; accounts: AccountPlan[]; activeCalibrationId: string | null; calibrationEnvironments: CalibrationEnvironment[] };
 export type SpecialOpsBootstrap = { settings: SpecialOpsSettings; schedule: { dueAccounts: { accountId: string; stationKinds: StationKind[]; ammoTargetIds: string[] }[]; nextWakeAtMs: number | null }; settingsRevision: number; nowMs: number };
+export type SpecialOpsStateChanged = {settingsRevision: number; nowMs: number};
 export const STATION_LABELS: Record<StationKind, string> = { technicalCenter: "技术中心", workbench: "工作台", pharmacy: "制药台", armorBench: "防具台" };
 
 export function formatCalibrationTemplateTestResult(label: string, result: CalibrationTemplateTestResult): string {
@@ -26,4 +27,11 @@ export function testSpecialOpsCalibrationTarget(
     args: SpecialOpsCalibrationTestArgs,
 ): Promise<CalibrationTemplateTestResult> {
     return invokeLogged<CalibrationTemplateTestResult>("special_ops_test_calibration_target", args);
+}
+
+export function reloadSpecialOpsAfterStateChanged(
+    _event: SpecialOpsStateChanged,
+    reload: () => void,
+): void {
+    reload();
 }

@@ -2,6 +2,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {
     formatCalibrationTemplateTestResult,
+    reloadSpecialOpsAfterStateChanged,
     testSpecialOpsCalibrationTarget,
 } from "@/components/app/special-ops-types";
 
@@ -43,5 +44,13 @@ describe("特勤处校准测试结果", () => {
             targetKey: "wegame.login",
             settingsRevision: 42,
         });
+    });
+
+    it("窄状态事件只触发 bootstrap reload", () => {
+        const reload = vi.fn();
+
+        reloadSpecialOpsAfterStateChanged({settingsRevision: 17, nowMs: 23}, reload);
+
+        expect(reload).toHaveBeenCalledOnce();
     });
 });

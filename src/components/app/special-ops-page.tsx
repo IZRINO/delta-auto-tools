@@ -1,4 +1,4 @@
-import {type ComponentProps, useEffect, useState} from "react";
+import {type ComponentProps, useEffect, useRef, useState} from "react";
 import {open} from "@tauri-apps/plugin-dialog";
 import {
     RiAddLine,
@@ -23,12 +23,14 @@ import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
     formatCalibrationTemplateTestResult,
+    reloadSpecialOpsAfterStateChanged,
     testSpecialOpsCalibrationTarget,
     type AccountPlan,
     type AmmoTarget,
     type CalibrationEnvironment,
     type CalibrationTarget,
     type SpecialOpsBootstrap,
+    type SpecialOpsStateChanged,
     type StationKind,
     type StationPlan,
 } from "@/components/app/special-ops-types";
@@ -104,6 +106,7 @@ export function SpecialOpsPage() {
     const [error, setError] = useState<string | null>(null);
     const [testingTargetKey, setTestingTargetKey] = useState<string | null>(null);
     const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
+    const reloadRequestId = useRef(0);
 
     const applyResult = (next: SpecialOpsBootstrap) => {
         setBootstrap(next);
@@ -111,12 +114,23 @@ export function SpecialOpsPage() {
     };
     const reload = () => {
         if (!isNativeShell) return;
-        void invoke<SpecialOpsBootstrap>("special_ops_get_bootstrap").then(applyResult).catch((cause) => setError(String(cause)));
+        const requestId = ++reloadRequestId.current;
+        void invoke<SpecialOpsBootstrap>("special_ops_get_bootstrap").then((next) => {
+            if (requestId === reloadRequestId.current) applyResult(next);
+        }).catch((cause) => {
+            if (requestId === reloadRequestId.current) setError(String(cause));
+        });
     };
     useEffect(() => {
         reload();
         if (!isNativeShell) return;
-        return subscribeTauriEvent<SpecialOpsBootstrap>(SPECIAL_OPS_EVENTS.stateChanged, (event) => applyResult(event.payload));
+        const unsubscribe = subscribeTauriEvent<SpecialOpsStateChanged>(SPECIAL_OPS_EVENTS.stateChanged, (event) => {
+            reloadSpecialOpsAfterStateChanged(event.payload, reload);
+        });
+        return () => {
+            reloadRequestId.current += 1;
+            unsubscribe();
+        };
     }, [isNativeShell]);
 
     const save = (settings: SpecialOpsBootstrap["settings"]) => void invoke<SpecialOpsBootstrap>(
