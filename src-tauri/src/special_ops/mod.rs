@@ -102,6 +102,8 @@ pub struct CalibrationTarget {
     pub label: String,
     pub kind: CalibrationTargetKind,
     pub rect: Option<CalibrationRect>,
+    #[serde(default)]
+    pub reference_image_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -277,6 +279,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         label: label.to_string(),
         kind,
         rect: None,
+        reference_image_path: None,
     })
     .collect()
 }
@@ -1077,6 +1080,16 @@ mod tests {
     }
 
     #[test]
+    fn calibration_target_defaults_reference_image_for_legacy_settings() {
+        let target: CalibrationTarget = serde_json::from_str(
+            r#"{"key":"game.modeReady","label":"模式选择","kind":"recognitionRegion","rect":null}"#,
+        )
+        .expect("旧校准配置应兼容新增参考图字段");
+
+        assert_eq!(target.reference_image_path, None);
+    }
+
+    #[test]
     fn normalize_restores_required_calibration_targets() {
         let mut settings = SpecialOpsSettings::default();
         settings.calibration_environments[0].targets.clear();
@@ -1105,6 +1118,7 @@ mod tests {
                     width: 3,
                     height: 4,
                 }),
+                reference_image_path: None,
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1137,6 +1151,7 @@ mod tests {
                     width: 3,
                     height: 4,
                 }),
+                reference_image_path: None,
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1161,12 +1176,14 @@ mod tests {
                 label: "旧通用配方点击区域".to_string(),
                 kind: CalibrationTargetKind::ClickPoint,
                 rect: None,
+                reference_image_path: None,
             },
             CalibrationTarget {
                 key: "craft.idle".to_string(),
                 label: "旧通用空闲文字区域".to_string(),
                 kind: CalibrationTargetKind::RecognitionRegion,
                 rect: None,
+                reference_image_path: None,
             },
         ]);
 

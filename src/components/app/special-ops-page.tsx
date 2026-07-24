@@ -1,10 +1,12 @@
 import {type ComponentProps, useEffect, useState} from "react";
+import {open} from "@tauri-apps/plugin-dialog";
 import {
     RiAddLine,
     RiArrowDownLine,
     RiArrowUpLine,
     RiCrosshair2Line,
     RiDeleteBinLine,
+    RiFolderOpenLine,
     RiPauseLine,
     RiPlayLine,
     RiRefreshLine,
@@ -23,6 +25,7 @@ import {
     type AccountPlan,
     type AmmoTarget,
     type CalibrationEnvironment,
+    type CalibrationTarget,
     type SpecialOpsBootstrap,
     type StationKind,
     type StationPlan,
@@ -159,6 +162,29 @@ export function SpecialOpsPage() {
         "special_ops_begin_calibration_selection",
         {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
     ).catch((cause) => setError(String(cause)));
+    const updateCalibrationTarget = (
+        environment: CalibrationEnvironment,
+        target: CalibrationTarget,
+        patch: Partial<CalibrationTarget>,
+    ) => save({
+        ...bootstrap.settings,
+        calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id
+            ? {...item, targets: item.targets.map((candidate) => candidate.key === target.key ? {...candidate, ...patch} : candidate)}
+            : item),
+    });
+    const pickReferenceImage = async (environment: CalibrationEnvironment, target: CalibrationTarget) => {
+        if (!isNativeShell) return;
+        try {
+            const picked = await open({
+                multiple: false,
+                directory: false,
+                filters: [{name: "图片文件", extensions: ["png", "jpg", "jpeg", "webp", "bmp"]}],
+            });
+            if (typeof picked === "string") updateCalibrationTarget(environment, target, {referenceImagePath: picked});
+        } catch (cause) {
+            setError(String(cause));
+        }
+    };
 
     return <main className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
@@ -243,8 +269,22 @@ export function SpecialOpsPage() {
             {activeEnvironment && <>
                 <div className="overflow-x-auto rounded-box border border-base-300">
                     <table className="table table-sm">
-                        <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th className="text-right">操作</th></tr></thead>
-                        <tbody>{activeEnvironment.targets.map((target) => <tr key={target.key}><td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div></td><td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : "识别区域"}</td><td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td><td className="text-right"><Button size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button></td></tr>)}</tbody>
+                        <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th>参考图</th><th className="text-right">操作</th></tr></thead>
+                        <tbody>{activeEnvironment.targets.map((target) => <tr key={target.key}>
+                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div></td>
+                            <td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : "识别区域"}</td>
+                            <td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td>
+                            <td className="max-w-40 truncate text-xs" title={target.referenceImagePath ?? undefined}>
+                                {target.kind === "recognitionRegion" ? target.referenceImagePath?.split(/[\\/]/).pop() ?? "未上传" : "-"}
+                            </td>
+                            <td className="text-right">
+                                <div className="join">
+                                    {target.kind === "recognitionRegion" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
+                                    {target.kind === "recognitionRegion" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
+                                    <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
+                                </div>
+                            </td>
+                        </tr>)}</tbody>
                     </table>
                 </div>
             </>}
