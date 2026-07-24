@@ -16,7 +16,7 @@
 
 工作台通过 `special_ops_begin_calibration_selection` 打开框选窗口。提交调用 `special_ops_submit_calibration_selection`，取消调用 `special_ops_cancel_calibration_selection`。窗口 label 使用 `special-ops-calibration-*`，由 `overlays.json` 授权。
 
-制作台入口和可收取感叹号均按技术中心、工作台、制药台和防具台保存 4 个独立区域，不使用通用位置。旧 `craft.station` 与 `craft.claimReady` 区域加载时删除，禁止把单个旧坐标错误复制到四台。点击烽火地带后增加 `game.activityPopup` 识别区域；命中时执行一次空格，未命中则继续原流程。
+制作台入口、置顶配方点击点、空闲中文字区域和可收取感叹号均按技术中心、工作台、制药台和防具台保存 4 个独立区域，不使用通用位置。旧 `craft.station`、`craft.recipe`、`craft.idle` 与 `craft.claimReady` 区域加载时删除，禁止把单个旧坐标错误复制到四台。点击烽火地带后增加 `game.activityPopup` 识别区域；命中时执行一次空格，未命中则继续原流程。
 
 `game.modeReady` 当前只保存识别区域，尚未定义参考图、OCR 文本或目标颜色。没有识别样本前，该步骤不能进入真实执行器；不得仅以固定延时判定成功。
 

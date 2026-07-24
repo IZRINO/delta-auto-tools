@@ -217,8 +217,46 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         ("craft.reward", "获得奖励页面识别区域", RecognitionRegion),
-        ("craft.idle", "空闲中文字识别区域", RecognitionRegion),
-        ("craft.recipe", "置顶配方点击区域", ClickPoint),
+        (
+            "craft.idle.technicalCenter",
+            "技术中心空闲中文字识别区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.idle.workbench",
+            "工作台空闲中文字识别区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.idle.pharmacy",
+            "制药台空闲中文字识别区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.idle.armorBench",
+            "防具台空闲中文字识别区域",
+            RecognitionRegion,
+        ),
+        (
+            "craft.recipe.technicalCenter",
+            "技术中心置顶配方点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.recipe.workbench",
+            "工作台置顶配方点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.recipe.pharmacy",
+            "制药台置顶配方点击区域",
+            ClickPoint,
+        ),
+        (
+            "craft.recipe.armorBench",
+            "防具台置顶配方点击区域",
+            ClickPoint,
+        ),
         ("craft.fill", "一键补齐识别与点击区域", RecognitionRegion),
         ("craft.purchase", "购买材料按钮", ClickPoint),
         ("craft.produce", "生产按钮识别与点击区域", RecognitionRegion),
@@ -1109,6 +1147,46 @@ mod tests {
             targets
                 .iter()
                 .filter(|target| target.key.starts_with("craft.station."))
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn normalize_replaces_shared_recipe_and_idle_targets() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.calibration_environments[0].targets.extend([
+            CalibrationTarget {
+                key: "craft.recipe".to_string(),
+                label: "旧通用配方点击区域".to_string(),
+                kind: CalibrationTargetKind::ClickPoint,
+                rect: None,
+            },
+            CalibrationTarget {
+                key: "craft.idle".to_string(),
+                label: "旧通用空闲文字区域".to_string(),
+                kind: CalibrationTargetKind::RecognitionRegion,
+                rect: None,
+            },
+        ]);
+
+        let normalized = normalize_settings(settings).unwrap();
+        let targets = &normalized.calibration_environments[0].targets;
+
+        assert!(!targets
+            .iter()
+            .any(|target| { target.key == "craft.recipe" || target.key == "craft.idle" }));
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| target.key.starts_with("craft.recipe."))
+                .count(),
+            4
+        );
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| target.key.starts_with("craft.idle."))
                 .count(),
             4
         );

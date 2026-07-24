@@ -131,7 +131,7 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 
 ## Project Overview
 
-新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号内子弹目标按名称、普通/赛季类型、相对滚轮步数和顺序保存；当天成功/重试状态不得随模板复制。校准按显示环境全局保存，通过 `special-ops-calibration-*` overlay 框选点击点、输入区域与识别区域；四制作台入口与可收取感叹号分别校准。
+新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号内子弹目标按名称、普通/赛季类型、相对滚轮步数和顺序保存；当天成功/重试状态不得随模板复制。校准按显示环境全局保存，通过 `special-ops-calibration-*` overlay 框选点击点、输入区域与识别区域；四制作台入口、置顶配方、空闲文字与可收取感叹号分别校准。
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
 
