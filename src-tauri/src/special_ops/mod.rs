@@ -536,6 +536,12 @@ fn template_test_passed(samples: [f32; 2], threshold: f32) -> bool {
             .all(|sample| sample.is_finite() && sample >= threshold)
 }
 
+fn fnv1a_64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf29ce484222325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
+    })
+}
+
 fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
     let rect = target
         .rect
@@ -553,6 +559,9 @@ fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
     if !metadata.is_file() {
         return Err(format!("{} 的参考图文件不存在", target.label));
     }
+    let reference_bytes = std::fs::read(&canonical_path)
+        .map_err(|error| format!("读取 {} 的参考图失败: {error}", target.label))?;
+    let content_hash = fnv1a_64(&reference_bytes);
     let modified_ms = metadata
         .modified()
         .map_err(|error| format!("读取 {} 的参考图修改时间失败: {error}", target.label))?
@@ -560,7 +569,7 @@ fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
         .map_err(|error| format!("{} 的参考图修改时间无效: {error}", target.label))?
         .as_millis();
     Ok(format!(
-        "{}|{},{},{},{}|{}|{}|{}|{}",
+        "v2|{}|{},{},{},{}|{}|{}|{}|{}|{content_hash:016x}",
         target.key,
         rect.x,
         rect.y,
@@ -571,6 +580,17 @@ fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
         modified_ms,
         target.match_threshold
     ))
+}
+
+fn verification_is_current(target: &CalibrationTarget) -> bool {
+    let (Some(stored_signature), Some(verified_at_ms)) =
+        (&target.verified_signature, target.verified_at_ms)
+    else {
+        return false;
+    };
+    verified_at_ms >= 0
+        && calibration_signature(target)
+            .is_ok_and(|current_signature| current_signature == *stored_signature)
 }
 
 fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSettings, String> {
@@ -633,13 +653,7 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
                     {
                         return Err(format!("{} 的模板匹配阈值必须在 0 到 1 之间", target.label));
                     }
-                    let verification_is_current =
-                        calibration_signature(&target)
-                            .ok()
-                            .is_some_and(|signature| {
-                                target.verified_signature.as_deref() == Some(signature.as_str())
-                            });
-                    if !verification_is_current {
+                    if !verification_is_current(&target) {
                         target.verified_signature = None;
                         target.verified_at_ms = None;
                     }
@@ -959,11 +973,7 @@ fn validate_login_trial_ready(
                     target.label
                 ));
             }
-            let verification_is_current =
-                calibration_signature(target).ok().is_some_and(|signature| {
-                    target.verified_signature.as_deref() == Some(signature.as_str())
-                });
-            if !verification_is_current {
+            if !verification_is_current(target) {
                 return Err(format!(
                     "登录试运行校准未完成：{} 尚未测试或验证失效",
                     target.label
@@ -980,6 +990,47 @@ struct CalibrationTemplateTestInput {
     reference_image_path: String,
     match_threshold: f32,
     calibration_signature: String,
+}
+
+fn commit_calibration_test_verification(
+    settings: &mut SpecialOpsSettings,
+    environment_id: &str,
+    target_key: &str,
+    tested_signature: &str,
+    passed: bool,
+    verified_at_ms: Option<i64>,
+    persist: impl FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut next = settings.clone();
+    let target = next
+        .calibration_environments
+        .iter_mut()
+        .find(|environment| environment.id == environment_id)
+        .and_then(|environment| {
+            environment
+                .targets
+                .iter_mut()
+                .find(|target| target.key == target_key)
+        })
+        .ok_or_else(|| "校准配置已变化，请重新测试".to_string())?;
+    let current_signature =
+        calibration_signature(target).map_err(|_| "校准配置已变化，请重新测试".to_string())?;
+    if current_signature != tested_signature {
+        return Err("校准配置已变化，请重新测试".to_string());
+    }
+    if passed {
+        let verified_at_ms = verified_at_ms
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| "校准验证时间无效".to_string())?;
+        target.verified_signature = Some(current_signature);
+        target.verified_at_ms = Some(verified_at_ms);
+    } else {
+        target.verified_signature = None;
+        target.verified_at_ms = None;
+    }
+    persist(&next)?;
+    *settings = next;
+    Ok(())
 }
 
 fn calibration_template_test_input(
@@ -1228,40 +1279,19 @@ pub async fn special_ops_test_calibration_target(
             let mut settings = state
                 .settings
                 .lock()
-                .map_err(|_| "特勤处状态已损坏".to_string())?
-                .clone();
-            let target = settings
-                .calibration_environments
-                .iter_mut()
-                .find(|environment| environment.id == environment_id)
-                .and_then(|environment| {
-                    environment
-                        .targets
-                        .iter_mut()
-                        .find(|target| target.key == target_key)
-                })
-                .ok_or_else(|| "校准配置已变化，请重新测试".to_string())?;
-            let current_signature = calibration_signature(target)
-                .map_err(|_| "校准配置已变化，请重新测试".to_string())?;
-            if current_signature != input.calibration_signature {
-                return Err("校准配置已变化，请重新测试".to_string());
-            }
-            if passed {
-                target.verified_signature = Some(current_signature);
-                target.verified_at_ms = verified_at_ms;
-            } else {
-                target.verified_signature = None;
-                target.verified_at_ms = None;
-            }
-            save_settings(&app, &settings)?;
-            *state
-                .settings
-                .lock()
-                .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
-            emit_state(
-                &app,
-                &build_bootstrap(settings, settings_revision, now_ms()),
-            );
+                .map_err(|_| "特勤处状态已损坏".to_string())?;
+            commit_calibration_test_verification(
+                &mut settings,
+                &environment_id,
+                &target_key,
+                &input.calibration_signature,
+                passed,
+                verified_at_ms,
+                |next| save_settings(&app, next),
+            )?;
+            let bootstrap = build_bootstrap(settings.clone(), settings_revision, now_ms());
+            drop(settings);
+            emit_state(&app, &bootstrap);
             Ok(())
         })
         .map_err(AppError::from)?;
@@ -1645,6 +1675,17 @@ mod tests {
                 _reference_files: reference_files,
             }
         }
+    }
+
+    fn calibration_target_mut<'a>(
+        settings: &'a mut SpecialOpsSettings,
+        key: &str,
+    ) -> &'a mut CalibrationTarget {
+        settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == key)
+            .unwrap()
     }
 
     fn station(kind: StationKind, finishes_at_ms: i64) -> StationPlan {
@@ -2097,7 +2138,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_rect_reference_or_file_metadata_invalidates_verification() {
+    fn changed_rect_reference_or_file_content_invalidates_verification() {
         let first_reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
         let second_reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
         std::fs::write(first_reference.path(), b"first").unwrap();
@@ -2114,6 +2155,7 @@ mod tests {
         });
         target.reference_image_path = Some(first_reference.path().display().to_string());
         let verified = calibration_signature(&target).unwrap();
+        assert!(verified.starts_with("v2|"));
 
         target.rect.as_mut().unwrap().x += 1;
         assert_ne!(calibration_signature(&target).unwrap(), verified);
@@ -2123,7 +2165,23 @@ mod tests {
         assert_ne!(calibration_signature(&target).unwrap(), verified);
 
         target.reference_image_path = Some(first_reference.path().display().to_string());
-        std::fs::write(first_reference.path(), b"first-longer").unwrap();
+        let original_metadata = std::fs::metadata(first_reference.path()).unwrap();
+        let original_modified = original_metadata.modified().unwrap();
+        let original_accessed = original_metadata.accessed().unwrap();
+        std::fs::write(first_reference.path(), b"other").unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(first_reference.path())
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(original_modified)
+                    .set_accessed(original_accessed),
+            )
+            .unwrap();
+        let changed_metadata = std::fs::metadata(first_reference.path()).unwrap();
+        assert_eq!(changed_metadata.len(), original_metadata.len());
+        assert_eq!(changed_metadata.modified().unwrap(), original_modified);
         assert_ne!(calibration_signature(&target).unwrap(), verified);
     }
 
@@ -2144,8 +2202,10 @@ mod tests {
             height: 4,
         });
         target.reference_image_path = Some(reference.path().display().to_string());
-        target.verified_signature = Some(calibration_signature(target).unwrap());
+        let valid_signature = calibration_signature(target).unwrap();
+        target.verified_signature = Some(valid_signature.clone());
         target.verified_at_ms = Some(123);
+        assert!(verification_is_current(target));
 
         let preserved = normalize_settings(settings.clone()).unwrap();
         let preserved_target = preserved.calibration_environments[0]
@@ -2156,20 +2216,184 @@ mod tests {
         assert!(preserved_target.verified_signature.is_some());
         assert_eq!(preserved_target.verified_at_ms, Some(123));
 
-        let target = settings.calibration_environments[0]
-            .targets
-            .iter_mut()
-            .find(|target| target.key == "wegame.loginMode")
-            .unwrap();
-        target.verified_signature = Some("旧签名".to_string());
-        let normalized = normalize_settings(settings).unwrap();
-        let target = normalized.calibration_environments[0]
-            .targets
-            .iter()
-            .find(|target| target.key == "wegame.loginMode")
-            .unwrap();
+        for (signature, verified_at_ms) in [
+            (Some(valid_signature.clone()), None),
+            (None, Some(123)),
+            (Some(valid_signature.clone()), Some(-1)),
+            (Some("旧签名".to_string()), Some(123)),
+        ] {
+            let mut invalid = settings.clone();
+            let target = calibration_target_mut(&mut invalid, "wegame.loginMode");
+            target.verified_signature = signature;
+            target.verified_at_ms = verified_at_ms;
+            assert!(!verification_is_current(target));
+
+            let normalized = normalize_settings(invalid).unwrap();
+            let target = normalized.calibration_environments[0]
+                .targets
+                .iter()
+                .find(|target| target.key == "wegame.loginMode")
+                .unwrap();
+            assert_eq!(target.verified_signature, None);
+            assert_eq!(target.verified_at_ms, None);
+        }
+    }
+
+    #[test]
+    fn calibration_test_commit_persists_success_before_updating_memory() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        let target = calibration_target_mut(&mut settings, "wegame.loginMode");
+        let tested_signature = calibration_signature(target).unwrap();
+        target.verified_signature = None;
+        target.verified_at_ms = None;
+        let persisted = std::cell::Cell::new(false);
+
+        commit_calibration_test_verification(
+            &mut settings,
+            "default",
+            "wegame.loginMode",
+            &tested_signature,
+            true,
+            Some(456),
+            |next| {
+                let target = next.calibration_environments[0]
+                    .targets
+                    .iter()
+                    .find(|target| target.key == "wegame.loginMode")
+                    .unwrap();
+                assert_eq!(
+                    target.verified_signature.as_deref(),
+                    Some(tested_signature.as_str())
+                );
+                assert_eq!(target.verified_at_ms, Some(456));
+                persisted.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(persisted.get());
+        let target = calibration_target_mut(&mut settings, "wegame.loginMode");
+        assert_eq!(
+            target.verified_signature.as_deref(),
+            Some(tested_signature.as_str())
+        );
+        assert_eq!(target.verified_at_ms, Some(456));
+    }
+
+    #[test]
+    fn calibration_test_commit_clears_verification_after_low_score() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        let tested_signature =
+            calibration_signature(calibration_target_mut(&mut settings, "wegame.loginMode"))
+                .unwrap();
+
+        commit_calibration_test_verification(
+            &mut settings,
+            "default",
+            "wegame.loginMode",
+            &tested_signature,
+            false,
+            None,
+            |next| {
+                let target = next.calibration_environments[0]
+                    .targets
+                    .iter()
+                    .find(|target| target.key == "wegame.loginMode")
+                    .unwrap();
+                assert_eq!(target.verified_signature, None);
+                assert_eq!(target.verified_at_ms, None);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        let target = calibration_target_mut(&mut settings, "wegame.loginMode");
         assert_eq!(target.verified_signature, None);
         assert_eq!(target.verified_at_ms, None);
+    }
+
+    #[test]
+    fn calibration_test_commit_rejects_stale_signature_without_saving() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        let original = settings.clone();
+        let saved = std::cell::Cell::new(false);
+
+        let error = commit_calibration_test_verification(
+            &mut settings,
+            "default",
+            "wegame.loginMode",
+            "stale",
+            true,
+            Some(456),
+            |_| {
+                saved.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "校准配置已变化，请重新测试");
+        assert!(!saved.get());
+        assert_eq!(settings, original);
+    }
+
+    #[test]
+    fn calibration_test_commit_save_failure_does_not_pollute_memory() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        let original = settings.clone();
+        let tested_signature =
+            calibration_signature(calibration_target_mut(&mut settings, "wegame.loginMode"))
+                .unwrap();
+
+        let error = commit_calibration_test_verification(
+            &mut settings,
+            "default",
+            "wegame.loginMode",
+            &tested_signature,
+            true,
+            Some(456),
+            |_| Err("保存失败".to_string()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "保存失败");
+        assert_eq!(settings, original);
+    }
+
+    #[test]
+    fn stale_revision_rejects_calibration_commit_before_state_transition() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        let original = settings.clone();
+        let coordinator = SettingsCoordinator::new();
+        coordinator
+            .with_profile_change(|_| Ok::<_, String>(()))
+            .unwrap();
+        let called = std::cell::Cell::new(false);
+
+        let error = coordinator
+            .with_revision(1, || -> Result<(), String> {
+                called.set(true);
+                commit_calibration_test_verification(
+                    &mut settings,
+                    "default",
+                    "wegame.loginMode",
+                    "unused",
+                    true,
+                    Some(456),
+                    |_| Ok(()),
+                )
+            })
+            .unwrap_err();
+
+        assert!(error.contains("配置保存已陈旧"));
+        assert!(!called.get());
+        assert_eq!(settings, original);
     }
 
     #[test]
@@ -2507,6 +2731,20 @@ mod tests {
     }
 
     #[test]
+    fn login_trial_preflight_requires_existing_enabled_account() {
+        let fixture = LoginFixture::complete();
+        let error = validate_login_trial_ready(&fixture.settings, "missing").unwrap_err();
+        assert!(error.contains("missing"));
+        assert!(error.contains("不存在"));
+
+        let mut disabled = fixture.settings.clone();
+        disabled.accounts[0].enabled = false;
+        let error = validate_login_trial_ready(&disabled, "selected").unwrap_err();
+        assert!(error.contains("selected"));
+        assert!(error.contains("未启用"));
+    }
+
+    #[test]
     fn login_trial_preflight_requires_five_verified_templates_and_two_input_regions() {
         let fixture = LoginFixture::complete();
         let ordered_keys = [
@@ -2587,6 +2825,14 @@ mod tests {
                 .verified_signature = None;
             let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
             assert!(error.contains("尚未测试或验证失效"), "{key}: {error}");
+        }
+
+        for verified_at_ms in [None, Some(-1)] {
+            let mut settings = fixture.settings.clone();
+            calibration_target_mut(&mut settings, "wegame.loginMode").verified_at_ms =
+                verified_at_ms;
+            let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+            assert!(error.contains("尚未测试或验证失效"), "{error}");
         }
     }
 }

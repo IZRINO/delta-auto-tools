@@ -1,3 +1,5 @@
+import {invokeLogged} from "@/lib/logging";
+
 export type StationKind = "technicalCenter" | "workbench" | "pharmacy" | "armorBench";
 export type StationStatus = "idle" | "crafting" | "ready" | "uncertain";
 export type AccountStatus = "ready" | "needsManualLogin" | "loginFailed" | "uncertain" | "isolated";
@@ -7,8 +9,9 @@ export type AccountPlan = { id: string; qqAccount: string; password: string; weg
 export type CalibrationRect = {x: number; y: number; width: number; height: number};
 export type CalibrationTargetKind = "clickPoint" | "inputRegion" | "recognitionRegion";
 export type CalibrationRecognitionMethod = "template" | "ocr";
-export type CalibrationTarget = {key: string; label: string; kind: CalibrationTargetKind; rect: CalibrationRect | null; referenceImagePath: string | null; recognitionMethod: CalibrationRecognitionMethod | null; guardAnyOf: string[]};
-export type CalibrationTemplateTestResult = {sampleSimilarities: [number, number]};
+export type CalibrationTarget = {key: string; label: string; kind: CalibrationTargetKind; rect: CalibrationRect | null; referenceImagePath: string | null; recognitionMethod: CalibrationRecognitionMethod | null; guardAnyOf: string[]; matchThreshold: number; verifiedSignature: string | null; verifiedAtMs: number | null};
+export type CalibrationTemplateTestResult = {sampleSimilarities: [number, number]; passed: boolean; verifiedAtMs: number | null};
+export type SpecialOpsCalibrationTestArgs = {environmentId: string; targetKey: string; settingsRevision: number};
 export type CalibrationEnvironment = {id: string; name: string; monitor: string; resolutionWidth: number; resolutionHeight: number; dpiScale: number; windowMode: string; targets: CalibrationTarget[]};
 export type SpecialOpsSettings = { enabled: boolean; paused: boolean; dailyExchangeTime: string; emergencyHotkey: string; accounts: AccountPlan[]; activeCalibrationId: string | null; calibrationEnvironments: CalibrationEnvironment[] };
 export type SpecialOpsBootstrap = { settings: SpecialOpsSettings; schedule: { dueAccounts: { accountId: string; stationKinds: StationKind[]; ammoTargetIds: string[] }[]; nextWakeAtMs: number | null }; settingsRevision: number; nowMs: number };
@@ -16,5 +19,11 @@ export const STATION_LABELS: Record<StationKind, string> = { technicalCenter: "�
 
 export function formatCalibrationTemplateTestResult(label: string, result: CalibrationTemplateTestResult): string {
     const [first, second] = result.sampleSimilarities.map((value) => `${(value * 100).toFixed(1)}%`);
-    return `${label}：双采样相似度 ${first} / ${second}`;
+    return `${label}：双采样相似度 ${first} / ${second}，${result.passed ? "已通过" : "未通过"}`;
+}
+
+export function testSpecialOpsCalibrationTarget(
+    args: SpecialOpsCalibrationTestArgs,
+): Promise<CalibrationTemplateTestResult> {
+    return invokeLogged<CalibrationTemplateTestResult>("special_ops_test_calibration_target", args);
 }

@@ -23,10 +23,10 @@ import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
     formatCalibrationTemplateTestResult,
+    testSpecialOpsCalibrationTarget,
     type AccountPlan,
     type AmmoTarget,
     type CalibrationEnvironment,
-    type CalibrationTemplateTestResult,
     type CalibrationTarget,
     type SpecialOpsBootstrap,
     type StationKind,
@@ -201,9 +201,10 @@ export function SpecialOpsPage() {
         setCalibrationTestResult(null);
         setError(null);
         try {
-            const result = await invoke<CalibrationTemplateTestResult>("special_ops_test_calibration_target", {
+            const result = await testSpecialOpsCalibrationTarget({
                 environmentId: environment.id,
                 targetKey: target.key,
+                settingsRevision: bootstrap.settingsRevision,
             });
             setCalibrationTestResult(formatCalibrationTemplateTestResult(target.label, result));
         } catch (cause) {
