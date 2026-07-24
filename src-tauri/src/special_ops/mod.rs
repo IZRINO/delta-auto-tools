@@ -113,7 +113,7 @@ pub enum CalibrationRecognitionMethod {
     Ocr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalibrationTarget {
     pub key: String,
@@ -126,12 +126,24 @@ pub struct CalibrationTarget {
     pub recognition_method: Option<CalibrationRecognitionMethod>,
     #[serde(default)]
     pub guard_any_of: Vec<String>,
+    #[serde(default = "default_match_threshold")]
+    pub match_threshold: f32,
+    #[serde(default)]
+    pub verified_signature: Option<String>,
+    #[serde(default)]
+    pub verified_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CalibrationTemplateTestResult {
     pub sample_similarities: [f32; 2],
+    pub passed: bool,
+    pub verified_at_ms: Option<i64>,
+}
+
+fn default_match_threshold() -> f32 {
+    0.75
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -440,6 +452,9 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
                 .iter()
                 .map(|guard| (*guard).to_string())
                 .collect(),
+            match_threshold: default_match_threshold(),
+            verified_signature: None,
+            verified_at_ms: None,
         }
     })
     .collect()
@@ -513,6 +528,51 @@ impl StationPlan {
     }
 }
 
+fn template_test_passed(samples: [f32; 2], threshold: f32) -> bool {
+    threshold.is_finite()
+        && (0.0..=1.0).contains(&threshold)
+        && samples
+            .into_iter()
+            .all(|sample| sample.is_finite() && sample >= threshold)
+}
+
+fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
+    let rect = target
+        .rect
+        .as_ref()
+        .ok_or_else(|| format!("{} 尚未框选", target.label))?;
+    let reference_path = target
+        .reference_image_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
+    let canonical_path = std::fs::canonicalize(reference_path)
+        .map_err(|_| format!("{} 的参考图文件不存在", target.label))?;
+    let metadata = std::fs::metadata(&canonical_path)
+        .map_err(|_| format!("{} 的参考图文件不存在", target.label))?;
+    if !metadata.is_file() {
+        return Err(format!("{} 的参考图文件不存在", target.label));
+    }
+    let modified_ms = metadata
+        .modified()
+        .map_err(|error| format!("读取 {} 的参考图修改时间失败: {error}", target.label))?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("{} 的参考图修改时间无效: {error}", target.label))?
+        .as_millis();
+    Ok(format!(
+        "{}|{},{},{},{}|{}|{}|{}|{}",
+        target.key,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        canonical_path.display(),
+        metadata.len(),
+        modified_ms,
+        target.match_threshold
+    ))
+}
+
 fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSettings, String> {
     if daily_exchange_minutes(&settings.daily_exchange_time).is_none() {
         return Err("每日兑换时间必须是 HH:mm，范围 00:00-23:59".to_string());
@@ -567,12 +627,30 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
                 target.kind = required.kind.clone();
                 target.recognition_method = required.recognition_method.clone();
                 target.guard_any_of = required.guard_any_of.clone();
-                if target.recognition_method != Some(CalibrationRecognitionMethod::Template) {
+                if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
+                    if !target.match_threshold.is_finite()
+                        || !(0.0..=1.0).contains(&target.match_threshold)
+                    {
+                        return Err(format!("{} 的模板匹配阈值必须在 0 到 1 之间", target.label));
+                    }
+                    let verification_is_current =
+                        calibration_signature(&target)
+                            .ok()
+                            .is_some_and(|signature| {
+                                target.verified_signature.as_deref() == Some(signature.as_str())
+                            });
+                    if !verification_is_current {
+                        target.verified_signature = None;
+                        target.verified_at_ms = None;
+                    }
+                } else {
                     target.reference_image_path = None;
+                    target.verified_signature = None;
+                    target.verified_at_ms = None;
                 }
-                target
+                Ok(target)
             })
-            .collect();
+            .collect::<Result<Vec<_>, String>>()?;
     }
     if settings
         .active_calibration_id
@@ -799,11 +877,116 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
     Ok(())
 }
 
+// 登录试运行 command 在后续任务接入。
+#[allow(dead_code)]
+fn validate_login_trial_ready(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+) -> Result<(), String> {
+    let validate_executable_path = |path: &str, label: &str| {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(format!("{label} 路径不能为空"));
+        }
+        let path = std::path::Path::new(path);
+        if !path.is_absolute() {
+            return Err(format!("{label} 路径必须是绝对路径"));
+        }
+        if !path
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        {
+            return Err(format!("{label} 路径必须指向 .exe 文件"));
+        }
+        if !path.is_file() {
+            return Err(format!("{label} 文件不存在"));
+        }
+        Ok(())
+    };
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| format!("登录试运行账号 {account_id} 不存在"))?;
+    if !account.enabled {
+        return Err(format!("登录试运行账号 {account_id} 未启用"));
+    }
+    if account.qq_account.trim().is_empty() {
+        return Err(format!("登录试运行账号 {account_id} 的 QQ 不能为空"));
+    }
+    if account.password.is_empty() {
+        return Err(format!("登录试运行账号 {account_id} 的密码不能为空"));
+    }
+    validate_executable_path(&settings.wegame_executable_path, "WeGame.exe")?;
+    validate_executable_path(&settings.game_executable_path, "游戏 .exe")?;
+
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "登录试运行校准未完成：缺少显示环境".to_string())?;
+    let required_targets = default_calibration_targets();
+    for key in [
+        "wegame.loginMode",
+        "wegame.loginFormReady",
+        "wegame.account",
+        "wegame.password",
+        "wegame.login",
+        "wegame.gameEntry",
+        "wegame.launch",
+    ] {
+        let required = required_targets
+            .iter()
+            .find(|target| target.key == key)
+            .expect("默认登录校准目标必须存在");
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("登录试运行校准未完成：缺少步骤 {}", required.label))?;
+        if target.rect.is_none() {
+            return Err(format!("登录试运行校准未完成：{} 尚未框选", target.label));
+        }
+        if required.recognition_method == Some(CalibrationRecognitionMethod::Template) {
+            let reference_path = target
+                .reference_image_path
+                .as_deref()
+                .filter(|path| !path.trim().is_empty())
+                .ok_or_else(|| format!("登录试运行校准未完成：{} 尚未上传参考图", target.label))?;
+            if !std::path::Path::new(reference_path).is_file() {
+                return Err(format!(
+                    "登录试运行校准未完成：{} 的参考图文件不存在",
+                    target.label
+                ));
+            }
+            let verification_is_current =
+                calibration_signature(target).ok().is_some_and(|signature| {
+                    target.verified_signature.as_deref() == Some(signature.as_str())
+                });
+            if !verification_is_current {
+                return Err(format!(
+                    "登录试运行校准未完成：{} 尚未测试或验证失效",
+                    target.label
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct CalibrationTemplateTestInput {
+    region: crate::morse::types::RegionRect,
+    reference_image_path: String,
+    match_threshold: f32,
+    calibration_signature: String,
+}
+
 fn calibration_template_test_input(
     settings: &SpecialOpsSettings,
     environment_id: &str,
     target_key: &str,
-) -> Result<(crate::morse::types::RegionRect, String), String> {
+) -> Result<CalibrationTemplateTestInput, String> {
     let target = settings
         .calibration_environments
         .iter()
@@ -833,15 +1016,17 @@ fn calibration_template_test_input(
         .as_deref()
         .filter(|path| !path.trim().is_empty())
         .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
-    Ok((
-        crate::morse::types::RegionRect {
+    Ok(CalibrationTemplateTestInput {
+        region: crate::morse::types::RegionRect {
             x: rect.x,
             y: rect.y,
             width: rect.width,
             height: rect.height,
         },
-        reference_image_path.to_string(),
-    ))
+        reference_image_path: reference_image_path.to_string(),
+        match_threshold: target.match_threshold,
+        calibration_signature: calibration_signature(target)?,
+    })
 }
 
 async fn sample_template_similarity(
@@ -1014,22 +1199,76 @@ pub fn special_ops_set_paused(
 
 #[tauri::command]
 pub async fn special_ops_test_calibration_target(
+    app: AppHandle,
     state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
     environment_id: String,
     target_key: String,
+    settings_revision: u64,
 ) -> Result<CalibrationTemplateTestResult, AppError> {
-    let (region, reference_image_path) = {
+    let input = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| AppError::from("特勤处状态已损坏"))?;
         calibration_template_test_input(&settings, &environment_id, &target_key)?
     };
-    let first = sample_template_similarity(region.clone(), reference_image_path.clone()).await?;
+    let first =
+        sample_template_similarity(input.region.clone(), input.reference_image_path.clone())
+            .await?;
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-    let second = sample_template_similarity(region, reference_image_path).await?;
+    let second =
+        sample_template_similarity(input.region.clone(), input.reference_image_path.clone())
+            .await?;
+    let sample_similarities = [first, second];
+    let passed = template_test_passed(sample_similarities, input.match_threshold);
+    let verified_at_ms = passed.then(now_ms);
+    settings_coordinator
+        .with_revision(settings_revision, || -> Result<(), String> {
+            let mut settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let target = settings
+                .calibration_environments
+                .iter_mut()
+                .find(|environment| environment.id == environment_id)
+                .and_then(|environment| {
+                    environment
+                        .targets
+                        .iter_mut()
+                        .find(|target| target.key == target_key)
+                })
+                .ok_or_else(|| "校准配置已变化，请重新测试".to_string())?;
+            let current_signature = calibration_signature(target)
+                .map_err(|_| "校准配置已变化，请重新测试".to_string())?;
+            if current_signature != input.calibration_signature {
+                return Err("校准配置已变化，请重新测试".to_string());
+            }
+            if passed {
+                target.verified_signature = Some(current_signature);
+                target.verified_at_ms = verified_at_ms;
+            } else {
+                target.verified_signature = None;
+                target.verified_at_ms = None;
+            }
+            save_settings(&app, &settings)?;
+            *state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+            emit_state(
+                &app,
+                &build_bootstrap(settings, settings_revision, now_ms()),
+            );
+            Ok(())
+        })
+        .map_err(AppError::from)?;
     Ok(CalibrationTemplateTestResult {
-        sample_similarities: [first, second],
+        sample_similarities,
+        passed,
+        verified_at_ms,
     })
 }
 
@@ -1162,6 +1401,8 @@ pub fn special_ops_submit_calibration_selection(
                     .find(|item| item.key == target_key)
                     .ok_or_else(|| "校准目标不存在".to_string())?;
                 target.rect = Some(region);
+                target.verified_signature = None;
+                target.verified_at_ms = None;
                 next
             };
             save_settings(&app, &settings)?;
@@ -1342,6 +1583,69 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct LoginFixture {
+        settings: SpecialOpsSettings,
+        _exe_files: Vec<tempfile::NamedTempFile>,
+        _reference_files: Vec<tempfile::NamedTempFile>,
+    }
+
+    impl LoginFixture {
+        fn complete() -> Self {
+            let wegame_exe = tempfile::Builder::new().suffix(".exe").tempfile().unwrap();
+            let game_exe = tempfile::Builder::new().suffix(".exe").tempfile().unwrap();
+            let mut settings = SpecialOpsSettings {
+                wegame_executable_path: wegame_exe.path().display().to_string(),
+                game_executable_path: game_exe.path().display().to_string(),
+                accounts: vec![account("selected", AccountStatus::Ready, Vec::new())],
+                ..SpecialOpsSettings::default()
+            };
+            let mut reference_files = Vec::new();
+            for key in [
+                "wegame.loginMode",
+                "wegame.loginFormReady",
+                "wegame.login",
+                "wegame.gameEntry",
+                "wegame.launch",
+            ] {
+                let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+                std::fs::write(reference.path(), key).unwrap();
+                let target = settings.calibration_environments[0]
+                    .targets
+                    .iter_mut()
+                    .find(|target| target.key == key)
+                    .unwrap();
+                target.rect = Some(CalibrationRect {
+                    x: 10,
+                    y: 20,
+                    width: 30,
+                    height: 40,
+                });
+                target.reference_image_path = Some(reference.path().display().to_string());
+                target.verified_signature = Some(calibration_signature(target).unwrap());
+                target.verified_at_ms = Some(1);
+                reference_files.push(reference);
+            }
+            for key in ["wegame.account", "wegame.password"] {
+                settings.calibration_environments[0]
+                    .targets
+                    .iter_mut()
+                    .find(|target| target.key == key)
+                    .unwrap()
+                    .rect = Some(CalibrationRect {
+                    x: 10,
+                    y: 20,
+                    width: 30,
+                    height: 40,
+                });
+            }
+            Self {
+                settings,
+                _exe_files: vec![wegame_exe, game_exe],
+                _reference_files: reference_files,
+            }
+        }
+    }
 
     fn station(kind: StationKind, finishes_at_ms: i64) -> StationPlan {
         StationPlan {
@@ -1771,6 +2075,104 @@ mod tests {
     }
 
     #[test]
+    fn calibration_target_defaults_verification_fields_for_legacy_settings() {
+        let target: CalibrationTarget = serde_json::from_str(
+            r#"{"key":"game.modeReady","label":"模式选择","kind":"recognitionRegion","rect":null}"#,
+        )
+        .expect("旧校准配置应兼容验证字段");
+
+        assert_eq!(target.match_threshold, 0.75);
+        assert_eq!(target.verified_signature, None);
+        assert_eq!(target.verified_at_ms, None);
+    }
+
+    #[test]
+    fn two_samples_must_both_reach_default_threshold_to_verify() {
+        assert!(template_test_passed([0.75, 0.91], 0.75));
+        assert!(!template_test_passed([0.74, 0.99], 0.75));
+        assert!(!template_test_passed([f32::NAN, 0.99], 0.75));
+        assert!(!template_test_passed([0.99, 0.99], f32::NAN));
+        assert!(!template_test_passed([0.99, 0.99], -0.01));
+        assert!(!template_test_passed([0.99, 0.99], 1.01));
+    }
+
+    #[test]
+    fn changed_rect_reference_or_file_metadata_invalidates_verification() {
+        let first_reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        let second_reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(first_reference.path(), b"first").unwrap();
+        std::fs::write(second_reference.path(), b"first").unwrap();
+        let mut target = default_calibration_targets()
+            .into_iter()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        target.rect = Some(CalibrationRect {
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+        });
+        target.reference_image_path = Some(first_reference.path().display().to_string());
+        let verified = calibration_signature(&target).unwrap();
+
+        target.rect.as_mut().unwrap().x += 1;
+        assert_ne!(calibration_signature(&target).unwrap(), verified);
+
+        target.rect.as_mut().unwrap().x -= 1;
+        target.reference_image_path = Some(second_reference.path().display().to_string());
+        assert_ne!(calibration_signature(&target).unwrap(), verified);
+
+        target.reference_image_path = Some(first_reference.path().display().to_string());
+        std::fs::write(first_reference.path(), b"first-longer").unwrap();
+        assert_ne!(calibration_signature(&target).unwrap(), verified);
+    }
+
+    #[test]
+    fn normalize_clears_stale_template_verification() {
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), b"reference").unwrap();
+        let mut settings = SpecialOpsSettings::default();
+        let target = settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        target.rect = Some(CalibrationRect {
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+        });
+        target.reference_image_path = Some(reference.path().display().to_string());
+        target.verified_signature = Some(calibration_signature(target).unwrap());
+        target.verified_at_ms = Some(123);
+
+        let preserved = normalize_settings(settings.clone()).unwrap();
+        let preserved_target = preserved.calibration_environments[0]
+            .targets
+            .iter()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        assert!(preserved_target.verified_signature.is_some());
+        assert_eq!(preserved_target.verified_at_ms, Some(123));
+
+        let target = settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        target.verified_signature = Some("旧签名".to_string());
+        let normalized = normalize_settings(settings).unwrap();
+        let target = normalized.calibration_environments[0]
+            .targets
+            .iter()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap();
+        assert_eq!(target.verified_signature, None);
+        assert_eq!(target.verified_at_ms, None);
+    }
+
+    #[test]
     fn default_click_and_input_targets_have_recognition_guards() {
         let targets = default_calibration_targets();
         let actions = targets
@@ -1842,14 +2244,27 @@ mod tests {
             width: 30,
             height: 40,
         });
-        target.reference_image_path = Some("reference.png".to_string());
-        let (region, path) =
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), b"reference").unwrap();
+        target.reference_image_path = Some(reference.path().display().to_string());
+        let expected_signature = calibration_signature(target).unwrap();
+        let input =
             calibration_template_test_input(&settings, "default", "wegame.loginMode").unwrap();
         assert_eq!(
-            (region.x, region.y, region.width, region.height),
+            (
+                input.region.x,
+                input.region.y,
+                input.region.width,
+                input.region.height
+            ),
             (10, 20, 30, 40)
         );
-        assert_eq!(path, "reference.png");
+        assert_eq!(
+            input.reference_image_path,
+            reference.path().display().to_string()
+        );
+        assert_eq!(input.match_threshold, 0.75);
+        assert_eq!(input.calibration_signature, expected_signature);
         assert_eq!(
             calibration_template_test_input(&settings, "default", "ammo.selectedTargetName")
                 .unwrap_err(),
@@ -1889,6 +2304,9 @@ mod tests {
                 reference_image_path: None,
                 recognition_method: None,
                 guard_any_of: Vec::new(),
+                match_threshold: default_match_threshold(),
+                verified_signature: None,
+                verified_at_ms: None,
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1924,6 +2342,9 @@ mod tests {
                 reference_image_path: None,
                 recognition_method: None,
                 guard_any_of: Vec::new(),
+                match_threshold: default_match_threshold(),
+                verified_signature: None,
+                verified_at_ms: None,
             });
 
         let normalized = normalize_settings(settings).unwrap();
@@ -1951,6 +2372,9 @@ mod tests {
                 reference_image_path: None,
                 recognition_method: None,
                 guard_any_of: Vec::new(),
+                match_threshold: default_match_threshold(),
+                verified_signature: None,
+                verified_at_ms: None,
             },
             CalibrationTarget {
                 key: "craft.idle".to_string(),
@@ -1960,6 +2384,9 @@ mod tests {
                 reference_image_path: None,
                 recognition_method: None,
                 guard_any_of: Vec::new(),
+                match_threshold: default_match_threshold(),
+                verified_signature: None,
+                verified_at_ms: None,
             },
         ]);
 
@@ -2017,5 +2444,149 @@ mod tests {
 
         assert_eq!(normalized.calibration_environments.len(), 1);
         assert_eq!(normalized.calibration_environments[0].id, "second");
+    }
+
+    #[test]
+    fn login_trial_preflight_requires_existing_absolute_exe_paths() {
+        let fixture = LoginFixture::complete();
+        assert!(validate_login_trial_ready(&fixture.settings, "selected").is_ok());
+
+        let mut settings = fixture.settings.clone();
+        settings.wegame_executable_path.clear();
+        let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+        assert!(error.contains("WeGame.exe"));
+        assert!(error.contains("不能为空"));
+
+        settings = fixture.settings.clone();
+        settings.wegame_executable_path = "WeGame.exe".to_string();
+        let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+        assert!(error.contains("WeGame.exe"));
+        assert!(error.contains("绝对路径"));
+
+        settings = fixture.settings.clone();
+        settings.wegame_executable_path = fixture._reference_files[0].path().display().to_string();
+        let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+        assert!(error.contains("WeGame.exe"));
+        assert!(error.contains(".exe"));
+
+        let missing = tempfile::tempdir().unwrap().path().join("missing.exe");
+        settings = fixture.settings.clone();
+        settings.wegame_executable_path = missing.display().to_string();
+        let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+        assert!(error.contains("WeGame.exe"));
+        assert!(error.contains("不存在"));
+
+        settings = fixture.settings.clone();
+        settings.game_executable_path.clear();
+        let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+        assert!(error.contains("游戏 .exe"));
+    }
+
+    #[test]
+    fn login_trial_preflight_allows_duplicate_passwords_and_requires_selected_account_credentials()
+    {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings.clone();
+        let mut other = account("other", AccountStatus::Ready, Vec::new());
+        other.password = settings.accounts[0].password.clone();
+        settings.accounts.push(other);
+        let settings = normalize_settings(settings).unwrap();
+        assert!(validate_login_trial_ready(&settings, "selected").is_ok());
+
+        let mut empty_qq = fixture.settings.clone();
+        empty_qq.accounts[0].qq_account = "   ".to_string();
+        let error = validate_login_trial_ready(&empty_qq, "selected").unwrap_err();
+        assert!(error.contains("selected"));
+        assert!(error.contains("QQ"));
+
+        let mut empty_password = fixture.settings.clone();
+        empty_password.accounts[0].password.clear();
+        let error = validate_login_trial_ready(&empty_password, "selected").unwrap_err();
+        assert!(error.contains("selected"));
+        assert!(error.contains("密码"));
+    }
+
+    #[test]
+    fn login_trial_preflight_requires_five_verified_templates_and_two_input_regions() {
+        let fixture = LoginFixture::complete();
+        let ordered_keys = [
+            "wegame.loginMode",
+            "wegame.loginFormReady",
+            "wegame.account",
+            "wegame.password",
+            "wegame.login",
+            "wegame.gameEntry",
+            "wegame.launch",
+        ];
+        assert!(validate_login_trial_ready(&fixture.settings, "selected").is_ok());
+
+        for (index, key) in ordered_keys.iter().enumerate() {
+            let mut settings = fixture.settings.clone();
+            for missing_key in &ordered_keys[index..] {
+                settings.calibration_environments[0]
+                    .targets
+                    .iter_mut()
+                    .find(|target| target.key == *missing_key)
+                    .unwrap()
+                    .rect = None;
+            }
+            let expected_label = fixture.settings.calibration_environments[0]
+                .targets
+                .iter()
+                .find(|target| target.key == *key)
+                .unwrap()
+                .label
+                .clone();
+            let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+            assert!(error.contains(&expected_label), "{key}: {error}");
+            assert!(error.contains("尚未框选"), "{key}: {error}");
+        }
+
+        let mut no_reference = fixture.settings.clone();
+        no_reference.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap()
+            .reference_image_path = None;
+        assert!(validate_login_trial_ready(&no_reference, "selected")
+            .unwrap_err()
+            .contains("尚未上传参考图"));
+
+        let mut missing_reference = fixture.settings.clone();
+        missing_reference.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.loginMode")
+            .unwrap()
+            .reference_image_path = Some(
+            tempfile::tempdir()
+                .unwrap()
+                .path()
+                .join("missing.png")
+                .display()
+                .to_string(),
+        );
+        assert!(validate_login_trial_ready(&missing_reference, "selected")
+            .unwrap_err()
+            .contains("参考图文件不存在"));
+
+        for key in [
+            "wegame.loginMode",
+            "wegame.loginFormReady",
+            "wegame.login",
+            "wegame.gameEntry",
+            "wegame.launch",
+        ] {
+            let mut settings = fixture.settings.clone();
+            settings.calibration_environments[0]
+                .targets
+                .iter_mut()
+                .find(|target| target.key == key)
+                .unwrap()
+                .verified_signature = None;
+            let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
+            assert!(error.contains("尚未测试或验证失效"), "{key}: {error}");
+        }
     }
 }
