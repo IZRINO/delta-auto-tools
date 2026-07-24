@@ -51,6 +51,14 @@ pub enum AccountStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountFailure {
+    pub step: String,
+    pub message: String,
+    pub at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct AmmoTarget {
     pub id: String,
     pub name: String,
@@ -69,13 +77,16 @@ pub struct AccountPlan {
     pub id: String,
     pub qq_account: String,
     pub password: String,
-    pub wegame_id: String,
     pub enabled: bool,
     pub initialized: bool,
     pub order: u32,
     pub status: AccountStatus,
     pub stations: Vec<StationPlan>,
     pub ammo_targets: Vec<AmmoTarget>,
+    #[serde(default)]
+    pub last_failure: Option<AccountFailure>,
+    #[serde(default)]
+    pub login_trial_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,6 +154,10 @@ pub struct SpecialOpsSettings {
     pub paused: bool,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
+    #[serde(default)]
+    pub wegame_executable_path: String,
+    #[serde(default)]
+    pub game_executable_path: String,
     pub accounts: Vec<AccountPlan>,
     #[serde(default)]
     pub active_calibration_id: Option<String>,
@@ -157,6 +172,8 @@ impl Default for SpecialOpsSettings {
             paused: true,
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            wegame_executable_path: String::new(),
+            game_executable_path: String::new(),
             accounts: Vec::new(),
             active_calibration_id: Some("default".to_string()),
             calibration_environments: vec![default_calibration_environment()],
@@ -180,7 +197,6 @@ fn default_calibration_environment() -> CalibrationEnvironment {
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
     match key {
         "wegame.account" | "wegame.password" => &["wegame.loginFormReady"],
-        "wegame.profileId" => &["wegame.profileReady"],
         "craft.station.technicalCenter" => &["craft.claimReady.technicalCenter"],
         "craft.station.workbench" => &["craft.claimReady.workbench"],
         "craft.station.pharmacy" => &["craft.claimReady.pharmacy"],
@@ -219,55 +235,8 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         (
-            "wegame.humanVerification",
-            "WeGame 人工验证提示区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.loginFailed",
-            "WeGame 登录失败提示区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.loggedIn",
-            "WeGame 最大化后登录成功状态区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.launchPage",
+            "wegame.gameEntry",
             "游戏启动前置界面入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.launchPageReady",
-            "游戏启动前置界面就绪区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.launchId",
-            "游戏启动前置界面 ID OCR 区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.avatar",
-            "WeGame 头像识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.avatarMenuReady",
-            "WeGame 头像菜单展开状态区域",
-            RecognitionRegion,
-        ),
-        (
-            "wegame.profile",
-            "个人主页入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        ("wegame.profileReady", "个人主页就绪区域", RecognitionRegion),
-        ("wegame.profileId", "个人主页 ID 双击复制区域", ClickPoint),
-        (
-            "wegame.switchAccount",
-            "切换账号入口识别与点击区域",
             RecognitionRegion,
         ),
         (
@@ -454,7 +423,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
     .into_iter()
     .map(|(key, label, kind)| {
         let recognition_method = match (&kind, key) {
-            (RecognitionRegion, "wegame.launchId" | "ammo.selectedTargetName") => {
+            (RecognitionRegion, "ammo.selectedTargetName") => {
                 Some(CalibrationRecognitionMethod::Ocr)
             }
             (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
@@ -617,12 +586,18 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
     }
 
     let mut ids = std::collections::HashSet::new();
+    let mut enabled_qq_accounts = std::collections::HashSet::new();
     for (index, account) in settings.accounts.iter_mut().enumerate() {
         account.id = account.id.trim().to_string();
         account.qq_account = account.qq_account.trim().to_string();
-        account.wegame_id = account.wegame_id.trim().to_string();
         if account.id.is_empty() || !ids.insert(account.id.clone()) {
             return Err("账号 ID 必须非空且唯一".to_string());
+        }
+        if account.enabled
+            && !account.qq_account.is_empty()
+            && !enabled_qq_accounts.insert(account.qq_account.clone())
+        {
+            return Err("启用账号的 QQ 账号必须唯一".to_string());
         }
         account.order = index as u32;
         if account.stations.len() > 4 {
@@ -679,18 +654,7 @@ fn required_execution_target_keys(
         "wegame.account",
         "wegame.password",
         "wegame.login",
-        "wegame.humanVerification",
-        "wegame.loginFailed",
-        "wegame.loggedIn",
-        "wegame.launchPage",
-        "wegame.launchPageReady",
-        "wegame.launchId",
-        "wegame.avatar",
-        "wegame.avatarMenuReady",
-        "wegame.profile",
-        "wegame.profileReady",
-        "wegame.profileId",
-        "wegame.switchAccount",
+        "wegame.gameEntry",
         "wegame.launch",
         "game.modeReady",
         "game.beaconMode",
@@ -787,14 +751,8 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
                 || account.ammo_targets.iter().any(|target| target.enabled)
         })
     {
-        if account.qq_account.trim().is_empty()
-            || account.password.is_empty()
-            || account.wegame_id.trim().is_empty()
-        {
-            return Err(format!(
-                "账号 {} 的 QQ、密码与 WeGame ID 必须完整",
-                account.id
-            ));
+        if account.qq_account.trim().is_empty() || account.password.is_empty() {
+            return Err(format!("账号 {} 的 QQ 与密码必须完整", account.id));
         }
         for station in account.stations.iter().filter(|station| station.enabled) {
             if station.item_name.trim().is_empty()
@@ -1402,14 +1360,87 @@ mod tests {
             id: id.to_string(),
             qq_account: id.to_string(),
             password: "password".to_string(),
-            wegame_id: id.to_string(),
             enabled: true,
             initialized: true,
             order: 0,
             status,
             stations,
             ammo_targets: Vec::new(),
+            last_failure: None,
+            login_trial_signature: None,
         }
+    }
+
+    #[test]
+    fn legacy_wegame_identity_fields_are_dropped_after_roundtrip() {
+        let legacy_account: AccountPlan = serde_json::from_value(serde_json::json!({
+            "id": "legacy",
+            "qqAccount": "10001",
+            "password": "password",
+            "wegameId": "legacy-wegame-id",
+            "enabled": true,
+            "initialized": false,
+            "order": 0,
+            "status": "ready",
+            "stations": [],
+            "ammoTargets": []
+        }))
+        .unwrap();
+        let normalized = normalize_settings(SpecialOpsSettings {
+            accounts: vec![legacy_account],
+            ..SpecialOpsSettings::default()
+        })
+        .unwrap();
+        let serialized = serde_json::to_value(normalized).unwrap();
+
+        assert!(serialized["accounts"][0].get("wegameId").is_none());
+    }
+
+    #[test]
+    fn login_targets_are_exactly_the_approved_seven() {
+        let keys = default_calibration_targets()
+            .into_iter()
+            .filter(|target| target.key.starts_with("wegame."))
+            .map(|target| target.key)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            [
+                "wegame.loginMode",
+                "wegame.loginFormReady",
+                "wegame.account",
+                "wegame.password",
+                "wegame.login",
+                "wegame.gameEntry",
+                "wegame.launch",
+            ]
+        );
+    }
+
+    #[test]
+    fn enabled_qq_accounts_must_be_unique_but_passwords_may_match() {
+        let mut settings = SpecialOpsSettings {
+            accounts: vec![
+                account("first", AccountStatus::Ready, Vec::new()),
+                account("second", AccountStatus::Ready, Vec::new()),
+            ],
+            ..SpecialOpsSettings::default()
+        };
+        settings.accounts[0].qq_account = "10001".to_string();
+        settings.accounts[1].qq_account = "10002".to_string();
+
+        assert!(normalize_settings(settings.clone()).is_ok());
+
+        settings.accounts[1].qq_account = " 10001 ".to_string();
+        assert_eq!(
+            normalize_settings(settings.clone()).unwrap_err(),
+            "启用账号的 QQ 账号必须唯一"
+        );
+
+        settings.accounts[0].qq_account.clear();
+        settings.accounts[1].qq_account.clear();
+        assert!(normalize_settings(settings).is_ok());
     }
 
     #[test]
@@ -1582,7 +1613,7 @@ mod tests {
         };
         assert_eq!(
             validate_execution_ready(&settings).unwrap_err(),
-            "账号 active 的 QQ、密码与 WeGame ID 必须完整"
+            "账号 active 的 QQ 与密码必须完整"
         );
     }
 
@@ -1695,21 +1726,22 @@ mod tests {
                         && target.kind == CalibrationTargetKind::RecognitionRegion
                 })));
         }
-        assert_eq!(action_count, 16);
+        assert_eq!(action_count, 15);
     }
 
     #[test]
     fn default_dynamic_text_targets_use_ocr() {
         let targets = default_calibration_targets();
 
-        for key in ["wegame.launchId", "ammo.selectedTargetName"] {
-            let target = targets.iter().find(|target| target.key == key).unwrap();
-            assert_eq!(
-                target.recognition_method,
-                Some(CalibrationRecognitionMethod::Ocr)
-            );
-            assert_eq!(target.reference_image_path, None);
-        }
+        let target = targets
+            .iter()
+            .find(|target| target.key == "ammo.selectedTargetName")
+            .unwrap();
+        assert_eq!(
+            target.recognition_method,
+            Some(CalibrationRecognitionMethod::Ocr)
+        );
+        assert_eq!(target.reference_image_path, None);
         assert_eq!(
             targets
                 .iter()
@@ -1717,44 +1749,6 @@ mod tests {
                 .unwrap()
                 .recognition_method,
             Some(CalibrationRecognitionMethod::Template)
-        );
-        assert!(targets.iter().any(|target| target.key == "wegame.profile"));
-        assert!(targets
-            .iter()
-            .any(|target| target.key == "wegame.profileReady"));
-    }
-
-    #[test]
-    fn wegame_id_validation_targets_follow_ocr_then_copy_fallback_order() {
-        let targets = default_calibration_targets();
-        let position = |key: &str| {
-            targets
-                .iter()
-                .position(|target| target.key == key)
-                .unwrap_or_else(|| panic!("缺少 WeGame ID 校准目标 {key}"))
-        };
-        let ordered_keys = [
-            "wegame.launchPage",
-            "wegame.launchPageReady",
-            "wegame.launchId",
-            "wegame.avatar",
-            "wegame.avatarMenuReady",
-            "wegame.profile",
-            "wegame.profileReady",
-            "wegame.profileId",
-            "wegame.launch",
-        ];
-
-        assert!(ordered_keys
-            .windows(2)
-            .all(|pair| position(pair[0]) < position(pair[1])));
-        assert_eq!(
-            targets[position("wegame.launchId")].recognition_method,
-            Some(CalibrationRecognitionMethod::Ocr)
-        );
-        assert_eq!(
-            targets[position("wegame.profileId")].guard_any_of,
-            vec!["wegame.profileReady"]
         );
     }
 
@@ -1786,7 +1780,8 @@ mod tests {
         );
         assert_eq!(path, "reference.png");
         assert_eq!(
-            calibration_template_test_input(&settings, "default", "wegame.launchId").unwrap_err(),
+            calibration_template_test_input(&settings, "default", "ammo.selectedTargetName")
+                .unwrap_err(),
             "OCR 测试尚未接入，不能伪造识别结果"
         );
     }
