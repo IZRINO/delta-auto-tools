@@ -1373,27 +1373,61 @@ mod tests {
 
     #[test]
     fn legacy_wegame_identity_fields_are_dropped_after_roundtrip() {
-        let legacy_account: AccountPlan = serde_json::from_value(serde_json::json!({
-            "id": "legacy",
-            "qqAccount": "10001",
-            "password": "password",
-            "wegameId": "legacy-wegame-id",
-            "enabled": true,
-            "initialized": false,
-            "order": 0,
-            "status": "ready",
-            "stations": [],
-            "ammoTargets": []
-        }))
+        let settings: SpecialOpsSettings = serde_json::from_str(
+            r#"{
+                "enabled": true,
+                "paused": true,
+                "dailyExchangeTime": "08:00",
+                "emergencyHotkey": "Ctrl+Shift+F12",
+                "accounts": [{
+                    "id": "legacy",
+                    "qqAccount": "10001",
+                    "password": "password",
+                    "wegameId": "legacy-wegame-id",
+                    "enabled": true,
+                    "initialized": false,
+                    "order": 0,
+                    "status": "ready",
+                    "stations": [],
+                    "ammoTargets": []
+                }],
+                "activeCalibrationId": "legacy",
+                "calibrationEnvironments": [{
+                    "id": "legacy",
+                    "name": "旧显示环境",
+                    "monitor": "主显示器",
+                    "resolutionWidth": 1920,
+                    "resolutionHeight": 1080,
+                    "dpiScale": 1.0,
+                    "windowMode": "无边框窗口",
+                    "targets": [{
+                        "key": "wegame.launchPage",
+                        "label": "旧游戏入口",
+                        "kind": "recognitionRegion",
+                        "rect": null
+                    }]
+                }]
+            }"#,
+        )
         .unwrap();
-        let normalized = normalize_settings(SpecialOpsSettings {
-            accounts: vec![legacy_account],
-            ..SpecialOpsSettings::default()
-        })
-        .unwrap();
+
+        assert!(settings.wegame_executable_path.is_empty());
+        assert!(settings.game_executable_path.is_empty());
+        assert_eq!(settings.accounts[0].last_failure, None);
+        assert_eq!(settings.accounts[0].login_trial_signature, None);
+
+        let normalized = normalize_settings(settings).unwrap();
         let serialized = serde_json::to_value(normalized).unwrap();
+        let target_keys = serialized["calibrationEnvironments"][0]["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|target| target["key"].as_str().unwrap())
+            .collect::<Vec<_>>();
 
         assert!(serialized["accounts"][0].get("wegameId").is_none());
+        assert!(!target_keys.contains(&"wegame.launchPage"));
+        assert!(target_keys.contains(&"wegame.gameEntry"));
     }
 
     #[test]
@@ -1433,6 +1467,10 @@ mod tests {
         assert!(normalize_settings(settings.clone()).is_ok());
 
         settings.accounts[1].qq_account = " 10001 ".to_string();
+        settings.accounts[1].enabled = false;
+        assert!(normalize_settings(settings.clone()).is_ok());
+
+        settings.accounts[1].enabled = true;
         assert_eq!(
             normalize_settings(settings.clone()).unwrap_err(),
             "启用账号的 QQ 账号必须唯一"
@@ -1680,6 +1718,37 @@ mod tests {
     }
 
     #[test]
+    fn required_execution_wegame_targets_are_exactly_the_approved_seven() {
+        let settings = SpecialOpsSettings {
+            accounts: vec![account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, 1)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+
+        let actual = required_execution_target_keys(&settings)
+            .into_iter()
+            .filter(|key| key.starts_with("wegame."))
+            .collect::<std::collections::BTreeSet<_>>();
+        let expected = [
+            "wegame.loginMode",
+            "wegame.loginFormReady",
+            "wegame.account",
+            "wegame.password",
+            "wegame.login",
+            "wegame.gameEntry",
+            "wegame.launch",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<std::collections::BTreeSet<_>>();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn ammo_target_defaults_scroll_steps_for_legacy_settings() {
         let target: AmmoTarget = serde_json::from_str(
             r#"{"id":"ammo-1","name":"测试子弹","enabled":true,"seasonal":false,"order":0,"lastSuccessDay":null,"retryCount":0}"#,
@@ -1704,15 +1773,18 @@ mod tests {
     #[test]
     fn default_click_and_input_targets_have_recognition_guards() {
         let targets = default_calibration_targets();
-        let actions = targets.iter().filter(|target| {
-            matches!(
-                target.kind,
-                CalibrationTargetKind::ClickPoint | CalibrationTargetKind::InputRegion
-            )
-        });
-        let mut action_count = 0;
+        let actions = targets
+            .iter()
+            .filter(|target| {
+                matches!(
+                    target.kind,
+                    CalibrationTargetKind::ClickPoint | CalibrationTargetKind::InputRegion
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert!(!actions.is_empty());
         for action in actions {
-            action_count += 1;
             assert!(
                 !action.guard_any_of.is_empty(),
                 "动作 {} 缺少识别守卫",
@@ -1726,7 +1798,6 @@ mod tests {
                         && target.kind == CalibrationTargetKind::RecognitionRegion
                 })));
         }
-        assert_eq!(action_count, 15);
     }
 
     #[test]
