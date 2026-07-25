@@ -10,7 +10,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Condvar, Mutex,
     },
     time::Duration,
 };
@@ -56,12 +56,33 @@ pub(crate) enum StopReason {
     Lifecycle { uncertain: bool },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PersistenceKind {
+    Flow,
+    Stop(StopReason),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PersistenceClaim {
+    Acquired(PersistenceKind),
+    Pending,
+    Resolved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PersistenceState {
+    Unclaimed,
+    InProgress(PersistenceKind),
+    Persisted,
+}
+
 struct ActiveLoginRun {
     snapshot: LoginRunSnapshot,
     cancelled: Arc<AtomicBool>,
     stop_reason: Option<StopReason>,
     entered_input: bool,
-    stop_persisted: bool,
+    persistence_state: PersistenceState,
+    cleanup_failed: bool,
 }
 
 struct LoginRuntimeInner {
@@ -71,6 +92,7 @@ struct LoginRuntimeInner {
 
 pub(crate) struct LoginRuntime {
     inner: Mutex<LoginRuntimeInner>,
+    persistence_changed: Condvar,
 }
 
 impl Default for LoginRuntime {
@@ -80,6 +102,7 @@ impl Default for LoginRuntime {
                 next_run_id: 1,
                 active: None,
             }),
+            persistence_changed: Condvar::new(),
         }
     }
 }
@@ -111,7 +134,8 @@ impl LoginRuntime {
             cancelled: Arc::clone(&cancelled),
             stop_reason: None,
             entered_input: false,
-            stop_persisted: false,
+            persistence_state: PersistenceState::Unclaimed,
+            cleanup_failed: false,
         });
         Ok(StartedLoginRun { run_id, cancelled })
     }
@@ -135,6 +159,9 @@ impl LoginRuntime {
         else {
             return Ok(None);
         };
+        if active.stop_reason.is_some() || active.cancelled.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
         active.entered_input |= status == LoginRunStatus::Inputting;
         active.snapshot.status = status;
         active.snapshot.current_step = current_step;
@@ -161,7 +188,11 @@ impl LoginRuntime {
             inner.active = Some(active);
             return Ok(None);
         }
-        active.snapshot.status = status;
+        active.snapshot.status = if active.stop_reason.is_some() {
+            LoginRunStatus::Stopped
+        } else {
+            status
+        };
         active.snapshot.current_step = None;
         active.snapshot.message = message.into();
         active.snapshot.countdown_seconds = None;
@@ -182,12 +213,19 @@ impl LoginRuntime {
             .active
             .as_mut()
             .ok_or_else(|| "当前没有运行中的登录试运行".to_string())?;
-        if active.stop_reason.is_none() || reason == StopReason::Emergency {
-            active.stop_reason = Some(reason);
-        }
+        let previous_reason = active.stop_reason;
+        active.stop_reason = Some(authoritative_stop_reason(previous_reason, reason));
         let effective_reason = active.stop_reason.unwrap_or(reason);
+        if previous_reason != active.stop_reason
+            && !matches!(effective_reason, StopReason::Normal)
+            && active.persistence_state == PersistenceState::Persisted
+        {
+            active.persistence_state = PersistenceState::Unclaimed;
+            self.persistence_changed.notify_all();
+        }
         active.cancelled.store(true, Ordering::SeqCst);
         active.snapshot.status = LoginRunStatus::Stopped;
+        active.snapshot.current_step = None;
         active.snapshot.message = match effective_reason {
             StopReason::Normal => "正在取消登录试运行",
             StopReason::Emergency => "正在执行紧急停止",
@@ -232,7 +270,7 @@ impl LoginRuntime {
             })
     }
 
-    pub(crate) fn mark_stop_persisted(&self, run_id: u64) -> Result<(), String> {
+    pub(crate) fn mark_cleanup_failed(&self, run_id: u64) -> Result<(), String> {
         let mut inner = self
             .inner
             .lock()
@@ -242,12 +280,12 @@ impl LoginRuntime {
             .as_mut()
             .filter(|active| active.snapshot.run_id == run_id)
         {
-            active.stop_persisted = true;
+            active.cleanup_failed = true;
         }
         Ok(())
     }
 
-    pub(crate) fn stop_persisted(&self, run_id: u64) -> Result<bool, String> {
+    pub(crate) fn cleanup_failed(&self, run_id: u64) -> Result<bool, String> {
         self.inner
             .lock()
             .map_err(|_| "登录试运行状态已损坏".to_string())
@@ -256,8 +294,136 @@ impl LoginRuntime {
                     .active
                     .as_ref()
                     .filter(|active| active.snapshot.run_id == run_id)
-                    .is_some_and(|active| active.stop_persisted)
+                    .is_some_and(|active| active.cleanup_failed)
             })
+    }
+
+    pub(crate) fn claim_persistence(&self, run_id: u64) -> Result<PersistenceClaim, String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let Some(active) = inner
+            .active
+            .as_mut()
+            .filter(|active| active.snapshot.run_id == run_id)
+        else {
+            return Ok(PersistenceClaim::Resolved);
+        };
+        match active.persistence_state {
+            PersistenceState::InProgress(_) => Ok(PersistenceClaim::Pending),
+            PersistenceState::Persisted => Ok(PersistenceClaim::Resolved),
+            PersistenceState::Unclaimed => {
+                let Some(kind) = desired_persistence_kind(active.stop_reason) else {
+                    return Ok(PersistenceClaim::Resolved);
+                };
+                active.persistence_state = PersistenceState::InProgress(kind);
+                Ok(PersistenceClaim::Acquired(kind))
+            }
+        }
+    }
+
+    pub(crate) fn complete_persistence(
+        &self,
+        run_id: u64,
+        kind: PersistenceKind,
+    ) -> Result<bool, String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let Some(active) = inner
+            .active
+            .as_mut()
+            .filter(|active| active.snapshot.run_id == run_id)
+        else {
+            return Ok(false);
+        };
+        if active.persistence_state != PersistenceState::InProgress(kind) {
+            return Err("登录结果持久化权限已失效".to_string());
+        }
+        let authoritative = desired_persistence_kind(active.stop_reason) == Some(kind);
+        active.persistence_state = if authoritative {
+            PersistenceState::Persisted
+        } else {
+            PersistenceState::Unclaimed
+        };
+        self.persistence_changed.notify_all();
+        Ok(authoritative)
+    }
+
+    pub(crate) fn release_persistence(
+        &self,
+        run_id: u64,
+        kind: PersistenceKind,
+    ) -> Result<(), String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let Some(active) = inner
+            .active
+            .as_mut()
+            .filter(|active| active.snapshot.run_id == run_id)
+        else {
+            return Ok(());
+        };
+        if active.persistence_state != PersistenceState::InProgress(kind) {
+            return Err("登录结果持久化权限已失效".to_string());
+        }
+        active.persistence_state = PersistenceState::Unclaimed;
+        self.persistence_changed.notify_all();
+        Ok(())
+    }
+
+    pub(crate) fn wait_for_persistence_change(
+        &self,
+        run_id: u64,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        let inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let is_pending = inner
+            .active
+            .as_ref()
+            .filter(|active| active.snapshot.run_id == run_id)
+            .is_some_and(|active| {
+                matches!(active.persistence_state, PersistenceState::InProgress(_))
+            });
+        if is_pending {
+            let _ = self
+                .persistence_changed
+                .wait_timeout(inner, timeout)
+                .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        }
+        Ok(())
+    }
+}
+
+fn desired_persistence_kind(stop_reason: Option<StopReason>) -> Option<PersistenceKind> {
+    match stop_reason {
+        None => Some(PersistenceKind::Flow),
+        Some(StopReason::Normal) => None,
+        Some(reason) => Some(PersistenceKind::Stop(reason)),
+    }
+}
+
+fn authoritative_stop_reason(current: Option<StopReason>, requested: StopReason) -> StopReason {
+    match (current, requested) {
+        (Some(StopReason::Emergency), _) | (_, StopReason::Emergency) => StopReason::Emergency,
+        (Some(StopReason::Lifecycle { uncertain: true }), _)
+        | (_, StopReason::Lifecycle { uncertain: true }) => {
+            StopReason::Lifecycle { uncertain: true }
+        }
+        (Some(StopReason::Lifecycle { uncertain: false }), _)
+        | (_, StopReason::Lifecycle { uncertain: false }) => {
+            StopReason::Lifecycle { uncertain: false }
+        }
+        (Some(StopReason::Normal), StopReason::Normal) | (None, StopReason::Normal) => {
+            StopReason::Normal
+        }
     }
 }
 
@@ -648,6 +814,88 @@ mod tests {
             .finish(current.run_id, LoginRunStatus::Stopped, "已停止")
             .unwrap();
         assert!(runtime.try_start("account-b".to_string()).is_ok());
+    }
+
+    #[test]
+    fn stopped_snapshot_rejects_late_worker_update() {
+        let runtime = LoginRuntime::default();
+        let current = runtime.try_start("account-a".to_string()).unwrap();
+        runtime.request_stop(StopReason::Emergency).unwrap();
+
+        let updated = runtime
+            .update(
+                current.run_id,
+                LoginRunStatus::Waiting,
+                Some(LoginStep::WaitGameWindow),
+                "旧 worker 更新",
+                None,
+            )
+            .unwrap();
+
+        assert!(updated.is_none());
+        let snapshot = runtime.snapshot().unwrap().unwrap();
+        assert_eq!(snapshot.status, LoginRunStatus::Stopped);
+        assert_eq!(snapshot.current_step, None);
+        assert_eq!(snapshot.message, "正在执行紧急停止");
+    }
+
+    #[test]
+    fn emergency_persistence_claim_blocks_stale_flow_claim() {
+        let runtime = LoginRuntime::default();
+        let current = runtime.try_start("account-a".to_string()).unwrap();
+        runtime.request_stop(StopReason::Emergency).unwrap();
+
+        let emergency = runtime.claim_persistence(current.run_id).unwrap();
+        assert_eq!(
+            emergency,
+            PersistenceClaim::Acquired(PersistenceKind::Stop(StopReason::Emergency))
+        );
+        runtime
+            .complete_persistence(current.run_id, PersistenceKind::Stop(StopReason::Emergency))
+            .unwrap();
+
+        assert_eq!(
+            runtime.claim_persistence(current.run_id).unwrap(),
+            PersistenceClaim::Resolved
+        );
+    }
+
+    #[test]
+    fn failed_emergency_persistence_releases_claim_for_retry() {
+        let runtime = LoginRuntime::default();
+        let current = runtime.try_start("account-a".to_string()).unwrap();
+        runtime.request_stop(StopReason::Emergency).unwrap();
+        let kind = match runtime.claim_persistence(current.run_id).unwrap() {
+            PersistenceClaim::Acquired(kind) => kind,
+            other => panic!("应取得持久化权限，实际为 {other:?}"),
+        };
+
+        runtime.release_persistence(current.run_id, kind).unwrap();
+
+        assert_eq!(
+            runtime.claim_persistence(current.run_id).unwrap(),
+            PersistenceClaim::Acquired(PersistenceKind::Stop(StopReason::Emergency))
+        );
+    }
+
+    #[test]
+    fn emergency_registered_during_flow_claim_requires_stop_persistence_after_flow() {
+        let runtime = LoginRuntime::default();
+        let current = runtime.try_start("account-a".to_string()).unwrap();
+        assert_eq!(
+            runtime.claim_persistence(current.run_id).unwrap(),
+            PersistenceClaim::Acquired(PersistenceKind::Flow)
+        );
+
+        runtime.request_stop(StopReason::Emergency).unwrap();
+        runtime
+            .complete_persistence(current.run_id, PersistenceKind::Flow)
+            .unwrap();
+
+        assert_eq!(
+            runtime.claim_persistence(current.run_id).unwrap(),
+            PersistenceClaim::Acquired(PersistenceKind::Stop(StopReason::Emergency))
+        );
     }
 
     #[test]

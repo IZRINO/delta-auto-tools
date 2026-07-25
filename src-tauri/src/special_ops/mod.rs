@@ -7,7 +7,7 @@ pub(crate) mod template_observer;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::overlay_utils::{destroy_window, encoded_query_value, safe_label_component};
@@ -19,6 +19,7 @@ const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
+static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -1404,7 +1405,7 @@ fn emit_current_state(app: &AppHandle) -> Result<(), String> {
 }
 
 fn create_operation_window(app: &AppHandle) -> Result<(), String> {
-    destroy_window(app, OPERATION_WINDOW_LABEL);
+    destroy_operation_window(app)?;
     tauri::WebviewWindowBuilder::new(
         app,
         OPERATION_WINDOW_LABEL,
@@ -1451,11 +1452,62 @@ fn clear_login_hotkey(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn destroy_operation_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(OPERATION_WINDOW_LABEL) {
+        window
+            .destroy()
+            .map_err(|error| format!("销毁登录试运行窗口失败: {error}"))?;
+    }
+    Ok(())
+}
+
+fn release_login_resources_with(
+    release_inputs: impl FnOnce(),
+    clear_hotkey: impl FnOnce() -> Result<(), String>,
+    destroy_window: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    release_inputs();
+    let mut errors = Vec::new();
+    if let Err(error) = clear_hotkey() {
+        errors.push(error);
+    }
+    if let Err(error) = destroy_window() {
+        errors.push(error);
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 fn release_login_resources(app: &AppHandle) -> Result<(), String> {
-    crate::input_simulation::release_tracked_injected_inputs();
-    let hotkey_result = clear_login_hotkey(app);
-    destroy_window(app, OPERATION_WINDOW_LABEL);
-    hotkey_result
+    let _cleanup = LOGIN_RESOURCE_CLEANUP_LOCK
+        .lock()
+        .map_err(|_| "登录试运行资源清理锁已损坏".to_string())?;
+    release_login_resources_unlocked(app)
+}
+
+fn release_login_resources_unlocked(app: &AppHandle) -> Result<(), String> {
+    release_login_resources_with(
+        crate::input_simulation::release_tracked_injected_inputs,
+        || clear_login_hotkey(app),
+        || destroy_operation_window(app),
+    )
+}
+
+fn release_login_resources_for_run(
+    app: &AppHandle,
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+) -> Result<(), String> {
+    let _cleanup = LOGIN_RESOURCE_CLEANUP_LOCK
+        .lock()
+        .map_err(|_| "登录试运行资源清理锁已损坏".to_string())?;
+    match runtime.snapshot()? {
+        Some(snapshot) if snapshot.run_id == run_id => release_login_resources_unlocked(app),
+        _ => Ok(()),
+    }
 }
 
 fn fail_closed_login_error(app: &AppHandle, runtime_error: String) -> String {
@@ -1477,12 +1529,49 @@ fn cleanup_login_run(
         Ok(_) => return Ok(()),
         Err(runtime_error) => return Err(fail_closed_login_error(app, runtime_error)),
     }
-    let resource_result = release_login_resources(app);
-    if let Some(snapshot) = runtime.finish(run_id, status, message)? {
+    let finished = finish_login_run_after_cleanup(runtime, run_id, status, message, || {
+        release_login_resources_unlocked(app)
+    });
+    let finished = match finished {
+        Ok(finished) => finished,
+        Err(error) => {
+            let _ = runtime.update(
+                run_id,
+                LoginRunStatus::Failed,
+                None,
+                "登录试运行资源清理失败",
+                None,
+            );
+            return Err(error);
+        }
+    };
+    if let Some(snapshot) = finished {
         emit_run(app, &snapshot);
     }
-    let state_result = emit_current_state(app);
-    resource_result.and(state_result)
+    emit_current_state(app)
+}
+
+fn finish_login_run_after_cleanup(
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    status: LoginRunStatus,
+    message: &str,
+    cleanup: impl FnOnce() -> Result<(), String>,
+) -> Result<Option<LoginRunSnapshot>, String> {
+    let _cleanup = LOGIN_RESOURCE_CLEANUP_LOCK
+        .lock()
+        .map_err(|_| "登录试运行资源清理锁已损坏".to_string())?;
+    match runtime.snapshot()? {
+        Some(snapshot) if snapshot.run_id == run_id => {}
+        _ => return Ok(None),
+    }
+    if let Err(error) = cleanup() {
+        if let Err(state_error) = runtime.mark_cleanup_failed(run_id) {
+            return Err(format!("{error}; {state_error}"));
+        }
+        return Err(error);
+    }
+    runtime.finish(run_id, status, message)
 }
 
 fn persist_login_result(
@@ -1515,6 +1604,73 @@ fn persist_login_result(
     })?;
     emit_state(app, &build_bootstrap(settings, revision, now_ms()));
     Ok(revision)
+}
+
+fn persist_login_outcome_with<F>(
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    account_id: &str,
+    flow_result: &login_flow::LoginFlowResult,
+    frozen_signature: &str,
+    mut persist: F,
+) -> Result<Option<login_runtime::PersistenceKind>, String>
+where
+    F: FnMut(&login_flow::LoginFlowResult, login_runtime::StopReason, &str) -> Result<(), String>,
+{
+    loop {
+        match runtime.claim_persistence(run_id)? {
+            login_runtime::PersistenceClaim::Pending => {
+                runtime
+                    .wait_for_persistence_change(run_id, std::time::Duration::from_millis(50))?;
+            }
+            login_runtime::PersistenceClaim::Resolved => return Ok(None),
+            login_runtime::PersistenceClaim::Acquired(kind) => {
+                let stop_result;
+                let (result, reason, signature) = match kind {
+                    login_runtime::PersistenceKind::Flow => (
+                        flow_result,
+                        login_runtime::StopReason::Normal,
+                        frozen_signature,
+                    ),
+                    login_runtime::PersistenceKind::Stop(reason) => {
+                        stop_result = login_flow::LoginFlowResult::EmergencyStopped {
+                            account_id: account_id.to_string(),
+                            stopped_at: now_ms(),
+                        };
+                        (&stop_result, reason, "")
+                    }
+                };
+                let result = persist(result, reason, signature);
+                if let Err(error) = result {
+                    runtime.release_persistence(run_id, kind)?;
+                    return Err(error);
+                }
+                if runtime.complete_persistence(run_id, kind)? {
+                    return Ok(Some(kind));
+                }
+            }
+        }
+    }
+}
+
+fn persist_login_outcome(
+    app: &AppHandle,
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    account_id: &str,
+    flow_result: &login_flow::LoginFlowResult,
+    frozen_signature: &str,
+) -> Result<Option<login_runtime::PersistenceKind>, String> {
+    persist_login_outcome_with(
+        runtime,
+        run_id,
+        account_id,
+        flow_result,
+        frozen_signature,
+        |result, reason, signature| {
+            persist_login_result(app, account_id, result, reason, signature).map(|_| ())
+        },
+    )
 }
 
 fn login_step_message(step: &login_flow::LoginStep) -> &'static str {
@@ -1573,22 +1729,19 @@ async fn run_login_worker(
         )
         .await;
 
-    let reason = runtime
-        .stop_reason(run_id)
-        .ok()
-        .flatten()
-        .unwrap_or(login_runtime::StopReason::Emergency);
-    let should_persist = !matches!(reason, login_runtime::StopReason::Normal)
-        || !matches!(result, login_flow::LoginFlowResult::EmergencyStopped { .. });
-    let already_persisted = runtime.stop_persisted(run_id).unwrap_or(false);
-    let persist_result = if should_persist && !already_persisted {
-        persist_login_result(&app, &config.account_id, &result, reason, &frozen_signature)
-            .map(|_| ())
-    } else {
-        Ok(())
-    };
+    let persist_result = persist_login_outcome(
+        &app,
+        &runtime,
+        run_id,
+        &config.account_id,
+        &result,
+        &frozen_signature,
+    );
+    let stopped = runtime.stop_reason(run_id).ok().flatten().is_some();
     let (status, message) = if persist_result.is_err() {
         (LoginRunStatus::Failed, "登录结果保存失败")
+    } else if stopped {
+        (LoginRunStatus::Stopped, "登录试运行已停止")
     } else {
         match result {
             login_flow::LoginFlowResult::GameReady { .. } => {
@@ -1637,20 +1790,38 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
             .request_stop(login_runtime::StopReason::Lifecycle { uncertain })
             .map_err(|error| fail_closed_login_error(app, error))?;
         emit_run(app, &stopped);
-        let resource_result = release_login_resources(app);
+        let resource_result =
+            release_login_resources_for_run(app, &state.login_runtime, snapshot.run_id);
         let result = login_flow::LoginFlowResult::EmergencyStopped {
             account_id: snapshot.account_id.clone(),
             stopped_at: now_ms(),
         };
-        persist_login_result(
+        let persist_result = persist_login_outcome(
             app,
+            &state.login_runtime,
+            snapshot.run_id,
             &snapshot.account_id,
             &result,
-            login_runtime::StopReason::Lifecycle { uncertain },
             "",
-        )?;
-        state.login_runtime.mark_stop_persisted(snapshot.run_id)?;
-        return resource_result;
+        );
+        let mut errors = Vec::new();
+        if let Err(error) = resource_result {
+            errors.push(error);
+        }
+        if let Err(error) = persist_result {
+            errors.push(error);
+        }
+        if !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        if let Some(finished) = state.login_runtime.finish(
+            snapshot.run_id,
+            LoginRunStatus::Stopped,
+            "登录试运行已停止",
+        )? {
+            emit_run(app, &finished);
+        }
+        return Ok(());
     }
     let coordinator = app
         .try_state::<Arc<SettingsCoordinator>>()
@@ -1726,14 +1897,28 @@ pub async fn special_ops_start_login_trial(
                 return Err(error);
             }
             if let Err(error) = create_operation_window(&app) {
-                let _ = clear_login_hotkey(&app);
-                destroy_window(&app, OPERATION_WINDOW_LABEL);
-                if let Some(failed) = runtime.finish(
+                let rollback = finish_login_run_after_cleanup(
+                    &runtime,
                     started.run_id,
                     LoginRunStatus::Failed,
                     "登录试运行窗口创建失败",
-                )? {
-                    emit_run(&app, &failed);
+                    || release_login_resources_unlocked(&app),
+                );
+                match rollback {
+                    Ok(Some(failed)) => emit_run(&app, &failed),
+                    Ok(None) => {}
+                    Err(cleanup_error) => {
+                        if let Some(failed) = runtime.update(
+                            started.run_id,
+                            LoginRunStatus::Failed,
+                            None,
+                            "登录试运行启动回滚失败",
+                            None,
+                        )? {
+                            emit_run(&app, &failed);
+                        }
+                        return Err(format!("{error}; {cleanup_error}"));
+                    }
                 }
                 return Err(error);
             }
@@ -1763,6 +1948,28 @@ pub fn special_ops_cancel_login_trial(
     state: State<'_, SpecialOpsState>,
     app: AppHandle,
 ) -> Result<LoginRunSnapshot, AppError> {
+    let cleanup_retry = state
+        .login_runtime
+        .snapshot()?
+        .map(|snapshot| {
+            state
+                .login_runtime
+                .cleanup_failed(snapshot.run_id)
+                .map(|failed| (snapshot, failed))
+        })
+        .transpose()?;
+    if let Some((snapshot, true)) = cleanup_retry {
+        let finished = finish_login_run_after_cleanup(
+            &state.login_runtime,
+            snapshot.run_id,
+            LoginRunStatus::Failed,
+            "登录试运行清理完成",
+            || release_login_resources_unlocked(&app),
+        )?
+        .ok_or_else(|| "登录试运行状态已变化".to_string())?;
+        emit_run(&app, &finished);
+        return Ok(finished);
+    }
     let snapshot = state
         .login_runtime
         .cancel_active()
@@ -1780,19 +1987,20 @@ fn emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
         .request_stop(login_runtime::StopReason::Emergency)
         .map_err(|error| fail_closed_login_error(app, error))?;
     emit_run(app, &snapshot);
-    let resource_result = release_login_resources(app);
+    let resource_result =
+        release_login_resources_for_run(app, &state.login_runtime, snapshot.run_id);
     let result = login_flow::LoginFlowResult::EmergencyStopped {
         account_id: snapshot.account_id.clone(),
         stopped_at: now_ms(),
     };
-    persist_login_result(
+    persist_login_outcome(
         app,
+        &state.login_runtime,
+        snapshot.run_id,
         &snapshot.account_id,
         &result,
-        login_runtime::StopReason::Emergency,
         "",
     )?;
-    state.login_runtime.mark_stop_persisted(snapshot.run_id)?;
     resource_result?;
     Ok(snapshot)
 }
@@ -2248,6 +2456,28 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
 mod tests {
     use super::*;
 
+    fn persist_test_login_result(
+        coordinator: &SettingsCoordinator,
+        settings: &Mutex<SpecialOpsSettings>,
+        account_id: &str,
+        result: &login_flow::LoginFlowResult,
+        reason: login_runtime::StopReason,
+        frozen_signature: &str,
+        fail: bool,
+    ) -> Result<(), String> {
+        coordinator
+            .with_runtime_change(|| {
+                let mut next = settings.lock().unwrap().clone();
+                apply_login_flow_result(&mut next, account_id, result, reason, frozen_signature)?;
+                if fail {
+                    return Err("测试持久化失败".to_string());
+                }
+                *settings.lock().unwrap() = next;
+                Ok::<_, String>(())
+            })
+            .map(|_| ())
+    }
+
     struct LoginFixture {
         settings: SpecialOpsSettings,
         _exe_files: Vec<tempfile::NamedTempFile>,
@@ -2394,6 +2624,446 @@ mod tests {
 
         assert!(settings.paused);
         assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+    }
+
+    #[test]
+    fn emergency_claim_prevents_concurrent_worker_from_persisting_stale_ready() {
+        let runtime = Arc::new(login_runtime::LoginRuntime::default());
+        let started = runtime.try_start("selected".to_string()).unwrap();
+        let run_id = started.run_id;
+        runtime
+            .request_stop(login_runtime::StopReason::Emergency)
+            .unwrap();
+        let settings = Arc::new(Mutex::new(LoginFixture::complete().settings));
+        let coordinator = Arc::new(SettingsCoordinator::new());
+        let initial_revision = coordinator.current_revision().unwrap();
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let claimed = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+
+        let emergency_runtime = Arc::clone(&runtime);
+        let emergency_settings = Arc::clone(&settings);
+        let emergency_coordinator = Arc::clone(&coordinator);
+        let emergency_writes = Arc::clone(&writes);
+        let emergency_claimed = Arc::clone(&claimed);
+        let emergency_release = Arc::clone(&release);
+        let emergency = std::thread::spawn(move || {
+            persist_login_outcome_with(
+                &emergency_runtime,
+                run_id,
+                "selected",
+                &login_flow::LoginFlowResult::GameReady {
+                    account_id: "selected".to_string(),
+                    qq_account: "10001".to_string(),
+                    game_process_id: 1,
+                    game_window_handle: 2,
+                },
+                "stale-flow-signature",
+                |result, reason, signature| {
+                    emergency_claimed.wait();
+                    emergency_release.wait();
+                    emergency_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    persist_test_login_result(
+                        &emergency_coordinator,
+                        &emergency_settings,
+                        "selected",
+                        result,
+                        reason,
+                        signature,
+                        false,
+                    )
+                },
+            )
+        });
+        claimed.wait();
+
+        let worker_runtime = Arc::clone(&runtime);
+        let worker_settings = Arc::clone(&settings);
+        let worker_coordinator = Arc::clone(&coordinator);
+        let worker_writes = Arc::clone(&writes);
+        let worker = std::thread::spawn(move || {
+            persist_login_outcome_with(
+                &worker_runtime,
+                run_id,
+                "selected",
+                &login_flow::LoginFlowResult::GameReady {
+                    account_id: "selected".to_string(),
+                    qq_account: "10001".to_string(),
+                    game_process_id: 3,
+                    game_window_handle: 4,
+                },
+                "stale-worker-signature",
+                |result, reason, signature| {
+                    worker_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    persist_test_login_result(
+                        &worker_coordinator,
+                        &worker_settings,
+                        "selected",
+                        result,
+                        reason,
+                        signature,
+                        false,
+                    )
+                },
+            )
+        });
+        release.wait();
+
+        assert!(emergency.join().unwrap().unwrap().is_some());
+        assert!(worker.join().unwrap().unwrap().is_none());
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 1
+        );
+        let settings = settings.lock().unwrap();
+        assert!(settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+    }
+
+    #[test]
+    fn concurrent_emergency_requests_persist_once() {
+        let runtime = Arc::new(login_runtime::LoginRuntime::default());
+        let started = runtime.try_start("selected".to_string()).unwrap();
+        let run_id = started.run_id;
+        runtime
+            .request_stop(login_runtime::StopReason::Emergency)
+            .unwrap();
+        let writes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let coordinator = Arc::new(SettingsCoordinator::new());
+        let initial_revision = coordinator.current_revision().unwrap();
+        let claimed = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+
+        let first_runtime = Arc::clone(&runtime);
+        let first_writes = Arc::clone(&writes);
+        let first_claimed = Arc::clone(&claimed);
+        let first_release = Arc::clone(&release);
+        let first_coordinator = Arc::clone(&coordinator);
+        let first = std::thread::spawn(move || {
+            persist_login_outcome_with(
+                &first_runtime,
+                run_id,
+                "selected",
+                &login_flow::LoginFlowResult::EmergencyStopped {
+                    account_id: "selected".to_string(),
+                    stopped_at: 1,
+                },
+                "",
+                |_, _, _| {
+                    first_claimed.wait();
+                    first_release.wait();
+                    first_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    first_coordinator
+                        .with_runtime_change(|| Ok::<_, String>(()))
+                        .map(|_| ())
+                },
+            )
+        });
+        claimed.wait();
+
+        let second_runtime = Arc::clone(&runtime);
+        let second_writes = Arc::clone(&writes);
+        let second = std::thread::spawn(move || {
+            second_runtime
+                .request_stop(login_runtime::StopReason::Emergency)
+                .unwrap();
+            persist_login_outcome_with(
+                &second_runtime,
+                run_id,
+                "selected",
+                &login_flow::LoginFlowResult::EmergencyStopped {
+                    account_id: "selected".to_string(),
+                    stopped_at: 2,
+                },
+                "",
+                |_, _, _| {
+                    second_writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+        release.wait();
+
+        assert!(first.join().unwrap().unwrap().is_some());
+        assert!(second.join().unwrap().unwrap().is_none());
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 1
+        );
+    }
+
+    #[test]
+    fn worker_retries_authoritative_emergency_after_command_persistence_failure() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime.try_start("selected".to_string()).unwrap();
+        runtime
+            .request_stop(login_runtime::StopReason::Emergency)
+            .unwrap();
+        let settings = Mutex::new(LoginFixture::complete().settings);
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+        let stale_ready = login_flow::LoginFlowResult::GameReady {
+            account_id: "selected".to_string(),
+            qq_account: "10001".to_string(),
+            game_process_id: 1,
+            game_window_handle: 2,
+        };
+
+        let failed = persist_login_outcome_with(
+            &runtime,
+            started.run_id,
+            "selected",
+            &stale_ready,
+            "stale-signature",
+            |result, reason, signature| {
+                persist_test_login_result(
+                    &coordinator,
+                    &settings,
+                    "selected",
+                    result,
+                    reason,
+                    signature,
+                    true,
+                )
+            },
+        );
+        assert_eq!(failed.unwrap_err(), "测试持久化失败");
+
+        let retried = persist_login_outcome_with(
+            &runtime,
+            started.run_id,
+            "selected",
+            &stale_ready,
+            "stale-signature",
+            |result, reason, signature| {
+                persist_test_login_result(
+                    &coordinator,
+                    &settings,
+                    "selected",
+                    result,
+                    reason,
+                    signature,
+                    false,
+                )
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            retried,
+            Some(login_runtime::PersistenceKind::Stop(
+                login_runtime::StopReason::Emergency
+            ))
+        );
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 1
+        );
+        assert_eq!(
+            settings.lock().unwrap().accounts[0].status,
+            AccountStatus::Uncertain
+        );
+    }
+
+    #[test]
+    fn worker_finishes_authoritative_stop_persistence_before_cleanup_when_stop_arrives_mid_write() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime.try_start("selected".to_string()).unwrap();
+        let settings = Mutex::new(LoginFixture::complete().settings);
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+        let writes = std::sync::atomic::AtomicUsize::new(0);
+        let stale_ready = login_flow::LoginFlowResult::GameReady {
+            account_id: "selected".to_string(),
+            qq_account: "10001".to_string(),
+            game_process_id: 1,
+            game_window_handle: 2,
+        };
+
+        let persisted = persist_login_outcome_with(
+            &runtime,
+            started.run_id,
+            "selected",
+            &stale_ready,
+            "stale-signature",
+            |result, reason, signature| {
+                persist_test_login_result(
+                    &coordinator,
+                    &settings,
+                    "selected",
+                    result,
+                    reason,
+                    signature,
+                    false,
+                )?;
+                if writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                    runtime.request_stop(login_runtime::StopReason::Emergency)?;
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            persisted,
+            Some(login_runtime::PersistenceKind::Stop(
+                login_runtime::StopReason::Emergency
+            ))
+        );
+        assert_eq!(writes.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(
+            coordinator.current_revision().unwrap(),
+            initial_revision + 2
+        );
+        assert_eq!(
+            settings.lock().unwrap().accounts[0].status,
+            AccountStatus::Uncertain
+        );
+    }
+
+    #[test]
+    fn resource_cleanup_attempts_hotkey_and_window_and_aggregates_errors() {
+        for (hotkey_fails, window_fails) in [(true, false), (false, true), (true, true)] {
+            let calls = Mutex::new(Vec::new());
+            let error = release_login_resources_with(
+                || calls.lock().unwrap().push("inputs"),
+                || {
+                    calls.lock().unwrap().push("hotkey");
+                    if hotkey_fails {
+                        Err("热键清理失败".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+                || {
+                    calls.lock().unwrap().push("window");
+                    if window_fails {
+                        Err("窗口销毁失败".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .unwrap_err();
+
+            assert_eq!(*calls.lock().unwrap(), ["inputs", "hotkey", "window"]);
+            assert_eq!(error.contains("热键清理失败"), hotkey_fails);
+            assert_eq!(error.contains("窗口销毁失败"), window_fails);
+        }
+    }
+
+    #[test]
+    fn cleanup_failure_keeps_singleton_until_retry_succeeds() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime.try_start("selected".to_string()).unwrap();
+
+        let error = finish_login_run_after_cleanup(
+            &runtime,
+            started.run_id,
+            LoginRunStatus::Stopped,
+            "已停止",
+            || Err("窗口销毁失败".to_string()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "窗口销毁失败");
+        assert!(runtime.cleanup_failed(started.run_id).unwrap());
+        assert!(runtime.try_start("next".to_string()).is_err());
+        assert!(finish_login_run_after_cleanup(
+            &runtime,
+            started.run_id,
+            LoginRunStatus::Stopped,
+            "已停止",
+            || Ok(()),
+        )
+        .unwrap()
+        .is_some());
+        assert!(runtime.try_start("next".to_string()).is_ok());
+    }
+
+    #[test]
+    fn stale_cleanup_does_not_touch_current_run_resources() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let old = runtime.try_start("old".to_string()).unwrap();
+        runtime
+            .finish(old.run_id, LoginRunStatus::Stopped, "旧任务完成")
+            .unwrap();
+        let current = runtime.try_start("current".to_string()).unwrap();
+        let cleanup_calls = std::sync::atomic::AtomicUsize::new(0);
+
+        let cleaned = finish_login_run_after_cleanup(
+            &runtime,
+            old.run_id,
+            LoginRunStatus::Stopped,
+            "旧任务完成",
+            || {
+                cleanup_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(cleaned.is_none());
+        assert_eq!(cleanup_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(runtime.snapshot().unwrap().unwrap().run_id, current.run_id);
+    }
+
+    #[test]
+    fn concurrent_old_cleanup_cannot_touch_resources_after_new_run_starts() {
+        let runtime = Arc::new(login_runtime::LoginRuntime::default());
+        let old = runtime.try_start("old".to_string()).unwrap();
+        let (first_started_tx, first_started_rx) = std::sync::mpsc::channel();
+        let (release_first_tx, release_first_rx) = std::sync::mpsc::channel();
+        let first_runtime = Arc::clone(&runtime);
+        let first = std::thread::spawn(move || {
+            finish_login_run_after_cleanup(
+                &first_runtime,
+                old.run_id,
+                LoginRunStatus::Stopped,
+                "旧任务完成",
+                || {
+                    first_started_tx.send(()).unwrap();
+                    release_first_rx.recv().unwrap();
+                    Ok(())
+                },
+            )
+        });
+        first_started_rx.recv().unwrap();
+
+        let touched = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let second_touched = Arc::clone(&touched);
+        let (second_started_tx, second_started_rx) = std::sync::mpsc::channel();
+        let (release_second_tx, release_second_rx) = std::sync::mpsc::channel();
+        let second_runtime = Arc::clone(&runtime);
+        let second = std::thread::spawn(move || {
+            finish_login_run_after_cleanup(
+                &second_runtime,
+                old.run_id,
+                LoginRunStatus::Stopped,
+                "旧任务完成",
+                || {
+                    second_started_tx.send(()).unwrap();
+                    release_second_rx.recv().unwrap();
+                    second_touched.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+        let second_entered_before_finish = second_started_rx
+            .recv_timeout(std::time::Duration::from_millis(500))
+            .is_ok();
+
+        release_first_tx.send(()).unwrap();
+        assert!(first.join().unwrap().unwrap().is_some());
+        let current = runtime.try_start("current".to_string()).unwrap();
+        let _ = release_second_tx.send(());
+        assert!(second.join().unwrap().unwrap().is_none());
+
+        assert!(!second_entered_before_finish);
+        assert_eq!(touched.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(runtime.snapshot().unwrap().unwrap().run_id, current.run_id);
     }
 
     #[test]
