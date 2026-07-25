@@ -82,29 +82,31 @@ impl Drop for OwnedHandle {
 
 impl DesktopRuntime for WindowsDesktopRuntime {
     fn terminate_exact(&self, exe: &Path, timeout: Duration) -> Result<(), String> {
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| "进程结束超时范围无效".to_string())?;
         terminate_until_no_exact_matches(
             || remaining_until(deadline, None).map(drop),
             || {
-                scan_process_entries_by_name(exe).map(|candidates| {
+                scan_process_entries_by_name(&exe).map(|candidates| {
                     candidates
                         .into_iter()
                         .map(|(process_id, _)| process_id)
                         .collect()
                 })
             },
-            |process_id| terminate_verified_process(exe, process_id, deadline),
+            |process_id| terminate_verified_process(&exe, process_id, deadline),
         )
     }
 
     fn launch(&self, exe: &Path) -> Result<u32, String> {
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
         let parent = exe
             .parent()
             .filter(|path| !path.as_os_str().is_empty())
             .ok_or_else(|| "程序路径缺少父目录".to_string())?;
-        Command::new(exe)
+        Command::new(&exe)
             .current_dir(parent)
             .spawn()
             .map(|child| child.id())
@@ -112,8 +114,9 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 
     fn find_primary_window(&self, exe: &Path) -> Result<Option<WindowIdentity>, String> {
-        let candidates = scan_process_candidates(exe)?;
-        let process_ids = matching_process_ids(exe, &candidates);
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
+        let candidates = scan_process_candidates(&exe)?;
+        let process_ids = matching_process_ids(&exe, &candidates);
         if process_ids.is_empty() {
             return Ok(None);
         }
@@ -122,13 +125,14 @@ impl DesktopRuntime for WindowsDesktopRuntime {
             return Ok(None);
         };
         let current_path = query_process_path(window.process_id)?;
-        if !windows_paths_equal(exe, &current_path) {
+        if !windows_paths_equal(&exe, &current_path) {
             return Err(format!("窗口所属进程路径已变化: PID {}", window.process_id));
         }
         Ok(Some(window))
     }
 
     fn restore_and_focus(&self, exe: &Path, window: WindowIdentity) -> Result<(), String> {
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
         let hwnd = hwnd_from_identity(window)?;
         // SAFETY: hwnd is treated as an opaque borrowed handle and validated before use.
         unsafe {
@@ -146,7 +150,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
             return Err("目标窗口归属已变化".to_string());
         }
         let current_path = query_process_path(process_id)?;
-        if !windows_paths_equal(exe, &current_path) {
+        if !windows_paths_equal(&exe, &current_path) {
             return Err("目标窗口所属程序已变化".to_string());
         }
 
@@ -170,6 +174,10 @@ impl DesktopRuntime for WindowsDesktopRuntime {
         }
         Ok(())
     }
+}
+
+fn canonicalize_executable_path(exe: &Path, action: &str) -> Result<PathBuf, String> {
+    std::fs::canonicalize(exe).map_err(|error| format!("{action}: {error}"))
 }
 
 fn windows_paths_equal(left: &Path, right: &Path) -> bool {
@@ -341,7 +349,10 @@ fn query_process_path_from_handle(
         format_win32_error(&format!("查询进程完整路径失败: PID {process_id}"), error)
     })?;
     path.truncate(path_len as usize);
-    Ok(PathBuf::from(OsString::from_wide(&path)))
+    canonicalize_executable_path(
+        &PathBuf::from(OsString::from_wide(&path)),
+        &format!("规范化进程完整路径失败: PID {process_id}"),
+    )
 }
 
 fn open_process(process_id: u32, access: u32, action: &str) -> Result<OwnedHandle, String> {
@@ -668,6 +679,37 @@ mod tests {
 
         WindowsDesktopRuntime
             .terminate_exact(&target_exe, Duration::from_secs(5))
+            .unwrap();
+
+        assert!(target.0.try_wait().unwrap().is_some());
+        assert!(other.0.try_wait().unwrap().is_none());
+        assert!(query_process_path(other.0.id())
+            .is_ok_and(|actual| windows_paths_equal(&other_exe, &actual)));
+    }
+
+    #[test]
+    fn real_terminate_exact_resolves_parent_segments_before_matching() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = std::env::current_exe().unwrap();
+        let target_dir = temp.path().join("target");
+        let other_dir = temp.path().join("other");
+        let nested_dir = target_dir.join("nested");
+        fs::create_dir_all(&nested_dir).unwrap();
+        fs::create_dir_all(&other_dir).unwrap();
+        let target_exe = target_dir.join("runtime-helper.exe");
+        let other_exe = other_dir.join("runtime-helper.exe");
+        fs::copy(&source, &target_exe).unwrap();
+        fs::copy(&source, &other_exe).unwrap();
+        let target_exe = fs::canonicalize(target_exe).unwrap();
+        let other_exe = fs::canonicalize(other_exe).unwrap();
+        let target_with_parent_segment = nested_dir.join("..").join("runtime-helper.exe");
+        let mut target = spawn_helper(&target_exe);
+        let mut other = spawn_helper(&other_exe);
+        wait_for_helper_path(target.0.id(), &target_exe);
+        wait_for_helper_path(other.0.id(), &other_exe);
+
+        WindowsDesktopRuntime
+            .terminate_exact(&target_with_parent_segment, Duration::from_secs(5))
             .unwrap();
 
         assert!(target.0.try_wait().unwrap().is_some());
