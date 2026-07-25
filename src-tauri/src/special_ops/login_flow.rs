@@ -24,8 +24,19 @@ pub(crate) struct LoginRunConfig {
     pub targets: HashMap<String, RuntimeTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum LoginObservation {
+    None,
+    TemplateSamples { samples: [f32; 2] },
+    CaptureFailed,
+    ReferenceImageFailed,
+    WindowNotFound,
+}
+
 #[allow(async_fn_in_trait)]
 pub(crate) trait LoginDriver: Send + Sync {
+    fn reset_observation(&self);
+    fn last_observation(&self) -> LoginObservation;
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String>;
     async fn launch(&self, executable: &Path) -> Result<u32, String>;
     async fn wait_for_any(
@@ -99,6 +110,7 @@ where
     F: FnMut(LoginStep),
 {
     if let Err(result) = run_step(
+        driver,
         LoginStep::StopGame,
         &config.account_id,
         &cancelled,
@@ -111,6 +123,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::StopWeGame,
         &config.account_id,
         &cancelled,
@@ -123,6 +136,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::StartWeGame,
         &config.account_id,
         &cancelled,
@@ -135,6 +149,7 @@ where
     }
 
     let login_choice = match run_step(
+        driver,
         LoginStep::WaitLoginChoice,
         &config.account_id,
         &cancelled,
@@ -160,6 +175,7 @@ where
 
     if login_choice == "wegame.loginMode" {
         if let Err(result) = run_step(
+            driver,
             LoginStep::OpenLoginForm,
             &config.account_id,
             &cancelled,
@@ -173,6 +189,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::InputAccount,
         &config.account_id,
         &cancelled,
@@ -192,6 +209,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::InputPassword,
         &config.account_id,
         &cancelled,
@@ -211,6 +229,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::SubmitLogin,
         &config.account_id,
         &cancelled,
@@ -223,6 +242,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::WaitGameEntry,
         &config.account_id,
         &cancelled,
@@ -235,6 +255,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::OpenGameEntry,
         &config.account_id,
         &cancelled,
@@ -247,6 +268,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::WaitLaunchButton,
         &config.account_id,
         &cancelled,
@@ -259,6 +281,7 @@ where
     }
 
     if let Err(result) = run_step(
+        driver,
         LoginStep::LaunchGame,
         &config.account_id,
         &cancelled,
@@ -271,6 +294,7 @@ where
     }
 
     let window = match run_step(
+        driver,
         LoginStep::WaitGameWindow,
         &config.account_id,
         &cancelled,
@@ -301,7 +325,8 @@ where
     }
 }
 
-async fn run_step<T, F, Fut>(
+async fn run_step<D, T, F, Fut>(
+    driver: &D,
     step: LoginStep,
     account_id: &str,
     cancelled: &Arc<AtomicBool>,
@@ -309,9 +334,11 @@ async fn run_step<T, F, Fut>(
     future: Fut,
 ) -> Result<T, LoginFlowResult>
 where
+    D: LoginDriver + ?Sized,
     F: FnMut(LoginStep),
     Fut: Future<Output = Result<T, String>>,
 {
+    driver.reset_observation();
     on_step(step.clone());
     let timeout = tokio::time::sleep(STEP_TIMEOUT);
     tokio::pin!(timeout);
@@ -322,24 +349,41 @@ where
             if cancelled.load(Ordering::SeqCst) {
                 Err(emergency_stopped(account_id))
             } else {
-                result.map_err(|_| LoginFlowResult::Paused {
-                    failed_step: step.clone(),
-                    last_observation: format!("{step:?}：步骤执行失败"),
-                    failed_at: now_ms(),
-                })
+                result.map_err(|_| paused(driver, &step, "步骤执行失败"))
             }
         },
         _ = &mut timeout => {
             if cancelled.load(Ordering::SeqCst) {
                 Err(emergency_stopped(account_id))
             } else {
-                Err(LoginFlowResult::Paused {
-                    failed_step: step.clone(),
-                    last_observation: format!("{step:?}：步骤超时"),
-                    failed_at: now_ms(),
-                })
+                Err(paused(driver, &step, "步骤超时"))
             }
         },
+    }
+}
+
+fn paused(driver: &(impl LoginDriver + ?Sized), step: &LoginStep, kind: &str) -> LoginFlowResult {
+    LoginFlowResult::Paused {
+        failed_step: step.clone(),
+        last_observation: format_observation(step, kind, driver.last_observation()),
+        failed_at: now_ms(),
+    }
+}
+
+fn format_observation(step: &LoginStep, kind: &str, observation: LoginObservation) -> String {
+    let prefix = format!("{step:?}：{kind}");
+    match observation {
+        LoginObservation::None => prefix,
+        LoginObservation::TemplateSamples { samples } => format!(
+            "{prefix}；最后识别结果：双采样相似度 {:.2}% / {:.2}%",
+            samples[0] * 100.0,
+            samples[1] * 100.0
+        ),
+        LoginObservation::CaptureFailed => format!("{prefix}；最后识别结果：截图失败"),
+        LoginObservation::ReferenceImageFailed => {
+            format!("{prefix}；最后识别结果：参考图读取失败")
+        }
+        LoginObservation::WindowNotFound => format!("{prefix}；最后识别结果：未找到游戏窗口"),
     }
 }
 
@@ -392,6 +436,8 @@ mod tests {
     struct FakeDriver {
         actions: Mutex<Vec<Action>>,
         wait_results: Mutex<VecDeque<Result<String, String>>>,
+        wait_observations: Mutex<VecDeque<LoginObservation>>,
+        last_observation: Mutex<LoginObservation>,
         windows: Mutex<VecDeque<Result<Option<WindowIdentity>, String>>>,
         delays: Mutex<VecDeque<Duration>>,
         wait_calls: AtomicUsize,
@@ -409,6 +455,8 @@ mod tests {
             Self {
                 actions: Mutex::new(Vec::new()),
                 wait_results: Mutex::new(VecDeque::new()),
+                wait_observations: Mutex::new(VecDeque::new()),
+                last_observation: Mutex::new(LoginObservation::None),
                 windows: Mutex::new(VecDeque::from([Ok(Some(WindowIdentity {
                     process_id: 42,
                     handle: 84,
@@ -450,6 +498,14 @@ mod tests {
     }
 
     impl LoginDriver for FakeDriver {
+        fn reset_observation(&self) {
+            *self.last_observation.lock().unwrap() = LoginObservation::None;
+        }
+
+        fn last_observation(&self) -> LoginObservation {
+            *self.last_observation.lock().unwrap()
+        }
+
         async fn terminate_exact(&self, executable: &Path) -> Result<(), String> {
             let executable = if executable == Path::new("game.exe") {
                 "game"
@@ -475,6 +531,12 @@ mod tests {
             target_keys: &[&str],
             cancelled: Arc<AtomicBool>,
         ) -> Result<String, String> {
+            *self.last_observation.lock().unwrap() = self
+                .wait_observations
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(LoginObservation::None);
             self.actions.lock().unwrap().push(Action::Wait(
                 target_keys.iter().map(|key| (*key).to_string()).collect(),
             ));
@@ -538,7 +600,8 @@ mod tests {
                 .as_deref()
                 .is_some_and(|failed| failed == target_key)
             {
-                return Err("驱动内部替换错误".to_string());
+                *self.last_observation.lock().unwrap() = LoginObservation::CaptureFailed;
+                return Err("RAW_DRIVER_SECRET|123456789|C:\\private\\game.exe".to_string());
             }
             Ok(())
         }
@@ -547,7 +610,11 @@ mod tests {
             self.actions.lock().unwrap().push(Action::FindWindow);
             self.find_calls.fetch_add(1, Ordering::SeqCst);
             self.delay().await;
-            self.windows.lock().unwrap().pop_front().unwrap_or(Ok(None))
+            let result = self.windows.lock().unwrap().pop_front().unwrap_or(Ok(None));
+            if matches!(result, Ok(None)) {
+                *self.last_observation.lock().unwrap() = LoginObservation::WindowNotFound;
+            }
+            result
         }
     }
 
@@ -610,6 +677,65 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_game_entry_timeout_preserves_latest_template_samples() {
+        let driver = FakeDriver::with_waits([
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+        ]);
+        driver.wait_observations.lock().unwrap().extend([
+            LoginObservation::CaptureFailed,
+            LoginObservation::None,
+            LoginObservation::None,
+            LoginObservation::TemplateSamples {
+                samples: [0.41, 0.42],
+            },
+        ]);
+        driver.block_wait_call.store(4, Ordering::SeqCst);
+
+        let result = run(&driver).await;
+
+        let LoginFlowResult::Paused {
+            failed_step,
+            last_observation,
+            ..
+        } = result
+        else {
+            panic!("预期流程暂停");
+        };
+        assert_eq!(failed_step, LoginStep::WaitGameEntry);
+        assert_eq!(
+            last_observation,
+            "WaitGameEntry：步骤超时；最后识别结果：双采样相似度 41.00% / 42.00%"
+        );
+    }
+
+    #[tokio::test]
+    async fn step_clears_stale_observation_before_business_future_runs() {
+        let driver = FakeDriver::default();
+        *driver.last_observation.lock().unwrap() = LoginObservation::CaptureFailed;
+        let cancelled = Arc::new(AtomicBool::new(false));
+
+        let result = run_step(
+            &driver,
+            LoginStep::StopGame,
+            "account-id",
+            &cancelled,
+            &mut |_| {},
+            async { Err::<(), _>("RAW_DRIVER_SECRET".to_string()) },
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(LoginFlowResult::Paused {
+                last_observation,
+                ..
+            }) if last_observation == "StopGame：步骤执行失败"
+        ));
     }
 
     #[tokio::test]
@@ -770,13 +896,21 @@ mod tests {
             failed_step,
             last_observation,
             ..
-        } = result
+        } = &result
         else {
             panic!("预期流程暂停");
         };
-        assert_eq!(failed_step, LoginStep::InputAccount);
+        assert_eq!(*failed_step, LoginStep::InputAccount);
+        assert!(last_observation.contains("截图失败"));
         assert!(!last_observation.contains("secret-password"));
         assert!(!last_observation.contains("123456789"));
+        assert!(!last_observation.contains("game.exe"));
+        assert!(!last_observation.contains("RAW_DRIVER_SECRET"));
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(!json.contains("secret-password"));
+        assert!(!json.contains("123456789"));
+        assert!(!json.contains("game.exe"));
+        assert!(!json.contains("RAW_DRIVER_SECRET"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -802,6 +936,28 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn game_window_timeout_preserves_window_not_found_observation() {
+        let driver = FakeDriver::with_waits(ready_waits());
+        driver.windows.lock().unwrap().clear();
+
+        let result = run(&driver).await;
+
+        let LoginFlowResult::Paused {
+            failed_step,
+            last_observation,
+            ..
+        } = result
+        else {
+            panic!("预期流程暂停");
+        };
+        assert_eq!(failed_step, LoginStep::WaitGameWindow);
+        assert_eq!(
+            last_observation,
+            "WaitGameWindow：步骤超时；最后识别结果：未找到游戏窗口"
+        );
     }
 
     #[tokio::test]
