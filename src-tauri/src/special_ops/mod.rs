@@ -1,5 +1,7 @@
 pub(crate) mod desktop_runtime;
 #[allow(dead_code)]
+pub(crate) mod login_flow;
+#[allow(dead_code)]
 pub(crate) mod template_observer;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
