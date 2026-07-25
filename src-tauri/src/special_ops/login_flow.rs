@@ -65,7 +65,11 @@ pub(crate) enum LoginStep {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum LoginFlowResult {
     GameReady {
         account_id: String,
@@ -838,5 +842,80 @@ mod tests {
                 LoginStep::WaitGameWindow,
             ]
         );
+    }
+
+    #[test]
+    fn game_ready_serializes_kind_and_fields_as_camel_case_without_password() {
+        let value = serde_json::to_value(LoginFlowResult::GameReady {
+            account_id: "account-id".to_string(),
+            qq_account: "123456789".to_string(),
+            game_process_id: 42,
+            game_window_handle: 84,
+        })
+        .unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "kind": "gameReady",
+                "accountId": "account-id",
+                "qqAccount": "123456789",
+                "gameProcessId": 42,
+                "gameWindowHandle": 84,
+            })
+        );
+        let json = value.to_string();
+        assert!(!json.contains("account_id"));
+        assert!(!json.contains("qq_account"));
+        assert!(!json.contains("game_process_id"));
+        assert!(!json.contains("game_window_handle"));
+        assert!(!json.contains("password"));
+    }
+
+    #[test]
+    fn paused_serializes_kind_and_fields_as_camel_case_without_password() {
+        let value = serde_json::to_value(LoginFlowResult::Paused {
+            failed_step: LoginStep::WaitGameEntry,
+            last_observation: "WaitGameEntry：步骤超时".to_string(),
+            failed_at: 123,
+        })
+        .unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "kind": "paused",
+                "failedStep": "waitGameEntry",
+                "lastObservation": "WaitGameEntry：步骤超时",
+                "failedAt": 123,
+            })
+        );
+        let json = value.to_string();
+        assert!(!json.contains("failed_step"));
+        assert!(!json.contains("last_observation"));
+        assert!(!json.contains("failed_at"));
+        assert!(!json.contains("password"));
+    }
+
+    #[test]
+    fn emergency_stopped_serializes_kind_and_fields_as_camel_case_without_password() {
+        let value = serde_json::to_value(LoginFlowResult::EmergencyStopped {
+            account_id: "account-id".to_string(),
+            stopped_at: 456,
+        })
+        .unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "kind": "emergencyStopped",
+                "accountId": "account-id",
+                "stoppedAt": 456,
+            })
+        );
+        let json = value.to_string();
+        assert!(!json.contains("account_id"));
+        assert!(!json.contains("stopped_at"));
+        assert!(!json.contains("password"));
     }
 }
