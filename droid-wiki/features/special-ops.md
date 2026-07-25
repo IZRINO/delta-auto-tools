@@ -10,7 +10,7 @@
 
 校准结果全局共享，不随账号或 Profile 复制。UI 不要求用户填写环境名称、显示器、分辨率、DPI 或窗口模式，只维护一套当前校准结果。旧版本存在多套环境时，加载后保留当时选中的一套。
 
-静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。游戏启动前置界面 ID 与已选子弹名称使用 OCR，不上传静态参考图；OCR 结果分别与账号 `wegameId`、当前 `AmmoTarget.name` 比对。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
+静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。已选子弹名称使用 OCR，不上传静态参考图；OCR 结果与当前 `AmmoTarget.name` 比对。登录试运行不保存或校验 WeGame ID。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
 
 每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；不在缺少正式阈值配置时伪造“通过”。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
 
@@ -19,6 +19,14 @@
 创建入口必须使用 async Tauri command，避免在当前 WebView IPC callback 内同步创建第二个 WebView2 导致重入阻塞。校准窗口先按默认尺寸加载页面，页面完成后再切换为单显示器全屏；前端使用与摩斯框选一致的 Mouse Events 处理拖拽。
 
 工作台通过 `special_ops_begin_calibration_selection` 打开框选窗口。提交调用 `special_ops_submit_calibration_selection`，取消调用 `special_ops_cancel_calibration_selection`。窗口 label 使用 `special-ops-calibration-*`，由 `overlays.json` 授权。
+
+## 登录试运行 runtime
+
+`special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 7 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。每次点击或输入前发送 3/2/1 倒计时，重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
+
+运行期间创建固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。`special_ops_cancel_login_trial` 只请求普通停止，不立即释放单实例，也不改账号结果；`special_ops_emergency_stop` 立即取消、释放已注入按键、销毁 window、注销热键，并将当前账号持久化为 `Uncertain`。应用生命周期停止在已进入键鼠阶段时同样按 `Uncertain` 处理。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。
+
+`SpecialOpsBootstrap.runSnapshot` 返回当前 run；`special-ops://run-changed` payload 仅含 `LoginRunSnapshot`，不含 settings 或密码。
 
 制作台入口、进入制作列表点击点、制作列表就绪状态、置顶配方点击点、空闲中文字区域和可收取感叹号均按技术中心、工作台、制药台和防具台保存 4 个独立区域，不使用通用位置。旧 `craft.station`、`craft.recipe`、`craft.idle` 与 `craft.claimReady` 区域加载时删除，禁止把单个旧坐标错误复制到四台。点击烽火地带后增加 `game.activityPopup` 识别区域；命中时执行一次空格，未命中则继续原流程。
 
@@ -74,10 +82,13 @@
 
 ## 当前边界
 
-已实现配置持久化、调度、暂停、账号/制作台/有序子弹配置、区域框选和模板双采样测试。WeGame 登录、OCR、复制 ID 兜底、单账号试运行、识色判定、键鼠执行、游戏崩溃恢复尚未实现，不能视为自动化完成，也不满足正式设计的自动化启动验收门槛。
+已实现配置持久化、调度、暂停、账号/制作台/有序子弹配置、区域框选、模板双采样测试，以及原生单账号登录试运行 runtime。当前试运行只覆盖重建 WeGame 会话、输入账号密码、点击固定游戏入口并等待游戏窗口；operation window 前端、OCR、游戏内制作/兑换执行、识色判定和崩溃恢复尚未实现，不能视为自动化完成。
 
 ## Tauri Commands
 
 | 命令 | 作用 |
 |---|---|
 | `special_ops_test_calibration_target` | 对模板识别区域执行两次真实截图与 NCC，返回双采样相似度；OCR/点击点/输入区域拒绝假测试 |
+| `special_ops_start_login_trial` | 校验 revision 与登录 preflight，启动单实例后台试运行并立即返回 run snapshot |
+| `special_ops_cancel_login_trial` | 请求普通取消；等待 worker 完成统一清理 |
+| `special_ops_emergency_stop` | 立即释放输入并将当前账号标记为不确定 |

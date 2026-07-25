@@ -1,5 +1,5 @@
 use super::{desktop_runtime::WindowIdentity, template_observer::RuntimeTarget};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     future::Future,
@@ -57,7 +57,7 @@ pub(crate) trait LoginDriver: Send + Sync {
     ) -> Result<Option<WindowIdentity>, String>;
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum LoginStep {
     StopGame,

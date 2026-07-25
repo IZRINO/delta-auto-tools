@@ -156,6 +156,22 @@ impl SettingsCoordinator {
         }
         result.map(|value| (value, *revision))
     }
+
+    pub fn with_runtime_change<T, E>(
+        &self,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<(T, u64), E>
+    where
+        E: From<String>,
+    {
+        let mut revision = self
+            .revision
+            .lock()
+            .map_err(|_| E::from("配置写入协调器已损坏".to_string()))?;
+        let value = operation()?;
+        *revision = revision.saturating_add(1);
+        Ok((value, *revision))
+    }
 }
 
 fn temp_settings_path(path: &Path) -> Result<PathBuf, String> {
@@ -469,6 +485,43 @@ mod tests {
         });
 
         assert_eq!(result.unwrap_err(), "读取 Profile 失败");
+        assert_eq!(coordinator.current_revision().unwrap(), initial_revision);
+    }
+
+    #[test]
+    fn runtime_change_advances_revision() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+
+        let (_, revision) = coordinator
+            .with_runtime_change(|| Ok::<_, String>("saved"))
+            .unwrap();
+
+        assert_eq!(revision, initial_revision + 1);
+    }
+
+    #[test]
+    fn runtime_change_rejects_stale_ui_save() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+        coordinator
+            .with_runtime_change(|| Ok::<_, String>(()))
+            .unwrap();
+
+        let stale = coordinator.with_revision(initial_revision, || Ok::<_, String>(()));
+        assert!(stale.unwrap_err().contains("陈旧"));
+    }
+
+    #[test]
+    fn failed_runtime_change_does_not_advance_revision() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+
+        let error = coordinator
+            .with_runtime_change(|| Err::<(), String>("持久化失败".to_string()))
+            .unwrap_err();
+
+        assert_eq!(error, "持久化失败");
         assert_eq!(coordinator.current_revision().unwrap(), initial_revision);
     }
 }

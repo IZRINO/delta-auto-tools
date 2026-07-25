@@ -65,4 +65,5 @@ export const PROFILE_EVENTS = {
 
 export const SPECIAL_OPS_EVENTS = {
     stateChanged: "special-ops://state-changed",
+    runChanged: "special-ops://run-changed",
 } as const;

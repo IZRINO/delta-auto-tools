@@ -1,6 +1,7 @@
 pub(crate) mod desktop_runtime;
 #[allow(dead_code)]
 pub(crate) mod login_flow;
+mod login_runtime;
 #[allow(dead_code)]
 pub(crate) mod template_observer;
 
@@ -12,8 +13,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::overlay_utils::{destroy_window, encoded_query_value, safe_label_component};
 use crate::{app_error::AppError, settings::SettingsCoordinator};
 
+pub use login_runtime::{LoginRunSnapshot, LoginRunStatus};
+
 const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
+const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
+const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -488,6 +493,8 @@ pub struct SpecialOpsBootstrap {
     pub schedule: ScheduleSnapshot,
     pub settings_revision: u64,
     pub now_ms: i64,
+    #[serde(default)]
+    pub run_snapshot: Option<LoginRunSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -508,6 +515,7 @@ impl From<&SpecialOpsBootstrap> for SpecialOpsStateChanged {
 
 pub struct SpecialOpsState {
     settings: Arc<Mutex<SpecialOpsSettings>>,
+    login_runtime: Arc<login_runtime::LoginRuntime>,
 }
 
 impl StationKind {
@@ -613,6 +621,124 @@ fn verification_is_current(target: &CalibrationTarget) -> bool {
     verified_at_ms >= 0
         && calibration_signature(target)
             .is_ok_and(|current_signature| current_signature == *stored_signature)
+}
+
+fn login_trial_signature(
+    settings: &SpecialOpsSettings,
+    account: &AccountPlan,
+) -> Result<String, String> {
+    let wegame = std::fs::canonicalize(&settings.wegame_executable_path)
+        .map_err(|_| "WeGame.exe 路径无法规范化".to_string())?;
+    let game = std::fs::canonicalize(&settings.game_executable_path)
+        .map_err(|_| "游戏 .exe 路径无法规范化".to_string())?;
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "登录试运行校准未完成：缺少显示环境".to_string())?;
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"login-trial-v1\0");
+    for value in [
+        account.qq_account.as_bytes(),
+        account.password.as_bytes(),
+        wegame.as_os_str().as_encoded_bytes(),
+        game.as_os_str().as_encoded_bytes(),
+    ] {
+        bytes.extend_from_slice(&(value.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(value);
+    }
+    for key in [
+        "wegame.loginMode",
+        "wegame.loginFormReady",
+        "wegame.account",
+        "wegame.password",
+        "wegame.login",
+        "wegame.gameEntry",
+        "wegame.launch",
+    ] {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("登录试运行校准未完成：缺少步骤 {key}"))?;
+        bytes.extend_from_slice(target.key.as_bytes());
+        if let Some(rect) = &target.rect {
+            for value in [rect.x, rect.y, rect.width, rect.height] {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        if let Some(path) = target.reference_image_path.as_deref() {
+            let path = std::fs::canonicalize(path)
+                .map_err(|_| format!("{} 的参考图路径无法规范化", target.label))?;
+            bytes.extend_from_slice(path.as_os_str().as_encoded_bytes());
+        }
+        bytes.extend_from_slice(&target.match_threshold.to_bits().to_le_bytes());
+        if let Some(signature) = &target.verified_signature {
+            bytes.extend_from_slice(signature.as_bytes());
+        }
+        for guard in &target.guard_any_of {
+            bytes.extend_from_slice(guard.as_bytes());
+            bytes.push(0);
+        }
+    }
+    Ok(format!("login-v1-{:016x}", fnv1a_64(&bytes)))
+}
+
+fn apply_login_flow_result(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    result: &login_flow::LoginFlowResult,
+    stop_reason: login_runtime::StopReason,
+    frozen_signature: &str,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "登录试运行账号已不存在".to_string())?;
+    match result {
+        login_flow::LoginFlowResult::GameReady { .. } => {
+            account.status = AccountStatus::Ready;
+            account.last_failure = None;
+            account.login_trial_signature = Some(frozen_signature.to_string());
+        }
+        login_flow::LoginFlowResult::Paused {
+            failed_step,
+            last_observation,
+            failed_at,
+        } => {
+            settings.paused = true;
+            account.status = AccountStatus::LoginFailed;
+            account.last_failure = Some(AccountFailure {
+                step: format!("{failed_step:?}"),
+                message: last_observation.clone(),
+                at_ms: *failed_at,
+            });
+        }
+        login_flow::LoginFlowResult::EmergencyStopped { stopped_at, .. } => match stop_reason {
+            login_runtime::StopReason::Normal => {}
+            login_runtime::StopReason::Emergency => {
+                settings.paused = true;
+                account.status = AccountStatus::Uncertain;
+                account.last_failure = Some(AccountFailure {
+                    step: "emergencyStop".to_string(),
+                    message: "登录试运行已紧急停止，账号状态需人工确认".to_string(),
+                    at_ms: *stopped_at,
+                });
+            }
+            login_runtime::StopReason::Lifecycle { uncertain } => {
+                settings.paused = true;
+                if uncertain {
+                    account.status = AccountStatus::Uncertain;
+                    account.last_failure = Some(AccountFailure {
+                        step: "lifecycleStop".to_string(),
+                        message: "应用停止时登录操作尚未确认，账号状态需人工确认".to_string(),
+                        at_ms: *stopped_at,
+                    });
+                }
+            }
+        },
+    }
+    Ok(())
 }
 
 fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSettings, String> {
@@ -1006,6 +1132,88 @@ fn validate_login_trial_ready(
     Ok(())
 }
 
+fn freeze_login_run_config(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+) -> Result<(login_flow::LoginRunConfig, String), String> {
+    validate_login_trial_ready(settings, account_id)?;
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "登录试运行账号不存在".to_string())?;
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "登录试运行校准未完成：缺少显示环境".to_string())?;
+    let mut targets = std::collections::HashMap::new();
+    for key in [
+        "wegame.loginMode",
+        "wegame.loginFormReady",
+        "wegame.account",
+        "wegame.password",
+        "wegame.login",
+        "wegame.gameEntry",
+        "wegame.launch",
+    ] {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("登录试运行校准目标 {key} 不存在"))?;
+        let rect = target
+            .rect
+            .as_ref()
+            .ok_or_else(|| format!("{} 尚未框选", target.label))?;
+        let region = crate::morse::types::RegionRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        };
+        let template = if target.recognition_method == Some(CalibrationRecognitionMethod::Template)
+        {
+            let reference_image_path = std::fs::canonicalize(
+                target
+                    .reference_image_path
+                    .as_deref()
+                    .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?,
+            )
+            .map_err(|_| format!("{} 的参考图文件不存在", target.label))?;
+            Some(template_observer::RuntimeTemplate {
+                key: key.to_string(),
+                region: region.clone(),
+                reference_image_path,
+                threshold: target.match_threshold,
+            })
+        } else {
+            None
+        };
+        targets.insert(
+            key.to_string(),
+            template_observer::RuntimeTarget {
+                key: key.to_string(),
+                region,
+                template,
+                guard_any_of: target.guard_any_of.clone(),
+            },
+        );
+    }
+    Ok((
+        login_flow::LoginRunConfig {
+            account_id: account.id.clone(),
+            qq_account: account.qq_account.clone(),
+            password: account.password.clone(),
+            wegame_executable_path: std::fs::canonicalize(&settings.wegame_executable_path)
+                .map_err(|_| "WeGame.exe 路径无法规范化".to_string())?,
+            game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+                .map_err(|_| "游戏 .exe 路径无法规范化".to_string())?,
+            targets,
+        },
+        login_trial_signature(settings, account)?,
+    ))
+}
+
 #[derive(Debug, Clone)]
 struct CalibrationTemplateTestInput {
     region: crate::morse::types::RegionRect,
@@ -1149,7 +1357,19 @@ fn build_bootstrap(
         settings,
         settings_revision,
         now_ms: current_ms,
+        run_snapshot: None,
     }
+}
+
+fn build_bootstrap_with_runtime(
+    settings: SpecialOpsSettings,
+    settings_revision: u64,
+    current_ms: i64,
+    runtime: &login_runtime::LoginRuntime,
+) -> Result<SpecialOpsBootstrap, String> {
+    let mut bootstrap = build_bootstrap(settings, settings_revision, current_ms);
+    bootstrap.run_snapshot = runtime.snapshot()?;
+    Ok(bootstrap)
 }
 
 fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
@@ -1160,10 +1380,242 @@ fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
     );
 }
 
+fn emit_run(app: &AppHandle, snapshot: &LoginRunSnapshot) {
+    let _ = app.emit_to("main", login_runtime::RUN_CHANGED, snapshot.clone());
+}
+
+fn emit_current_state(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?
+        .clone();
+    emit_state(
+        app,
+        &build_bootstrap(settings, coordinator.current_revision()?, now_ms()),
+    );
+    Ok(())
+}
+
+fn create_operation_window(app: &AppHandle) -> Result<(), String> {
+    destroy_window(app, OPERATION_WINDOW_LABEL);
+    tauri::WebviewWindowBuilder::new(
+        app,
+        OPERATION_WINDOW_LABEL,
+        tauri::WebviewUrl::App("index.html?mode=special-ops-operation".into()),
+    )
+    .title("特勤处登录试运行")
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .inner_size(420.0, 180.0)
+    .build()
+    .map(|_| ())
+    .map_err(|error| format!("创建登录试运行窗口失败: {error}"))
+}
+
+fn register_emergency_hotkey(app: &AppHandle, hotkey: String) -> Result<(), String> {
+    let manager = app
+        .try_state::<crate::hotkeys::HotkeyManager>()
+        .ok_or_else(|| "热键管理器尚未初始化".to_string())?;
+    let action: crate::hotkey_types::HotkeyAction = Arc::new(|app| {
+        if let Err(error) = emergency_stop_core(&app) {
+            crate::log_error!(
+                "special_ops::login",
+                "紧急停止失败",
+                "error" => error
+            );
+        }
+    });
+    manager.replace_scope(
+        LOGIN_HOTKEY_SCOPE,
+        vec![(hotkey, action)],
+        "特勤处紧急停止".to_string(),
+        crate::hotkey_types::ConflictPolicy::Strict,
+    )
+}
+
+fn clear_login_hotkey(app: &AppHandle) -> Result<(), String> {
+    if let Some(manager) = app.try_state::<crate::hotkeys::HotkeyManager>() {
+        manager.clear_scope(LOGIN_HOTKEY_SCOPE)?;
+    }
+    Ok(())
+}
+
+fn release_login_resources(app: &AppHandle) -> Result<(), String> {
+    crate::input_simulation::release_tracked_injected_inputs();
+    let hotkey_result = clear_login_hotkey(app);
+    destroy_window(app, OPERATION_WINDOW_LABEL);
+    hotkey_result
+}
+
+fn fail_closed_login_error(app: &AppHandle, runtime_error: String) -> String {
+    match release_login_resources(app) {
+        Ok(()) => runtime_error,
+        Err(cleanup_error) => format!("{runtime_error}; {cleanup_error}"),
+    }
+}
+
+fn cleanup_login_run(
+    app: &AppHandle,
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    status: LoginRunStatus,
+    message: &str,
+) -> Result<(), String> {
+    match runtime.snapshot() {
+        Ok(Some(snapshot)) if snapshot.run_id == run_id => {}
+        Ok(_) => return Ok(()),
+        Err(runtime_error) => return Err(fail_closed_login_error(app, runtime_error)),
+    }
+    let resource_result = release_login_resources(app);
+    if let Some(snapshot) = runtime.finish(run_id, status, message)? {
+        emit_run(app, &snapshot);
+    }
+    let state_result = emit_current_state(app);
+    resource_result.and(state_result)
+}
+
+fn persist_login_result(
+    app: &AppHandle,
+    account_id: &str,
+    result: &login_flow::LoginFlowResult,
+    stop_reason: login_runtime::StopReason,
+    frozen_signature: &str,
+) -> Result<u64, String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let (settings, revision) = coordinator.with_runtime_change(|| {
+        let current = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let mut next = current;
+        apply_login_flow_result(&mut next, account_id, result, stop_reason, frozen_signature)?;
+        save_settings(app, &next)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    emit_state(app, &build_bootstrap(settings, revision, now_ms()));
+    Ok(revision)
+}
+
+fn login_step_message(step: &login_flow::LoginStep) -> &'static str {
+    use login_flow::LoginStep::*;
+    match step {
+        StopGame => "正在结束旧游戏进程",
+        StopWeGame => "正在结束旧 WeGame 进程",
+        StartWeGame => "正在启动 WeGame",
+        WaitLoginChoice => "正在识别登录入口",
+        OpenLoginForm => "正在打开账号密码登录",
+        InputAccount => "正在准备输入 QQ 账号",
+        InputPassword => "正在准备输入密码",
+        SubmitLogin => "正在提交登录",
+        WaitGameEntry => "正在等待游戏入口",
+        OpenGameEntry => "正在打开游戏入口",
+        WaitLaunchButton => "正在等待启动按钮",
+        LaunchGame => "正在启动游戏",
+        WaitGameWindow => "正在等待游戏窗口",
+    }
+}
+
+async fn run_login_worker(
+    app: AppHandle,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    config: Arc<login_flow::LoginRunConfig>,
+    frozen_signature: String,
+) {
+    let driver = login_runtime::ProductionLoginDriver::new(
+        app.clone(),
+        Arc::clone(&runtime),
+        run_id,
+        Arc::clone(&config),
+    );
+    let update_app = app.clone();
+    let update_runtime = Arc::clone(&runtime);
+    let update_cancelled = Arc::clone(&cancelled);
+    let result =
+        login_flow::run_login_flow(
+            &driver,
+            &config,
+            cancelled,
+            move |step| match update_runtime.update(
+                run_id,
+                LoginRunStatus::Waiting,
+                Some(step.clone()),
+                login_step_message(&step),
+                None,
+            ) {
+                Ok(Some(snapshot)) => emit_run(&update_app, &snapshot),
+                Ok(None) | Err(_) => {
+                    update_cancelled.store(true, std::sync::atomic::Ordering::SeqCst)
+                }
+            },
+        )
+        .await;
+
+    let reason = runtime
+        .stop_reason(run_id)
+        .ok()
+        .flatten()
+        .unwrap_or(login_runtime::StopReason::Emergency);
+    let should_persist = !matches!(reason, login_runtime::StopReason::Normal)
+        || !matches!(result, login_flow::LoginFlowResult::EmergencyStopped { .. });
+    let already_persisted = runtime.stop_persisted(run_id).unwrap_or(false);
+    let persist_result = if should_persist && !already_persisted {
+        persist_login_result(&app, &config.account_id, &result, reason, &frozen_signature)
+            .map(|_| ())
+    } else {
+        Ok(())
+    };
+    let (status, message) = if persist_result.is_err() {
+        (LoginRunStatus::Failed, "登录结果保存失败")
+    } else {
+        match result {
+            login_flow::LoginFlowResult::GameReady { .. } => {
+                (LoginRunStatus::Succeeded, "登录试运行成功")
+            }
+            login_flow::LoginFlowResult::Paused { .. } => {
+                (LoginRunStatus::Failed, "登录试运行失败，已暂停自动化")
+            }
+            login_flow::LoginFlowResult::EmergencyStopped { .. } => {
+                (LoginRunStatus::Stopped, "登录试运行已停止")
+            }
+        }
+    };
+    if let Err(error) = cleanup_login_run(&app, &runtime, run_id, status, message) {
+        crate::log_error!(
+            "special_ops::login",
+            "登录试运行清理失败",
+            "error" => error
+        );
+    }
+}
+
 pub fn initialize(app: &AppHandle) -> Result<SpecialOpsState, String> {
     let settings = load_settings(app)?;
     Ok(SpecialOpsState {
         settings: Arc::new(Mutex::new(settings)),
+        login_runtime: Arc::new(login_runtime::LoginRuntime::default()),
     })
 }
 
@@ -1171,19 +1623,54 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<SpecialOpsState>() else {
         return Ok(());
     };
-    let settings = {
-        let mut settings = state
+    let active = match state.login_runtime.snapshot() {
+        Ok(active) => active,
+        Err(runtime_error) => return Err(fail_closed_login_error(app, runtime_error)),
+    };
+    if let Some(snapshot) = active {
+        let uncertain = state
+            .login_runtime
+            .entered_input(snapshot.run_id)
+            .map_err(|error| fail_closed_login_error(app, error))?;
+        let stopped = state
+            .login_runtime
+            .request_stop(login_runtime::StopReason::Lifecycle { uncertain })
+            .map_err(|error| fail_closed_login_error(app, error))?;
+        emit_run(app, &stopped);
+        let resource_result = release_login_resources(app);
+        let result = login_flow::LoginFlowResult::EmergencyStopped {
+            account_id: snapshot.account_id.clone(),
+            stopped_at: now_ms(),
+        };
+        persist_login_result(
+            app,
+            &snapshot.account_id,
+            &result,
+            login_runtime::StopReason::Lifecycle { uncertain },
+            "",
+        )?;
+        state.login_runtime.mark_stop_persisted(snapshot.run_id)?;
+        return resource_result;
+    }
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let (settings, revision) = coordinator.with_runtime_change(|| {
+        let current = state
             .settings
             .lock()
-            .map_err(|_| "特勤处状态已损坏".to_string())?;
-        settings.paused = true;
-        settings.clone()
-    };
-    save_settings(app, &settings)?;
-    if let Some(coordinator) = app.try_state::<Arc<SettingsCoordinator>>() {
-        let revision = coordinator.current_revision()?;
-        emit_state(app, &build_bootstrap(settings, revision, now_ms()));
-    }
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let mut next = current;
+        next.paused = true;
+        save_settings(app, &next)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    emit_state(app, &build_bootstrap(settings, revision, now_ms()));
     Ok(())
 }
 
@@ -1197,11 +1684,122 @@ pub fn special_ops_get_bootstrap(
         .lock()
         .map_err(|_| "特勤处状态已损坏".to_string())?
         .clone();
-    Ok(build_bootstrap(
+    let bootstrap = build_bootstrap_with_runtime(
         settings,
         settings_coordinator.current_revision()?,
         now_ms(),
-    ))
+        &state.login_runtime,
+    )?;
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_login_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    let runtime = Arc::clone(&state.login_runtime);
+    let (snapshot, started, config, frozen_signature) =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let (config, frozen_signature) = freeze_login_run_config(&settings, &account_id)?;
+            let started = runtime.try_start(account_id.clone())?;
+            let snapshot = runtime
+                .snapshot()?
+                .ok_or_else(|| "登录试运行启动状态丢失".to_string())?;
+            emit_run(&app, &snapshot);
+            if let Err(error) = register_emergency_hotkey(&app, settings.emergency_hotkey) {
+                if let Some(failed) = runtime.finish(
+                    started.run_id,
+                    LoginRunStatus::Failed,
+                    "紧急停止热键注册失败",
+                )? {
+                    emit_run(&app, &failed);
+                }
+                return Err(error);
+            }
+            if let Err(error) = create_operation_window(&app) {
+                let _ = clear_login_hotkey(&app);
+                destroy_window(&app, OPERATION_WINDOW_LABEL);
+                if let Some(failed) = runtime.finish(
+                    started.run_id,
+                    LoginRunStatus::Failed,
+                    "登录试运行窗口创建失败",
+                )? {
+                    emit_run(&app, &failed);
+                }
+                return Err(error);
+            }
+            Ok((snapshot, started, config, frozen_signature))
+        })?;
+    let worker_app = app.clone();
+    let worker_runtime = Arc::clone(&runtime);
+    let run_id = started.run_id;
+    let cancelled = Arc::clone(&started.cancelled);
+    let config = Arc::new(config);
+    tauri::async_runtime::spawn(async move {
+        run_login_worker(
+            worker_app,
+            worker_runtime,
+            run_id,
+            cancelled,
+            config,
+            frozen_signature,
+        )
+        .await;
+    });
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn special_ops_cancel_login_trial(
+    state: State<'_, SpecialOpsState>,
+    app: AppHandle,
+) -> Result<LoginRunSnapshot, AppError> {
+    let snapshot = state
+        .login_runtime
+        .cancel_active()
+        .map_err(|error| AppError::from(fail_closed_login_error(&app, error)))?;
+    emit_run(&app, &snapshot);
+    Ok(snapshot)
+}
+
+fn emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let snapshot = state
+        .login_runtime
+        .request_stop(login_runtime::StopReason::Emergency)
+        .map_err(|error| fail_closed_login_error(app, error))?;
+    emit_run(app, &snapshot);
+    let resource_result = release_login_resources(app);
+    let result = login_flow::LoginFlowResult::EmergencyStopped {
+        account_id: snapshot.account_id.clone(),
+        stopped_at: now_ms(),
+    };
+    persist_login_result(
+        app,
+        &snapshot.account_id,
+        &result,
+        login_runtime::StopReason::Emergency,
+        "",
+    )?;
+    state.login_runtime.mark_stop_persisted(snapshot.run_id)?;
+    resource_result?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn special_ops_emergency_stop(app: AppHandle) -> Result<LoginRunSnapshot, AppError> {
+    emergency_stop_core(&app).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -1228,7 +1826,12 @@ pub fn special_ops_save_settings(
                         .map_err(|_| "特勤处状态已损坏".to_string())?;
                     *settings = settings_value.clone();
                 }
-                let bootstrap = build_bootstrap(settings_value, settings_revision, now_ms());
+                let bootstrap = build_bootstrap_with_runtime(
+                    settings_value,
+                    settings_revision,
+                    now_ms(),
+                    &state.login_runtime,
+                )?;
                 emit_state(&app, &bootstrap);
                 Ok(bootstrap)
             },
@@ -1266,7 +1869,12 @@ pub fn special_ops_set_paused(
                     settings.clone()
                 };
                 save_settings(&app, &settings)?;
-                let bootstrap = build_bootstrap(settings, settings_revision, now_ms());
+                let bootstrap = build_bootstrap_with_runtime(
+                    settings,
+                    settings_revision,
+                    now_ms(),
+                    &state.login_runtime,
+                )?;
                 emit_state(&app, &bootstrap);
                 Ok(bootstrap)
             },
@@ -1740,6 +2348,219 @@ mod tests {
             last_failure: None,
             login_trial_signature: None,
         }
+    }
+
+    #[test]
+    fn trial_success_signature_changes_when_password_or_calibration_changes() {
+        let fixture = LoginFixture::complete();
+        let settings = fixture.settings;
+        let account = settings.accounts.first().unwrap();
+        let original = login_trial_signature(&settings, account).unwrap();
+
+        let mut password_changed = settings.clone();
+        password_changed.accounts[0].password.push('x');
+        assert_ne!(
+            original,
+            login_trial_signature(&password_changed, &password_changed.accounts[0]).unwrap()
+        );
+
+        let mut calibration_changed = settings.clone();
+        calibration_changed.calibration_environments[0].targets[0]
+            .rect
+            .as_mut()
+            .unwrap()
+            .x += 1;
+        assert_ne!(
+            original,
+            login_trial_signature(&calibration_changed, &calibration_changed.accounts[0]).unwrap()
+        );
+    }
+
+    #[test]
+    fn emergency_stop_marks_current_account_uncertain() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        apply_login_flow_result(
+            &mut settings,
+            "selected",
+            &login_flow::LoginFlowResult::EmergencyStopped {
+                account_id: "selected".to_string(),
+                stopped_at: 42,
+            },
+            login_runtime::StopReason::Emergency,
+            "v1-deadbeef",
+        )
+        .unwrap();
+
+        assert!(settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+    }
+
+    #[test]
+    fn normal_cancel_does_not_change_account_or_pause_state() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        settings.paused = false;
+
+        apply_login_flow_result(
+            &mut settings,
+            "selected",
+            &login_flow::LoginFlowResult::EmergencyStopped {
+                account_id: "selected".to_string(),
+                stopped_at: 42,
+            },
+            login_runtime::StopReason::Normal,
+            "",
+        )
+        .unwrap();
+
+        assert!(!settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(settings.accounts[0].last_failure, None);
+    }
+
+    #[test]
+    fn lifecycle_stop_pauses_and_only_marks_uncertain_after_input_started() {
+        let fixture = LoginFixture::complete();
+        let mut safe = fixture.settings.clone();
+        safe.paused = false;
+        apply_login_flow_result(
+            &mut safe,
+            "selected",
+            &login_flow::LoginFlowResult::EmergencyStopped {
+                account_id: "selected".to_string(),
+                stopped_at: 42,
+            },
+            login_runtime::StopReason::Lifecycle { uncertain: false },
+            "",
+        )
+        .unwrap();
+        assert!(safe.paused);
+        assert_eq!(safe.accounts[0].status, AccountStatus::Ready);
+
+        let mut unsafe_settings = fixture.settings;
+        apply_login_flow_result(
+            &mut unsafe_settings,
+            "selected",
+            &login_flow::LoginFlowResult::EmergencyStopped {
+                account_id: "selected".to_string(),
+                stopped_at: 42,
+            },
+            login_runtime::StopReason::Lifecycle { uncertain: true },
+            "",
+        )
+        .unwrap();
+        assert!(unsafe_settings.paused);
+        assert_eq!(unsafe_settings.accounts[0].status, AccountStatus::Uncertain);
+    }
+
+    #[test]
+    fn paused_result_records_sanitized_failure_and_pauses_only_current_account() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        settings.paused = false;
+        settings
+            .accounts
+            .push(account("other", AccountStatus::Ready, Vec::new()));
+
+        apply_login_flow_result(
+            &mut settings,
+            "selected",
+            &login_flow::LoginFlowResult::Paused {
+                failed_step: login_flow::LoginStep::WaitGameEntry,
+                last_observation: "最后识别结果：截图失败".to_string(),
+                failed_at: 99,
+            },
+            login_runtime::StopReason::Emergency,
+            "",
+        )
+        .unwrap();
+
+        assert!(settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::LoginFailed);
+        assert_eq!(settings.accounts[1].status, AccountStatus::Ready);
+        let failure = settings.accounts[0].last_failure.as_ref().unwrap();
+        assert_eq!(failure.step, "WaitGameEntry");
+        assert_eq!(failure.message, "最后识别结果：截图失败");
+    }
+
+    #[test]
+    fn game_ready_writes_frozen_signature_and_clears_failure() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        settings.accounts[0].status = AccountStatus::LoginFailed;
+        settings.accounts[0].last_failure = Some(AccountFailure {
+            step: "old".to_string(),
+            message: "old".to_string(),
+            at_ms: 1,
+        });
+
+        apply_login_flow_result(
+            &mut settings,
+            "selected",
+            &login_flow::LoginFlowResult::GameReady {
+                account_id: "selected".to_string(),
+                qq_account: "selected".to_string(),
+                game_process_id: 1,
+                game_window_handle: 2,
+            },
+            login_runtime::StopReason::Emergency,
+            "login-v1-frozen",
+        )
+        .unwrap();
+
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(settings.accounts[0].last_failure, None);
+        assert_eq!(
+            settings.accounts[0].login_trial_signature.as_deref(),
+            Some("login-v1-frozen")
+        );
+    }
+
+    #[test]
+    fn trial_signature_ignores_schedule_and_ammo_runtime_fields() {
+        let fixture = LoginFixture::complete();
+        let settings = fixture.settings;
+        let original = login_trial_signature(&settings, &settings.accounts[0]).unwrap();
+        let mut changed = settings.clone();
+        changed.daily_exchange_time = "21:30".to_string();
+        changed.accounts[0].ammo_targets.push(AmmoTarget {
+            id: "ammo".to_string(),
+            name: "测试子弹".to_string(),
+            enabled: true,
+            seasonal: true,
+            scroll_steps: 7,
+            order: 0,
+            last_success_day: Some("2026-07-25".to_string()),
+            retry_count: 3,
+        });
+
+        assert_eq!(
+            original,
+            login_trial_signature(&changed, &changed.accounts[0]).unwrap()
+        );
+    }
+
+    #[test]
+    fn bootstrap_contains_current_run_snapshot() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime.try_start("selected".to_string()).unwrap();
+
+        let bootstrap =
+            build_bootstrap_with_runtime(SpecialOpsSettings::default(), 7, 8, &runtime).unwrap();
+
+        assert_eq!(bootstrap.run_snapshot.unwrap().run_id, started.run_id);
+    }
+
+    #[test]
+    fn legacy_bootstrap_defaults_missing_run_snapshot() {
+        let mut value =
+            serde_json::to_value(build_bootstrap(SpecialOpsSettings::default(), 7, 8)).unwrap();
+        value.as_object_mut().unwrap().remove("runSnapshot");
+
+        let bootstrap: SpecialOpsBootstrap = serde_json::from_value(value).unwrap();
+
+        assert_eq!(bootstrap.run_snapshot, None);
     }
 
     #[test]

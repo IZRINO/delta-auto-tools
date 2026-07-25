@@ -207,6 +207,13 @@ pub fn run() {
                     };
                     hotkey_manager.clear_all_suppressions();
                     recognition::shutdown(app, &hotkey_manager);
+                    if let Err(error) = special_ops::stop_registered(app) {
+                        crate::log_error!(
+                            "special_ops::login",
+                            "应用退出时停止登录试运行失败",
+                            "error" => error
+                        );
+                    }
                     if let Some(log_writer) = app.try_state::<logging::LogWriter>() {
                         logging::shutdown(&log_writer);
                     }
@@ -269,6 +276,9 @@ pub fn run() {
             special_ops::special_ops_begin_calibration_selection,
             special_ops::special_ops_submit_calibration_selection,
             special_ops::special_ops_cancel_calibration_selection,
+            special_ops::special_ops_start_login_trial,
+            special_ops::special_ops_cancel_login_trial,
+            special_ops::special_ops_emergency_stop,
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,

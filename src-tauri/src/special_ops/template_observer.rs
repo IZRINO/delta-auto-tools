@@ -24,6 +24,7 @@ pub(crate) struct RuntimeTarget {
     pub key: String,
     pub region: crate::morse::types::RegionRect,
     pub template: Option<RuntimeTemplate>,
+    pub guard_any_of: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +99,52 @@ pub(crate) async fn wait_for_target_match<S: SimilaritySampler>(
     wait_for_consistent_match(sampler, template, cancelled).await
 }
 
+pub(crate) async fn wait_for_any_consistent_match<S: SimilaritySampler>(
+    sampler: &S,
+    targets: &[&RuntimeTemplate],
+    cancelled: Arc<AtomicBool>,
+) -> Result<(String, TemplateObservation), String> {
+    wait_for_any_consistent_match_with_observer(sampler, targets, cancelled, |_, _| {}).await
+}
+
+pub(crate) async fn wait_for_any_consistent_match_with_observer<
+    S: SimilaritySampler,
+    F: FnMut(&str, [f32; 2]) + Send,
+>(
+    sampler: &S,
+    targets: &[&RuntimeTemplate],
+    cancelled: Arc<AtomicBool>,
+    mut observe: F,
+) -> Result<(String, TemplateObservation), String> {
+    if targets.is_empty() {
+        return Err("没有可识别的模板目标".to_string());
+    }
+    let mut previous = vec![None; targets.len()];
+    loop {
+        for (index, target) in targets.iter().enumerate() {
+            ensure_not_cancelled(&cancelled)?;
+            let current = sampler.sample(target).await?;
+            ensure_not_cancelled(&cancelled)?;
+            let samples = [previous[index].unwrap_or(current), current];
+            observe(&target.key, samples);
+            if current >= target.threshold {
+                if let Some(first) = previous[index] {
+                    return Ok((
+                        target.key.clone(),
+                        TemplateObservation {
+                            samples: [first, current],
+                        },
+                    ));
+                }
+                previous[index] = Some(current);
+            } else {
+                previous[index] = None;
+            }
+        }
+        wait_for_sample_interval(&cancelled).await?;
+    }
+}
+
 fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
     if cancelled.load(Ordering::SeqCst) {
         return Err("模板识别已取消".to_string());
@@ -129,6 +176,23 @@ mod tests {
     struct ScriptedSampler {
         samples: Mutex<VecDeque<f32>>,
         started_at: tokio::time::Instant,
+    }
+
+    struct KeyedSampler {
+        samples: Mutex<std::collections::HashMap<String, VecDeque<f32>>>,
+        sampled_keys: Mutex<Vec<String>>,
+    }
+
+    impl SimilaritySampler for KeyedSampler {
+        async fn sample(&self, target: &RuntimeTemplate) -> Result<f32, String> {
+            self.sampled_keys.lock().unwrap().push(target.key.clone());
+            self.samples
+                .lock()
+                .unwrap()
+                .get_mut(&target.key)
+                .and_then(VecDeque::pop_front)
+                .ok_or_else(|| "测试采样序列已耗尽".to_string())
+        }
     }
 
     impl ScriptedSampler {
@@ -193,6 +257,7 @@ mod tests {
             key: "test-target".to_string(),
             region: target().region,
             template: None,
+            guard_any_of: Vec::new(),
         };
 
         let error = wait_for_target_match(
@@ -204,5 +269,64 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, "目标未配置参考图");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_any_samples_every_target_without_starvation() {
+        let first = RuntimeTemplate {
+            key: "first".to_string(),
+            ..target()
+        };
+        let second = RuntimeTemplate {
+            key: "second".to_string(),
+            ..target()
+        };
+        let sampler = KeyedSampler {
+            samples: Mutex::new(std::collections::HashMap::from([
+                ("first".to_string(), VecDeque::from([0.1, 0.1])),
+                ("second".to_string(), VecDeque::from([0.9, 0.9])),
+            ])),
+            sampled_keys: Mutex::new(Vec::new()),
+        };
+
+        let matched = wait_for_any_consistent_match(
+            &sampler,
+            &[&first, &second],
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(matched.0, "second");
+        assert_eq!(matched.1.samples, [0.9, 0.9]);
+        assert_eq!(
+            *sampler.sampled_keys.lock().unwrap(),
+            ["first", "second", "first", "second"]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_any_reports_latest_samples_each_round() {
+        let template = target();
+        let sampler = ScriptedSampler::new([0.4, 0.9, 0.95]);
+        let mut observed = Vec::new();
+
+        wait_for_any_consistent_match_with_observer(
+            &sampler,
+            &[&template],
+            Arc::new(AtomicBool::new(false)),
+            |key, samples| observed.push((key.to_string(), samples)),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            observed,
+            [
+                ("test-target".to_string(), [0.4, 0.4]),
+                ("test-target".to_string(), [0.9, 0.9]),
+                ("test-target".to_string(), [0.9, 0.95]),
+            ]
+        );
     }
 }
