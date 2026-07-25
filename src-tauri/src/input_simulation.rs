@@ -1,10 +1,194 @@
-use std::{sync::OnceLock, thread, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
+    },
+    thread,
+    time::Duration,
+};
 
 use crate::hotkey_types::{HotkeyBinding, ModifierKey, NamedKey, PrimaryKey};
 use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
 static INPUT_SIMULATION_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+#[allow(dead_code)]
+static TRACKED_INJECTED_KEYS: OnceLock<Mutex<Vec<Key>>> = OnceLock::new();
 const INPUT_POST_ACTION_GAP: Duration = Duration::from_millis(35);
+
+#[allow(dead_code)]
+trait InputEmitter {
+    fn move_mouse(&self, x: i32, y: i32) -> Result<(), String>;
+    fn click_left(&self) -> Result<(), String>;
+    fn key(&self, key: Key, direction: Direction) -> Result<(), String>;
+}
+
+#[allow(dead_code)]
+struct EnigoInputEmitter {
+    enigo: Mutex<Enigo>,
+}
+
+#[allow(dead_code)]
+impl EnigoInputEmitter {
+    fn new() -> Result<Self, String> {
+        let enigo = Enigo::new(&Settings::default())
+            .map_err(|error| format!("初始化自动输入失败: {error}"))?;
+        Ok(Self {
+            enigo: Mutex::new(enigo),
+        })
+    }
+}
+
+#[allow(dead_code)]
+impl InputEmitter for EnigoInputEmitter {
+    fn move_mouse(&self, x: i32, y: i32) -> Result<(), String> {
+        self.enigo
+            .lock()
+            .map_err(|_| "自动输入状态已损坏".to_string())?
+            .move_mouse(x, y, Coordinate::Abs)
+            .map_err(|error| format!("移动鼠标失败: {error}"))
+    }
+
+    fn click_left(&self) -> Result<(), String> {
+        self.enigo
+            .lock()
+            .map_err(|_| "自动输入状态已损坏".to_string())?
+            .button(enigo::Button::Left, Direction::Click)
+            .map_err(|error| format!("鼠标左键点击失败: {error}"))
+    }
+
+    fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
+        self.enigo
+            .lock()
+            .map_err(|_| "自动输入状态已损坏".to_string())?
+            .key(key, direction)
+            .map_err(|error| format!("自动输入按键失败: {error}"))
+    }
+}
+
+#[allow(dead_code)]
+struct TrackedModifierGuard<'a, E: InputEmitter> {
+    emitter: &'a E,
+    pressed: Vec<Key>,
+}
+
+#[allow(dead_code)]
+impl<'a, E: InputEmitter> TrackedModifierGuard<'a, E> {
+    fn new(emitter: &'a E) -> Self {
+        Self {
+            emitter,
+            pressed: Vec::new(),
+        }
+    }
+
+    fn press(&mut self, key: Key, cancelled: &AtomicBool) -> Result<(), String> {
+        ensure_not_cancelled(cancelled)?;
+        self.emitter.key(key, Direction::Press)?;
+        track_injected_key(key);
+        self.pressed.push(key);
+        Ok(())
+    }
+
+    fn release(&mut self, key: &Key) -> Result<(), String> {
+        let Some(index) = self.pressed.iter().position(|pressed| pressed == key) else {
+            return Ok(());
+        };
+        let key = self.pressed[index];
+        self.emitter.key(key, Direction::Release)?;
+        self.pressed.remove(index);
+        untrack_injected_key(&key);
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+impl<E: InputEmitter> Drop for TrackedModifierGuard<'_, E> {
+    fn drop(&mut self) {
+        for key in self.pressed.drain(..).rev() {
+            if self.emitter.key(key, Direction::Release).is_ok() {
+                untrack_injected_key(&key);
+            }
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn track_injected_key(key: Key) {
+    let keys = TRACKED_INJECTED_KEYS.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut keys) = keys.lock() {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn untrack_injected_key(key: &Key) {
+    let Some(keys) = TRACKED_INJECTED_KEYS.get() else {
+        return;
+    };
+    if let Ok(mut keys) = keys.lock() {
+        keys.retain(|tracked| tracked != key);
+    }
+}
+
+#[allow(dead_code)]
+fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
+    if cancelled.load(Ordering::SeqCst) {
+        return Err("输入操作已取消".to_string());
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn region_center(region: &crate::morse::types::RegionRect) -> (i32, i32) {
+    (
+        region.x.saturating_add(region.width / 2),
+        region.y.saturating_add(region.height / 2),
+    )
+}
+
+#[allow(dead_code)]
+fn click_region_center_with_emitter<E: InputEmitter>(
+    emitter: &E,
+    region: &crate::morse::types::RegionRect,
+    cancelled: &AtomicBool,
+) -> Result<(), String> {
+    let (center_x, center_y) = region_center(region);
+    ensure_not_cancelled(cancelled)?;
+    emitter.move_mouse(center_x, center_y)?;
+    ensure_not_cancelled(cancelled)?;
+    emitter.click_left()
+}
+
+#[allow(dead_code)]
+fn replace_text_with_emitter_locked<E: InputEmitter>(
+    emitter: &E,
+    region: &crate::morse::types::RegionRect,
+    value: &str,
+    char_delay_ms: u64,
+    cancelled: &AtomicBool,
+) -> Result<(), String> {
+    click_region_center_with_emitter(emitter, region, cancelled)?;
+
+    let mut ctrl = TrackedModifierGuard::new(emitter);
+    ctrl.press(Key::Control, cancelled)?;
+    ensure_not_cancelled(cancelled)?;
+    emitter.key(Key::Unicode('a'), Direction::Click)?;
+    ensure_not_cancelled(cancelled)?;
+    emitter.key(Key::Backspace, Direction::Click)?;
+    ensure_not_cancelled(cancelled)?;
+    ctrl.release(&Key::Control)?;
+
+    for ch in value.chars() {
+        ensure_not_cancelled(cancelled)?;
+        emitter.key(Key::Unicode(ch), Direction::Click)?;
+        if char_delay_ms > 0 {
+            thread::sleep(Duration::from_millis(char_delay_ms));
+        }
+    }
+
+    Ok(())
+}
 
 async fn run_serialized_input<F, T>(operation: F) -> Result<T, String>
 where
@@ -29,6 +213,67 @@ where
     let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
     let _guard = lock.lock().await;
     operation().await
+}
+
+#[cfg(test)]
+async fn replace_text_with_emitter<E: InputEmitter>(
+    emitter: &E,
+    region: &crate::morse::types::RegionRect,
+    value: &str,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    replace_text_with_emitter_locked(emitter, region, value, 0, &cancelled)
+}
+
+#[allow(dead_code)]
+pub async fn click_region_center_cancellable(
+    region: crate::morse::types::RegionRect,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    run_serialized_input(move || {
+        ensure_not_cancelled(&cancelled)?;
+        let emitter = EnigoInputEmitter::new()?;
+        click_region_center_with_emitter(&emitter, &region, &cancelled)
+    })
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn replace_text_at_region_cancellable(
+    region: crate::morse::types::RegionRect,
+    value: String,
+    char_delay_ms: u64,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    run_serialized_input(move || {
+        ensure_not_cancelled(&cancelled)?;
+        let emitter = EnigoInputEmitter::new()?;
+        replace_text_with_emitter_locked(&emitter, &region, &value, char_delay_ms, &cancelled)
+    })
+    .await
+}
+
+#[allow(dead_code)]
+pub fn release_tracked_injected_inputs() {
+    let Ok(mut enigo) = Enigo::new(&Settings::default()) else {
+        return;
+    };
+    let Some(tracked_keys) = TRACKED_INJECTED_KEYS.get() else {
+        return;
+    };
+    let Ok(mut tracked_keys) = tracked_keys.lock() else {
+        return;
+    };
+    let keys = std::mem::take(&mut *tracked_keys);
+    drop(tracked_keys);
+
+    for key in keys.into_iter().rev() {
+        if enigo.key(key, Direction::Release).is_err() {
+            track_injected_key(key);
+        }
+    }
 }
 
 pub async fn type_text(value: &str, delay_ms: u64) -> Result<(), String> {
@@ -344,8 +589,84 @@ fn named_to_key(named: NamedKey) -> Key {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex as StdMutex,
+    };
     use tokio::sync::{oneshot, Mutex};
+
+    #[derive(Default)]
+    struct RecordingEmitter {
+        characters: StdMutex<Vec<char>>,
+        pressed_keys: StdMutex<Vec<Key>>,
+        cancel_after_character: StdMutex<Option<(usize, Arc<AtomicBool>)>>,
+    }
+
+    impl RecordingEmitter {
+        fn cancel_after_character(&self, count: usize, cancelled: Arc<AtomicBool>) {
+            *self.cancel_after_character.lock().unwrap() = Some((count, cancelled));
+        }
+
+        fn characters(&self) -> Vec<char> {
+            self.characters.lock().unwrap().clone()
+        }
+
+        fn pressed_keys(&self) -> Vec<Key> {
+            self.pressed_keys.lock().unwrap().clone()
+        }
+    }
+
+    impl InputEmitter for RecordingEmitter {
+        fn move_mouse(&self, _: i32, _: i32) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn click_left(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
+            match (key, direction) {
+                (Key::Unicode(ch), Direction::Click) => {
+                    if self.pressed_keys.lock().unwrap().contains(&Key::Control) {
+                        return Ok(());
+                    }
+                    let character_count = {
+                        let mut characters = self.characters.lock().unwrap();
+                        characters.push(ch);
+                        characters.len()
+                    };
+                    if let Some((count, cancelled)) =
+                        self.cancel_after_character.lock().unwrap().clone()
+                    {
+                        if character_count >= count {
+                            cancelled.store(true, Ordering::SeqCst);
+                        }
+                    }
+                }
+                (Key::Control, Direction::Press) => {
+                    self.pressed_keys.lock().unwrap().push(Key::Control);
+                }
+                (Key::Control, Direction::Release) => {
+                    self.pressed_keys
+                        .lock()
+                        .unwrap()
+                        .retain(|key| *key != Key::Control);
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+    }
+
+    fn rect() -> crate::morse::types::RegionRect {
+        crate::morse::types::RegionRect {
+            x: 100,
+            y: 200,
+            width: 80,
+            height: 30,
+        }
+    }
 
     #[test]
     fn maps_comma_and_period_to_enigo_keys() {
@@ -394,5 +715,19 @@ mod tests {
             events.lock().await.as_slice(),
             ["first-start", "first-end", "second-start", "second-end"]
         );
+    }
+
+    #[tokio::test]
+    async fn cancelled_replace_text_stops_before_next_character_and_releases_ctrl() {
+        let emitter = RecordingEmitter::default();
+        let cancel = Arc::new(AtomicBool::new(false));
+        emitter.cancel_after_character(1, cancel.clone());
+
+        replace_text_with_emitter(&emitter, &rect(), "12345", cancel)
+            .await
+            .unwrap_err();
+
+        assert_eq!(emitter.characters(), vec!['1']);
+        assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
     }
 }

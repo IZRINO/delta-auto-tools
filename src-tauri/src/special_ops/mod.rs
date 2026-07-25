@@ -1,4 +1,6 @@
 pub(crate) mod desktop_runtime;
+#[allow(dead_code)]
+pub(crate) mod template_observer;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
