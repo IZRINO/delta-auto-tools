@@ -87,17 +87,16 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     fn terminate_exact(&self, exe: &Path, timeout: Duration) -> Result<(), String> {
         let started = Instant::now();
         loop {
-            let candidates = scan_process_candidates(exe)?;
-            let process_ids = matching_process_ids(exe, &candidates);
-            if process_ids.is_empty() {
+            let candidates = scan_process_entries_by_name(exe)?;
+            if candidates.is_empty() {
                 return Ok(());
             }
-            for process_id in process_ids {
+            for (process_id, _) in candidates {
                 let remaining = timeout
                     .checked_sub(started.elapsed())
                     .filter(|duration| !duration.is_zero())
                     .ok_or_else(|| format!("等待进程退出超时: PID {process_id}"))?;
-                terminate_process(process_id, remaining)?;
+                terminate_verified_process(exe, process_id, remaining)?;
             }
         }
     }
@@ -106,12 +105,12 @@ impl DesktopRuntime for WindowsDesktopRuntime {
         let parent = exe
             .parent()
             .filter(|path| !path.as_os_str().is_empty())
-            .ok_or_else(|| format!("启动程序失败，exe 路径缺少父目录: {}", exe.display()))?;
+            .ok_or_else(|| "程序路径缺少父目录".to_string())?;
         Command::new(exe)
             .current_dir(parent)
             .spawn()
             .map(|child| child.id())
-            .map_err(|error| format!("启动程序失败 {}: {error}", exe.display()))
+            .map_err(|error| format!("启动程序失败: {error}"))
     }
 
     fn find_primary_window(&self, exe: &Path) -> Result<Option<WindowIdentity>, String> {
@@ -231,6 +230,19 @@ fn select_primary_window(
 }
 
 fn scan_process_candidates(exe: &Path) -> Result<Vec<ProcessCandidate>, String> {
+    scan_process_entries_by_name(exe)?
+        .into_iter()
+        .map(|(pid, parent_pid)| {
+            Ok(ProcessCandidate {
+                pid,
+                parent_pid,
+                full_path: query_process_path(pid)?,
+            })
+        })
+        .collect()
+}
+
+fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
     let target_name = exe
         .file_name()
         .filter(|name| !name.is_empty())
@@ -259,11 +271,7 @@ fn scan_process_candidates(exe: &Path) -> Result<Vec<ProcessCandidate>, String> 
     let mut candidates = Vec::new();
     loop {
         if windows_names_equal(target_name, &entry.szExeFile) {
-            candidates.push(ProcessCandidate {
-                pid: entry.th32ProcessID,
-                parent_pid: entry.th32ParentProcessID,
-                full_path: query_process_path(entry.th32ProcessID)?,
-            });
+            candidates.push((entry.th32ProcessID, entry.th32ParentProcessID));
         }
         // SAFETY: snapshot and entry remain valid for the enumeration lifetime.
         if unsafe { Process32NextW(snapshot.raw(), &mut entry) } == 0 {
@@ -297,6 +305,13 @@ fn query_process_path(process_id: u32) -> Result<PathBuf, String> {
         PROCESS_QUERY_LIMITED_INFORMATION,
         "打开进程查询路径失败",
     )?;
+    query_process_path_from_handle(&process, process_id)
+}
+
+fn query_process_path_from_handle(
+    process: &OwnedHandle,
+    process_id: u32,
+) -> Result<PathBuf, String> {
     let mut path = vec![0_u16; PROCESS_PATH_BUFFER_LEN];
     let mut path_len = path.len() as u32;
     // SAFETY: process is valid; path buffer and length pointer are writable and correctly sized.
@@ -321,12 +336,48 @@ fn open_process(process_id: u32, access: u32, action: &str) -> Result<OwnedHandl
     }
 }
 
-fn terminate_process(process_id: u32, timeout: Duration) -> Result<(), String> {
-    let process = open_process(
+fn terminate_verified_process(
+    exe: &Path,
+    process_id: u32,
+    timeout: Duration,
+) -> Result<bool, String> {
+    verify_and_terminate_with_handle(
+        exe,
         process_id,
-        PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
-        "打开待结束进程失败",
-    )?;
+        timeout,
+        |process_id| {
+            open_process(
+                process_id,
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+                "打开待结束进程失败",
+            )
+        },
+        |process| query_process_path_from_handle(process, process_id),
+        |process, timeout| terminate_process(process, process_id, timeout),
+    )
+}
+
+fn verify_and_terminate_with_handle<H>(
+    exe: &Path,
+    process_id: u32,
+    timeout: Duration,
+    open_process: impl FnOnce(u32) -> Result<H, String>,
+    query_path: impl FnOnce(&H) -> Result<PathBuf, String>,
+    terminate: impl FnOnce(&H, Duration) -> Result<(), String>,
+) -> Result<bool, String> {
+    let process = open_process(process_id)?;
+    if !windows_paths_equal(exe, &query_path(&process)?) {
+        return Ok(false);
+    }
+    terminate(&process, timeout)?;
+    Ok(true)
+}
+
+fn terminate_process(
+    process: &OwnedHandle,
+    process_id: u32,
+    timeout: Duration,
+) -> Result<(), String> {
     // SAFETY: process handle grants terminate and synchronize access.
     if unsafe { TerminateProcess(process.raw(), 1) } == 0 {
         return Err(last_error(&format!("结束进程失败: PID {process_id}")));
@@ -424,7 +475,87 @@ fn last_error(action: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::path::{Path, PathBuf};
+
+    #[derive(Debug)]
+    struct FakeProcessHandle(u64);
+
+    #[test]
+    fn missing_parent_error_does_not_echo_executable_path() {
+        let runtime = WindowsDesktopRuntime;
+        let missing_parent = Path::new("secret-account.exe");
+        let error = runtime.launch(missing_parent).unwrap_err();
+        assert!(!error.contains("secret-account.exe"), "{error}");
+    }
+
+    #[test]
+    fn launch_failure_does_not_echo_executable_path() {
+        let runtime = WindowsDesktopRuntime;
+        let missing_executable = Path::new(r"C:\Users\secret-account\missing-wegame.exe");
+        let error = runtime.launch(missing_executable).unwrap_err();
+        assert!(!error.contains("C:\\Users\\secret-account"), "{error}");
+    }
+
+    #[test]
+    fn path_mismatch_on_opened_handle_is_not_terminated() {
+        let open_count = Cell::new(0);
+        let terminated = Cell::new(false);
+
+        let matched = verify_and_terminate_with_handle(
+            Path::new(r"C:\Apps\WeGame\WeGame.exe"),
+            10,
+            Duration::from_secs(1),
+            |_| {
+                open_count.set(open_count.get() + 1);
+                Ok(FakeProcessHandle(41))
+            },
+            |handle| {
+                assert_eq!(handle.0, 41);
+                Ok(PathBuf::from(r"D:\Other\WeGame.exe"))
+            },
+            |_, _| {
+                terminated.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(!matched);
+        assert_eq!(open_count.get(), 1);
+        assert!(!terminated.get());
+    }
+
+    #[test]
+    fn matching_path_is_terminated_through_the_same_opened_handle() {
+        let open_count = Cell::new(0);
+        let queried_identity = Cell::new(0);
+        let terminated_identity = Cell::new(0);
+
+        let matched = verify_and_terminate_with_handle(
+            Path::new(r"C:\Apps\WeGame\WeGame.exe"),
+            10,
+            Duration::from_secs(1),
+            |_| {
+                open_count.set(open_count.get() + 1);
+                Ok(FakeProcessHandle(41))
+            },
+            |handle| {
+                queried_identity.set(handle.0);
+                Ok(PathBuf::from(r"\\?\c:\apps\wegame\WEGAME.EXE"))
+            },
+            |handle, _| {
+                terminated_identity.set(handle.0);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(matched);
+        assert_eq!(open_count.get(), 1);
+        assert_eq!(queried_identity.get(), 41);
+        assert_eq!(terminated_identity.get(), 41);
+    }
 
     #[test]
     fn same_basename_in_other_directory_is_not_a_match() {
