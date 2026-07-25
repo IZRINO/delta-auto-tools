@@ -1,6 +1,11 @@
-import {describe, expect, it} from "vitest";
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {describe, expect, it, vi} from "vitest";
 
-import {operationOverlayText} from "@/components/app/special-ops-operation-overlay";
+import {
+    SpecialOpsOperationOverlay,
+    operationOverlayText,
+} from "@/components/app/special-ops-operation-overlay";
 import type {LoginRunSnapshot} from "@/components/app/special-ops-types";
 
 function snapshot(overrides: Partial<LoginRunSnapshot> = {}): LoginRunSnapshot {
@@ -28,5 +33,19 @@ describe("operationOverlayText", () => {
 
     it("无倒计时时提示特勤处操作中", () => {
         expect(operationOverlayText(snapshot({countdownSeconds: null})).title).toBe("特勤处操作中");
+    });
+});
+
+describe("SpecialOpsOperationOverlay", () => {
+    it("事件尚未到达时首帧仍显示准备状态和自定义紧急热键", () => {
+        vi.stubGlobal("window", {
+            location: {search: "?emergencyHotkey=Ctrl%2BAlt%2BX"},
+        });
+
+        const html = renderToStaticMarkup(createElement(SpecialOpsOperationOverlay));
+
+        expect(html).toContain("特勤处操作中");
+        expect(html).toContain("正在准备登录流程");
+        expect(html).toContain("紧急停止：Ctrl+Alt+X");
     });
 });

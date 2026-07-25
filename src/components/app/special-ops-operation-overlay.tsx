@@ -27,11 +27,11 @@ export function SpecialOpsOperationOverlay() {
         (event) => setSnapshot(event.payload),
     ), []);
 
-    if (!snapshot) return null;
-
     const hotkey = new URLSearchParams(window.location.search).get("emergencyHotkey")
         ?? DEFAULT_EMERGENCY_HOTKEY;
-    const text = operationOverlayText(snapshot, hotkey);
+    const text = snapshot
+        ? operationOverlayText(snapshot, hotkey)
+        : {title: "特勤处操作中", detail: "正在准备登录流程", hotkey};
     return (
         <main className="card card-border h-dvh w-full bg-base-200 text-base-content shadow-lg">
             <div className="card-body gap-2 p-4">
