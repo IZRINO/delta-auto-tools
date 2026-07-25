@@ -43,6 +43,8 @@ const emptyBootstrap: SpecialOpsBootstrap = {
         paused: true,
         dailyExchangeTime: "08:00",
         emergencyHotkey: "Ctrl+Shift+F12",
+        wegameExecutablePath: "",
+        gameExecutablePath: "",
         accounts: [],
         activeCalibrationId: null,
         calibrationEnvironments: [],
@@ -50,6 +52,7 @@ const emptyBootstrap: SpecialOpsBootstrap = {
     schedule: {dueAccounts: [], nextWakeAtMs: null},
     settingsRevision: 0,
     nowMs: Date.now(),
+    runSnapshot: null,
 };
 
 function createStation(kind: StationKind): StationPlan {
@@ -69,13 +72,14 @@ function createAccount(order: number): AccountPlan {
         id: crypto.randomUUID(),
         qqAccount: "",
         password: "",
-        wegameId: "",
         enabled: true,
         initialized: false,
         order,
         status: "ready",
         stations: stationKinds.map(createStation),
         ammoTargets: [],
+        lastFailure: null,
+        loginTrialSignature: null,
     };
 }
 
@@ -174,7 +178,7 @@ export function SpecialOpsPage() {
         accounts: [...bootstrap.settings.accounts, createAccount(bootstrap.settings.accounts.length)],
     });
     const removeAccount = (account: AccountPlan) => {
-        if (!window.confirm(`删除账号 ${account.wegameId || account.qqAccount || "未命名账号"}？`)) return;
+        if (!window.confirm(`删除账号 ${account.qqAccount || "未命名账号"}？`)) return;
         save({...bootstrap.settings, accounts: bootstrap.settings.accounts.filter((item) => item.id !== account.id)});
     };
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
@@ -262,10 +266,9 @@ export function SpecialOpsPage() {
                         <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{account.status}</p></div>
                         <div className="flex items-center gap-2 text-sm"><span>启用</span><Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/><Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button></div>
                     </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <label className="form-control gap-1"><span className="label-text">QQ 账号</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/></label>
                         <label className="form-control gap-1"><span className="label-text">QQ 密码（明文保存）</span><DraftInput type="password" value={account.password} onCommit={(password) => updateAccount(account, {password})}/></label>
-                        <label className="form-control gap-1"><span className="label-text">WeGame ID</span><DraftInput value={account.wegameId} onCommit={(wegameId) => updateAccount(account, {wegameId})}/></label>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {account.stations.map((station) => <div key={station.kind} className="rounded-box bg-base-200 p-3">

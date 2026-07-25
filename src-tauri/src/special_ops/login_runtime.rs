@@ -17,6 +17,17 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 pub const RUN_CHANGED: &str = "special-ops://run-changed";
+pub(crate) const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
+
+fn run_changed_target_labels() -> [&'static str; 2] {
+    ["main", OPERATION_WINDOW_LABEL]
+}
+
+pub(crate) fn emit_run_changed(app: &AppHandle, snapshot: &LoginRunSnapshot) {
+    for label in run_changed_target_labels() {
+        let _ = app.emit_to(label, RUN_CHANGED, snapshot.clone());
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -613,7 +624,7 @@ impl ProductionLoginDriver {
             self.runtime
                 .update(self.run_id, status, step, message, countdown_seconds)?
         {
-            let _ = self.app.emit_to("main", RUN_CHANGED, snapshot);
+            emit_run_changed(&self.app, &snapshot);
         }
         Ok(())
     }
@@ -910,6 +921,14 @@ async fn wait_cancellable(duration: Duration, cancelled: &AtomicBool) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_changed_targets_main_and_operation_overlay() {
+        assert_eq!(
+            run_changed_target_labels(),
+            ["main", "special-ops-operation"]
+        );
+    }
 
     #[test]
     fn only_one_login_run_can_be_active() {

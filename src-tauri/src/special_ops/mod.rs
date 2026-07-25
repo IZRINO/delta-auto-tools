@@ -18,7 +18,6 @@ pub use login_runtime::{LoginRunSnapshot, LoginRunStatus};
 const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
-const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1382,7 +1381,7 @@ fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
 }
 
 fn emit_run(app: &AppHandle, snapshot: &LoginRunSnapshot) {
-    let _ = app.emit_to("main", login_runtime::RUN_CHANGED, snapshot.clone());
+    login_runtime::emit_run_changed(app, snapshot);
 }
 
 fn emit_login_run_change(
@@ -1418,12 +1417,15 @@ fn emit_current_state(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn create_operation_window(app: &AppHandle) -> Result<(), String> {
+fn create_operation_window(app: &AppHandle, emergency_hotkey: &str) -> Result<(), String> {
     destroy_operation_window(app)?;
-    tauri::WebviewWindowBuilder::new(
+    let hotkey = encoded_query_value(emergency_hotkey);
+    let window = tauri::WebviewWindowBuilder::new(
         app,
-        OPERATION_WINDOW_LABEL,
-        tauri::WebviewUrl::App("index.html?mode=special-ops-operation".into()),
+        login_runtime::OPERATION_WINDOW_LABEL,
+        tauri::WebviewUrl::App(
+            format!("index.html?mode=special-ops-operation&emergencyHotkey={hotkey}").into(),
+        ),
     )
     .title("特勤处登录试运行")
     .decorations(false)
@@ -1431,11 +1433,14 @@ fn create_operation_window(app: &AppHandle) -> Result<(), String> {
     .shadow(false)
     .always_on_top(true)
     .skip_taskbar(true)
+    .focused(false)
     .resizable(false)
     .inner_size(420.0, 180.0)
     .build()
-    .map(|_| ())
-    .map_err(|error| format!("创建登录试运行窗口失败: {error}"))
+    .map_err(|error| format!("创建登录试运行窗口失败: {error}"))?;
+    window
+        .set_ignore_cursor_events(true)
+        .map_err(|error| format!("设置登录试运行窗口点击穿透失败: {error}"))
 }
 
 fn register_emergency_hotkey(app: &AppHandle, hotkey: String) -> Result<(), String> {
@@ -1467,7 +1472,7 @@ fn clear_login_hotkey(app: &AppHandle) -> Result<(), String> {
 }
 
 fn destroy_operation_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(OPERATION_WINDOW_LABEL) {
+    if let Some(window) = app.get_webview_window(login_runtime::OPERATION_WINDOW_LABEL) {
         window
             .destroy()
             .map_err(|error| format!("销毁登录试运行窗口失败: {error}"))?;
@@ -2086,11 +2091,13 @@ pub async fn special_ops_start_login_trial(
             let worker_runtime = Arc::clone(&runtime);
             let worker_config = Arc::clone(&config);
             let worker_signature = frozen_signature.clone();
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
             let (_, snapshot) = start_login_run_with_resources(
                 &runtime,
                 account_id.clone(),
-                || register_emergency_hotkey(&app, settings.emergency_hotkey),
-                || create_operation_window(&app),
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || create_operation_window(&app, &operation_hotkey),
                 |snapshot| emit_run(&app, snapshot),
                 || release_login_resources_unlocked(&app),
                 |started| {

@@ -35,6 +35,7 @@ const overlayWindowModes = new Set([
     "rapidfire-position",
     "recognition-overlay",
     "special-ops-calibration",
+    "special-ops-operation",
 ]);
 
 const MorsePage = lazy(() =>
@@ -63,6 +64,9 @@ const SpecialOpsPage = lazy(() =>
 );
 const SpecialOpsCalibrationOverlay = lazy(() =>
     import("@/components/app/special-ops-calibration-overlay").then((module) => ({default: module.SpecialOpsCalibrationOverlay})),
+);
+const SpecialOpsOperationOverlay = lazy(() =>
+    import("@/components/app/special-ops-operation-overlay").then((module) => ({default: module.SpecialOpsOperationOverlay})),
 );
 
 const RecognitionRegionOverlay = lazy(() =>
@@ -429,6 +433,10 @@ function AppShell() {
 
     if (overlayMode === "special-ops-calibration") {
         return <ToolPageSuspense fallback={null}><SpecialOpsCalibrationOverlay/></ToolPageSuspense>;
+    }
+
+    if (overlayMode === "special-ops-operation") {
+        return <ToolPageSuspense fallback={null}><SpecialOpsOperationOverlay/></ToolPageSuspense>;
     }
 
     const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool);
