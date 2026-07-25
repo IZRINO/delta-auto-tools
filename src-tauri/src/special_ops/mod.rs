@@ -1951,30 +1951,27 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     };
     let active = state.login_runtime.snapshot()?;
     if let Some(snapshot) = active {
-        let uncertain = state
+        let Some(stopped) = state
             .login_runtime
-            .entered_input(snapshot.run_id)
+            .request_lifecycle_stop(snapshot.run_id)
             .map_err(|error| {
                 fail_closed_login_error(app, &state.login_runtime, snapshot.run_id, error)
-            })?;
-        let stopped = state
-            .login_runtime
-            .request_stop(login_runtime::StopReason::Lifecycle { uncertain })
-            .map_err(|error| {
-                fail_closed_login_error(app, &state.login_runtime, snapshot.run_id, error)
-            })?;
+            })?
+        else {
+            return Ok(());
+        };
         emit_run(app, &stopped);
         let resource_result =
-            release_login_resources_for_run(app, &state.login_runtime, snapshot.run_id);
+            release_login_resources_for_run(app, &state.login_runtime, stopped.run_id);
         let result = login_flow::LoginFlowResult::EmergencyStopped {
-            account_id: snapshot.account_id.clone(),
+            account_id: stopped.account_id.clone(),
             stopped_at: now_ms(),
         };
         let persist_result = persist_login_outcome(
             app,
             &state.login_runtime,
-            snapshot.run_id,
-            &snapshot.account_id,
+            stopped.run_id,
+            &stopped.account_id,
             &result,
             "",
         );
@@ -1989,7 +1986,7 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
             return Err(errors.join("; "));
         }
         if let Some(finished) = state.login_runtime.finish(
-            snapshot.run_id,
+            stopped.run_id,
             LoginRunStatus::Stopped,
             "登录试运行已停止",
         )? {

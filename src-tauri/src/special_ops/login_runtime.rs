@@ -262,6 +262,35 @@ impl LoginRuntime {
             .active
             .as_mut()
             .ok_or_else(|| "当前没有运行中的登录试运行".to_string())?;
+        Ok(self.request_stop_locked(active, reason))
+    }
+
+    pub(crate) fn request_lifecycle_stop(
+        &self,
+        run_id: u64,
+    ) -> Result<Option<LoginRunSnapshot>, String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏，拒绝停止".to_string())?;
+        let Some(active) = inner
+            .active
+            .as_mut()
+            .filter(|active| active.snapshot.run_id == run_id)
+        else {
+            return Ok(None);
+        };
+        let reason = StopReason::Lifecycle {
+            uncertain: active.entered_input,
+        };
+        Ok(Some(self.request_stop_locked(active, reason)))
+    }
+
+    fn request_stop_locked(
+        &self,
+        active: &mut ActiveLoginRun,
+        reason: StopReason,
+    ) -> LoginRunSnapshot {
         let previous_reason = active.stop_reason;
         active.stop_reason = Some(authoritative_stop_reason(previous_reason, reason));
         let effective_reason = active.stop_reason.unwrap_or(reason);
@@ -283,7 +312,7 @@ impl LoginRuntime {
         .to_string();
         active.snapshot.countdown_seconds = None;
         active.snapshot.updated_at_ms = super::now_ms();
-        Ok(active.snapshot.clone())
+        active.snapshot.clone()
     }
 
     pub(crate) fn snapshot(&self) -> Result<Option<LoginRunSnapshot>, String> {
@@ -336,19 +365,6 @@ impl LoginRuntime {
         }
         active.worker_handed_off = true;
         Ok(true)
-    }
-
-    pub(crate) fn entered_input(&self, run_id: u64) -> Result<bool, String> {
-        self.inner
-            .lock()
-            .map_err(|_| "登录试运行状态已损坏".to_string())
-            .map(|inner| {
-                inner
-                    .active
-                    .as_ref()
-                    .filter(|active| active.snapshot.run_id == run_id)
-                    .is_some_and(|active| active.entered_input)
-            })
     }
 
     pub(crate) fn mark_cleanup_failed(&self, run_id: u64) -> Result<(), String> {
@@ -952,6 +968,33 @@ mod tests {
         assert_eq!(snapshot.status, LoginRunStatus::Stopped);
         assert_eq!(snapshot.current_step, None);
         assert_eq!(snapshot.message, "正在执行紧急停止");
+    }
+
+    #[test]
+    fn stale_lifecycle_stop_request_does_not_cancel_replacement_run() {
+        let runtime = LoginRuntime::default();
+        let old = runtime.try_start("old".to_string()).unwrap();
+        runtime
+            .update(
+                old.run_id,
+                LoginRunStatus::Inputting,
+                Some(LoginStep::InputPassword),
+                "旧 run 已进入输入阶段",
+                None,
+            )
+            .unwrap();
+        runtime
+            .finish(old.run_id, LoginRunStatus::Succeeded, "旧 run 结束")
+            .unwrap();
+        let current = runtime.try_start("current".to_string()).unwrap();
+
+        let stopped = runtime.request_lifecycle_stop(old.run_id).unwrap();
+
+        assert!(stopped.is_none());
+        assert!(!current.cancelled.load(Ordering::SeqCst));
+        let snapshot = runtime.snapshot().unwrap().unwrap();
+        assert_eq!(snapshot.run_id, current.run_id);
+        assert_eq!(snapshot.status, LoginRunStatus::Starting);
     }
 
     #[test]
