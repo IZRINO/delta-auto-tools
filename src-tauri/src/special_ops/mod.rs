@@ -1,3 +1,5 @@
+pub(crate) mod desktop_runtime;
+
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
