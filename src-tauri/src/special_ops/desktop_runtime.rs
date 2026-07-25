@@ -6,8 +6,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, HANDLE, HWND, INVALID_HANDLE_VALUE, RECT, WAIT_FAILED,
-    WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, RECT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -62,11 +61,9 @@ struct WindowCandidate {
 struct OwnedHandle(HANDLE);
 
 impl OwnedHandle {
-    fn new(handle: HANDLE, action: &str) -> Result<Self, String> {
-        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-            return Err(last_error(action));
-        }
-        Ok(Self(handle))
+    fn from_valid(handle: HANDLE) -> Self {
+        debug_assert!(!handle.is_null() && handle != INVALID_HANDLE_VALUE);
+        Self(handle)
     }
 
     fn raw(&self) -> HANDLE {
@@ -154,10 +151,16 @@ impl DesktopRuntime for WindowsDesktopRuntime {
         }
 
         // SAFETY: hwnd remains valid and belongs to the expected executable at this point.
+        if unsafe { IsIconic(hwnd) } != 0 {
+            capture_win32_result(
+                || unsafe { ShowWindowAsync(hwnd, SW_RESTORE) },
+                |result| *result == 0,
+                std::io::Error::last_os_error,
+            )
+            .map_err(|error| format_win32_error("恢复目标窗口失败", error))?;
+        }
+        // SAFETY: hwnd remains valid and belongs to the expected executable at this point.
         unsafe {
-            if IsIconic(hwnd) != 0 && ShowWindowAsync(hwnd, SW_RESTORE) == 0 {
-                return Err(last_error("恢复目标窗口失败"));
-            }
             if SetForegroundWindow(hwnd) == 0 {
                 return Err("聚焦目标窗口失败".to_string());
             }
@@ -249,23 +252,29 @@ fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
         .filter(|name| !name.is_empty())
         .ok_or_else(|| format!("exe 路径缺少文件名: {}", exe.display()))?;
     // SAFETY: arguments follow CreateToolhelp32Snapshot contract; returned handle is owned.
-    let snapshot = unsafe {
-        OwnedHandle::new(
-            CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0),
-            "创建进程快照失败",
-        )?
-    };
+    let snapshot = capture_win32_result(
+        || unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) },
+        |handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE,
+        std::io::Error::last_os_error,
+    )
+    .map(OwnedHandle::from_valid)
+    .map_err(|error| format_win32_error("创建进程快照失败", error))?;
     let mut entry = PROCESSENTRY32W {
         dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
         ..Default::default()
     };
     // SAFETY: snapshot is valid and entry points to initialized writable storage.
-    if unsafe { Process32FirstW(snapshot.raw(), &mut entry) } == 0 {
-        // SAFETY: called immediately after failed Win32 call.
-        return if unsafe { GetLastError() } == windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES {
+    if let Err(error) = capture_win32_result(
+        || unsafe { Process32FirstW(snapshot.raw(), &mut entry) },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    ) {
+        return if error.raw_os_error()
+            == Some(windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES as i32)
+        {
             Ok(Vec::new())
         } else {
-            Err(last_error("读取进程快照失败"))
+            Err(format_win32_error("读取进程快照失败", error))
         };
     }
 
@@ -275,12 +284,17 @@ fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
             candidates.push((entry.th32ProcessID, entry.th32ParentProcessID));
         }
         // SAFETY: snapshot and entry remain valid for the enumeration lifetime.
-        if unsafe { Process32NextW(snapshot.raw(), &mut entry) } == 0 {
-            // SAFETY: called immediately after failed Win32 call.
-            if unsafe { GetLastError() } == windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES {
+        if let Err(error) = capture_win32_result(
+            || unsafe { Process32NextW(snapshot.raw(), &mut entry) },
+            |result| *result == 0,
+            std::io::Error::last_os_error,
+        ) {
+            if error.raw_os_error()
+                == Some(windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES as i32)
+            {
                 break;
             }
-            return Err(last_error("继续读取进程快照失败"));
+            return Err(format_win32_error("继续读取进程快照失败", error));
         }
     }
     Ok(candidates)
@@ -316,25 +330,29 @@ fn query_process_path_from_handle(
     let mut path = vec![0_u16; PROCESS_PATH_BUFFER_LEN];
     let mut path_len = path.len() as u32;
     // SAFETY: process is valid; path buffer and length pointer are writable and correctly sized.
-    if unsafe { QueryFullProcessImageNameW(process.raw(), 0, path.as_mut_ptr(), &mut path_len) }
-        == 0
-    {
-        return Err(last_error(&format!(
-            "查询进程完整路径失败: PID {process_id}"
-        )));
-    }
+    capture_win32_result(
+        || unsafe {
+            QueryFullProcessImageNameW(process.raw(), 0, path.as_mut_ptr(), &mut path_len)
+        },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| {
+        format_win32_error(&format!("查询进程完整路径失败: PID {process_id}"), error)
+    })?;
     path.truncate(path_len as usize);
     Ok(PathBuf::from(OsString::from_wide(&path)))
 }
 
 fn open_process(process_id: u32, access: u32, action: &str) -> Result<OwnedHandle, String> {
     // SAFETY: process ID and access mask are plain values; returned handle is owned.
-    unsafe {
-        OwnedHandle::new(
-            OpenProcess(access, 0, process_id),
-            &format!("{action}: PID {process_id}"),
-        )
-    }
+    capture_win32_result(
+        || unsafe { OpenProcess(access, 0, process_id) },
+        |handle| handle.is_null() || *handle == INVALID_HANDLE_VALUE,
+        std::io::Error::last_os_error,
+    )
+    .map(OwnedHandle::from_valid)
+    .map_err(|error| format_win32_error(&format!("{action}: PID {process_id}"), error))
 }
 
 fn terminate_verified_process(
@@ -401,9 +419,12 @@ fn verify_terminate_and_wait_with_handle<H>(
 
 fn terminate_process(process: &OwnedHandle, process_id: u32) -> Result<(), String> {
     // SAFETY: process handle grants terminate and synchronize access.
-    if unsafe { TerminateProcess(process.raw(), 1) } == 0 {
-        return Err(last_error(&format!("结束进程失败: PID {process_id}")));
-    }
+    capture_win32_result(
+        || unsafe { TerminateProcess(process.raw(), 1) },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error(&format!("结束进程失败: PID {process_id}"), error))?;
     Ok(())
 }
 
@@ -413,10 +434,15 @@ fn wait_for_process(
     timeout: Duration,
 ) -> Result<(), String> {
     // SAFETY: process handle is valid and wait duration is bounded to u32 milliseconds.
-    match unsafe { WaitForSingleObject(process.raw(), wait_millis(timeout)) } {
+    let wait_result = capture_win32_result(
+        || unsafe { WaitForSingleObject(process.raw(), wait_millis(timeout)) },
+        |result| *result == WAIT_FAILED,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error(&format!("等待进程退出失败: PID {process_id}"), error))?;
+    match wait_result {
         WAIT_OBJECT_0 => Ok(()),
         WAIT_TIMEOUT => Err(format!("等待进程退出超时: PID {process_id}")),
-        WAIT_FAILED => Err(last_error(&format!("等待进程退出失败: PID {process_id}"))),
         result => Err(format!(
             "等待进程退出返回未知状态 {result}: PID {process_id}"
         )),
@@ -445,15 +471,17 @@ struct EnumWindowsContext {
 fn enumerate_windows() -> Result<Vec<WindowCandidate>, String> {
     let mut context = EnumWindowsContext::default();
     // SAFETY: EnumWindows invokes the callback synchronously while context remains alive.
-    if unsafe {
-        EnumWindows(
-            Some(collect_window),
-            (&mut context as *mut EnumWindowsContext) as isize,
-        )
-    } == 0
-    {
-        return Err(last_error("枚举顶层窗口失败"));
-    }
+    capture_win32_result(
+        || unsafe {
+            EnumWindows(
+                Some(collect_window),
+                (&mut context as *mut EnumWindowsContext) as isize,
+            )
+        },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error("枚举顶层窗口失败", error))?;
     Ok(context.candidates)
 }
 
@@ -508,18 +536,145 @@ fn hwnd_from_identity(window: WindowIdentity) -> Result<HWND, String> {
         .map_err(|_| "目标窗口句柄超出当前平台宽度".to_string())
 }
 
-fn last_error(action: &str) -> String {
-    format!("{action}: {}", std::io::Error::last_os_error())
+fn capture_win32_result<T>(
+    call: impl FnOnce() -> T,
+    failed: impl FnOnce(&T) -> bool,
+    read_error: impl FnOnce() -> std::io::Error,
+) -> Result<T, std::io::Error> {
+    let result = call();
+    if failed(&result) {
+        return Err(read_error());
+    }
+    Ok(result)
+}
+
+fn format_win32_error(action: &str, error: std::io::Error) -> String {
+    format!("{action}: {error}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::{Child, Command, Stdio};
+    use std::thread;
 
     #[derive(Debug)]
     struct FakeProcessHandle(u64);
+
+    struct ChildGuard(Child);
+
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            if self.0.try_wait().ok().flatten().is_none() {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+    }
+
+    fn spawn_helper(exe: &Path) -> ChildGuard {
+        ChildGuard(
+            Command::new(exe)
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "special_ops::desktop_runtime::tests::desktop_runtime_helper_process",
+                    "--test-threads=1",
+                ])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        )
+    }
+
+    fn wait_for_helper_path(process_id: u32, expected: &Path) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if query_process_path(process_id)
+                .is_ok_and(|actual| windows_paths_equal(expected, &actual))
+            {
+                return;
+            }
+            assert!(Instant::now() < deadline, "helper 进程未就绪");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn failed_raw_call_captures_error_before_formatting() {
+        let phase = Cell::new(0);
+        let error = capture_win32_result(
+            || {
+                assert_eq!(phase.get(), 0);
+                phase.set(1);
+                0_i32
+            },
+            |result| *result == 0,
+            || {
+                assert_eq!(phase.get(), 1);
+                phase.set(2);
+                std::io::Error::from_raw_os_error(5)
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(phase.get(), 2);
+        assert!(format_win32_error("原生调用失败", error).contains("os error 5"));
+    }
+
+    #[test]
+    #[ignore = "仅作为受控 helper 子进程启动"]
+    fn desktop_runtime_helper_process() {
+        loop {
+            thread::park_timeout(Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn real_process_path_query_matches_current_executable() {
+        let expected = fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+        let actual = query_process_path(std::process::id()).unwrap();
+        assert!(windows_paths_equal(&expected, &actual));
+    }
+
+    #[test]
+    fn real_enum_windows_call_succeeds() {
+        enumerate_windows().unwrap();
+    }
+
+    #[test]
+    fn real_terminate_exact_preserves_same_basename_in_other_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = std::env::current_exe().unwrap();
+        let target_dir = temp.path().join("target");
+        let other_dir = temp.path().join("other");
+        fs::create_dir_all(&target_dir).unwrap();
+        fs::create_dir_all(&other_dir).unwrap();
+        let target_exe = target_dir.join("runtime-helper.exe");
+        let other_exe = other_dir.join("runtime-helper.exe");
+        fs::copy(&source, &target_exe).unwrap();
+        fs::copy(&source, &other_exe).unwrap();
+        let target_exe = fs::canonicalize(target_exe).unwrap();
+        let other_exe = fs::canonicalize(other_exe).unwrap();
+        let mut target = spawn_helper(&target_exe);
+        let mut other = spawn_helper(&other_exe);
+        wait_for_helper_path(target.0.id(), &target_exe);
+        wait_for_helper_path(other.0.id(), &other_exe);
+
+        WindowsDesktopRuntime
+            .terminate_exact(&target_exe, Duration::from_secs(5))
+            .unwrap();
+
+        assert!(target.0.try_wait().unwrap().is_some());
+        assert!(other.0.try_wait().unwrap().is_none());
+        assert!(query_process_path(other.0.id())
+            .is_ok_and(|actual| windows_paths_equal(&other_exe, &actual)));
+    }
 
     #[test]
     fn different_path_basename_finishes_after_one_scan() {
