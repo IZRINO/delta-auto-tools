@@ -11,18 +11,20 @@ import {
     RiPlayLine,
     RiRefreshLine,
     RiShieldCheckLine,
+    RiStopCircleLine,
 } from "@remixicon/react";
 
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
+import {LatestSaveQueue} from "@/hooks/autosave-queue";
+import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {invokeLogged as invoke} from "@/lib/logging";
 import {SPECIAL_OPS_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
-    formatCalibrationTemplateTestResult,
     reloadSpecialOpsAfterStateChanged,
     runLatestSpecialOpsBootstrapRequest,
     testSpecialOpsCalibrationTarget,
@@ -30,11 +32,23 @@ import {
     type AmmoTarget,
     type CalibrationEnvironment,
     type CalibrationTarget,
+    type LoginRunSnapshot,
     type SpecialOpsBootstrap,
+    type SpecialOpsSettings,
     type SpecialOpsStateChanged,
     type StationKind,
     type StationPlan,
 } from "@/components/app/special-ops-types";
+import {formatRecordedHotkey} from "@/components/app/morse-utils";
+import {
+    applyExecutableSelection,
+    eligibleLoginTrialAccounts,
+    formatCalibrationTemplateTestResult,
+    persistSpecialOpsSaveRequest,
+    type SpecialOpsSaveRequest,
+} from "@/components/app/special-ops-utils";
+
+const SAVE_DELAY_MS = 400;
 
 const stationKinds: StationKind[] = ["technicalCenter", "workbench", "pharmacy", "armorBench"];
 const emptyBootstrap: SpecialOpsBootstrap = {
@@ -111,10 +125,33 @@ export function SpecialOpsPage() {
     const [error, setError] = useState<string | null>(null);
     const [testingTargetKey, setTestingTargetKey] = useState<string | null>(null);
     const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
+    const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+    const [hotkeyStatus, setHotkeyStatus] = useState<string | null>(null);
     const bootstrapRequestToken = useRef(0);
+    const bootstrapRef = useRef(emptyBootstrap);
+    const settingsDraftRef = useRef(emptyBootstrap.settings);
+    const settingsDirtyRef = useRef(false);
+    const pendingSaveRef = useRef<SpecialOpsSaveRequest | null>(null);
+    const pendingSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastSavePromiseRef = useRef<Promise<void> | null>(null);
+    const saveQueueRef = useRef<LatestSaveQueue<SpecialOpsSaveRequest> | null>(null);
+    saveQueueRef.current ??= new LatestSaveQueue();
 
     const applyResult = (next: SpecialOpsBootstrap) => {
-        setBootstrap(next);
+        const revisionChanged = next.settingsRevision !== bootstrapRef.current.settingsRevision;
+        bootstrapRef.current = next;
+        if (settingsDirtyRef.current && !revisionChanged) {
+            setBootstrap({...next, settings: settingsDraftRef.current});
+        } else {
+            if (revisionChanged && pendingSaveTimerRef.current !== null) {
+                clearTimeout(pendingSaveTimerRef.current);
+                pendingSaveTimerRef.current = null;
+            }
+            settingsDirtyRef.current = false;
+            pendingSaveRef.current = null;
+            settingsDraftRef.current = next.settings;
+            setBootstrap(next);
+        }
         setError(null);
     };
     const runBootstrapRequest = (request: () => Promise<SpecialOpsBootstrap>) => void runLatestSpecialOpsBootstrapRequest(
@@ -130,26 +167,94 @@ export function SpecialOpsPage() {
     useEffect(() => {
         reload();
         if (!isNativeShell) return;
-        const unsubscribe = subscribeTauriEvent<SpecialOpsStateChanged>(SPECIAL_OPS_EVENTS.stateChanged, (event) => {
+        const unsubscribeState = subscribeTauriEvent<SpecialOpsStateChanged>(SPECIAL_OPS_EVENTS.stateChanged, (event) => {
             reloadSpecialOpsAfterStateChanged(event.payload, reload);
         });
+        const unsubscribeRun = subscribeTauriEvent<LoginRunSnapshot>(SPECIAL_OPS_EVENTS.runChanged, (event) => {
+            setBootstrap((current) => ({...current, runSnapshot: event.payload}));
+            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: event.payload};
+        });
         return () => {
+            if (pendingSaveTimerRef.current !== null) clearTimeout(pendingSaveTimerRef.current);
             bootstrapRequestToken.current += 1;
-            unsubscribe();
+            unsubscribeState();
+            unsubscribeRun();
         };
     }, [isNativeShell]);
 
-    const save = (settings: SpecialOpsBootstrap["settings"]) => runBootstrapRequest(() => invoke<SpecialOpsBootstrap>(
-        "special_ops_save_settings",
-        {settingsValue: settings, settingsRevision: bootstrap.settingsRevision},
-    ));
-    const setPaused = (paused: boolean) => runBootstrapRequest(() => invoke<SpecialOpsBootstrap>(
-        "special_ops_set_paused",
-        {paused, settingsRevision: bootstrap.settingsRevision},
-    ));
+    const performSave = async ({settings, settingsRevision}: SpecialOpsSaveRequest) => {
+        const next = await persistSpecialOpsSaveRequest(
+            {settings, settingsRevision},
+            (request) => invoke<SpecialOpsBootstrap>("special_ops_save_settings", {
+                settingsValue: request.settings,
+                settingsRevision: request.settingsRevision,
+            }),
+            reload,
+        );
+        bootstrapRef.current = next;
+        if (settingsDraftRef.current === settings) {
+            settingsDirtyRef.current = false;
+            pendingSaveRef.current = null;
+            settingsDraftRef.current = next.settings;
+            setBootstrap(next);
+        } else {
+            setBootstrap({...next, settings: settingsDraftRef.current});
+        }
+        setError(null);
+    };
+    const enqueueSave = (request: SpecialOpsSaveRequest) => {
+        const task = saveQueueRef.current!.enqueue(request, performSave);
+        lastSavePromiseRef.current = task;
+        void task.then(
+            () => {
+                if (lastSavePromiseRef.current === task) lastSavePromiseRef.current = null;
+            },
+            () => {
+                if (lastSavePromiseRef.current === task) lastSavePromiseRef.current = null;
+            },
+        );
+        return task;
+    };
+    const save = (settings: SpecialOpsSettings) => {
+        settingsDraftRef.current = settings;
+        settingsDirtyRef.current = true;
+        pendingSaveRef.current = {settings, settingsRevision: bootstrapRef.current.settingsRevision};
+        setBootstrap((current) => ({...current, settings}));
+        if (pendingSaveTimerRef.current !== null) clearTimeout(pendingSaveTimerRef.current);
+        pendingSaveTimerRef.current = setTimeout(() => {
+            pendingSaveTimerRef.current = null;
+            const request = pendingSaveRef.current;
+            pendingSaveRef.current = null;
+            if (request) void enqueueSave(request).catch((cause) => setError(String(cause)));
+        }, SAVE_DELAY_MS);
+    };
+    const flushSettings = async () => {
+        if (pendingSaveTimerRef.current !== null) {
+            clearTimeout(pendingSaveTimerRef.current);
+            pendingSaveTimerRef.current = null;
+            const request = pendingSaveRef.current;
+            pendingSaveRef.current = null;
+            if (request) await enqueueSave(request);
+        } else if (lastSavePromiseRef.current) {
+            await lastSavePromiseRef.current;
+        } else {
+            await enqueueSave({
+                settings: settingsDraftRef.current,
+                settingsRevision: bootstrapRef.current.settingsRevision,
+            });
+        }
+        return bootstrapRef.current;
+    };
+    const setPaused = (paused: boolean) => runBootstrapRequest(async () => {
+        const saved = await flushSettings();
+        return invoke<SpecialOpsBootstrap>("special_ops_set_paused", {
+            paused,
+            settingsRevision: saved.settingsRevision,
+        });
+    });
     const updateAccount = (account: AccountPlan, patch: Partial<AccountPlan>) => save({
-        ...bootstrap.settings,
-        accounts: bootstrap.settings.accounts.map((item) => item.id === account.id ? {...item, ...patch} : item),
+        ...settingsDraftRef.current,
+        accounts: settingsDraftRef.current.accounts.map((item) => item.id === account.id ? {...item, ...patch} : item),
     });
     const updateStation = (account: AccountPlan, station: StationPlan, patch: Partial<StationPlan>) => updateAccount(account, {
         stations: account.stations.map((item) => item.kind === station.kind ? {...item, ...patch} : item),
@@ -174,20 +279,85 @@ export function SpecialOpsPage() {
         updateAccount(account, {ammoTargets: ammoTargets.map((item, order) => ({...item, order}))});
     };
     const addAccount = () => save({
-        ...bootstrap.settings,
-        accounts: [...bootstrap.settings.accounts, createAccount(bootstrap.settings.accounts.length)],
+        ...settingsDraftRef.current,
+        accounts: [...settingsDraftRef.current.accounts, createAccount(settingsDraftRef.current.accounts.length)],
     });
     const removeAccount = (account: AccountPlan) => {
         if (!window.confirm(`删除账号 ${account.qqAccount || "未命名账号"}？`)) return;
-        save({...bootstrap.settings, accounts: bootstrap.settings.accounts.filter((item) => item.id !== account.id)});
+        save({...settingsDraftRef.current, accounts: settingsDraftRef.current.accounts.filter((item) => item.id !== account.id)});
+    };
+    const eligibleAccounts = eligibleLoginTrialAccounts(bootstrap.settings.accounts);
+    useEffect(() => {
+        setSelectedAccountId((current) => eligibleAccounts.some(({id}) => id === current)
+            ? current
+            : eligibleAccounts[0]?.id ?? null);
+    }, [bootstrap.settings.accounts]);
+    const runSnapshot = bootstrap.runSnapshot;
+    const isLoginTrialRunning = runSnapshot !== null
+        && !["succeeded", "failed", "stopped"].includes(runSnapshot.status);
+    const selectedAccount = bootstrap.settings.accounts.find(({id}) => id === selectedAccountId) ?? null;
+    const recorder = useHotkeyRecorder({
+        formatKey: formatRecordedHotkey,
+        onCommit: (emergencyHotkey) => {
+            save({...settingsDraftRef.current, emergencyHotkey});
+            setHotkeyStatus(`新的紧急停止热键：${emergencyHotkey}`);
+        },
+        onCancel: () => undefined,
+        onStatusMessage: setHotkeyStatus,
+    });
+    const pickExecutable = async (field: "wegameExecutablePath" | "gameExecutablePath") => {
+        if (!isNativeShell || isLoginTrialRunning) return;
+        try {
+            const picked = await open({
+                multiple: false,
+                directory: false,
+                filters: [{name: "可执行文件", extensions: ["exe"]}],
+            });
+            const current = settingsDraftRef.current[field];
+            const selected = applyExecutableSelection(current, typeof picked === "string" ? picked : null);
+            if (selected !== current) save({...settingsDraftRef.current, [field]: selected});
+        } catch (cause) {
+            setError(String(cause));
+        }
+    };
+    const startLoginTrial = async () => {
+        if (!isNativeShell || !selectedAccountId || isLoginTrialRunning) return;
+        try {
+            setError(null);
+            const saved = await flushSettings();
+            const snapshot = await invoke<LoginRunSnapshot>("special_ops_start_login_trial", {
+                accountId: selectedAccountId,
+                settingsRevision: saved.settingsRevision,
+            });
+            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: snapshot};
+            setBootstrap((current) => ({...current, runSnapshot: snapshot}));
+        } catch (cause) {
+            setError(String(cause));
+        }
+    };
+    const cancelLoginTrial = async () => {
+        if (!isNativeShell || !isLoginTrialRunning) return;
+        try {
+            const snapshot = await invoke<LoginRunSnapshot>("special_ops_cancel_login_trial");
+            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: snapshot};
+            setBootstrap((current) => ({...current, runSnapshot: snapshot}));
+        } catch (cause) {
+            setError(String(cause));
+        }
     };
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
-    const beginCalibration = (environment: CalibrationEnvironment, targetKey: string) => {
+    const beginCalibration = async (environment: CalibrationEnvironment, targetKey: string) => {
         setCalibrationTestResult(null);
-        void invoke(
-            "special_ops_begin_calibration_selection",
-            {environmentId: environment.id, targetKey, settingsRevision: bootstrap.settingsRevision},
-        ).catch((cause) => setError(String(cause)));
+        try {
+            const saved = await flushSettings();
+            await invoke("special_ops_begin_calibration_selection", {
+                environmentId: environment.id,
+                targetKey,
+                settingsRevision: saved.settingsRevision,
+            });
+        } catch (cause) {
+            setError(String(cause));
+        }
     };
     const updateCalibrationTarget = (
         environment: CalibrationEnvironment,
@@ -196,8 +366,8 @@ export function SpecialOpsPage() {
     ) => {
         setCalibrationTestResult(null);
         save({
-            ...bootstrap.settings,
-            calibrationEnvironments: bootstrap.settings.calibrationEnvironments.map((item) => item.id === environment.id
+            ...settingsDraftRef.current,
+            calibrationEnvironments: settingsDraftRef.current.calibrationEnvironments.map((item) => item.id === environment.id
                 ? {...item, targets: item.targets.map((candidate) => candidate.key === target.key ? {...candidate, ...patch} : candidate)}
                 : item),
         });
@@ -221,12 +391,14 @@ export function SpecialOpsPage() {
         setCalibrationTestResult(null);
         setError(null);
         try {
+            const saved = await flushSettings();
             const result = await testSpecialOpsCalibrationTarget({
                 environmentId: environment.id,
                 targetKey: target.key,
-                settingsRevision: bootstrap.settingsRevision,
+                settingsRevision: saved.settingsRevision,
             });
             setCalibrationTestResult(formatCalibrationTemplateTestResult(target.label, result));
+            reload();
         } catch (cause) {
             setError(String(cause));
         } finally {
@@ -239,7 +411,7 @@ export function SpecialOpsPage() {
             <div><h1 className="text-2xl font-semibold">特勤处自动化</h1><p className="text-sm text-base-content/60">账号、制作台与兑换调度配置</p></div>
             <div className="flex items-center gap-2">
                 <span className="text-sm">总开关</span>
-                <Switch checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...bootstrap.settings, enabled})}/>
+                <Switch checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, enabled})}/>
                 <Button variant="outline" size="sm" onClick={reload}><RiRefreshLine data-icon="inline-start"/>刷新</Button>
                 <Button size="sm" onClick={() => setPaused(!bootstrap.settings.paused)}>
                     {bootstrap.settings.paused ? <RiPlayLine data-icon="inline-start"/> : <RiPauseLine data-icon="inline-start"/>}
@@ -248,12 +420,87 @@ export function SpecialOpsPage() {
             </div>
         </header>
 
-        {error && <div className="alert alert-error"><span>{error}</span></div>}
+        {error && <div role="alert" className="alert alert-error"><span>{error}</span></div>}
 
-        <section className="grid gap-3 md:grid-cols-3">
-            <label className="form-control gap-1"><span className="label-text">每日兑换时间（Asia/Shanghai）</span><DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...bootstrap.settings, dailyExchangeTime})}/></label>
-            <label className="form-control gap-1"><span className="label-text">紧急停止快捷键</span><DraftInput value={bootstrap.settings.emergencyHotkey} placeholder="Ctrl+Shift+F12" onCommit={(emergencyHotkey) => save({...bootstrap.settings, emergencyHotkey})}/></label>
-            <div className="stat rounded-box border border-base-300 bg-base-100"><div className="stat-title">待处理账号</div><div className="stat-value text-2xl">{bootstrap.schedule.dueAccounts.length}</div></div>
+        <section className="card card-border bg-base-100">
+            <div className="card-body gap-4">
+                <h2 className="card-title">全局配置</h2>
+                <div className="grid gap-3 md:grid-cols-2">
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">WeGame 可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.wegameExecutablePath} placeholder="请选择 WeGame.exe"/>
+                            <Button disabled={isLoginTrialRunning} size="sm" variant="outline" onClick={() => void pickExecutable("wegameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">游戏可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.gameExecutablePath} placeholder="请选择游戏 .exe"/>
+                            <Button disabled={isLoginTrialRunning} size="sm" variant="outline" onClick={() => void pickExecutable("gameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">每日兑换时间（Asia/Shanghai）</legend>
+                        <DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...settingsDraftRef.current, dailyExchangeTime})}/>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">紧急停止热键</legend>
+                        <Button
+                            disabled={isLoginTrialRunning}
+                            size="sm"
+                            variant="outline"
+                            onBlur={recorder.handleBlur}
+                            onClick={() => recorder.beginRecording(bootstrap.settings.emergencyHotkey)}
+                            onKeyDown={recorder.handleKeyDown}
+                        >
+                            {recorder.isRecording ? "请按组合键" : `录制紧急停止热键（${bootstrap.settings.emergencyHotkey}）`}
+                        </Button>
+                        {hotkeyStatus && <p className="label">{hotkeyStatus}</p>}
+                    </fieldset>
+                </div>
+            </div>
+        </section>
+
+        <section className="card card-border bg-base-100">
+            <div className="card-body gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div><h2 className="card-title">单账号登录试运行</h2><p className="text-sm text-base-content/60">仅运行所选账号一次，不执行收取、生产、购买或子弹兑换</p></div>
+                    <div className="stat w-auto p-0"><div className="stat-title">待处理账号</div><div className="stat-value text-2xl">{bootstrap.schedule.dueAccounts.length}</div></div>
+                </div>
+                <div role="alert" className="alert alert-warning alert-soft">
+                    <span>启动前先把游戏置顶；运行时不搜索或滚动窗口。校准位置必须与当前显示环境一致。</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">试运行账号</legend>
+                        <select
+                            className="select select-sm w-full"
+                            disabled={eligibleAccounts.length === 0 || isLoginTrialRunning}
+                            value={selectedAccountId ?? ""}
+                            onChange={(event) => setSelectedAccountId(event.target.value || null)}
+                        >
+                            {eligibleAccounts.length === 0 && <option value="">无启用且凭据完整的账号</option>}
+                            {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.qqAccount}</option>)}
+                        </select>
+                    </fieldset>
+                    <Button disabled={!isNativeShell || !selectedAccountId || isLoginTrialRunning} onClick={() => void startLoginTrial()}>
+                        <RiPlayLine data-icon="inline-start"/>运行所选账号一次
+                    </Button>
+                    <Button disabled={!isLoginTrialRunning} variant="outline" onClick={() => void cancelLoginTrial()}>
+                        <RiStopCircleLine data-icon="inline-start"/>取消本次试运行
+                    </Button>
+                </div>
+                {runSnapshot && <div className="grid gap-2 rounded-box bg-base-200 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div><span className="text-base-content/60">步骤</span><p className="font-medium">{runSnapshot.currentStep ?? "准备"}</p></div>
+                    <div><span className="text-base-content/60">消息</span><p className="font-medium">{runSnapshot.message}</p></div>
+                    <div><span className="text-base-content/60">倒计时</span><p className="font-medium">{runSnapshot.countdownSeconds === null ? "-" : `${runSnapshot.countdownSeconds} 秒`}</p></div>
+                    <div><span className="text-base-content/60">状态</span><p className="font-medium">{runSnapshot.status}</p></div>
+                </div>}
+                {selectedAccount?.lastFailure && <div role="alert" className="alert alert-error alert-soft">
+                    <span>{selectedAccount.lastFailure.step}：{selectedAccount.lastFailure.message}（{new Date(selectedAccount.lastFailure.atMs).toLocaleString("zh-CN")}）</span>
+                </div>}
+            </div>
         </section>
 
         <section className="space-y-3">
@@ -330,7 +577,7 @@ export function SpecialOpsPage() {
                                     {target.recognitionMethod === "template" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
                                     {target.recognitionMethod === "template" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
                                     {target.recognitionMethod && <Button className="join-item" disabled={testingTargetKey === target.key} size="sm" variant="outline" onClick={() => void testCalibrationTarget(activeEnvironment, target)}><RiPlayLine data-icon="inline-start"/>{testingTargetKey === target.key ? "测试中" : "测试"}</Button>}
-                                    <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
+                                    <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => void beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
                                 </div>
                             </td>
                         </tr>)}</tbody>

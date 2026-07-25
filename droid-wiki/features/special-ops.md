@@ -10,7 +10,7 @@
 
 校准结果全局共享，不随账号或 Profile 复制。UI 不要求用户填写环境名称、显示器、分辨率、DPI 或窗口模式，只维护一套当前校准结果。旧版本存在多套环境时，加载后保留当时选中的一套。
 
-静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。已选子弹名称使用 OCR，不上传静态参考图；OCR 结果与当前 `AmmoTarget.name` 比对。登录试运行不保存或校验 WeGame ID。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
+静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。已选子弹名称使用 OCR，不上传静态参考图；OCR 结果与当前 `AmmoTarget.name` 比对。登录试运行只使用 QQ 账号和密码，不保存额外身份字段。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
 
 每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；不在缺少正式阈值配置时伪造“通过”。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
 
@@ -26,7 +26,7 @@
 
 运行期间创建固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定尺寸且点击穿透；前端不提供按钮，只显示当前步骤、键鼠占用倒计时和本次自定义紧急热键。启动、热键注册、window 创建和 worker handoff 受同一资源锁保护；window 创建成功后，runtime 通过独立短事件临界区原子执行 handoff 校验与 `Starting` 发布，普通取消、紧急停止和生命周期停止也在同一临界区登记并发布 `Stopped`。该临界区不覆盖 window 创建、资源释放或持久化，因此停止可在 window 创建阻塞期间先行登记；启动方随后只回滚资源，不得补发 `Starting` 或提交 worker。worker 提交后，启动命令返回同一 run 的最新权威快照，避免同步进入 `Waiting` 后补发旧 `Starting`。`special_ops_cancel_login_trial` 只请求普通停止，不立即释放单实例，也不改账号结果；`special_ops_emergency_stop` 立即取消、释放已注入按键、销毁 window、注销热键，并将当前账号持久化为 `Uncertain`。三类停止均按发起时取得的 run id 校验 active run，旧 run 的延迟请求不得取消、清理或持久化替代它的新 run。应用生命周期停止在已进入键鼠阶段时按 `Uncertain` 处理；runtime 在同一临界区读取是否已进入键鼠阶段并登记停止。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。持久化 claim 使用 RAII guard；写入失败或 owner panic 会释放 claim 并唤醒等待方，active run 保留以供紧急停止接管或重试，等待总期限为 5 秒。只有权威结果持久化成功或普通取消明确无需持久化后，worker 才能进入资源清理并释放单实例。
 
-`SpecialOpsBootstrap.runSnapshot` 返回当前 run；`special-ops://run-changed` payload 仅含 `LoginRunSnapshot`，不含 settings 或密码，并同时发送到主窗口与 operation window。
+`SpecialOpsBootstrap.runSnapshot` 返回当前 run；`special-ops://run-changed` payload 仅含 `LoginRunSnapshot`，不含 settings 或密码，并同时发送到主窗口与 operation window。主窗口提供 WeGame 与游戏 exe 选择、紧急停止热键录制、符合条件账号选择、单次启动和普通取消；启动前先 flush 最新 settings，并使用保存回包的 revision 启动。主窗口显示步骤、消息、倒计时和最近失败时间。试运行仅登录所选账号一次，不执行收取、生产、购买或子弹兑换；运行前需将游戏置顶，执行期间不搜索或滚动窗口。
 
 制作台入口、进入制作列表点击点、制作列表就绪状态、置顶配方点击点、空闲中文字区域和可收取感叹号均按技术中心、工作台、制药台和防具台保存 4 个独立区域，不使用通用位置。旧 `craft.station`、`craft.recipe`、`craft.idle` 与 `craft.claimReady` 区域加载时删除，禁止把单个旧坐标错误复制到四台。点击烽火地带后增加 `game.activityPopup` 识别区域；命中时执行一次空格，未命中则继续原流程。
 
@@ -74,7 +74,7 @@
 
 制作或子弹补齐购买最多重试 3 次，每次间隔 1 秒并重新识别。重试后仍未进入 `craft.produce` 或 `ammo.exchange`，且补齐/购买状态仍存在时，不依赖短暂的仓库公告文本；直接将账号标记为需人工处理，结束该账号剩余流程并切换下一账号。
 
-用户点击“继续”或在未暂停状态启用功能时执行 preflight。preflight 只检查存在正常启用账号且至少配置一项制作台或子弹目标的流程；按实际启用制作台、普通子弹、赛季限定子弹计算必需校准项。账号缺 QQ、密码或 WeGame ID，启用制作台缺物品/有效时长，启用子弹缺名称，或任一必需校准项缺少矩形、模板图路径、模板图文件时，均拒绝启动并报告首个缺失步骤。ID 校验必须同时具备启动前置页 OCR 快速路径与个人主页复制兜底路径；暂停状态允许保存不完整草稿，避免配置过程中反复报错。
+用户点击“继续”或在未暂停状态启用功能时执行 preflight。preflight 只检查存在正常启用账号且至少配置一项制作台或子弹目标的流程；按实际启用制作台、普通子弹、赛季限定子弹计算必需校准项。账号缺 QQ 或密码，启用制作台缺物品/有效时长，启用子弹缺名称，或任一必需校准项缺少矩形、模板图路径、模板图文件时，均拒绝启动并报告首个缺失步骤。ID 校验必须同时具备启动前置页 OCR 快速路径与个人主页复制兜底路径；暂停状态允许保存不完整草稿，避免配置过程中反复报错。
 
 ## WeGame 窗口归一化
 

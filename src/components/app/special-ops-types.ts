@@ -22,11 +22,6 @@ export type SpecialOpsBootstrap = { settings: SpecialOpsSettings; schedule: { du
 export type SpecialOpsStateChanged = {settingsRevision: number; nowMs: number};
 export const STATION_LABELS: Record<StationKind, string> = { technicalCenter: "技术中心", workbench: "工作台", pharmacy: "制药台", armorBench: "防具台" };
 
-export function formatCalibrationTemplateTestResult(label: string, result: CalibrationTemplateTestResult): string {
-    const [first, second] = result.sampleSimilarities.map((value) => `${(value * 100).toFixed(1)}%`);
-    return `${label}：双采样相似度 ${first} / ${second}，${result.passed ? "已通过" : "未通过"}`;
-}
-
 export function testSpecialOpsCalibrationTarget(
     args: SpecialOpsCalibrationTestArgs,
 ): Promise<CalibrationTemplateTestResult> {

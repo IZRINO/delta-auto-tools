@@ -1,7 +1,6 @@
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
 import {
-    formatCalibrationTemplateTestResult,
     reloadSpecialOpsAfterStateChanged,
     runLatestSpecialOpsBootstrapRequest,
     testSpecialOpsCalibrationTarget,
@@ -21,21 +20,8 @@ function deferred<T>() {
     return {promise, resolve, reject};
 }
 
-describe("特勤处校准测试结果", () => {
+describe("特勤处校准测试请求", () => {
     beforeEach(() => invokeLogged.mockReset());
-
-    it("按百分比显示两次模板相似度与通过状态", () => {
-        expect(formatCalibrationTemplateTestResult("登录按钮", {
-            sampleSimilarities: [0.9876, 0.8],
-            passed: true,
-            verifiedAtMs: 123,
-        })).toBe("登录按钮：双采样相似度 98.8% / 80.0%，已通过");
-        expect(formatCalibrationTemplateTestResult("登录按钮", {
-            sampleSimilarities: [0.74, 0.99],
-            passed: false,
-            verifiedAtMs: null,
-        })).toBe("登录按钮：双采样相似度 74.0% / 99.0%，未通过");
-    });
 
     it("模板测试调用携带完整 revision 合约", async () => {
         const result = {
