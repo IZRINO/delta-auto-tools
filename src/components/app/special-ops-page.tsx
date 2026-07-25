@@ -24,6 +24,7 @@ import {
     STATION_LABELS,
     formatCalibrationTemplateTestResult,
     reloadSpecialOpsAfterStateChanged,
+    runLatestSpecialOpsBootstrapRequest,
     testSpecialOpsCalibrationTarget,
     type AccountPlan,
     type AmmoTarget,
@@ -106,20 +107,21 @@ export function SpecialOpsPage() {
     const [error, setError] = useState<string | null>(null);
     const [testingTargetKey, setTestingTargetKey] = useState<string | null>(null);
     const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
-    const reloadRequestId = useRef(0);
+    const bootstrapRequestToken = useRef(0);
 
     const applyResult = (next: SpecialOpsBootstrap) => {
         setBootstrap(next);
         setError(null);
     };
+    const runBootstrapRequest = (request: () => Promise<SpecialOpsBootstrap>) => void runLatestSpecialOpsBootstrapRequest(
+        bootstrapRequestToken,
+        request,
+        applyResult,
+        (cause) => setError(String(cause)),
+    );
     const reload = () => {
         if (!isNativeShell) return;
-        const requestId = ++reloadRequestId.current;
-        void invoke<SpecialOpsBootstrap>("special_ops_get_bootstrap").then((next) => {
-            if (requestId === reloadRequestId.current) applyResult(next);
-        }).catch((cause) => {
-            if (requestId === reloadRequestId.current) setError(String(cause));
-        });
+        runBootstrapRequest(() => invoke<SpecialOpsBootstrap>("special_ops_get_bootstrap"));
     };
     useEffect(() => {
         reload();
@@ -128,19 +130,19 @@ export function SpecialOpsPage() {
             reloadSpecialOpsAfterStateChanged(event.payload, reload);
         });
         return () => {
-            reloadRequestId.current += 1;
+            bootstrapRequestToken.current += 1;
             unsubscribe();
         };
     }, [isNativeShell]);
 
-    const save = (settings: SpecialOpsBootstrap["settings"]) => void invoke<SpecialOpsBootstrap>(
+    const save = (settings: SpecialOpsBootstrap["settings"]) => runBootstrapRequest(() => invoke<SpecialOpsBootstrap>(
         "special_ops_save_settings",
         {settingsValue: settings, settingsRevision: bootstrap.settingsRevision},
-    ).then(applyResult).catch((cause) => setError(String(cause)));
-    const setPaused = (paused: boolean) => void invoke<SpecialOpsBootstrap>(
+    ));
+    const setPaused = (paused: boolean) => runBootstrapRequest(() => invoke<SpecialOpsBootstrap>(
         "special_ops_set_paused",
         {paused, settingsRevision: bootstrap.settingsRevision},
-    ).then(applyResult).catch((cause) => setError(String(cause)));
+    ));
     const updateAccount = (account: AccountPlan, patch: Partial<AccountPlan>) => save({
         ...bootstrap.settings,
         accounts: bootstrap.settings.accounts.map((item) => item.id === account.id ? {...item, ...patch} : item),

@@ -29,6 +29,21 @@ export function testSpecialOpsCalibrationTarget(
     return invokeLogged<CalibrationTemplateTestResult>("special_ops_test_calibration_target", args);
 }
 
+export async function runLatestSpecialOpsBootstrapRequest<T>(
+    token: {current: number},
+    request: () => Promise<T>,
+    onSuccess: (value: T) => void,
+    onError: (error: unknown) => void,
+): Promise<void> {
+    const requestToken = ++token.current;
+    try {
+        const value = await request();
+        if (requestToken === token.current) onSuccess(value);
+    } catch (error) {
+        if (requestToken === token.current) onError(error);
+    }
+}
+
 export function reloadSpecialOpsAfterStateChanged(
     _event: SpecialOpsStateChanged,
     reload: () => void,

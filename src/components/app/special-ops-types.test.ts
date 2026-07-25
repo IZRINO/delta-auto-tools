@@ -3,12 +3,23 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 import {
     formatCalibrationTemplateTestResult,
     reloadSpecialOpsAfterStateChanged,
+    runLatestSpecialOpsBootstrapRequest,
     testSpecialOpsCalibrationTarget,
 } from "@/components/app/special-ops-types";
 
 const {invokeLogged} = vi.hoisted(() => ({invokeLogged: vi.fn()}));
 
 vi.mock("@/lib/logging", () => ({invokeLogged}));
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((nextResolve, nextReject) => {
+        resolve = nextResolve;
+        reject = nextReject;
+    });
+    return {promise, resolve, reject};
+}
 
 describe("特勤处校准测试结果", () => {
     beforeEach(() => invokeLogged.mockReset());
@@ -52,5 +63,55 @@ describe("特勤处校准测试结果", () => {
         reloadSpecialOpsAfterStateChanged({settingsRevision: 17, nowMs: 23}, reload);
 
         expect(reload).toHaveBeenCalledOnce();
+    });
+});
+
+describe("特勤处 bootstrap 请求竞态", () => {
+    it("后发 save 成功后忽略旧 reload 结果", async () => {
+        const token = {current: 0};
+        const reload = deferred<string>();
+        const save = deferred<string>();
+        const applied: string[] = [];
+
+        const reloadTask = runLatestSpecialOpsBootstrapRequest(token, () => reload.promise, (value) => applied.push(value), vi.fn());
+        const saveTask = runLatestSpecialOpsBootstrapRequest(token, () => save.promise, (value) => applied.push(value), vi.fn());
+        save.resolve("save");
+        await saveTask;
+        reload.resolve("reload");
+        await reloadTask;
+
+        expect(applied).toEqual(["save"]);
+    });
+
+    it("事件 reload 成功后忽略旧 save 结果", async () => {
+        const token = {current: 0};
+        const save = deferred<string>();
+        const reload = deferred<string>();
+        const applied: string[] = [];
+
+        const saveTask = runLatestSpecialOpsBootstrapRequest(token, () => save.promise, (value) => applied.push(value), vi.fn());
+        const reloadTask = runLatestSpecialOpsBootstrapRequest(token, () => reload.promise, (value) => applied.push(value), vi.fn());
+        reload.resolve("reload");
+        await reloadTask;
+        save.resolve("save");
+        await saveTask;
+
+        expect(applied).toEqual(["reload"]);
+    });
+
+    it("新请求成功后忽略旧请求错误", async () => {
+        const token = {current: 0};
+        const oldRequest = deferred<string>();
+        const latestRequest = deferred<string>();
+        const onError = vi.fn();
+
+        const oldTask = runLatestSpecialOpsBootstrapRequest(token, () => oldRequest.promise, vi.fn(), onError);
+        const latestTask = runLatestSpecialOpsBootstrapRequest(token, () => latestRequest.promise, vi.fn(), onError);
+        latestRequest.resolve("latest");
+        await latestTask;
+        oldRequest.reject(new Error("stale"));
+        await oldTask;
+
+        expect(onError).not.toHaveBeenCalled();
     });
 });
