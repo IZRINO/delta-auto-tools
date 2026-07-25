@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc, Mutex, OnceLock,
+        Arc, Mutex, MutexGuard, OnceLock,
     },
     thread,
     time::Duration,
@@ -14,6 +14,7 @@ static INPUT_SIMULATION_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new()
 static INPUT_RELEASE_GENERATION: AtomicU64 = AtomicU64::new(0);
 static INPUT_ACTION_STATE: OnceLock<Mutex<InputActionState>> = OnceLock::new();
 const INPUT_POST_ACTION_GAP: Duration = Duration::from_millis(35);
+const INPUT_CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Default)]
 struct InputActionState {
@@ -23,6 +24,16 @@ struct InputActionState {
 #[allow(dead_code)]
 fn input_action_state() -> &'static Mutex<InputActionState> {
     INPUT_ACTION_STATE.get_or_init(|| Mutex::new(InputActionState::default()))
+}
+
+fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn lock_input_action_state() -> MutexGuard<'static, InputActionState> {
+    lock_recover(input_action_state())
 }
 
 #[allow(dead_code)]
@@ -49,9 +60,7 @@ fn run_cancellable_input_action<T>(
     generation: u64,
     action: impl FnOnce(&mut InputActionState) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut state = input_action_state()
-        .lock()
-        .map_err(|_| "自动输入状态已损坏".to_string())?;
+    let mut state = lock_input_action_state();
     ensure_not_cancelled(cancelled, generation)?;
     action(&mut state)
 }
@@ -151,12 +160,13 @@ impl<'a, E: InputEmitter> TrackedModifierGuard<'a, E> {
 #[allow(dead_code)]
 impl<E: InputEmitter> Drop for TrackedModifierGuard<'_, E> {
     fn drop(&mut self) {
-        let Ok(mut state) = input_action_state().lock() else {
-            return;
-        };
+        let mut state = lock_input_action_state();
         for key in self.pressed.drain(..).rev() {
-            if self.emitter.key(key, Direction::Release).is_ok() {
-                untrack_injected_key(&mut state, &key);
+            if !take_tracked_injected_key(&mut state, &key) {
+                continue;
+            }
+            if self.emitter.key(key, Direction::Release).is_err() {
+                track_injected_key(&mut state, key);
             }
         }
     }
@@ -172,6 +182,29 @@ fn track_injected_key(state: &mut InputActionState, key: Key) {
 #[allow(dead_code)]
 fn untrack_injected_key(state: &mut InputActionState, key: &Key) {
     state.tracked_keys.retain(|tracked| tracked != key);
+}
+
+fn take_tracked_injected_key(state: &mut InputActionState, key: &Key) -> bool {
+    let Some(index) = state.tracked_keys.iter().position(|tracked| tracked == key) else {
+        return false;
+    };
+    state.tracked_keys.remove(index);
+    true
+}
+
+fn wait_cancellable_input_delay(
+    cancelled: &AtomicBool,
+    generation: u64,
+    delay_ms: u64,
+) -> Result<(), String> {
+    let mut remaining = Duration::from_millis(delay_ms);
+    while !remaining.is_zero() {
+        ensure_not_cancelled(cancelled, generation)?;
+        let slice = remaining.min(INPUT_CANCELLATION_POLL_INTERVAL);
+        thread::sleep(slice);
+        remaining = remaining.saturating_sub(slice);
+    }
+    ensure_not_cancelled(cancelled, generation)
 }
 
 #[allow(dead_code)]
@@ -224,7 +257,7 @@ fn replace_text_with_emitter_locked<E: InputEmitter, F: FnOnce()>(
             emitter.key(Key::Unicode(ch), Direction::Click)
         })?;
         if char_delay_ms > 0 {
-            thread::sleep(Duration::from_millis(char_delay_ms));
+            wait_cancellable_input_delay(cancelled, generation, char_delay_ms)?;
         }
     }
 
@@ -261,6 +294,7 @@ async fn replace_text_with_emitter<E: InputEmitter>(
     emitter: &E,
     region: &crate::morse::types::RegionRect,
     value: &str,
+    char_delay_ms: u64,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
@@ -269,7 +303,7 @@ async fn replace_text_with_emitter<E: InputEmitter>(
         emitter,
         region,
         value,
-        0,
+        char_delay_ms,
         &cancelled,
         input_release_generation(),
         || {},
@@ -343,9 +377,7 @@ pub fn release_tracked_injected_inputs() {
 }
 
 fn release_tracked_injected_keys_with(emitter: &mut Enigo) {
-    let Ok(mut state) = input_action_state().lock() else {
-        return;
-    };
+    let mut state = lock_input_action_state();
     let keys = std::mem::take(&mut state.tracked_keys);
     for key in keys.into_iter().rev() {
         if emitter.key(key, Direction::Release).is_err() {
@@ -357,9 +389,7 @@ fn release_tracked_injected_keys_with(emitter: &mut Enigo) {
 #[cfg(test)]
 fn release_tracked_injected_inputs_with_emitter<E: InputEmitter>(emitter: &E) {
     invalidate_cancellable_inputs();
-    let Ok(mut state) = input_action_state().lock() else {
-        return;
-    };
+    let mut state = lock_input_action_state();
     let keys = std::mem::take(&mut state.tracked_keys);
     for key in keys.into_iter().rev() {
         if emitter.key(key, Direction::Release).is_err() {
@@ -683,16 +713,28 @@ mod tests {
     use super::*;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex as StdMutex,
+        mpsc, Arc, Mutex as StdMutex,
     };
+    use std::time::Instant;
     use tokio::sync::{oneshot, Mutex};
+
+    static INPUT_SIMULATION_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    async fn lock_input_simulation_tests() -> tokio::sync::MutexGuard<'static, ()> {
+        INPUT_SIMULATION_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .await
+    }
 
     #[derive(Default)]
     struct RecordingEmitter {
+        action_count: StdMutex<usize>,
         characters: StdMutex<Vec<char>>,
         pressed_keys: StdMutex<Vec<Key>>,
         ctrl_release_count: StdMutex<usize>,
         cancel_after_character: StdMutex<Option<(usize, Arc<AtomicBool>)>>,
+        notify_after_character: StdMutex<Option<(usize, mpsc::Sender<()>)>>,
     }
 
     impl RecordingEmitter {
@@ -702,6 +744,14 @@ mod tests {
 
         fn characters(&self) -> Vec<char> {
             self.characters.lock().unwrap().clone()
+        }
+
+        fn notify_after_character(&self, count: usize, sender: mpsc::Sender<()>) {
+            *self.notify_after_character.lock().unwrap() = Some((count, sender));
+        }
+
+        fn action_count(&self) -> usize {
+            *self.action_count.lock().unwrap()
         }
 
         fn pressed_keys(&self) -> Vec<Key> {
@@ -715,14 +765,17 @@ mod tests {
 
     impl InputEmitter for RecordingEmitter {
         fn move_mouse(&self, _: i32, _: i32) -> Result<(), String> {
+            *self.action_count.lock().unwrap() += 1;
             Ok(())
         }
 
         fn click_left(&self) -> Result<(), String> {
+            *self.action_count.lock().unwrap() += 1;
             Ok(())
         }
 
         fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
+            *self.action_count.lock().unwrap() += 1;
             match (key, direction) {
                 (Key::Unicode(ch), Direction::Click) => {
                     if self.pressed_keys.lock().unwrap().contains(&Key::Control) {
@@ -738,6 +791,13 @@ mod tests {
                     {
                         if character_count >= count {
                             cancelled.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    if let Some((count, notifier)) =
+                        self.notify_after_character.lock().unwrap().clone()
+                    {
+                        if character_count >= count {
+                            let _ = notifier.send(());
                         }
                     }
                 }
@@ -780,6 +840,7 @@ mod tests {
 
     #[tokio::test]
     async fn serialized_input_jobs_do_not_overlap() {
+        let _test_guard = lock_input_simulation_tests().await;
         let events = Arc::new(Mutex::new(Vec::<&'static str>::new()));
         let (first_started_tx, first_started_rx) = oneshot::channel::<()>();
         let (release_first_tx, release_first_rx) = oneshot::channel::<()>();
@@ -817,11 +878,12 @@ mod tests {
 
     #[tokio::test]
     async fn cancelled_replace_text_stops_before_next_character_and_releases_ctrl() {
+        let _test_guard = lock_input_simulation_tests().await;
         let emitter = RecordingEmitter::default();
         let cancel = Arc::new(AtomicBool::new(false));
         emitter.cancel_after_character(1, cancel.clone());
 
-        replace_text_with_emitter(&emitter, &rect(), "12345", cancel)
+        replace_text_with_emitter(&emitter, &rect(), "12345", 0, cancel)
             .await
             .unwrap_err();
 
@@ -831,16 +893,22 @@ mod tests {
 
     #[tokio::test]
     async fn emergency_release_after_ctrl_press_stops_before_selection_and_releases_ctrl() {
+        let _test_guard = lock_input_simulation_tests().await;
         let emitter = Arc::new(RecordingEmitter::default());
         let release_emitter = Arc::clone(&emitter);
         let cancel = Arc::new(AtomicBool::new(false));
+        let action_count_after_release = Arc::new(StdMutex::new(None));
+        let release_action_count = Arc::clone(&action_count_after_release);
 
         let error = replace_text_with_emitter_after_ctrl_press(
             emitter.as_ref(),
             &rect(),
             "12345",
             cancel,
-            move || release_tracked_injected_inputs_with_emitter(release_emitter.as_ref()),
+            move || {
+                release_tracked_injected_inputs_with_emitter(release_emitter.as_ref());
+                *release_action_count.lock().unwrap() = Some(release_emitter.action_count());
+            },
         )
         .await
         .unwrap_err();
@@ -848,6 +916,77 @@ mod tests {
         assert_eq!(error, "输入操作已取消");
         assert!(emitter.characters().is_empty());
         assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
-        assert_eq!(emitter.ctrl_release_count(), 2);
+        assert_eq!(emitter.ctrl_release_count(), 1);
+        assert_eq!(
+            *action_count_after_release.lock().unwrap(),
+            Some(emitter.action_count())
+        );
+    }
+
+    #[test]
+    fn reclaims_poisoned_input_action_state_mutex() {
+        let state = Arc::new(StdMutex::new(InputActionState::default()));
+        let poisoned_state = Arc::clone(&state);
+        let panic_result = std::thread::spawn(move || {
+            let _guard = poisoned_state.lock().unwrap();
+            panic!("测试 input action state poison");
+        })
+        .join();
+
+        assert!(panic_result.is_err());
+        let mut recovered = lock_recover(state.as_ref());
+        track_injected_key(&mut recovered, Key::Control);
+        assert_eq!(recovered.tracked_keys, vec![Key::Control]);
+    }
+
+    #[tokio::test]
+    async fn emergency_release_interrupts_character_delay_and_unblocks_next_input_job() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emitter = Arc::new(RecordingEmitter::default());
+        let (first_character_tx, first_character_rx) = mpsc::channel();
+        emitter.notify_after_character(1, first_character_tx);
+
+        let typing_emitter = Arc::clone(&emitter);
+        let typing_cancelled = Arc::new(AtomicBool::new(false));
+        let typing_region = rect();
+        let typing = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap();
+            runtime.block_on(replace_text_with_emitter(
+                typing_emitter.as_ref(),
+                &typing_region,
+                "12",
+                500,
+                typing_cancelled,
+            ))
+        });
+
+        first_character_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("首字符未输入");
+
+        let next_job_acquired_at = Arc::new(StdMutex::new(None));
+        let next_job_acquired_at_for_task = Arc::clone(&next_job_acquired_at);
+        let next_job = tokio::spawn(run_serialized_input_for_test(move || async move {
+            *next_job_acquired_at_for_task.lock().unwrap() = Some(Instant::now());
+            Ok(())
+        }));
+
+        let released_at = Instant::now();
+        release_tracked_injected_inputs_with_emitter(emitter.as_ref());
+
+        assert_eq!(typing.join().unwrap(), Err("输入操作已取消".to_string()));
+        next_job.await.unwrap().unwrap();
+        let next_job_delay = next_job_acquired_at
+            .lock()
+            .unwrap()
+            .expect("下一输入任务未取得串行锁")
+            .duration_since(released_at);
+        assert!(
+            next_job_delay < Duration::from_millis(100),
+            "紧急释放后串行锁延迟 {next_job_delay:?}"
+        );
     }
 }
