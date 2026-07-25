@@ -1385,6 +1385,20 @@ fn emit_run(app: &AppHandle, snapshot: &LoginRunSnapshot) {
     let _ = app.emit_to("main", login_runtime::RUN_CHANGED, snapshot.clone());
 }
 
+fn emit_login_run_change(
+    app: &AppHandle,
+    runtime: &login_runtime::LoginRuntime,
+    change: impl FnOnce() -> Result<Option<LoginRunSnapshot>, String>,
+) -> Result<Option<LoginRunSnapshot>, String> {
+    runtime.with_event_serialized(|| {
+        let snapshot = change()?;
+        if let Some(snapshot) = snapshot.as_ref() {
+            emit_run(app, snapshot);
+        }
+        Ok(snapshot)
+    })
+}
+
 fn emit_current_state(app: &AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<SpecialOpsState>()
@@ -1572,12 +1586,21 @@ where
             cleanup,
         ));
     }
-    announce_start(&snapshot);
-    if !runtime.claim_worker_handoff(started.run_id)? {
+    let handed_off = runtime.with_event_serialized(|| {
+        if !runtime.claim_worker_handoff(started.run_id)? {
+            return Ok(false);
+        }
+        announce_start(&snapshot);
+        Ok(true)
+    });
+    if !matches!(handed_off, Ok(true)) {
+        let error = handed_off
+            .err()
+            .unwrap_or_else(|| "登录试运行启动期间已停止".to_string());
         return Err(rollback_login_start_unlocked(
             runtime,
             started.run_id,
-            "登录试运行启动期间已停止".to_string(),
+            error,
             cleanup,
         ));
     }
@@ -1958,16 +1981,15 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     };
     let active = state.login_runtime.snapshot()?;
     if let Some(snapshot) = active {
-        let Some(stopped) = state
-            .login_runtime
-            .request_lifecycle_stop(snapshot.run_id)
-            .map_err(|error| {
-                fail_closed_login_error(app, &state.login_runtime, snapshot.run_id, error)
-            })?
+        let Some(stopped) = emit_login_run_change(app, &state.login_runtime, || {
+            state.login_runtime.request_lifecycle_stop(snapshot.run_id)
+        })
+        .map_err(|error| {
+            fail_closed_login_error(app, &state.login_runtime, snapshot.run_id, error)
+        })?
         else {
             return Ok(());
         };
-        emit_run(app, &stopped);
         let resource_result =
             release_login_resources_for_run(app, &state.login_runtime, stopped.run_id);
         let result = login_flow::LoginFlowResult::EmergencyStopped {
@@ -2124,11 +2146,12 @@ pub fn special_ops_cancel_login_trial(
         Some((snapshot, false)) => snapshot,
         None => return Err("当前没有运行中的登录试运行".into()),
     };
-    let stopped = state
-        .login_runtime
-        .request_stop(snapshot.run_id, login_runtime::StopReason::Normal)?
-        .ok_or_else(|| "登录试运行状态已变化".to_string())?;
-    emit_run(&app, &stopped);
+    let stopped = emit_login_run_change(&app, &state.login_runtime, || {
+        state
+            .login_runtime
+            .request_stop(snapshot.run_id, login_runtime::StopReason::Normal)
+    })?
+    .ok_or_else(|| "登录试运行状态已变化".to_string())?;
     Ok(stopped)
 }
 
@@ -2140,12 +2163,13 @@ fn emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
         .login_runtime
         .snapshot()?
         .ok_or_else(|| "当前没有运行中的登录试运行".to_string())?;
-    let snapshot = state
-        .login_runtime
-        .request_stop(active.run_id, login_runtime::StopReason::Emergency)
-        .map_err(|error| fail_closed_login_error(app, &state.login_runtime, active.run_id, error))?
-        .ok_or_else(|| "登录试运行状态已变化".to_string())?;
-    emit_run(app, &snapshot);
+    let snapshot = emit_login_run_change(app, &state.login_runtime, || {
+        state
+            .login_runtime
+            .request_stop(active.run_id, login_runtime::StopReason::Emergency)
+    })
+    .map_err(|error| fail_closed_login_error(app, &state.login_runtime, active.run_id, error))?
+    .ok_or_else(|| "登录试运行状态已变化".to_string())?;
     let resource_result =
         release_login_resources_for_run(app, &state.login_runtime, snapshot.run_id);
     let result = login_flow::LoginFlowResult::EmergencyStopped {
@@ -3213,6 +3237,59 @@ mod tests {
             vec![LoginRunStatus::Starting, LoginRunStatus::Waiting]
         );
         assert_eq!(snapshot.status, LoginRunStatus::Waiting);
+    }
+
+    #[test]
+    fn cancel_while_window_creation_is_blocked_never_announces_starting_after_stopped() {
+        let runtime = Arc::new(login_runtime::LoginRuntime::default());
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let spawn_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (create_entered_tx, create_entered_rx) = std::sync::mpsc::channel();
+        let (create_release_tx, create_release_rx) = std::sync::mpsc::channel();
+
+        let start_runtime = Arc::clone(&runtime);
+        let start_events = Arc::clone(&events);
+        let start_spawn_calls = Arc::clone(&spawn_calls);
+        let start = std::thread::spawn(move || {
+            start_login_run_with_resources(
+                &start_runtime,
+                "selected".to_string(),
+                || Ok(()),
+                || {
+                    create_entered_tx.send(()).unwrap();
+                    create_release_rx.recv().unwrap();
+                    Ok(())
+                },
+                |snapshot| start_events.lock().unwrap().push(snapshot.status),
+                || Ok(()),
+                |_| {
+                    start_spawn_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                },
+            )
+        });
+
+        create_entered_rx.recv().unwrap();
+        let run_id = runtime.snapshot().unwrap().unwrap().run_id;
+        let stopped = runtime
+            .with_event_serialized(|| {
+                let stopped = runtime
+                    .request_stop(run_id, login_runtime::StopReason::Normal)?
+                    .ok_or_else(|| "登录试运行状态已变化".to_string())?;
+                events.lock().unwrap().push(stopped.status);
+                Ok(stopped)
+            })
+            .unwrap();
+        create_release_tx.send(()).unwrap();
+
+        assert_eq!(stopped.status, LoginRunStatus::Stopped);
+        assert!(start.join().unwrap().is_err());
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            &[LoginRunStatus::Stopped]
+        );
+        assert_eq!(spawn_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(runtime.snapshot().unwrap().is_none());
     }
 
     #[test]

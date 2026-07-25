@@ -140,6 +140,7 @@ struct LoginRuntimeInner {
 
 pub(crate) struct LoginRuntime {
     inner: Mutex<LoginRuntimeInner>,
+    event_serial: Mutex<()>,
     persistence_changed: Condvar,
 }
 
@@ -150,12 +151,24 @@ impl Default for LoginRuntime {
                 next_run_id: 1,
                 active: None,
             }),
+            event_serial: Mutex::new(()),
             persistence_changed: Condvar::new(),
         }
     }
 }
 
 impl LoginRuntime {
+    pub(crate) fn with_event_serialized<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        let _event = self
+            .event_serial
+            .lock()
+            .map_err(|_| "登录试运行事件状态已损坏".to_string())?;
+        operation()
+    }
+
     pub(crate) fn try_start(&self, account_id: String) -> Result<StartedLoginRun, String> {
         let mut inner = self
             .inner
