@@ -1,12 +1,19 @@
 import {describe, expect, it, vi} from "vitest";
 
 import {
+    applySpecialOpsBootstrapUpdate,
     applyExecutableSelection,
     eligibleLoginTrialAccounts,
     formatCalibrationTemplateTestResult,
+    mergeSpecialOpsBootstrap,
     persistSpecialOpsSaveRequest,
 } from "@/components/app/special-ops-utils";
-import type {AccountPlan, SpecialOpsSettings} from "@/components/app/special-ops-types";
+import type {
+    AccountPlan,
+    LoginRunSnapshot,
+    SpecialOpsBootstrap,
+    SpecialOpsSettings,
+} from "@/components/app/special-ops-types";
 
 function account(
     id: string,
@@ -29,7 +36,115 @@ function account(
     };
 }
 
+function runSnapshot(updatedAtMs: number): LoginRunSnapshot {
+    return {
+        runId: 3,
+        accountId: "account-1",
+        status: "waiting",
+        currentStep: "waitLoginChoice",
+        message: `更新于 ${updatedAtMs}`,
+        countdownSeconds: null,
+        startedAtMs: 1,
+        updatedAtMs,
+    };
+}
+
+function bootstrap(
+    settingsRevision: number,
+    overrides: Partial<SpecialOpsBootstrap> = {},
+): SpecialOpsBootstrap {
+    return {
+        settings: {
+            enabled: true,
+            paused: true,
+            dailyExchangeTime: "08:00",
+            emergencyHotkey: "Ctrl+Shift+F12",
+            wegameExecutablePath: "wegame.exe",
+            gameExecutablePath: "game.exe",
+            accounts: [account("account-1", 0)],
+            activeCalibrationId: null,
+            calibrationEnvironments: [],
+        },
+        schedule: {dueAccounts: [], nextWakeAtMs: null},
+        settingsRevision,
+        nowMs: settingsRevision,
+        runSnapshot: null,
+        ...overrides,
+    };
+}
+
 describe("特勤处登录试运行 helpers", () => {
+    it("同 revision 的旧 response 不覆盖较新的 runChanged snapshot", () => {
+        const current = bootstrap(7, {runSnapshot: runSnapshot(50)});
+        const incoming = bootstrap(7, {runSnapshot: runSnapshot(40)});
+
+        expect(mergeSpecialOpsBootstrap(current, incoming).runSnapshot).toBe(current.runSnapshot);
+    });
+
+    it("低 revision response 整包不得回退 runtime-managed account fields", () => {
+        const runtimeAccount = account("account-1", 0, {});
+        runtimeAccount.status = "loginFailed";
+        runtimeAccount.lastFailure = {step: "submitLogin", message: "密码错误", atMs: 80};
+        runtimeAccount.loginTrialSignature = "runtime-8";
+        const current = bootstrap(8, {settings: {...bootstrap(8).settings, accounts: [runtimeAccount]}});
+        const incoming = bootstrap(7);
+
+        const merged = mergeSpecialOpsBootstrap(current, incoming);
+
+        expect(merged).toBe(current);
+        expect(merged.settings.accounts[0]).toMatchObject({
+            status: "loginFailed",
+            lastFailure: {step: "submitLogin", message: "密码错误", atMs: 80},
+            loginTrialSignature: "runtime-8",
+        });
+    });
+
+    it("高 revision 应用新 settings 但不回退同一 run 的 snapshot", () => {
+        const current = bootstrap(8, {runSnapshot: runSnapshot(50)});
+        const incomingBase = bootstrap(9, {runSnapshot: runSnapshot(40)});
+        const incoming = {
+            ...incomingBase,
+            settings: {...incomingBase.settings, dailyExchangeTime: "09:30"},
+        };
+
+        const merged = mergeSpecialOpsBootstrap(current, incoming);
+
+        expect(merged.settingsRevision).toBe(9);
+        expect(merged.settings.dailyExchangeTime).toBe("09:30");
+        expect(merged.runSnapshot).toBe(current.runSnapshot);
+    });
+
+    it("runChanged 后的 reload 与 save 旧回包共用排序策略", () => {
+        const runtimeAccount = account("account-1", 0);
+        runtimeAccount.status = "loginFailed";
+        runtimeAccount.lastFailure = {step: "submitLogin", message: "密码错误", atMs: 80};
+        runtimeAccount.loginTrialSignature = "runtime-8";
+        const current = bootstrap(8, {settings: {...bootstrap(8).settings, accounts: [runtimeAccount]}});
+        const afterRunChanged = applySpecialOpsBootstrapUpdate({bootstrap: current, responseSeq: 3}, {
+            type: "runChanged",
+            snapshot: runSnapshot(50),
+        });
+        const afterReload = applySpecialOpsBootstrapUpdate(afterRunChanged, {
+            type: "bootstrapResponse",
+            bootstrap: bootstrap(8, {runSnapshot: runSnapshot(30)}),
+            requestSeq: 1,
+        });
+        const afterSave = applySpecialOpsBootstrapUpdate(afterReload, {
+            type: "bootstrapResponse",
+            bootstrap: bootstrap(8, {runSnapshot: runSnapshot(40)}),
+            requestSeq: 2,
+        });
+
+        expect(afterSave.responseSeq).toBe(3);
+        expect(afterSave.bootstrap.settingsRevision).toBe(8);
+        expect(afterSave.bootstrap.runSnapshot).toBe(afterRunChanged.bootstrap.runSnapshot);
+        expect(afterSave.bootstrap.settings.accounts[0]).toMatchObject({
+            status: "loginFailed",
+            lastFailure: {step: "submitLogin", message: "密码错误", atMs: 80},
+            loginTrialSignature: "runtime-8",
+        });
+    });
+
     it("仅返回启用且凭据完整的账号并按 order 排序", () => {
         const accounts = [
             account("later", 8),

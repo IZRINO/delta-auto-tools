@@ -26,7 +26,6 @@ import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
     STATION_LABELS,
     reloadSpecialOpsAfterStateChanged,
-    runLatestSpecialOpsBootstrapRequest,
     testSpecialOpsCalibrationTarget,
     type AccountPlan,
     type AmmoTarget,
@@ -41,10 +40,12 @@ import {
 } from "@/components/app/special-ops-types";
 import {formatRecordedHotkey} from "@/components/app/morse-utils";
 import {
+    applySpecialOpsBootstrapUpdate,
     applyExecutableSelection,
     eligibleLoginTrialAccounts,
     formatCalibrationTemplateTestResult,
     persistSpecialOpsSaveRequest,
+    type SpecialOpsBootstrapUpdate,
     type SpecialOpsSaveRequest,
 } from "@/components/app/special-ops-utils";
 
@@ -127,8 +128,10 @@ export function SpecialOpsPage() {
     const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
     const [hotkeyStatus, setHotkeyStatus] = useState<string | null>(null);
-    const bootstrapRequestToken = useRef(0);
     const bootstrapRef = useRef(emptyBootstrap);
+    const appliedResponseSequenceRef = useRef(0);
+    const requestSequenceRef = useRef(0);
+    const disposedRef = useRef(false);
     const settingsDraftRef = useRef(emptyBootstrap.settings);
     const settingsDirtyRef = useRef(false);
     const pendingSaveRef = useRef<SpecialOpsSaveRequest | null>(null);
@@ -137,10 +140,31 @@ export function SpecialOpsPage() {
     const saveQueueRef = useRef<LatestSaveQueue<SpecialOpsSaveRequest> | null>(null);
     saveQueueRef.current ??= new LatestSaveQueue();
 
-    const applyResult = (next: SpecialOpsBootstrap) => {
-        const revisionChanged = next.settingsRevision !== bootstrapRef.current.settingsRevision;
+    const applyUpdate = (update: SpecialOpsBootstrapUpdate, completedSettings?: SpecialOpsSettings) => {
+        const previous = bootstrapRef.current;
+        const ordered = applySpecialOpsBootstrapUpdate({
+            bootstrap: previous,
+            responseSeq: appliedResponseSequenceRef.current,
+        }, update);
+        const next = ordered.bootstrap;
+        const responseAccepted = update.type === "bootstrapResponse" && (
+            update.bootstrap.settingsRevision > previous.settingsRevision
+            || (update.bootstrap.settingsRevision === previous.settingsRevision
+                && update.requestSeq >= appliedResponseSequenceRef.current)
+        );
+        const revisionChanged = next.settingsRevision !== previous.settingsRevision;
+        const completedCurrentDraft = update.type === "bootstrapResponse" && responseAccepted && (
+            completedSettings === settingsDraftRef.current
+            || JSON.stringify(update.bootstrap.settings) === JSON.stringify(settingsDraftRef.current)
+        );
         bootstrapRef.current = next;
-        if (settingsDirtyRef.current && !revisionChanged) {
+        appliedResponseSequenceRef.current = ordered.responseSeq;
+        if (completedCurrentDraft) {
+            settingsDirtyRef.current = false;
+            pendingSaveRef.current = null;
+            settingsDraftRef.current = next.settings;
+            setBootstrap(next);
+        } else if (settingsDirtyRef.current && !revisionChanged) {
             setBootstrap({...next, settings: settingsDraftRef.current});
         } else {
             if (revisionChanged && pendingSaveTimerRef.current !== null) {
@@ -154,35 +178,55 @@ export function SpecialOpsPage() {
         }
         setError(null);
     };
-    const runBootstrapRequest = (request: () => Promise<SpecialOpsBootstrap>) => void runLatestSpecialOpsBootstrapRequest(
-        bootstrapRequestToken,
-        request,
-        applyResult,
-        (cause) => setError(String(cause)),
-    );
+    const applyResult = (
+        incoming: SpecialOpsBootstrap,
+        requestSeq: number,
+        completedSettings?: SpecialOpsSettings,
+    ) => {
+        applyUpdate({type: "bootstrapResponse", bootstrap: incoming, requestSeq}, completedSettings);
+    };
+    const applyRunSnapshot = (snapshot: LoginRunSnapshot) => {
+        applyUpdate({type: "runChanged", snapshot});
+    };
+    const requestBootstrap = async (request: () => Promise<SpecialOpsBootstrap>) => {
+        const requestSeq = ++requestSequenceRef.current;
+        try {
+            const next = await request();
+            if (!disposedRef.current) applyResult(next, requestSeq);
+            return next;
+        } catch (cause) {
+            if (!disposedRef.current && requestSeq === requestSequenceRef.current) setError(String(cause));
+            throw cause;
+        }
+    };
+    const runBootstrapRequest = (request: () => Promise<SpecialOpsBootstrap>) => {
+        void requestBootstrap(request).catch(() => undefined);
+    };
     const reload = () => {
         if (!isNativeShell) return;
         runBootstrapRequest(() => invoke<SpecialOpsBootstrap>("special_ops_get_bootstrap"));
     };
     useEffect(() => {
+        disposedRef.current = false;
         reload();
         if (!isNativeShell) return;
         const unsubscribeState = subscribeTauriEvent<SpecialOpsStateChanged>(SPECIAL_OPS_EVENTS.stateChanged, (event) => {
             reloadSpecialOpsAfterStateChanged(event.payload, reload);
         });
         const unsubscribeRun = subscribeTauriEvent<LoginRunSnapshot>(SPECIAL_OPS_EVENTS.runChanged, (event) => {
-            setBootstrap((current) => ({...current, runSnapshot: event.payload}));
-            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: event.payload};
+            applyRunSnapshot(event.payload);
         });
         return () => {
+            disposedRef.current = true;
             if (pendingSaveTimerRef.current !== null) clearTimeout(pendingSaveTimerRef.current);
-            bootstrapRequestToken.current += 1;
+            requestSequenceRef.current += 1;
             unsubscribeState();
             unsubscribeRun();
         };
     }, [isNativeShell]);
 
     const performSave = async ({settings, settingsRevision}: SpecialOpsSaveRequest) => {
+        const requestSeq = ++requestSequenceRef.current;
         const next = await persistSpecialOpsSaveRequest(
             {settings, settingsRevision},
             (request) => invoke<SpecialOpsBootstrap>("special_ops_save_settings", {
@@ -191,16 +235,7 @@ export function SpecialOpsPage() {
             }),
             reload,
         );
-        bootstrapRef.current = next;
-        if (settingsDraftRef.current === settings) {
-            settingsDirtyRef.current = false;
-            pendingSaveRef.current = null;
-            settingsDraftRef.current = next.settings;
-            setBootstrap(next);
-        } else {
-            setBootstrap({...next, settings: settingsDraftRef.current});
-        }
-        setError(null);
+        if (!disposedRef.current) applyResult(next, requestSeq, settings);
     };
     const enqueueSave = (request: SpecialOpsSaveRequest) => {
         const task = saveQueueRef.current!.enqueue(request, performSave);
@@ -245,13 +280,19 @@ export function SpecialOpsPage() {
         }
         return bootstrapRef.current;
     };
-    const setPaused = (paused: boolean) => runBootstrapRequest(async () => {
-        const saved = await flushSettings();
-        return invoke<SpecialOpsBootstrap>("special_ops_set_paused", {
-            paused,
-            settingsRevision: saved.settingsRevision,
-        });
-    });
+    const setPaused = (paused: boolean) => {
+        void (async () => {
+            try {
+                const saved = await flushSettings();
+                await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_set_paused", {
+                    paused,
+                    settingsRevision: saved.settingsRevision,
+                }));
+            } catch (cause) {
+                if (!disposedRef.current) setError(String(cause));
+            }
+        })();
+    };
     const updateAccount = (account: AccountPlan, patch: Partial<AccountPlan>) => save({
         ...settingsDraftRef.current,
         accounts: settingsDraftRef.current.accounts.map((item) => item.id === account.id ? {...item, ...patch} : item),
@@ -329,8 +370,7 @@ export function SpecialOpsPage() {
                 accountId: selectedAccountId,
                 settingsRevision: saved.settingsRevision,
             });
-            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: snapshot};
-            setBootstrap((current) => ({...current, runSnapshot: snapshot}));
+            applyRunSnapshot(snapshot);
         } catch (cause) {
             setError(String(cause));
         }
@@ -339,8 +379,7 @@ export function SpecialOpsPage() {
         if (!isNativeShell || !isLoginTrialRunning) return;
         try {
             const snapshot = await invoke<LoginRunSnapshot>("special_ops_cancel_login_trial");
-            bootstrapRef.current = {...bootstrapRef.current, runSnapshot: snapshot};
-            setBootstrap((current) => ({...current, runSnapshot: snapshot}));
+            applyRunSnapshot(snapshot);
         } catch (cause) {
             setError(String(cause));
         }
