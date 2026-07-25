@@ -165,9 +165,7 @@ impl<E: InputEmitter> Drop for TrackedModifierGuard<'_, E> {
             if !take_tracked_injected_key(&mut state, &key) {
                 continue;
             }
-            if self.emitter.key(key, Direction::Release).is_err() {
-                track_injected_key(&mut state, key);
-            }
+            let _ = self.emitter.key(key, Direction::Release);
         }
     }
 }
@@ -369,31 +367,43 @@ pub async fn replace_text_at_region_cancellable(
 
 #[allow(dead_code)]
 pub fn release_tracked_injected_inputs() {
-    invalidate_cancellable_inputs();
-    let Ok(mut enigo) = Enigo::new(&Settings::default()) else {
-        return;
-    };
-    release_tracked_injected_keys_with(&mut enigo);
+    release_tracked_injected_inputs_with_factory(EnigoInputEmitter::new);
 }
 
-fn release_tracked_injected_keys_with(emitter: &mut Enigo) {
-    let mut state = lock_input_action_state();
-    let keys = std::mem::take(&mut state.tracked_keys);
-    for key in keys.into_iter().rev() {
-        if emitter.key(key, Direction::Release).is_err() {
-            track_injected_key(&mut state, key);
+fn release_tracked_injected_inputs_with_factory<E, F>(mut emitter_factory: F)
+where
+    E: InputEmitter,
+    F: FnMut() -> Result<E, String>,
+{
+    invalidate_cancellable_inputs();
+    let mut emitter = None;
+
+    loop {
+        let mut state = lock_input_action_state();
+        if state.tracked_keys.is_empty() {
+            return;
         }
+
+        if emitter.is_none() {
+            emitter = emitter_factory().ok();
+        }
+        if let Some(emitter) = emitter.as_ref() {
+            release_tracked_injected_keys_with(&mut state, emitter);
+        }
+        if state.tracked_keys.is_empty() {
+            return;
+        }
+
+        drop(state);
+        thread::sleep(INPUT_CANCELLATION_POLL_INTERVAL);
     }
 }
 
-#[cfg(test)]
-fn release_tracked_injected_inputs_with_emitter<E: InputEmitter>(emitter: &E) {
-    invalidate_cancellable_inputs();
-    let mut state = lock_input_action_state();
+fn release_tracked_injected_keys_with<E: InputEmitter>(state: &mut InputActionState, emitter: &E) {
     let keys = std::mem::take(&mut state.tracked_keys);
     for key in keys.into_iter().rev() {
         if emitter.key(key, Direction::Release).is_err() {
-            track_injected_key(&mut state, key);
+            track_injected_key(state, key);
         }
     }
 }
@@ -712,7 +722,7 @@ fn named_to_key(named: NamedKey) -> Key {
 mod tests {
     use super::*;
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc, Arc, Mutex as StdMutex,
     };
     use std::time::Instant;
@@ -733,6 +743,7 @@ mod tests {
         characters: StdMutex<Vec<char>>,
         pressed_keys: StdMutex<Vec<Key>>,
         ctrl_release_count: StdMutex<usize>,
+        fail_ctrl_release: AtomicBool,
         cancel_after_character: StdMutex<Option<(usize, Arc<AtomicBool>)>>,
         notify_after_character: StdMutex<Option<(usize, mpsc::Sender<()>)>>,
     }
@@ -752,6 +763,10 @@ mod tests {
 
         fn action_count(&self) -> usize {
             *self.action_count.lock().unwrap()
+        }
+
+        fn set_fail_ctrl_release(&self, fail: bool) {
+            self.fail_ctrl_release.store(fail, Ordering::SeqCst);
         }
 
         fn pressed_keys(&self) -> Vec<Key> {
@@ -776,6 +791,12 @@ mod tests {
 
         fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
+            if key == Key::Control
+                && direction == Direction::Release
+                && self.fail_ctrl_release.load(Ordering::SeqCst)
+            {
+                return Err("测试 Ctrl release 失败".to_string());
+            }
             match (key, direction) {
                 (Key::Unicode(ch), Direction::Click) => {
                     if self.pressed_keys.lock().unwrap().contains(&Key::Control) {
@@ -815,6 +836,115 @@ mod tests {
             }
             Ok(())
         }
+    }
+
+    struct SharedRecordingEmitter(Arc<RecordingEmitter>);
+
+    impl InputEmitter for SharedRecordingEmitter {
+        fn move_mouse(&self, x: i32, y: i32) -> Result<(), String> {
+            self.0.move_mouse(x, y)
+        }
+
+        fn click_left(&self) -> Result<(), String> {
+            self.0.click_left()
+        }
+
+        fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
+            self.0.key(key, direction)
+        }
+    }
+
+    struct FailingReleaseEmitter {
+        action_count: Arc<AtomicUsize>,
+    }
+
+    impl InputEmitter for FailingReleaseEmitter {
+        fn move_mouse(&self, _: i32, _: i32) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn click_left(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn key(&self, _: Key, _: Direction) -> Result<(), String> {
+            self.action_count.fetch_add(1, Ordering::SeqCst);
+            Err("测试 emergency release 失败".to_string())
+        }
+    }
+
+    fn assert_failed_emergency_release_waits_for_guard_cleanup<E, F>(
+        mut factory: F,
+        emergency_action_count: Arc<AtomicUsize>,
+        guard_release_fails: bool,
+    ) where
+        E: InputEmitter + Send + 'static,
+        F: FnMut() -> Result<E, String> + Send + 'static,
+    {
+        let emitter = Arc::new(RecordingEmitter::default());
+        emitter.set_fail_ctrl_release(guard_release_fails);
+        let typing_emitter = Arc::clone(&emitter);
+        let typing_cancelled = Arc::new(AtomicBool::new(false));
+        let typing_region = rect();
+        let (ctrl_pressed_tx, ctrl_pressed_rx) = mpsc::channel();
+        let (release_barrier_tx, release_barrier_rx) = mpsc::channel();
+
+        let typing = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap();
+            runtime.block_on(replace_text_with_emitter_after_ctrl_press(
+                typing_emitter.as_ref(),
+                &typing_region,
+                "12",
+                typing_cancelled,
+                move || {
+                    ctrl_pressed_tx.send(()).unwrap();
+                    release_barrier_rx
+                        .recv_timeout(Duration::from_secs(1))
+                        .expect("emergency release 未建立 action-state barrier");
+                },
+            ))
+        });
+
+        ctrl_pressed_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("Ctrl 未按下");
+
+        let release_emitter = Arc::clone(&emitter);
+        let release_action_count = Arc::clone(&emergency_action_count);
+        let (release_done_tx, release_done_rx) = mpsc::channel();
+        let release = std::thread::spawn(move || {
+            release_tracked_injected_inputs_with_factory(move || {
+                let _ = release_barrier_tx.send(());
+                factory()
+            });
+            release_done_tx
+                .send((
+                    release_emitter.action_count(),
+                    release_action_count.load(Ordering::SeqCst),
+                ))
+                .unwrap();
+        });
+
+        let action_counts_at_return = release_done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("emergency release 未等待 guard cleanup 后返回");
+        let typing_result = typing.join().expect("旧输入任务 panic");
+        release.join().expect("emergency release 线程 panic");
+
+        assert_eq!(typing_result, Err("输入操作已取消".to_string()));
+        assert_eq!(action_counts_at_return.0, emitter.action_count());
+        assert_eq!(
+            action_counts_at_return.1,
+            emergency_action_count.load(Ordering::SeqCst)
+        );
+        assert_eq!(
+            emitter.ctrl_release_count(),
+            usize::from(!guard_release_fails)
+        );
+        assert!(lock_input_action_state().tracked_keys.is_empty());
     }
 
     fn rect() -> crate::morse::types::RegionRect {
@@ -906,7 +1036,9 @@ mod tests {
             "12345",
             cancel,
             move || {
-                release_tracked_injected_inputs_with_emitter(release_emitter.as_ref());
+                release_tracked_injected_inputs_with_factory(|| {
+                    Ok(SharedRecordingEmitter(Arc::clone(&release_emitter)))
+                });
                 *release_action_count.lock().unwrap() = Some(release_emitter.action_count());
             },
         )
@@ -920,6 +1052,48 @@ mod tests {
         assert_eq!(
             *action_count_after_release.lock().unwrap(),
             Some(emitter.action_count())
+        );
+    }
+
+    #[tokio::test]
+    async fn emergency_emitter_init_failure_waits_for_guard_cleanup() {
+        let _test_guard = lock_input_simulation_tests().await;
+        assert_failed_emergency_release_waits_for_guard_cleanup::<FailingReleaseEmitter, _>(
+            || Err("测试 emitter 初始化失败".to_string()),
+            Arc::new(AtomicUsize::new(0)),
+            false,
+        );
+    }
+
+    #[tokio::test]
+    async fn emergency_key_release_failure_waits_for_guard_cleanup() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emergency_action_count = Arc::new(AtomicUsize::new(0));
+        let factory_action_count = Arc::clone(&emergency_action_count);
+        assert_failed_emergency_release_waits_for_guard_cleanup(
+            move || {
+                Ok(FailingReleaseEmitter {
+                    action_count: Arc::clone(&factory_action_count),
+                })
+            },
+            emergency_action_count,
+            false,
+        );
+    }
+
+    #[tokio::test]
+    async fn repeated_emergency_and_guard_release_failures_do_not_wait_forever() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emergency_action_count = Arc::new(AtomicUsize::new(0));
+        let factory_action_count = Arc::clone(&emergency_action_count);
+        assert_failed_emergency_release_waits_for_guard_cleanup(
+            move || {
+                Ok(FailingReleaseEmitter {
+                    action_count: Arc::clone(&factory_action_count),
+                })
+            },
+            emergency_action_count,
+            true,
         );
     }
 
@@ -975,7 +1149,9 @@ mod tests {
         }));
 
         let released_at = Instant::now();
-        release_tracked_injected_inputs_with_emitter(emitter.as_ref());
+        release_tracked_injected_inputs_with_factory(|| {
+            Ok(SharedRecordingEmitter(Arc::clone(&emitter)))
+        });
 
         assert_eq!(typing.join().unwrap(), Err("输入操作已取消".to_string()));
         next_job.await.unwrap().unwrap();
