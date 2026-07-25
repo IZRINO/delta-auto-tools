@@ -85,20 +85,21 @@ impl Drop for OwnedHandle {
 
 impl DesktopRuntime for WindowsDesktopRuntime {
     fn terminate_exact(&self, exe: &Path, timeout: Duration) -> Result<(), String> {
-        let started = Instant::now();
-        loop {
-            let candidates = scan_process_entries_by_name(exe)?;
-            if candidates.is_empty() {
-                return Ok(());
-            }
-            for (process_id, _) in candidates {
-                let remaining = timeout
-                    .checked_sub(started.elapsed())
-                    .filter(|duration| !duration.is_zero())
-                    .ok_or_else(|| format!("等待进程退出超时: PID {process_id}"))?;
-                terminate_verified_process(exe, process_id, remaining)?;
-            }
-        }
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| "进程结束超时范围无效".to_string())?;
+        terminate_until_no_exact_matches(
+            || remaining_until(deadline, None).map(drop),
+            || {
+                scan_process_entries_by_name(exe).map(|candidates| {
+                    candidates
+                        .into_iter()
+                        .map(|(process_id, _)| process_id)
+                        .collect()
+                })
+            },
+            |process_id| terminate_verified_process(exe, process_id, deadline),
+        )
     }
 
     fn launch(&self, exe: &Path) -> Result<u32, String> {
@@ -339,12 +340,12 @@ fn open_process(process_id: u32, access: u32, action: &str) -> Result<OwnedHandl
 fn terminate_verified_process(
     exe: &Path,
     process_id: u32,
-    timeout: Duration,
+    deadline: Instant,
 ) -> Result<bool, String> {
-    verify_and_terminate_with_handle(
+    verify_terminate_and_wait_with_handle(
         exe,
         process_id,
-        timeout,
+        || remaining_until(deadline, Some(process_id)),
         |process_id| {
             open_process(
                 process_id,
@@ -353,35 +354,64 @@ fn terminate_verified_process(
             )
         },
         |process| query_process_path_from_handle(process, process_id),
-        |process, timeout| terminate_process(process, process_id, timeout),
+        |process| terminate_process(process, process_id),
+        |process, remaining| wait_for_process(process, process_id, remaining),
     )
 }
 
-fn verify_and_terminate_with_handle<H>(
+fn terminate_until_no_exact_matches(
+    mut check_budget: impl FnMut() -> Result<(), String>,
+    mut scan: impl FnMut() -> Result<Vec<u32>, String>,
+    mut terminate: impl FnMut(u32) -> Result<bool, String>,
+) -> Result<(), String> {
+    loop {
+        check_budget()?;
+        let candidates = scan()?;
+        check_budget()?;
+        let mut exact_match = false;
+        for process_id in candidates {
+            check_budget()?;
+            exact_match |= terminate(process_id)?;
+        }
+        if !exact_match {
+            return Ok(());
+        }
+    }
+}
+
+fn verify_terminate_and_wait_with_handle<H>(
     exe: &Path,
     process_id: u32,
-    timeout: Duration,
+    mut remaining_budget: impl FnMut() -> Result<Duration, String>,
     open_process: impl FnOnce(u32) -> Result<H, String>,
     query_path: impl FnOnce(&H) -> Result<PathBuf, String>,
-    terminate: impl FnOnce(&H, Duration) -> Result<(), String>,
+    terminate: impl FnOnce(&H) -> Result<(), String>,
+    wait: impl FnOnce(&H, Duration) -> Result<(), String>,
 ) -> Result<bool, String> {
+    remaining_budget()?;
     let process = open_process(process_id)?;
     if !windows_paths_equal(exe, &query_path(&process)?) {
         return Ok(false);
     }
-    terminate(&process, timeout)?;
+    remaining_budget()?;
+    terminate(&process)?;
+    wait(&process, remaining_budget()?)?;
     Ok(true)
 }
 
-fn terminate_process(
-    process: &OwnedHandle,
-    process_id: u32,
-    timeout: Duration,
-) -> Result<(), String> {
+fn terminate_process(process: &OwnedHandle, process_id: u32) -> Result<(), String> {
     // SAFETY: process handle grants terminate and synchronize access.
     if unsafe { TerminateProcess(process.raw(), 1) } == 0 {
         return Err(last_error(&format!("结束进程失败: PID {process_id}")));
     }
+    Ok(())
+}
+
+fn wait_for_process(
+    process: &OwnedHandle,
+    process_id: u32,
+    timeout: Duration,
+) -> Result<(), String> {
     // SAFETY: process handle is valid and wait duration is bounded to u32 milliseconds.
     match unsafe { WaitForSingleObject(process.raw(), wait_millis(timeout)) } {
         WAIT_OBJECT_0 => Ok(()),
@@ -391,6 +421,16 @@ fn terminate_process(
             "等待进程退出返回未知状态 {result}: PID {process_id}"
         )),
     }
+}
+
+fn remaining_until(deadline: Instant, process_id: Option<u32>) -> Result<Duration, String> {
+    deadline
+        .checked_duration_since(Instant::now())
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| match process_id {
+            Some(process_id) => format!("等待进程退出超时: PID {process_id}"),
+            None => "等待进程退出超时".to_string(),
+        })
 }
 
 fn wait_millis(timeout: Duration) -> u32 {
@@ -482,6 +522,112 @@ mod tests {
     struct FakeProcessHandle(u64);
 
     #[test]
+    fn different_path_basename_finishes_after_one_scan() {
+        let scan_count = Cell::new(0);
+
+        terminate_until_no_exact_matches(
+            || Ok(()),
+            || {
+                scan_count.set(scan_count.get() + 1);
+                Ok(vec![10])
+            },
+            |_| Ok(false),
+        )
+        .unwrap();
+
+        assert_eq!(scan_count.get(), 1);
+    }
+
+    #[test]
+    fn exact_match_causes_another_scan() {
+        let scan_count = Cell::new(0);
+
+        terminate_until_no_exact_matches(
+            || Ok(()),
+            || {
+                let scan = scan_count.get() + 1;
+                scan_count.set(scan);
+                Ok(vec![if scan == 1 { 10 } else { 20 }])
+            },
+            |process_id| Ok(process_id == 10),
+        )
+        .unwrap();
+
+        assert_eq!(scan_count.get(), 2);
+    }
+
+    #[test]
+    fn exhausted_budget_after_query_does_not_terminate() {
+        let budget_checks = Cell::new(0);
+        let terminated = Cell::new(false);
+
+        let error = verify_terminate_and_wait_with_handle(
+            Path::new(r"C:\Apps\WeGame\WeGame.exe"),
+            10,
+            || {
+                let check = budget_checks.get();
+                budget_checks.set(check + 1);
+                if check == 0 {
+                    Ok(Duration::from_millis(100))
+                } else {
+                    Err("等待进程退出超时: PID 10".to_string())
+                }
+            },
+            |_| Ok(FakeProcessHandle(41)),
+            |_| Ok(PathBuf::from(r"C:\Apps\WeGame\WeGame.exe")),
+            |_| {
+                terminated.set(true);
+                Ok(())
+            },
+            |_, _| Ok(()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "等待进程退出超时: PID 10");
+        assert_eq!(budget_checks.get(), 2);
+        assert!(!terminated.get());
+    }
+
+    #[test]
+    fn wait_receives_fresh_budget_after_query_and_termination() {
+        let budget_checks = Cell::new(0);
+        let wait_budget = Cell::new(Duration::ZERO);
+
+        let matched = verify_terminate_and_wait_with_handle(
+            Path::new(r"C:\Apps\WeGame\WeGame.exe"),
+            10,
+            || {
+                let check = budget_checks.get();
+                budget_checks.set(check + 1);
+                Ok(match check {
+                    0 => Duration::from_millis(100),
+                    1 => Duration::from_millis(60),
+                    _ => Duration::from_millis(25),
+                })
+            },
+            |_| Ok(FakeProcessHandle(41)),
+            |handle| {
+                assert_eq!(handle.0, 41);
+                Ok(PathBuf::from(r"C:\Apps\WeGame\WeGame.exe"))
+            },
+            |handle| {
+                assert_eq!(handle.0, 41);
+                Ok(())
+            },
+            |handle, remaining| {
+                assert_eq!(handle.0, 41);
+                wait_budget.set(remaining);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(matched);
+        assert_eq!(budget_checks.get(), 3);
+        assert_eq!(wait_budget.get(), Duration::from_millis(25));
+    }
+
+    #[test]
     fn missing_parent_error_does_not_echo_executable_path() {
         let runtime = WindowsDesktopRuntime;
         let missing_parent = Path::new("secret-account.exe");
@@ -502,10 +648,10 @@ mod tests {
         let open_count = Cell::new(0);
         let terminated = Cell::new(false);
 
-        let matched = verify_and_terminate_with_handle(
+        let matched = verify_terminate_and_wait_with_handle(
             Path::new(r"C:\Apps\WeGame\WeGame.exe"),
             10,
-            Duration::from_secs(1),
+            || Ok(Duration::from_secs(1)),
             |_| {
                 open_count.set(open_count.get() + 1);
                 Ok(FakeProcessHandle(41))
@@ -514,10 +660,11 @@ mod tests {
                 assert_eq!(handle.0, 41);
                 Ok(PathBuf::from(r"D:\Other\WeGame.exe"))
             },
-            |_, _| {
+            |_| {
                 terminated.set(true);
                 Ok(())
             },
+            |_, _| Ok(()),
         )
         .unwrap();
 
@@ -531,11 +678,12 @@ mod tests {
         let open_count = Cell::new(0);
         let queried_identity = Cell::new(0);
         let terminated_identity = Cell::new(0);
+        let waited_identity = Cell::new(0);
 
-        let matched = verify_and_terminate_with_handle(
+        let matched = verify_terminate_and_wait_with_handle(
             Path::new(r"C:\Apps\WeGame\WeGame.exe"),
             10,
-            Duration::from_secs(1),
+            || Ok(Duration::from_secs(1)),
             |_| {
                 open_count.set(open_count.get() + 1);
                 Ok(FakeProcessHandle(41))
@@ -544,8 +692,12 @@ mod tests {
                 queried_identity.set(handle.0);
                 Ok(PathBuf::from(r"\\?\c:\apps\wegame\WEGAME.EXE"))
             },
-            |handle, _| {
+            |handle| {
                 terminated_identity.set(handle.0);
+                Ok(())
+            },
+            |handle, _| {
+                waited_identity.set(handle.0);
                 Ok(())
             },
         )
@@ -555,6 +707,7 @@ mod tests {
         assert_eq!(open_count.get(), 1);
         assert_eq!(queried_identity.get(), 41);
         assert_eq!(terminated_identity.get(), 41);
+        assert_eq!(waited_identity.get(), 41);
     }
 
     #[test]
