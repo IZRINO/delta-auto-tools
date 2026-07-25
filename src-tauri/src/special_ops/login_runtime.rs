@@ -249,20 +249,23 @@ impl LoginRuntime {
         Ok(Some(active.snapshot))
     }
 
-    pub(crate) fn cancel_active(&self) -> Result<LoginRunSnapshot, String> {
-        self.request_stop(StopReason::Normal)
-    }
-
-    pub(crate) fn request_stop(&self, reason: StopReason) -> Result<LoginRunSnapshot, String> {
+    pub(crate) fn request_stop(
+        &self,
+        run_id: u64,
+        reason: StopReason,
+    ) -> Result<Option<LoginRunSnapshot>, String> {
         let mut inner = self
             .inner
             .lock()
             .map_err(|_| "登录试运行状态已损坏，拒绝停止".to_string())?;
-        let active = inner
+        let Some(active) = inner
             .active
             .as_mut()
-            .ok_or_else(|| "当前没有运行中的登录试运行".to_string())?;
-        Ok(self.request_stop_locked(active, reason))
+            .filter(|active| active.snapshot.run_id == run_id)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(self.request_stop_locked(active, reason)))
     }
 
     pub(crate) fn request_lifecycle_stop(
@@ -936,7 +939,10 @@ mod tests {
         let runtime = LoginRuntime::default();
         let current = runtime.try_start("account-a".to_string()).unwrap();
 
-        let cancelled = runtime.cancel_active().unwrap();
+        let cancelled = runtime
+            .request_stop(current.run_id, StopReason::Normal)
+            .unwrap()
+            .unwrap();
         assert_eq!(cancelled.status, LoginRunStatus::Stopped);
         assert!(current.cancelled.load(Ordering::SeqCst));
         assert!(runtime.try_start("account-b".to_string()).is_err());
@@ -951,7 +957,10 @@ mod tests {
     fn stopped_snapshot_rejects_late_worker_update() {
         let runtime = LoginRuntime::default();
         let current = runtime.try_start("account-a".to_string()).unwrap();
-        runtime.request_stop(StopReason::Emergency).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Emergency)
+            .unwrap()
+            .unwrap();
 
         let updated = runtime
             .update(
@@ -998,10 +1007,58 @@ mod tests {
     }
 
     #[test]
+    fn stale_cancel_request_does_not_cancel_replacement_run() {
+        let runtime = LoginRuntime::default();
+        let old = runtime.try_start("old".to_string()).unwrap();
+        runtime
+            .finish(old.run_id, LoginRunStatus::Succeeded, "旧 run 结束")
+            .unwrap();
+        let current = runtime.try_start("current".to_string()).unwrap();
+
+        let stopped = runtime
+            .request_stop(old.run_id, StopReason::Normal)
+            .unwrap();
+
+        assert!(stopped.is_none());
+        assert!(!current.cancelled.load(Ordering::SeqCst));
+        let snapshot = runtime.snapshot().unwrap().unwrap();
+        assert_eq!(snapshot.run_id, current.run_id);
+        assert_eq!(snapshot.status, LoginRunStatus::Starting);
+    }
+
+    #[test]
+    fn stale_emergency_request_does_not_cancel_or_persist_replacement_run() {
+        let runtime = LoginRuntime::default();
+        let old = runtime.try_start("old".to_string()).unwrap();
+        runtime
+            .finish(old.run_id, LoginRunStatus::Succeeded, "旧 run 结束")
+            .unwrap();
+        let current = runtime.try_start("current".to_string()).unwrap();
+        let writes = std::sync::atomic::AtomicUsize::new(0);
+
+        let stopped = runtime
+            .request_stop(old.run_id, StopReason::Emergency)
+            .unwrap();
+        if stopped.is_some() {
+            writes.fetch_add(1, Ordering::SeqCst);
+        }
+
+        assert!(stopped.is_none());
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
+        assert!(!current.cancelled.load(Ordering::SeqCst));
+        let snapshot = runtime.snapshot().unwrap().unwrap();
+        assert_eq!(snapshot.run_id, current.run_id);
+        assert_eq!(snapshot.status, LoginRunStatus::Starting);
+    }
+
+    #[test]
     fn emergency_persistence_claim_blocks_stale_flow_claim() {
         let runtime = LoginRuntime::default();
         let current = runtime.try_start("account-a".to_string()).unwrap();
-        runtime.request_stop(StopReason::Emergency).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Emergency)
+            .unwrap()
+            .unwrap();
 
         let PersistenceClaim::Acquired(emergency) =
             runtime.claim_persistence(current.run_id).unwrap()
@@ -1024,7 +1081,10 @@ mod tests {
     fn failed_emergency_persistence_releases_claim_for_retry() {
         let runtime = LoginRuntime::default();
         let current = runtime.try_start("account-a".to_string()).unwrap();
-        runtime.request_stop(StopReason::Emergency).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Emergency)
+            .unwrap()
+            .unwrap();
         let guard = match runtime.claim_persistence(current.run_id).unwrap() {
             PersistenceClaim::Acquired(guard) => guard,
             other => panic!("应取得持久化权限，实际为 {other:?}"),
@@ -1050,7 +1110,10 @@ mod tests {
         };
         assert_eq!(flow.kind(), PersistenceKind::Flow);
 
-        runtime.request_stop(StopReason::Emergency).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Emergency)
+            .unwrap()
+            .unwrap();
         assert!(!flow.complete().unwrap());
 
         let PersistenceClaim::Acquired(emergency) =
@@ -1078,7 +1141,10 @@ mod tests {
             runtime.claim_persistence(current.run_id + 1).unwrap(),
             PersistenceClaim::Stale
         ));
-        runtime.request_stop(StopReason::Normal).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Normal)
+            .unwrap()
+            .unwrap();
         assert!(matches!(
             runtime.claim_persistence(current.run_id).unwrap(),
             PersistenceClaim::NoPersistence
