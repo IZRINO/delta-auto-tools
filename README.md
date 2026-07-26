@@ -87,7 +87,7 @@
 ```bash
 bun install                       # 安装前端依赖
 bun run dev                       # Vite 前端开发服务器（端口 1420）
-bun run tauri dev                 # 完整桌面开发（Vite + Tauri）
+bun run tauri dev                 # 完整桌面开发（需管理员 PowerShell）
 bun run build                     # tsc && vite build
 bun run test                      # Vitest 前端单元测试
 bun run test:coverage             # 全量前端覆盖率与阈值检查
@@ -95,6 +95,8 @@ bun run check                     # TypeScript、测试、coverage、fmt、Clipp
 cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
 cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```
+
+Windows 桌面版以管理员权限运行，软件启动时显示一次 UAC，后续 WeGame 切号不重复提权。`bun run tauri dev` 必须从管理员 PowerShell 执行；仅运行 `bun run dev` 做浏览器 UI 开发时不要求管理员权限。
 
 ## 项目结构
 

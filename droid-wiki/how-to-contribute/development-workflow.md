@@ -9,7 +9,7 @@
    - `bun run test` 前端 Vitest 测试
    - `cargo check --manifest-path src-tauri/Cargo.toml` Rust 编译检查
    - `cargo test --manifest-path src-tauri/Cargo.toml` Rust 单元测试
-5. UI 开发用 `bun run dev` 获取浏览器预览（原生命令禁用）。完整集成测试用 `bun run tauri dev`。
+5. UI 开发用 `bun run dev` 获取浏览器预览（原生命令禁用）。完整集成测试需在管理员 PowerShell 中运行 `bun run tauri dev`；Windows 桌面版启动时显示一次 UAC。
 
 ## Tauri command 检查清单
 

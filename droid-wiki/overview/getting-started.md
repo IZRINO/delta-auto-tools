@@ -27,11 +27,13 @@ bun run dev
 
 ### 完整桌面开发
 
+先打开管理员 PowerShell，再执行：
+
 ```bash
 bun run tauri dev
 ```
 
-先启动 Vite，再启动 Tauri 窗口。这是原生功能（热键、截屏、透明窗口）实际可用的模式。
+先启动 Vite，再启动 Tauri 窗口。这是原生功能（热键、截屏、透明窗口）实际可用的模式。Windows 桌面版启动时显示一次 UAC，后续 WeGame 切号不重复提权。仅运行 `bun run dev` 做浏览器 UI 开发时不要求管理员权限。
 
 ### PM2 编排
 

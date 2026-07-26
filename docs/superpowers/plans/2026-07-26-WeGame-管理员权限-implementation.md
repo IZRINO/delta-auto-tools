@@ -4,7 +4,7 @@
 
 **Goal:** 让 Delta Auto Tools 启动时统一请求管理员权限，使特勤处登录流程可直接强退并重启 WeGame，同时保留安全、无重复前缀的失败诊断。
 
-**Architecture:** 使用现有 `tauri-build` 将 `requireAdministrator` application manifest 嵌入 Windows exe，不引入 helper 或新依赖。登录流程继续使用当前状态机；原生启动层输出标准 Windows 错误码，production driver 将其转为结构化观察结果，通用步骤执行器仍丢弃未经分类的原始错误。
+**Architecture:** 保留 `tauri-build` 默认 Common Controls v6 manifest，通过 bin 专属 `/MANIFESTUAC` linker 参数把 `requireAdministrator` 写入主程序，不引入 helper 或新依赖。登录流程继续使用当前状态机；原生启动层输出标准 Windows 错误码，production driver 将其转为结构化观察结果，通用步骤执行器仍丢弃未经分类的原始错误。
 
 **Tech Stack:** Rust 2021、Tauri 2、`tauri-build`、Cargo tests、Bun/Vitest、Windows application manifest
 
@@ -12,95 +12,70 @@
 
 ## 文件结构
 
-- Create: `src-tauri/app.manifest` — Windows 权限与 Common Controls v6 声明。
-- Create: `src-tauri/tests/windows_manifest_contract.rs` — manifest 静态契约测试。
-- Modify: `src-tauri/build.rs` — 将自定义 manifest 交给现有 `tauri-build`。
+- Modify: `src-tauri/Cargo.toml` — 关闭不含测试的主程序 test harness。
+- Modify: `src-tauri/build.rs` — 只向主程序传入管理员权限 linker 参数。
 - Modify: `src-tauri/src/special_ops/desktop_runtime.rs` — 标准化原生启动错误码。
 - Modify: `src-tauri/src/special_ops/login_runtime.rs` — 将启动错误转为安全观察结果并写安全日志。
 - Modify: `src-tauri/src/special_ops/login_flow.rs` — 去掉失败消息中的重复步骤名并格式化启动失败。
 - Modify: `README.md`、`AGENTS.md`、`droid-wiki/overview/getting-started.md`、`droid-wiki/how-to-contribute/development-workflow.md` — 同步管理员权限运行要求。
 
-### Task 1: 嵌入管理员权限 manifest
+### Task 1: 只给主程序嵌入管理员权限
 
 **Files:**
-- Create: `src-tauri/tests/windows_manifest_contract.rs`
-- Create: `src-tauri/app.manifest`
+- Modify: `src-tauri/Cargo.toml`
 - Modify: `src-tauri/build.rs`
 
-- [ ] **Step 1: 写失败契约测试**
-
-```rust
-use std::{fs, path::Path};
-
-#[test]
-fn windows_manifest_requires_admin_and_preserves_common_controls() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("app.manifest");
-    let manifest = fs::read_to_string(path).expect("应存在 Windows application manifest");
-
-    assert!(manifest.contains("requireAdministrator"));
-    assert!(manifest.contains("uiAccess=\"false\""));
-    assert!(manifest.contains("Microsoft.Windows.Common-Controls"));
-    assert!(manifest.contains("version=\"6.0.0.0\""));
-}
-```
-
-- [ ] **Step 2: 运行测试并确认 RED**
-
-Run: `cargo test --manifest-path src-tauri/Cargo.toml --test windows_manifest_contract`
-
-Expected: FAIL，原因是 `src-tauri/app.manifest` 不存在。
-
-- [ ] **Step 3: 新增 manifest**
-
-```xml
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
-    <security>
-      <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
-      </requestedPrivileges>
-    </security>
-  </trustInfo>
-  <dependency>
-    <dependentAssembly>
-      <assemblyIdentity
-        type="win32"
-        name="Microsoft.Windows.Common-Controls"
-        version="6.0.0.0"
-        processorArchitecture="*"
-        publicKeyToken="6595b64144ccf1df"
-        language="*"
-      />
-    </dependentAssembly>
-  </dependency>
-</assembly>
-```
-
-- [ ] **Step 4: 让 build.rs 嵌入 manifest**
-
-将 `main` 改为：
+- [ ] **Step 1: 保留默认 Tauri manifest 并增加 bin 专属 linker 参数**
 
 ```rust
 fn main() {
-    let windows = tauri_build::WindowsAttributes::new()
-        .app_manifest(include_str!("app.manifest"));
-    let attributes = tauri_build::Attributes::new().windows_attributes(windows);
-    tauri_build::try_build(attributes).expect("Tauri 构建脚本执行失败");
+    tauri_build::build();
+    require_admin_for_main_binary();
     expose_windows_resource_for_tests();
+}
+
+fn require_admin_for_main_binary() {
+    let Ok(target) = std::env::var("TARGET") else {
+        return;
+    };
+    if !target.contains("windows") {
+        return;
+    }
+    println!(
+        "cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
+    );
 }
 ```
 
-- [ ] **Step 5: 运行测试并确认 GREEN**
+- [ ] **Step 2: 禁止生成空的提权 test harness**
 
-Run: `cargo test --manifest-path src-tauri/Cargo.toml --test windows_manifest_contract`
+`Cargo.toml` 增加：
 
-Expected: PASS。
+```toml
+[[bin]]
+name = "delta-auto-tools"
+path = "src/main.rs"
+test = false
+```
 
-- [ ] **Step 6: 提交**
+原因：`rustc-link-arg-bin` 同样作用于 bin test harness；该 harness 没有测试，却会让普通终端执行 `cargo test` 时触发 Windows 740。
+
+- [ ] **Step 3: 验证测试保持普通权限**
+
+Run: `cargo test --manifest-path src-tauri/Cargo.toml special_ops::`
+
+Expected: PASS，Cargo 只运行 library tests，不再创建或执行 `src/main.rs` test harness。
+
+- [ ] **Step 4: 构建并检查真实主程序 manifest**
+
+Run: `cargo build --manifest-path src-tauri/Cargo.toml`
+
+Expected: PASS；实际 `delta-auto-tools.exe` manifest 同时包含 `requireAdministrator` 与 `Microsoft.Windows.Common-Controls`。
+
+- [ ] **Step 5: 提交**
 
 ```bash
-git add src-tauri/app.manifest src-tauri/build.rs src-tauri/tests/windows_manifest_contract.rs
+git add src-tauri/Cargo.toml src-tauri/build.rs
 git commit -m "fix(special-ops): 以管理员权限启动 Windows 应用"
 ```
 

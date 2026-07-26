@@ -178,7 +178,7 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 ```bash
 bun install                    # 安装前端依赖
 bun run dev                    # Vite 前端开发服务器（端口 1420，strictPort）
-bun run tauri dev              # 完整桌面开发（Vite + Tauri）
+bun run tauri dev              # 完整桌面开发（需管理员 PowerShell）
 bun run build                  # tsc && vite build
 bun run test                   # Vitest 前端单元测试
 bun run test:coverage          # 全量前端覆盖率与阈值检查
@@ -187,6 +187,8 @@ cargo check --manifest-path src-tauri/Cargo.toml   # Rust 编译检查
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 ```
+
+Windows 桌面版以管理员权限运行，启动时显示一次 UAC。`bun run tauri dev` 必须从管理员 PowerShell 执行；`bun run dev` 仅启动浏览器 UI，不要求管理员权限。
 
 运行单个前端测试：`bunx vitest run src/components/app/morse-utils.test.ts`
 运行单个 Rust 测试：`cargo test --manifest-path src-tauri/Cargo.toml <test_name>`

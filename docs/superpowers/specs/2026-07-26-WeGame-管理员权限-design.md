@@ -23,12 +23,13 @@ Delta Auto Tools Windows 可执行文件统一声明 `requireAdministrator`。�
 
 ## 构建实现
 
-新增独立 Windows application manifest，内容必须同时包含：
+保留 `tauri-build` 默认的 `Microsoft.Windows.Common-Controls` v6 manifest。`src-tauri/build.rs` 仅向主程序 binary 传入 MSVC linker 参数：
 
-- `requestedExecutionLevel level="requireAdministrator" uiAccess="false"`；
-- Tauri dialog 依赖的 `Microsoft.Windows.Common-Controls` v6 声明。
+```text
+/MANIFESTUAC:level='requireAdministrator' uiAccess='false'
+```
 
-`src-tauri/build.rs` 使用现有 `tauri-build` 的 `WindowsAttributes::app_manifest` 与 `try_build` 嵌入该文件。非 Windows target 不新增运行时分支。
+该参数通过 Cargo 的 `rustc-link-arg-bin` 只作用于 `delta-auto-tools` 主程序。`Cargo.toml` 关闭不含测试的 `src/main.rs` test harness，避免 `cargo test` 生成需要提权的空 bin；library 与 integration tests 继续以普通权限运行。无需新增依赖。非 Windows target 不新增运行时行为。
 
 开发版必须从管理员终端运行 `bun run tauri dev`。正式安装版或 debug exe 由 Windows 在启动时显示一次 UAC。
 
@@ -57,11 +58,11 @@ Delta Auto Tools Windows 可执行文件统一声明 `requireAdministrator`。�
 
 按 TDD 增加最小回归覆盖：
 
-1. manifest 同时包含 `requireAdministrator` 与 Common Controls v6。
+1. Rust 测试 exe 保持普通权限并可由 `cargo test` 直接运行。
 2. 登录步骤失败结果不重复步骤名。
 3. 失败信息不泄露账号、密码、可执行文件路径或模拟 driver 的原始敏感错误。
 4. Rust 单元测试、前端相关测试、`cargo check` 与前端 build 通过。
-5. 构建后读取实际 `delta-auto-tools.exe` manifest，确认嵌入 `requireAdministrator`。
+5. 构建后读取实际 `delta-auto-tools.exe` manifest，确认包含 `requireAdministrator` 与 Common Controls v6。
 
 人工验收：
 
