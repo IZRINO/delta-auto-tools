@@ -150,7 +150,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
         let Some(window) = select_primary_window(&process_ids, &windows) else {
             return Ok(None);
         };
-        if !process_tree_ids_for_executable(&exe)?.contains(&window.process_id) {
+        if !process_tree_contains_for_executable(&exe, window.process_id)? {
             return Err(format!(
                 "窗口所属进程已离开目标进程树: PID {}",
                 window.process_id
@@ -172,7 +172,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     fn restore_and_focus_in_tree(&self, exe: &Path, window: WindowIdentity) -> Result<(), String> {
         let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
         let hwnd = validate_window_identity(window)?;
-        if !process_tree_ids_for_executable(&exe)?.contains(&window.process_id) {
+        if !process_tree_contains_for_executable(&exe, window.process_id)? {
             return Err("目标窗口所属进程树已变化".to_string());
         }
         restore_and_focus_verified(hwnd)
@@ -251,6 +251,19 @@ fn process_tree_contains(root_ids: &[u32], entries: &[(u32, u32)], pid: u32) -> 
 
 fn process_tree_ids_for_executable(exe: &Path) -> Result<Vec<u32>, String> {
     let entries = scan_process_entries()?;
+    let root_ids = exact_root_ids(exe, &entries)?;
+    let relationships = process_relationships(&entries);
+    Ok(process_tree_ids(&root_ids, &relationships))
+}
+
+fn process_tree_contains_for_executable(exe: &Path, pid: u32) -> Result<bool, String> {
+    let entries = scan_process_entries()?;
+    let root_ids = exact_root_ids(exe, &entries)?;
+    let relationships = process_relationships(&entries);
+    Ok(process_tree_contains(&root_ids, &relationships, pid))
+}
+
+fn exact_root_ids(exe: &Path, entries: &[ProcessEntry]) -> Result<Vec<u32>, String> {
     let target_name = exe
         .file_name()
         .filter(|name| !name.is_empty())
@@ -267,11 +280,14 @@ fn process_tree_ids_for_executable(exe: &Path) -> Result<Vec<u32>, String> {
         .collect::<Vec<_>>();
     root_ids.sort_unstable();
     root_ids.dedup();
-    let relationships = entries
+    Ok(root_ids)
+}
+
+fn process_relationships(entries: &[ProcessEntry]) -> Vec<(u32, u32)> {
+    entries
         .iter()
         .map(|entry| (entry.pid, entry.parent_pid))
-        .collect::<Vec<_>>();
-    Ok(process_tree_ids(&root_ids, &relationships))
+        .collect()
 }
 
 fn select_primary_window(
