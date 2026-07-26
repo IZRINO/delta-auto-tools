@@ -1,10 +1,10 @@
 # WeGame 管理员权限启动 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行方式：** Inline Execution；不调用子代理。步骤使用 checkbox (`- [ ]`) 跟踪。
 
 **Goal:** 让 Delta Auto Tools 启动时统一请求管理员权限，使特勤处登录流程可直接强退并重启 WeGame，同时保留安全、无重复前缀的失败诊断。
 
-**Architecture:** 保留 `tauri-build` 默认 Common Controls v6 manifest，通过 bin 专属 `/MANIFESTUAC` linker 参数把 `requireAdministrator` 写入主程序，不引入 helper 或新依赖。登录流程继续使用当前状态机；原生启动层输出标准 Windows 错误码，production driver 将其转为结构化观察结果，通用步骤执行器仍丢弃未经分类的原始错误。
+**Architecture:** 禁止 `tauri-build` 把默认 application manifest 写入共享资源。全 target 合并 Common Controls 基础 manifest，tests 由 linker 默认写入 `asInvoker`；主程序单独关闭默认 UAC 并合并 `requireAdministrator` manifest。不引入 helper 或新依赖。登录流程继续使用当前状态机；原生启动层输出标准 Windows 错误码，production driver 将其转为结构化观察结果，通用步骤执行器仍丢弃未经分类的原始错误。
 
 **Tech Stack:** Rust 2021、Tauri 2、`tauri-build`、Cargo tests、Bun/Vitest、Windows application manifest
 
@@ -13,7 +13,9 @@
 ## 文件结构
 
 - Modify: `src-tauri/Cargo.toml` — 关闭不含测试的主程序 test harness。
-- Modify: `src-tauri/build.rs` — 只向主程序传入管理员权限 linker 参数。
+- Modify: `src-tauri/build.rs` — 为全 target 注入基础 manifest，并为主程序追加管理员 manifest。
+- Create: `src-tauri/windows/app.manifest`、`src-tauri/windows/common-controls.manifest` — 分离主程序权限与共享 Common Controls activation context。
+- Create: `src-tauri/tests/windows_manifest_contract.rs` — 锁定源 manifest 与实际 test exe 权限契约。
 - Modify: `src-tauri/src/special_ops/desktop_runtime.rs` — 标准化原生启动错误码。
 - Modify: `src-tauri/src/special_ops/login_runtime.rs` — 将启动错误转为安全观察结果并写安全日志。
 - Modify: `src-tauri/src/special_ops/login_flow.rs` — 去掉失败消息中的重复步骤名并格式化启动失败。
@@ -24,30 +26,21 @@
 **Files:**
 - Modify: `src-tauri/Cargo.toml`
 - Modify: `src-tauri/build.rs`
+- Create: `src-tauri/windows/app.manifest`
+- Create: `src-tauri/windows/common-controls.manifest`
+- Create: `src-tauri/tests/windows_manifest_contract.rs`
 
-- [ ] **Step 1: 保留默认 Tauri manifest 并增加 bin 专属 linker 参数**
+- [x] **Step 1: RED：增加主程序与 tests manifest 契约测试**
 
-```rust
-fn main() {
-    tauri_build::build();
-    require_admin_for_main_binary();
-    expose_windows_resource_for_tests();
-}
+Run: `cargo test --manifest-path src-tauri/Cargo.toml --test windows_manifest_contract`
 
-fn require_admin_for_main_binary() {
-    let Ok(target) = std::env::var("TARGET") else {
-        return;
-    };
-    if !target.contains("windows") {
-        return;
-    }
-    println!(
-        "cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
-    );
-}
-```
+Expected: FAIL，提示缺少 `windows/app.manifest`。
 
-- [ ] **Step 2: 禁止生成空的提权 test harness**
+- [x] **Step 2: 分离主程序权限与共享基础 manifest**
+
+`tauri_build::WindowsAttributes::new_without_app_manifest()` 保留图标和版本资源，但不写共享 application manifest。全 target `rustc-link-arg` 注入 `common-controls.manifest`；tests 使用 linker 默认 `asInvoker`；`rustc-link-arg-bin` 为主程序注入 `app.manifest`。
+
+- [x] **Step 3: 禁止生成空的提权 test harness**
 
 `Cargo.toml` 增加：
 
@@ -60,23 +53,23 @@ test = false
 
 原因：`rustc-link-arg-bin` 同样作用于 bin test harness；该 harness 没有测试，却会让普通终端执行 `cargo test` 时触发 Windows 740。
 
-- [ ] **Step 3: 验证测试保持普通权限**
+- [x] **Step 4: 验证测试保持普通权限**
 
-Run: `cargo test --manifest-path src-tauri/Cargo.toml special_ops::`
+Run: `cargo test --manifest-path src-tauri/Cargo.toml --test windows_manifest_contract`
 
-Expected: PASS，Cargo 只运行 library tests，不再创建或执行 `src/main.rs` test harness。
+Expected: PASS；使用 `mt.exe` 读取 integration test exe，确认包含 `asInvoker` 与 Common Controls v6。
 
-- [ ] **Step 4: 构建并检查真实主程序 manifest**
+- [x] **Step 5: 构建并检查真实主程序 manifest**
 
 Run: `cargo build --manifest-path src-tauri/Cargo.toml`
 
 Expected: PASS；实际 `delta-auto-tools.exe` manifest 同时包含 `requireAdministrator` 与 `Microsoft.Windows.Common-Controls`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
-git add src-tauri/Cargo.toml src-tauri/build.rs
-git commit -m "fix(special-ops): 以管理员权限启动 Windows 应用"
+git add src-tauri/build.rs src-tauri/windows src-tauri/tests/windows_manifest_contract.rs docs/superpowers
+git commit -m "fix(special-ops): 修正 Windows 权限清单"
 ```
 
 ### Task 2: 保留安全启动诊断并删除重复步骤名
@@ -275,19 +268,19 @@ git commit -m "docs: 说明 Windows 管理员权限要求"
 **Files:**
 - Verify: all modified files
 
-- [ ] **Step 1: 更新 CodeGraph 索引**
+- [x] **Step 1: 更新 CodeGraph 索引**
 
 Run: `codegraph sync`
 
 Expected: 索引同步成功。
 
-- [ ] **Step 2: 运行质量门禁**
+- [x] **Step 2: 运行质量门禁**
 
 Run: `bun run check`
 
 Expected: TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests 全部 PASS。
 
-- [ ] **Step 3: 构建前端与 Windows exe**
+- [x] **Step 3: 构建前端与 Windows exe**
 
 Run: `bun run build`
 
@@ -297,7 +290,7 @@ Run: `cargo build --manifest-path src-tauri/Cargo.toml`
 
 Expected: PASS，生成 `src-tauri/target/debug/delta-auto-tools.exe`。
 
-- [ ] **Step 4: 检查实际 exe manifest**
+- [x] **Step 4: 检查实际 exe manifest**
 
 使用 Windows SDK `mt.exe` 提取或读取 exe manifest，确认同时包含：
 
@@ -306,7 +299,7 @@ requestedExecutionLevel level="requireAdministrator" uiAccess="false"
 Microsoft.Windows.Common-Controls
 ```
 
-- [ ] **Step 5: 核对工作区与提交**
+- [x] **Step 5: 核对工作区与提交**
 
 Run: `git status --short --branch`
 

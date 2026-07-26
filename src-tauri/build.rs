@@ -1,10 +1,12 @@
 fn main() {
-    tauri_build::build();
-    require_admin_for_main_binary();
+    let attributes = tauri_build::Attributes::new()
+        .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+    tauri_build::try_build(attributes).expect("运行 Tauri 构建脚本失败");
+    configure_windows_manifests();
     expose_windows_resource_for_tests();
 }
 
-fn require_admin_for_main_binary() {
+fn configure_windows_manifests() {
     let Ok(target) = std::env::var("TARGET") else {
         return;
     };
@@ -12,8 +14,28 @@ fn require_admin_for_main_binary() {
         return;
     }
 
+    let manifest_dir = std::path::PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("缺少 CARGO_MANIFEST_DIR"),
+    )
+    .join("windows");
+    let app_manifest = manifest_dir.join("app.manifest");
+    let common_controls_manifest = manifest_dir.join("common-controls.manifest");
+
+    println!("cargo:rerun-if-changed={}", app_manifest.display());
     println!(
-        "cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
+        "cargo:rerun-if-changed={}",
+        common_controls_manifest.display()
+    );
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!(
+        "cargo:rustc-link-arg=/MANIFESTINPUT:{}",
+        common_controls_manifest.display()
+    );
+    println!("cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTUAC:NO");
+    println!("cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFEST:EMBED");
+    println!(
+        "cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTINPUT:{}",
+        app_manifest.display()
     );
 }
 

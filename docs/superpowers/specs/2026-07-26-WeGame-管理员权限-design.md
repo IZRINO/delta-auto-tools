@@ -2,7 +2,7 @@
 
 日期：2026-07-26
 
-状态：已批准
+状态：已批准；2026-07-26 按真实 exe manifest 验证修正构建实现
 
 范围：特勤处登录试运行及后续自动切号流程
 
@@ -23,13 +23,14 @@ Delta Auto Tools Windows 可执行文件统一声明 `requireAdministrator`。�
 
 ## 构建实现
 
-保留 `tauri-build` 默认的 `Microsoft.Windows.Common-Controls` v6 manifest。`src-tauri/build.rs` 仅向主程序 binary 传入 MSVC linker 参数：
+`tauri-build` 仍生成图标与版本资源，但不再向共享 `resource.lib` 写入默认 application manifest。仓库保存两份显式 manifest：
 
-```text
-/MANIFESTUAC:level='requireAdministrator' uiAccess='false'
-```
+- `src-tauri/windows/app.manifest`：Common Controls v6 + `requireAdministrator`；
+- `src-tauri/windows/common-controls.manifest`：不声明 UAC，只提供共享 definition identity 与 Common Controls v6。
 
-该参数通过 Cargo 的 `rustc-link-arg-bin` 只作用于 `delta-auto-tools` 主程序。`Cargo.toml` 关闭不含测试的 `src/main.rs` test harness，避免 `cargo test` 生成需要提权的空 bin；library 与 integration tests 继续以普通权限运行。无需新增依赖。非 Windows target 不新增运行时行为。
+`src-tauri/build.rs` 通过全 target `rustc-link-arg` 注入 Common Controls 基础 manifest，使 library unit-test harness 也获得有效 activation context；tests 保留 linker 默认的 `asInvoker`。主程序再通过 `rustc-link-arg-bin` 关闭默认 UAC 片段并注入 `app.manifest`。`Cargo.toml` 继续关闭不含测试的 `src/main.rs` test harness。无需新增依赖。非 Windows target 不新增运行时行为。
+
+不能只在 `tauri-build` 默认 manifest 之外追加 `/MANIFESTUAC`：默认 manifest 已作为资源嵌入，fresh build 的真实 exe 仍可能只保留 Common Controls、丢失 `requestedExecutionLevel`。最终结果必须以 `mt.exe` 读取真实产物为准。
 
 开发版必须从管理员终端运行 `bun run tauri dev`。正式安装版或 debug exe 由 Windows 在启动时显示一次 UAC。
 
