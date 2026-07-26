@@ -653,9 +653,9 @@ impl ProductionLoginDriver {
         tokio::task::spawn_blocking(move || {
             let runtime = WindowsDesktopRuntime;
             let window = runtime
-                .find_primary_window(&executable)?
+                .find_primary_window_in_tree(&executable)?
                 .ok_or_else(|| "未找到 WeGame 窗口".to_string())?;
-            runtime.restore_and_focus(&executable, window)
+            runtime.restore_and_focus_in_tree(&executable, window)
         })
         .await
         .map_err(|error| format!("窗口任务失败: {error}"))?
