@@ -49,6 +49,13 @@ struct ProcessCandidate {
     full_path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcessEntry {
+    pid: u32,
+    parent_pid: u32,
+    executable_name: Vec<u16>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WindowCandidate {
     hwnd: u64,
@@ -222,6 +229,24 @@ fn matching_process_ids(target: &Path, candidates: &[ProcessCandidate]) -> Vec<u
     process_ids
 }
 
+fn process_tree_ids(root_ids: &[u32], entries: &[(u32, u32)]) -> Vec<u32> {
+    let mut ids = root_ids.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    loop {
+        let before = ids.len();
+        for &(pid, parent_pid) in entries {
+            if ids.binary_search(&parent_pid).is_ok() && ids.binary_search(&pid).is_err() {
+                ids.push(pid);
+                ids.sort_unstable();
+            }
+        }
+        if ids.len() == before {
+            return ids;
+        }
+    }
+}
+
 fn select_primary_window(
     target_process_ids: &[u32],
     candidates: &[WindowCandidate],
@@ -259,6 +284,14 @@ fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
         .file_name()
         .filter(|name| !name.is_empty())
         .ok_or_else(|| format!("exe 路径缺少文件名: {}", exe.display()))?;
+    Ok(scan_process_entries()?
+        .into_iter()
+        .filter(|entry| windows_names_equal(target_name, &entry.executable_name))
+        .map(|entry| (entry.pid, entry.parent_pid))
+        .collect())
+}
+
+fn scan_process_entries() -> Result<Vec<ProcessEntry>, String> {
     // SAFETY: arguments follow CreateToolhelp32Snapshot contract; returned handle is owned.
     let snapshot = capture_win32_result(
         || unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) },
@@ -286,11 +319,13 @@ fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
         };
     }
 
-    let mut candidates = Vec::new();
+    let mut entries = Vec::new();
     loop {
-        if windows_names_equal(target_name, &entry.szExeFile) {
-            candidates.push((entry.th32ProcessID, entry.th32ParentProcessID));
-        }
+        entries.push(ProcessEntry {
+            pid: entry.th32ProcessID,
+            parent_pid: entry.th32ParentProcessID,
+            executable_name: entry.szExeFile.to_vec(),
+        });
         // SAFETY: snapshot and entry remain valid for the enumeration lifetime.
         if let Err(error) = capture_win32_result(
             || unsafe { Process32NextW(snapshot.raw(), &mut entry) },
@@ -305,7 +340,7 @@ fn scan_process_entries_by_name(exe: &Path) -> Result<Vec<(u32, u32)>, String> {
             return Err(format_win32_error("继续读取进程快照失败", error));
         }
     }
-    Ok(candidates)
+    Ok(entries)
 }
 
 fn windows_names_equal(target: &OsStr, candidate: &[u16]) -> bool {
@@ -946,6 +981,20 @@ mod tests {
         ];
 
         assert_eq!(matching_process_ids(target, &candidates), vec![10]);
+    }
+
+    #[test]
+    fn process_tree_includes_direct_and_nested_descendants_only() {
+        let entries = vec![(10, 0), (11, 10), (12, 11), (20, 0), (21, 20)];
+
+        assert_eq!(process_tree_ids(&[10], &entries), vec![10, 11, 12]);
+    }
+
+    #[test]
+    fn process_tree_supports_multiple_matching_roots() {
+        let entries = vec![(10, 0), (11, 10), (20, 0), (21, 20), (30, 0)];
+
+        assert_eq!(process_tree_ids(&[10, 20], &entries), vec![10, 11, 20, 21]);
     }
 
     #[test]
