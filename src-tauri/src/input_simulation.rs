@@ -1067,8 +1067,8 @@ mod tests {
             },
             cancel,
         )
-            .await
-            .unwrap_err();
+        .await
+        .unwrap_err();
 
         assert_eq!(emitter.characters(), vec!['1']);
         assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
