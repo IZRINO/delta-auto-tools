@@ -1,6 +1,20 @@
 fn main() {
     tauri_build::build();
+    require_admin_for_main_binary();
     expose_windows_resource_for_tests();
+}
+
+fn require_admin_for_main_binary() {
+    let Ok(target) = std::env::var("TARGET") else {
+        return;
+    };
+    if !target.contains("windows") {
+        return;
+    }
+
+    println!(
+        "cargo:rustc-link-arg-bin=delta-auto-tools=/MANIFESTUAC:level='requireAdministrator' uiAccess='false'"
+    );
 }
 
 fn expose_windows_resource_for_tests() {
