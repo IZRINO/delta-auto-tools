@@ -131,7 +131,7 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 
 ## Project Overview
 
-新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号内子弹目标按名称、普通/赛季类型、相对滚轮步数和顺序保存；当天成功/重试状态不得随模板复制。校准按显示环境全局保存，通过 `special-ops-calibration-*` overlay 框选点击点、输入区域与识别区域；静态 UI 使用用户参考图模板匹配并可双采样测试，子弹名称使用 OCR。四制作台入口、制作列表、置顶配方、空闲文字与可收取感叹号分别校准。裸点击点和输入区域通过 `guardAnyOf` 保存识别守卫，`default_click_and_input_targets_have_recognition_guards` 禁止无守卫动作；解除暂停前按启用功能执行校准 preflight。登录试运行使用单实例 `LoginRuntime`，固定 `special-ops-operation` window 与运行期 `special-ops-emergency` Strict 热键；`special-ops://run-changed` 仅发送无密码的 run snapshot，后台结果写入必须通过 `SettingsCoordinator::with_runtime_change`。
+新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号身份只取唯一 QQ 账号；密码允许重复并按需求明文保存。禁止读取或比对 WeGame/游戏 ID、UID，禁止任何额外身份识别和剪贴板身份流程。账号内子弹目标按名称、普通/赛季类型、相对滚轮步数和顺序保存；当天成功/重试状态不得随模板复制。校准全局保存，通过 `special-ops-calibration-*` overlay 框选点击点、输入区域与识别区域；静态 UI 使用用户参考图模板匹配并以 400ms 间隔双采样测试，子弹名称 OCR 属后续游戏内功能。登录使用 5 个 template 目标 `wegame.loginMode/loginFormReady/login/gameEntry/launch` 与 2 个 input 目标 `wegame.account/password`。WeGame 与游戏 exe 由用户选择；runtime 按 canonical 完整路径结束目标实例，不递归结束进程树。登录试运行使用单实例 `LoginRuntime`，commands 为 `special_ops_start_login_trial`、`special_ops_cancel_login_trial`、`special_ops_emergency_stop`；固定 `special-ops-operation` window 与运行期 `special-ops-emergency` Strict 热键。`special-ops://run-changed` 仅发送无密码 run snapshot，后台结果写入必须通过 `SettingsCoordinator::with_runtime_change`。当前闭环只到游戏 PID/HWND 出现；多账号 round、制作和子弹兑换执行器尚未实现。
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
 

@@ -10,9 +10,9 @@
 
 校准结果全局共享，不随账号或 Profile 复制。UI 不要求用户填写环境名称、显示器、分辨率、DPI 或窗口模式，只维护一套当前校准结果。旧版本存在多套环境时，加载后保留当时选中的一套。
 
-静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。已选子弹名称使用 OCR，不上传静态参考图；OCR 结果与当前 `AmmoTarget.name` 比对。登录试运行只使用 QQ 账号和密码，不保存额外身份字段。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
+静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。登录试运行固定使用 7 项 WeGame 校准：`wegame.loginMode`、`wegame.loginFormReady`、`wegame.login`、`wegame.gameEntry`、`wegame.launch` 为 template 区域，`wegame.account`、`wegame.password` 为 input 区域。账号身份只取唯一 QQ 账号；密码允许重复，不读取或比对 WeGame/游戏 ID、UID，也不存在任何额外身份识别或剪贴板身份流程。已选子弹名称 OCR 属后续游戏内功能，不上传静态参考图；其结果应与当前 `AmmoTarget.name` 比对。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
 
-每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；不在缺少正式阈值配置时伪造“通过”。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
+每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；两次都达到默认阈值 `0.75` 才通过。验证签名绑定目标 key、区域、参考图 canonical 路径、文件长度与修改时间、阈值；重新框选、换图、清图、图片文件变化或阈值变化都会使验证失效。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
 
 框选行为沿用摩斯区域框选交互：在单个显示器打开全屏透明 overlay，主窗口保持存在；按住左键拖拽，松开后立即提交并关闭。区域过小时要求重新框选，Esc、右键或 Alt+F4 取消。overlay 30 秒未关闭时由 native 侧自动销毁，避免前端异常时持续占用键鼠。提交、取消、超时或窗口异常关闭后恢复主窗口焦点。点击动作执行时使用所选矩形中心。
 
@@ -38,16 +38,13 @@
 
 | 动作 | 前置守卫 | 后置判定 |
 |---|---|---|
+| 结束旧游戏与 WeGame | 用户选择的两个 exe canonical 完整路径 | 对应路径的目标进程实例全部消失；不按 basename 误杀，不递归结束进程树 |
+| 启动 WeGame | `wegameExecutablePath` 为有效绝对 `.exe` 文件 | native 进程/窗口检查可继续，随后等待登录入口或表单 |
 | 切换到账号密码登录 | `wegame.loginFormReady` 未命中且登录入口自身模板命中 | `wegame.loginFormReady`；已命中时跳过该点击 |
 | 输入 QQ 账号、密码 | `wegame.loginFormReady` | 登录按钮仍可识别；输入完成后才允许提交 |
-| 提交 WeGame 登录 | 登录按钮自身模板 | 提交后先 native 最大化 WeGame，再由 `wegame.loggedIn`、`wegame.humanVerification`、`wegame.loginFailed` 三选一 |
-| 打开游戏启动前置页 | 入口自身模板 | `wegame.launchPageReady` |
-| OCR 快速校验 ID | `wegame.launchPageReady` | OCR `wegame.launchId` 置信度 ≥95% 且规范化后与目标 ID 精确匹配时通过；否则进入复制兜底 |
-| 点击头像 | 头像自身模板 | `wegame.avatarMenuReady` |
-| 进入个人主页 | `wegame.profile` 自身模板 | `wegame.profileReady` |
-| 复制精确校验 ID | `wegame.profileReady` | 双击 `wegame.profileId` 后复制；忽略英文字母大小写精确比较，保存并恢复原剪贴板；间隔 2 秒共读 3 次 |
-| 切换账号 | OCR 与复制校验均失败，且切换账号入口自身模板命中 | `wegame.loginFormReady` |
-| 点击启动游戏 | 启动按钮自身模板 | native 游戏窗口/进程出现，之后进入 `game.modeReady` |
+| 提交 WeGame 登录 | `wegame.login` 自身模板连续两次命中 | 每次 run 只点击一次；之后只等待 `wegame.gameEntry`，失败时不返回输入步骤、不重复提交密码 |
+| 选择置顶游戏 | `wegame.gameEntry` 自身模板连续两次命中 | `wegame.launch` 连续两次命中；运行时不搜索、不滚动游戏列表 |
+| 点击启动游戏 | `wegame.launch` 自身模板连续两次命中 | native 检查指定游戏 PID/HWND 出现；登录试运行到此结束 |
 | 点击烽火地带 | 入口自身模板 | 可选 `game.activityPopup` 或 `game.startGame` |
 | 关闭活动弹窗 | `game.activityPopup` | 按一次空格后等待 `game.startGame` |
 | 切换大厅视角 | `game.startGame` | 按一次 Tab；制作分支等待 `game.specialOps`，仅兑换分支等待 `ammo.department` |
@@ -70,19 +67,19 @@
 | 购买子弹材料 | `ammo.purchase` 按钮自身模板 | `ammo.exchange`；失败按既定重试/隔离规则处理 |
 | 兑换子弹 | `ammo.exchange` 按钮自身模板 | `ammo.success` 灰色状态 |
 
-每个裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。`default_click_and_input_targets_have_recognition_guards` 测试枚举所有 `clickPoint` 与 `inputRegion`；新增裸动作却未登记有效守卫时测试必须失败。窗口最大化、最小化恢复、进程启动、窗口崩溃使用 native 窗口/进程状态，不以截图模板替代。
+每个裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。`default_click_and_input_targets_have_recognition_guards` 测试枚举所有 `clickPoint` 与 `inputRegion`；新增裸动作却未登记有效守卫时测试必须失败。窗口恢复、进程启动、进程结束和窗口存在使用 native 状态，不以截图模板替代。
 
 制作或子弹补齐购买最多重试 3 次，每次间隔 1 秒并重新识别。重试后仍未进入 `craft.produce` 或 `ammo.exchange`，且补齐/购买状态仍存在时，不依赖短暂的仓库公告文本；直接将账号标记为需人工处理，结束该账号剩余流程并切换下一账号。
 
-用户点击“继续”或在未暂停状态启用功能时执行 preflight。preflight 只检查存在正常启用账号且至少配置一项制作台或子弹目标的流程；按实际启用制作台、普通子弹、赛季限定子弹计算必需校准项。账号缺 QQ 或密码，启用制作台缺物品/有效时长，启用子弹缺名称，或任一必需校准项缺少矩形、模板图路径、模板图文件时，均拒绝启动并报告首个缺失步骤。ID 校验必须同时具备启动前置页 OCR 快速路径与个人主页复制兜底路径；暂停状态允许保存不完整草稿，避免配置过程中反复报错。
+单账号登录试运行 preflight 只检查所选账号非空 QQ 与密码、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名和 2 个 input 区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ 或密码、启用制作台缺物品/有效时长、启用子弹缺名称，或任一必需目标缺配置时均拒绝启动并报告首个缺失步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
 
-## WeGame 窗口归一化
+## WeGame 进程与窗口约束
 
-提交 QQ 账号密码后，执行器必须立即获取 WeGame 窗口句柄并将窗口最大化，再判定登录成功、人工验证或登录失败。登录成功后先进入游戏启动前置界面，对 `wegame.launchId` 执行 OCR 快速校验。OCR 置信度低于 95%、读取失败或规范化后不匹配时，必须打开头像菜单和个人主页，通过 `wegame.profileId` 双击复制执行精确校验；不能直接判定账号错误。两种校验均失败时记录目标 ID、实际 ID 与失败步骤并跳过账号。所有登录后的 WeGame 固定坐标与识别区域均以最大化窗口为前置条件，禁止在普通窗口尺寸下继续复用坐标。窗口已最大化时该操作应幂等；最大化失败时标记当前账号为“窗口异常”并跳过，不继续点击后续区域。
+用户通过文件选择器指定 WeGame 与游戏 `.exe`。执行器 canonicalize 两个完整路径，只结束路径精确匹配的进程实例；同名不同目录进程不匹配，辅助子进程不会因父子关系被递归结束。每次键鼠输入前重新按目标 exe 查找顶层窗口、尝试从最小化恢复并聚焦，再校验 HWND→PID→完整路径；无法恢复、聚焦或确认路径时不发送输入，当前步骤失败并全面暂停。流程不要求最大化 WeGame，也不按比例缩放旧校准坐标。
 
 ## 当前边界
 
-已实现配置持久化、调度、暂停、账号/制作台/有序子弹配置、区域框选、模板双采样测试、原生单账号登录试运行 runtime，以及无按钮 operation window。当前试运行只覆盖重建 WeGame 会话、输入账号密码、点击固定游戏入口并等待游戏窗口；OCR、游戏内制作/兑换执行、识色判定和崩溃恢复尚未实现，不能视为自动化完成。
+已实现配置持久化、调度模型、暂停配置、账号/制作台/有序子弹配置、区域框选、模板双采样测试、原生单账号登录试运行 runtime，以及无按钮 operation window。当前试运行只覆盖重建 WeGame 会话、输入账号密码、选择置顶游戏并等待游戏 PID/HWND；多账号 round、游戏内制作/兑换执行、子弹名称 OCR、识色判定和崩溃恢复尚未实现，不能视为自动化完成。
 
 ## Tauri Commands
 
@@ -92,3 +89,5 @@
 | `special_ops_start_login_trial` | 校验 revision 与登录 preflight，启动单实例后台试运行并立即返回 run snapshot |
 | `special_ops_cancel_login_trial` | 请求普通取消；等待 worker 完成统一清理 |
 | `special_ops_emergency_stop` | 立即释放输入并将当前账号标记为不确定 |
+
+三项登录试运行 command 的运行态通过 `special-ops://run-changed` 同时发送到主窗口与 `special-ops-operation` window；payload 只有 `LoginRunSnapshot`，不得包含 QQ 密码。
