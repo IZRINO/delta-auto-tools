@@ -34,7 +34,9 @@ pub(crate) trait DesktopRuntime: Send + Sync {
     fn terminate_exact(&self, exe: &Path, timeout: Duration) -> Result<(), String>;
     fn launch(&self, exe: &Path) -> Result<u32, String>;
     fn find_primary_window(&self, exe: &Path) -> Result<Option<WindowIdentity>, String>;
+    fn find_primary_window_in_tree(&self, exe: &Path) -> Result<Option<WindowIdentity>, String>;
     fn restore_and_focus(&self, exe: &Path, window: WindowIdentity) -> Result<(), String>;
+    fn restore_and_focus_in_tree(&self, exe: &Path, window: WindowIdentity) -> Result<(), String>;
 }
 
 #[allow(dead_code)]
@@ -138,48 +140,42 @@ impl DesktopRuntime for WindowsDesktopRuntime {
         Ok(Some(window))
     }
 
+    fn find_primary_window_in_tree(&self, exe: &Path) -> Result<Option<WindowIdentity>, String> {
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
+        let process_ids = process_tree_ids_for_executable(&exe)?;
+        if process_ids.is_empty() {
+            return Ok(None);
+        }
+        let windows = enumerate_windows()?;
+        let Some(window) = select_primary_window(&process_ids, &windows) else {
+            return Ok(None);
+        };
+        if !process_tree_ids_for_executable(&exe)?.contains(&window.process_id) {
+            return Err(format!(
+                "窗口所属进程已离开目标进程树: PID {}",
+                window.process_id
+            ));
+        }
+        Ok(Some(window))
+    }
+
     fn restore_and_focus(&self, exe: &Path, window: WindowIdentity) -> Result<(), String> {
         let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
-        let hwnd = hwnd_from_identity(window)?;
-        // SAFETY: hwnd is treated as an opaque borrowed handle and validated before use.
-        unsafe {
-            if IsWindow(hwnd) == 0 {
-                return Err("目标窗口已失效".to_string());
-            }
-        }
-
-        let mut process_id = 0;
-        // SAFETY: process_id points to valid writable memory for the duration of the call.
-        unsafe {
-            GetWindowThreadProcessId(hwnd, &mut process_id);
-        }
-        if process_id == 0 || process_id != window.process_id {
-            return Err("目标窗口归属已变化".to_string());
-        }
-        let current_path = query_process_path(process_id)?;
+        let hwnd = validate_window_identity(window)?;
+        let current_path = query_process_path(window.process_id)?;
         if !windows_paths_equal(&exe, &current_path) {
             return Err("目标窗口所属程序已变化".to_string());
         }
+        restore_and_focus_verified(hwnd)
+    }
 
-        // SAFETY: hwnd remains valid and belongs to the expected executable at this point.
-        if unsafe { IsIconic(hwnd) } != 0 {
-            capture_win32_result(
-                || unsafe { ShowWindowAsync(hwnd, SW_RESTORE) },
-                |result| *result == 0,
-                std::io::Error::last_os_error,
-            )
-            .map_err(|error| format_win32_error("恢复目标窗口失败", error))?;
+    fn restore_and_focus_in_tree(&self, exe: &Path, window: WindowIdentity) -> Result<(), String> {
+        let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
+        let hwnd = validate_window_identity(window)?;
+        if !process_tree_ids_for_executable(&exe)?.contains(&window.process_id) {
+            return Err("目标窗口所属进程树已变化".to_string());
         }
-        // SAFETY: hwnd remains valid and belongs to the expected executable at this point.
-        unsafe {
-            if SetForegroundWindow(hwnd) == 0 {
-                return Err("聚焦目标窗口失败".to_string());
-            }
-            if GetForegroundWindow() != hwnd {
-                return Err("目标窗口未成为前台窗口".to_string());
-            }
-        }
-        Ok(())
+        restore_and_focus_verified(hwnd)
     }
 }
 
@@ -245,6 +241,37 @@ fn process_tree_ids(root_ids: &[u32], entries: &[(u32, u32)]) -> Vec<u32> {
             return ids;
         }
     }
+}
+
+fn process_tree_contains(root_ids: &[u32], entries: &[(u32, u32)], pid: u32) -> bool {
+    process_tree_ids(root_ids, entries)
+        .binary_search(&pid)
+        .is_ok()
+}
+
+fn process_tree_ids_for_executable(exe: &Path) -> Result<Vec<u32>, String> {
+    let entries = scan_process_entries()?;
+    let target_name = exe
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| format!("exe 路径缺少文件名: {}", exe.display()))?;
+    let mut root_ids = entries
+        .iter()
+        .filter(|entry| windows_names_equal(target_name, &entry.executable_name))
+        .filter_map(|entry| {
+            query_process_path(entry.pid)
+                .ok()
+                .filter(|path| windows_paths_equal(exe, path))
+                .map(|_| entry.pid)
+        })
+        .collect::<Vec<_>>();
+    root_ids.sort_unstable();
+    root_ids.dedup();
+    let relationships = entries
+        .iter()
+        .map(|entry| (entry.pid, entry.parent_pid))
+        .collect::<Vec<_>>();
+    Ok(process_tree_ids(&root_ids, &relationships))
 }
 
 fn select_primary_window(
@@ -580,6 +607,47 @@ fn hwnd_from_identity(window: WindowIdentity) -> Result<HWND, String> {
     usize::try_from(window.handle)
         .map(|handle| handle as HWND)
         .map_err(|_| "目标窗口句柄超出当前平台宽度".to_string())
+}
+
+fn validate_window_identity(window: WindowIdentity) -> Result<HWND, String> {
+    let hwnd = hwnd_from_identity(window)?;
+    // SAFETY: hwnd is treated as an opaque borrowed handle and validated before use.
+    unsafe {
+        if IsWindow(hwnd) == 0 {
+            return Err("目标窗口已失效".to_string());
+        }
+    }
+    let mut process_id = 0;
+    // SAFETY: process_id points to valid writable memory for the duration of the call.
+    unsafe {
+        GetWindowThreadProcessId(hwnd, &mut process_id);
+    }
+    if process_id == 0 || process_id != window.process_id {
+        return Err("目标窗口归属已变化".to_string());
+    }
+    Ok(hwnd)
+}
+
+fn restore_and_focus_verified(hwnd: HWND) -> Result<(), String> {
+    // SAFETY: caller validated hwnd and its process ownership immediately before this call.
+    if unsafe { IsIconic(hwnd) } != 0 {
+        capture_win32_result(
+            || unsafe { ShowWindowAsync(hwnd, SW_RESTORE) },
+            |result| *result == 0,
+            std::io::Error::last_os_error,
+        )
+        .map_err(|error| format_win32_error("恢复目标窗口失败", error))?;
+    }
+    // SAFETY: caller validated hwnd and its process ownership immediately before this call.
+    unsafe {
+        if SetForegroundWindow(hwnd) == 0 {
+            return Err("聚焦目标窗口失败".to_string());
+        }
+        if GetForegroundWindow() != hwnd {
+            return Err("目标窗口未成为前台窗口".to_string());
+        }
+    }
+    Ok(())
 }
 
 fn capture_win32_result<T>(
@@ -995,6 +1063,42 @@ mod tests {
         let entries = vec![(10, 0), (11, 10), (20, 0), (21, 20), (30, 0)];
 
         assert_eq!(process_tree_ids(&[10, 20], &entries), vec![10, 11, 20, 21]);
+    }
+
+    #[test]
+    fn process_tree_window_selects_descendant_and_rejects_foreign_browser() {
+        let entries = vec![(10, 0), (11, 10), (12, 11), (99, 0)];
+        let windows = vec![
+            WindowCandidate {
+                hwnd: 1,
+                pid: 99,
+                visible: true,
+                owned: false,
+                area: 2_000,
+            },
+            WindowCandidate {
+                hwnd: 2,
+                pid: 12,
+                visible: true,
+                owned: false,
+                area: 1_000,
+            },
+        ];
+
+        let ids = process_tree_ids(&[10], &entries);
+        assert_eq!(
+            select_primary_window(&ids, &windows),
+            Some(WindowIdentity {
+                process_id: 12,
+                handle: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn selected_pid_must_still_belong_to_current_process_tree() {
+        assert!(process_tree_contains(&[10], &[(10, 0), (11, 10)], 11));
+        assert!(!process_tree_contains(&[10], &[(10, 0), (11, 99)], 11));
     }
 
     #[test]
