@@ -87,7 +87,6 @@ pub struct AmmoTarget {
 pub struct AccountPlan {
     pub id: String,
     pub qq_account: String,
-    pub password: String,
     pub enabled: bool,
     pub initialized: bool,
     pub order: u32,
@@ -219,7 +218,7 @@ fn default_calibration_environment() -> CalibrationEnvironment {
 
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
     match key {
-        "wegame.account" | "wegame.password" => &["wegame.loginFormReady"],
+        "wegame.accountDropdown" | "wegame.selectedAccount" => &["wegame.loginFormReady"],
         "craft.station.technicalCenter" => &["craft.claimReady.technicalCenter"],
         "craft.station.workbench" => &["craft.claimReady.workbench"],
         "craft.station.pharmacy" => &["craft.claimReady.pharmacy"],
@@ -238,7 +237,7 @@ fn default_guard_any_of(key: &str) -> &'static [&'static str] {
 }
 
 fn default_calibration_targets() -> Vec<CalibrationTarget> {
-    use CalibrationTargetKind::{ClickPoint, InputRegion, RecognitionRegion};
+    use CalibrationTargetKind::{ClickPoint, RecognitionRegion};
     [
         (
             "wegame.loginMode",
@@ -250,8 +249,21 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "QQ 账号密码登录表单就绪区域",
             RecognitionRegion,
         ),
-        ("wegame.account", "QQ 账号输入区域", InputRegion),
-        ("wegame.password", "QQ 密码输入区域", InputRegion),
+        (
+            "wegame.accountDropdown",
+            "已记住账号列表展开按钮",
+            ClickPoint,
+        ),
+        (
+            "wegame.accountList",
+            "已记住账号列表 OCR 区域",
+            RecognitionRegion,
+        ),
+        (
+            "wegame.selectedAccount",
+            "已选账号双击复制区域",
+            ClickPoint,
+        ),
         (
             "wegame.login",
             "WeGame 登录按钮识别与点击区域",
@@ -446,7 +458,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
     .into_iter()
     .map(|(key, label, kind)| {
         let recognition_method = match (&kind, key) {
-            (RecognitionRegion, "ammo.selectedTargetName") => {
+            (RecognitionRegion, "ammo.selectedTargetName" | "wegame.accountList") => {
                 Some(CalibrationRecognitionMethod::Ocr)
             }
             (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
@@ -636,10 +648,9 @@ fn login_trial_signature(
         .first()
         .ok_or_else(|| "登录试运行校准未完成：缺少显示环境".to_string())?;
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"login-trial-v1\0");
+    bytes.extend_from_slice(b"login-trial-v2\0");
     for value in [
         account.qq_account.as_bytes(),
-        account.password.as_bytes(),
         wegame.as_os_str().as_encoded_bytes(),
         game.as_os_str().as_encoded_bytes(),
     ] {
@@ -649,8 +660,9 @@ fn login_trial_signature(
     for key in [
         "wegame.loginMode",
         "wegame.loginFormReady",
-        "wegame.account",
-        "wegame.password",
+        "wegame.accountDropdown",
+        "wegame.accountList",
+        "wegame.selectedAccount",
         "wegame.login",
         "wegame.gameEntry",
         "wegame.launch",
@@ -680,7 +692,7 @@ fn login_trial_signature(
             bytes.push(0);
         }
     }
-    Ok(format!("login-v1-{:016x}", fnv1a_64(&bytes)))
+    Ok(format!("login-v2-{:016x}", fnv1a_64(&bytes)))
 }
 
 fn apply_login_flow_result(
@@ -785,6 +797,12 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
             .drain(..)
             .map(|target| (target.key.clone(), target))
             .collect::<std::collections::HashMap<_, _>>();
+        if !existing_targets.contains_key("wegame.selectedAccount") {
+            if let Some(mut legacy_account) = existing_targets.remove("wegame.account") {
+                legacy_account.key = "wegame.selectedAccount".to_string();
+                existing_targets.insert(legacy_account.key.clone(), legacy_account);
+            }
+        }
         environment.targets = required_targets
             .iter()
             .map(|required| {
@@ -891,8 +909,9 @@ fn required_execution_target_keys(
     let mut keys = [
         "wegame.loginMode",
         "wegame.loginFormReady",
-        "wegame.account",
-        "wegame.password",
+        "wegame.accountDropdown",
+        "wegame.accountList",
+        "wegame.selectedAccount",
         "wegame.login",
         "wegame.gameEntry",
         "wegame.launch",
@@ -991,8 +1010,10 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
                 || account.ammo_targets.iter().any(|target| target.enabled)
         })
     {
-        if account.qq_account.trim().is_empty() || account.password.is_empty() {
-            return Err(format!("账号 {} 的 QQ 与密码必须完整", account.id));
+        if account.qq_account.is_empty()
+            || !account.qq_account.chars().all(|ch| ch.is_ascii_digit())
+        {
+            return Err(format!("账号 {} 的 QQ 必须为非空纯数字", account.id));
         }
         for station in account.stations.iter().filter(|station| station.enabled) {
             if station.item_name.trim().is_empty()
@@ -1074,11 +1095,10 @@ fn validate_login_trial_ready(
     if !account.enabled {
         return Err(format!("登录试运行账号 {account_id} 未启用"));
     }
-    if account.qq_account.trim().is_empty() {
-        return Err(format!("登录试运行账号 {account_id} 的 QQ 不能为空"));
-    }
-    if account.password.is_empty() {
-        return Err(format!("登录试运行账号 {account_id} 的密码不能为空"));
+    if account.qq_account.trim().is_empty()
+        || !account.qq_account.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return Err(format!("登录试运行账号 {account_id} 的 QQ 必须为非空纯数字"));
     }
     validate_executable_path(&settings.wegame_executable_path, "WeGame.exe")?;
     validate_executable_path(&settings.game_executable_path, "游戏 .exe")?;
@@ -1091,8 +1111,9 @@ fn validate_login_trial_ready(
     for key in [
         "wegame.loginMode",
         "wegame.loginFormReady",
-        "wegame.account",
-        "wegame.password",
+        "wegame.accountDropdown",
+        "wegame.accountList",
+        "wegame.selectedAccount",
         "wegame.login",
         "wegame.gameEntry",
         "wegame.launch",
@@ -1150,8 +1171,9 @@ fn freeze_login_run_config(
     for key in [
         "wegame.loginMode",
         "wegame.loginFormReady",
-        "wegame.account",
-        "wegame.password",
+        "wegame.accountDropdown",
+        "wegame.accountList",
+        "wegame.selectedAccount",
         "wegame.login",
         "wegame.gameEntry",
         "wegame.launch",
@@ -1203,7 +1225,7 @@ fn freeze_login_run_config(
         login_flow::LoginRunConfig {
             account_id: account.id.clone(),
             qq_account: account.qq_account.clone(),
-            password: account.password.clone(),
+            password: String::new(),
             wegame_executable_path: std::fs::canonicalize(&settings.wegame_executable_path)
                 .map_err(|_| "WeGame.exe 路径无法规范化".to_string())?,
             game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
@@ -2692,6 +2714,7 @@ mod tests {
                 accounts: vec![account("selected", AccountStatus::Ready, Vec::new())],
                 ..SpecialOpsSettings::default()
             };
+            settings.accounts[0].qq_account = "10001".to_string();
             let mut reference_files = Vec::new();
             for key in [
                 "wegame.loginMode",
@@ -2718,7 +2741,11 @@ mod tests {
                 target.verified_at_ms = Some(1);
                 reference_files.push(reference);
             }
-            for key in ["wegame.account", "wegame.password"] {
+            for key in [
+                "wegame.accountDropdown",
+                "wegame.accountList",
+                "wegame.selectedAccount",
+            ] {
                 settings.calibration_environments[0]
                     .targets
                     .iter_mut()
@@ -2765,8 +2792,10 @@ mod tests {
     fn account(id: &str, status: AccountStatus, stations: Vec<StationPlan>) -> AccountPlan {
         AccountPlan {
             id: id.to_string(),
-            qq_account: id.to_string(),
-            password: "password".to_string(),
+            qq_account: format!(
+                "10{:05}",
+                id.bytes().map(u32::from).sum::<u32>()
+            ),
             enabled: true,
             initialized: true,
             order: 0,
@@ -2779,17 +2808,17 @@ mod tests {
     }
 
     #[test]
-    fn trial_success_signature_changes_when_password_or_calibration_changes() {
+    fn trial_success_signature_changes_when_account_or_calibration_changes() {
         let fixture = LoginFixture::complete();
         let settings = fixture.settings;
         let account = settings.accounts.first().unwrap();
         let original = login_trial_signature(&settings, account).unwrap();
 
-        let mut password_changed = settings.clone();
-        password_changed.accounts[0].password.push('x');
+        let mut account_changed = settings.clone();
+        account_changed.accounts[0].qq_account.push('9');
         assert_ne!(
             original,
-            login_trial_signature(&password_changed, &password_changed.accounts[0]).unwrap()
+            login_trial_signature(&account_changed, &account_changed.accounts[0]).unwrap()
         );
 
         let mut calibration_changed = settings.clone();
@@ -3810,12 +3839,13 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(serialized["accounts"][0].get("wegameId").is_none());
+        assert!(serialized["accounts"][0].get("password").is_none());
         assert!(!target_keys.contains(&"wegame.launchPage"));
         assert!(target_keys.contains(&"wegame.gameEntry"));
     }
 
     #[test]
-    fn login_targets_are_exactly_the_approved_seven() {
+    fn login_targets_use_remembered_account_selection() {
         let keys = default_calibration_targets()
             .into_iter()
             .filter(|target| target.key.starts_with("wegame."))
@@ -3827,8 +3857,9 @@ mod tests {
             [
                 "wegame.loginMode",
                 "wegame.loginFormReady",
-                "wegame.account",
-                "wegame.password",
+                "wegame.accountDropdown",
+                "wegame.accountList",
+                "wegame.selectedAccount",
                 "wegame.login",
                 "wegame.gameEntry",
                 "wegame.launch",
@@ -3837,7 +3868,7 @@ mod tests {
     }
 
     #[test]
-    fn enabled_qq_accounts_must_be_unique_but_passwords_may_match() {
+    fn enabled_qq_accounts_must_be_unique() {
         let mut settings = SpecialOpsSettings {
             accounts: vec![
                 account("first", AccountStatus::Ready, Vec::new()),
@@ -4028,14 +4059,14 @@ mod tests {
         );
 
         let mut invalid_account = active;
-        invalid_account.password.clear();
+        invalid_account.qq_account = "abc".to_string();
         let settings = SpecialOpsSettings {
             accounts: vec![invalid_account],
             ..SpecialOpsSettings::default()
         };
         assert_eq!(
             validate_execution_ready(&settings).unwrap_err(),
-            "账号 active 的 QQ 与密码必须完整"
+            "账号 active 的 QQ 必须为非空纯数字"
         );
     }
 
@@ -4102,7 +4133,7 @@ mod tests {
     }
 
     #[test]
-    fn required_execution_wegame_targets_are_exactly_the_approved_seven() {
+    fn required_execution_wegame_targets_use_remembered_account_selection() {
         let settings = SpecialOpsSettings {
             accounts: vec![account(
                 "active",
@@ -4119,8 +4150,9 @@ mod tests {
         let expected = [
             "wegame.loginMode",
             "wegame.loginFormReady",
-            "wegame.account",
-            "wegame.password",
+            "wegame.accountDropdown",
+            "wegame.accountList",
+            "wegame.selectedAccount",
             "wegame.login",
             "wegame.gameEntry",
             "wegame.launch",
@@ -4167,16 +4199,15 @@ mod tests {
     }
 
     #[test]
-    fn state_changed_payload_excludes_settings_accounts_and_passwords() {
+    fn state_changed_payload_excludes_settings_and_accounts() {
         let mut settings = SpecialOpsSettings::default();
-        let mut selected = account("selected", AccountStatus::Ready, Vec::new());
-        selected.password = "test-secret-placeholder".to_string();
-        settings.accounts.push(selected);
+        settings
+            .accounts
+            .push(account("selected", AccountStatus::Ready, Vec::new()));
         let bootstrap = build_bootstrap(settings, 17, 23);
 
         let payload = SpecialOpsStateChanged::from(&bootstrap);
         let json = serde_json::to_string(&payload).unwrap();
-        assert!(!json.contains("test-secret-placeholder"));
         assert!(!json.contains("\"password\""));
         assert!(!json.contains("\"settings\""));
         assert!(!json.contains("\"accounts\""));
@@ -4765,15 +4796,9 @@ mod tests {
     }
 
     #[test]
-    fn login_trial_preflight_allows_duplicate_passwords_and_requires_selected_account_credentials()
-    {
+    fn login_trial_preflight_requires_selected_numeric_qq() {
         let fixture = LoginFixture::complete();
-        let mut settings = fixture.settings.clone();
-        let mut other = account("other", AccountStatus::Ready, Vec::new());
-        other.password = settings.accounts[0].password.clone();
-        settings.accounts.push(other);
-        let settings = normalize_settings(settings).unwrap();
-        assert!(validate_login_trial_ready(&settings, "selected").is_ok());
+        assert!(validate_login_trial_ready(&fixture.settings, "selected").is_ok());
 
         let mut empty_qq = fixture.settings.clone();
         empty_qq.accounts[0].qq_account = "   ".to_string();
@@ -4781,11 +4806,11 @@ mod tests {
         assert!(error.contains("selected"));
         assert!(error.contains("QQ"));
 
-        let mut empty_password = fixture.settings.clone();
-        empty_password.accounts[0].password.clear();
-        let error = validate_login_trial_ready(&empty_password, "selected").unwrap_err();
+        let mut non_numeric = fixture.settings.clone();
+        non_numeric.accounts[0].qq_account = "abc123".to_string();
+        let error = validate_login_trial_ready(&non_numeric, "selected").unwrap_err();
         assert!(error.contains("selected"));
-        assert!(error.contains("密码"));
+        assert!(error.contains("纯数字"));
     }
 
     #[test]
@@ -4803,13 +4828,14 @@ mod tests {
     }
 
     #[test]
-    fn login_trial_preflight_requires_five_verified_templates_and_two_input_regions() {
+    fn login_trial_preflight_requires_five_templates_and_three_account_targets() {
         let fixture = LoginFixture::complete();
         let ordered_keys = [
             "wegame.loginMode",
             "wegame.loginFormReady",
-            "wegame.account",
-            "wegame.password",
+            "wegame.accountDropdown",
+            "wegame.accountList",
+            "wegame.selectedAccount",
             "wegame.login",
             "wegame.gameEntry",
             "wegame.launch",

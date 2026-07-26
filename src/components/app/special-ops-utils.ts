@@ -97,7 +97,7 @@ export async function persistSpecialOpsSaveRequest(
 
 export function eligibleLoginTrialAccounts(accounts: AccountPlan[]): AccountPlan[] {
     return accounts
-        .filter((account) => account.enabled && account.qqAccount.trim() !== "" && account.password.trim() !== "")
+        .filter((account) => account.enabled && /^\d+$/.test(account.qqAccount.trim()))
         .sort((left, right) => left.order - right.order);
 }
 

@@ -87,7 +87,6 @@ function createAccount(order: number): AccountPlan {
     return {
         id: crypto.randomUUID(),
         qqAccount: "",
-        password: "",
         enabled: true,
         initialized: false,
         order,
@@ -562,7 +561,6 @@ export function SpecialOpsPage() {
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <label className="form-control gap-1"><span className="label-text">QQ 账号</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/></label>
-                        <label className="form-control gap-1"><span className="label-text">QQ 密码（明文保存）</span><DraftInput type="password" value={account.password} onCommit={(password) => updateAccount(account, {password})}/></label>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {account.stations.map((station) => <div key={station.kind} className="rounded-box bg-base-200 p-3">

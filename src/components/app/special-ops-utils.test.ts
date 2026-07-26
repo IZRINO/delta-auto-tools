@@ -19,12 +19,11 @@ import type {
 function account(
     id: string,
     order: number,
-    patch: Partial<Pick<AccountPlan, "enabled" | "qqAccount" | "password">> = {},
+    patch: Partial<Pick<AccountPlan, "enabled" | "qqAccount">> = {},
 ): AccountPlan {
     return {
         id,
         qqAccount: "10001",
-        password: "secret",
         enabled: true,
         initialized: false,
         order,
@@ -190,11 +189,16 @@ describe("特勤处登录试运行 helpers", () => {
             account("later", 8),
             account("disabled", 0, {enabled: false}),
             account("missing-account", 1, {qqAccount: "  "}),
-            account("missing-password", 2, {password: ""}),
+            account("remembered-account", 2),
+            account("letters", 4, {qqAccount: "abc123"}),
             account("first", 3),
         ];
 
-        expect(eligibleLoginTrialAccounts(accounts).map(({id}) => id)).toEqual(["first", "later"]);
+        expect(eligibleLoginTrialAccounts(accounts).map(({id}) => id)).toEqual([
+            "remembered-account",
+            "first",
+            "later",
+        ]);
     });
 
     it("stale save 使用冻结 revision 交给后端拒绝且只 reload 不重试", async () => {
