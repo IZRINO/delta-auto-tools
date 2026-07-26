@@ -110,7 +110,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
             .current_dir(parent)
             .spawn()
             .map(|child| child.id())
-            .map_err(|error| format!("启动程序失败: {error}"))
+            .map_err(|error| format_win32_error("启动程序失败", error))
     }
 
     fn find_primary_window(&self, exe: &Path) -> Result<Option<WindowIdentity>, String> {
@@ -560,7 +560,10 @@ fn capture_win32_result<T>(
 }
 
 fn format_win32_error(action: &str, error: std::io::Error) -> String {
-    format!("{action}: {error}")
+    error.raw_os_error().map_or_else(
+        || action.to_string(),
+        |code| format!("{action}（Windows 错误 {code}）"),
+    )
 }
 
 #[cfg(test)]
@@ -635,7 +638,10 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(phase.get(), 2);
-        assert!(format_win32_error("原生调用失败", error).contains("os error 5"));
+        assert_eq!(
+            format_win32_error("原生调用失败", error),
+            "原生调用失败（Windows 错误 5）"
+        );
     }
 
     #[test]

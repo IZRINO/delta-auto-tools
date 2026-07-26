@@ -31,6 +31,7 @@ pub(crate) enum LoginObservation {
     CaptureFailed,
     ReferenceImageFailed,
     WindowNotFound,
+    LaunchFailed { windows_error_code: Option<i32> },
 }
 
 #[allow(async_fn_in_trait)]
@@ -365,25 +366,30 @@ where
 fn paused(driver: &(impl LoginDriver + ?Sized), step: &LoginStep, kind: &str) -> LoginFlowResult {
     LoginFlowResult::Paused {
         failed_step: step.clone(),
-        last_observation: format_observation(step, kind, driver.last_observation()),
+        last_observation: format_observation(kind, driver.last_observation()),
         failed_at: now_ms(),
     }
 }
 
-fn format_observation(step: &LoginStep, kind: &str, observation: LoginObservation) -> String {
-    let prefix = format!("{step:?}：{kind}");
+fn format_observation(kind: &str, observation: LoginObservation) -> String {
     match observation {
-        LoginObservation::None => prefix,
+        LoginObservation::None => kind.to_string(),
+        LoginObservation::LaunchFailed {
+            windows_error_code: Some(code),
+        } => format!("启动程序失败（Windows 错误 {code}）"),
+        LoginObservation::LaunchFailed {
+            windows_error_code: None,
+        } => "启动程序失败".to_string(),
         LoginObservation::TemplateSamples { samples } => format!(
-            "{prefix}；最后识别结果：双采样相似度 {:.2}% / {:.2}%",
+            "{kind}；最后识别结果：双采样相似度 {:.2}% / {:.2}%",
             samples[0] * 100.0,
             samples[1] * 100.0
         ),
-        LoginObservation::CaptureFailed => format!("{prefix}；最后识别结果：截图失败"),
+        LoginObservation::CaptureFailed => format!("{kind}；最后识别结果：截图失败"),
         LoginObservation::ReferenceImageFailed => {
-            format!("{prefix}；最后识别结果：参考图读取失败")
+            format!("{kind}；最后识别结果：参考图读取失败")
         }
-        LoginObservation::WindowNotFound => format!("{prefix}；最后识别结果：未找到游戏窗口"),
+        LoginObservation::WindowNotFound => format!("{kind}；最后识别结果：未找到游戏窗口"),
     }
 }
 
@@ -709,7 +715,20 @@ mod tests {
         assert_eq!(failed_step, LoginStep::WaitGameEntry);
         assert_eq!(
             last_observation,
-            "WaitGameEntry：步骤超时；最后识别结果：双采样相似度 41.00% / 42.00%"
+            "步骤超时；最后识别结果：双采样相似度 41.00% / 42.00%"
+        );
+    }
+
+    #[test]
+    fn launch_failure_formats_safe_windows_error_code() {
+        assert_eq!(
+            format_observation(
+                "步骤执行失败",
+                LoginObservation::LaunchFailed {
+                    windows_error_code: Some(740),
+                },
+            ),
+            "启动程序失败（Windows 错误 740）"
         );
     }
 
@@ -734,7 +753,7 @@ mod tests {
             Err(LoginFlowResult::Paused {
                 last_observation,
                 ..
-            }) if last_observation == "StopGame：步骤执行失败"
+            }) if last_observation == "步骤执行失败"
         ));
     }
 
@@ -954,10 +973,7 @@ mod tests {
             panic!("预期流程暂停");
         };
         assert_eq!(failed_step, LoginStep::WaitGameWindow);
-        assert_eq!(
-            last_observation,
-            "WaitGameWindow：步骤超时；最后识别结果：未找到游戏窗口"
-        );
+        assert_eq!(last_observation, "步骤超时；最后识别结果：未找到游戏窗口");
     }
 
     #[tokio::test]
@@ -1032,7 +1048,7 @@ mod tests {
     fn paused_serializes_kind_and_fields_as_camel_case_without_password() {
         let value = serde_json::to_value(LoginFlowResult::Paused {
             failed_step: LoginStep::WaitGameEntry,
-            last_observation: "WaitGameEntry：步骤超时".to_string(),
+            last_observation: "步骤超时".to_string(),
             failed_at: 123,
         })
         .unwrap();
@@ -1042,7 +1058,7 @@ mod tests {
             serde_json::json!({
                 "kind": "paused",
                 "failedStep": "waitGameEntry",
-                "lastObservation": "WaitGameEntry：步骤超时",
+                "lastObservation": "步骤超时",
                 "failedAt": 123,
             })
         );

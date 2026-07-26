@@ -734,9 +734,23 @@ impl LoginDriver for ProductionLoginDriver {
 
     async fn launch(&self, executable: &Path) -> Result<u32, String> {
         let executable = executable.to_path_buf();
-        tokio::task::spawn_blocking(move || WindowsDesktopRuntime.launch(&executable))
+        let result = tokio::task::spawn_blocking(move || WindowsDesktopRuntime.launch(&executable))
             .await
-            .map_err(|error| format!("程序启动任务失败: {error}"))?
+            .map_err(|error| format!("程序启动任务失败: {error}"))?;
+        if let Err(error) = &result {
+            let observation = launch_observation(error);
+            let windows_error_code = match observation {
+                LoginObservation::LaunchFailed { windows_error_code } => windows_error_code,
+                _ => None,
+            };
+            self.set_observation(observation);
+            crate::log_error!(
+                "special_ops::login",
+                "WeGame 启动失败",
+                "windows_error_code" => windows_error_code
+            );
+        }
+        result
     }
 
     async fn wait_for_any(
@@ -898,6 +912,15 @@ fn observation_for_error(error: &str) -> LoginObservation {
     }
 }
 
+fn launch_observation(error: &str) -> LoginObservation {
+    let windows_error_code = error
+        .rsplit_once("（Windows 错误 ")
+        .map(|(_, value)| value)
+        .and_then(|value| value.strip_suffix('）'))
+        .and_then(|value| value.parse().ok());
+    LoginObservation::LaunchFailed { windows_error_code }
+}
+
 fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
     if cancelled.load(Ordering::SeqCst) {
         Err("登录试运行已取消".to_string())
@@ -927,6 +950,28 @@ mod tests {
         assert_eq!(
             run_changed_target_labels(),
             ["main", "special-ops-operation"]
+        );
+    }
+
+    #[test]
+    fn launch_error_observation_only_keeps_windows_error_code() {
+        assert_eq!(
+            launch_observation("启动程序失败（Windows 错误 740）"),
+            LoginObservation::LaunchFailed {
+                windows_error_code: Some(740),
+            }
+        );
+        assert_eq!(
+            launch_observation("RAW_DRIVER_SECRET|C:\\private\\wegame.exe"),
+            LoginObservation::LaunchFailed {
+                windows_error_code: None,
+            }
+        );
+        assert_eq!(
+            launch_observation("规范化程序路径失败（Windows 错误 2）"),
+            LoginObservation::LaunchFailed {
+                windows_error_code: Some(2),
+            }
         );
     }
 
