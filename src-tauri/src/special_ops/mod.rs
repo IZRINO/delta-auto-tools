@@ -4,6 +4,8 @@ pub(crate) mod login_flow;
 mod login_runtime;
 #[allow(dead_code)]
 pub(crate) mod template_observer;
+#[allow(dead_code)]
+mod windows_ocr;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
