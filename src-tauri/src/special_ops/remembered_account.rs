@@ -15,6 +15,21 @@ pub(crate) fn stable_target_bounds(
     (overlap_ratio(first.bounds, second.bounds) >= MIN_OVERLAP_RATIO).then_some(second.bounds)
 }
 
+pub(crate) fn stable_account_screen(
+    first: &[OcrWord],
+    second: &[OcrWord],
+) -> Option<BTreeSet<String>> {
+    let first = first
+        .iter()
+        .map(|word| word.text.clone())
+        .collect::<BTreeSet<_>>();
+    let second = second
+        .iter()
+        .map(|word| word.text.clone())
+        .collect::<BTreeSet<_>>();
+    (!first.is_empty() && first == second).then_some(second)
+}
+
 fn overlap_ratio(first: OcrBounds, second: OcrBounds) -> f32 {
     let left = first.x.max(second.x);
     let top = first.y.max(second.y);
@@ -111,21 +126,9 @@ pub(crate) async fn select_remembered_account(
             };
         }
 
-        let first_accounts = first
-            .into_iter()
-            .map(|word| word.text)
-            .collect::<BTreeSet<_>>();
-        let second_accounts = second
-            .into_iter()
-            .map(|word| word.text)
-            .collect::<BTreeSet<_>>();
-        if first_accounts != second_accounts {
+        let Some(stable_screen) = stable_account_screen(&first, &second) else {
             continue;
-        }
-        let stable_screen = first_accounts
-            .intersection(&second_accounts)
-            .cloned()
-            .collect();
+        };
         if progress.note_screen(stable_screen) {
             return Err(AccountSelectionError::NotFound);
         }
@@ -176,6 +179,20 @@ mod tests {
         progress.note_screen(BTreeSet::from(["2".to_string(), "3".to_string()]));
         assert!(!progress.note_screen(BTreeSet::from(["1".to_string(), "3".to_string()])));
         assert!(!progress.note_screen(BTreeSet::from(["2".to_string(), "3".to_string()])));
+    }
+
+    #[test]
+    fn stable_account_screen_requires_equal_non_empty_samples() {
+        let first = vec![word("111", 10.0, 20.0), word("222", 10.0, 40.0)];
+        let same_accounts = vec![word("222", 12.0, 42.0), word("111", 12.0, 22.0)];
+        let changed = vec![word("111", 10.0, 20.0), word("333", 10.0, 40.0)];
+
+        assert_eq!(
+            stable_account_screen(&first, &same_accounts),
+            Some(BTreeSet::from(["111".to_string(), "222".to_string()]))
+        );
+        assert_eq!(stable_account_screen(&first, &changed), None);
+        assert_eq!(stable_account_screen(&[], &[]), None);
     }
 
     #[derive(Default)]

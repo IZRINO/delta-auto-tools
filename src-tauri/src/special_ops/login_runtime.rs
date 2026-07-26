@@ -708,6 +708,18 @@ impl ProductionLoginDriver {
             }
         }
     }
+
+    async fn verify_account_list_open(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
+        self.emit_update(LoginRunStatus::Waiting, "正在确认已记住账号列表", None)?;
+        loop {
+            let first = self.sample_accounts(Arc::clone(&cancelled)).await?;
+            wait_cancellable(Duration::from_millis(400), &cancelled).await?;
+            let second = self.sample_accounts(Arc::clone(&cancelled)).await?;
+            if super::remembered_account::stable_account_screen(&first, &second).is_some() {
+                return Ok(());
+            }
+        }
+    }
 }
 
 #[allow(async_fn_in_trait)]
@@ -886,8 +898,7 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             },
             async {
                 ensure_not_cancelled(&guard_cancelled)?;
-                self.verify_action_guard("wegame.accountDropdown", guard_cancelled)
-                    .await
+                self.verify_account_list_open(guard_cancelled).await
             },
             async {
                 ensure_not_cancelled(&action_cancelled)?;
@@ -925,8 +936,7 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             },
             async {
                 ensure_not_cancelled(&guard_cancelled)?;
-                self.verify_action_guard("wegame.accountDropdown", guard_cancelled)
-                    .await
+                self.verify_account_list_open(guard_cancelled).await
             },
             async {
                 ensure_not_cancelled(&action_cancelled)?;
