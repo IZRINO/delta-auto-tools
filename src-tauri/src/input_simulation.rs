@@ -8,13 +8,15 @@ use std::{
 };
 
 use crate::hotkey_types::{HotkeyBinding, ModifierKey, NamedKey, PrimaryKey};
-use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{Axis, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 
 static INPUT_SIMULATION_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 static INPUT_RELEASE_GENERATION: AtomicU64 = AtomicU64::new(0);
 static INPUT_ACTION_STATE: OnceLock<Mutex<InputActionState>> = OnceLock::new();
 const INPUT_POST_ACTION_GAP: Duration = Duration::from_millis(35);
 const INPUT_CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const DOUBLE_CLICK_GAP_MS: u64 = 80;
+const COPY_AFTER_DOUBLE_CLICK_DELAY_MS: u64 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TextInputTiming {
@@ -76,6 +78,10 @@ fn run_cancellable_input_action<T>(
 trait InputEmitter {
     fn move_mouse(&self, x: i32, y: i32) -> Result<(), String>;
     fn click_left(&self) -> Result<(), String>;
+    fn scroll_vertical(&self, length: i32) -> Result<(), String> {
+        let _ = length;
+        Err("当前输入 emitter 不支持滚轮".to_string())
+    }
     fn key(&self, key: Key, direction: Direction) -> Result<(), String>;
 }
 
@@ -111,6 +117,14 @@ impl InputEmitter for EnigoInputEmitter {
             .map_err(|_| "自动输入状态已损坏".to_string())?
             .button(enigo::Button::Left, Direction::Click)
             .map_err(|error| format!("鼠标左键点击失败: {error}"))
+    }
+
+    fn scroll_vertical(&self, length: i32) -> Result<(), String> {
+        self.enigo
+            .lock()
+            .map_err(|_| "自动输入状态已损坏".to_string())?
+            .scroll(length, Axis::Vertical)
+            .map_err(|error| format!("鼠标滚轮操作失败: {error}"))
     }
 
     fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
@@ -235,6 +249,63 @@ fn click_region_center_with_emitter<E: InputEmitter>(
 }
 
 #[allow(dead_code)]
+fn click_screen_point_with_emitter<E: InputEmitter>(
+    emitter: &E,
+    x: i32,
+    y: i32,
+    cancelled: &AtomicBool,
+    generation: u64,
+) -> Result<(), String> {
+    run_cancellable_input_action(cancelled, generation, |_| emitter.move_mouse(x, y))?;
+    run_cancellable_input_action(cancelled, generation, |_| emitter.click_left())
+}
+
+#[allow(dead_code)]
+fn scroll_region_down_with_emitter<E: InputEmitter>(
+    emitter: &E,
+    region: &crate::morse::types::RegionRect,
+    steps: i32,
+    cancelled: &AtomicBool,
+    generation: u64,
+) -> Result<(), String> {
+    let (center_x, center_y) = region_center(region);
+    run_cancellable_input_action(cancelled, generation, |_| {
+        emitter.move_mouse(center_x, center_y)
+    })?;
+    run_cancellable_input_action(cancelled, generation, |_| {
+        emitter.scroll_vertical(steps)
+    })
+}
+
+#[allow(dead_code)]
+fn double_click_region_and_copy_with_emitter<E: InputEmitter>(
+    emitter: &E,
+    region: &crate::morse::types::RegionRect,
+    cancelled: &AtomicBool,
+    generation: u64,
+) -> Result<(), String> {
+    let (center_x, center_y) = region_center(region);
+    run_cancellable_input_action(cancelled, generation, |_| {
+        emitter.move_mouse(center_x, center_y)
+    })?;
+    run_cancellable_input_action(cancelled, generation, |_| emitter.click_left())?;
+    wait_cancellable_input_delay(cancelled, generation, DOUBLE_CLICK_GAP_MS)?;
+    run_cancellable_input_action(cancelled, generation, |_| emitter.click_left())?;
+    wait_cancellable_input_delay(
+        cancelled,
+        generation,
+        COPY_AFTER_DOUBLE_CLICK_DELAY_MS,
+    )?;
+
+    let mut ctrl = TrackedModifierGuard::new(emitter, cancelled, generation);
+    ctrl.press(Key::Control)?;
+    run_cancellable_input_action(cancelled, generation, |_| {
+        emitter.key(Key::Unicode('c'), Direction::Click)
+    })?;
+    ctrl.release(&Key::Control)
+}
+
+#[allow(dead_code)]
 fn replace_text_with_emitter_locked<E: InputEmitter, F: FnOnce()>(
     emitter: &E,
     region: &crate::morse::types::RegionRect,
@@ -348,6 +419,47 @@ pub async fn click_region_center_cancellable(
     run_serialized_input(move || {
         let emitter = EnigoInputEmitter::new()?;
         click_region_center_with_emitter(&emitter, &region, &cancelled, generation)
+    })
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn click_screen_point_cancellable(
+    x: i32,
+    y: i32,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let generation = input_release_generation();
+    run_serialized_input(move || {
+        let emitter = EnigoInputEmitter::new()?;
+        click_screen_point_with_emitter(&emitter, x, y, &cancelled, generation)
+    })
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn scroll_region_down_cancellable(
+    region: crate::morse::types::RegionRect,
+    steps: i32,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let generation = input_release_generation();
+    run_serialized_input(move || {
+        let emitter = EnigoInputEmitter::new()?;
+        scroll_region_down_with_emitter(&emitter, &region, steps, &cancelled, generation)
+    })
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn double_click_region_and_copy_cancellable(
+    region: crate::morse::types::RegionRect,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let generation = input_release_generation();
+    run_serialized_input(move || {
+        let emitter = EnigoInputEmitter::new()?;
+        double_click_region_and_copy_with_emitter(&emitter, &region, &cancelled, generation)
     })
     .await
 }
@@ -770,6 +882,8 @@ mod tests {
     #[derive(Default)]
     struct RecordingEmitter {
         action_count: StdMutex<usize>,
+        events: StdMutex<Vec<String>>,
+        scrolls: StdMutex<Vec<i32>>,
         characters: StdMutex<Vec<char>>,
         pressed_keys: StdMutex<Vec<Key>>,
         ctrl_release_count: StdMutex<usize>,
@@ -797,6 +911,14 @@ mod tests {
             *self.action_count.lock().unwrap()
         }
 
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn scrolls(&self) -> Vec<i32> {
+            self.scrolls.lock().unwrap().clone()
+        }
+
         fn set_fail_ctrl_release(&self, fail: bool) {
             self.fail_ctrl_release.store(fail, Ordering::SeqCst);
         }
@@ -819,19 +941,32 @@ mod tests {
     }
 
     impl InputEmitter for RecordingEmitter {
-        fn move_mouse(&self, _: i32, _: i32) -> Result<(), String> {
+        fn move_mouse(&self, x: i32, y: i32) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
+            self.events.lock().unwrap().push(format!("move:{x}:{y}"));
             Ok(())
         }
 
         fn click_left(&self) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
             *self.clicked_at.lock().unwrap() = Some(Instant::now());
+            self.events.lock().unwrap().push("click".to_string());
+            Ok(())
+        }
+
+        fn scroll_vertical(&self, length: i32) -> Result<(), String> {
+            *self.action_count.lock().unwrap() += 1;
+            self.scrolls.lock().unwrap().push(length);
+            self.events.lock().unwrap().push(format!("scroll:{length}"));
             Ok(())
         }
 
         fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("key:{key:?}:{direction:?}"));
             if key == Key::Control
                 && direction == Direction::Release
                 && self.fail_ctrl_release.load(Ordering::SeqCst)
@@ -1009,6 +1144,53 @@ mod tests {
             primary_to_key(PrimaryKey::Named(NamedKey::Period)).unwrap(),
             Key::OEMPeriod
         ));
+    }
+
+    #[tokio::test]
+    async fn account_list_scroll_moves_to_region_before_scrolling_down() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emitter = RecordingEmitter::default();
+        let cancelled = AtomicBool::new(false);
+
+        scroll_region_down_with_emitter(
+            &emitter,
+            &rect(),
+            3,
+            &cancelled,
+            input_release_generation(),
+        )
+        .unwrap();
+
+        assert_eq!(emitter.events().first().map(String::as_str), Some("move:140:215"));
+        assert_eq!(emitter.scrolls(), vec![3]);
+    }
+
+    #[tokio::test]
+    async fn account_copy_double_clicks_then_sends_ctrl_c_and_releases_ctrl() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emitter = RecordingEmitter::default();
+        let cancelled = AtomicBool::new(false);
+
+        double_click_region_and_copy_with_emitter(
+            &emitter,
+            &rect(),
+            &cancelled,
+            input_release_generation(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            emitter.events(),
+            [
+                "move:140:215",
+                "click",
+                "click",
+                "key:Control:Press",
+                "key:Unicode('c'):Click",
+                "key:Control:Release",
+            ]
+        );
+        assert!(emitter.pressed_keys().is_empty());
     }
 
     #[tokio::test]
