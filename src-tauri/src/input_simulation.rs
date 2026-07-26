@@ -16,6 +16,13 @@ static INPUT_ACTION_STATE: OnceLock<Mutex<InputActionState>> = OnceLock::new();
 const INPUT_POST_ACTION_GAP: Duration = Duration::from_millis(35);
 const INPUT_CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TextInputTiming {
+    pub focus_delay_ms: u64,
+    pub char_delay_ms: u64,
+    pub settle_delay_ms: u64,
+}
+
 #[derive(Default)]
 struct InputActionState {
     tracked_keys: Vec<Key>,
@@ -232,12 +239,13 @@ fn replace_text_with_emitter_locked<E: InputEmitter, F: FnOnce()>(
     emitter: &E,
     region: &crate::morse::types::RegionRect,
     value: &str,
-    char_delay_ms: u64,
+    timing: TextInputTiming,
     cancelled: &AtomicBool,
     generation: u64,
     after_ctrl_pressed: F,
 ) -> Result<(), String> {
     click_region_center_with_emitter(emitter, region, cancelled, generation)?;
+    wait_cancellable_input_delay(cancelled, generation, timing.focus_delay_ms)?;
 
     let mut ctrl = TrackedModifierGuard::new(emitter, cancelled, generation);
     ctrl.press(Key::Control)?;
@@ -254,12 +262,10 @@ fn replace_text_with_emitter_locked<E: InputEmitter, F: FnOnce()>(
         run_cancellable_input_action(cancelled, generation, |_| {
             emitter.key(Key::Unicode(ch), Direction::Click)
         })?;
-        if char_delay_ms > 0 {
-            wait_cancellable_input_delay(cancelled, generation, char_delay_ms)?;
-        }
+        wait_cancellable_input_delay(cancelled, generation, timing.char_delay_ms)?;
     }
 
-    Ok(())
+    wait_cancellable_input_delay(cancelled, generation, timing.settle_delay_ms)
 }
 
 async fn run_serialized_input<F, T>(operation: F) -> Result<T, String>
@@ -292,7 +298,7 @@ async fn replace_text_with_emitter<E: InputEmitter>(
     emitter: &E,
     region: &crate::morse::types::RegionRect,
     value: &str,
-    char_delay_ms: u64,
+    timing: TextInputTiming,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
@@ -301,7 +307,7 @@ async fn replace_text_with_emitter<E: InputEmitter>(
         emitter,
         region,
         value,
-        char_delay_ms,
+        timing,
         &cancelled,
         input_release_generation(),
         || {},
@@ -322,7 +328,11 @@ async fn replace_text_with_emitter_after_ctrl_press<E: InputEmitter, F: FnOnce()
         emitter,
         region,
         value,
-        0,
+        TextInputTiming {
+            focus_delay_ms: 0,
+            char_delay_ms: 0,
+            settle_delay_ms: 0,
+        },
         &cancelled,
         input_release_generation(),
         after_ctrl_pressed,
@@ -349,6 +359,26 @@ pub async fn replace_text_at_region_cancellable(
     char_delay_ms: u64,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(), String> {
+    replace_text_at_region_with_timing_cancellable(
+        region,
+        value,
+        TextInputTiming {
+            focus_delay_ms: 0,
+            char_delay_ms,
+            settle_delay_ms: 0,
+        },
+        cancelled,
+    )
+    .await
+}
+
+#[allow(dead_code)]
+pub async fn replace_text_at_region_with_timing_cancellable(
+    region: crate::morse::types::RegionRect,
+    value: String,
+    timing: TextInputTiming,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
     let generation = input_release_generation();
     run_serialized_input(move || {
         let emitter = EnigoInputEmitter::new()?;
@@ -356,7 +386,7 @@ pub async fn replace_text_at_region_cancellable(
             &emitter,
             &region,
             &value,
-            char_delay_ms,
+            timing,
             &cancelled,
             generation,
             || {},
@@ -743,6 +773,8 @@ mod tests {
         characters: StdMutex<Vec<char>>,
         pressed_keys: StdMutex<Vec<Key>>,
         ctrl_release_count: StdMutex<usize>,
+        clicked_at: StdMutex<Option<Instant>>,
+        first_character_at: StdMutex<Option<Instant>>,
         fail_ctrl_release: AtomicBool,
         cancel_after_character: StdMutex<Option<(usize, Arc<AtomicBool>)>>,
         notify_after_character: StdMutex<Option<(usize, mpsc::Sender<()>)>>,
@@ -776,6 +808,14 @@ mod tests {
         fn ctrl_release_count(&self) -> usize {
             *self.ctrl_release_count.lock().unwrap()
         }
+
+        fn clicked_at(&self) -> Option<Instant> {
+            *self.clicked_at.lock().unwrap()
+        }
+
+        fn first_character_at(&self) -> Option<Instant> {
+            *self.first_character_at.lock().unwrap()
+        }
     }
 
     impl InputEmitter for RecordingEmitter {
@@ -786,6 +826,7 @@ mod tests {
 
         fn click_left(&self) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
+            *self.clicked_at.lock().unwrap() = Some(Instant::now());
             Ok(())
         }
 
@@ -804,6 +845,8 @@ mod tests {
                     }
                     let character_count = {
                         let mut characters = self.characters.lock().unwrap();
+                        let mut first_character_at = self.first_character_at.lock().unwrap();
+                        first_character_at.get_or_insert_with(Instant::now);
                         characters.push(ch);
                         characters.len()
                     };
@@ -1013,12 +1056,88 @@ mod tests {
         let cancel = Arc::new(AtomicBool::new(false));
         emitter.cancel_after_character(1, cancel.clone());
 
-        replace_text_with_emitter(&emitter, &rect(), "12345", 0, cancel)
+        replace_text_with_emitter(
+            &emitter,
+            &rect(),
+            "12345",
+            TextInputTiming {
+                focus_delay_ms: 0,
+                char_delay_ms: 0,
+                settle_delay_ms: 0,
+            },
+            cancel,
+        )
             .await
             .unwrap_err();
 
         assert_eq!(emitter.characters(), vec!['1']);
         assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
+    }
+
+    #[tokio::test]
+    async fn replace_text_waits_for_focus_and_settle() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emitter = RecordingEmitter::default();
+        let started_at = Instant::now();
+
+        replace_text_with_emitter(
+            &emitter,
+            &rect(),
+            "1",
+            TextInputTiming {
+                focus_delay_ms: 40,
+                char_delay_ms: 0,
+                settle_delay_ms: 30,
+            },
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+
+        let clicked_at = emitter.clicked_at().expect("未记录输入框点击");
+        let first_character_at = emitter.first_character_at().expect("未记录首字符输入");
+        assert!(first_character_at.duration_since(clicked_at) >= Duration::from_millis(30));
+        assert!(started_at.elapsed() >= Duration::from_millis(60));
+    }
+
+    #[tokio::test]
+    async fn emergency_release_interrupts_settle_delay() {
+        let _test_guard = lock_input_simulation_tests().await;
+        let emitter = Arc::new(RecordingEmitter::default());
+        let (first_character_tx, first_character_rx) = mpsc::channel();
+        emitter.notify_after_character(1, first_character_tx);
+
+        let typing_emitter = Arc::clone(&emitter);
+        let typing_cancelled = Arc::new(AtomicBool::new(false));
+        let typing_region = rect();
+        let typing = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap();
+            runtime.block_on(replace_text_with_emitter(
+                typing_emitter.as_ref(),
+                &typing_region,
+                "1",
+                TextInputTiming {
+                    focus_delay_ms: 0,
+                    char_delay_ms: 0,
+                    settle_delay_ms: 500,
+                },
+                typing_cancelled,
+            ))
+        });
+
+        first_character_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("首字符未输入");
+        let released_at = Instant::now();
+        release_tracked_injected_inputs_with_factory(|| {
+            Ok(SharedRecordingEmitter(Arc::clone(&emitter)))
+        });
+
+        assert_eq!(typing.join().unwrap(), Err("输入操作已取消".to_string()));
+        assert!(released_at.elapsed() < Duration::from_millis(100));
     }
 
     #[tokio::test]
@@ -1132,7 +1251,11 @@ mod tests {
                 typing_emitter.as_ref(),
                 &typing_region,
                 "12",
-                500,
+                TextInputTiming {
+                    focus_delay_ms: 0,
+                    char_delay_ms: 500,
+                    settle_delay_ms: 0,
+                },
                 typing_cancelled,
             ))
         });
