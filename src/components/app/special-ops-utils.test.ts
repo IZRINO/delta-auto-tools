@@ -6,6 +6,7 @@ import {
     eligibleLoginTrialAccounts,
     formatCalibrationTemplateTestResult,
     mergeSpecialOpsBootstrap,
+    specialOpsErrorAfterUpdate,
     persistSpecialOpsSaveRequest,
 } from "@/components/app/special-ops-utils";
 import type {
@@ -143,6 +144,45 @@ describe("特勤处登录试运行 helpers", () => {
             lastFailure: {step: "submitLogin", message: "密码错误", atMs: 80},
             loginTrialSignature: "runtime-8",
         });
+    });
+
+    it("运行事件和陈旧回包不清除现有错误", () => {
+        const currentError = "配置保存失败";
+
+        expect(specialOpsErrorAfterUpdate(currentError, {
+            updateType: "runChanged",
+            responseAccepted: false,
+            completedCurrentDraft: false,
+            dirtyBefore: true,
+            revisionChanged: false,
+        })).toBe(currentError);
+        expect(specialOpsErrorAfterUpdate(currentError, {
+            updateType: "bootstrapResponse",
+            responseAccepted: false,
+            completedCurrentDraft: false,
+            dirtyBefore: true,
+            revisionChanged: false,
+        })).toBe(currentError);
+    });
+
+    it("runtime revision 抢占未保存编辑时显示明确警告", () => {
+        expect(specialOpsErrorAfterUpdate(null, {
+            updateType: "bootstrapResponse",
+            responseAccepted: true,
+            completedCurrentDraft: false,
+            dirtyBefore: true,
+            revisionChanged: true,
+        })).toBe("运行状态已更新，未保存的编辑已被放弃，请重新检查");
+    });
+
+    it("当前草稿保存成功后清除旧错误", () => {
+        expect(specialOpsErrorAfterUpdate("上次保存失败", {
+            updateType: "bootstrapResponse",
+            responseAccepted: true,
+            completedCurrentDraft: true,
+            dirtyBefore: true,
+            revisionChanged: false,
+        })).toBeNull();
     });
 
     it("仅返回启用且凭据完整的账号并按 order 排序", () => {

@@ -45,6 +45,7 @@ import {
     eligibleLoginTrialAccounts,
     formatCalibrationTemplateTestResult,
     persistSpecialOpsSaveRequest,
+    specialOpsErrorAfterUpdate,
     type SpecialOpsBootstrapUpdate,
     type SpecialOpsSaveRequest,
 } from "@/components/app/special-ops-utils";
@@ -142,6 +143,7 @@ export function SpecialOpsPage() {
 
     const applyUpdate = (update: SpecialOpsBootstrapUpdate, completedSettings?: SpecialOpsSettings) => {
         const previous = bootstrapRef.current;
+        const dirtyBefore = settingsDirtyRef.current;
         const ordered = applySpecialOpsBootstrapUpdate({
             bootstrap: previous,
             responseSeq: appliedResponseSequenceRef.current,
@@ -176,7 +178,13 @@ export function SpecialOpsPage() {
             settingsDraftRef.current = next.settings;
             setBootstrap(next);
         }
-        setError(null);
+        setError((current) => specialOpsErrorAfterUpdate(current, {
+            updateType: update.type,
+            responseAccepted,
+            completedCurrentDraft,
+            dirtyBefore,
+            revisionChanged,
+        }));
     };
     const applyResult = (
         incoming: SpecialOpsBootstrap,

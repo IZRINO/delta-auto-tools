@@ -12,6 +12,14 @@ export type SpecialOpsBootstrapUpdate =
     | {type: "bootstrapResponse"; bootstrap: SpecialOpsBootstrap; requestSeq: number}
     | {type: "runChanged"; snapshot: LoginRunSnapshot};
 
+type SpecialOpsErrorUpdate = {
+    updateType: SpecialOpsBootstrapUpdate["type"];
+    responseAccepted: boolean;
+    completedCurrentDraft: boolean;
+    dirtyBefore: boolean;
+    revisionChanged: boolean;
+};
+
 function latestRunSnapshot(current: LoginRunSnapshot | null, incoming: LoginRunSnapshot | null) {
     if (current === null) return incoming;
     if (incoming === null) return current;
@@ -58,6 +66,20 @@ export function applySpecialOpsBootstrapUpdate(
         bootstrap: mergeSpecialOpsBootstrap(current.bootstrap, incoming),
         responseSeq: update.requestSeq,
     };
+}
+
+export function specialOpsErrorAfterUpdate(
+    currentError: string | null,
+    update: SpecialOpsErrorUpdate,
+): string | null {
+    if (update.dirtyBefore && update.revisionChanged && !update.completedCurrentDraft) {
+        return "运行状态已更新，未保存的编辑已被放弃，请重新检查";
+    }
+    if (update.updateType === "bootstrapResponse" && update.responseAccepted
+        && (update.completedCurrentDraft || !update.dirtyBefore)) {
+        return null;
+    }
+    return currentError;
 }
 
 export async function persistSpecialOpsSaveRequest(
