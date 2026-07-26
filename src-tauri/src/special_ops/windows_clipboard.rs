@@ -5,12 +5,14 @@ const CLIPBOARD_TIMEOUT: Duration = Duration::from_secs(1);
 
 pub(crate) fn normalize_copied_qq(value: &str) -> Option<String> {
     let value = value.trim();
-    (!value.is_empty() && value.chars().all(|ch| ch.is_ascii_digit()))
-        .then(|| value.to_string())
+    (!value.is_empty() && value.chars().all(|ch| ch.is_ascii_digit())).then(|| value.to_string())
 }
 
 fn decode_utf16_clipboard(units: &[u16]) -> Result<String, String> {
-    let end = units.iter().position(|unit| *unit == 0).unwrap_or(units.len());
+    let end = units
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(units.len());
     String::from_utf16(&units[..end]).map_err(|error| format!("剪贴板 Unicode 文本无效: {error}"))
 }
 
@@ -133,7 +135,10 @@ mod tests {
 
     #[test]
     fn copied_qq_must_be_non_empty_ascii_digits_after_trim() {
-        assert_eq!(normalize_copied_qq(" 123456\r\n"), Some("123456".to_string()));
+        assert_eq!(
+            normalize_copied_qq(" 123456\r\n"),
+            Some("123456".to_string())
+        );
         assert_eq!(normalize_copied_qq(""), None);
         assert_eq!(normalize_copied_qq("123 456"), None);
         assert_eq!(normalize_copied_qq("账号123"), None);

@@ -1,4 +1,11 @@
-use super::{desktop_runtime::WindowIdentity, template_observer::RuntimeTarget};
+use super::{
+    desktop_runtime::WindowIdentity,
+    remembered_account::{
+        select_remembered_account, AccountSelectionError, AccountSelectionPhase,
+        RememberedAccountDriver,
+    },
+    template_observer::RuntimeTarget,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -18,7 +25,6 @@ const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(250);
 pub(crate) struct LoginRunConfig {
     pub account_id: String,
     pub qq_account: String,
-    pub password: String,
     pub wegame_executable_path: PathBuf,
     pub game_executable_path: PathBuf,
     pub targets: HashMap<String, RuntimeTarget>,
@@ -35,7 +41,7 @@ pub(crate) enum LoginObservation {
 }
 
 #[allow(async_fn_in_trait)]
-pub(crate) trait LoginDriver: Send + Sync {
+pub(crate) trait LoginDriver: RememberedAccountDriver + Send + Sync {
     fn reset_observation(&self);
     fn last_observation(&self) -> LoginObservation;
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String>;
@@ -46,19 +52,13 @@ pub(crate) trait LoginDriver: Send + Sync {
         cancelled: Arc<AtomicBool>,
     ) -> Result<String, String>;
     async fn click(&self, target_key: &str, cancelled: Arc<AtomicBool>) -> Result<(), String>;
-    async fn replace_text(
-        &self,
-        target_key: &str,
-        value: &str,
-        cancelled: Arc<AtomicBool>,
-    ) -> Result<(), String>;
     async fn find_process_window(
         &self,
         executable: &Path,
     ) -> Result<Option<WindowIdentity>, String>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum LoginStep {
     StopGame,
@@ -66,8 +66,10 @@ pub(crate) enum LoginStep {
     StartWeGame,
     WaitLoginChoice,
     OpenLoginForm,
-    InputAccount,
-    InputPassword,
+    OpenAccountList,
+    ScanRememberedAccounts,
+    SelectRememberedAccount,
+    VerifySelectedAccount,
     SubmitLogin,
     WaitGameEntry,
     OpenGameEntry,
@@ -98,6 +100,13 @@ pub(crate) enum LoginFlowResult {
         account_id: String,
         stopped_at: i64,
     },
+    NeedsManualLogin {
+        account_id: String,
+        target_qq: String,
+        actual_qq: Option<String>,
+        failed_step: LoginStep,
+        failed_at: i64,
+    },
 }
 
 pub(crate) async fn run_login_flow<D, F>(
@@ -110,123 +119,115 @@ where
     D: LoginDriver + ?Sized,
     F: FnMut(LoginStep),
 {
-    if let Err(result) = run_step(
-        driver,
-        LoginStep::StopGame,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        driver.terminate_exact(&config.game_executable_path),
-    )
-    .await
-    {
-        return result;
-    }
-
-    if let Err(result) = run_step(
-        driver,
-        LoginStep::StopWeGame,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        driver.terminate_exact(&config.wegame_executable_path),
-    )
-    .await
-    {
-        return result;
-    }
-
-    if let Err(result) = run_step(
-        driver,
-        LoginStep::StartWeGame,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        driver.launch(&config.wegame_executable_path),
-    )
-    .await
-    {
-        return result;
-    }
-
-    let login_choice = match run_step(
-        driver,
-        LoginStep::WaitLoginChoice,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        async {
-            let key = driver
-                .wait_for_any(
-                    &["wegame.loginFormReady", "wegame.loginMode"],
-                    cancelled.clone(),
-                )
-                .await?;
-            match key.as_str() {
-                "wegame.loginFormReady" | "wegame.loginMode" => Ok(key),
-                _ => Err("登录入口识别结果无效".to_string()),
+    for attempt in 0..2 {
+        for (step, executable) in [
+            (LoginStep::StopGame, &config.game_executable_path),
+            (LoginStep::StopWeGame, &config.wegame_executable_path),
+        ] {
+            if let Err(result) = run_step(
+                driver,
+                step,
+                &config.account_id,
+                &cancelled,
+                &mut on_step,
+                driver.terminate_exact(executable),
+            )
+            .await
+            {
+                return result;
             }
-        },
-    )
-    .await
-    {
-        Ok(login_choice) => login_choice,
-        Err(result) => return result,
-    };
+        }
 
-    if login_choice == "wegame.loginMode" {
         if let Err(result) = run_step(
             driver,
-            LoginStep::OpenLoginForm,
+            LoginStep::StartWeGame,
             &config.account_id,
             &cancelled,
             &mut on_step,
-            driver.click("wegame.loginMode", cancelled.clone()),
+            driver.launch(&config.wegame_executable_path),
         )
         .await
         {
             return result;
         }
-    }
 
-    if let Err(result) = run_step(
-        driver,
-        LoginStep::InputAccount,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        async {
-            driver
-                .wait_for_any(&["wegame.loginFormReady"], cancelled.clone())
-                .await?;
-            driver
-                .replace_text("wegame.account", &config.qq_account, cancelled.clone())
-                .await
-        },
-    )
-    .await
-    {
-        return result;
-    }
+        let login_choice = match run_step(
+            driver,
+            LoginStep::WaitLoginChoice,
+            &config.account_id,
+            &cancelled,
+            &mut on_step,
+            async {
+                let key = driver
+                    .wait_for_any(
+                        &["wegame.loginFormReady", "wegame.loginMode"],
+                        cancelled.clone(),
+                    )
+                    .await?;
+                match key.as_str() {
+                    "wegame.loginFormReady" | "wegame.loginMode" => Ok(key),
+                    _ => Err("登录入口识别结果无效".to_string()),
+                }
+            },
+        )
+        .await
+        {
+            Ok(login_choice) => login_choice,
+            Err(result) => return result,
+        };
 
-    if let Err(result) = run_step(
-        driver,
-        LoginStep::InputPassword,
-        &config.account_id,
-        &cancelled,
-        &mut on_step,
-        async {
-            driver
-                .wait_for_any(&["wegame.loginFormReady"], cancelled.clone())
-                .await?;
-            driver
-                .replace_text("wegame.password", &config.password, cancelled.clone())
-                .await
-        },
-    )
-    .await
-    {
-        return result;
+        if login_choice == "wegame.loginMode" {
+            if let Err(result) = run_step(
+                driver,
+                LoginStep::OpenLoginForm,
+                &config.account_id,
+                &cancelled,
+                &mut on_step,
+                driver.click("wegame.loginMode", cancelled.clone()),
+            )
+            .await
+            {
+                return result;
+            }
+        }
+
+        if let Err(result) = run_step(
+            driver,
+            LoginStep::OpenAccountList,
+            &config.account_id,
+            &cancelled,
+            &mut on_step,
+            async {
+                driver
+                    .wait_for_any(&["wegame.loginFormReady"], cancelled.clone())
+                    .await?;
+                driver
+                    .click("wegame.accountDropdown", cancelled.clone())
+                    .await
+            },
+        )
+        .await
+        {
+            return result;
+        }
+
+        match run_account_selection(driver, config, &cancelled, &mut on_step).await {
+            Ok(()) => break,
+            Err(SelectionAttemptFailure::Flow(result)) => return result,
+            Err(SelectionAttemptFailure::Manual { .. }) if attempt == 0 => continue,
+            Err(SelectionAttemptFailure::Manual {
+                actual_qq,
+                failed_step,
+            }) => {
+                return LoginFlowResult::NeedsManualLogin {
+                    account_id: config.account_id.clone(),
+                    target_qq: config.qq_account.clone(),
+                    actual_qq,
+                    failed_step,
+                    failed_at: now_ms(),
+                }
+            }
+        }
     }
 
     if let Err(result) = run_step(
@@ -326,6 +327,100 @@ where
     }
 }
 
+enum SelectionAttemptFailure {
+    Flow(LoginFlowResult),
+    Manual {
+        actual_qq: Option<String>,
+        failed_step: LoginStep,
+    },
+}
+
+async fn run_account_selection<D, F>(
+    driver: &D,
+    config: &LoginRunConfig,
+    cancelled: &Arc<AtomicBool>,
+    on_step: &mut F,
+) -> Result<(), SelectionAttemptFailure>
+where
+    D: LoginDriver + ?Sized,
+    F: FnMut(LoginStep),
+{
+    driver.reset_observation();
+    let current_step = std::sync::Mutex::new(LoginStep::ScanRememberedAccounts);
+    on_step(LoginStep::ScanRememberedAccounts);
+    let selection =
+        select_remembered_account(driver, &config.qq_account, Arc::clone(cancelled), |phase| {
+            let step = match phase {
+                AccountSelectionPhase::Select => LoginStep::SelectRememberedAccount,
+                AccountSelectionPhase::Verify => LoginStep::VerifySelectedAccount,
+            };
+            *current_step
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = step;
+            on_step(step);
+        });
+    tokio::pin!(selection);
+    let timeout = tokio::time::sleep(STEP_TIMEOUT);
+    tokio::pin!(timeout);
+    tokio::select! {
+        biased;
+        _ = wait_for_cancellation(cancelled) => {
+            Err(SelectionAttemptFailure::Flow(emergency_stopped(&config.account_id)))
+        }
+        result = &mut selection => match result {
+            Ok(()) => Ok(()),
+            Err(AccountSelectionError::NotFound) => Err(SelectionAttemptFailure::Manual {
+                actual_qq: None,
+                failed_step: LoginStep::ScanRememberedAccounts,
+            }),
+            Err(AccountSelectionError::Mismatch { actual }) => Err(SelectionAttemptFailure::Manual {
+                actual_qq: Some(actual),
+                failed_step: LoginStep::VerifySelectedAccount,
+            }),
+            Err(AccountSelectionError::Driver(error)) => {
+                let failed_step = *current_step
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if failed_step == LoginStep::VerifySelectedAccount {
+                    if let Some(actual_qq) = copied_account_from_verification_error(&error) {
+                        return Err(SelectionAttemptFailure::Manual {
+                            actual_qq,
+                            failed_step,
+                        });
+                    }
+                }
+                Err(SelectionAttemptFailure::Flow(paused(
+                    driver,
+                    &failed_step,
+                    "账号选择步骤执行失败",
+                )))
+            }
+        },
+        _ = &mut timeout => {
+            if cancelled.load(Ordering::SeqCst) {
+                Err(SelectionAttemptFailure::Flow(emergency_stopped(&config.account_id)))
+            } else {
+                Err(SelectionAttemptFailure::Flow(paused(
+                    driver,
+                    &current_step
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                    "账号选择步骤超时",
+                )))
+            }
+        }
+    }
+}
+
+fn copied_account_from_verification_error(error: &str) -> Option<Option<String>> {
+    if error == "剪贴板未出现 QQ 文本" {
+        return Some(None);
+    }
+    error
+        .strip_prefix("剪贴板内容不是纯数字 QQ: ")
+        .map(|actual| Some(actual.trim().to_string()))
+}
+
 async fn run_step<D, T, F, Fut>(
     driver: &D,
     step: LoginStep,
@@ -340,7 +435,7 @@ where
     Fut: Future<Output = Result<T, String>>,
 {
     driver.reset_observation();
-    on_step(step.clone());
+    on_step(step);
     let timeout = tokio::time::sleep(STEP_TIMEOUT);
     tokio::pin!(timeout);
     tokio::select! {
@@ -365,7 +460,7 @@ where
 
 fn paused(driver: &(impl LoginDriver + ?Sized), step: &LoginStep, kind: &str) -> LoginFlowResult {
     LoginFlowResult::Paused {
-        failed_step: step.clone(),
+        failed_step: *step,
         last_observation: format_observation(kind, driver.last_observation()),
         failed_at: now_ms(),
     }
@@ -435,7 +530,6 @@ mod tests {
         StartWeGame,
         Wait(Vec<String>),
         Click(String),
-        Replace(String),
         FindWindow,
     }
 
@@ -449,7 +543,7 @@ mod tests {
         wait_calls: AtomicUsize,
         find_calls: AtomicUsize,
         fail_wait_call: AtomicUsize,
-        fail_replace_target: Mutex<Option<String>>,
+        copied_accounts: Mutex<VecDeque<Result<String, String>>>,
         block_wait_call: AtomicUsize,
         cancel_error_wait_call: AtomicUsize,
         block_click_target: Mutex<Option<String>>,
@@ -471,7 +565,7 @@ mod tests {
                 wait_calls: AtomicUsize::new(0),
                 find_calls: AtomicUsize::new(0),
                 fail_wait_call: AtomicUsize::new(0),
-                fail_replace_target: Mutex::new(None),
+                copied_accounts: Mutex::new(VecDeque::new()),
                 block_wait_call: AtomicUsize::new(0),
                 cancel_error_wait_call: AtomicUsize::new(0),
                 block_click_target: Mutex::new(None),
@@ -588,30 +682,6 @@ mod tests {
             Ok(())
         }
 
-        async fn replace_text(
-            &self,
-            target_key: &str,
-            _: &str,
-            _: Arc<AtomicBool>,
-        ) -> Result<(), String> {
-            self.actions
-                .lock()
-                .unwrap()
-                .push(Action::Replace(target_key.to_string()));
-            self.delay().await;
-            if self
-                .fail_replace_target
-                .lock()
-                .unwrap()
-                .as_deref()
-                .is_some_and(|failed| failed == target_key)
-            {
-                *self.last_observation.lock().unwrap() = LoginObservation::CaptureFailed;
-                return Err("RAW_DRIVER_SECRET|123456789|C:\\private\\game.exe".to_string());
-            }
-            Ok(())
-        }
-
         async fn find_process_window(&self, _: &Path) -> Result<Option<WindowIdentity>, String> {
             self.actions.lock().unwrap().push(Action::FindWindow);
             self.find_calls.fetch_add(1, Ordering::SeqCst);
@@ -624,20 +694,62 @@ mod tests {
         }
     }
 
+    impl RememberedAccountDriver for FakeDriver {
+        async fn sample_accounts(
+            &self,
+            _: Arc<AtomicBool>,
+        ) -> Result<Vec<super::super::windows_ocr::OcrWord>, String> {
+            Ok(vec![super::super::windows_ocr::OcrWord::new(
+                "123456789",
+                super::super::windows_ocr::OcrBounds::new(10.0, 20.0, 80.0, 18.0),
+            )])
+        }
+
+        async fn scroll_down(&self, _: Arc<AtomicBool>) -> Result<(), String> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(Action::Click("scroll".to_string()));
+            Ok(())
+        }
+
+        async fn select_bounds(
+            &self,
+            _: super::super::windows_ocr::OcrBounds,
+            _: Arc<AtomicBool>,
+        ) -> Result<(), String> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(Action::Click("ocr-account".to_string()));
+            Ok(())
+        }
+
+        async fn copy_selected_qq(&self, _: Arc<AtomicBool>) -> Result<String, String> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(Action::Click("copy-account".to_string()));
+            self.copied_accounts
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| Ok("123456789".to_string()))
+        }
+    }
+
     fn config() -> LoginRunConfig {
         LoginRunConfig {
             account_id: "account-id".to_string(),
             qq_account: "123456789".to_string(),
-            password: "secret-password".to_string(),
             wegame_executable_path: "wegame.exe".into(),
             game_executable_path: "game.exe".into(),
             targets: Default::default(),
         }
     }
 
-    fn ready_waits() -> [&'static str; 5] {
+    fn ready_waits() -> [&'static str; 4] {
         [
-            "wegame.loginFormReady",
             "wegame.loginFormReady",
             "wegame.loginFormReady",
             "wegame.gameEntry",
@@ -651,12 +763,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn login_button_is_submitted_once_and_never_replayed_after_timeout() {
-        let driver = FakeDriver::with_waits([
-            "wegame.loginFormReady",
-            "wegame.loginFormReady",
-            "wegame.loginFormReady",
-        ]);
-        driver.block_wait_call.store(4, Ordering::SeqCst);
+        let driver = FakeDriver::with_waits(["wegame.loginFormReady", "wegame.loginFormReady"]);
+        driver.block_wait_call.store(3, Ordering::SeqCst);
 
         let result = run(&driver).await;
 
@@ -675,32 +783,19 @@ mod tests {
                 .count(),
             1
         );
-        assert_eq!(
-            driver
-                .actions()
-                .iter()
-                .filter(|action| matches!(action, Action::Replace(_)))
-                .count(),
-            2
-        );
     }
 
     #[tokio::test(start_paused = true)]
     async fn wait_game_entry_timeout_preserves_latest_template_samples() {
-        let driver = FakeDriver::with_waits([
-            "wegame.loginFormReady",
-            "wegame.loginFormReady",
-            "wegame.loginFormReady",
-        ]);
+        let driver = FakeDriver::with_waits(["wegame.loginFormReady", "wegame.loginFormReady"]);
         driver.wait_observations.lock().unwrap().extend([
             LoginObservation::CaptureFailed,
-            LoginObservation::None,
             LoginObservation::None,
             LoginObservation::TemplateSamples {
                 samples: [0.41, 0.42],
             },
         ]);
-        driver.block_wait_call.store(4, Ordering::SeqCst);
+        driver.block_wait_call.store(3, Ordering::SeqCst);
 
         let result = run(&driver).await;
 
@@ -770,10 +865,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn action_order_rebuilds_session_before_credentials() {
+    async fn action_order_rebuilds_session_before_remembered_account_selection() {
         let driver = FakeDriver::with_waits([
             "wegame.loginMode",
-            "wegame.loginFormReady",
             "wegame.loginFormReady",
             "wegame.gameEntry",
             "wegame.launch",
@@ -794,9 +888,9 @@ mod tests {
                 ]),
                 Action::Click("wegame.loginMode".to_string()),
                 Action::Wait(vec!["wegame.loginFormReady".to_string()]),
-                Action::Replace("wegame.account".to_string()),
-                Action::Wait(vec!["wegame.loginFormReady".to_string()]),
-                Action::Replace("wegame.password".to_string()),
+                Action::Click("wegame.accountDropdown".to_string()),
+                Action::Click("ocr-account".to_string()),
+                Action::Click("copy-account".to_string()),
                 Action::Click("wegame.login".to_string()),
                 Action::Wait(vec!["wegame.gameEntry".to_string()]),
                 Action::Click("wegame.gameEntry".to_string()),
@@ -808,7 +902,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn credentials_each_revalidate_ready_form_and_actions_do_not_store_values() {
+    async fn remembered_account_selection_revalidates_form_once_and_stores_no_credential_value() {
         let driver = FakeDriver::with_waits(ready_waits());
 
         let result = run(&driver).await;
@@ -822,7 +916,7 @@ mod tests {
                     action == &&Action::Wait(vec!["wegame.loginFormReady".to_string()])
                 })
                 .count(),
-            2
+            1
         );
         let snapshot = format!("{actions:?}");
         assert!(!snapshot.contains("123456789"));
@@ -900,36 +994,80 @@ mod tests {
         assert!(matches!(result, LoginFlowResult::EmergencyStopped { .. }));
         assert!(!driver
             .actions()
-            .iter()
-            .any(|action| matches!(action, Action::Replace(_))));
+            .contains(&Action::Click("wegame.login".to_string())));
     }
 
     #[tokio::test]
-    async fn driver_error_maps_to_current_step_without_leaking_error_details() {
-        let driver = FakeDriver::with_waits(["wegame.loginFormReady", "wegame.loginFormReady"]);
-        *driver.fail_replace_target.lock().unwrap() = Some("wegame.account".to_string());
+    async fn mismatched_copy_restarts_once_then_requires_manual_login() {
+        let driver = FakeDriver::with_waits([
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+        ]);
+        driver
+            .copied_accounts
+            .lock()
+            .unwrap()
+            .extend([Ok("111111".to_string()), Ok("222222".to_string())]);
 
         let result = run(&driver).await;
 
-        let LoginFlowResult::Paused {
+        let LoginFlowResult::NeedsManualLogin {
             failed_step,
-            last_observation,
+            actual_qq,
             ..
         } = &result
         else {
-            panic!("预期流程暂停");
+            panic!("预期账号转为需要人工登录");
         };
-        assert_eq!(*failed_step, LoginStep::InputAccount);
-        assert!(last_observation.contains("截图失败"));
-        assert!(!last_observation.contains("secret-password"));
-        assert!(!last_observation.contains("123456789"));
-        assert!(!last_observation.contains("game.exe"));
-        assert!(!last_observation.contains("RAW_DRIVER_SECRET"));
+        assert_eq!(*failed_step, LoginStep::VerifySelectedAccount);
+        assert_eq!(actual_qq.as_deref(), Some("222222"));
+        assert_eq!(
+            driver
+                .actions()
+                .iter()
+                .filter(|action| action == &&Action::StartWeGame)
+                .count(),
+            2
+        );
         let json = serde_json::to_string(&result).unwrap();
         assert!(!json.contains("secret-password"));
-        assert!(!json.contains("123456789"));
         assert!(!json.contains("game.exe"));
         assert!(!json.contains("RAW_DRIVER_SECRET"));
+    }
+
+    #[tokio::test]
+    async fn missing_copied_qq_restarts_once_then_requires_manual_login() {
+        let driver = FakeDriver::with_waits([
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+            "wegame.loginFormReady",
+        ]);
+        driver.copied_accounts.lock().unwrap().extend([
+            Err("剪贴板未出现 QQ 文本".to_string()),
+            Err("剪贴板未出现 QQ 文本".to_string()),
+        ]);
+
+        let result = run(&driver).await;
+
+        assert!(matches!(
+            result,
+            LoginFlowResult::NeedsManualLogin {
+                failed_step: LoginStep::VerifySelectedAccount,
+                actual_qq: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            driver
+                .actions()
+                .iter()
+                .filter(|action| action == &&Action::StartWeGame)
+                .count(),
+            2
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -981,7 +1119,6 @@ mod tests {
         let driver = FakeDriver::with_waits([
             "wegame.loginMode",
             "wegame.loginFormReady",
-            "wegame.loginFormReady",
             "wegame.gameEntry",
             "wegame.launch",
         ]);
@@ -1004,8 +1141,10 @@ mod tests {
                 LoginStep::StartWeGame,
                 LoginStep::WaitLoginChoice,
                 LoginStep::OpenLoginForm,
-                LoginStep::InputAccount,
-                LoginStep::InputPassword,
+                LoginStep::OpenAccountList,
+                LoginStep::ScanRememberedAccounts,
+                LoginStep::SelectRememberedAccount,
+                LoginStep::VerifySelectedAccount,
                 LoginStep::SubmitLogin,
                 LoginStep::WaitGameEntry,
                 LoginStep::OpenGameEntry,

@@ -526,7 +526,7 @@ export function SpecialOpsPage() {
                             value={selectedAccountId ?? ""}
                             onChange={(event) => setSelectedAccountId(event.target.value || null)}
                         >
-                            {eligibleAccounts.length === 0 && <option value="">无启用且凭据完整的账号</option>}
+                            {eligibleAccounts.length === 0 && <option value="">无启用且 QQ 为纯数字的账号</option>}
                             {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.qqAccount}</option>)}
                         </select>
                     </fieldset>
@@ -560,7 +560,7 @@ export function SpecialOpsPage() {
                         <div className="flex items-center gap-2 text-sm"><span>启用</span><Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/><Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button></div>
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <label className="form-control gap-1"><span className="label-text">QQ 账号</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/></label>
+                        <label className="form-control gap-1"><span className="label-text">QQ 账号（纯数字）</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/><span className="text-xs text-base-content/60">需提前在 WeGame 登录并勾选“记住密码”</span></label>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {account.stations.map((station) => <div key={station.kind} className="rounded-box bg-base-200 p-3">

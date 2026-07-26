@@ -18,13 +18,6 @@ const INPUT_CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const DOUBLE_CLICK_GAP_MS: u64 = 80;
 const COPY_AFTER_DOUBLE_CLICK_DELAY_MS: u64 = 100;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TextInputTiming {
-    pub focus_delay_ms: u64,
-    pub char_delay_ms: u64,
-    pub settle_delay_ms: u64,
-}
-
 #[derive(Default)]
 struct InputActionState {
     tracked_keys: Vec<Key>,
@@ -272,9 +265,7 @@ fn scroll_region_down_with_emitter<E: InputEmitter>(
     run_cancellable_input_action(cancelled, generation, |_| {
         emitter.move_mouse(center_x, center_y)
     })?;
-    run_cancellable_input_action(cancelled, generation, |_| {
-        emitter.scroll_vertical(steps)
-    })
+    run_cancellable_input_action(cancelled, generation, |_| emitter.scroll_vertical(steps))
 }
 
 #[allow(dead_code)]
@@ -291,11 +282,7 @@ fn double_click_region_and_copy_with_emitter<E: InputEmitter>(
     run_cancellable_input_action(cancelled, generation, |_| emitter.click_left())?;
     wait_cancellable_input_delay(cancelled, generation, DOUBLE_CLICK_GAP_MS)?;
     run_cancellable_input_action(cancelled, generation, |_| emitter.click_left())?;
-    wait_cancellable_input_delay(
-        cancelled,
-        generation,
-        COPY_AFTER_DOUBLE_CLICK_DELAY_MS,
-    )?;
+    wait_cancellable_input_delay(cancelled, generation, COPY_AFTER_DOUBLE_CLICK_DELAY_MS)?;
 
     let mut ctrl = TrackedModifierGuard::new(emitter, cancelled, generation);
     ctrl.press(Key::Control)?;
@@ -303,40 +290,6 @@ fn double_click_region_and_copy_with_emitter<E: InputEmitter>(
         emitter.key(Key::Unicode('c'), Direction::Click)
     })?;
     ctrl.release(&Key::Control)
-}
-
-#[allow(dead_code)]
-fn replace_text_with_emitter_locked<E: InputEmitter, F: FnOnce()>(
-    emitter: &E,
-    region: &crate::morse::types::RegionRect,
-    value: &str,
-    timing: TextInputTiming,
-    cancelled: &AtomicBool,
-    generation: u64,
-    after_ctrl_pressed: F,
-) -> Result<(), String> {
-    click_region_center_with_emitter(emitter, region, cancelled, generation)?;
-    wait_cancellable_input_delay(cancelled, generation, timing.focus_delay_ms)?;
-
-    let mut ctrl = TrackedModifierGuard::new(emitter, cancelled, generation);
-    ctrl.press(Key::Control)?;
-    after_ctrl_pressed();
-    run_cancellable_input_action(cancelled, generation, |_| {
-        emitter.key(Key::Unicode('a'), Direction::Click)
-    })?;
-    run_cancellable_input_action(cancelled, generation, |_| {
-        emitter.key(Key::Backspace, Direction::Click)
-    })?;
-    ctrl.release(&Key::Control)?;
-
-    for ch in value.chars() {
-        run_cancellable_input_action(cancelled, generation, |_| {
-            emitter.key(Key::Unicode(ch), Direction::Click)
-        })?;
-        wait_cancellable_input_delay(cancelled, generation, timing.char_delay_ms)?;
-    }
-
-    wait_cancellable_input_delay(cancelled, generation, timing.settle_delay_ms)
 }
 
 async fn run_serialized_input<F, T>(operation: F) -> Result<T, String>
@@ -362,52 +315,6 @@ where
     let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
     let _guard = lock.lock().await;
     operation().await
-}
-
-#[cfg(test)]
-async fn replace_text_with_emitter<E: InputEmitter>(
-    emitter: &E,
-    region: &crate::morse::types::RegionRect,
-    value: &str,
-    timing: TextInputTiming,
-    cancelled: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
-    let _guard = lock.lock().await;
-    replace_text_with_emitter_locked(
-        emitter,
-        region,
-        value,
-        timing,
-        &cancelled,
-        input_release_generation(),
-        || {},
-    )
-}
-
-#[cfg(test)]
-async fn replace_text_with_emitter_after_ctrl_press<E: InputEmitter, F: FnOnce()>(
-    emitter: &E,
-    region: &crate::morse::types::RegionRect,
-    value: &str,
-    cancelled: Arc<AtomicBool>,
-    after_ctrl_pressed: F,
-) -> Result<(), String> {
-    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
-    let _guard = lock.lock().await;
-    replace_text_with_emitter_locked(
-        emitter,
-        region,
-        value,
-        TextInputTiming {
-            focus_delay_ms: 0,
-            char_delay_ms: 0,
-            settle_delay_ms: 0,
-        },
-        &cancelled,
-        input_release_generation(),
-        after_ctrl_pressed,
-    )
 }
 
 #[allow(dead_code)]
@@ -460,49 +367,6 @@ pub async fn double_click_region_and_copy_cancellable(
     run_serialized_input(move || {
         let emitter = EnigoInputEmitter::new()?;
         double_click_region_and_copy_with_emitter(&emitter, &region, &cancelled, generation)
-    })
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn replace_text_at_region_cancellable(
-    region: crate::morse::types::RegionRect,
-    value: String,
-    char_delay_ms: u64,
-    cancelled: Arc<AtomicBool>,
-) -> Result<(), String> {
-    replace_text_at_region_with_timing_cancellable(
-        region,
-        value,
-        TextInputTiming {
-            focus_delay_ms: 0,
-            char_delay_ms,
-            settle_delay_ms: 0,
-        },
-        cancelled,
-    )
-    .await
-}
-
-#[allow(dead_code)]
-pub async fn replace_text_at_region_with_timing_cancellable(
-    region: crate::morse::types::RegionRect,
-    value: String,
-    timing: TextInputTiming,
-    cancelled: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let generation = input_release_generation();
-    run_serialized_input(move || {
-        let emitter = EnigoInputEmitter::new()?;
-        replace_text_with_emitter_locked(
-            &emitter,
-            &region,
-            &value,
-            timing,
-            &cancelled,
-            generation,
-            || {},
-        )
     })
     .await
 }
@@ -863,11 +727,7 @@ fn named_to_key(named: NamedKey) -> Key {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc, Arc, Mutex as StdMutex,
-    };
-    use std::time::Instant;
+    use std::sync::{atomic::AtomicBool, Arc, Mutex as StdMutex};
     use tokio::sync::{oneshot, Mutex};
 
     static INPUT_SIMULATION_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -884,33 +744,10 @@ mod tests {
         action_count: StdMutex<usize>,
         events: StdMutex<Vec<String>>,
         scrolls: StdMutex<Vec<i32>>,
-        characters: StdMutex<Vec<char>>,
         pressed_keys: StdMutex<Vec<Key>>,
-        ctrl_release_count: StdMutex<usize>,
-        clicked_at: StdMutex<Option<Instant>>,
-        first_character_at: StdMutex<Option<Instant>>,
-        fail_ctrl_release: AtomicBool,
-        cancel_after_character: StdMutex<Option<(usize, Arc<AtomicBool>)>>,
-        notify_after_character: StdMutex<Option<(usize, mpsc::Sender<()>)>>,
     }
 
     impl RecordingEmitter {
-        fn cancel_after_character(&self, count: usize, cancelled: Arc<AtomicBool>) {
-            *self.cancel_after_character.lock().unwrap() = Some((count, cancelled));
-        }
-
-        fn characters(&self) -> Vec<char> {
-            self.characters.lock().unwrap().clone()
-        }
-
-        fn notify_after_character(&self, count: usize, sender: mpsc::Sender<()>) {
-            *self.notify_after_character.lock().unwrap() = Some((count, sender));
-        }
-
-        fn action_count(&self) -> usize {
-            *self.action_count.lock().unwrap()
-        }
-
         fn events(&self) -> Vec<String> {
             self.events.lock().unwrap().clone()
         }
@@ -919,24 +756,8 @@ mod tests {
             self.scrolls.lock().unwrap().clone()
         }
 
-        fn set_fail_ctrl_release(&self, fail: bool) {
-            self.fail_ctrl_release.store(fail, Ordering::SeqCst);
-        }
-
         fn pressed_keys(&self) -> Vec<Key> {
             self.pressed_keys.lock().unwrap().clone()
-        }
-
-        fn ctrl_release_count(&self) -> usize {
-            *self.ctrl_release_count.lock().unwrap()
-        }
-
-        fn clicked_at(&self) -> Option<Instant> {
-            *self.clicked_at.lock().unwrap()
-        }
-
-        fn first_character_at(&self) -> Option<Instant> {
-            *self.first_character_at.lock().unwrap()
         }
     }
 
@@ -949,7 +770,6 @@ mod tests {
 
         fn click_left(&self) -> Result<(), String> {
             *self.action_count.lock().unwrap() += 1;
-            *self.clicked_at.lock().unwrap() = Some(Instant::now());
             self.events.lock().unwrap().push("click".to_string());
             Ok(())
         }
@@ -967,44 +787,11 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(format!("key:{key:?}:{direction:?}"));
-            if key == Key::Control
-                && direction == Direction::Release
-                && self.fail_ctrl_release.load(Ordering::SeqCst)
-            {
-                return Err("测试 Ctrl release 失败".to_string());
-            }
             match (key, direction) {
-                (Key::Unicode(ch), Direction::Click) => {
-                    if self.pressed_keys.lock().unwrap().contains(&Key::Control) {
-                        return Ok(());
-                    }
-                    let character_count = {
-                        let mut characters = self.characters.lock().unwrap();
-                        let mut first_character_at = self.first_character_at.lock().unwrap();
-                        first_character_at.get_or_insert_with(Instant::now);
-                        characters.push(ch);
-                        characters.len()
-                    };
-                    if let Some((count, cancelled)) =
-                        self.cancel_after_character.lock().unwrap().clone()
-                    {
-                        if character_count >= count {
-                            cancelled.store(true, Ordering::SeqCst);
-                        }
-                    }
-                    if let Some((count, notifier)) =
-                        self.notify_after_character.lock().unwrap().clone()
-                    {
-                        if character_count >= count {
-                            let _ = notifier.send(());
-                        }
-                    }
-                }
                 (Key::Control, Direction::Press) => {
                     self.pressed_keys.lock().unwrap().push(Key::Control);
                 }
                 (Key::Control, Direction::Release) => {
-                    *self.ctrl_release_count.lock().unwrap() += 1;
                     self.pressed_keys
                         .lock()
                         .unwrap()
@@ -1014,115 +801,6 @@ mod tests {
             }
             Ok(())
         }
-    }
-
-    struct SharedRecordingEmitter(Arc<RecordingEmitter>);
-
-    impl InputEmitter for SharedRecordingEmitter {
-        fn move_mouse(&self, x: i32, y: i32) -> Result<(), String> {
-            self.0.move_mouse(x, y)
-        }
-
-        fn click_left(&self) -> Result<(), String> {
-            self.0.click_left()
-        }
-
-        fn key(&self, key: Key, direction: Direction) -> Result<(), String> {
-            self.0.key(key, direction)
-        }
-    }
-
-    struct FailingReleaseEmitter {
-        action_count: Arc<AtomicUsize>,
-    }
-
-    impl InputEmitter for FailingReleaseEmitter {
-        fn move_mouse(&self, _: i32, _: i32) -> Result<(), String> {
-            Ok(())
-        }
-
-        fn click_left(&self) -> Result<(), String> {
-            Ok(())
-        }
-
-        fn key(&self, _: Key, _: Direction) -> Result<(), String> {
-            self.action_count.fetch_add(1, Ordering::SeqCst);
-            Err("测试 emergency release 失败".to_string())
-        }
-    }
-
-    fn assert_failed_emergency_release_waits_for_guard_cleanup<E, F>(
-        mut factory: F,
-        emergency_action_count: Arc<AtomicUsize>,
-        guard_release_fails: bool,
-    ) where
-        E: InputEmitter + Send + 'static,
-        F: FnMut() -> Result<E, String> + Send + 'static,
-    {
-        let emitter = Arc::new(RecordingEmitter::default());
-        emitter.set_fail_ctrl_release(guard_release_fails);
-        let typing_emitter = Arc::clone(&emitter);
-        let typing_cancelled = Arc::new(AtomicBool::new(false));
-        let typing_region = rect();
-        let (ctrl_pressed_tx, ctrl_pressed_rx) = mpsc::channel();
-        let (release_barrier_tx, release_barrier_rx) = mpsc::channel();
-
-        let typing = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .unwrap();
-            runtime.block_on(replace_text_with_emitter_after_ctrl_press(
-                typing_emitter.as_ref(),
-                &typing_region,
-                "12",
-                typing_cancelled,
-                move || {
-                    ctrl_pressed_tx.send(()).unwrap();
-                    release_barrier_rx
-                        .recv_timeout(Duration::from_secs(1))
-                        .expect("emergency release 未建立 action-state barrier");
-                },
-            ))
-        });
-
-        ctrl_pressed_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("Ctrl 未按下");
-
-        let release_emitter = Arc::clone(&emitter);
-        let release_action_count = Arc::clone(&emergency_action_count);
-        let (release_done_tx, release_done_rx) = mpsc::channel();
-        let release = std::thread::spawn(move || {
-            release_tracked_injected_inputs_with_factory(move || {
-                let _ = release_barrier_tx.send(());
-                factory()
-            });
-            release_done_tx
-                .send((
-                    release_emitter.action_count(),
-                    release_action_count.load(Ordering::SeqCst),
-                ))
-                .unwrap();
-        });
-
-        let action_counts_at_return = release_done_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("emergency release 未等待 guard cleanup 后返回");
-        let typing_result = typing.join().expect("旧输入任务 panic");
-        release.join().expect("emergency release 线程 panic");
-
-        assert_eq!(typing_result, Err("输入操作已取消".to_string()));
-        assert_eq!(action_counts_at_return.0, emitter.action_count());
-        assert_eq!(
-            action_counts_at_return.1,
-            emergency_action_count.load(Ordering::SeqCst)
-        );
-        assert_eq!(
-            emitter.ctrl_release_count(),
-            usize::from(!guard_release_fails)
-        );
-        assert!(lock_input_action_state().tracked_keys.is_empty());
     }
 
     fn rect() -> crate::morse::types::RegionRect {
@@ -1161,7 +839,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(emitter.events().first().map(String::as_str), Some("move:140:215"));
+        assert_eq!(
+            emitter.events().first().map(String::as_str),
+            Some("move:140:215")
+        );
         assert_eq!(emitter.scrolls(), vec![3]);
     }
 
@@ -1231,173 +912,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn cancelled_replace_text_stops_before_next_character_and_releases_ctrl() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emitter = RecordingEmitter::default();
-        let cancel = Arc::new(AtomicBool::new(false));
-        emitter.cancel_after_character(1, cancel.clone());
-
-        replace_text_with_emitter(
-            &emitter,
-            &rect(),
-            "12345",
-            TextInputTiming {
-                focus_delay_ms: 0,
-                char_delay_ms: 0,
-                settle_delay_ms: 0,
-            },
-            cancel,
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(emitter.characters(), vec!['1']);
-        assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
-    }
-
-    #[tokio::test]
-    async fn replace_text_waits_for_focus_and_settle() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emitter = RecordingEmitter::default();
-        let started_at = Instant::now();
-
-        replace_text_with_emitter(
-            &emitter,
-            &rect(),
-            "1",
-            TextInputTiming {
-                focus_delay_ms: 40,
-                char_delay_ms: 0,
-                settle_delay_ms: 30,
-            },
-            Arc::new(AtomicBool::new(false)),
-        )
-        .await
-        .unwrap();
-
-        let clicked_at = emitter.clicked_at().expect("未记录输入框点击");
-        let first_character_at = emitter.first_character_at().expect("未记录首字符输入");
-        assert!(first_character_at.duration_since(clicked_at) >= Duration::from_millis(30));
-        assert!(started_at.elapsed() >= Duration::from_millis(60));
-    }
-
-    #[tokio::test]
-    async fn emergency_release_interrupts_settle_delay() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emitter = Arc::new(RecordingEmitter::default());
-        let (first_character_tx, first_character_rx) = mpsc::channel();
-        emitter.notify_after_character(1, first_character_tx);
-
-        let typing_emitter = Arc::clone(&emitter);
-        let typing_cancelled = Arc::new(AtomicBool::new(false));
-        let typing_region = rect();
-        let typing = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .unwrap();
-            runtime.block_on(replace_text_with_emitter(
-                typing_emitter.as_ref(),
-                &typing_region,
-                "1",
-                TextInputTiming {
-                    focus_delay_ms: 0,
-                    char_delay_ms: 0,
-                    settle_delay_ms: 500,
-                },
-                typing_cancelled,
-            ))
-        });
-
-        first_character_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("首字符未输入");
-        let released_at = Instant::now();
-        release_tracked_injected_inputs_with_factory(|| {
-            Ok(SharedRecordingEmitter(Arc::clone(&emitter)))
-        });
-
-        assert_eq!(typing.join().unwrap(), Err("输入操作已取消".to_string()));
-        assert!(released_at.elapsed() < Duration::from_millis(100));
-    }
-
-    #[tokio::test]
-    async fn emergency_release_after_ctrl_press_stops_before_selection_and_releases_ctrl() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emitter = Arc::new(RecordingEmitter::default());
-        let release_emitter = Arc::clone(&emitter);
-        let cancel = Arc::new(AtomicBool::new(false));
-        let action_count_after_release = Arc::new(StdMutex::new(None));
-        let release_action_count = Arc::clone(&action_count_after_release);
-
-        let error = replace_text_with_emitter_after_ctrl_press(
-            emitter.as_ref(),
-            &rect(),
-            "12345",
-            cancel,
-            move || {
-                release_tracked_injected_inputs_with_factory(|| {
-                    Ok(SharedRecordingEmitter(Arc::clone(&release_emitter)))
-                });
-                *release_action_count.lock().unwrap() = Some(release_emitter.action_count());
-            },
-        )
-        .await
-        .unwrap_err();
-
-        assert_eq!(error, "输入操作已取消");
-        assert!(emitter.characters().is_empty());
-        assert_eq!(emitter.pressed_keys(), Vec::<Key>::new());
-        assert_eq!(emitter.ctrl_release_count(), 1);
-        assert_eq!(
-            *action_count_after_release.lock().unwrap(),
-            Some(emitter.action_count())
-        );
-    }
-
-    #[tokio::test]
-    async fn emergency_emitter_init_failure_waits_for_guard_cleanup() {
-        let _test_guard = lock_input_simulation_tests().await;
-        assert_failed_emergency_release_waits_for_guard_cleanup::<FailingReleaseEmitter, _>(
-            || Err("测试 emitter 初始化失败".to_string()),
-            Arc::new(AtomicUsize::new(0)),
-            false,
-        );
-    }
-
-    #[tokio::test]
-    async fn emergency_key_release_failure_waits_for_guard_cleanup() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emergency_action_count = Arc::new(AtomicUsize::new(0));
-        let factory_action_count = Arc::clone(&emergency_action_count);
-        assert_failed_emergency_release_waits_for_guard_cleanup(
-            move || {
-                Ok(FailingReleaseEmitter {
-                    action_count: Arc::clone(&factory_action_count),
-                })
-            },
-            emergency_action_count,
-            false,
-        );
-    }
-
-    #[tokio::test]
-    async fn repeated_emergency_and_guard_release_failures_do_not_wait_forever() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emergency_action_count = Arc::new(AtomicUsize::new(0));
-        let factory_action_count = Arc::clone(&emergency_action_count);
-        assert_failed_emergency_release_waits_for_guard_cleanup(
-            move || {
-                Ok(FailingReleaseEmitter {
-                    action_count: Arc::clone(&factory_action_count),
-                })
-            },
-            emergency_action_count,
-            true,
-        );
-    }
-
     #[test]
     fn reclaims_poisoned_input_action_state_mutex() {
         let state = Arc::new(StdMutex::new(InputActionState::default()));
@@ -1412,62 +926,5 @@ mod tests {
         let mut recovered = lock_recover(state.as_ref());
         track_injected_key(&mut recovered, Key::Control);
         assert_eq!(recovered.tracked_keys, vec![Key::Control]);
-    }
-
-    #[tokio::test]
-    async fn emergency_release_interrupts_character_delay_and_unblocks_next_input_job() {
-        let _test_guard = lock_input_simulation_tests().await;
-        let emitter = Arc::new(RecordingEmitter::default());
-        let (first_character_tx, first_character_rx) = mpsc::channel();
-        emitter.notify_after_character(1, first_character_tx);
-
-        let typing_emitter = Arc::clone(&emitter);
-        let typing_cancelled = Arc::new(AtomicBool::new(false));
-        let typing_region = rect();
-        let typing = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .unwrap();
-            runtime.block_on(replace_text_with_emitter(
-                typing_emitter.as_ref(),
-                &typing_region,
-                "12",
-                TextInputTiming {
-                    focus_delay_ms: 0,
-                    char_delay_ms: 500,
-                    settle_delay_ms: 0,
-                },
-                typing_cancelled,
-            ))
-        });
-
-        first_character_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("首字符未输入");
-
-        let next_job_acquired_at = Arc::new(StdMutex::new(None));
-        let next_job_acquired_at_for_task = Arc::clone(&next_job_acquired_at);
-        let next_job = tokio::spawn(run_serialized_input_for_test(move || async move {
-            *next_job_acquired_at_for_task.lock().unwrap() = Some(Instant::now());
-            Ok(())
-        }));
-
-        let released_at = Instant::now();
-        release_tracked_injected_inputs_with_factory(|| {
-            Ok(SharedRecordingEmitter(Arc::clone(&emitter)))
-        });
-
-        assert_eq!(typing.join().unwrap(), Err("输入操作已取消".to_string()));
-        next_job.await.unwrap().unwrap();
-        let next_job_delay = next_job_acquired_at
-            .lock()
-            .unwrap()
-            .expect("下一输入任务未取得串行锁")
-            .duration_since(released_at);
-        assert!(
-            next_job_delay < Duration::from_millis(100),
-            "紧急释放后串行锁延迟 {next_job_delay:?}"
-        );
     }
 }

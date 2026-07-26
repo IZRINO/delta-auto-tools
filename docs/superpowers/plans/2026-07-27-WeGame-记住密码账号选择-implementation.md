@@ -8,6 +8,8 @@
 
 **Tech Stack:** Rust 2021、Tokio、Windows Runtime OCR (`windows 0.61.3`)、Win32 clipboard (`windows-sys 0.61`)、Enigo、React 19、TypeScript、Vitest。
 
+**状态：** Task 1–8 已完成代码实现、文档同步与自动化验证；剩余 WeGame 实机校准和验收。
+
 ---
 
 ## 文件结构

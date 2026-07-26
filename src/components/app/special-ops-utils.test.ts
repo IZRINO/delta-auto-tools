@@ -184,7 +184,7 @@ describe("特勤处登录试运行 helpers", () => {
         })).toBeNull();
     });
 
-    it("仅返回启用且凭据完整的账号并按 order 排序", () => {
+    it("仅返回启用且 QQ 为纯数字的账号并按 order 排序", () => {
         const accounts = [
             account("later", 8),
             account("disabled", 0, {enabled: false}),

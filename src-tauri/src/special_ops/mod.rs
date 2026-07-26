@@ -3,11 +3,13 @@ pub(crate) mod desktop_runtime;
 pub(crate) mod login_flow;
 mod login_runtime;
 #[allow(dead_code)]
+mod remembered_account;
+#[allow(dead_code)]
 pub(crate) mod template_observer;
 #[allow(dead_code)]
-mod windows_ocr;
-#[allow(dead_code)]
 mod windows_clipboard;
+#[allow(dead_code)]
+mod windows_ocr;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
@@ -263,11 +265,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "已记住账号列表 OCR 区域",
             RecognitionRegion,
         ),
-        (
-            "wegame.selectedAccount",
-            "已选账号双击复制区域",
-            ClickPoint,
-        ),
+        ("wegame.selectedAccount", "已选账号双击复制区域", ClickPoint),
         (
             "wegame.login",
             "WeGame 登录按钮识别与点击区域",
@@ -753,6 +751,22 @@ fn apply_login_flow_result(
                 }
             }
         },
+        login_flow::LoginFlowResult::NeedsManualLogin {
+            failed_step,
+            actual_qq,
+            failed_at,
+            ..
+        } => {
+            account.status = AccountStatus::NeedsManualLogin;
+            account.last_failure = Some(AccountFailure {
+                step: format!("{failed_step:?}"),
+                message: actual_qq.as_ref().map_or_else(
+                    || "WeGame 已记住账号列表中未找到目标 QQ".to_string(),
+                    |actual| format!("账号复核不匹配，实际复制 QQ: {actual}"),
+                ),
+                at_ms: *failed_at,
+            });
+        }
     }
     Ok(())
 }
@@ -1102,7 +1116,9 @@ fn validate_login_trial_ready(
     if account.qq_account.trim().is_empty()
         || !account.qq_account.chars().all(|ch| ch.is_ascii_digit())
     {
-        return Err(format!("登录试运行账号 {account_id} 的 QQ 必须为非空纯数字"));
+        return Err(format!(
+            "登录试运行账号 {account_id} 的 QQ 必须为非空纯数字"
+        ));
     }
     validate_executable_path(&settings.wegame_executable_path, "WeGame.exe")?;
     validate_executable_path(&settings.game_executable_path, "游戏 .exe")?;
@@ -1229,7 +1245,6 @@ fn freeze_login_run_config(
         login_flow::LoginRunConfig {
             account_id: account.id.clone(),
             qq_account: account.qq_account.clone(),
-            password: String::new(),
             wegame_executable_path: std::fs::canonicalize(&settings.wegame_executable_path)
                 .map_err(|_| "WeGame.exe 路径无法规范化".to_string())?,
             game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
@@ -1898,8 +1913,10 @@ fn login_step_message(step: &login_flow::LoginStep) -> &'static str {
         StartWeGame => "正在启动 WeGame",
         WaitLoginChoice => "正在识别登录入口",
         OpenLoginForm => "正在打开账号密码登录",
-        InputAccount => "正在准备输入 QQ 账号",
-        InputPassword => "正在准备输入密码",
+        OpenAccountList => "正在展开已记住账号列表",
+        ScanRememberedAccounts => "正在扫描已记住账号",
+        SelectRememberedAccount => "正在选择目标 QQ",
+        VerifySelectedAccount => "正在复制并复核目标 QQ",
         SubmitLogin => "正在提交登录",
         WaitGameEntry => "正在等待游戏入口",
         OpenGameEntry => "正在打开游戏入口",
@@ -1944,7 +1961,7 @@ async fn run_login_worker(
             move |step| match update_runtime.update(
                 run_id,
                 LoginRunStatus::Waiting,
-                Some(step.clone()),
+                Some(step),
                 login_step_message(&step),
                 None,
             ) {
@@ -1985,6 +2002,10 @@ async fn run_login_worker(
             login_flow::LoginFlowResult::EmergencyStopped { .. } => {
                 (LoginRunStatus::Stopped, "登录试运行已停止")
             }
+            login_flow::LoginFlowResult::NeedsManualLogin { .. } => (
+                LoginRunStatus::Failed,
+                "未找到或无法复核目标 QQ，需要人工登录",
+            ),
         }
     };
     if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
@@ -2796,10 +2817,7 @@ mod tests {
     fn account(id: &str, status: AccountStatus, stations: Vec<StationPlan>) -> AccountPlan {
         AccountPlan {
             id: id.to_string(),
-            qq_account: format!(
-                "10{:05}",
-                id.bytes().map(u32::from).sum::<u32>()
-            ),
+            qq_account: format!("10{:05}", id.bytes().map(u32::from).sum::<u32>()),
             enabled: true,
             initialized: true,
             order: 0,

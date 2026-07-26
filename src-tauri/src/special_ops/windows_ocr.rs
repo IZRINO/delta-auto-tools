@@ -60,9 +60,7 @@ pub(crate) fn to_screen_bounds(
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn recognize_numeric_words(
-    image: image::DynamicImage,
-) -> Result<Vec<OcrWord>, String> {
+pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
     use windows::{
         Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap},
         Media::Ocr::OcrEngine,
@@ -71,8 +69,7 @@ pub(crate) fn recognize_numeric_words(
 
     let rgba = image.to_rgba8();
     let width = i32::try_from(rgba.width()).map_err(|_| "OCR 截图宽度超出范围".to_string())?;
-    let height =
-        i32::try_from(rgba.height()).map_err(|_| "OCR 截图高度超出范围".to_string())?;
+    let height = i32::try_from(rgba.height()).map_err(|_| "OCR 截图高度超出范围".to_string())?;
     let mut bgra = rgba.into_raw();
     for pixel in bgra.chunks_exact_mut(4) {
         pixel.swap(0, 2);
@@ -139,9 +136,7 @@ pub(crate) fn recognize_numeric_words(
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn recognize_numeric_words(
-    _image: image::DynamicImage,
-) -> Result<Vec<OcrWord>, String> {
+pub(crate) fn recognize_numeric_words(_image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
     Err("Windows OCR 仅支持 Windows".to_string())
 }
 
@@ -157,10 +152,13 @@ mod tests {
             OcrWord::new("账号123", OcrBounds::new(10.0, 60.0, 60.0, 16.0)),
         ];
 
-        assert_eq!(numeric_words(words), vec![OcrWord::new(
-            "123456",
-            OcrBounds::new(10.0, 20.0, 60.0, 16.0),
-        )]);
+        assert_eq!(
+            numeric_words(words),
+            vec![OcrWord::new(
+                "123456",
+                OcrBounds::new(10.0, 20.0, 60.0, 16.0),
+            )]
+        );
     }
 
     #[test]

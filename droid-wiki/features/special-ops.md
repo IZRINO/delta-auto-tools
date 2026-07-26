@@ -10,7 +10,7 @@
 
 校准结果全局共享，不随账号或 Profile 复制。UI 不要求用户填写环境名称、显示器、分辨率、DPI 或窗口模式，只维护一套当前校准结果。旧版本存在多套环境时，加载后保留当时选中的一套。
 
-静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。登录试运行固定使用 7 项 WeGame 校准：`wegame.loginMode`、`wegame.loginFormReady`、`wegame.login`、`wegame.gameEntry`、`wegame.launch` 为 template 区域，`wegame.account`、`wegame.password` 为 input 区域。账号身份只取唯一 QQ 账号；密码允许重复，不读取或比对 WeGame/游戏 ID、UID，也不存在任何额外身份识别或剪贴板身份流程。已选子弹名称 OCR 属后续游戏内功能，不上传静态参考图；其结果应与当前 `AmmoTarget.name` 比对。点击点与输入区域不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
+静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。登录试运行使用 8 项 WeGame 校准：`wegame.loginMode`、`wegame.loginFormReady`、`wegame.login`、`wegame.gameEntry`、`wegame.launch` 为 template 区域；`wegame.accountDropdown` 为账号列表展开点击点；`wegame.accountList` 为 Windows OCR 扫描区域；`wegame.selectedAccount` 为顶部已选账号双击复制区域。账号身份只取唯一纯数字 QQ。工具不保存或输入密码；用户需提前在 WeGame 登录账号并勾选“记住密码”。工具不读取或比对 WeGame/游戏 ID、UID，账号选择后只通过 Unicode 剪贴板精确复核 QQ。已选子弹名称 OCR 属后续游戏内功能，不上传静态参考图；其结果应与当前 `AmmoTarget.name` 比对。点击点不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
 
 每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；两次都达到默认阈值 `0.75` 才通过。验证签名绑定目标 key、区域、参考图 canonical 路径、文件长度与修改时间、阈值；重新框选、换图、清图、图片文件变化或阈值变化都会使验证失效。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
 
@@ -22,7 +22,9 @@
 
 ## 登录试运行 runtime
 
-`special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 7 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。每次点击或输入前发送 3/2/1 倒计时，重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验。账号与密码输入在点击输入框后等待 `800ms`，以每字符 `100ms` 输入，完成后再等待 `500ms`；三段等待均响应紧急停止，且只控制输入节奏，不作为成功判定。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
+`special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 8 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。每次真实点击或滚轮动作前发送 3/2/1 倒计时，重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验；纯 OCR 采样不触发倒计时。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
+
+每次试运行先按 canonical exe 路径结束旧游戏和 WeGame，再启动 WeGame，确保记住账号列表从顶部开始。登录表单出现后展开账号列表，以 400ms 间隔执行两次 Windows OCR；两次账号集合不一致时原地重采样，不点击、不滚动。目标 QQ 连续两次出现且 bounding box 重合率至少 0.5 后，点击第二次 bounding box 中心；未命中时滚动列表，连续两屏无新账号且账号集合不变后判定到底。选中账号后清空剪贴板，双击顶部账号并发送 `Ctrl+C`，精确比较 Unicode 文本与目标 QQ。列表未找到、未复制到 QQ 或复制值不匹配时强制重启 WeGame 补偿一轮；仍失败时账号标记 `NeedsManualLogin`，不全面暂停。OCR、截图、剪贴板占用或窗口等系统能力异常仍全面暂停。复核成功后才点击登录，每次 run 最多提交一次。
 
 运行期间创建固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定尺寸且点击穿透；前端不提供按钮，只显示当前步骤、键鼠占用倒计时和本次自定义紧急热键。启动、热键注册、window 创建和 worker handoff 受同一资源锁保护；window 创建成功后，runtime 通过独立短事件临界区原子执行 handoff 校验与 `Starting` 发布，普通取消、紧急停止和生命周期停止也在同一临界区登记并发布 `Stopped`。该临界区不覆盖 window 创建、资源释放或持久化，因此停止可在 window 创建阻塞期间先行登记；启动方随后只回滚资源，不得补发 `Starting` 或提交 worker。worker 提交后，启动命令返回同一 run 的最新权威快照，避免同步进入 `Waiting` 后补发旧 `Starting`。`special_ops_cancel_login_trial` 只请求普通停止，不立即释放单实例，也不改账号结果；`special_ops_emergency_stop` 立即取消、释放已注入按键、销毁 window、注销热键，并将当前账号持久化为 `Uncertain`。三类停止均按发起时取得的 run id 校验 active run，旧 run 的延迟请求不得取消、清理或持久化替代它的新 run。应用生命周期停止在已进入键鼠阶段时按 `Uncertain` 处理；runtime 在同一临界区读取是否已进入键鼠阶段并登记停止。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。持久化 claim 使用 RAII guard；写入失败或 owner panic 会释放 claim 并唤醒等待方，active run 保留以供紧急停止接管或重试，等待总期限为 5 秒。只有权威结果持久化成功或普通取消明确无需持久化后，worker 才能进入资源清理并释放单实例。
 
@@ -41,7 +43,8 @@
 | 结束旧游戏与 WeGame | 用户选择的两个 exe canonical 完整路径 | 对应路径的目标进程实例全部消失；不按 basename 误杀，不递归结束进程树 |
 | 启动 WeGame | `wegameExecutablePath` 为有效绝对 `.exe` 文件 | native 进程/窗口检查可继续，随后等待登录入口或表单 |
 | 切换到账号密码登录 | `wegame.loginFormReady` 未命中且登录入口自身模板命中 | `wegame.loginFormReady`；已命中时跳过该点击 |
-| 输入 QQ 账号、密码 | `wegame.loginFormReady` | 登录按钮仍可识别；输入完成后才允许提交 |
+| 展开记住账号列表 | `wegame.loginFormReady` | `wegame.accountList` 可执行稳定 OCR |
+| 选择并复核 QQ | 两次 OCR 命中目标且 bounding box 稳定 | 点击账号数字中心；复制顶部账号后必须与目标 QQ 完全一致 |
 | 提交 WeGame 登录 | `wegame.login` 自身模板连续两次命中 | 每次 run 只点击一次；之后只等待 `wegame.gameEntry`，失败时不返回输入步骤、不重复提交密码 |
 | 选择置顶游戏 | `wegame.gameEntry` 自身模板连续两次命中 | `wegame.launch` 连续两次命中；运行时不搜索、不滚动游戏列表 |
 | 点击启动游戏 | `wegame.launch` 自身模板连续两次命中 | native 检查指定游戏 PID/HWND 出现；登录试运行到此结束 |
@@ -71,7 +74,7 @@
 
 制作或子弹补齐购买最多重试 3 次，每次间隔 1 秒并重新识别。重试后仍未进入 `craft.produce` 或 `ammo.exchange`，且补齐/购买状态仍存在时，不依赖短暂的仓库公告文本；直接将账号标记为需人工处理，结束该账号剩余流程并切换下一账号。
 
-单账号登录试运行 preflight 只检查所选账号非空 QQ 与密码、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名和 2 个 input 区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ 或密码、启用制作台缺物品/有效时长、启用子弹缺名称，或任一必需目标缺配置时均拒绝启动并报告首个缺失步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
+单账号登录试运行 preflight 只检查所选账号为非空纯数字 QQ、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名、账号列表展开点击点、账号列表 OCR 区域和顶部账号双击区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ、启用制作台缺物品/有效时长、启用子弹缺名称，或任一必需目标缺配置时均拒绝启动并报告首个缺失步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
 
 ## WeGame 进程与窗口约束
 

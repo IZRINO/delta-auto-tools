@@ -2,6 +2,7 @@ use super::login_flow::LoginStep;
 use super::{
     desktop_runtime::{DesktopRuntime, WindowIdentity, WindowsDesktopRuntime},
     login_flow::{LoginDriver, LoginObservation, LoginRunConfig},
+    remembered_account::RememberedAccountDriver,
     template_observer::{RuntimeSimilaritySampler, RuntimeTemplate},
 };
 use serde::{Deserialize, Serialize};
@@ -18,13 +19,6 @@ use tauri::{AppHandle, Emitter};
 
 pub const RUN_CHANGED: &str = "special-ops://run-changed";
 pub(crate) const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
-const WEGAME_LOGIN_INPUT_TIMING: crate::input_simulation::TextInputTiming =
-    crate::input_simulation::TextInputTiming {
-        focus_delay_ms: 800,
-        char_delay_ms: 100,
-        settle_delay_ms: 500,
-    };
-
 fn run_changed_target_labels() -> [&'static str; 2] {
     ["main", OPERATION_WINDOW_LABEL]
 }
@@ -830,50 +824,6 @@ impl LoginDriver for ProductionLoginDriver {
         .await
     }
 
-    async fn replace_text(
-        &self,
-        target_key: &str,
-        value: &str,
-        cancelled: Arc<AtomicBool>,
-    ) -> Result<(), String> {
-        let region = self
-            .config
-            .targets
-            .get(target_key)
-            .ok_or_else(|| format!("登录校准目标 {target_key} 不存在"))?
-            .region
-            .clone();
-        let value = value.to_string();
-        let focus_cancelled = Arc::clone(&cancelled);
-        let guard_cancelled = Arc::clone(&cancelled);
-        let action_cancelled = Arc::clone(&cancelled);
-        run_checked_action(
-            self.countdown(&cancelled),
-            async {
-                ensure_not_cancelled(&focus_cancelled)?;
-                self.focus_wegame().await.inspect_err(|_| {
-                    self.set_observation(LoginObservation::WindowNotFound);
-                })
-            },
-            async {
-                ensure_not_cancelled(&guard_cancelled)?;
-                self.verify_action_guard(target_key, guard_cancelled).await
-            },
-            async {
-                ensure_not_cancelled(&action_cancelled)?;
-                self.emit_update(LoginRunStatus::Inputting, "正在执行键鼠操作", None)?;
-                crate::input_simulation::replace_text_at_region_with_timing_cancellable(
-                    region,
-                    value,
-                    WEGAME_LOGIN_INPUT_TIMING,
-                    action_cancelled,
-                )
-                .await
-            },
-        )
-        .await
-    }
-
     async fn find_process_window(
         &self,
         executable: &Path,
@@ -888,6 +838,147 @@ impl LoginDriver for ProductionLoginDriver {
             self.set_observation(LoginObservation::WindowNotFound);
         }
         Ok(window)
+    }
+}
+
+impl RememberedAccountDriver for ProductionLoginDriver {
+    async fn sample_accounts(
+        &self,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<Vec<super::windows_ocr::OcrWord>, String> {
+        ensure_not_cancelled(&cancelled)?;
+        let region = self
+            .config
+            .targets
+            .get("wegame.accountList")
+            .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
+            .region
+            .clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let image = crate::recognition::watcher::capture_region(&region)
+                .ok_or_else(|| "账号列表截图失败".to_string())?;
+            super::windows_ocr::recognize_numeric_words(image)
+        })
+        .await
+        .map_err(|error| format!("账号列表 OCR 任务失败: {error}"))?;
+        if result.is_err() {
+            self.set_observation(LoginObservation::CaptureFailed);
+        }
+        result
+    }
+
+    async fn scroll_down(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
+        let region = self
+            .config
+            .targets
+            .get("wegame.accountList")
+            .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
+            .region
+            .clone();
+        let focus_cancelled = Arc::clone(&cancelled);
+        let guard_cancelled = Arc::clone(&cancelled);
+        let action_cancelled = Arc::clone(&cancelled);
+        run_checked_action(
+            self.countdown(&cancelled),
+            async {
+                ensure_not_cancelled(&focus_cancelled)?;
+                self.focus_wegame().await
+            },
+            async {
+                ensure_not_cancelled(&guard_cancelled)?;
+                self.verify_action_guard("wegame.accountDropdown", guard_cancelled)
+                    .await
+            },
+            async {
+                ensure_not_cancelled(&action_cancelled)?;
+                self.emit_update(LoginRunStatus::Inputting, "正在滚动账号列表", None)?;
+                crate::input_simulation::scroll_region_down_cancellable(region, 3, action_cancelled)
+                    .await
+            },
+        )
+        .await
+    }
+
+    async fn select_bounds(
+        &self,
+        bounds: super::windows_ocr::OcrBounds,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<(), String> {
+        let region = self
+            .config
+            .targets
+            .get("wegame.accountList")
+            .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
+            .region
+            .clone();
+        let screen = super::windows_ocr::to_screen_bounds(bounds, &region);
+        let x = screen.x.saturating_add(screen.width / 2);
+        let y = screen.y.saturating_add(screen.height / 2);
+        let focus_cancelled = Arc::clone(&cancelled);
+        let guard_cancelled = Arc::clone(&cancelled);
+        let action_cancelled = Arc::clone(&cancelled);
+        run_checked_action(
+            self.countdown(&cancelled),
+            async {
+                ensure_not_cancelled(&focus_cancelled)?;
+                self.focus_wegame().await
+            },
+            async {
+                ensure_not_cancelled(&guard_cancelled)?;
+                self.verify_action_guard("wegame.accountDropdown", guard_cancelled)
+                    .await
+            },
+            async {
+                ensure_not_cancelled(&action_cancelled)?;
+                self.emit_update(LoginRunStatus::Inputting, "正在选择目标 QQ", None)?;
+                crate::input_simulation::click_screen_point_cancellable(x, y, action_cancelled)
+                    .await
+            },
+        )
+        .await
+    }
+
+    async fn copy_selected_qq(&self, cancelled: Arc<AtomicBool>) -> Result<String, String> {
+        ensure_not_cancelled(&cancelled)?;
+        tokio::task::spawn_blocking(super::windows_clipboard::clear_clipboard)
+            .await
+            .map_err(|error| format!("清空剪贴板任务失败: {error}"))??;
+        let region = self
+            .config
+            .targets
+            .get("wegame.selectedAccount")
+            .ok_or_else(|| "登录校准目标 wegame.selectedAccount 不存在".to_string())?
+            .region
+            .clone();
+        let focus_cancelled = Arc::clone(&cancelled);
+        let guard_cancelled = Arc::clone(&cancelled);
+        let action_cancelled = Arc::clone(&cancelled);
+        run_checked_action(
+            self.countdown(&cancelled),
+            async {
+                ensure_not_cancelled(&focus_cancelled)?;
+                self.focus_wegame().await
+            },
+            async {
+                ensure_not_cancelled(&guard_cancelled)?;
+                self.verify_action_guard("wegame.selectedAccount", guard_cancelled)
+                    .await
+            },
+            async {
+                ensure_not_cancelled(&action_cancelled)?;
+                self.emit_update(LoginRunStatus::Inputting, "正在复制目标 QQ", None)?;
+                crate::input_simulation::double_click_region_and_copy_cancellable(
+                    region,
+                    action_cancelled,
+                )
+                .await
+            },
+        )
+        .await?;
+        ensure_not_cancelled(&cancelled)?;
+        tokio::task::spawn_blocking(super::windows_clipboard::read_copied_qq)
+            .await
+            .map_err(|error| format!("读取剪贴板任务失败: {error}"))?
     }
 }
 
@@ -952,18 +1043,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wegame_login_input_timing_is_human_paced() {
-        assert_eq!(
-            WEGAME_LOGIN_INPUT_TIMING,
-            crate::input_simulation::TextInputTiming {
-                focus_delay_ms: 800,
-                char_delay_ms: 100,
-                settle_delay_ms: 500,
-            }
-        );
-    }
-
-    #[test]
     fn run_changed_targets_main_and_operation_overlay() {
         assert_eq!(
             run_changed_target_labels(),
@@ -1017,7 +1096,7 @@ mod tests {
             .update(
                 old.run_id,
                 LoginRunStatus::Failed,
-                Some(LoginStep::InputPassword),
+                Some(LoginStep::SelectRememberedAccount),
                 "旧任务失败",
                 None,
             )
@@ -1082,7 +1161,7 @@ mod tests {
             .update(
                 old.run_id,
                 LoginRunStatus::Inputting,
-                Some(LoginStep::InputPassword),
+                Some(LoginStep::SelectRememberedAccount),
                 "旧 run 已进入输入阶段",
                 None,
             )

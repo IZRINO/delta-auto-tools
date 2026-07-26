@@ -1,6 +1,6 @@
 # Delta Auto Tools
 
-> 特勤处自动化开发中：单账号登录试运行已形成闭环，支持选择 WeGame/游戏 exe、7 项登录校准、模板双采样测试、强制重建 WeGame 会话、运行期操作提示窗口、普通取消与紧急停止。当前只执行到游戏 PID/HWND 出现；多账号轮次、游戏内制作和子弹兑换仍待实现。
+> 特勤处自动化开发中：单账号登录试运行已形成闭环，支持选择 WeGame/游戏 exe、8 项登录校准、Windows OCR 扫描 WeGame 已记住账号、剪贴板精确复核、强制重建 WeGame 会话、运行期操作提示窗口、普通取消与紧急停止。工具不保存或输入 QQ 密码。当前只执行到游戏 PID/HWND 出现；多账号轮次、游戏内制作和子弹兑换仍待实现。
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。
 
