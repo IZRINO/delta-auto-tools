@@ -18,6 +18,12 @@ use tauri::{AppHandle, Emitter};
 
 pub const RUN_CHANGED: &str = "special-ops://run-changed";
 pub(crate) const OPERATION_WINDOW_LABEL: &str = "special-ops-operation";
+const WEGAME_LOGIN_INPUT_TIMING: crate::input_simulation::TextInputTiming =
+    crate::input_simulation::TextInputTiming {
+        focus_delay_ms: 800,
+        char_delay_ms: 100,
+        settle_delay_ms: 500,
+    };
 
 fn run_changed_target_labels() -> [&'static str; 2] {
     ["main", OPERATION_WINDOW_LABEL]
@@ -856,10 +862,10 @@ impl LoginDriver for ProductionLoginDriver {
             async {
                 ensure_not_cancelled(&action_cancelled)?;
                 self.emit_update(LoginRunStatus::Inputting, "正在执行键鼠操作", None)?;
-                crate::input_simulation::replace_text_at_region_cancellable(
+                crate::input_simulation::replace_text_at_region_with_timing_cancellable(
                     region,
                     value,
-                    25,
+                    WEGAME_LOGIN_INPUT_TIMING,
                     action_cancelled,
                 )
                 .await
@@ -944,6 +950,18 @@ async fn wait_cancellable(duration: Duration, cancelled: &AtomicBool) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wegame_login_input_timing_is_human_paced() {
+        assert_eq!(
+            WEGAME_LOGIN_INPUT_TIMING,
+            crate::input_simulation::TextInputTiming {
+                focus_delay_ms: 800,
+                char_delay_ms: 100,
+                settle_delay_ms: 500,
+            }
+        );
+    }
 
     #[test]
     fn run_changed_targets_main_and_operation_overlay() {
