@@ -6,6 +6,8 @@ mod login_runtime;
 pub(crate) mod template_observer;
 #[allow(dead_code)]
 mod windows_ocr;
+#[allow(dead_code)]
+mod windows_clipboard;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
