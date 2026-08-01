@@ -24,7 +24,8 @@ try {
     Invoke-Step "Frontend coverage" { node node_modules/vitest/vitest.mjs run --coverage --reporter=dot }
     Invoke-Step "Rust format" { cargo fmt --manifest-path src-tauri/Cargo.toml -- --check }
     Invoke-Step "Rust Clippy" { cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings }
-    Invoke-Step "Rust tests" { cargo test --manifest-path src-tauri/Cargo.toml }
+    # Windows 原生进程/窗口测试共享系统句柄，串行执行避免测试间竞态导致测试进程崩溃。
+    Invoke-Step "Rust tests" { cargo test --manifest-path src-tauri/Cargo.toml -- --test-threads=1 }
 }
 finally {
     Pop-Location
