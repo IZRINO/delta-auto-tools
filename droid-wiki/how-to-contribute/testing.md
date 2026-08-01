@@ -50,7 +50,7 @@ cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 
 ## 统一质量门禁
 
-Windows 本地与 GitHub Actions 共用 `bun run check`。脚本按依赖顺序执行 TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests，任一步失败立即退出。Rust tests 通过 `--test-threads=1` 串行执行，因为 Windows 原生进程/窗口测试共享系统句柄，避免测试间竞态导致测试进程崩溃。CI 定义位于 `.github/workflows/ci.yml`。
+Windows 本地与 GitHub Actions 共用 `bun run check`。脚本按依赖顺序执行 TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests，任一步失败立即退出。Rust tests 通过 `--test-threads=1` 串行执行，因为 Windows 原生进程/窗口测试共享系统句柄，避免测试间竞态导致测试进程崩溃。`recognition/player.rs` 中直接创建 `rodio::OutputStream` 的音频设备测试标记为 ignored，仅在具备本地 Windows 音频设备时手动运行。CI 定义位于 `.github/workflows/ci.yml`。
 
 ### 测试覆盖
 

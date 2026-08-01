@@ -161,6 +161,7 @@ mod tests {
 
     /// T-9: audio_thread_main 测试 — 启动/停止生命周期
     #[test]
+    #[ignore = "需要本地 Windows 音频设备，GitHub Actions runner 无音频设备"]
     fn start_audio_thread_and_shutdown() {
         let (tx, worker) = start_audio_thread();
         assert!(worker.is_some(), "音频线程应启动");
@@ -178,6 +179,7 @@ mod tests {
 
     /// T-9: audio_thread_main 异常路径 — 不存在的音频文件
     #[test]
+    #[ignore = "需要本地 Windows 音频设备，GitHub Actions runner 无音频设备"]
     fn audio_thread_handles_nonexistent_file() {
         let (tx, worker) = start_audio_thread();
 
@@ -199,6 +201,7 @@ mod tests {
 
     /// T-9: audio_thread_main 并发播放命令
     #[test]
+    #[ignore = "需要本地 Windows 音频设备，GitHub Actions runner 无音频设备"]
     fn audio_thread_handles_concurrent_play() {
         let (tx, worker) = start_audio_thread();
 
