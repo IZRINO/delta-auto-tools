@@ -177,6 +177,7 @@ pub fn run() {
             app.manage(special_ops_state);
             app.manage(lifecycle_registry);
             recognition::start_runtime(app.handle())?;
+            special_ops::start_runtime(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -207,7 +208,7 @@ pub fn run() {
                     };
                     hotkey_manager.clear_all_suppressions();
                     recognition::shutdown(app, &hotkey_manager);
-                    if let Err(error) = special_ops::stop_registered(app) {
+                    if let Err(error) = special_ops::shutdown(app) {
                         crate::log_error!(
                             "special_ops::login",
                             "应用退出时停止登录试运行失败",
@@ -271,12 +272,23 @@ pub fn run() {
             // ── 特勤处自动化 ──
             special_ops::special_ops_get_bootstrap,
             special_ops::special_ops_save_settings,
+            special_ops::special_ops_save_profit_settings,
+            special_ops::special_ops_fetch_profit_catalog,
+            special_ops::special_ops_validate_moligod_binding,
+            special_ops::special_ops_confirm_account_station_states,
+            special_ops::special_ops_confirm_station_state,
+            special_ops::special_ops_confirm_ammo_state,
             special_ops::special_ops_set_paused,
             special_ops::special_ops_test_calibration_target,
             special_ops::special_ops_begin_calibration_selection,
             special_ops::special_ops_submit_calibration_selection,
             special_ops::special_ops_cancel_calibration_selection,
             special_ops::special_ops_start_login_trial,
+            special_ops::special_ops_start_navigation_trial,
+            special_ops::special_ops_start_craft_trial,
+            special_ops::special_ops_start_craft_batch_trial,
+            special_ops::special_ops_start_ammo_trial,
+            special_ops::special_ops_start_due_round,
             special_ops::special_ops_cancel_login_trial,
             special_ops::special_ops_emergency_stop,
             // ── global state ──

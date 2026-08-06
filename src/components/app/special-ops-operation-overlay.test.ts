@@ -3,6 +3,7 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {describe, expect, it, vi} from "vitest";
 
 import {
+    loadOperationRunSnapshot,
     SpecialOpsOperationOverlay,
     operationOverlayText,
 } from "@/components/app/special-ops-operation-overlay";
@@ -12,10 +13,12 @@ function snapshot(overrides: Partial<LoginRunSnapshot> = {}): LoginRunSnapshot {
     return {
         runId: 1,
         accountId: "account-1",
+        runKind: "login",
         status: "waiting",
         currentStep: "waitLoginChoice",
         message: "正在识别登录入口",
         countdownSeconds: null,
+        roundProgress: null,
         startedAtMs: 1,
         updatedAtMs: 1,
         ...overrides,
@@ -34,18 +37,45 @@ describe("operationOverlayText", () => {
     it("无倒计时时提示特勤处操作中", () => {
         expect(operationOverlayText(snapshot({countdownSeconds: null})).title).toBe("特勤处操作中");
     });
+
+    it("按 run 类型显示实际试运行流程", () => {
+        expect(operationOverlayText(snapshot({runKind: "navigation"})).title).toBe("游戏内导航试运行中");
+        expect(operationOverlayText(snapshot({runKind: "craft"})).title).toBe("制作试运行中");
+        expect(operationOverlayText(snapshot({runKind: "ammo"})).title).toBe("子弹兑换操作中");
+        expect(operationOverlayText(snapshot({runKind: "round" as LoginRunSnapshot["runKind"]})).title).toBe("多账号制作轮次中");
+    });
+
+    it("多账号轮次显示账号与制作台进度", () => {
+        expect(operationOverlayText(snapshot({
+            runKind: "round",
+            roundProgress: {
+                accountIndex: 2,
+                accountTotal: 4,
+                qqAccount: "12345",
+                stationKind: "workbench",
+                stationIndex: 1,
+                stationTotal: 3,
+            },
+        })).detail).toBe("账号 2/4 · QQ 12345 · 工作台 1/3");
+    });
 });
 
 describe("SpecialOpsOperationOverlay", () => {
+    it("挂载后读取 bootstrap 中的运行快照", async () => {
+        const expected = snapshot({runKind: "round"});
+
+        await expect(loadOperationRunSnapshot(async () => ({runSnapshot: expected}))).resolves.toEqual(expected);
+    });
+
     it("事件尚未到达时首帧仍显示准备状态和自定义紧急热键", () => {
         vi.stubGlobal("window", {
-            location: {search: "?emergencyHotkey=Ctrl%2BAlt%2BX"},
+            location: {search: "?emergencyHotkey=Ctrl%2BAlt%2BX&runKind=craft"},
         });
 
         const html = renderToStaticMarkup(createElement(SpecialOpsOperationOverlay));
 
-        expect(html).toContain("特勤处操作中");
-        expect(html).toContain("正在准备登录流程");
+        expect(html).toContain("制作试运行中");
+        expect(html).toContain("正在准备制作试运行");
         expect(html).toContain("紧急停止：Ctrl+Alt+X");
     });
 });

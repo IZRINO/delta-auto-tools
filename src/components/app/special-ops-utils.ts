@@ -1,10 +1,57 @@
 import type {
     AccountPlan,
-    CalibrationTemplateTestResult,
+    AmmoBusinessTarget,
+    CalibrationTestResult,
     LoginRunSnapshot,
+    ManualStationState,
     SpecialOpsBootstrap,
     SpecialOpsSettings,
+    StationCorrectionInput,
+    StationPlan,
+    TimelineTask,
 } from "@/components/app/special-ops-types";
+
+function renumberAmmoTargets(targets: AmmoBusinessTarget[]): AmmoBusinessTarget[] {
+    return targets.map((target, order) => ({...target, order}));
+}
+
+export function changeAmmoTargetSeasonal(
+    targets: AmmoBusinessTarget[],
+    id: string,
+    seasonal: boolean,
+): AmmoBusinessTarget[] {
+    const target = targets.find((item) => item.id === id);
+    if (!target || target.seasonal === seasonal) return targets;
+    const next = targets.filter((item) => item.id !== id);
+    const firstSeasonal = next.findIndex((item) => item.seasonal);
+    const index = seasonal || firstSeasonal < 0 ? next.length : firstSeasonal;
+    next.splice(index, 0, {...target, seasonal});
+    return renumberAmmoTargets(next);
+}
+
+export function moveAmmoTargetWithinGroup(
+    targets: AmmoBusinessTarget[],
+    id: string,
+    offset: -1 | 1,
+): AmmoBusinessTarget[] {
+    const index = targets.findIndex((item) => item.id === id);
+    const nextIndex = index + offset;
+    if (index < 0 || nextIndex < 0 || nextIndex >= targets.length
+        || targets[index].seasonal !== targets[nextIndex].seasonal) return targets;
+    const next = [...targets];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    return renumberAmmoTargets(next);
+}
+
+export function insertNormalAmmoTarget(
+    targets: AmmoBusinessTarget[],
+    target: AmmoBusinessTarget,
+): AmmoBusinessTarget[] {
+    const next = [...targets];
+    const firstSeasonal = next.findIndex((item) => item.seasonal);
+    next.splice(firstSeasonal < 0 ? next.length : firstSeasonal, 0, {...target, seasonal: false});
+    return renumberAmmoTargets(next);
+}
 
 export type SpecialOpsSaveRequest = {settings: SpecialOpsSettings; settingsRevision: number};
 export type SpecialOpsBootstrapOrderState = {bootstrap: SpecialOpsBootstrap; responseSeq: number};
@@ -20,9 +67,15 @@ type SpecialOpsErrorUpdate = {
     revisionChanged: boolean;
 };
 
+const terminalRunStatuses = new Set<LoginRunSnapshot["status"]>(["succeeded", "failed", "stopped"]);
+
+export function hasActiveSpecialOpsRun(snapshot: LoginRunSnapshot | null): boolean {
+    return snapshot !== null;
+}
+
 function latestRunSnapshot(current: LoginRunSnapshot | null, incoming: LoginRunSnapshot | null) {
+    if (incoming === null) return current && terminalRunStatuses.has(current.status) ? null : current;
     if (current === null) return incoming;
-    if (incoming === null) return current;
     if (current.runId > incoming.runId) return current;
     if (current.runId === incoming.runId && current.updatedAtMs > incoming.updatedAtMs) return current;
     return incoming;
@@ -105,7 +158,77 @@ export function applyExecutableSelection(current: string, selected: string | nul
     return selected ?? current;
 }
 
-export function formatCalibrationTemplateTestResult(label: string, result: CalibrationTemplateTestResult): string {
+export function parseNavigationDelayMs(value: string): number | null {
+    if (!/^\d+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed <= 60_000 ? parsed : null;
+}
+
+export function formatCalibrationTemplateTestResult(label: string, result: CalibrationTestResult): string {
+    if (result.method === "ocr") {
+        const formatTexts = (texts: string[]) => texts.length > 0 ? texts.join("、") : "未识别到纯数字账号";
+        return `${label}：OCR 双采样 ${formatTexts(result.firstTexts)} / ${formatTexts(result.secondTexts)}，${result.passed ? "已通过" : "未通过"}`;
+    }
     const [first, second] = result.sampleSimilarities.map((value) => `${(value * 100).toFixed(1)}%`);
     return `${label}：双采样相似度 ${first} / ${second}，${result.passed ? "已通过" : "未通过"}`;
+}
+
+export type TimelineTaskGroup = {anchorAtMs: number; tasks: TimelineTask[]};
+
+export function groupTimelineTasks(tasks: TimelineTask[], windowMs = 10 * 60_000): TimelineTaskGroup[] {
+    const sorted = [...tasks].sort((left, right) => left.scheduledAtMs - right.scheduledAtMs || left.id.localeCompare(right.id));
+    const groups: TimelineTaskGroup[] = [];
+    for (const task of sorted) {
+        const current = groups[groups.length - 1];
+        if (current && task.scheduledAtMs - current.anchorAtMs < windowMs) current.tasks.push(task);
+        else groups.push({anchorAtMs: task.scheduledAtMs, tasks: [task]});
+    }
+    return groups;
+}
+
+export function timelineDelayMinutes(task: TimelineTask, nowMs: number): number {
+    return Math.max(0, Math.ceil((task.scheduledAtMs - nowMs) / 60_000));
+}
+
+export type InlineStationCorrectionDraft = {
+    state: ManualStationState | null;
+    hours: string;
+    minutes: string;
+};
+
+export function createInlineStationCorrectionDraft(
+    station: Pick<StationPlan, "finishesAtMs">,
+    nowMs: number,
+): InlineStationCorrectionDraft {
+    const remaining = station.finishesAtMs !== null && station.finishesAtMs > nowMs
+        ? Math.ceil((station.finishesAtMs - nowMs) / 60_000)
+        : null;
+    return {
+        state: "crafting",
+        hours: remaining === null ? "" : String(Math.floor(remaining / 60)),
+        minutes: remaining === null ? "" : String(remaining % 60),
+    };
+}
+
+export function buildInlineStationCorrection(
+    state: ManualStationState,
+    hours: string,
+    minutes: string,
+): Pick<StationCorrectionInput, "state" | "remainingMinutes"> | null {
+    if (state !== "crafting") return {state, remainingMinutes: null};
+    if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) return null;
+    const parsedHours = Number(hours);
+    const parsedMinutes = Number(minutes);
+    if (!Number.isSafeInteger(parsedHours) || !Number.isSafeInteger(parsedMinutes)
+        || parsedMinutes > 59) return null;
+    const remainingMinutes = parsedHours * 60 + parsedMinutes;
+    if (remainingMinutes < 1 || remainingMinutes > 10_080) return null;
+    return {state, remainingMinutes};
+}
+
+export function buildTimelineHourSlots(nowMs: number): number[] {
+    const hourMs = 60 * 60_000;
+    const shanghaiOffsetMs = 8 * hourMs;
+    const first = Math.floor((nowMs + shanghaiOffsetMs) / hourMs) * hourMs - shanghaiOffsetMs;
+    return Array.from({length: 24}, (_, index) => first + index * hourMs);
 }

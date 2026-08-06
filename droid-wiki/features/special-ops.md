@@ -2,17 +2,23 @@
 
 `special_ops` 保存账号级制作台、子弹兑换和调度状态。每个账号包含 4 台制作台；同一账号的到期制作任务聚合处理。每日兑换时间按 `Asia/Shanghai` 的 `HH:mm` 解释。
 
+`defaultBusinessConfig` 保存四制作台启用状态、时长、制作物品备注及有序子弹业务目标；子弹目标包含稳定 ID、备注、普通/赛季类型、指定点击点、A/D 重置后向下滚动次数和顺序。兼容字段 `scrollDirection` 在 normalize 时固定为 `down`，不参与 UI 或 runtime。账号默认继承；开启 `independentSettingsEnabled` 时复制当时默认配置并改用账号独立业务配置，关闭时二次确认并永久删除独立配置。`startedAtMs`、`finishesAtMs`、制作台状态、账号失败记录及当天子弹状态仍按账号保存，切换继承模式不得重算或删除这些运行态。旧 JSON 的制作台缺失备注时补空字符串，旧子弹 `name` 迁入 `note`、点击点补空；迁移幂等且保留运行态。
+
+账号卡片继续提供完整“四制作台与全部启用子弹人工校正”入口。四台必须一次逐项选择“立即到期”“正在制作”或“空闲”；正在制作需填写 1 分钟至 168 小时的剩余时间。提交前显示第二次确认摘要，后端在 `SettingsCoordinator` revision 临界区内完成全量校验、账号初始化、一次磁盘写入和内存替换。初始化后的 `Ready` 账号允许主动覆盖实际制作与当天子弹状态；`NeedsManualLogin` / `LoginFailed` 不得通过业务状态校正恢复。提交期间按钮显示“正在保存”并禁止重复点击；浏览器预览、页面状态变化或后端拒绝均在 modal 内显示错误，禁止静默返回。
+
+24 小时任务时间轴不再打开完整 modal。`AccountFailure.stationKind` 与 `AccountFailure.ammoTargetId` 互斥定位失败业务，`AmmoTarget.lastFailure` 保存目标级子弹人工失败，`TimelineTask.manualFailure` 把失败带到对应任务行。制作行提供“立即到期”“正在制作”“空闲中”，子弹行提供“已兑换”“未兑换”；每行独立保存和显示错误。`special_ops_confirm_station_state` 只校正失败制作台并恢复账号 `Ready`，`special_ops_confirm_ammo_state` 只清除对应目标失败；未处理子弹继续单独冻结。旧版无定位失败及登录、导航、窗口异常只提示“请在账号页处理”。
+
 ## 子弹兑换配置
 
-每个账号保存独立的有序子弹目标。单项目包含名称、启用状态、普通/赛季限定、相对上一目标的滚轮步数、当天成功日期和当天重试次数。UI 支持逐项新增、上移、下移和删除；调度按 `order` 依次执行。模板只能复制目标选择、类型、顺序和滚轮步数，不能复制当天成功或重试状态。
+业务配置保存有序子弹目标。默认配置供继承账号共用；开启独立设置后，账号可维护自己的目标列表。单项目包含备注、启用状态、普通/赛季限定、指定点击点、A/D 重置后向下滚动次数和顺序。UI 支持逐项新增、同组上移/下移、删除和复用校准 overlay 选择点击点；普通目标始终排在赛季目标前。每个目标定位先按 A、D，按键间隔 100ms，再向下滚配置次数；无论次数是否为 0 均等待 1000ms 后点击。每个 run 首个键鼠操作块发布 5→4→3→2→1，后续原本需要提示的块只发布 1，原本不提示的固定等待和输入继续不提示。后续执行成功预检、补齐/购买/兑换、二次确认和完成确认。当天成功日期、`retryDay` 和重试次数始终属于账号运行态，复制默认配置时不得复制或重置。单账号真实兑换试运行和每日多账号兑换调度均已接入。
 
 ## 区域校准
 
 校准结果全局共享，不随账号或 Profile 复制。UI 不要求用户填写环境名称、显示器、分辨率、DPI 或窗口模式，只维护一套当前校准结果。旧版本存在多套环境时，加载后保留当时选中的一套。
 
-静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。登录试运行使用 8 项 WeGame 校准：`wegame.loginMode`、`wegame.loginFormReady`、`wegame.login`、`wegame.gameEntry`、`wegame.launch` 为 template 区域；`wegame.accountDropdown` 为账号列表展开点击点；`wegame.accountList` 为 Windows OCR 扫描区域；`wegame.selectedAccount` 为顶部已选账号双击复制区域。账号身份只取唯一纯数字 QQ。工具不保存或输入密码；用户需提前在 WeGame 登录账号并勾选“记住密码”。工具不读取或比对 WeGame/游戏 ID、UID，账号选择后只通过 Unicode 剪贴板精确复核 QQ。已选子弹名称 OCR 属后续游戏内功能，不上传静态参考图；其结果应与当前 `AmmoTarget.name` 比对。点击点不保存参考图。用户可替换或清除图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
+静态 UI 的 `recognitionRegion` 使用模板匹配，由用户选择一张本地参考图片，路径随校准目标保存到 `special_ops_settings.json`。登录试运行使用 8 项 WeGame 校准：`wegame.loginMode`、`wegame.loginFormReady`、`wegame.login`、`wegame.gameEntry`、`wegame.launch` 为 template 区域；`wegame.accountDropdown` 为账号列表展开点击点；`wegame.accountList` 为 Windows OCR 扫描区域；`wegame.selectedAccount` 为顶部已选账号双击复制区域。`runtime.mouseParking` 是 special_ops 独占的全局点击点，三类试运行都必须配置；每次业务点击、滚轮或按键完成后，执行器先把鼠标移至该点，下一步才截图，避免 hover 或鼠标遮挡污染识别区域。该点不影响 Timer、Rapidfire、Morse、Recognition 等其他工具。账号身份只取唯一纯数字 QQ。工具不保存或输入密码；用户需提前在 WeGame 登录账号并勾选“记住密码”。工具不读取或比对 WeGame/游戏 ID、UID，账号选择后只通过 Unicode 剪贴板精确复核 QQ。子弹目标不再使用共享 `ammo.target` 或已选名称 OCR；每个业务目标通过 `business.ammo.<targetId>` 与可选账号上下文写入自己的单点坐标。点击点不保存参考图。用户可替换或清除模板图片；游戏 UI 更新后应重新上传当前版本样本。区域坐标定义截图范围，参考图定义匹配目标，两者缺一时不得启动模板识别步骤。图片文件被移动或删除时路径失效，后续执行器必须报告缺失并暂停对应步骤。
 
-每个模板识别区域提供“测试”按钮。测试命令对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；两次都达到默认阈值 `0.75` 才通过。验证签名绑定目标 key、区域、参考图 canonical 路径、文件长度与修改时间、阈值；重新框选、换图、清图、图片文件变化或阈值变化都会使验证失效。OCR 测试必须由真实 OCR 引擎返回文本与置信度，未接入前明确报错，禁止用模板相似度冒充 OCR。点击点和输入区域不显示识别测试。
+每个识别区域提供“测试”按钮。模板测试对当前区域执行两次真实截图与 NCC 模板匹配，间隔 400ms，返回两次原始相似度；两次都达到默认阈值 `0.75` 才通过。OCR 测试对当前区域执行两次真实 Windows OCR，间隔 400ms，显示两次识别到的纯数字文本；两次均非空才显示通过。账号列表截图在送入 Windows OCR 前内部放大 3 倍，结果坐标再映射回原校准区域；OCR 数字词内部空白会被删除，减少小字号数字漏行或被分段后整体丢弃。只有双采样都稳定识别完整三行时才使用 OCR 行中心；仅识别一行或两行时改用三行固定中心，防止漏识物理首行后从第二行开始点击。OCR 测试仅用于诊断框选范围，不写入验证签名或配置。`game.*`、`craft.*`、`ammo.*` 测试先等待 3 秒、恢复并聚焦游戏、停放鼠标，再截图；`wegame.*` 维持当前窗口采样，避免错误聚焦游戏。模板验证签名绑定目标 key、区域、参考图 canonical 路径、文件长度与修改时间、阈值；重新框选、换图、清图、图片文件变化或阈值变化都会使验证失效。点击点和输入区域不显示识别测试。
 
 框选行为沿用摩斯区域框选交互：在单个显示器打开全屏透明 overlay，主窗口保持存在；按住左键拖拽，松开后立即提交并关闭。区域过小时要求重新框选，Esc、右键或 Alt+F4 取消。overlay 30 秒未关闭时由 native 侧自动销毁，避免前端异常时持续占用键鼠。提交、取消、超时或窗口异常关闭后恢复主窗口焦点。点击动作执行时使用所选矩形中心。
 
@@ -22,75 +28,135 @@
 
 ## 登录试运行 runtime
 
-`special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 8 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。每次真实点击或滚轮动作前发送 3/2/1 倒计时，重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验；纯 OCR 采样不触发倒计时。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
+`special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 8 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。登录试运行与多账号轮换均先发送完整 5→4→3→2→1 倒计时；倒计时期间不得关闭游戏、关闭 WeGame、启动 WeGame、截图、识图或模拟键鼠。倒计时结束后才结束旧进程并进入登录流程。后续原本需要提示的登录动作只显示 1，账号选择、复制、滚动和登录提交等原本不提示动作不新增提示。接管段结束后，游戏条目和启动按钮沿用同一 run 级规则。每次动作仍重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验；纯 OCR 采样不触发倒计时。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
 
-每次试运行先按 canonical exe 路径结束旧游戏和 WeGame，再启动 WeGame，确保记住账号列表从顶部开始。登录表单出现后展开账号列表，以 400ms 间隔执行两次 Windows OCR；两次账号集合不一致时原地重采样，不点击、不滚动。目标 QQ 连续两次出现且 bounding box 重合率至少 0.5 后，点击第二次 bounding box 中心；未命中时，每轮先重新确认两次非空 OCR 账号集合一致，再把鼠标移到列表中心并向下滚动 3 格。列表同时显示 3 个账号，正常每格换出 1 个新账号；到底后集合不再变化，连续两屏无新账号且集合一致后判定到底。滚动和账号点击不使用会被展开列表遮挡的 `wegame.loginFormReady` 模板作为守卫。选中账号后清空剪贴板，双击顶部账号并发送 `Ctrl+C`，精确比较 Unicode 文本与目标 QQ。列表未找到、未复制到 QQ 或复制值不匹配时强制重启 WeGame 补偿一轮；仍失败时账号标记 `NeedsManualLogin`，不全面暂停。OCR、截图、剪贴板占用或窗口等系统能力异常仍全面暂停。复核成功后才点击登录，每次 run 最多提交一次。
+倒计时结束后，试运行与轮换按 canonical exe 路径结束旧游戏和 WeGame，再启动 WeGame，确保记住账号列表从顶部开始。登录表单出现后直接展开账号列表；`wegame.accountList` 必须紧密覆盖同时可见的 3 行账号。执行器以 400ms 间隔执行两次 Windows OCR；截图内部放大 3 倍后识别，并把行中心坐标映射回原区域。只要求两次都检测到非空账号内容，用于确认列表仍处于展开状态；OCR 文本不再承担目标 QQ 识别，两次文本允许因漏字、错字或分段而不同。连续 3 轮双采样均未检测到数字内容时，列表视为当前账号不可用，立即标记该账号 `NeedsManualLogin` 并继续下一账号，不重启 WeGame、不重复扫描。执行器将列表区域纵向分为 3 个槽位，按从上到下顺序点击；每次选中后清空剪贴板，双击顶部账号并发送 `Ctrl+C`，精确比较 Unicode 文本与目标 QQ。复制值不是目标时，将完整 QQ 加入已见集合并重新展开列表，继续下一槽位；处理完 3 行后把鼠标移到列表中心并向下滚动 3 格。新页面仍按相同方式逐行复制；整页 3 个完整 QQ 均已出现过时判定到底。列表未找到或未复制到有效 QQ 时立即标记账号 `NeedsManualLogin`，不重启 WeGame、不重复扫描；未来多账号 round 跳到下一账号。截图失败、OCR 引擎错误、剪贴板占用或窗口等系统能力异常仍全面暂停。复核成功后才点击登录，每次 run 最多提交一次。
 
-运行期间创建固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定尺寸且点击穿透；前端不提供按钮，只显示当前步骤、键鼠占用倒计时和本次自定义紧急热键。启动、热键注册、window 创建和 worker handoff 受同一资源锁保护；window 创建成功后，runtime 通过独立短事件临界区原子执行 handoff 校验与 `Starting` 发布，普通取消、紧急停止和生命周期停止也在同一临界区登记并发布 `Stopped`。该临界区不覆盖 window 创建、资源释放或持久化，因此停止可在 window 创建阻塞期间先行登记；启动方随后只回滚资源，不得补发 `Starting` 或提交 worker。worker 提交后，启动命令返回同一 run 的最新权威快照，避免同步进入 `Waiting` 后补发旧 `Starting`。`special_ops_cancel_login_trial` 只请求普通停止，不立即释放单实例，也不改账号结果；`special_ops_emergency_stop` 立即取消、释放已注入按键、销毁 window、注销热键，并将当前账号持久化为 `Uncertain`。三类停止均按发起时取得的 run id 校验 active run，旧 run 的延迟请求不得取消、清理或持久化替代它的新 run。应用生命周期停止在已进入键鼠阶段时按 `Uncertain` 处理；runtime 在同一临界区读取是否已进入键鼠阶段并登记停止。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。持久化 claim 使用 RAII guard；写入失败或 owner panic 会释放 claim 并唤醒等待方，active run 保留以供紧急停止接管或重试，等待总期限为 5 秒。只有权威结果持久化成功或普通取消明确无需持久化后，worker 才能进入资源清理并释放单实例。
+运行期间使用固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定尺寸且点击穿透；前端不提供按钮，只显示当前步骤、键鼠占用倒计时和本次自定义紧急热键。首次运行先以隐藏状态创建，等待 `PageLoadEvent::Finished` 后显式显示并确认可见，才允许 worker handoff；3 秒未就绪则回滚本次试运行，禁止后台无提示操作。后续运行发现同 label window 已存在时直接显示并复用，运行清理只隐藏而不销毁，避免 Tauri WebView 注册表尚未释放时重建同 label 失败。全局总开关关闭时，登录、导航、制作、子弹四类 start command 均拒绝启动；已运行时紧急热键通过显式 safety scope 绕过全局 gate。`LoginRunSnapshot.runKind` 区分 `login`、`navigation`、`craft`、`ammo`、`round`；operation window 以运行事件中的该值更新显示，URL 参数仅作为首次创建前的兜底文案。子弹停止与制作停止相同，durable 写入成功后必须完成 runtime persistence claim，`cleanup_ready` 才允许清理。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。
 
-`SpecialOpsBootstrap.runSnapshot` 返回当前 run；`special-ops://run-changed` payload 仅含 `LoginRunSnapshot`，不含 settings 或密码，并同时发送到主窗口与 operation window。主窗口提供 WeGame 与游戏 exe 选择、紧急停止热键录制、符合条件账号选择、单次启动和普通取消；启动前先 flush 最新 settings，并使用保存回包的 revision 启动。主窗口以 `settingsRevision` 为主序、单调请求序号为同 revision 次序合并 reload/save 回包，并按 `runId`、`updatedAtMs` 合并 run snapshot，旧回包不得回退 runtime 结果。主窗口显示步骤、消息、倒计时和最近失败时间。试运行仅登录所选账号一次，不执行收取、生产、购买或子弹兑换；运行前需将游戏置顶，执行期间不搜索或滚动窗口。
+多账号自动轮次复用相同 operation window 与紧急停止资源。此时 `LoginRunSnapshot.runKind` 为 `round`，`roundProgress` 追加账号序号、QQ、当前制作台及制作台进度；主页面不显示普通取消按钮，只允许“当前账号结束后暂停”或紧急停止。
 
-制作台入口、进入制作列表点击点、制作列表就绪状态、置顶配方点击点、空闲中文字区域和可收取感叹号均按技术中心、工作台、制药台和防具台保存 4 个独立区域，不使用通用位置。旧 `craft.station`、`craft.recipe`、`craft.idle` 与 `craft.claimReady` 区域加载时删除，禁止把单个旧坐标错误复制到四台。点击烽火地带后增加 `game.activityPopup` 识别区域；命中时执行一次空格，未命中则继续原流程。
+特勤处的鼠标左键输入固定按住 `100ms` 后抬起，覆盖登录、账号选择与复核、游戏内导航、制作和子弹兑换；账号复核双击中的两次左键分别按住。共享输入状态同时追踪已按下的左键，按住等待检测到取消时先抬起左键再返回错误；紧急停止最多重试 3 次释放已按下的键盘按键和左键。Morse、Rapidfire、Recognition、Timer、Counter 等其他工具仍使用原即时点击节奏。
+
+特勤处试运行开始前建立应用窗口快照，隐藏计时器/计数器/连发器显示窗口及其他可见工具窗口；不隐藏、不最小化、不临时置顶主窗口，也不停止对应后台计时、watcher 或热键。`special-ops-operation` 保留显示。存在摩斯、计时器/计数器/连发器定位或特勤处校准框选窗口时拒绝启动，避免 pending selection session 与游戏输入竞争。成功、失败、普通取消、紧急停止、生命周期停止和启动回滚均恢复快照中仍存在的其他功能窗口；运行期间被关闭的窗口不重建。
+
+`SpecialOpsBootstrap.runSnapshot` 返回当前 run；`special-ops://run-changed` payload 仅含带 `runKind` 的 `LoginRunSnapshot`，不含 settings 或密码，并同时发送到主窗口与 operation window。主窗口提供 WeGame 与游戏 exe 选择、紧急停止热键录制、符合条件账号选择、单次启动和普通取消；启动前先 flush 最新 settings，并使用保存回包的 revision 启动。“继续”或“暂停”IPC 尚未返回时，页面显示对应处理中状态，锁定新试运行、校准、账号与制作配置，避免 scheduler 启动窗口与手动 start 发生竞态。主窗口以 `settingsRevision` 为主序、单调请求序号为同 revision 次序合并 reload/save 回包，并按 `runId`、`updatedAtMs` 合并 run snapshot，旧回包不得回退 runtime 结果。terminal snapshot 只有在同 revision 权威 bootstrap 返回 `runSnapshot: null` 后才清空；清空前设置保存、暂停切换、校准框选、参考图操作、模板测试和新试运行均由前后端共同拒绝，错误固定为“特勤处试运行尚未完成清理”。主窗口显示步骤、消息、倒计时和最近失败时间。
+
+## 游戏内导航试运行
+
+`special_ops_start_navigation_trial` 复用当前已打开游戏，不结束或启动游戏，也不操作 WeGame。预检冻结所选账号、游戏 canonical exe 路径、已测试模板 `game.modeReady` 与 `game.stationGrid`、点击点 `game.beaconMode` 与 `game.specialOps`，以及三段全局固定等待时间。状态机按“等待模式可用 → 点击烽火地带 → 等待后按 Space → 等待后按 Tab → 等待后点击特勤处 → 等待四制作台页面”执行；每步独立 3 分钟超时。三段等待使用整数毫秒，范围 `0–60000`，默认均为 `3000`，在点击区域校准列表对应步骤配置。导航首个键鼠动作前显示 5→4→3→2→1，后续需要提示的动作只显示 1，固定等待本身不倒计时；中间固定动作不执行模板守卫。每次输入前仍重新查找、恢复并聚焦 canonical 游戏窗口。`game.modeReady` 与 `game.stationGrid` 继续执行 400ms 间隔双采样。成功不改业务状态；独立试运行的步骤超时或步骤执行错误均持久化全局暂停；普通取消与紧急停止均可中断固定等待，停止后不得发送下一输入。
+
+登录与导航共用单实例 runtime、`special-ops-operation` window、`special-ops-emergency` 热键及取消 command，禁止并发运行。运行期收起其他已存在辅助窗口，主工具窗口保持原状态；启动路径禁止同步读取窗口 `is_visible`，避免“继续”命令与 Tauri UI 线程互相等待。Timer、Counter、Rapidfire 和 Recognition 的透明窗口在特勤处结束后不得直接 `show()`，必须按各工具当前总开关重新 reconcile，关闭状态保持隐藏。账号下四制作台不再显示制作物品名称输入框，只保留启用开关、小时、分钟和状态；兼容字段 `itemName` 暂留配置结构。
+
+制作台入口点击点按技术中心、工作台、制药台和防具台保存 4 个独立位置。固定探测另保存共享 `craft.confirmPinned` 确认置顶点击点、共享 `craft.returnToStationGrid` 制作中返回点击点，以及四个全局 `craft.recipe.<station>` 制作物品选择点击点。账号开启独立设置后，UI 额外提供四个账号级制作物品选择点击点；其结果写入 `independentBusinessConfig.recipePoints`，runtime 优先使用账号级点，未配置时回退全局点，不覆盖校准环境。奖励页、共享制作中、四台制作中和制作列表就绪校准项均已删除；旧 `craft.reward`、`craft.inProgress.*`、`craft.recipeListReady.*`、`craft.claimReady.*`、`craft.idle.*` 加载时按默认 target 白名单清理。
 
 `game.modeReady` 使用用户上传的模板图判定模式选择已可操作。没有识别样本前，该步骤不能进入真实执行器；不得仅以固定延时判定成功。
 
 ## 判定与动作守卫
 
-执行器必须将模板匹配或 OCR 连续两次一致作为成功，采样间隔约 300–500ms；结果不一致时重新采样，不点击、不输入、不更新持久化状态。可见按钮自身使用 `recognitionRegion`，只有自身模板命中后才点击。不能依靠按钮自身判断的固定动作使用以下守卫：
+执行器必须将模板匹配连续两次一致作为成功，采样间隔约 300–500ms；结果不一致时重新采样，不点击、不输入、不更新持久化状态。账号列表 OCR 仅用于确认两次采样均非空，不比较文本内容；账号身份只由选中后的剪贴板完整 QQ 判定。可见按钮自身使用 `recognitionRegion`，只有自身模板命中后才点击。不能依靠按钮自身判断的固定动作使用以下守卫：
 
 | 动作 | 前置守卫 | 后置判定 |
 |---|---|---|
 | 结束旧游戏与 WeGame | 用户选择的两个 exe canonical 完整路径 | 对应路径的目标进程实例全部消失；不按 basename 误杀，不递归结束进程树 |
 | 启动 WeGame | `wegameExecutablePath` 为有效绝对 `.exe` 文件 | native 进程/窗口检查可继续，随后等待登录入口或表单 |
 | 切换到账号密码登录 | `wegame.loginFormReady` 未命中且登录入口自身模板命中 | `wegame.loginFormReady`；已命中时跳过该点击 |
-| 展开记住账号列表 | `wegame.loginFormReady` | `wegame.accountList` 可执行稳定 OCR |
-| 选择并复核 QQ | 两次 OCR 命中目标且 bounding box 稳定 | 点击账号数字中心；复制顶部账号后必须与目标 QQ 完全一致 |
+| 展开记住账号列表 | `wegame.loginFormReady` | `wegame.accountList` 连续两次 OCR 均为非空；连续 3 轮为空则标记当前账号 `NeedsManualLogin` |
+| 选择并复核 QQ | 账号列表连续两次 OCR 均为非空 | 稳定识别到 1–3 行时按 OCR 行中心点击；行数、位置或边界不稳定时回退区域三等分；复制顶部账号后与目标 QQ 完全一致才结束扫描 |
 | 提交 WeGame 登录 | `wegame.login` 自身模板连续两次命中 | 每次 run 只点击一次；之后只等待 `wegame.gameEntry`，失败时不返回输入步骤、不重复提交密码 |
 | 选择置顶游戏 | `wegame.gameEntry` 自身模板连续两次命中 | `wegame.launch` 连续两次命中；运行时不搜索、不滚动游戏列表 |
 | 点击启动游戏 | `wegame.launch` 自身模板连续两次命中 | native 检查指定游戏 PID/HWND 出现；登录试运行到此结束 |
-| 点击烽火地带 | 入口自身模板 | 可选 `game.activityPopup` 或 `game.startGame` |
-| 关闭活动弹窗 | `game.activityPopup` | 按一次空格后等待 `game.startGame` |
-| 切换大厅视角 | `game.startGame` | 按一次 Tab；制作分支等待 `game.specialOps`，仅兑换分支等待 `ammo.department` |
-| 进入特勤处 | `game.specialOps` 自身模板 | `game.stationGrid` |
-| 点击制作台 | 对应 `craft.claimReady.*` | `craft.reward`；奖励页识别因网络延迟漏采后允许以对应 `craft.recipeListReady.*` 确认已收取；连续 3 次仍稳定命中感叹号则隔离账号 |
-| 关闭制作奖励页 | `craft.reward` | 按一次空格后等待对应 `craft.idle.*` |
-| 进入制作列表 | 对应 `craft.idle.*` | 对应 `craft.recipeListReady.*` |
-| 点击置顶配方 | 对应 `craft.recipeListReady.*` | `craft.fill` 或 `craft.produce` |
+| 点击烽火地带 | `game.modeReady` 双采样已命中 | 等待 `navigationSpaceDelayMs` |
+| 关闭活动弹窗 | 固定等待结束并重新聚焦游戏窗口 | 按一次 Space；不执行中间模板识别 |
+| 切换大厅视角 | 等待 `navigationTabDelayMs` 并重新聚焦游戏窗口 | 按一次 Tab；不执行中间模板识别 |
+| 进入特勤处 | 等待 `navigationSpecialOpsDelayMs` 并重新聚焦游戏窗口 | 点击 `game.specialOps` 点击点，再等待 `game.stationGrid` 双采样命中 |
+| 制作台固定探测 | 当前游戏窗口可聚焦 | run 首个键鼠块显示 5→4→3→2→1；点击 `craft.station.<station>` → 等待 `craftSpaceDelayMs` → 按 Space → 等待 `craftReopenDelayMs` → 再次点击制作台 → 等待 `craftConfirmPinnedDelayMs` → 点击 `craft.confirmPinned`；后续原本不提示的固定输入继续不提示 |
+| 判断正在制作 | 固定探测输入已完成 | `craft.abort` 单次双采样；连续命中时点击 `craft.returnToStationGrid`，并等待 `game.stationGrid` 双采样后结束当前台，不发送 Esc |
+| 进入制作列表 | `craft.abort` 两个有效低分样本 | 按 run 级规则显示倒计时，点击当前台 `craft.recipe.<station>` 制作物品选择点 |
+| 判断生产路径 | 制作物品选择点已点击 | 等待 `craft.fill` 或 `craft.produce` |
 | 点击制作一键补齐 | `craft.fill` 自身模板 | `craft.purchase` |
-| 购买制作材料 | `craft.purchase` 按钮自身模板 | `craft.produce`；仍为补齐状态则按价格波动规则重试 |
+| 购买制作材料 | `craft.purchase` 按钮自身模板 | 每次点击后等待 1 秒，只双采样 `craft.produce` 或 `craft.purchase`；购买按钮仍出现时重试，第三次仍出现则隔离账号 |
 | 开始制作 | `craft.produce` 按钮自身模板 | `craft.abort` |
 | 返回部门页 | `ammo.department` 已命中时跳过；否则仅在 `game.stationGrid` 或 `craft.abort` 命中时按一次 Tab | `ammo.department` |
-| 点击部门 | `ammo.department` 自身模板 | `ammo.supply` |
-| 点击军需处 | `ammo.supply` 自身模板 | `ammo.tactical` |
-| 点击战术部门 | `ammo.tactical` 自身模板 | `ammo.list` |
-| 切换赛季限定列表 | `ammo.seasonal` 自身模板 | `ammo.seasonalList` |
-| 滚动到目标子弹 | `ammo.list` 或 `ammo.seasonalList` | 每次滚轮动作前列表仍需连续两次命中；滚动完成后再次确认列表，才允许点击 |
-| 点击目标子弹 | `ammo.list` 或 `ammo.seasonalList` | OCR `ammo.selectedTargetName` 必须等于当前目标名称，并出现 `ammo.fill` 或 `ammo.exchange` |
-| 点击子弹一键补齐 | `ammo.fill` 自身模板 | `ammo.purchase` |
-| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | `ammo.exchange`；失败按既定重试/隔离规则处理 |
-| 兑换子弹 | `ammo.exchange` 按钮自身模板 | `ammo.success` 灰色状态 |
+| 点击部门 | `ammo.department` 自身模板 | 识别命中后倒计时一次，再点击模板中心 |
+| 点击军需处 | 独立固定等待 `ammoSupplyDelayMs` | 等待结束后倒计时一次，直接点击 `ammo.supply` 点击点，不识别该入口 |
+| 点击战术部门 | 独立固定等待 `ammoTacticalDelayMs` | 等待结束后倒计时一次，直接点击 `ammo.tactical` 点击点，不识别列表就绪状态 |
+| 点击普通目标子弹 | 普通目标配置顺序 | run 级倒计时；先按 A、D（各间隔 100ms），再向下滚配置次数，事件间隔 100ms，结束等待 1000ms 后点击；随后等待 `ammo.success`、`ammo.fill` 或 `ammo.exchange` |
+| 切换赛季限定 | 全部普通目标结束且存在赛季目标 | 按 run 级规则显示倒计时，直接点击 `ammo.seasonal` 点击点；多个赛季目标之间不重复点击 |
+| 点击赛季目标子弹 | 赛季目标配置顺序 | run 级倒计时；先按 A、D（各间隔 100ms），再向下滚配置次数，事件间隔 100ms，结束等待 1000ms 后点击；随后等待 `ammo.success`、`ammo.fill` 或 `ammo.exchange` |
+| 点击子弹一键补齐 | `ammo.fill` 自身模板 | 按 run 级规则显示倒计时后点击，随后识别 `ammo.purchase` |
+| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | 每次购买点击前倒计时一次，点击后等待 1 秒，只双采样 `ammo.exchange` 或 `ammo.purchase`；购买按钮仍出现时重试，第三次仍出现则隔离账号 |
+| 兑换子弹 | `ammo.exchange` 可兑换状态模板 | 按 run 级规则显示倒计时后点击兑换；双采样命中全局 `ammo.confirm` 用户参考图后再次按规则提示并点击区域中心，再以 `ammo.success` 用户参考图确认完成；均不读取颜色 |
 
-每个裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。`default_click_and_input_targets_have_recognition_guards` 测试枚举所有 `clickPoint` 与 `inputRegion`；新增裸动作却未登记有效守卫时测试必须失败。窗口恢复、进程启动、进程结束和窗口存在使用 native 状态，不以截图模板替代。
+`ammo.success` 在 30 秒内未连续命中时，runtime 重新截取已配置区域，保存到 `<应用数据目录>/special_ops_diagnostics/<时间戳>-<账号QQ>-ammo.success.png`。失败消息保留目标、阈值与最后双采样，并附截图绝对路径；截图保存失败只能附加说明，不得覆盖原识别失败。诊断图不截全屏，也不包含 WeGame 登录区域。
 
-制作或子弹补齐购买最多重试 3 次，每次间隔 1 秒并重新识别。重试后仍未进入 `craft.produce` 或 `ammo.exchange`，且补齐/购买状态仍存在时，不依赖短暂的仓库公告文本；直接将账号标记为需人工处理，结束该账号剩余流程并切换下一账号。
+每个普通裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。固定探测中的 `craft.station.*`、`craft.confirmPinned`、`craft.returnToStationGrid` 与 `craft.recipe.*` 属于显式状态机动作：制作台与确认置顶点不执行通用倒计时或正向模板守卫；返回点只在 `craft.abort` 连续命中后无倒计时点击；物品选择点恢复倒计时但仍不做正向守卫。安全边界由固定顺序、`craft.abort` 一次性双采样、`game.stationGrid` 返回确认和失败后 `Uncertain` 保证。窗口恢复、进程启动、进程结束和窗口存在使用 native 状态，不以截图模板替代。
 
-单账号登录试运行 preflight 只检查所选账号为非空纯数字 QQ、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名、账号列表展开点击点、账号列表 OCR 区域和顶部账号双击区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ、启用制作台缺物品/有效时长、启用子弹缺名称，或任一必需目标缺配置时均拒绝启动并报告首个缺失步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
+制作或子弹补齐购买最多点击 3 次，每次点击后等待 1 秒。购买结果只在“继续动作按钮”与“购买按钮仍出现”之间双采样判定：制作对应 `craft.produce` / `craft.purchase`，子弹对应 `ammo.exchange` / `ammo.purchase`。第三次仍稳定命中购买按钮时，不依赖短暂仓库公告文本：制作分支把账号标记为 `Isolated`；子弹分支只写当前 `AmmoTarget.lastFailure`。两者都结束当前账号剩余流程并切换下一账号。双采样不一致、无稳定状态或截图/窗口/输入错误不得误判仓库空间不足，仍按目标级人工失败或系统级失败处理。
+
+单账号登录试运行 preflight 只检查所选账号为非空纯数字 QQ、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名、账号列表展开点击点、账号列表 OCR 区域和顶部账号双击区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ、启用制作台缺有效时长、启用子弹缺备注或指定点击点，或任一必需目标缺配置、参考图、有效双采样签名时均拒绝启动并报告首个失败步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
+
+## 未来 24 小时任务时间轴
+
+`ScheduleSnapshot` 除现有 `dueAccounts` 和 `nextWakeAtMs` 外，返回 `timelineStartMs`、`timelineEndMs` 与排序后的 `timelineTasks`。制作任务来自启用制作台的实际 `finishesAtMs`；子弹任务来自当天尚未成功的启用目标，并在次日兑换时间落入窗口时投影次日目标。可定位失败任务即使不具备 runtime eligibility 也投影为当前到期，并携带 `manualFailure`；非 `Ready`、登录失败、状态不确定或隔离账号仍展示任务并携带 `accountStatus`，但这不代表 runtime 允许执行。
+
+前端显示滚动未来 24 小时小时网格，每分钟刷新当前时间和权威 bootstrap。逾期任务保留原计划时间，延迟固定显示“0 分钟后”。任务按计划时间排序，以每组第一项为锚，仅把严格小于 10 分钟的后续任务合并到同一视觉块，不链式扩展、不改执行时间、不提供拖动或改期入口。结构化制作失败行显示三个单项按钮；结构化子弹失败行显示两个单项按钮；无结构化定位、`NeedsManualLogin` 或 `LoginFailed` 只显示状态和账号页处理提示。制作 scheduler 使用制作台实际完成时间触发，不使用视觉分组结果；启用联网利润筛选时，子弹任务额外显示等待查询、已达标、当前轮次或截止后绕过利润等状态，时间轴投影不反向修改实际 scheduler 时间。
+
+## 联网利润筛选
+
+`profitFilter` 保存独立开关、利润截止时间、规则和当天最近审计。规则包含工具生成的稳定 ID、显示名、KKRB 精确名称、可选 Moligod 精确名称和非负最低总利润；默认业务配置与账号独立业务配置中的子弹目标只保存 `profitRuleId` 引用。规则、绑定和审计写入 `special_ops_settings.json`，但 qualified rule IDs、查询 generation、组内 cadence、取消令牌和 active round targets 只保存在进程内；重启后审计只能展示，不得复用为兑换资格。
+
+筛选默认关闭，关闭时现有多账号子弹流程不读取规则或审计。启用后，从每日兑换时间到利润截止时间按“立即 → 5 分钟 → 5 分钟 → 50 分钟”串行查询；KKRB 结构化数据是主源，只有主源 HTTP、根 schema、业务错误或“系统繁忙”等整体失败时才调用 Moligod。KKRB 正常但目标缺失、重复或利润无效时不使用 Moligod 覆盖该结果。Moligod 使用只允许 `https://moligod.com/*` 且无 IPC permission 的主窗口外侧 child Remote WebView，不创建顶级查询窗口；通过 DOM 精确名称读取网页已显示的“预估净利润”，不使用截图、OCR、网页排序、键鼠或配方重算。页面仍显示“加载军需处兑换价格中...”时不得把稳定的空 DOM 当成结果，必须等加载提示消失后再开始精确名称扫描。child WebView 关闭后，独立数据目录在后台最多重试 30 秒清理；仍被 WebView2 锁定时只写 warning，不覆盖已取得的利润结果或向 UI 返回 `os error 32`。配置页手动“刷新 KKRB 名称”遇到业务码 `-101` 时最多重试 3 次、每次间隔 1 秒；3 次仍繁忙则保留已加载名称并提示“KKRB 暂时繁忙，名称列表未更新。可直接手工填写并保存‘KKRB 精确名称’”。该规则不影响后台查询节奏或 Moligod fallback。
+
+达到最低利润的规则可冻结进本轮；同一规则被多个 `Ready` 账号引用时，所有符合当天状态的目标一起进入轮次。未达标、规则未绑定、目标缺失或两站失败保持待执行，不增加游戏内 retry，不标记账号失败。截止时间后，未成功且未耗尽 retry 的已配置目标绕过利润 gate。round 启动时消费同一 generation 的资格并记录 active targets；窗口、热键或 worker handoff 启动失败时立即撤销该 generation，禁止遗留 `ActiveRound`。正常或失败的已启动轮次结束后也使旧资格失效，后续任务必须重新查询。
 
 ## WeGame 进程与窗口约束
 
-用户通过文件选择器指定 WeGame 与游戏 `.exe`。执行器 canonicalize 两个完整路径，只结束路径精确匹配的进程实例；同名不同目录进程不匹配，辅助子进程不会因父子关系被递归结束。WeGame 登录前后可能把主窗口转交给子进程，因此每次 WeGame 键鼠输入前重新查找配置 exe 及其完整进程树中的顶层窗口，并在恢复、聚焦前再次复核 HWND→PID→当前进程树；不按窗口标题或 `browser.exe` 名称兜底。游戏窗口仍按游戏 exe 自身的完整路径确认，不扩大到游戏进程树。无法恢复、聚焦或确认归属时不发送输入，当前步骤失败并全面暂停。流程不要求最大化 WeGame，也不按比例缩放旧校准坐标。
+用户通过文件选择器指定 WeGame 与游戏 `.exe`。执行器 canonicalize 两个完整路径，只结束路径精确匹配的进程实例；同名不同目录进程不匹配，辅助子进程不会因父子关系被递归结束。WeGame 登录前后可能把主窗口转交给子进程，因此每次 WeGame 键鼠输入前重新查找配置 exe 及其完整进程树中的顶层窗口，并在恢复、聚焦前再次复核 HWND→PID→当前进程树；不按窗口标题或 `browser.exe` 名称兜底。游戏窗口仍按游戏 exe 自身的完整路径确认，不扩大到游戏进程树。请求前台切换后最长等待 1.5 秒，每 50ms 复核一次前台 HWND；首轮仍未成为前台时，执行器发送一次成对 Alt 按下/释放并重试一次。重试后仍无法恢复、聚焦或确认归属时不发送后续输入，当前步骤失败并全面暂停。流程不要求用户在点击试运行前手动把游戏置前，不要求最大化 WeGame，也不按比例缩放旧校准坐标。
+
+## 单账号制作试运行
+
+新增 `special_ops_start_craft_trial`，支持选择一个账号和一个制作台执行收取并重做。流程按三段全局等待执行固定动作：点击制作台、等待后按 Space、等待后再次点击制作台、等待后点击共享确认置顶点；三段范围 `0–60000ms`，默认均为 `3000ms`。随后只对 `craft.abort` 执行一次双采样：连续命中表示正在制作，点击共享 `craft.returnToStationGrid` 后必须等待 `game.stationGrid` 双采样才正常结束，不发送 Esc；两个有效低分样本视为已进入制作列表，恢复普通倒计时并点击当前台 `craft.recipe.<station>` 制作物品选择点，再按 `craft.fill` / `craft.produce` 进入原生产流程。一高一低、截图或参考图错误、返回点击失败、返回页面确认失败均不得降级为低分分支；输入开始后的失败会暂停自动化，将账号和当前台标记为 `Uncertain` 并保存实际失败步骤。生产后 `craft.abort` 命中时以确认时间记录 `startedAtMs`，按配置时长计算 `finishesAtMs`；正在制作分支不改完成时间或 revision。购买按钮连续三次稳定出现时返回 `craft.isolated`，账号保存为 `Isolated`，不把当前制作台覆盖为 `Uncertain`。
+
+制作试运行与登录、导航共用窗口仲裁：隐藏其他功能窗口，主工具窗口保持原状态。仍沿用 operation window 与紧急停止。run 首个键鼠块显示 5→4→3→2→1，后续原本需要提示的动作只显示 1，固定探测中原本不提示的后续输入继续不提示；每次输入仍检查取消、重新聚焦游戏窗口并在输入后停放鼠标；制作物品选择、补齐、购买和生产继续使用同一 run 级倒计时，其中补齐、购买和生产执行正向双采样。preflight 冻结当前台制作台点击点、共享确认置顶点、当前台制作物品选择点、`game.stationGrid`、`craft.fill/purchase/produce/abort` 及三段等待。
+
+## 当前账号四制作台批处理试运行
+
+`special_ops_start_craft_batch_trial` 在创建 runtime、operation window 或发送键鼠输入前，以一次 `nowMs` 冻结当前账号任务集合。账号必须为 `Ready`；只选择启用、非 `Uncertain` 且 `finishesAtMs <= frozenNowMs` 的制作台，按技术中心 → 工作台 → 制药台 → 防具台执行。空任务直接返回“当前账号没有到期制作台”，不创建运行态或占用键鼠。
+
+批次开始先双采样确认 `game.stationGrid`，每台复用单制作台状态机。`StillInProgress` 不改持久化状态，直接进入下一台；`Started` 先通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和新完成时间，再点击 `craft.returnToStationGrid` 并确认 `game.stationGrid`，随后进入下一台。最后一台 `Started` 也必须返回四制作台页面。运行中新增到期台不插入当前批次。任一单台失败、持久化失败、返回失败或取消立即截断后续台；此前已成功写入的台不回滚，当前失败台按实际输入状态和失败类型决定是否标记 `Uncertain`。
+
+## 多账号自动轮次
+
+`special_ops_start_due_round` 与后台 scheduler 共用 `build_schedule()` 和同一 worker。轮次启动时冻结启用、已初始化、`Ready` 账号中已到期且业务配置启用的制作台，以及当天已到兑换时间、未成功且重试未耗尽的启用子弹。制作台状态为 `Crafting` 或 `Ready` 且完成时间到期时均可加入。账号按 `order` 排序，账号内按技术中心 → 工作台 → 制药台 → 防具台执行；同账号制作与子弹合并为一次登录。仅子弹账号停在 Tab 后大厅，制作与子弹同账号时先进入四制作台完成制作，再从四制作台页面进入子弹兑换。轮次启动后新到期任务留到下一轮。
+
+每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录、导航超时和制作异常保存账号失败，阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`，账号保持 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。导航窗口、截图、输入、持久化和 runtime 资源故障视为系统级错误，持久化全局暂停并停止本轮。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`TimedOut` 将账号标记为 `Uncertain` 且不修改制作台，`Paused` 保持系统级。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
+
+轮次正常完成时按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame。`PauseRequested` 先持久化暂停，再关闭游戏；关闭失败保持暂停并报告 `round.closeGame`。正常完成时关闭失败转全局暂停。`SystemFailure` 与 `EmergencyStopped` 不关闭游戏，保留现场供人工确认。
+
+应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务等待计划时间；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间，不得复用启动或休眠前游戏会话。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、刷新逾期任务并聚焦主窗口，不执行登录。全局总开关关闭时 disarm，应用退出时 shutdown。
 
 ## 当前边界
 
-已实现配置持久化、调度模型、暂停配置、账号/制作台/有序子弹配置、区域框选、模板双采样测试、原生单账号登录试运行 runtime，以及无按钮 operation window。当前试运行只覆盖重建 WeGame 会话、OCR 选择已记住账号、剪贴板复核 QQ、选择置顶游戏并等待游戏 PID/HWND；多账号 round、游戏内制作/兑换执行、子弹名称 OCR、识色判定和崩溃恢复尚未实现，不能视为自动化完成。
+已实现配置持久化、24 小时任务投影、暂停配置、账号/制作台/有序子弹点击与滚轮配置、区域框选、模板双采样测试、原生单账号登录、游戏内导航、单账号单制作台制作试运行、当前账号四制作台批处理、单账号真实子弹兑换试运行、多账号制作与当天子弹合并 round、后台 scheduler，以及无按钮 operation window。默认子弹兑换顺序、账号独立设置与利润业务目标表默认折叠，不保存展开状态。`ammo.confirm` 和 `ammo.success` 均使用用户参考图模板，不做识色。完整游戏/WeGame 崩溃恢复尚未实现，自动轮次仍需桌面开发版实机验收。
 
 ## Tauri Commands
 
 | 命令 | 作用 |
 |---|---|
-| `special_ops_test_calibration_target` | 对模板识别区域执行两次真实截图与 NCC，返回双采样相似度；OCR/点击点/输入区域拒绝假测试 |
+| `special_ops_test_calibration_target` | 对模板区域执行两次真实截图与 NCC，或对 OCR 区域执行两次真实 Windows OCR；点击点和输入区域拒绝测试 |
 | `special_ops_start_login_trial` | 校验 revision 与登录 preflight，启动单实例后台试运行并立即返回 run snapshot |
+| `special_ops_start_navigation_trial` | 校验导航 preflight，从当前游戏进入四制作台页面 |
+| `special_ops_start_craft_trial` | 运行当前账号指定单制作台试运行 |
+| `special_ops_start_craft_batch_trial` | 冻结当前账号到期制作台并按固定顺序批处理 |
+| `special_ops_start_ammo_trial` | 冻结当前账号全部启用子弹，按普通组、赛季组执行真实兑换并即时保存结果 |
+| `special_ops_start_due_round` | 冻结全部到期制作与当天子弹任务，按账号顺序执行多账号自动轮次 |
+| `special_ops_confirm_account_station_states` | 原子保存四制作台及当天全部启用子弹状态；`Uncertain` / `Isolated` 可恢复 `Ready` |
+| `special_ops_confirm_station_state` | 只校正时间轴中结构化定位的失败制作台，保留其他子弹失败 |
+| `special_ops_confirm_ammo_state` | 只校正时间轴中结构化定位的失败子弹，写入或清除当天成功状态 |
 | `special_ops_cancel_login_trial` | 请求普通取消；等待 worker 完成统一清理 |
 | `special_ops_emergency_stop` | 立即释放输入并将当前账号标记为不确定 |
 
-三项登录试运行 command 的运行态通过 `special-ops://run-changed` 同时发送到主窗口与 `special-ops-operation` window；payload 只有 `LoginRunSnapshot`，不得包含 QQ 密码。
+五类运行 command 的运行态通过 `special-ops://run-changed` 同时发送到主窗口与 `special-ops-operation` window；payload 只有带 `runKind` 的 `LoginRunSnapshot`，round 可附带 `roundProgress`，不得包含 QQ 密码。
+
+当前应用自定义 commands 只通过 `generate_handler![]` 注册，尚未整体迁移到 Tauri app ACL。不得只为单个 command 创建局部 permission；这会生成 `default_permission: null` 的 `__app-acl__`，导致 `special_ops_get_bootstrap` 等未列入 allow 的既有 commands 被拒绝。

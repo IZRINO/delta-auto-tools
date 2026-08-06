@@ -1,9 +1,19 @@
+mod ammo_runtime;
+mod craft_batch;
+mod craft_runtime;
+mod craft_trial;
 pub(crate) mod desktop_runtime;
+mod game_navigation;
 #[allow(dead_code)]
 pub(crate) mod login_flow;
 mod login_runtime;
+mod profit;
 #[allow(dead_code)]
 mod remembered_account;
+mod round_account;
+mod round_planner;
+mod round_runner;
+mod round_scheduler;
 #[allow(dead_code)]
 pub(crate) mod template_observer;
 #[allow(dead_code)]
@@ -13,18 +23,43 @@ mod windows_ocr;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::{
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
+};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::overlay_utils::{destroy_window, encoded_query_value, safe_label_component};
 use crate::{app_error::AppError, settings::SettingsCoordinator};
 
-pub use login_runtime::{LoginRunSnapshot, LoginRunStatus};
+pub use login_runtime::{LoginRunKind, LoginRunSnapshot, LoginRunStatus};
+use profit::model::{
+    apply_profit_configuration, normalize_profit_settings, validate_profit_configuration,
+    AmmoProfitAudit, AmmoProfitRule, ProfitConfigurationUpdate, ProfitFilterSettings,
+};
+use profit::query::query_profit_rules_with_cancel;
+use profit::runtime::{
+    ProfitQueryControl, ProfitQueryWindow, ProfitRuntimeSnapshot, ProfitTargetKey,
+};
+use profit::{
+    kkrb::{KkrbAdapter, ProfitCatalogSnapshot},
+    moligod::{MoligodAdapter, MoligodRequestTarget, MoligodRuleStatus},
+};
+use round_planner::AmmoProfitGate;
 
 const SETTINGS_FILE_NAME: &str = "special_ops_settings.json";
+pub(crate) const MOUSE_CLICK_HOLD_MS: u64 = 100;
+const PROFIT_QUERY_FIVE_MINUTES_MS: i64 = 5 * 60_000;
+const PROFIT_QUERY_FIFTY_MINUTES_MS: i64 = 50 * 60_000;
+const PROFIT_QUERY_STALE: &str = "利润查询结果已过期";
+const OPERATION_WINDOW_LOAD_TIMEOUT: &str = "操作提示窗口加载超时，已取消本次试运行";
+const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+/// 单实例特勤处 run 收起的辅助窗口标签，统一由资源清理路径恢复。
+static SPECIAL_OPS_HIDDEN_WINDOWS: LazyLock<Mutex<Vec<String>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -66,12 +101,39 @@ pub enum AccountStatus {
     Isolated,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ManualStationState {
+    ImmediateDue,
+    Crafting,
+    Idle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StationCorrectionInput {
+    pub kind: StationKind,
+    pub state: ManualStationState,
+    pub remaining_minutes: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AmmoCorrectionInput {
+    pub target_id: String,
+    pub succeeded_today: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountFailure {
     pub step: String,
     pub message: String,
     pub at_ms: i64,
+    #[serde(default)]
+    pub station_kind: Option<StationKind>,
+    #[serde(default)]
+    pub ammo_target_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,7 +147,244 @@ pub struct AmmoTarget {
     pub scroll_steps: u32,
     pub order: u32,
     pub last_success_day: Option<String>,
+    #[serde(default)]
+    pub retry_day: Option<String>,
     pub retry_count: u8,
+    #[serde(default)]
+    pub last_failure: Option<AccountFailure>,
+}
+
+fn prepare_ammo_retry_state(target: &mut AmmoTarget, day: &str) {
+    if target.retry_day.as_deref() != Some(day) {
+        target.retry_day = Some(day.to_string());
+        target.retry_count = 0;
+    }
+}
+
+fn apply_ammo_success(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    target_id: &str,
+    day: &str,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
+    let target = account
+        .ammo_targets
+        .iter_mut()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| "子弹兑换目标已不存在".to_string())?;
+    target.last_success_day = Some(day.to_string());
+    target.retry_day = Some(day.to_string());
+    target.retry_count = 0;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_ammo_failure(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    target_id: &str,
+    day: &str,
+    step: &str,
+    message: &str,
+    failed_at_ms: i64,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
+    let target = account
+        .ammo_targets
+        .iter_mut()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| "子弹兑换目标已不存在".to_string())?;
+    prepare_ammo_retry_state(target, day);
+    target.retry_count = target.retry_count.saturating_add(1);
+    account.last_failure = Some(AccountFailure {
+        step: step.to_string(),
+        message: format!("目标 {target_id}：{message}"),
+        at_ms: failed_at_ms,
+        station_kind: None,
+        ammo_target_id: Some(target_id.to_string()),
+    });
+    Ok(())
+}
+
+fn apply_ammo_isolated(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    target_id: &str,
+    step: &str,
+    message: &str,
+    failed_at_ms: i64,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
+    set_ammo_manual_failure(account, target_id, step, message, failed_at_ms)
+}
+
+fn set_ammo_manual_failure(
+    account: &mut AccountPlan,
+    target_id: &str,
+    step: &str,
+    message: &str,
+    at_ms: i64,
+) -> Result<(), String> {
+    let failure = AccountFailure {
+        step: step.to_string(),
+        message: message.to_string(),
+        at_ms,
+        station_kind: None,
+        ammo_target_id: Some(target_id.to_string()),
+    };
+    let target = account
+        .ammo_targets
+        .iter_mut()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| "子弹兑换目标已不存在".to_string())?;
+    target.last_failure = Some(failure.clone());
+    let has_station_failure = account
+        .last_failure
+        .as_ref()
+        .is_some_and(|current| current.station_kind.is_some());
+    let has_login_block = matches!(
+        account.status,
+        AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
+    );
+    if !has_station_failure && !has_login_block {
+        account.last_failure = Some(failure);
+        account.status = AccountStatus::Ready;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StationBusinessConfig {
+    pub kind: StationKind,
+    pub enabled: bool,
+    pub duration_minutes: u32,
+    #[serde(default)]
+    pub recipe_note: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ScrollDirection {
+    Up,
+    #[default]
+    Down,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AmmoBusinessTarget {
+    pub id: String,
+    #[serde(default, alias = "name")]
+    pub note: String,
+    pub enabled: bool,
+    pub seasonal: bool,
+    #[serde(default)]
+    pub click_point: Option<CalibrationRect>,
+    #[serde(default)]
+    pub scroll_direction: ScrollDirection,
+    #[serde(default)]
+    pub scroll_steps: u32,
+    pub order: u32,
+    #[serde(default)]
+    pub profit_rule_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BusinessConfig {
+    pub stations: Vec<StationBusinessConfig>,
+    #[serde(default)]
+    pub recipe_points: Vec<AccountRecipePoint>,
+    pub ammo_targets: Vec<AmmoBusinessTarget>,
+}
+
+impl Default for BusinessConfig {
+    fn default() -> Self {
+        Self {
+            stations: StationKind::all()
+                .into_iter()
+                .map(|kind| StationBusinessConfig {
+                    kind,
+                    enabled: true,
+                    duration_minutes: 60,
+                    recipe_note: String::new(),
+                })
+                .collect(),
+            recipe_points: Vec::new(),
+            ammo_targets: Vec::new(),
+        }
+    }
+}
+
+fn missing_business_config() -> BusinessConfig {
+    BusinessConfig {
+        stations: Vec::new(),
+        recipe_points: Vec::new(),
+        ammo_targets: Vec::new(),
+    }
+}
+
+fn business_config_from_account(account: &AccountPlan) -> BusinessConfig {
+    BusinessConfig {
+        stations: StationKind::all()
+            .into_iter()
+            .map(|kind| {
+                account
+                    .stations
+                    .iter()
+                    .find(|station| station.kind == kind)
+                    .map(|station| StationBusinessConfig {
+                        kind: kind.clone(),
+                        enabled: station.enabled,
+                        duration_minutes: station.duration_minutes,
+                        recipe_note: station.item_name.clone(),
+                    })
+                    .unwrap_or(StationBusinessConfig {
+                        kind,
+                        enabled: false,
+                        duration_minutes: 240,
+                        recipe_note: String::new(),
+                    })
+            })
+            .collect(),
+        recipe_points: Vec::new(),
+        ammo_targets: account
+            .ammo_targets
+            .iter()
+            .map(|target| AmmoBusinessTarget {
+                id: target.id.clone(),
+                note: target.name.clone(),
+                enabled: target.enabled,
+                seasonal: target.seasonal,
+                click_point: None,
+                scroll_direction: ScrollDirection::Down,
+                scroll_steps: target.scroll_steps,
+                order: target.order,
+                profit_rule_id: None,
+            })
+            .collect(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRecipePoint {
+    pub kind: StationKind,
+    pub rect: CalibrationRect,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,6 +396,10 @@ pub struct AccountPlan {
     pub initialized: bool,
     pub order: u32,
     pub status: AccountStatus,
+    #[serde(default)]
+    pub independent_settings_enabled: bool,
+    #[serde(default)]
+    pub independent_business_config: Option<BusinessConfig>,
     pub stations: Vec<StationPlan>,
     pub ammo_targets: Vec<AmmoTarget>,
     #[serde(default)]
@@ -151,11 +454,22 @@ pub struct CalibrationTarget {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct CalibrationTemplateTestResult {
-    pub sample_similarities: [f32; 2],
-    pub passed: bool,
-    pub verified_at_ms: Option<i64>,
+#[serde(
+    tag = "method",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum CalibrationTestResult {
+    Template {
+        sample_similarities: [f32; 2],
+        passed: bool,
+        verified_at_ms: Option<i64>,
+    },
+    Ocr {
+        first_texts: Vec<String>,
+        second_texts: Vec<String>,
+        passed: bool,
+    },
 }
 
 fn default_match_threshold() -> f32 {
@@ -182,10 +496,32 @@ pub struct SpecialOpsSettings {
     pub paused: bool,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub navigation_beacon_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub navigation_space_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub navigation_tab_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub navigation_special_ops_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub ammo_supply_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub ammo_tactical_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub craft_space_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub craft_reopen_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
+    pub craft_confirm_pinned_delay_ms: u32,
     #[serde(default)]
     pub wegame_executable_path: String,
     #[serde(default)]
     pub game_executable_path: String,
+    #[serde(default = "missing_business_config")]
+    pub default_business_config: BusinessConfig,
+    #[serde(default)]
+    pub profit_filter: ProfitFilterSettings,
     pub accounts: Vec<AccountPlan>,
     #[serde(default)]
     pub active_calibration_id: Option<String>,
@@ -200,13 +536,28 @@ impl Default for SpecialOpsSettings {
             paused: true,
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            navigation_beacon_delay_ms: default_navigation_delay_ms(),
+            navigation_space_delay_ms: default_navigation_delay_ms(),
+            navigation_tab_delay_ms: default_navigation_delay_ms(),
+            navigation_special_ops_delay_ms: default_navigation_delay_ms(),
+            ammo_supply_delay_ms: default_navigation_delay_ms(),
+            ammo_tactical_delay_ms: default_navigation_delay_ms(),
+            craft_space_delay_ms: default_navigation_delay_ms(),
+            craft_reopen_delay_ms: default_navigation_delay_ms(),
+            craft_confirm_pinned_delay_ms: default_navigation_delay_ms(),
             wegame_executable_path: String::new(),
             game_executable_path: String::new(),
+            default_business_config: BusinessConfig::default(),
+            profit_filter: ProfitFilterSettings::default(),
             accounts: Vec::new(),
             active_calibration_id: Some("default".to_string()),
             calibration_environments: vec![default_calibration_environment()],
         }
     }
+}
+
+fn default_navigation_delay_ms() -> u32 {
+    3_000
 }
 
 fn default_calibration_environment() -> CalibrationEnvironment {
@@ -222,22 +573,111 @@ fn default_calibration_environment() -> CalibrationEnvironment {
     }
 }
 
+/// 判断窗口是否属于尚未完成的桌面选择交互，不能静默隐藏以免遗留等待中的 sender。
+fn is_active_selection_overlay(label: &str) -> bool {
+    label == "morse-overlay"
+        || label.starts_with("timer-position-")
+        || label.starts_with("counter-position-")
+        || label.starts_with("rapidfire-position-")
+        || label.starts_with("special-ops-calibration-")
+        || label.starts_with("recognition-selection-")
+}
+
+/// 特勤处操作提示窗口保留，其他已存在窗口均进入运行期隐藏列表。
+///
+/// ponytail: 禁止在 scheduler 启动路径读取同步 `is_visible`；它会等待 Tauri UI 线程，
+/// 从“继续”命令回调启动轮次时可能阻塞前端响应。
+fn should_hide_for_special_ops(label: &str) -> bool {
+    label != "main" && label != login_runtime::OPERATION_WINDOW_LABEL
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct HiddenWindowRestorePlan {
+    direct_labels: Vec<String>,
+    reconcile_tool_windows: bool,
+}
+
+fn hidden_window_restore_plan(labels: impl IntoIterator<Item = String>) -> HiddenWindowRestorePlan {
+    let mut plan = HiddenWindowRestorePlan::default();
+    for label in labels {
+        if label.starts_with("timer-display")
+            || label.starts_with("counter-display")
+            || label.starts_with("rapidfire-display")
+            || label == "recognition-overlay"
+        {
+            plan.reconcile_tool_windows = true;
+        } else {
+            plan.direct_labels.push(label);
+        }
+    }
+    plan
+}
+
+/// 隐藏其他功能窗口，截图与键鼠操作期间避免应用自身窗口遮挡游戏 UI。
+fn hide_other_windows_for_special_ops(app: &AppHandle) -> Result<(), String> {
+    let windows = app.webview_windows();
+    if let Some(label) = windows
+        .keys()
+        .find(|label| is_active_selection_overlay(label))
+    {
+        return Err(format!("存在未结束的区域或位置选择窗口：{label}"));
+    }
+
+    let mut hidden = Vec::<String>::new();
+    for (label, window) in windows {
+        if !should_hide_for_special_ops(&label) {
+            continue;
+        }
+        if let Err(error) = window.hide() {
+            for restored_label in &hidden {
+                if let Some(restored) = app.get_webview_window(restored_label) {
+                    let _ = restored.show();
+                }
+            }
+            return Err(format!("隐藏窗口 {label} 失败: {error}"));
+        }
+        hidden.push(label.to_string());
+    }
+    *SPECIAL_OPS_HIDDEN_WINDOWS
+        .lock()
+        .map_err(|_| "特勤处窗口快照已损坏".to_string())? = hidden;
+    Ok(())
+}
+
+/// 恢复特勤处启动时收起的辅助窗口；运行期被销毁的窗口不重建。
+fn restore_other_windows_after_special_ops(app: &AppHandle) -> Result<(), String> {
+    let plan = hidden_window_restore_plan(std::mem::take(
+        &mut *SPECIAL_OPS_HIDDEN_WINDOWS
+            .lock()
+            .map_err(|_| "特勤处窗口快照已损坏".to_string())?,
+    ));
+    let mut errors = Vec::new();
+    for label in plan.direct_labels {
+        if let Some(window) = app.get_webview_window(&label) {
+            if let Err(error) = window.show() {
+                errors.push(format!("恢复窗口 {label} 失败: {error}"));
+            }
+        }
+    }
+    let global_enabled = app
+        .try_state::<crate::global_state::GlobalState>()
+        .is_some_and(|state| state.enabled());
+    if plan.reconcile_tool_windows && global_enabled {
+        if let Err(error) = crate::global_state::restore_active_windows(app) {
+            errors.push(format!("按工具开关恢复窗口失败: {error}"));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
     match key {
         "wegame.accountDropdown" | "wegame.selectedAccount" => &["wegame.loginFormReady"],
-        "craft.station.technicalCenter" => &["craft.claimReady.technicalCenter"],
-        "craft.station.workbench" => &["craft.claimReady.workbench"],
-        "craft.station.pharmacy" => &["craft.claimReady.pharmacy"],
-        "craft.station.armorBench" => &["craft.claimReady.armorBench"],
-        "craft.openRecipeList.technicalCenter" => &["craft.idle.technicalCenter"],
-        "craft.openRecipeList.workbench" => &["craft.idle.workbench"],
-        "craft.openRecipeList.pharmacy" => &["craft.idle.pharmacy"],
-        "craft.openRecipeList.armorBench" => &["craft.idle.armorBench"],
-        "craft.recipe.technicalCenter" => &["craft.recipeListReady.technicalCenter"],
-        "craft.recipe.workbench" => &["craft.recipeListReady.workbench"],
-        "craft.recipe.pharmacy" => &["craft.recipeListReady.pharmacy"],
-        "craft.recipe.armorBench" => &["craft.recipeListReady.armorBench"],
-        "ammo.target" => &["ammo.list", "ammo.seasonalList"],
+        "game.beaconMode" => &["game.modeReady"],
         _ => &[],
     }
 }
@@ -245,6 +685,7 @@ fn default_guard_any_of(key: &str) -> &'static [&'static str] {
 fn default_calibration_targets() -> Vec<CalibrationTarget> {
     use CalibrationTargetKind::{ClickPoint, RecognitionRegion};
     [
+        ("runtime.mouseParking", "特勤处鼠标停放点", ClickPoint),
         (
             "wegame.loginMode",
             "WeGame QQ 账号密码登录入口识别与点击区域",
@@ -286,18 +727,8 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "模式选择可用状态参考区域",
             RecognitionRegion,
         ),
-        (
-            "game.beaconMode",
-            "烽火地带入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "game.activityPopup",
-            "烽火地带活动弹窗识别区域（命中按空格）",
-            RecognitionRegion,
-        ),
-        ("game.startGame", "开始游戏识别区域", RecognitionRegion),
-        ("game.specialOps", "特勤处识别与点击区域", RecognitionRegion),
+        ("game.beaconMode", "烽火地带入口点击点", ClickPoint),
+        ("game.specialOps", "特勤处入口点击点", ClickPoint),
         (
             "game.stationGrid",
             "四制作台页面识别区域",
@@ -311,105 +742,26 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         ("craft.station.workbench", "工作台点击区域", ClickPoint),
         ("craft.station.pharmacy", "制药台点击区域", ClickPoint),
         ("craft.station.armorBench", "防具台点击区域", ClickPoint),
-        (
-            "craft.claimReady.technicalCenter",
-            "技术中心可收取感叹号",
-            RecognitionRegion,
-        ),
-        (
-            "craft.claimReady.workbench",
-            "工作台可收取感叹号",
-            RecognitionRegion,
-        ),
-        (
-            "craft.claimReady.pharmacy",
-            "制药台可收取感叹号",
-            RecognitionRegion,
-        ),
-        (
-            "craft.claimReady.armorBench",
-            "防具台可收取感叹号",
-            RecognitionRegion,
-        ),
-        ("craft.reward", "获得奖励页面识别区域", RecognitionRegion),
-        (
-            "craft.idle.technicalCenter",
-            "技术中心空闲中文字识别区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.idle.workbench",
-            "工作台空闲中文字识别区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.idle.pharmacy",
-            "制药台空闲中文字识别区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.idle.armorBench",
-            "防具台空闲中文字识别区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.openRecipeList.technicalCenter",
-            "技术中心进入制作列表点击区域",
-            ClickPoint,
-        ),
-        (
-            "craft.openRecipeList.workbench",
-            "工作台进入制作列表点击区域",
-            ClickPoint,
-        ),
-        (
-            "craft.openRecipeList.pharmacy",
-            "制药台进入制作列表点击区域",
-            ClickPoint,
-        ),
-        (
-            "craft.openRecipeList.armorBench",
-            "防具台进入制作列表点击区域",
-            ClickPoint,
-        ),
-        (
-            "craft.recipeListReady.technicalCenter",
-            "技术中心制作列表就绪区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.recipeListReady.workbench",
-            "工作台制作列表就绪区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.recipeListReady.pharmacy",
-            "制药台制作列表就绪区域",
-            RecognitionRegion,
-        ),
-        (
-            "craft.recipeListReady.armorBench",
-            "防具台制作列表就绪区域",
-            RecognitionRegion,
-        ),
+        ("craft.confirmPinned", "确认置顶点击点", ClickPoint),
+        ("craft.returnToStationGrid", "制作中返回点击点", ClickPoint),
         (
             "craft.recipe.technicalCenter",
-            "技术中心置顶配方点击区域",
+            "技术中心制作物品选择点击点",
             ClickPoint,
         ),
         (
             "craft.recipe.workbench",
-            "工作台置顶配方点击区域",
+            "工作台制作物品选择点击点",
             ClickPoint,
         ),
         (
             "craft.recipe.pharmacy",
-            "制药台置顶配方点击区域",
+            "制药台制作物品选择点击点",
             ClickPoint,
         ),
         (
             "craft.recipe.armorBench",
-            "防具台置顶配方点击区域",
+            "防具台制作物品选择点击点",
             ClickPoint,
         ),
         ("craft.fill", "一键补齐识别与点击区域", RecognitionRegion),
@@ -425,29 +777,9 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "部门入口识别与点击区域",
             RecognitionRegion,
         ),
-        ("ammo.supply", "军需处入口识别与点击区域", RecognitionRegion),
-        (
-            "ammo.tactical",
-            "战术部门入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        ("ammo.list", "子弹兑换列表区域", RecognitionRegion),
-        (
-            "ammo.seasonal",
-            "赛季限定入口识别与点击区域",
-            RecognitionRegion,
-        ),
-        (
-            "ammo.seasonalList",
-            "赛季限定子弹列表就绪区域",
-            RecognitionRegion,
-        ),
-        ("ammo.target", "目标子弹点击区域", ClickPoint),
-        (
-            "ammo.selectedTargetName",
-            "已选目标子弹名称 OCR 区域",
-            RecognitionRegion,
-        ),
+        ("ammo.supply", "军需处点击点", ClickPoint),
+        ("ammo.tactical", "战术部门点击点", ClickPoint),
+        ("ammo.seasonal", "赛季限定入口点击点", ClickPoint),
         ("ammo.fill", "子弹一键补齐区域", RecognitionRegion),
         (
             "ammo.purchase",
@@ -455,14 +787,17 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         ("ammo.exchange", "兑换按钮区域", RecognitionRegion),
-        ("ammo.success", "兑换成功灰色按钮区域", RecognitionRegion),
+        (
+            "ammo.confirm",
+            "兑换二次确认按钮识别与点击区域",
+            RecognitionRegion,
+        ),
+        ("ammo.success", "兑换完成状态识别区域", RecognitionRegion),
     ]
     .into_iter()
     .map(|(key, label, kind)| {
         let recognition_method = match (&kind, key) {
-            (RecognitionRegion, "ammo.selectedTargetName" | "wegame.accountList") => {
-                Some(CalibrationRecognitionMethod::Ocr)
-            }
+            (RecognitionRegion, "wegame.accountList") => Some(CalibrationRecognitionMethod::Ocr),
             (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
             _ => None,
         };
@@ -485,6 +820,31 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
     .collect()
 }
 
+fn mouse_parking_region(
+    settings: &SpecialOpsSettings,
+) -> Result<crate::morse::types::RegionRect, String> {
+    let target = settings
+        .calibration_environments
+        .first()
+        .and_then(|environment| {
+            environment
+                .targets
+                .iter()
+                .find(|target| target.key == "runtime.mouseParking")
+        })
+        .ok_or_else(|| "特勤处鼠标停放点不存在".to_string())?;
+    let rect = target
+        .rect
+        .as_ref()
+        .ok_or_else(|| "特勤处鼠标停放点尚未校准".to_string())?;
+    Ok(crate::morse::types::RegionRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DueAccount {
@@ -498,6 +858,48 @@ pub struct DueAccount {
 pub struct ScheduleSnapshot {
     pub due_accounts: Vec<DueAccount>,
     pub next_wake_at_ms: Option<i64>,
+    pub timeline_start_ms: i64,
+    pub timeline_end_ms: i64,
+    pub timeline_tasks: Vec<TimelineTask>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TimelineTaskKind {
+    Craft,
+    Ammo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TimelineProfitState {
+    WaitingExchange,
+    WaitingQuery,
+    Unconfigured,
+    Qualified,
+    ActiveRound,
+    CutoffBypass,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineTask {
+    pub id: String,
+    pub account_id: String,
+    pub qq_account: String,
+    pub kind: TimelineTaskKind,
+    pub station_kind: Option<StationKind>,
+    pub ammo_target_id: Option<String>,
+    pub note: String,
+    pub scheduled_at_ms: i64,
+    pub overdue: bool,
+    pub account_status: AccountStatus,
+    #[serde(default)]
+    pub profit_state: Option<TimelineProfitState>,
+    #[serde(default)]
+    pub may_execute_earlier: bool,
+    #[serde(default)]
+    pub manual_failure: Option<AccountFailure>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -509,6 +911,8 @@ pub struct SpecialOpsBootstrap {
     pub now_ms: i64,
     #[serde(default)]
     pub run_snapshot: Option<LoginRunSnapshot>,
+    #[serde(default)]
+    pub profit_runtime: profit::runtime::ProfitRuntimeSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -518,18 +922,41 @@ pub struct SpecialOpsStateChanged {
     pub now_ms: i64,
 }
 
-impl From<&SpecialOpsBootstrap> for SpecialOpsStateChanged {
-    fn from(bootstrap: &SpecialOpsBootstrap) -> Self {
-        Self {
-            settings_revision: bootstrap.settings_revision,
-            now_ms: bootstrap.now_ms,
-        }
-    }
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MoligodBindingValidation {
+    pub exact_name: String,
+    pub profit: i64,
 }
 
 pub struct SpecialOpsState {
     settings: Arc<Mutex<SpecialOpsSettings>>,
     login_runtime: Arc<login_runtime::LoginRuntime>,
+    profit_runtime: Arc<ProfitQueryControl>,
+    round_control: Arc<RoundControl>,
+    round_scheduler: Arc<round_scheduler::RoundScheduler>,
+}
+
+#[derive(Default)]
+struct RoundControl {
+    pause_requested: std::sync::atomic::AtomicBool,
+}
+
+impl RoundControl {
+    fn request_pause(&self) {
+        self.pause_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn pause_requested(&self) -> bool {
+        self.pause_requested
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn clear_pause_request(&self) {
+        self.pause_requested
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl StationKind {
@@ -550,6 +977,613 @@ impl StationKind {
             Self::ArmorBench => "armorBench",
         }
     }
+
+    fn from_calibration_suffix(suffix: &str) -> Option<Self> {
+        Self::all()
+            .into_iter()
+            .find(|kind| kind.calibration_suffix() == suffix)
+    }
+}
+
+fn resolve_account_business_config<'a>(
+    settings: &'a SpecialOpsSettings,
+    account: &'a AccountPlan,
+) -> Result<&'a BusinessConfig, String> {
+    if account.independent_settings_enabled {
+        account.independent_business_config.as_ref().ok_or_else(|| {
+            format!(
+                "账号 {} 已开启独立设置，但独立业务配置缺失",
+                account.qq_account
+            )
+        })
+    } else {
+        Ok(&settings.default_business_config)
+    }
+}
+
+fn collect_pending_profit_rules(settings: &SpecialOpsSettings, day: &str) -> Vec<AmmoProfitRule> {
+    if !settings.profit_filter.enabled {
+        return Vec::new();
+    }
+    let rules = settings
+        .profit_filter
+        .rules
+        .iter()
+        .map(|rule| (rule.id.as_str(), rule))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut pending_ids = std::collections::BTreeSet::new();
+    for account in settings.accounts.iter().filter(|account| {
+        account.enabled && account.initialized && account.status == AccountStatus::Ready
+    }) {
+        let Ok(business) = resolve_account_business_config(settings, account) else {
+            continue;
+        };
+        for target in business.ammo_targets.iter().filter(|target| {
+            target.enabled
+                && target
+                    .click_point
+                    .as_ref()
+                    .is_some_and(|point| point.width == 1 && point.height == 1)
+        }) {
+            let Some(rule_id) = target.profit_rule_id.as_deref() else {
+                continue;
+            };
+            let pending = account
+                .ammo_targets
+                .iter()
+                .find(|runtime| runtime.id == target.id)
+                .is_none_or(|runtime| {
+                    runtime.last_success_day.as_deref() != Some(day)
+                        && (runtime.retry_day.as_deref() != Some(day) || runtime.retry_count < 2)
+                });
+            if pending && rules.contains_key(rule_id) {
+                pending_ids.insert(rule_id);
+            }
+        }
+    }
+    pending_ids
+        .into_iter()
+        .filter_map(|rule_id| rules.get(rule_id).cloned())
+        .cloned()
+        .collect()
+}
+
+fn replace_profit_audits(settings: &mut SpecialOpsSettings, audits: Vec<AmmoProfitAudit>) {
+    let replaced = audits
+        .iter()
+        .map(|audit| (audit.day.clone(), audit.rule_id.clone()))
+        .collect::<std::collections::HashSet<_>>();
+    settings
+        .profit_filter
+        .audits
+        .retain(|audit| !replaced.contains(&(audit.day.clone(), audit.rule_id.clone())));
+    settings.profit_filter.audits.extend(audits);
+    settings.profit_filter.audits.sort_by(|left, right| {
+        (&left.day, left.queried_at_ms, &left.rule_id).cmp(&(
+            &right.day,
+            right.queried_at_ms,
+            &right.rule_id,
+        ))
+    });
+}
+
+fn is_stale_profit_query_error(error: &str) -> bool {
+    error == PROFIT_QUERY_STALE
+        || error.contains("配置保存已陈旧")
+        || error.contains("利润查询已取消")
+}
+
+fn build_profit_query_window(
+    settings: &SpecialOpsSettings,
+    now_ms: i64,
+    settings_revision: u64,
+    active_round: bool,
+) -> Result<ProfitQueryWindow, String> {
+    let day = local_day_and_minute(now_ms).0;
+    let exchange_minute = daily_exchange_minutes(&settings.daily_exchange_time)
+        .ok_or_else(|| "每日兑换时间必须是 HH:mm，范围 00:00-23:59".to_string())?;
+    let exchange_at_ms = daily_exchange_at_ms(now_ms, exchange_minute)
+        .ok_or_else(|| "无法计算每日兑换时间".to_string())?;
+    let cutoff_at_ms = if settings.profit_filter.enabled {
+        let cutoff_minute = daily_exchange_minutes(&settings.profit_filter.cutoff_time)
+            .ok_or_else(|| "利润截止时间必须是 HH:mm，范围 00:00-23:59".to_string())?;
+        daily_exchange_at_ms(now_ms, cutoff_minute)
+            .ok_or_else(|| "无法计算利润截止时间".to_string())?
+    } else {
+        exchange_at_ms
+    };
+    Ok(ProfitQueryWindow {
+        enabled: settings.profit_filter.enabled,
+        paused: settings.paused,
+        active_round,
+        day,
+        settings_revision,
+        now_ms,
+        exchange_at_ms,
+        cutoff_at_ms,
+    })
+}
+
+fn profit_gate_for_round(
+    settings: &SpecialOpsSettings,
+    profit_runtime: &ProfitQueryControl,
+    now_ms: i64,
+    settings_revision: u64,
+) -> Result<(AmmoProfitGate, Option<u64>), String> {
+    if !settings.profit_filter.enabled {
+        return Ok((AmmoProfitGate::Disabled, None));
+    }
+    let window = build_profit_query_window(settings, now_ms, settings_revision, false)?;
+    let snapshot = profit_runtime.sync_window(window.clone())?;
+    if now_ms >= window.cutoff_at_ms {
+        return Ok((
+            AmmoProfitGate::CutoffBypass,
+            Some(profit_runtime.generation()),
+        ));
+    }
+    Ok((
+        AmmoProfitGate::Qualified(
+            snapshot
+                .qualified_rule_ids
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>(),
+        ),
+        Some(profit_runtime.generation()),
+    ))
+}
+
+fn apply_account_recipe_selection(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    station_kind: StationKind,
+    rect: CalibrationRect,
+) -> Result<(), String> {
+    validate_calibration_selection(CalibrationTargetKind::ClickPoint, &rect)?;
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "账号不存在".to_string())?;
+    if !account.independent_settings_enabled {
+        return Err("账号未开启独立设置".to_string());
+    }
+    let business = account
+        .independent_business_config
+        .as_mut()
+        .ok_or_else(|| "账号独立业务配置缺失".to_string())?;
+    if let Some(point) = business
+        .recipe_points
+        .iter_mut()
+        .find(|point| point.kind == station_kind)
+    {
+        point.rect = rect;
+    } else {
+        business.recipe_points.push(AccountRecipePoint {
+            kind: station_kind,
+            rect,
+        });
+    }
+    Ok(())
+}
+
+const BUSINESS_AMMO_TARGET_PREFIX: &str = "business.ammo.";
+
+fn business_ammo_target_id(target_key: &str) -> Option<&str> {
+    target_key.strip_prefix(BUSINESS_AMMO_TARGET_PREFIX)
+}
+
+fn ammo_business_config_mut<'a>(
+    settings: &'a mut SpecialOpsSettings,
+    account_id: Option<&str>,
+) -> Result<&'a mut BusinessConfig, String> {
+    let Some(account_id) = account_id else {
+        return Ok(&mut settings.default_business_config);
+    };
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "账号不存在".to_string())?;
+    if !account.independent_settings_enabled {
+        return Err("账号未开启独立设置".to_string());
+    }
+    account
+        .independent_business_config
+        .as_mut()
+        .ok_or_else(|| "账号独立业务配置缺失".to_string())
+}
+
+fn apply_ammo_business_selection(
+    settings: &mut SpecialOpsSettings,
+    account_id: Option<&str>,
+    target_id: &str,
+    rect: CalibrationRect,
+) -> Result<(), String> {
+    validate_calibration_selection(CalibrationTargetKind::ClickPoint, &rect)?;
+    let business = ammo_business_config_mut(settings, account_id)?;
+    let target = business
+        .ammo_targets
+        .iter_mut()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| "子弹目标不存在".to_string())?;
+    target.click_point = Some(rect);
+    Ok(())
+}
+
+fn calibration_selection_kind(
+    settings: &SpecialOpsSettings,
+    environment_id: &str,
+    target_key: &str,
+    account_id: Option<&str>,
+) -> Result<CalibrationTargetKind, String> {
+    if let Some(target_id) = business_ammo_target_id(target_key) {
+        let business = if let Some(account_id) = account_id {
+            let account = settings
+                .accounts
+                .iter()
+                .find(|account| account.id == account_id)
+                .ok_or_else(|| "账号不存在".to_string())?;
+            if !account.independent_settings_enabled {
+                return Err("账号未开启独立设置".to_string());
+            }
+            account
+                .independent_business_config
+                .as_ref()
+                .ok_or_else(|| "账号独立业务配置缺失".to_string())?
+        } else {
+            &settings.default_business_config
+        };
+        business
+            .ammo_targets
+            .iter()
+            .find(|target| target.id == target_id)
+            .ok_or_else(|| "子弹目标不存在".to_string())?;
+        return Ok(CalibrationTargetKind::ClickPoint);
+    }
+
+    let target = settings
+        .calibration_environments
+        .iter()
+        .find(|item| item.id == environment_id)
+        .and_then(|environment| {
+            environment
+                .targets
+                .iter()
+                .find(|item| item.key == target_key)
+        })
+        .ok_or_else(|| "校准目标不存在".to_string())?;
+    if let Some(account_id) = account_id {
+        if target.kind != CalibrationTargetKind::ClickPoint {
+            return Err("账号级校准只允许点击点".to_string());
+        }
+        account_recipe_station(target_key)?;
+        let account = settings
+            .accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .ok_or_else(|| "账号不存在".to_string())?;
+        if !account.independent_settings_enabled {
+            return Err("账号未开启独立设置".to_string());
+        }
+        account
+            .independent_business_config
+            .as_ref()
+            .ok_or_else(|| "账号独立业务配置缺失".to_string())?;
+    }
+    Ok(target.kind.clone())
+}
+
+fn account_recipe_station(target_key: &str) -> Result<StationKind, String> {
+    let suffix = target_key
+        .strip_prefix("craft.recipe.")
+        .ok_or_else(|| "账号级校准只允许制作物品选择点击点".to_string())?;
+    StationKind::from_calibration_suffix(suffix)
+        .ok_or_else(|| "账号级制作物品选择点击点不存在".to_string())
+}
+
+fn calibration_selection_label(
+    environment_id: &str,
+    target_key: &str,
+    account_id: Option<&str>,
+) -> String {
+    format!(
+        "special-ops-calibration-{}-{}-{}",
+        safe_label_component(environment_id),
+        safe_label_component(target_key),
+        safe_label_component(account_id.unwrap_or("global"))
+    )
+}
+
+fn resolve_station_correction(
+    correction: &StationCorrectionInput,
+    confirmed_at_ms: i64,
+) -> Result<(Option<i64>, Option<i64>, StationStatus), String> {
+    match correction.state {
+        ManualStationState::ImmediateDue => {
+            if correction.remaining_minutes.is_some() {
+                return Err("立即到期不能填写剩余时间".to_string());
+            }
+            Ok((None, Some(confirmed_at_ms), StationStatus::Ready))
+        }
+        ManualStationState::Crafting => {
+            let minutes = correction
+                .remaining_minutes
+                .filter(|minutes| (1..=10_080).contains(minutes))
+                .ok_or_else(|| "正在制作的剩余时间必须为 1 分钟到 168 小时".to_string())?;
+            let finishes_at_ms = confirmed_at_ms
+                .checked_add(i64::from(minutes) * 60_000)
+                .ok_or_else(|| "制作完成时间超出可保存范围".to_string())?;
+            Ok((None, Some(finishes_at_ms), StationStatus::Crafting))
+        }
+        ManualStationState::Idle => {
+            if correction.remaining_minutes.is_some() {
+                return Err("空闲状态不能填写剩余时间".to_string());
+            }
+            Ok((None, None, StationStatus::Idle))
+        }
+    }
+}
+
+fn apply_manual_station_corrections(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    corrections: &[StationCorrectionInput],
+    confirmed_at_ms: i64,
+) -> Result<(), String> {
+    if corrections.len() != StationKind::all().len() {
+        return Err("必须一次确认四个制作台的实际状态".to_string());
+    }
+    let mut kinds = Vec::new();
+    let mut resolved = Vec::with_capacity(corrections.len());
+    for correction in corrections {
+        if kinds.contains(&correction.kind) {
+            return Err("四制作台人工校正包含重复制作台".to_string());
+        }
+        kinds.push(correction.kind.clone());
+        let (started_at_ms, finishes_at_ms, status) =
+            resolve_station_correction(correction, confirmed_at_ms)?;
+        resolved.push((
+            correction.kind.clone(),
+            started_at_ms,
+            finishes_at_ms,
+            status,
+        ));
+    }
+    if StationKind::all()
+        .into_iter()
+        .any(|kind| !kinds.contains(&kind))
+    {
+        return Err("必须一次确认四个制作台的实际状态".to_string());
+    }
+
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "人工校正账号不存在".to_string())?;
+    if resolved
+        .iter()
+        .any(|(kind, ..)| !account.stations.iter().any(|station| station.kind == *kind))
+    {
+        return Err("账号缺少制作台运行状态，无法人工校正".to_string());
+    }
+    for (kind, started_at_ms, finishes_at_ms, status) in resolved {
+        let station = account
+            .stations
+            .iter_mut()
+            .find(|station| station.kind == kind)
+            .expect("制作台存在性已校验");
+        station.started_at_ms = started_at_ms;
+        station.finishes_at_ms = finishes_at_ms;
+        station.status = status;
+    }
+    account.initialized = true;
+    if account.status == AccountStatus::Uncertain {
+        account.status = AccountStatus::Ready;
+    }
+    Ok(())
+}
+
+fn refresh_account_failure(account: &mut AccountPlan) {
+    if account
+        .last_failure
+        .as_ref()
+        .is_some_and(|failure| failure.station_kind.is_some())
+    {
+        return;
+    }
+    account.last_failure = account
+        .ammo_targets
+        .iter()
+        .filter_map(|target| target.last_failure.as_ref())
+        .max_by_key(|failure| failure.at_ms)
+        .cloned();
+}
+
+fn apply_single_station_correction(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    correction: &StationCorrectionInput,
+    confirmed_at_ms: i64,
+) -> Result<(), String> {
+    let resolved = resolve_station_correction(correction, confirmed_at_ms)?;
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "人工校正账号不存在".to_string())?;
+    if !account.initialized {
+        return Err("账号尚未完成初始化，必须在账号页进行完整人工校正".to_string());
+    }
+    if matches!(
+        account.status,
+        AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
+    ) {
+        return Err("需要人工登录或登录失败账号不能通过单项校正恢复".to_string());
+    }
+    if account
+        .last_failure
+        .as_ref()
+        .and_then(|failure| failure.station_kind.as_ref())
+        != Some(&correction.kind)
+    {
+        return Err("当前制作台没有待人工判定的失败记录".to_string());
+    }
+    let station = account
+        .stations
+        .iter_mut()
+        .find(|station| station.kind == correction.kind)
+        .ok_or_else(|| "账号缺少当前制作台运行状态".to_string())?;
+    station.started_at_ms = resolved.0;
+    station.finishes_at_ms = resolved.1;
+    station.status = resolved.2;
+    account.last_failure = None;
+    refresh_account_failure(account);
+    account.status = AccountStatus::Ready;
+    Ok(())
+}
+
+fn apply_single_ammo_correction(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    correction: &AmmoCorrectionInput,
+    current_day: &str,
+) -> Result<(), String> {
+    {
+        let account = settings
+            .accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .ok_or_else(|| "人工校正账号不存在".to_string())?;
+        if !account.initialized {
+            return Err("账号尚未完成初始化，必须在账号页进行完整人工校正".to_string());
+        }
+        if matches!(
+            account.status,
+            AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
+        ) {
+            return Err("需要人工登录或登录失败账号不能通过单项校正恢复".to_string());
+        }
+        let enabled = resolve_account_business_config(settings, account)?
+            .ammo_targets
+            .iter()
+            .any(|target| target.id == correction.target_id && target.enabled);
+        if !enabled {
+            return Err("当前子弹目标不存在或未启用".to_string());
+        }
+    }
+
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .expect("上方已校验账号存在");
+    let target = account
+        .ammo_targets
+        .iter_mut()
+        .find(|target| target.id == correction.target_id && target.enabled)
+        .ok_or_else(|| "账号缺少当前子弹运行状态".to_string())?;
+    if target
+        .last_failure
+        .as_ref()
+        .and_then(|failure| failure.ammo_target_id.as_deref())
+        != Some(target.id.as_str())
+    {
+        return Err("当前子弹没有待人工判定的失败记录".to_string());
+    }
+    if correction.succeeded_today {
+        target.last_success_day = Some(current_day.to_string());
+    } else if target.last_success_day.as_deref() == Some(current_day) {
+        target.last_success_day = None;
+    }
+    target.retry_day = Some(current_day.to_string());
+    target.retry_count = 0;
+    target.last_failure = None;
+    refresh_account_failure(account);
+    if account
+        .last_failure
+        .as_ref()
+        .is_none_or(|failure| failure.station_kind.is_none())
+    {
+        account.status = AccountStatus::Ready;
+    }
+    Ok(())
+}
+
+fn apply_manual_account_corrections(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    stations: &[StationCorrectionInput],
+    ammo_targets: &[AmmoCorrectionInput],
+    confirmed_at_ms: i64,
+    current_day: &str,
+) -> Result<(), String> {
+    let source_account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "人工校正账号不存在".to_string())?;
+    if source_account.initialized
+        && !matches!(
+            source_account.status,
+            AccountStatus::Ready | AccountStatus::Uncertain | AccountStatus::Isolated
+        )
+    {
+        return Err("需要人工登录或登录失败账号不能通过制作状态校正恢复".to_string());
+    }
+
+    let business_config = resolve_account_business_config(settings, source_account)?;
+    let enabled_ids = business_config
+        .ammo_targets
+        .iter()
+        .filter(|target| target.enabled)
+        .map(|target| target.id.clone())
+        .collect::<Vec<_>>();
+    if ammo_targets.len() != enabled_ids.len() {
+        return Err("必须一次确认全部启用子弹目标的当天状态".to_string());
+    }
+    let mut correction_ids = std::collections::HashSet::new();
+    for correction in ammo_targets {
+        if !correction_ids.insert(correction.target_id.as_str()) {
+            return Err("子弹人工校正包含重复目标".to_string());
+        }
+        if !enabled_ids.contains(&correction.target_id) {
+            return Err(format!(
+                "子弹人工校正包含未启用目标：{}",
+                correction.target_id
+            ));
+        }
+    }
+
+    let mut next = settings.clone();
+    apply_manual_station_corrections(&mut next, account_id, stations, confirmed_at_ms)?;
+    let account = next
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .expect("上方已校验账号存在");
+    for correction in ammo_targets {
+        let target = account
+            .ammo_targets
+            .iter_mut()
+            .find(|target| target.id == correction.target_id)
+            .ok_or_else(|| format!("账号缺少子弹运行状态：{}", correction.target_id))?;
+        if correction.succeeded_today {
+            target.last_success_day = Some(current_day.to_string());
+        } else if target.last_success_day.as_deref() == Some(current_day) {
+            target.last_success_day = None;
+        }
+        target.retry_day = Some(current_day.to_string());
+        target.retry_count = 0;
+    }
+    for target in &mut account.ammo_targets {
+        target.last_failure = None;
+    }
+    account.initialized = true;
+    account.status = AccountStatus::Ready;
+    account.last_failure = None;
+    *settings = next;
+    Ok(())
 }
 
 impl StationStatus {
@@ -587,15 +1621,23 @@ fn fnv1a_64(bytes: &[u8]) -> u64 {
 }
 
 fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
-    let rect = target
-        .rect
-        .as_ref()
-        .ok_or_else(|| format!("{} 尚未框选", target.label))?;
     let reference_path = target
         .reference_image_path
         .as_deref()
         .filter(|path| !path.trim().is_empty())
         .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
+    calibration_signature_with_template(target, reference_path, target.match_threshold)
+}
+
+fn calibration_signature_with_template(
+    target: &CalibrationTarget,
+    reference_path: &str,
+    match_threshold: f32,
+) -> Result<String, String> {
+    let rect = target
+        .rect
+        .as_ref()
+        .ok_or_else(|| format!("{} 尚未框选", target.label))?;
     let canonical_path = std::fs::canonicalize(reference_path)
         .map_err(|_| format!("{} 的参考图文件不存在", target.label))?;
     let metadata = std::fs::metadata(&canonical_path)
@@ -622,8 +1664,28 @@ fn calibration_signature(target: &CalibrationTarget) -> Result<String, String> {
         canonical_path.display(),
         metadata.len(),
         modified_ms,
-        target.match_threshold
+        match_threshold
     ))
+}
+
+fn resolved_template_config<'a>(
+    _environment: &'a CalibrationEnvironment,
+    target: &'a CalibrationTarget,
+) -> Result<(&'a str, f32), String> {
+    let path = target
+        .reference_image_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
+    Ok((path, target.match_threshold))
+}
+
+fn resolved_calibration_signature(
+    environment: &CalibrationEnvironment,
+    target: &CalibrationTarget,
+) -> Result<String, String> {
+    let (reference_path, match_threshold) = resolved_template_config(environment, target)?;
+    calibration_signature_with_template(target, reference_path, match_threshold)
 }
 
 fn verification_is_current(target: &CalibrationTarget) -> bool {
@@ -726,6 +1788,8 @@ fn apply_login_flow_result(
                 step: format!("{failed_step:?}"),
                 message: last_observation.clone(),
                 at_ms: *failed_at,
+                station_kind: None,
+                ammo_target_id: None,
             });
         }
         login_flow::LoginFlowResult::EmergencyStopped { stopped_at, .. } => match stop_reason {
@@ -737,6 +1801,8 @@ fn apply_login_flow_result(
                     step: "emergencyStop".to_string(),
                     message: "登录试运行已紧急停止，账号状态需人工确认".to_string(),
                     at_ms: *stopped_at,
+                    station_kind: None,
+                    ammo_target_id: None,
                 });
             }
             login_runtime::StopReason::Lifecycle { uncertain } => {
@@ -747,26 +1813,202 @@ fn apply_login_flow_result(
                         step: "lifecycleStop".to_string(),
                         message: "应用停止时登录操作尚未确认，账号状态需人工确认".to_string(),
                         at_ms: *stopped_at,
+                        station_kind: None,
+                        ammo_target_id: None,
                     });
                 }
             }
         },
         login_flow::LoginFlowResult::NeedsManualLogin {
             failed_step,
-            actual_qq,
+            failure_message,
             failed_at,
             ..
         } => {
             account.status = AccountStatus::NeedsManualLogin;
             account.last_failure = Some(AccountFailure {
                 step: format!("{failed_step:?}"),
-                message: actual_qq.as_ref().map_or_else(
-                    || "WeGame 已记住账号列表中未找到目标 QQ".to_string(),
-                    |actual| format!("账号复核不匹配，实际复制 QQ: {actual}"),
-                ),
+                message: failure_message.clone(),
                 at_ms: *failed_at,
+                station_kind: None,
+                ammo_target_id: None,
             });
         }
+    }
+    Ok(())
+}
+
+fn apply_round_account_failure(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    error: &round_runner::AccountRunError,
+    failed_at_ms: i64,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "多账号轮次账号已不存在".to_string())?;
+    if let Some(target_id) = error.ammo_target_id.as_deref() {
+        return set_ammo_manual_failure(
+            account,
+            target_id,
+            &error.step,
+            &error.message,
+            failed_at_ms,
+        );
+    }
+    let account_isolated = matches!(error.step.as_str(), "ammo.isolated" | "craft.isolated");
+    account.status = if error.step == "login.needsManual" {
+        AccountStatus::NeedsManualLogin
+    } else if error.step.starts_with("login.") {
+        AccountStatus::LoginFailed
+    } else if account_isolated {
+        AccountStatus::Isolated
+    } else {
+        AccountStatus::Uncertain
+    };
+    if !account_isolated {
+        if let Some(station_kind) = error.station.as_ref() {
+            let station = account
+                .stations
+                .iter_mut()
+                .find(|station| station.kind == *station_kind)
+                .ok_or_else(|| "多账号轮次当前制作台已不存在".to_string())?;
+            station.status = StationStatus::Uncertain;
+        }
+    }
+    account.last_failure = Some(AccountFailure {
+        step: error.step.clone(),
+        message: error.message.clone(),
+        at_ms: failed_at_ms,
+        station_kind: error.station.clone(),
+        ammo_target_id: error.ammo_target_id.clone(),
+    });
+    Ok(())
+}
+
+fn mark_craft_cancel_uncertain(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    station: StationKind,
+    at_ms: i64,
+) -> Result<(), String> {
+    mark_craft_uncertain(
+        settings,
+        account_id,
+        station,
+        at_ms,
+        "craftCancel",
+        "制作试运行取消时已执行键鼠输入，请人工确认制作状态并修正完成时间",
+    )
+}
+
+fn mark_craft_uncertain(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    station: StationKind,
+    at_ms: i64,
+    step: &str,
+    message: &str,
+) -> Result<(), String> {
+    settings.paused = true;
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "制作试运行账号已不存在".to_string())?;
+    account.status = AccountStatus::Uncertain;
+    account.last_failure = Some(AccountFailure {
+        step: step.to_string(),
+        message: message.to_string(),
+        at_ms,
+        station_kind: Some(station.clone()),
+        ammo_target_id: None,
+    });
+    account
+        .stations
+        .iter_mut()
+        .find(|candidate| candidate.kind == station)
+        .ok_or_else(|| "制作台不存在".to_string())?
+        .status = StationStatus::Uncertain;
+    Ok(())
+}
+
+fn should_mark_craft_stop_uncertain(
+    stop_reason: Option<login_runtime::StopReason>,
+    entered_input: bool,
+) -> bool {
+    match stop_reason {
+        Some(login_runtime::StopReason::Normal) => entered_input,
+        Some(login_runtime::StopReason::Emergency) => true,
+        Some(login_runtime::StopReason::Lifecycle { uncertain }) => uncertain,
+        None => false,
+    }
+}
+
+fn normalize_business_config(config: &mut BusinessConfig) -> Result<(), String> {
+    for station in &mut config.stations {
+        station.recipe_note = station.recipe_note.trim().to_string();
+    }
+    config.ammo_targets.sort_by_key(|target| target.order);
+    let mut ids = std::collections::HashSet::new();
+    for (order, target) in config.ammo_targets.iter_mut().enumerate() {
+        target.id = target.id.trim().to_string();
+        target.note = target.note.trim().to_string();
+        target.profit_rule_id = target
+            .profit_rule_id
+            .take()
+            .map(|rule_id| rule_id.trim().to_string())
+            .filter(|rule_id| !rule_id.is_empty());
+        if target.id.is_empty() || !ids.insert(target.id.clone()) {
+            return Err("子弹目标 ID 必须非空且唯一".to_string());
+        }
+        if let Some(point) = target.click_point.as_ref() {
+            validate_calibration_selection(CalibrationTargetKind::ClickPoint, point)?;
+        }
+        target.scroll_direction = ScrollDirection::Down;
+        target.order = order as u32;
+    }
+    Ok(())
+}
+
+fn sync_ammo_runtime_targets(
+    runtime_targets: &mut Vec<AmmoTarget>,
+    business_targets: &[AmmoBusinessTarget],
+) {
+    let mut existing = std::mem::take(runtime_targets)
+        .into_iter()
+        .map(|target| (target.id.clone(), target))
+        .collect::<std::collections::HashMap<_, _>>();
+    *runtime_targets = business_targets
+        .iter()
+        .map(|business| {
+            let mut runtime = existing.remove(&business.id).unwrap_or_else(|| AmmoTarget {
+                id: business.id.clone(),
+                name: String::new(),
+                enabled: business.enabled,
+                seasonal: business.seasonal,
+                scroll_steps: business.scroll_steps,
+                order: business.order,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            });
+            runtime.name = business.note.clone();
+            runtime.enabled = business.enabled;
+            runtime.seasonal = business.seasonal;
+            runtime.scroll_steps = business.scroll_steps;
+            runtime.order = business.order;
+            runtime
+        })
+        .collect();
+}
+
+fn validate_failure_target(failure: &AccountFailure) -> Result<(), String> {
+    if failure.station_kind.is_some() && failure.ammo_target_id.is_some() {
+        return Err("一条失败记录不能同时指向制作台和子弹目标".to_string());
     }
     Ok(())
 }
@@ -777,6 +2019,72 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
     }
     if settings.emergency_hotkey.trim().is_empty() {
         return Err("紧急停止快捷键不能为空".to_string());
+    }
+    normalize_profit_settings(&mut settings.profit_filter)?;
+    if [
+        settings.navigation_beacon_delay_ms,
+        settings.navigation_space_delay_ms,
+        settings.navigation_tab_delay_ms,
+        settings.navigation_special_ops_delay_ms,
+    ]
+    .into_iter()
+    .any(|value| value > 60_000)
+    {
+        return Err("游戏内导航等待时间必须是 0–60000ms 的整数".to_string());
+    }
+    if [
+        settings.craft_space_delay_ms,
+        settings.craft_reopen_delay_ms,
+        settings.craft_confirm_pinned_delay_ms,
+    ]
+    .into_iter()
+    .any(|value| value > 60_000)
+    {
+        return Err("制作台固定等待时间必须是 0–60000ms 的整数".to_string());
+    }
+    if [
+        settings.ammo_supply_delay_ms,
+        settings.ammo_tactical_delay_ms,
+    ]
+    .into_iter()
+    .any(|value| value > 60_000)
+    {
+        return Err("子弹入口固定等待时间必须是 0–60000ms 的整数".to_string());
+    }
+
+    if settings.default_business_config.stations.is_empty() {
+        settings.default_business_config = settings
+            .accounts
+            .first()
+            .map(business_config_from_account)
+            .unwrap_or_default();
+        let inherited = settings.default_business_config.clone();
+        for account in &mut settings.accounts {
+            let legacy_business = business_config_from_account(account);
+            account.independent_settings_enabled = legacy_business != inherited;
+            account.independent_business_config = account
+                .independent_settings_enabled
+                .then_some(legacy_business);
+        }
+    }
+    normalize_business_config(&mut settings.default_business_config)?;
+    for account in &mut settings.accounts {
+        if account.independent_settings_enabled {
+            if account.independent_business_config.is_none() {
+                return Err(format!(
+                    "账号 {} 已开启独立设置，但独立业务配置缺失",
+                    account.qq_account
+                ));
+            }
+            normalize_business_config(
+                account
+                    .independent_business_config
+                    .as_mut()
+                    .expect("上方已校验独立业务配置存在"),
+            )?;
+        } else {
+            account.independent_business_config = None;
+        }
     }
 
     if settings.calibration_environments.is_empty() {
@@ -827,10 +2135,17 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
                 let mut target = existing_targets
                     .remove(&required.key)
                     .unwrap_or_else(|| required.clone());
+                let kind_changed = target.kind != required.kind;
                 target.label = required.label.clone();
                 target.kind = required.kind.clone();
                 target.recognition_method = required.recognition_method.clone();
                 target.guard_any_of = required.guard_any_of.clone();
+                if kind_changed {
+                    target.rect = None;
+                    target.reference_image_path = None;
+                    target.verified_signature = None;
+                    target.verified_at_ms = None;
+                }
                 if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
                     if !target.match_threshold.is_finite()
                         || !(0.0..=1.0).contains(&target.match_threshold)
@@ -863,6 +2178,7 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
 
     let mut ids = std::collections::HashSet::new();
     let mut enabled_qq_accounts = std::collections::HashSet::new();
+    let default_ammo_targets = &settings.default_business_config.ammo_targets;
     for (index, account) in settings.accounts.iter_mut().enumerate() {
         account.id = account.id.trim().to_string();
         account.qq_account = account.qq_account.trim().to_string();
@@ -874,6 +2190,9 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
             && !enabled_qq_accounts.insert(account.qq_account.clone())
         {
             return Err("启用账号的 QQ 账号必须唯一".to_string());
+        }
+        if let Some(failure) = account.last_failure.as_ref() {
+            validate_failure_target(failure)?;
         }
         account.order = index as u32;
         if account.stations.len() > 4 {
@@ -902,8 +2221,23 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
             if target.id.is_empty() || !ammo_ids.insert(target.id.clone()) {
                 return Err(format!("账号 {} 的子弹目标 ID 必须非空且唯一", account.id));
             }
+            if let Some(failure) = target.last_failure.as_ref() {
+                validate_failure_target(failure)?;
+                if failure.station_kind.is_some()
+                    || failure.ammo_target_id.as_deref() != Some(target.id.as_str())
+                {
+                    return Err("子弹失败记录与目标 ID 不一致".to_string());
+                }
+            }
             target.order = order as u32;
         }
+        let business_targets = account
+            .independent_business_config
+            .as_ref()
+            .map_or(default_ammo_targets.as_slice(), |config| {
+                config.ammo_targets.as_slice()
+            });
+        sync_ammo_runtime_targets(&mut account.ammo_targets, business_targets);
     }
     Ok(settings)
 }
@@ -915,9 +2249,14 @@ fn required_execution_target_keys(
         .accounts
         .iter()
         .filter(|account| account.enabled && account.status == AccountStatus::Ready)
-        .filter(|account| {
-            account.stations.iter().any(|station| station.enabled)
-                || account.ammo_targets.iter().any(|target| target.enabled)
+        .filter_map(|account| {
+            resolve_account_business_config(settings, account)
+                .ok()
+                .map(|business| (account, business))
+        })
+        .filter(|(_, business)| {
+            business.stations.iter().any(|station| station.enabled)
+                || business.ammo_targets.iter().any(|target| target.enabled)
         })
         .collect::<Vec<_>>();
     if active_accounts.is_empty() {
@@ -935,8 +2274,6 @@ fn required_execution_target_keys(
         "wegame.launch",
         "game.modeReady",
         "game.beaconMode",
-        "game.activityPopup",
-        "game.startGame",
     ]
     .into_iter()
     .map(str::to_string)
@@ -944,13 +2281,14 @@ fn required_execution_target_keys(
 
     let has_crafting = active_accounts
         .iter()
-        .any(|account| account.stations.iter().any(|station| station.enabled));
+        .any(|(_, business)| business.stations.iter().any(|station| station.enabled));
     if has_crafting {
         keys.extend(
             [
                 "game.specialOps",
                 "game.stationGrid",
-                "craft.reward",
+                "craft.confirmPinned",
+                "craft.returnToStationGrid",
                 "craft.fill",
                 "craft.purchase",
                 "craft.produce",
@@ -960,21 +2298,14 @@ fn required_execution_target_keys(
             .map(str::to_string),
         );
         for kind in StationKind::all() {
-            if active_accounts.iter().any(|account| {
-                account
+            if active_accounts.iter().any(|(_, business)| {
+                business
                     .stations
                     .iter()
                     .any(|station| station.enabled && station.kind == kind)
             }) {
                 let suffix = kind.calibration_suffix();
-                for prefix in [
-                    "craft.station",
-                    "craft.claimReady",
-                    "craft.idle",
-                    "craft.openRecipeList",
-                    "craft.recipeListReady",
-                    "craft.recipe",
-                ] {
+                for prefix in ["craft.station", "craft.recipe"] {
                     keys.insert(format!("{prefix}.{suffix}"));
                 }
             }
@@ -983,38 +2314,41 @@ fn required_execution_target_keys(
 
     let has_ammo = active_accounts
         .iter()
-        .any(|account| account.ammo_targets.iter().any(|target| target.enabled));
+        .any(|(_, business)| business.ammo_targets.iter().any(|target| target.enabled));
     if has_ammo {
         keys.extend(
             [
                 "ammo.department",
                 "ammo.supply",
                 "ammo.tactical",
-                "ammo.list",
-                "ammo.target",
-                "ammo.selectedTargetName",
                 "ammo.fill",
                 "ammo.purchase",
                 "ammo.exchange",
+                "ammo.confirm",
                 "ammo.success",
             ]
             .into_iter()
             .map(str::to_string),
         );
-        if active_accounts.iter().any(|account| {
-            account
+        if active_accounts.iter().any(|(_, business)| {
+            business
                 .ammo_targets
                 .iter()
                 .any(|target| target.enabled && target.seasonal)
         }) {
             keys.insert("ammo.seasonal".to_string());
-            keys.insert("ammo.seasonalList".to_string());
         }
     }
     keys
 }
 
 fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String> {
+    validate_profit_configuration(
+        &settings.profit_filter,
+        &settings.daily_exchange_time,
+        &settings.default_business_config,
+        &settings.accounts,
+    )?;
     let required_keys = required_execution_target_keys(settings);
     if required_keys.is_empty() {
         return Ok(());
@@ -1023,29 +2357,39 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
         .accounts
         .iter()
         .filter(|account| account.enabled && account.status == AccountStatus::Ready)
-        .filter(|account| {
-            account.stations.iter().any(|station| station.enabled)
-                || account.ammo_targets.iter().any(|target| target.enabled)
-        })
     {
+        let business = resolve_account_business_config(settings, account)?;
+        if !business.stations.iter().any(|station| station.enabled)
+            && !business.ammo_targets.iter().any(|target| target.enabled)
+        {
+            continue;
+        }
         if account.qq_account.is_empty()
             || !account.qq_account.chars().all(|ch| ch.is_ascii_digit())
         {
             return Err(format!("账号 {} 的 QQ 必须为非空纯数字", account.id));
         }
-        for station in account.stations.iter().filter(|station| station.enabled) {
-            if station.item_name.trim().is_empty()
-                || !(1..=168 * 60).contains(&station.duration_minutes)
-            {
+        for station in business.stations.iter().filter(|station| station.enabled) {
+            if !(1..=168 * 60).contains(&station.duration_minutes) {
                 return Err(format!("账号 {} 的制作台配置不完整", account.id));
             }
         }
-        if account
+        if business
             .ammo_targets
             .iter()
-            .any(|target| target.enabled && target.name.trim().is_empty())
+            .any(|target| target.enabled && target.note.trim().is_empty())
         {
             return Err(format!("账号 {} 存在未命名的子弹目标", account.id));
+        }
+        if let Some(target) = business
+            .ammo_targets
+            .iter()
+            .find(|target| target.enabled && target.click_point.is_none())
+        {
+            return Err(format!(
+                "账号 {} 的子弹目标 {}（{}）点击点未配置",
+                account.id, target.note, target.id
+            ));
         }
     }
     let environment = settings
@@ -1073,8 +2417,19 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
             if !std::path::Path::new(path).is_file() {
                 return Err(format!("校准未完成：{} 的参考图文件不存在", target.label));
             }
+            if !verification_is_current(target) {
+                return Err(format!("校准未完成：{} 尚未测试或验证失效", target.label));
+            }
         }
     }
+    Ok(())
+}
+
+fn apply_paused_state(settings: &mut SpecialOpsSettings, paused: bool) -> Result<(), String> {
+    if !paused {
+        validate_execution_ready(settings)?;
+    }
+    settings.paused = paused;
     Ok(())
 }
 
@@ -1084,6 +2439,7 @@ fn validate_login_trial_ready(
     settings: &SpecialOpsSettings,
     account_id: &str,
 ) -> Result<(), String> {
+    mouse_parking_region(settings)?;
     let validate_executable_path = |path: &str, label: &str| {
         let path = path.trim();
         if path.is_empty() {
@@ -1249,10 +2605,499 @@ fn freeze_login_run_config(
                 .map_err(|_| "WeGame.exe 路径无法规范化".to_string())?,
             game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
                 .map_err(|_| "游戏 .exe 路径无法规范化".to_string())?,
+            mouse_parking_region: mouse_parking_region(settings)?,
             targets,
         },
         login_trial_signature(settings, account)?,
     ))
+}
+
+/// 冻结游戏内导航试运行输入，只依赖当前游戏窗口、两个模板、两个点击点与三段等待。
+fn freeze_navigation_run_config(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    destination: game_navigation::NavigationDestination,
+) -> Result<game_navigation::NavigationRunConfig, String> {
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| format!("导航试运行账号 {account_id} 不存在"))?;
+    if !account.enabled {
+        return Err(format!("导航试运行账号 {account_id} 未启用"));
+    }
+    let game_path = std::path::Path::new(settings.game_executable_path.trim());
+    if !game_path.is_absolute()
+        || !game_path
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+        || !game_path.is_file()
+    {
+        return Err("导航试运行需要有效的游戏 .exe 绝对路径".to_string());
+    }
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "导航试运行校准未完成：缺少显示环境".to_string())?;
+    let mut targets = std::collections::HashMap::new();
+    let mut keys = vec!["game.modeReady", "game.beaconMode"];
+    if destination == game_navigation::NavigationDestination::StationGrid {
+        keys.extend(["game.specialOps", "game.stationGrid"]);
+    }
+    for key in keys {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("导航试运行校准目标 {key} 不存在"))?;
+        let rect = target
+            .rect
+            .as_ref()
+            .ok_or_else(|| format!("导航试运行校准未完成：{} 尚未框选", target.label))?;
+        let region = crate::morse::types::RegionRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        };
+        let template = match target.kind {
+            CalibrationTargetKind::RecognitionRegion => {
+                let reference = target
+                    .reference_image_path
+                    .as_deref()
+                    .filter(|path| !path.trim().is_empty())
+                    .ok_or_else(|| {
+                        format!("导航试运行校准未完成：{} 尚未上传参考图", target.label)
+                    })?;
+                if !verification_is_current(target) {
+                    return Err(format!(
+                        "导航试运行校准未完成：{} 尚未测试或验证失效",
+                        target.label
+                    ));
+                }
+                Some(template_observer::RuntimeTemplate {
+                    key: key.to_string(),
+                    region: region.clone(),
+                    reference_image_path: std::fs::canonicalize(reference)
+                        .map_err(|_| format!("{} 的参考图文件不存在", target.label))?,
+                    threshold: target.match_threshold,
+                })
+            }
+            CalibrationTargetKind::ClickPoint => None,
+            CalibrationTargetKind::InputRegion => {
+                return Err(format!("导航校准目标 {} 类型无效", target.label));
+            }
+        };
+        targets.insert(
+            key.to_string(),
+            template_observer::RuntimeTarget {
+                key: key.to_string(),
+                region,
+                template,
+                guard_any_of: target.guard_any_of.clone(),
+            },
+        );
+    }
+    Ok(game_navigation::NavigationRunConfig {
+        game_executable_path: std::fs::canonicalize(game_path)
+            .map_err(|_| "游戏 .exe 路径无法规范化".to_string())?,
+        mouse_parking_region: mouse_parking_region(settings)?,
+        targets,
+        delays: game_navigation::NavigationDelays {
+            beacon_ms: settings.navigation_beacon_delay_ms,
+            space_ms: settings.navigation_space_delay_ms,
+            tab_ms: settings.navigation_tab_delay_ms,
+            special_ops_ms: settings.navigation_special_ops_delay_ms,
+        },
+        destination,
+    })
+}
+
+/// 冻结单制作台试运行所需的游戏路径、制作台模板和制作时长。
+fn freeze_craft_run_config(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    station_kind: StationKind,
+) -> Result<(craft_runtime::CraftRunConfig, u32), String> {
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "制作试运行账号不存在".to_string())?;
+    if !account.enabled {
+        return Err("制作试运行账号未启用".to_string());
+    }
+    account
+        .stations
+        .iter()
+        .find(|station| station.kind == station_kind)
+        .ok_or_else(|| "制作台配置不存在".to_string())?;
+    let business_config = resolve_account_business_config(settings, account)?;
+    let station = business_config
+        .stations
+        .iter()
+        .find(|station| station.kind == station_kind)
+        .ok_or_else(|| "制作台业务配置不存在".to_string())?;
+    if !station.enabled || station.duration_minutes == 0 {
+        return Err("制作台配置无效".to_string());
+    }
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "制作校准环境不存在".to_string())?;
+    let mut targets = std::collections::HashMap::new();
+    let suffix = station_suffix(&station_kind);
+    let keys = [
+        format!("craft.station.{suffix}"),
+        "craft.confirmPinned".to_string(),
+        "craft.returnToStationGrid".to_string(),
+        format!("craft.recipe.{suffix}"),
+        "game.stationGrid".to_string(),
+        "craft.fill".to_string(),
+        "craft.purchase".to_string(),
+        "craft.produce".to_string(),
+        "craft.abort".to_string(),
+    ];
+    for key in keys {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("制作校准目标 {key} 不存在"))?;
+        let recipe_override = (key == format!("craft.recipe.{suffix}"))
+            .then(|| {
+                business_config
+                    .recipe_points
+                    .iter()
+                    .find(|point| point.kind == station_kind)
+                    .map(|point| &point.rect)
+            })
+            .flatten();
+        let rect = recipe_override
+            .or(target.rect.as_ref())
+            .ok_or_else(|| format!("制作校准目标 {key} 未框选"))?;
+        let region = crate::morse::types::RegionRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        };
+        let template = if target.kind == CalibrationTargetKind::ClickPoint {
+            None
+        } else {
+            let (reference, threshold) = resolved_template_config(environment, target)
+                .map_err(|error| format!("制作校准目标 {key} 无效：{error}"))?;
+            Some(template_observer::RuntimeTemplate {
+                key: target.key.clone(),
+                region: region.clone(),
+                reference_image_path: std::fs::canonicalize(reference)
+                    .map_err(|_| "制作参考图不存在".to_string())?,
+                threshold,
+            })
+        };
+        targets.insert(
+            key.clone(),
+            template_observer::RuntimeTarget {
+                key,
+                region,
+                template,
+                guard_any_of: target.guard_any_of.clone(),
+            },
+        );
+    }
+    Ok((
+        craft_runtime::CraftRunConfig {
+            game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+                .map_err(|_| "游戏 exe 路径无效".to_string())?,
+            mouse_parking_region: mouse_parking_region(settings)?,
+            targets,
+            delays: craft_runtime::CraftProbeDelays {
+                space_ms: settings.craft_space_delay_ms,
+                reopen_ms: settings.craft_reopen_delay_ms,
+                confirm_pinned_ms: settings.craft_confirm_pinned_delay_ms,
+            },
+        },
+        station.duration_minutes,
+    ))
+}
+
+struct FrozenCraftBatchTask {
+    task: craft_batch::CraftBatchTask,
+    config: craft_runtime::CraftRunConfig,
+}
+
+#[derive(Debug)]
+struct FrozenAmmoRun {
+    game_executable_path: std::path::PathBuf,
+    mouse_parking_region: crate::morse::types::RegionRect,
+    targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
+    ammo_targets: Vec<ammo_runtime::AmmoRunTarget>,
+    entry_delays: ammo_runtime::AmmoEntryDelays,
+    day: String,
+}
+
+fn freeze_ammo_run(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    frozen_now_ms: i64,
+    requested_target_ids: Option<&[String]>,
+) -> Result<FrozenAmmoRun, String> {
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "子弹兑换试运行账号不存在".to_string())?;
+    if !account.enabled {
+        return Err("子弹兑换试运行账号未启用".to_string());
+    }
+    if account.status != AccountStatus::Ready {
+        return Err("当前账号状态不是 Ready，禁止启动子弹兑换试运行".to_string());
+    }
+    let business_config = resolve_account_business_config(settings, account)?;
+    let mut business_targets = business_config
+        .ammo_targets
+        .iter()
+        .filter(|target| target.enabled)
+        .filter(|target| {
+            requested_target_ids.is_none_or(|ids| ids.iter().any(|id| id == &target.id))
+        })
+        .collect::<Vec<_>>();
+    if business_targets.is_empty() {
+        return Err("当前账号没有启用的子弹兑换目标".to_string());
+    }
+    business_targets.sort_by_key(|target| (target.seasonal, target.order));
+
+    let day = local_day_and_minute(frozen_now_ms).0;
+    let ammo_targets = business_targets
+        .iter()
+        .map(|target| {
+            let point = target
+                .click_point
+                .as_ref()
+                .ok_or_else(|| format!("子弹目标 {} 尚未配置点击点", target.note))?;
+            if point.width != 1 || point.height != 1 {
+                return Err(format!("子弹目标 {} 点击点无效", target.note));
+            }
+            let runtime_state = account
+                .ammo_targets
+                .iter()
+                .find(|item| item.id == target.id);
+            Ok(ammo_runtime::AmmoRunTarget {
+                id: target.id.clone(),
+                note: target.note.clone(),
+                seasonal: target.seasonal,
+                click_point: crate::morse::types::RegionRect {
+                    x: point.x,
+                    y: point.y,
+                    width: point.width,
+                    height: point.height,
+                },
+                scroll_steps: target.scroll_steps,
+                already_succeeded: runtime_state.and_then(|item| item.last_success_day.as_deref())
+                    == Some(day.as_str()),
+                retry_count: runtime_state
+                    .filter(|item| item.retry_day.as_deref() == Some(day.as_str()))
+                    .map_or(0, |item| item.retry_count),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| "子弹兑换校准环境不存在".to_string())?;
+    let mut keys = vec![
+        "ammo.department",
+        "ammo.supply",
+        "ammo.tactical",
+        "ammo.fill",
+        "ammo.purchase",
+        "ammo.exchange",
+        "ammo.confirm",
+        "ammo.success",
+    ];
+    if ammo_targets.iter().any(|target| target.seasonal) {
+        keys.push("ammo.seasonal");
+    }
+    let mut targets = std::collections::HashMap::new();
+    for key in keys {
+        let target = environment
+            .targets
+            .iter()
+            .find(|target| target.key == key)
+            .ok_or_else(|| format!("子弹兑换校准目标 {key} 不存在"))?;
+        let rect = target
+            .rect
+            .as_ref()
+            .ok_or_else(|| format!("子弹兑换校准目标 {key} 未框选"))?;
+        let region = crate::morse::types::RegionRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        };
+        let template = match target.kind {
+            CalibrationTargetKind::RecognitionRegion => {
+                if !verification_is_current(target) {
+                    return Err(format!("子弹兑换校准目标 {key} 尚未测试或验证失效"));
+                }
+                let (reference, threshold) = resolved_template_config(environment, target)
+                    .map_err(|error| format!("子弹兑换校准目标 {key} 无效：{error}"))?;
+                Some(template_observer::RuntimeTemplate {
+                    key: key.to_string(),
+                    region: region.clone(),
+                    reference_image_path: std::fs::canonicalize(reference)
+                        .map_err(|_| format!("子弹兑换校准目标 {key} 的参考图不存在"))?,
+                    threshold,
+                })
+            }
+            CalibrationTargetKind::ClickPoint => None,
+            CalibrationTargetKind::InputRegion => {
+                return Err(format!("子弹兑换校准目标 {key} 类型无效"));
+            }
+        };
+        targets.insert(
+            key.to_string(),
+            template_observer::RuntimeTarget {
+                key: key.to_string(),
+                region,
+                template,
+                guard_any_of: target.guard_any_of.clone(),
+            },
+        );
+    }
+
+    Ok(FrozenAmmoRun {
+        game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+            .map_err(|_| "游戏 exe 路径无效".to_string())?,
+        mouse_parking_region: mouse_parking_region(settings)?,
+        targets,
+        ammo_targets,
+        entry_delays: ammo_runtime::AmmoEntryDelays {
+            supply_ms: settings.ammo_supply_delay_ms,
+            tactical_ms: settings.ammo_tactical_delay_ms,
+        },
+        day,
+    })
+}
+
+struct FrozenRoundAccount {
+    login: Arc<login_flow::LoginRunConfig>,
+    navigation: Arc<game_navigation::NavigationRunConfig>,
+    craft: Arc<Vec<FrozenCraftBatchTask>>,
+    ammo: Option<Arc<FrozenAmmoRun>>,
+}
+
+struct FrozenRoundRun {
+    plan: round_planner::RoundPlan,
+    accounts: std::collections::HashMap<String, Result<FrozenRoundAccount, String>>,
+    game_executable_path: std::path::PathBuf,
+    profit_generation: Option<u64>,
+}
+
+fn freeze_round_run(
+    settings: &SpecialOpsSettings,
+    frozen_now_ms: i64,
+    trigger: round_planner::RoundTrigger,
+    gate: AmmoProfitGate,
+    profit_generation: Option<u64>,
+) -> Result<FrozenRoundRun, String> {
+    validate_execution_ready(settings)?;
+    let game_executable_path = std::fs::canonicalize(&settings.game_executable_path)
+        .map_err(|_| "游戏 exe 路径无效".to_string())?;
+    let plan = round_planner::build_round_plan_with_profit(settings, frozen_now_ms, trigger, gate)?;
+    if plan.accounts.is_empty() {
+        return Err("当前没有到期制作或子弹任务".to_string());
+    }
+    let accounts = plan
+        .accounts
+        .iter()
+        .map(|task| {
+            let frozen = (|| {
+                let (login, _login_signature) =
+                    freeze_login_run_config(settings, &task.account_id)?;
+                let destination = if task.stations.is_empty() {
+                    game_navigation::NavigationDestination::Lobby
+                } else {
+                    game_navigation::NavigationDestination::StationGrid
+                };
+                let navigation =
+                    freeze_navigation_run_config(settings, &task.account_id, destination)?;
+                let craft = if task.stations.is_empty() {
+                    Vec::new()
+                } else {
+                    freeze_craft_batch_run_configs(
+                        settings,
+                        &task.account_id,
+                        frozen_now_ms,
+                        Some(&task.stations),
+                    )?
+                };
+                let ammo = (!task.ammo_target_ids.is_empty())
+                    .then(|| {
+                        freeze_ammo_run(
+                            settings,
+                            &task.account_id,
+                            frozen_now_ms,
+                            Some(&task.ammo_target_ids),
+                        )
+                    })
+                    .transpose()?
+                    .map(Arc::new);
+                Ok(FrozenRoundAccount {
+                    login: Arc::new(login),
+                    navigation: Arc::new(navigation),
+                    craft: Arc::new(craft),
+                    ammo,
+                })
+            })();
+            (task.account_id.clone(), frozen)
+        })
+        .collect();
+    Ok(FrozenRoundRun {
+        plan,
+        accounts,
+        game_executable_path,
+        profit_generation,
+    })
+}
+
+fn freeze_craft_batch_run_configs(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    frozen_now_ms: i64,
+    requested_stations: Option<&[StationKind]>,
+) -> Result<Vec<FrozenCraftBatchTask>, String> {
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "制作批处理账号不存在".to_string())?;
+    let business_config = resolve_account_business_config(settings, account)?;
+    let tasks = craft_batch::select_due_craft_tasks(account, business_config, frozen_now_ms)?
+        .into_iter()
+        .filter(|task| {
+            requested_stations
+                .is_none_or(|stations| stations.iter().any(|station| station == &task.station))
+        })
+        .collect::<Vec<_>>();
+    if tasks.is_empty() {
+        return Err(if requested_stations.is_some() {
+            "当前账号没有计划内到期制作台"
+        } else {
+            "当前账号没有到期制作台"
+        }
+        .to_string());
+    }
+
+    tasks
+        .into_iter()
+        .map(|task| {
+            let (config, _) = freeze_craft_run_config(settings, account_id, task.station.clone())?;
+            Ok(FrozenCraftBatchTask { task, config })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -1261,6 +3106,20 @@ struct CalibrationTemplateTestInput {
     reference_image_path: String,
     match_threshold: f32,
     calibration_signature: String,
+}
+
+#[derive(Debug, Clone)]
+enum CalibrationTestInput {
+    Template(CalibrationTemplateTestInput),
+    Ocr {
+        region: crate::morse::types::RegionRect,
+    },
+}
+
+fn calibration_test_requires_game_context(target_key: &str) -> bool {
+    ["game.", "craft.", "ammo."]
+        .iter()
+        .any(|prefix| target_key.starts_with(prefix))
 }
 
 fn commit_calibration_test_verification(
@@ -1273,22 +3132,25 @@ fn commit_calibration_test_verification(
     persist: impl FnOnce(&SpecialOpsSettings) -> Result<(), String>,
 ) -> Result<(), String> {
     let mut next = settings.clone();
-    let target = next
+    let environment_index = next
         .calibration_environments
-        .iter_mut()
-        .find(|environment| environment.id == environment_id)
-        .and_then(|environment| {
-            environment
-                .targets
-                .iter_mut()
-                .find(|target| target.key == target_key)
-        })
+        .iter()
+        .position(|environment| environment.id == environment_id)
         .ok_or_else(|| "校准配置已变化，请重新测试".to_string())?;
-    let current_signature =
-        calibration_signature(target).map_err(|_| "校准配置已变化，请重新测试".to_string())?;
+    let target_index = next.calibration_environments[environment_index]
+        .targets
+        .iter()
+        .position(|target| target.key == target_key)
+        .ok_or_else(|| "校准配置已变化，请重新测试".to_string())?;
+    let current_signature = resolved_calibration_signature(
+        &next.calibration_environments[environment_index],
+        &next.calibration_environments[environment_index].targets[target_index],
+    )
+    .map_err(|_| "校准配置已变化，请重新测试".to_string())?;
     if current_signature != tested_signature {
         return Err("校准配置已变化，请重新测试".to_string());
     }
+    let target = &mut next.calibration_environments[environment_index].targets[target_index];
     if passed {
         let verified_at_ms = verified_at_ms
             .filter(|value| *value >= 0)
@@ -1304,51 +3166,47 @@ fn commit_calibration_test_verification(
     Ok(())
 }
 
-fn calibration_template_test_input(
+fn calibration_test_input(
     settings: &SpecialOpsSettings,
     environment_id: &str,
     target_key: &str,
-) -> Result<CalibrationTemplateTestInput, String> {
-    let target = settings
+) -> Result<CalibrationTestInput, String> {
+    let environment = settings
         .calibration_environments
         .iter()
         .find(|environment| environment.id == environment_id)
-        .and_then(|environment| {
-            environment
-                .targets
-                .iter()
-                .find(|target| target.key == target_key)
-        })
         .ok_or_else(|| "校准目标不存在".to_string())?;
-    if target.recognition_method != Some(CalibrationRecognitionMethod::Template) {
-        return Err(
-            if target.recognition_method == Some(CalibrationRecognitionMethod::Ocr) {
-                "OCR 测试尚未接入，不能伪造识别结果".to_string()
-            } else {
-                "点击点和输入区域不支持模板测试".to_string()
-            },
-        );
-    }
+    let target = environment
+        .targets
+        .iter()
+        .find(|target| target.key == target_key)
+        .ok_or_else(|| "校准目标不存在".to_string())?;
     let rect = target
         .rect
         .as_ref()
         .ok_or_else(|| format!("{} 尚未框选", target.label))?;
-    let reference_image_path = target
-        .reference_image_path
-        .as_deref()
-        .filter(|path| !path.trim().is_empty())
-        .ok_or_else(|| format!("{} 尚未上传参考图", target.label))?;
-    Ok(CalibrationTemplateTestInput {
-        region: crate::morse::types::RegionRect {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-        },
-        reference_image_path: reference_image_path.to_string(),
-        match_threshold: target.match_threshold,
-        calibration_signature: calibration_signature(target)?,
-    })
+    let region = crate::morse::types::RegionRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    };
+    match target.recognition_method {
+        Some(CalibrationRecognitionMethod::Template) => {
+            let (reference_image_path, match_threshold) =
+                resolved_template_config(environment, target)?;
+            Ok(CalibrationTestInput::Template(
+                CalibrationTemplateTestInput {
+                    region,
+                    reference_image_path: reference_image_path.to_string(),
+                    match_threshold,
+                    calibration_signature: resolved_calibration_signature(environment, target)?,
+                },
+            ))
+        }
+        Some(CalibrationRecognitionMethod::Ocr) => Ok(CalibrationTestInput::Ocr { region }),
+        None => Err("点击点和输入区域不支持测试".to_string()),
+    }
 }
 
 async fn sample_template_similarity(
@@ -1367,6 +3225,21 @@ async fn sample_template_similarity(
     })
     .await
     .map_err(|error| format!("模板测试任务失败: {error}"))?
+}
+
+async fn sample_numeric_ocr(
+    region: crate::morse::types::RegionRect,
+) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let captured = crate::recognition::watcher::capture_region(&region)
+            .ok_or_else(|| "截取 OCR 校准区域失败".to_string())?;
+        Ok(windows_ocr::recognize_numeric_words(captured)?
+            .into_iter()
+            .map(|word| word.text)
+            .collect())
+    })
+    .await
+    .map_err(|error| format!("OCR 校准测试任务失败: {error}"))?
 }
 
 fn now_ms() -> i64 {
@@ -1399,6 +3272,7 @@ fn build_bootstrap(
         settings_revision,
         now_ms: current_ms,
         run_snapshot: None,
+        profit_runtime: ProfitRuntimeSnapshot::default(),
     }
 }
 
@@ -1407,17 +3281,46 @@ fn build_bootstrap_with_runtime(
     settings_revision: u64,
     current_ms: i64,
     runtime: &login_runtime::LoginRuntime,
+    profit_runtime: &ProfitQueryControl,
 ) -> Result<SpecialOpsBootstrap, String> {
-    let mut bootstrap = build_bootstrap(settings, settings_revision, current_ms);
+    let mut bootstrap = build_bootstrap(settings.clone(), settings_revision, current_ms);
+    let snapshot = match build_profit_query_window(
+        &settings,
+        current_ms,
+        settings_revision,
+        runtime
+            .snapshot()?
+            .is_some_and(|snapshot| snapshot.run_kind == LoginRunKind::Round),
+    ) {
+        Ok(window) => profit_runtime.sync_window(window)?,
+        Err(error) => {
+            let mut snapshot = profit_runtime.snapshot()?;
+            snapshot.configuration_error = Some(error);
+            snapshot
+        }
+    };
+    let gate = if !settings.profit_filter.enabled {
+        AmmoProfitGate::Disabled
+    } else if snapshot.phase == profit::runtime::ProfitRuntimePhase::CutoffBypass {
+        AmmoProfitGate::CutoffBypass
+    } else {
+        AmmoProfitGate::Qualified(snapshot.qualified_rule_ids.iter().cloned().collect())
+    };
+    bootstrap.schedule =
+        build_schedule_with_profit_runtime(&settings, current_ms, &gate, Some(&snapshot));
     bootstrap.run_snapshot = runtime.snapshot()?;
+    bootstrap.profit_runtime = snapshot;
     Ok(bootstrap)
 }
 
-fn emit_state(app: &AppHandle, bootstrap: &SpecialOpsBootstrap) {
+fn emit_state(app: &AppHandle, settings_revision: u64, current_ms: i64) {
     let _ = app.emit_to(
         "main",
         STATE_CHANGED,
-        SpecialOpsStateChanged::from(bootstrap),
+        SpecialOpsStateChanged {
+            settings_revision,
+            now_ms: current_ms,
+        },
     );
 }
 
@@ -1440,48 +3343,79 @@ fn emit_login_run_change(
 }
 
 fn emit_current_state(app: &AppHandle) -> Result<(), String> {
-    let state = app
+    let _state = app
         .try_state::<SpecialOpsState>()
         .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
     let coordinator = app
         .try_state::<Arc<SettingsCoordinator>>()
         .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
-    let settings = state
-        .settings
-        .lock()
-        .map_err(|_| "特勤处状态已损坏".to_string())?
-        .clone();
-    emit_state(
-        app,
-        &build_bootstrap(settings, coordinator.current_revision()?, now_ms()),
-    );
+    emit_state(app, coordinator.current_revision()?, now_ms());
     Ok(())
 }
 
-fn create_operation_window(app: &AppHandle, emergency_hotkey: &str) -> Result<(), String> {
-    destroy_operation_window(app)?;
+fn wait_for_operation_window_ready(
+    ready: std::sync::mpsc::Receiver<()>,
+    timeout: std::time::Duration,
+) -> Result<(), String> {
+    match ready.recv_timeout(timeout) {
+        Ok(()) => Ok(()),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err(OPERATION_WINDOW_LOAD_TIMEOUT.to_string())
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err("操作提示窗口加载失败，已取消本次试运行".to_string())
+        }
+    }
+}
+
+fn create_operation_window(
+    app: &AppHandle,
+    emergency_hotkey: &str,
+    run_kind: LoginRunKind,
+) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(login_runtime::OPERATION_WINDOW_LABEL) {
+        let show_result = window.show();
+        show_result.map_err(|error| format!("显示操作提示窗口失败: {error}"))?;
+        return Ok(());
+    }
     let hotkey = encoded_query_value(emergency_hotkey);
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
     let window = tauri::WebviewWindowBuilder::new(
         app,
         login_runtime::OPERATION_WINDOW_LABEL,
         tauri::WebviewUrl::App(
-            format!("index.html?mode=special-ops-operation&emergencyHotkey={hotkey}").into(),
+            format!(
+                "index.html?mode=special-ops-operation&emergencyHotkey={hotkey}&runKind={}",
+                run_kind.query_value()
+            )
+            .into(),
         ),
     )
-    .title("特勤处登录试运行")
+    .title("特勤处操作中")
     .decorations(false)
     .transparent(true)
     .shadow(false)
     .always_on_top(true)
     .skip_taskbar(true)
     .focused(false)
+    .visible(false)
     .resizable(false)
     .inner_size(420.0, 180.0)
+    .on_page_load(move |_, payload| {
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+            let _ = ready_tx.try_send(());
+        }
+    })
     .build()
     .map_err(|error| format!("创建登录试运行窗口失败: {error}"))?;
     window
         .set_ignore_cursor_events(true)
-        .map_err(|error| format!("设置登录试运行窗口点击穿透失败: {error}"))
+        .map_err(|error| format!("设置登录试运行窗口点击穿透失败: {error}"))?;
+    window
+        .show()
+        .map_err(|error| format!("显示操作提示窗口失败: {error}"))?;
+    wait_for_operation_window_ready(ready_rx, std::time::Duration::from_secs(3))?;
+    Ok(())
 }
 
 fn register_emergency_hotkey(app: &AppHandle, hotkey: String) -> Result<(), String> {
@@ -1489,19 +3423,44 @@ fn register_emergency_hotkey(app: &AppHandle, hotkey: String) -> Result<(), Stri
         .try_state::<crate::hotkeys::HotkeyManager>()
         .ok_or_else(|| "热键管理器尚未初始化".to_string())?;
     let action: crate::hotkey_types::HotkeyAction = Arc::new(|app| {
-        if let Err(error) = emergency_stop_core(&app) {
+        if let Err(error) = request_emergency_stop_core(&app) {
             crate::log_error!(
-                "special_ops::login",
-                "紧急停止失败",
+                "special_ops::runtime",
+                "紧急停止登记失败",
                 "error" => error
             );
         }
     });
-    manager.replace_scope(
+    manager.replace_safety_scope(
         LOGIN_HOTKEY_SCOPE,
         vec![(hotkey, action)],
         "特勤处紧急停止".to_string(),
         crate::hotkey_types::ConflictPolicy::Strict,
+    )
+}
+
+fn request_then_release_emergency<T>(
+    request: impl FnOnce() -> Result<T, String>,
+    release: impl FnOnce() -> Result<(), String>,
+) -> Result<T, String> {
+    let value = request()?;
+    release()?;
+    Ok(value)
+}
+
+fn ensure_global_automation_enabled(enabled: bool) -> Result<(), String> {
+    if enabled {
+        Ok(())
+    } else {
+        Err("全局总开关已关闭".to_string())
+    }
+}
+
+fn ensure_app_global_automation_enabled(app: &AppHandle) -> Result<(), String> {
+    ensure_global_automation_enabled(
+        app.try_state::<crate::global_state::GlobalState>()
+            .map(|state| state.enabled())
+            .unwrap_or(true),
     )
 }
 
@@ -1512,22 +3471,24 @@ fn clear_login_hotkey(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn destroy_operation_window(app: &AppHandle) -> Result<(), String> {
+fn hide_operation_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(login_runtime::OPERATION_WINDOW_LABEL) {
         window
-            .destroy()
-            .map_err(|error| format!("销毁登录试运行窗口失败: {error}"))?;
+            .hide()
+            .map_err(|error| format!("隐藏操作提示窗口失败: {error}"))?;
     }
     Ok(())
 }
 
 fn release_login_resources_with(
-    release_inputs: impl FnOnce(),
+    release_inputs: impl FnOnce() -> Result<(), String>,
     clear_hotkey: impl FnOnce() -> Result<(), String>,
     destroy_window: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
-    release_inputs();
     let mut errors = Vec::new();
+    if let Err(error) = release_inputs() {
+        errors.push(error);
+    }
     if let Err(error) = clear_hotkey() {
         errors.push(error);
     }
@@ -1542,11 +3503,57 @@ fn release_login_resources_with(
 }
 
 fn release_login_resources_unlocked(app: &AppHandle) -> Result<(), String> {
-    release_login_resources_with(
-        crate::input_simulation::release_tracked_injected_inputs,
-        || clear_login_hotkey(app),
-        || destroy_operation_window(app),
-    )
+    let cleanup = release_login_resources_with(
+        || {
+            crate::log_debug!("special_ops::cleanup", "输入释放开始");
+            let result = crate::input_simulation::release_tracked_injected_inputs();
+            crate::log_debug!(
+                "special_ops::cleanup",
+                "输入释放结束",
+                "success" => result.is_ok()
+            );
+            result
+        },
+        || {
+            crate::log_debug!("special_ops::cleanup", "紧急热键清理开始");
+            let result = clear_login_hotkey(app);
+            crate::log_debug!(
+                "special_ops::cleanup",
+                "紧急热键清理结束",
+                "success" => result.is_ok()
+            );
+            result
+        },
+        || {
+            crate::log_debug!("special_ops::cleanup", "操作窗口隐藏开始");
+            let result = hide_operation_window(app);
+            crate::log_debug!(
+                "special_ops::cleanup",
+                "操作窗口隐藏结束",
+                "success" => result.is_ok()
+            );
+            result
+        },
+    );
+    let mut errors = Vec::new();
+    if let Err(error) = cleanup {
+        errors.push(error);
+    }
+    crate::log_debug!("special_ops::cleanup", "其他窗口恢复开始");
+    let restore_result = restore_other_windows_after_special_ops(app);
+    crate::log_debug!(
+        "special_ops::cleanup",
+        "其他窗口恢复结束",
+        "success" => restore_result.is_ok()
+    );
+    if let Err(error) = restore_result {
+        errors.push(error);
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 fn rollback_login_start_unlocked(
@@ -1576,10 +3583,14 @@ fn rollback_login_start_unlocked(
     error
 }
 
-fn start_login_run_with_resources<R, C, A, L, S>(
+// 该函数统一编排六类资源回调，保持启动、回滚和清理顺序可见。
+#[allow(clippy::too_many_arguments)]
+fn start_login_run_with_resources<R, H, C, A, L, S>(
     runtime: &login_runtime::LoginRuntime,
     account_id: String,
+    run_kind: LoginRunKind,
     register_hotkey: R,
+    hide_windows: H,
     create_window: C,
     announce_start: A,
     cleanup: L,
@@ -1587,18 +3598,40 @@ fn start_login_run_with_resources<R, C, A, L, S>(
 ) -> Result<(login_runtime::StartedLoginRun, LoginRunSnapshot), String>
 where
     R: FnOnce() -> Result<(), String>,
+    H: FnOnce() -> Result<(), String>,
     C: FnOnce() -> Result<(), String>,
     A: FnOnce(&LoginRunSnapshot),
     L: FnOnce() -> Result<(), String>,
     S: FnOnce(&login_runtime::StartedLoginRun) -> Result<(), String>,
 {
+    crate::log_info!(
+        "special_ops::startup",
+        "等待登录资源锁",
+        "run_kind" => format!("{run_kind:?}")
+    );
     let _resources = LOGIN_RESOURCE_CLEANUP_LOCK
         .lock()
         .map_err(|_| "登录试运行资源清理锁已损坏".to_string())?;
-    let started = runtime.try_start(account_id)?;
+    crate::log_info!(
+        "special_ops::startup",
+        "登录资源锁已获取",
+        "run_kind" => format!("{run_kind:?}")
+    );
+    let started = runtime.try_start_kind(account_id, run_kind)?;
     let snapshot = runtime
         .snapshot()?
         .ok_or_else(|| "登录试运行启动状态丢失".to_string())?;
+
+    crate::log_info!("special_ops::startup", "开始隐藏其他窗口", "run_id" => started.run_id);
+    if let Err(error) = hide_windows() {
+        return Err(rollback_login_start_unlocked(
+            runtime,
+            started.run_id,
+            error,
+            cleanup,
+        ));
+    }
+    crate::log_info!("special_ops::startup", "隐藏其他窗口完成", "run_id" => started.run_id);
 
     if !runtime.can_continue_start(started.run_id)? {
         return Err(rollback_login_start_unlocked(
@@ -1608,6 +3641,7 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "开始注册紧急热键", "run_id" => started.run_id);
     if let Err(error) = register_hotkey() {
         return Err(rollback_login_start_unlocked(
             runtime,
@@ -1616,6 +3650,7 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "注册紧急热键完成", "run_id" => started.run_id);
     if !runtime.can_continue_start(started.run_id)? {
         return Err(rollback_login_start_unlocked(
             runtime,
@@ -1624,6 +3659,7 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "开始创建操作提示窗", "run_id" => started.run_id);
     if let Err(error) = create_window() {
         return Err(rollback_login_start_unlocked(
             runtime,
@@ -1632,6 +3668,8 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "创建操作提示窗完成", "run_id" => started.run_id);
+    crate::log_info!("special_ops::startup", "开始登记 worker handoff", "run_id" => started.run_id);
     let handed_off = runtime.with_event_serialized(|| {
         if !runtime.claim_worker_handoff(started.run_id)? {
             return Ok(false);
@@ -1650,6 +3688,8 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "worker handoff 登记完成", "run_id" => started.run_id);
+    crate::log_info!("special_ops::startup", "开始提交 worker", "run_id" => started.run_id);
     if let Err(error) = spawn_worker(&started) {
         return Err(rollback_login_start_unlocked(
             runtime,
@@ -1658,10 +3698,12 @@ where
             cleanup,
         ));
     }
+    crate::log_info!("special_ops::startup", "worker 提交完成", "run_id" => started.run_id);
     let snapshot = runtime
         .snapshot()?
         .filter(|snapshot| snapshot.run_id == started.run_id)
         .ok_or_else(|| "登录试运行启动状态已变化".to_string())?;
+    crate::log_info!("special_ops::startup", "登录资源启动完成", "run_id" => started.run_id);
     Ok((started, snapshot))
 }
 
@@ -1722,6 +3764,9 @@ fn cleanup_login_run(
             return Err(fail_closed_login_error(app, runtime, run_id, runtime_error));
         }
     }
+    if !runtime.cleanup_ready(run_id)? {
+        return Ok(());
+    }
     let finished = finish_login_run_after_cleanup(runtime, run_id, status, message, || {
         release_login_resources_unlocked(app)
     });
@@ -1780,7 +3825,7 @@ fn persist_login_result(
     let coordinator = app
         .try_state::<Arc<SettingsCoordinator>>()
         .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
-    let (settings, revision) = coordinator.with_runtime_change(|| {
+    let (_settings, revision) = coordinator.with_runtime_change(|| {
         let current = state
             .settings
             .lock()
@@ -1795,7 +3840,7 @@ fn persist_login_result(
             .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
         Ok::<_, String>(next)
     })?;
-    emit_state(app, &build_bootstrap(settings, revision, now_ms()));
+    emit_state(app, revision, now_ms());
     Ok(revision)
 }
 
@@ -1857,6 +3902,12 @@ where
             }
             login_runtime::PersistenceClaim::Acquired(guard) => {
                 let kind = guard.kind();
+                crate::log_debug!(
+                    "special_ops::persistence",
+                    "运行结果持久化开始",
+                    "run_id" => run_id,
+                    "kind" => format!("{kind:?}")
+                );
                 let stop_result;
                 let (result, reason, signature) = match kind {
                     login_runtime::PersistenceKind::Flow => (
@@ -1878,6 +3929,12 @@ where
                     return Err(error);
                 }
                 if guard.complete()? {
+                    crate::log_debug!(
+                        "special_ops::persistence",
+                        "运行结果持久化完成",
+                        "run_id" => run_id,
+                        "kind" => format!("{kind:?}")
+                    );
                     return Ok(Some(kind));
                 }
             }
@@ -1908,6 +3965,7 @@ fn persist_login_outcome(
 fn login_step_message(step: &login_flow::LoginStep) -> &'static str {
     use login_flow::LoginStep::*;
     match step {
+        InitialCountdown => "即将开始轮换操作",
         StopGame => "正在结束旧游戏进程",
         StopWeGame => "正在结束旧 WeGame 进程",
         StartWeGame => "正在启动 WeGame",
@@ -1923,6 +3981,12 @@ fn login_step_message(step: &login_flow::LoginStep) -> &'static str {
         WaitLaunchButton => "正在等待启动按钮",
         LaunchGame => "正在启动游戏",
         WaitGameWindow => "正在等待游戏窗口",
+        WaitModeReady => "正在等待模式选择可用",
+        OpenBeaconMode => "正在进入烽火地带",
+        DismissActivityPopup => "正在关闭活动弹窗",
+        SwitchLobbyView => "正在切换大厅视角",
+        OpenSpecialOps => "正在进入特勤处",
+        WaitStationGrid => "正在等待四制作台页面",
     }
 }
 
@@ -1930,9 +3994,10 @@ fn cleanup_login_worker_after_persistence<T>(
     persist_result: &Result<T, String>,
     cleanup: impl FnOnce() -> Result<(), String>,
 ) -> Result<(), String> {
-    match persist_result {
-        Ok(_) => cleanup(),
-        Err(error) => Err(error.clone()),
+    match (persist_result, cleanup()) {
+        (Ok(_), cleanup_result) => cleanup_result,
+        (Err(error), Ok(())) => Err(error.clone()),
+        (Err(error), Err(cleanup_error)) => Err(format!("{error}; {cleanup_error}")),
     }
 }
 
@@ -1944,6 +4009,11 @@ async fn run_login_worker(
     config: Arc<login_flow::LoginRunConfig>,
     frozen_signature: String,
 ) {
+    crate::log_debug!(
+        "special_ops::login",
+        "登录 worker 开始",
+        "run_id" => run_id
+    );
     let driver = login_runtime::ProductionLoginDriver::new(
         app.clone(),
         Arc::clone(&runtime),
@@ -2017,20 +4087,2462 @@ async fn run_login_worker(
             "error" => error
         );
     }
+    crate::log_debug!(
+        "special_ops::login",
+        "登录 worker 结束",
+        "run_id" => run_id
+    );
+}
+
+/// 导航失败只暂停全局调度，不把账号误标成登录失败。
+fn persist_navigation_pause(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let (_settings, revision) = coordinator.with_runtime_change(|| {
+        let mut next = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        next.paused = true;
+        save_settings(app, &next)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    state.profit_runtime.invalidate("导航失败，利润查询已取消");
+    emit_state(app, revision, now_ms());
+    Ok(())
+}
+
+/// 运行独立游戏内导航试运行，并复用登录试运行的资源生命周期。
+async fn run_navigation_worker(
+    app: AppHandle,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    config: Arc<game_navigation::NavigationRunConfig>,
+) {
+    crate::log_debug!(
+        "special_ops::navigation",
+        "导航 worker 开始",
+        "run_id" => run_id
+    );
+    let driver = game_navigation::ProductionGameNavigationDriver::new(
+        app.clone(),
+        Arc::clone(&runtime),
+        run_id,
+        Arc::clone(&config),
+    );
+    let update_app = app.clone();
+    let update_runtime = Arc::clone(&runtime);
+    let update_cancelled = Arc::clone(&cancelled);
+    let result = game_navigation::run_game_navigation(
+        &driver,
+        config.destination,
+        config.delays,
+        cancelled,
+        move |step| {
+            let step = login_flow::LoginStep::from(step);
+            match update_runtime.update(
+                run_id,
+                LoginRunStatus::Waiting,
+                Some(step),
+                login_step_message(&step),
+                None,
+            ) {
+                Ok(Some(snapshot)) => emit_run(&update_app, &snapshot),
+                Ok(None) | Err(_) => {
+                    update_cancelled.store(true, std::sync::atomic::Ordering::SeqCst)
+                }
+            }
+        },
+    )
+    .await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    let stopped = stop_reason.is_some();
+    let persist_result = if let Some(reason) = stop_reason {
+        runtime
+            .snapshot()
+            .and_then(|snapshot| {
+                snapshot
+                    .filter(|snapshot| snapshot.run_id == run_id)
+                    .map(|snapshot| snapshot.account_id)
+                    .ok_or_else(|| "导航运行状态已丢失".to_string())
+            })
+            .and_then(|account_id| {
+                if let Some((outcome, _)) =
+                    navigation_stop_outcome(Some(reason), &account_id, now_ms())
+                {
+                    persist_login_outcome(&app, &runtime, run_id, &account_id, &outcome, "")
+                        .map(|_| ())
+                } else {
+                    Ok(())
+                }
+            })
+    } else if matches!(
+        result,
+        game_navigation::GameNavigationResult::TimedOut { .. }
+            | game_navigation::GameNavigationResult::Paused { .. }
+    ) {
+        persist_navigation_pause(&app)
+    } else {
+        Ok(())
+    };
+    let (status, message) = if stopped {
+        (
+            LoginRunStatus::Stopped,
+            "游戏内导航试运行已停止".to_string(),
+        )
+    } else {
+        match result {
+            game_navigation::GameNavigationResult::Ready => (
+                LoginRunStatus::Succeeded,
+                "游戏内导航试运行成功".to_string(),
+            ),
+            game_navigation::GameNavigationResult::TimedOut { failed_step } => (
+                LoginRunStatus::Failed,
+                format!("游戏内导航超时（{failed_step:?}）"),
+            ),
+            game_navigation::GameNavigationResult::Paused {
+                failed_step,
+                message,
+            } => (
+                LoginRunStatus::Failed,
+                format!("游戏内导航失败（{failed_step:?}）：{message}"),
+            ),
+            game_navigation::GameNavigationResult::EmergencyStopped => (
+                LoginRunStatus::Stopped,
+                "游戏内导航试运行已停止".to_string(),
+            ),
+        }
+    };
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!(
+            "special_ops::navigation",
+            "游戏内导航试运行持久化或清理失败",
+            "error" => error
+        );
+    }
+    crate::log_debug!(
+        "special_ops::navigation",
+        "导航 worker 结束",
+        "run_id" => run_id
+    );
+}
+
+fn navigation_stop_outcome(
+    stop_reason: Option<login_runtime::StopReason>,
+    account_id: &str,
+    stopped_at: i64,
+) -> Option<(login_flow::LoginFlowResult, login_runtime::StopReason)> {
+    match stop_reason {
+        Some(reason @ login_runtime::StopReason::Emergency)
+        | Some(reason @ login_runtime::StopReason::Lifecycle { uncertain: true }) => Some((
+            login_flow::LoginFlowResult::EmergencyStopped {
+                account_id: account_id.to_string(),
+                stopped_at,
+            },
+            reason,
+        )),
+        _ => None,
+    }
+}
+
+/// 执行单制作台试运行，并在中止按钮双采样成功后保存下一次完成时间。
+fn persist_craft_success_with<F>(
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    station: &StationKind,
+    started_at_ms: i64,
+    duration_minutes: u32,
+    persist: F,
+) -> Result<(SpecialOpsSettings, u64), String>
+where
+    F: FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+{
+    coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let account = next
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == account_id)
+            .ok_or_else(|| "制作账号不存在".to_string())?;
+        let station_plan = account
+            .stations
+            .iter_mut()
+            .find(|candidate| candidate.kind == *station)
+            .ok_or_else(|| "制作台不存在".to_string())?;
+        station_plan.started_at_ms = Some(started_at_ms);
+        station_plan.finishes_at_ms =
+            Some(started_at_ms.saturating_add(i64::from(duration_minutes) * 60_000));
+        station_plan.status = StationStatus::Crafting;
+        persist(&next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok(next)
+    })
+}
+
+fn persist_craft_uncertain_with<F>(
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    station: &StationKind,
+    failed_at: i64,
+    persist: F,
+) -> Result<(SpecialOpsSettings, u64), String>
+where
+    F: FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+{
+    coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        mark_craft_cancel_uncertain(&mut next, account_id, station.clone(), failed_at)?;
+        persist(&next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok(next)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_craft_failure_uncertain_with<F>(
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    station: &StationKind,
+    failed_at: i64,
+    step: &str,
+    message: &str,
+    persist: F,
+) -> Result<(SpecialOpsSettings, u64), String>
+where
+    F: FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+{
+    coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        mark_craft_uncertain(
+            &mut next,
+            account_id,
+            station.clone(),
+            failed_at,
+            step,
+            message,
+        )?;
+        persist(&next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok(next)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_craft_failure_isolated_with<F>(
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    failed_at: i64,
+    step: &str,
+    message: &str,
+    persist: F,
+) -> Result<(SpecialOpsSettings, u64), String>
+where
+    F: FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+{
+    coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let error = round_runner::AccountRunError::account(step, message);
+        apply_round_account_failure(&mut next, account_id, &error, failed_at)?;
+        persist(&next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok(next)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_craft_stop_with<F>(
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    station: &StationKind,
+    failed_at: i64,
+    entered_input: bool,
+    mut persist: F,
+) -> Result<Option<(SpecialOpsSettings, u64)>, String>
+where
+    F: FnMut(&SpecialOpsSettings) -> Result<(), String>,
+{
+    let stop_reason = runtime
+        .stop_reason(run_id)?
+        .ok_or_else(|| "制作试运行尚未收到停止请求".to_string())?;
+    if stop_reason == login_runtime::StopReason::Normal {
+        return if should_mark_craft_stop_uncertain(Some(stop_reason), entered_input) {
+            persist_craft_uncertain_with(
+                settings,
+                coordinator,
+                account_id,
+                station,
+                failed_at,
+                |next| persist(next),
+            )
+            .map(Some)
+        } else {
+            Ok(None)
+        };
+    }
+
+    let deadline = std::time::Instant::now()
+        .checked_add(std::time::Duration::from_secs(5))
+        .ok_or_else(|| "制作停止状态持久化等待期限无效".to_string())?;
+    loop {
+        match runtime.claim_persistence(run_id)? {
+            login_runtime::PersistenceClaim::Pending => {
+                let remaining = deadline
+                    .checked_duration_since(std::time::Instant::now())
+                    .ok_or_else(|| "等待制作停止状态持久化权限超时，保留当前试运行".to_string())?;
+                runtime.wait_for_persistence_change(
+                    run_id,
+                    remaining.min(std::time::Duration::from_millis(50)),
+                )?;
+            }
+            login_runtime::PersistenceClaim::Persisted
+            | login_runtime::PersistenceClaim::NoPersistence => return Ok(None),
+            login_runtime::PersistenceClaim::Stale => {
+                return Err("制作停止状态持久化任务已过期".to_string());
+            }
+            login_runtime::PersistenceClaim::NoActive => {
+                return Err("制作试运行已不存在，拒绝持久化停止状态".to_string());
+            }
+            login_runtime::PersistenceClaim::Acquired(guard) => {
+                let login_runtime::PersistenceKind::Stop(reason) = guard.kind() else {
+                    guard.fail("制作停止状态持久化类型错误")?;
+                    return Err("制作停止状态持久化类型错误".to_string());
+                };
+                let updated = if should_mark_craft_stop_uncertain(Some(reason), entered_input) {
+                    match persist_craft_uncertain_with(
+                        settings,
+                        coordinator,
+                        account_id,
+                        station,
+                        failed_at,
+                        |next| persist(next),
+                    ) {
+                        Ok(updated) => Some(updated),
+                        Err(error) => {
+                            guard.fail("制作停止状态保存失败")?;
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    None
+                };
+                if guard.complete()? {
+                    return Ok(updated);
+                }
+            }
+        }
+    }
+}
+
+fn mark_ammo_uncertain(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    step: &str,
+    message: &str,
+    at_ms: i64,
+) -> Result<(), String> {
+    settings.paused = true;
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
+    account.status = AccountStatus::Uncertain;
+    account.last_failure = Some(AccountFailure {
+        step: step.to_string(),
+        message: message.to_string(),
+        at_ms,
+        station_kind: None,
+        ammo_target_id: None,
+    });
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_ammo_uncertain_with<F>(
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    target_id: Option<&str>,
+    step: &str,
+    message: &str,
+    at_ms: i64,
+    persist: F,
+) -> Result<(SpecialOpsSettings, u64), String>
+where
+    F: FnOnce(&SpecialOpsSettings) -> Result<(), String>,
+{
+    coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        next.paused = true;
+        if let Some(target_id) = target_id {
+            let account = next
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == account_id)
+                .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
+            set_ammo_manual_failure(account, target_id, step, message, at_ms)?;
+        } else {
+            mark_ammo_uncertain(&mut next, account_id, step, message, at_ms)?;
+        }
+        persist(&next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok(next)
+    })
+}
+
+fn ammo_stop_failure_detail(
+    stop: &ammo_runtime::AmmoRunStop,
+) -> Option<(Option<&str>, &str, String)> {
+    match stop {
+        ammo_runtime::AmmoRunStop::Uncertain {
+            target_id,
+            step,
+            message,
+        } => Some((Some(target_id), step, message.clone())),
+        ammo_runtime::AmmoRunStop::SystemFailure { step, message } => {
+            Some((None, step, message.clone()))
+        }
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn persist_ammo_stop_with<F>(
+    runtime: &login_runtime::LoginRuntime,
+    run_id: u64,
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    at_ms: i64,
+    entered_input: bool,
+    mut persist: F,
+) -> Result<Option<(SpecialOpsSettings, u64)>, String>
+where
+    F: FnMut(&SpecialOpsSettings) -> Result<(), String>,
+{
+    let stop_reason = runtime
+        .stop_reason(run_id)?
+        .ok_or_else(|| "子弹兑换试运行尚未收到停止请求".to_string())?;
+    let should_mark = should_mark_craft_stop_uncertain(Some(stop_reason), entered_input);
+    if stop_reason == login_runtime::StopReason::Normal {
+        return if should_mark {
+            persist_ammo_uncertain_with(
+                settings,
+                coordinator,
+                account_id,
+                None,
+                "ammo.cancel",
+                "子弹兑换取消时已执行键鼠输入，请人工确认当天兑换状态",
+                at_ms,
+                |next| persist(next),
+            )
+            .map(Some)
+        } else {
+            Ok(None)
+        };
+    }
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match runtime.claim_persistence(run_id)? {
+            login_runtime::PersistenceClaim::Pending => {
+                let remaining = deadline
+                    .checked_duration_since(std::time::Instant::now())
+                    .ok_or_else(|| "等待子弹兑换停止状态持久化超时".to_string())?;
+                runtime.wait_for_persistence_change(
+                    run_id,
+                    remaining.min(std::time::Duration::from_millis(50)),
+                )?;
+            }
+            login_runtime::PersistenceClaim::Persisted
+            | login_runtime::PersistenceClaim::NoPersistence => return Ok(None),
+            login_runtime::PersistenceClaim::Stale => {
+                return Err("子弹兑换停止状态持久化任务已过期".to_string());
+            }
+            login_runtime::PersistenceClaim::NoActive => {
+                return Err("子弹兑换试运行已不存在".to_string());
+            }
+            login_runtime::PersistenceClaim::Acquired(guard) => {
+                let login_runtime::PersistenceKind::Stop(reason) = guard.kind() else {
+                    guard.fail("子弹兑换停止状态持久化类型错误")?;
+                    return Err("子弹兑换停止状态持久化类型错误".to_string());
+                };
+                let updated = if should_mark_craft_stop_uncertain(Some(reason), entered_input) {
+                    match persist_ammo_uncertain_with(
+                        settings,
+                        coordinator,
+                        account_id,
+                        None,
+                        "ammo.emergencyStop",
+                        "子弹兑换已紧急停止，账号状态需人工确认",
+                        at_ms,
+                        |next| persist(next),
+                    ) {
+                        Ok(updated) => Some(updated),
+                        Err(error) => {
+                            guard.fail("子弹兑换停止状态保存失败")?;
+                            return Err(error);
+                        }
+                    }
+                } else {
+                    None
+                };
+                if guard.complete()? {
+                    return Ok(updated);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CraftPersistenceDecision {
+    NoChange,
+    SaveStarted { started_at_ms: i64 },
+    MarkUncertain { step: String, message: String },
+    MarkIsolated { step: String, message: String },
+    FailWithoutChange { step: String, message: String },
+}
+
+fn decide_craft_persistence(
+    result: Result<craft_runtime::CraftStationOutcome, craft_trial::CraftTrialFailure>,
+) -> CraftPersistenceDecision {
+    match result {
+        Ok(craft_runtime::CraftStationOutcome::StillInProgress) => {
+            CraftPersistenceDecision::NoChange
+        }
+        Ok(craft_runtime::CraftStationOutcome::Started { started_at_ms }) => {
+            CraftPersistenceDecision::SaveStarted { started_at_ms }
+        }
+        Err(error) if error.is_isolated() => CraftPersistenceDecision::MarkIsolated {
+            step: error.step,
+            message: error.message,
+        },
+        Err(error) if error.requires_uncertain => CraftPersistenceDecision::MarkUncertain {
+            step: error.step,
+            message: error.message,
+        },
+        Err(error) => CraftPersistenceDecision::FailWithoutChange {
+            step: error.step,
+            message: error.message,
+        },
+    }
+}
+
+fn batch_stop_context(failure: &craft_batch::CraftBatchFailure) -> (StationKind, bool) {
+    (failure.station.clone(), failure.entered_input)
+}
+
+struct ProductionCraftBatchDriver {
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    account_id: String,
+    frozen: Arc<Vec<FrozenCraftBatchTask>>,
+    round_progress: Option<RoundCraftProgress>,
+}
+
+const AMMO_RESET_KEY_DELAY_MS: u64 = 100;
+const AMMO_SCROLL_STEP_INTERVAL_MS: u64 = 100;
+const AMMO_SCROLL_SETTLE_MS: u64 = 1_000;
+
+fn ammo_reset_keys() -> [crate::hotkey_types::PrimaryKey; 2] {
+    [
+        crate::hotkey_types::PrimaryKey::Letter('A'),
+        crate::hotkey_types::PrimaryKey::Letter('D'),
+    ]
+}
+
+fn ammo_success_diagnostic_filename(timestamp_ms: i64, qq_account: &str) -> String {
+    format!("{timestamp_ms}-{qq_account}-ammo.success.png")
+}
+
+fn ammo_scroll_segments(scroll_steps: u32) -> Vec<(i32, u32)> {
+    if scroll_steps == 0 {
+        Vec::new()
+    } else {
+        vec![(1, scroll_steps)]
+    }
+}
+
+struct ProductionAmmoDriver {
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    account_id: String,
+    day: String,
+    game_executable_path: std::path::PathBuf,
+    mouse_parking_region: crate::morse::types::RegionRect,
+    targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
+}
+
+impl ProductionAmmoDriver {
+    fn system_error(step: &str, message: impl Into<String>) -> ammo_runtime::AmmoDriverError {
+        ammo_runtime::AmmoDriverError::System {
+            step: step.to_string(),
+            message: message.into(),
+        }
+    }
+
+    fn cancelled_or_system(
+        cancelled: &std::sync::atomic::AtomicBool,
+        step: &str,
+        message: String,
+    ) -> ammo_runtime::AmmoDriverError {
+        if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            ammo_runtime::AmmoDriverError::Cancelled
+        } else {
+            Self::system_error(step, message)
+        }
+    }
+
+    fn emit_update(&self, status: LoginRunStatus, message: &str) -> Result<(), String> {
+        if let Some(snapshot) = self
+            .runtime
+            .update(self.run_id, status, None, message, None)?
+        {
+            emit_run(&self.app, &snapshot);
+        }
+        Ok(())
+    }
+
+    async fn countdown(
+        &self,
+        cancelled: &Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        let Some(total) = self
+            .runtime
+            .next_input_countdown_seconds(self.run_id, true)
+            .map_err(|error| Self::system_error("ammo.countdown", error))?
+        else {
+            return Ok(());
+        };
+        for seconds in (1..=total).rev() {
+            if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(ammo_runtime::AmmoDriverError::Cancelled);
+            }
+            if let Some(snapshot) = self
+                .runtime
+                .update(
+                    self.run_id,
+                    LoginRunStatus::Countdown,
+                    None,
+                    format!("{seconds} 秒后执行键鼠操作"),
+                    Some(seconds),
+                )
+                .map_err(|error| Self::system_error("ammo.countdown", error))?
+            {
+                emit_run(&self.app, &snapshot);
+            }
+            <Self as ammo_runtime::AmmoDriver>::delay(
+                self,
+                std::time::Duration::from_secs(1),
+                Arc::clone(cancelled),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn focus(&self) -> Result<(), String> {
+        use desktop_runtime::DesktopRuntime;
+        let executable = self.game_executable_path.clone();
+        tokio::task::spawn_blocking(move || {
+            let desktop = desktop_runtime::WindowsDesktopRuntime;
+            let window = desktop
+                .find_primary_window(&executable)?
+                .ok_or_else(|| "未找到游戏窗口".to_string())?;
+            desktop.restore_and_focus(&executable, window)
+        })
+        .await
+        .map_err(|error| format!("游戏窗口任务失败: {error}"))?
+    }
+
+    async fn park_mouse(
+        &self,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), String> {
+        crate::input_simulation::move_region_center_cancellable(
+            self.mouse_parking_region.clone(),
+            cancelled,
+        )
+        .await
+    }
+
+    async fn save_ammo_success_diagnostic(&self) -> Result<std::path::PathBuf, String> {
+        let region = self
+            .targets
+            .get("ammo.success")
+            .ok_or_else(|| "ammo.success 校准目标不存在".to_string())?
+            .region
+            .clone();
+        let settings_file = settings_path(&self.app)?;
+        let diagnostics_dir = settings_file
+            .parent()
+            .ok_or_else(|| "无法解析特勤处配置目录".to_string())?
+            .join("special_ops_diagnostics");
+        let path =
+            diagnostics_dir.join(ammo_success_diagnostic_filename(now_ms(), &self.account_id));
+        let saved_path = path.clone();
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&diagnostics_dir)
+                .map_err(|error| format!("创建诊断目录失败: {error}"))?;
+            let captured = crate::recognition::watcher::capture_region(&region)
+                .ok_or_else(|| "截取 ammo.success 诊断区域失败".to_string())?;
+            captured
+                .save(&saved_path)
+                .map_err(|error| format!("保存 ammo.success 诊断截图失败: {error}"))?;
+            Ok::<_, String>(saved_path)
+        })
+        .await
+        .map_err(|error| format!("诊断截图任务失败: {error}"))?
+    }
+
+    fn persist_change(
+        &self,
+        step: &str,
+        apply: impl FnOnce(&mut SpecialOpsSettings) -> Result<(), String>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        let (_settings, revision) = self
+            .coordinator
+            .with_runtime_change(|| {
+                let mut next = self
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                apply(&mut next)?;
+                save_settings(&self.app, &next)?;
+                *self
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok::<_, String>(next)
+            })
+            .map_err(|message| Self::system_error(step, message))?;
+        emit_state(&self.app, revision, now_ms());
+        Ok(())
+    }
+}
+
+impl ammo_runtime::AmmoDriver for ProductionAmmoDriver {
+    fn update_stage(&self, message: &str) -> Result<(), ammo_runtime::AmmoDriverError> {
+        self.emit_update(LoginRunStatus::Waiting, message)
+            .map_err(|error| Self::system_error("ammo.progress", error))
+    }
+
+    async fn wait_and_click(
+        &self,
+        target: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        let matched = <Self as ammo_runtime::AmmoDriver>::wait_target(
+            self,
+            &[target],
+            Arc::clone(&cancelled),
+        )
+        .await?;
+        if matched != target {
+            return Err(Self::system_error(
+                target,
+                format!("识别结果与目标不一致：{matched}"),
+            ));
+        }
+        let region = self
+            .targets
+            .get(target)
+            .ok_or_else(|| Self::system_error(target, "校准目标不存在"))?
+            .region
+            .clone();
+        self.countdown(&cancelled).await?;
+        self.focus()
+            .await
+            .map_err(|error| Self::system_error("ammo.window", error))?;
+        self.emit_update(LoginRunStatus::Inputting, &format!("正在点击 {target}"))
+            .map_err(|error| Self::system_error(target, error))?;
+        crate::input_simulation::click_region_center_held_cancellable(
+            region,
+            MOUSE_CLICK_HOLD_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))?;
+        self.park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))
+    }
+
+    async fn click_unverified(
+        &self,
+        target: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        let region = self
+            .targets
+            .get(target)
+            .ok_or_else(|| Self::system_error(target, "校准目标不存在"))?
+            .region
+            .clone();
+        self.countdown(&cancelled).await?;
+        self.focus()
+            .await
+            .map_err(|error| Self::system_error("ammo.window", error))?;
+        self.emit_update(LoginRunStatus::Inputting, &format!("正在点击 {target}"))
+            .map_err(|error| Self::system_error(target, error))?;
+        crate::input_simulation::click_region_center_held_cancellable(
+            region,
+            MOUSE_CLICK_HOLD_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))?;
+        self.park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))
+    }
+
+    async fn wait_target(
+        &self,
+        targets: &[&str],
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<String, ammo_runtime::AmmoDriverError> {
+        self.emit_update(
+            LoginRunStatus::Waiting,
+            &format!("正在识别 {}", targets.join(" / ")),
+        )
+        .map_err(|error| Self::system_error("ammo.recognition", error))?;
+        self.focus()
+            .await
+            .map_err(|error| Self::system_error("ammo.window", error))?;
+        let templates = targets
+            .iter()
+            .map(|key| {
+                self.targets
+                    .get(*key)
+                    .and_then(|target| target.template.as_ref())
+                    .ok_or_else(|| Self::system_error(key, "目标未配置参考图"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        match template_observer::wait_for_any_consistent_match_until(
+            &template_observer::RuntimeSimilaritySampler,
+            &templates,
+            Arc::clone(&cancelled),
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        {
+            Ok((key, _)) => Ok(key),
+            Err(_error) if cancelled.load(std::sync::atomic::Ordering::SeqCst) => {
+                Err(ammo_runtime::AmmoDriverError::Cancelled)
+            }
+            Err(error) if error.contains("超时") => {
+                let message = if targets.len() == 1 && targets[0] == "ammo.success" {
+                    match self.save_ammo_success_diagnostic().await {
+                        Ok(path) => format!("{error}；诊断截图：{}", path.display()),
+                        Err(diagnostic_error) => {
+                            format!("{error}；诊断截图保存失败：{diagnostic_error}")
+                        }
+                    }
+                } else {
+                    error
+                };
+                Err(ammo_runtime::AmmoDriverError::Target(message))
+            }
+            Err(error) => Err(Self::system_error("ammo.recognition", error)),
+        }
+    }
+
+    async fn position_and_click(
+        &self,
+        point: &crate::morse::types::RegionRect,
+        scroll_steps: u32,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        self.countdown(&cancelled).await?;
+        self.focus()
+            .await
+            .map_err(|error| Self::system_error("ammo.window", error))?;
+        self.emit_update(LoginRunStatus::Inputting, "正在重置并定位子弹")
+            .map_err(|error| Self::system_error("ammo.targetPosition", error))?;
+        crate::input_simulation::press_primary_key_sequence_cancellable(
+            ammo_reset_keys().to_vec(),
+            AMMO_RESET_KEY_DELAY_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| Self::cancelled_or_system(&cancelled, "ammo.targetPosition", error))?;
+        let segments = ammo_scroll_segments(scroll_steps);
+        if !segments.is_empty() {
+            crate::input_simulation::scroll_region_segments_cancellable(
+                point.clone(),
+                segments,
+                AMMO_SCROLL_STEP_INTERVAL_MS,
+                Arc::clone(&cancelled),
+            )
+            .await
+            .map_err(|error| Self::cancelled_or_system(&cancelled, "ammo.targetPosition", error))?;
+        }
+        <Self as ammo_runtime::AmmoDriver>::delay(
+            self,
+            std::time::Duration::from_millis(AMMO_SCROLL_SETTLE_MS),
+            Arc::clone(&cancelled),
+        )
+        .await?;
+        crate::input_simulation::click_region_center_held_cancellable(
+            point.clone(),
+            MOUSE_CLICK_HOLD_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| Self::cancelled_or_system(&cancelled, "ammo.targetPosition", error))?;
+        self.park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|error| Self::cancelled_or_system(&cancelled, "ammo.targetPosition", error))
+    }
+
+    async fn delay(
+        &self,
+        duration: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        let deadline = tokio::time::Instant::now() + duration;
+        while tokio::time::Instant::now() < deadline {
+            if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(ammo_runtime::AmmoDriverError::Cancelled);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        Ok(())
+    }
+
+    fn persist_success(&self, target_id: &str) -> Result<(), ammo_runtime::AmmoDriverError> {
+        self.persist_change("ammo.persistSuccess", |settings| {
+            apply_ammo_success(settings, &self.account_id, target_id, &self.day)
+        })
+    }
+
+    fn persist_failure(
+        &self,
+        target_id: &str,
+        step: &str,
+        message: &str,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        self.persist_change("ammo.persistFailure", |settings| {
+            apply_ammo_failure(
+                settings,
+                &self.account_id,
+                target_id,
+                &self.day,
+                step,
+                message,
+                now_ms(),
+            )
+        })
+    }
+
+    fn persist_isolated(
+        &self,
+        target_id: &str,
+        step: &str,
+        message: &str,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        self.persist_change("ammo.persistIsolated", |settings| {
+            apply_ammo_isolated(
+                settings,
+                &self.account_id,
+                target_id,
+                step,
+                message,
+                now_ms(),
+            )
+        })
+    }
+}
+
+struct RoundCraftProgress {
+    account_index: usize,
+    account_total: usize,
+    qq_account: String,
+}
+
+impl ProductionCraftBatchDriver {
+    fn config_for(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+    ) -> Result<&craft_runtime::CraftRunConfig, craft_trial::CraftTrialFailure> {
+        self.frozen
+            .iter()
+            .find(|frozen| frozen.task.station == task.station)
+            .map(|frozen| &frozen.config)
+            .ok_or_else(|| craft_trial::CraftTrialFailure {
+                step: "craft.batchConfig".to_string(),
+                message: "制作批处理冻结配置缺失".to_string(),
+                requires_uncertain: false,
+            })
+    }
+
+    fn trial_driver(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+    ) -> Result<craft_runtime::ProductionCraftTrialDriver, craft_trial::CraftTrialFailure> {
+        let config = self.config_for(task)?;
+        Ok(craft_runtime::ProductionCraftTrialDriver::new(
+            self.app.clone(),
+            Arc::clone(&self.runtime),
+            self.run_id,
+            config.game_executable_path.clone(),
+            config.mouse_parking_region.clone(),
+            config.targets.clone(),
+        ))
+    }
+}
+
+impl craft_batch::CraftBatchDriver for ProductionCraftBatchDriver {
+    async fn ensure_station_grid(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), craft_trial::CraftTrialFailure> {
+        let driver = self.trial_driver(task)?;
+        craft_runtime::ensure_station_grid(&driver, cancelled).await
+    }
+
+    fn update_progress(
+        &self,
+        index: usize,
+        total: usize,
+        station: &StationKind,
+    ) -> Result<(), String> {
+        let label = match station {
+            StationKind::TechnicalCenter => "技术中心",
+            StationKind::Workbench => "工作台",
+            StationKind::Pharmacy => "制药台",
+            StationKind::ArmorBench => "防具台",
+        };
+        let driver = self
+            .frozen
+            .iter()
+            .find(|frozen| frozen.task.station == *station)
+            .ok_or_else(|| "制作批处理冻结配置缺失".to_string())
+            .and_then(|frozen| {
+                self.trial_driver(&frozen.task)
+                    .map_err(|failure| failure.message)
+            })?;
+        if let Some(progress) = self.round_progress.as_ref() {
+            if let Some(snapshot) = self.runtime.update_round_progress(
+                self.run_id,
+                progress.account_index,
+                progress.account_total,
+                &self.account_id,
+                &progress.qq_account,
+                Some(station.clone()),
+                index,
+                total,
+            )? {
+                emit_run(&self.app, &snapshot);
+            }
+        }
+        craft_runtime::CraftTrialDriver::update_stage(
+            &driver,
+            LoginRunStatus::Waiting,
+            &format!("正在处理 {index}/{total}：{label}"),
+        )
+    }
+
+    async fn run_station(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> craft_batch::StationAttempt {
+        let driver = match self.trial_driver(task) {
+            Ok(driver) => driver,
+            Err(failure) => {
+                return craft_batch::StationAttempt {
+                    result: Err(failure),
+                    entered_input: false,
+                };
+            }
+        };
+        let config = match self.config_for(task) {
+            Ok(config) => config,
+            Err(failure) => {
+                return craft_batch::StationAttempt {
+                    result: Err(failure),
+                    entered_input: false,
+                };
+            }
+        };
+        let result = craft_runtime::run_craft_station(
+            &driver,
+            task.station.clone(),
+            config.delays,
+            cancelled,
+        )
+        .await;
+        craft_batch::StationAttempt {
+            result,
+            entered_input: driver.input_started(),
+        }
+    }
+
+    fn persist_started(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+        started_at_ms: i64,
+    ) -> Result<(), String> {
+        persist_craft_success_with(
+            &self.settings,
+            &self.coordinator,
+            &self.account_id,
+            &task.station,
+            started_at_ms,
+            task.duration_minutes,
+            |next| save_settings(&self.app, next),
+        )
+        .map(|(_settings, revision)| {
+            emit_state(&self.app, revision, now_ms());
+        })
+    }
+
+    async fn return_started(
+        &self,
+        task: &craft_batch::CraftBatchTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), craft_trial::CraftTrialFailure> {
+        let driver = self.trial_driver(task)?;
+        craft_runtime::return_to_station_grid(&driver, cancelled).await
+    }
+}
+
+struct ProductionRoundDriver {
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    control: Arc<RoundControl>,
+    run_id: u64,
+    accounts: std::collections::HashMap<String, Result<FrozenRoundAccount, String>>,
+    game_executable_path: std::path::PathBuf,
+}
+
+fn map_round_ammo_stop(
+    stop: ammo_runtime::AmmoRunStop,
+) -> Result<(), round_runner::AccountRunError> {
+    match stop {
+        ammo_runtime::AmmoRunStop::Completed => Ok(()),
+        ammo_runtime::AmmoRunStop::Isolated {
+            target_id, message, ..
+        } => Err(round_runner::AccountRunError::account_ammo(
+            target_id,
+            "ammo.isolated",
+            message,
+        )),
+        ammo_runtime::AmmoRunStop::Uncertain {
+            target_id,
+            step,
+            message,
+        } => Err(round_runner::AccountRunError::account_ammo(
+            target_id, step, message,
+        )),
+        ammo_runtime::AmmoRunStop::SystemFailure { step, message } => {
+            Err(round_runner::AccountRunError::system(step, message))
+        }
+        ammo_runtime::AmmoRunStop::EmergencyStopped => Err(round_runner::AccountRunError::system(
+            "round.stopped",
+            "多账号轮次已停止",
+        )),
+    }
+}
+
+fn map_round_navigation_result(
+    result: game_navigation::GameNavigationResult,
+) -> Result<(), round_runner::AccountRunError> {
+    match result {
+        game_navigation::GameNavigationResult::Ready => Ok(()),
+        game_navigation::GameNavigationResult::TimedOut { failed_step } => {
+            Err(round_runner::AccountRunError::account(
+                format!("navigation.{failed_step:?}"),
+                "步骤超时",
+            ))
+        }
+        game_navigation::GameNavigationResult::Paused {
+            failed_step,
+            message,
+        } => Err(round_runner::AccountRunError::system(
+            format!("navigation.{failed_step:?}"),
+            message,
+        )),
+        game_navigation::GameNavigationResult::EmergencyStopped => Err(
+            round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止"),
+        ),
+    }
+}
+
+fn map_round_login_failure(
+    failed_step: login_flow::LoginStep,
+    last_observation: &str,
+) -> round_runner::AccountRunError {
+    let message = format!("{failed_step:?}：{last_observation}");
+    if matches!(
+        failed_step,
+        login_flow::LoginStep::InitialCountdown
+            | login_flow::LoginStep::StopGame
+            | login_flow::LoginStep::StopWeGame
+            | login_flow::LoginStep::StartWeGame
+    ) {
+        round_runner::AccountRunError::system(format!("login.{failed_step:?}"), message)
+    } else {
+        round_runner::AccountRunError::account("login.failed", message)
+    }
+}
+
+impl ProductionRoundDriver {
+    fn frozen(
+        &self,
+        task: &round_planner::AccountRoundTask,
+    ) -> Result<&FrozenRoundAccount, round_runner::AccountRunError> {
+        self.accounts
+            .get(&task.account_id)
+            .ok_or_else(|| {
+                round_runner::AccountRunError::account("round.preflight", "账号冻结配置不存在")
+            })?
+            .as_ref()
+            .map_err(|message| {
+                round_runner::AccountRunError::account("round.preflight", message.clone())
+            })
+    }
+
+    fn emit_step(&self, step: login_flow::LoginStep, message: &str) {
+        if let Ok(Some(snapshot)) = self.runtime.update(
+            self.run_id,
+            LoginRunStatus::Waiting,
+            Some(step),
+            message,
+            None,
+        ) {
+            emit_run(&self.app, &snapshot);
+        }
+    }
+
+    fn persist_account_error(
+        &self,
+        account_id: &str,
+        error: &round_runner::AccountRunError,
+    ) -> Result<(), String> {
+        let (_settings, revision) = self.coordinator.with_runtime_change(|| {
+            let mut next = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            apply_round_account_failure(&mut next, account_id, error, now_ms())?;
+            save_settings(&self.app, &next)?;
+            *self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            Ok::<_, String>(next)
+        })?;
+        emit_state(&self.app, revision, now_ms());
+        Ok(())
+    }
+
+    fn persist_global_pause(&self, reason: &str) -> Result<(), String> {
+        let (_settings, revision) = self.coordinator.with_runtime_change(|| {
+            let mut next = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            next.paused = true;
+            save_settings(&self.app, &next)?;
+            *self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            Ok::<_, String>(next)
+        })?;
+        crate::log_warn!("special_ops::round", "多账号轮次已暂停", "reason" => reason);
+        if let Some(state) = self.app.try_state::<SpecialOpsState>() {
+            state
+                .profit_runtime
+                .invalidate("轮次已暂停，利润查询已取消");
+        }
+        emit_state(&self.app, revision, now_ms());
+        Ok(())
+    }
+}
+
+impl round_account::AccountSessionDriver for ProductionRoundDriver {
+    async fn login(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), round_runner::AccountRunError> {
+        let frozen = self.frozen(task)?;
+        let driver = login_runtime::ProductionLoginDriver::new(
+            self.app.clone(),
+            Arc::clone(&self.runtime),
+            self.run_id,
+            Arc::clone(&frozen.login),
+        );
+        let result = login_flow::run_login_flow(&driver, &frozen.login, cancelled, |step| {
+            self.emit_step(step, login_step_message(&step))
+        })
+        .await;
+        match result {
+            login_flow::LoginFlowResult::GameReady { .. } => Ok(()),
+            login_flow::LoginFlowResult::NeedsManualLogin {
+                failure_message, ..
+            } => Err(round_runner::AccountRunError::account(
+                "login.needsManual",
+                failure_message,
+            )),
+            login_flow::LoginFlowResult::Paused {
+                failed_step,
+                last_observation,
+                ..
+            } => Err(map_round_login_failure(failed_step, &last_observation)),
+            login_flow::LoginFlowResult::EmergencyStopped { .. } => Err(
+                round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止"),
+            ),
+        }
+    }
+
+    async fn navigate(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), round_runner::AccountRunError> {
+        let frozen = self.frozen(task)?;
+        let driver = game_navigation::ProductionGameNavigationDriver::new(
+            self.app.clone(),
+            Arc::clone(&self.runtime),
+            self.run_id,
+            Arc::clone(&frozen.navigation),
+        );
+        let result = game_navigation::run_game_navigation(
+            &driver,
+            frozen.navigation.destination,
+            frozen.navigation.delays,
+            cancelled,
+            |step| {
+                let step = login_flow::LoginStep::from(step);
+                self.emit_step(step, login_step_message(&step));
+            },
+        )
+        .await;
+        map_round_navigation_result(result)
+    }
+
+    async fn craft(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<usize, round_runner::AccountRunError> {
+        let frozen = self.frozen(task)?;
+        let tasks = frozen
+            .craft
+            .iter()
+            .map(|item| item.task.clone())
+            .collect::<Vec<_>>();
+        let driver = ProductionCraftBatchDriver {
+            app: self.app.clone(),
+            settings: Arc::clone(&self.settings),
+            coordinator: Arc::clone(&self.coordinator),
+            runtime: Arc::clone(&self.runtime),
+            run_id: self.run_id,
+            account_id: task.account_id.clone(),
+            frozen: Arc::clone(&frozen.craft),
+            round_progress: self.runtime.snapshot().ok().flatten().and_then(|snapshot| {
+                snapshot.round_progress.map(|progress| RoundCraftProgress {
+                    account_index: progress.account_index,
+                    account_total: progress.account_total,
+                    qq_account: progress.qq_account,
+                })
+            }),
+        };
+        craft_batch::run_craft_batch(&driver, &tasks, cancelled)
+            .await
+            .map(|success| success.processed)
+            .map_err(|failure| {
+                round_runner::AccountRunError::account_station(
+                    failure.station,
+                    failure.failure.step,
+                    failure.failure.message,
+                )
+            })
+    }
+
+    async fn ammo(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), round_runner::AccountRunError> {
+        let frozen = self.frozen(task)?.ammo.as_ref().ok_or_else(|| {
+            round_runner::AccountRunError::account("ammo.preflight", "子弹冻结配置缺失")
+        })?;
+        let driver = ProductionAmmoDriver {
+            app: self.app.clone(),
+            settings: Arc::clone(&self.settings),
+            coordinator: Arc::clone(&self.coordinator),
+            runtime: Arc::clone(&self.runtime),
+            run_id: self.run_id,
+            account_id: task.account_id.clone(),
+            day: frozen.day.clone(),
+            game_executable_path: frozen.game_executable_path.clone(),
+            mouse_parking_region: frozen.mouse_parking_region.clone(),
+            targets: frozen.targets.clone(),
+        };
+        let result = ammo_runtime::run_ammo_trial(
+            &driver,
+            &frozen.ammo_targets,
+            frozen.entry_delays,
+            cancelled,
+        )
+        .await;
+        map_round_ammo_stop(result.stop)
+    }
+}
+
+impl round_runner::RoundDriver for ProductionRoundDriver {
+    async fn run_account(
+        &self,
+        index: usize,
+        total: usize,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<round_runner::AccountRunSuccess, round_runner::AccountRunError> {
+        let snapshot = self
+            .runtime
+            .update_round_progress(
+                self.run_id,
+                index,
+                total,
+                &task.account_id,
+                &task.qq_account,
+                None,
+                0,
+                task.stations.len(),
+            )
+            .map_err(|message| round_runner::AccountRunError::system("round.progress", message))?
+            .ok_or_else(|| {
+                round_runner::AccountRunError::system("round.progress", "多账号轮次运行状态已变化")
+            })?;
+        emit_run(&self.app, &snapshot);
+        round_account::run_account_session(self, task, cancelled).await
+    }
+
+    fn persist_account_failure(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        error: &round_runner::AccountRunError,
+    ) -> Result<(), String> {
+        self.persist_account_error(&task.account_id, error)
+    }
+
+    async fn close_game(&self) -> Result<(), String> {
+        use desktop_runtime::DesktopRuntime;
+        let executable = self.game_executable_path.clone();
+        tokio::task::spawn_blocking(move || {
+            desktop_runtime::WindowsDesktopRuntime
+                .terminate_exact(&executable, std::time::Duration::from_secs(10))
+        })
+        .await
+        .map_err(|error| format!("关闭游戏任务失败: {error}"))?
+    }
+
+    fn pause_requested(&self) -> Result<bool, String> {
+        Ok(self.control.pause_requested())
+    }
+
+    fn persist_paused(&self, reason: &str) -> Result<(), String> {
+        self.persist_global_pause(reason)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_ammo_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    account_id: String,
+    frozen: FrozenAmmoRun,
+) {
+    let driver = ProductionAmmoDriver {
+        app: app.clone(),
+        settings: Arc::clone(&settings),
+        coordinator: Arc::clone(&coordinator),
+        runtime: Arc::clone(&runtime),
+        run_id,
+        account_id: account_id.clone(),
+        day: frozen.day,
+        game_executable_path: frozen.game_executable_path,
+        mouse_parking_region: frozen.mouse_parking_region,
+        targets: frozen.targets,
+    };
+    let result = ammo_runtime::run_ammo_trial(
+        &driver,
+        &frozen.ammo_targets,
+        frozen.entry_delays,
+        cancelled,
+    )
+    .await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    let entered_input = runtime.entered_input(run_id).unwrap_or(false);
+    let persist_result = if stop_reason.is_some() {
+        persist_ammo_stop_with(
+            &runtime,
+            run_id,
+            &settings,
+            &coordinator,
+            &account_id,
+            now_ms(),
+            entered_input,
+            |next| save_settings(&app, next),
+        )
+        .map(|updated| {
+            if let Some((_settings, revision)) = updated {
+                emit_state(&app, revision, now_ms());
+            }
+        })
+    } else {
+        match &result.stop {
+            ammo_runtime::AmmoRunStop::Completed | ammo_runtime::AmmoRunStop::Isolated { .. } => {
+                Ok(())
+            }
+            stop @ (ammo_runtime::AmmoRunStop::Uncertain { .. }
+            | ammo_runtime::AmmoRunStop::SystemFailure { .. }) => {
+                let (target_id, step, message) =
+                    ammo_stop_failure_detail(stop).expect("子弹失败结果必须包含步骤和消息");
+                let saved = persist_ammo_uncertain_with(
+                    &settings,
+                    &coordinator,
+                    &account_id,
+                    target_id,
+                    step,
+                    &message,
+                    now_ms(),
+                    |next| save_settings(&app, next),
+                );
+                match saved {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err(format!("子弹兑换步骤 {step} 失败：{message}"))
+                    }
+                    Err(error) => Err(format!(
+                        "子弹兑换步骤 {step} 失败：{message}；不确定状态保存失败：{error}"
+                    )),
+                }
+            }
+            ammo_runtime::AmmoRunStop::EmergencyStopped => {
+                let saved = persist_ammo_uncertain_with(
+                    &settings,
+                    &coordinator,
+                    &account_id,
+                    None,
+                    "ammo.emergencyStop",
+                    "子弹兑换意外停止，账号状态需人工确认",
+                    now_ms(),
+                    |next| save_settings(&app, next),
+                );
+                match saved {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err("子弹兑换意外停止".to_string())
+                    }
+                    Err(error) => Err(format!("子弹兑换意外停止；状态保存失败：{error}")),
+                }
+            }
+        }
+    };
+    let (status, message) = if stop_reason.is_some() {
+        (LoginRunStatus::Stopped, "子弹兑换试运行已停止".to_string())
+    } else {
+        match &result.stop {
+            ammo_runtime::AmmoRunStop::Completed => {
+                (LoginRunStatus::Succeeded, "子弹兑换试运行完成".to_string())
+            }
+            ammo_runtime::AmmoRunStop::Isolated {
+                target_id, message, ..
+            } => (
+                LoginRunStatus::Failed,
+                format!("子弹目标 {target_id} 触发账号隔离：{message}"),
+            ),
+            _ => (
+                LoginRunStatus::Failed,
+                persist_result
+                    .as_ref()
+                    .err()
+                    .cloned()
+                    .unwrap_or_else(|| "子弹兑换试运行失败".to_string()),
+            ),
+        }
+    };
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!(
+            "special_ops::ammo",
+            "子弹兑换持久化或清理失败",
+            "error" => error
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_craft_batch_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    account_id: String,
+    frozen: Vec<FrozenCraftBatchTask>,
+) {
+    crate::log_debug!(
+        "special_ops::craft",
+        "制作批处理 worker 开始",
+        "run_id" => run_id,
+        "task_count" => frozen.len()
+    );
+    let tasks = frozen
+        .iter()
+        .map(|frozen| frozen.task.clone())
+        .collect::<Vec<_>>();
+    let driver = ProductionCraftBatchDriver {
+        app: app.clone(),
+        settings: Arc::clone(&settings),
+        coordinator: Arc::clone(&coordinator),
+        runtime: Arc::clone(&runtime),
+        run_id,
+        account_id: account_id.clone(),
+        frozen: Arc::new(frozen),
+        round_progress: None,
+    };
+    let result = craft_batch::run_craft_batch(&driver, &tasks, cancelled).await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    let persist_result = match stop_reason {
+        None => match &result {
+            Ok(_) => Ok(()),
+            Err(failure) if failure.failure.is_isolated() => {
+                let failure_message = format!(
+                    "制作批处理步骤 {} 失败：{}",
+                    failure.failure.step, failure.failure.message
+                );
+                match persist_craft_failure_isolated_with(
+                    &settings,
+                    &coordinator,
+                    &account_id,
+                    now_ms(),
+                    &failure.failure.step,
+                    &failure.failure.message,
+                    |next| save_settings(&app, next),
+                ) {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err(failure_message)
+                    }
+                    Err(error) => Err(format!(
+                        "{failure_message}；隔离状态保存失败，必须人工确认：{error}"
+                    )),
+                }
+            }
+            Err(failure) if failure.failure.requires_uncertain => {
+                let failure_message = format!(
+                    "制作批处理步骤 {} 失败：{}",
+                    failure.failure.step, failure.failure.message
+                );
+                match persist_craft_failure_uncertain_with(
+                    &settings,
+                    &coordinator,
+                    &account_id,
+                    &failure.station,
+                    now_ms(),
+                    &failure.failure.step,
+                    &failure.failure.message,
+                    |next| save_settings(&app, next),
+                ) {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err(failure_message)
+                    }
+                    Err(error) => Err(format!(
+                        "{failure_message}；不确定状态保存失败，必须人工确认：{error}"
+                    )),
+                }
+            }
+            Err(failure) => Err(format!(
+                "制作批处理步骤 {} 失败：{}",
+                failure.failure.step, failure.failure.message
+            )),
+        },
+        Some(_) => {
+            let (station, entered_input) = result
+                .as_ref()
+                .err()
+                .map(batch_stop_context)
+                .or_else(|| {
+                    tasks.last().map(|task| {
+                        (
+                            task.station.clone(),
+                            runtime.entered_input(run_id).unwrap_or(false),
+                        )
+                    })
+                })
+                .unwrap_or((StationKind::TechnicalCenter, false));
+            persist_craft_stop_with(
+                &runtime,
+                run_id,
+                &settings,
+                &coordinator,
+                &account_id,
+                &station,
+                now_ms(),
+                entered_input,
+                |next| save_settings(&app, next),
+            )
+            .map(|updated| {
+                if let Some((_settings, revision)) = updated {
+                    emit_state(&app, revision, now_ms());
+                }
+            })
+        }
+    };
+    let (status, message) = if stop_reason.is_some() {
+        (LoginRunStatus::Stopped, "制作批处理已停止".to_string())
+    } else if let Err(error) = &persist_result {
+        (LoginRunStatus::Failed, error.clone())
+    } else {
+        let processed = result.as_ref().map_or(0, |success| success.processed);
+        (
+            LoginRunStatus::Succeeded,
+            format!("制作批处理完成，共处理 {processed} 个到期制作台"),
+        )
+    };
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!(
+            "special_ops::craft",
+            "制作批处理持久化或清理失败",
+            "error" => error
+        );
+    }
+    crate::log_debug!(
+        "special_ops::craft",
+        "制作批处理 worker 结束",
+        "run_id" => run_id
+    );
+}
+
+fn persist_round_stop_state(
+    app: &AppHandle,
+    settings: &Mutex<SpecialOpsSettings>,
+    coordinator: &SettingsCoordinator,
+    account_id: &str,
+    station: Option<StationKind>,
+    entered_input: bool,
+) -> Result<(), String> {
+    let (_next, revision) = coordinator.with_runtime_change(|| {
+        let mut next = settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        next.paused = true;
+        if entered_input {
+            let error = station.map_or_else(
+                || {
+                    round_runner::AccountRunError::account(
+                        "round.stop",
+                        "多账号轮次停止时已执行键鼠输入，账号状态需人工确认",
+                    )
+                },
+                |station| {
+                    round_runner::AccountRunError::account_station(
+                        station,
+                        "round.stop",
+                        "多账号轮次停止时已执行键鼠输入，制作状态需人工确认",
+                    )
+                },
+            );
+            apply_round_account_failure(&mut next, account_id, &error, now_ms())?;
+        }
+        save_settings(app, &next)?;
+        *settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    emit_state(app, revision, now_ms());
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_round_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    control: Arc<RoundControl>,
+    scheduler: Arc<round_scheduler::RoundScheduler>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    frozen: FrozenRoundRun,
+) {
+    let fallback_account_id = frozen
+        .plan
+        .accounts
+        .first()
+        .map(|task| task.account_id.clone())
+        .unwrap_or_default();
+    let driver = ProductionRoundDriver {
+        app: app.clone(),
+        settings: Arc::clone(&settings),
+        coordinator: Arc::clone(&coordinator),
+        runtime: Arc::clone(&runtime),
+        control: Arc::clone(&control),
+        run_id,
+        accounts: frozen.accounts,
+        game_executable_path: frozen.game_executable_path,
+    };
+    let result = round_runner::run_round(&driver, &frozen.plan, cancelled).await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    let active_snapshot = runtime.snapshot().ok().flatten();
+    let active_account_id = active_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.account_id.clone())
+        .unwrap_or(fallback_account_id);
+    let active_station = active_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.round_progress.as_ref())
+        .and_then(|progress| progress.station_kind.clone());
+    let entered_input = runtime.entered_input(run_id).unwrap_or(false);
+    let flow_result = login_flow::LoginFlowResult::GameReady {
+        account_id: active_account_id.clone(),
+        qq_account: String::new(),
+        game_process_id: 0,
+        game_window_handle: 0,
+    };
+    let persist_result = persist_login_outcome_with(
+        &runtime,
+        run_id,
+        &active_account_id,
+        &flow_result,
+        "",
+        |_, _, _| {
+            if stop_reason.is_some() {
+                persist_round_stop_state(
+                    &app,
+                    &settings,
+                    &coordinator,
+                    &active_account_id,
+                    active_station.clone(),
+                    entered_input,
+                )
+            } else {
+                Ok(())
+            }
+        },
+    )
+    .map(|_| ());
+    let (status, message) = match (&result.stop, stop_reason) {
+        (_, Some(_)) | (round_runner::RoundStop::EmergencyStopped, _) => {
+            (LoginRunStatus::Stopped, "多账号自动轮次已停止".to_string())
+        }
+        (round_runner::RoundStop::Completed, None) => (
+            LoginRunStatus::Succeeded,
+            format!(
+                "多账号自动轮次完成，共完成 {} 个账号",
+                result.completed_accounts
+            ),
+        ),
+        (round_runner::RoundStop::PauseRequested, None) => (
+            LoginRunStatus::Succeeded,
+            "当前账号已完成，多账号自动轮次已暂停".to_string(),
+        ),
+        (round_runner::RoundStop::SystemFailure { step, message }, None) => (
+            LoginRunStatus::Failed,
+            format!("多账号自动轮次步骤 {step} 失败：{message}"),
+        ),
+    };
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!("special_ops::round", "多账号自动轮次持久化或清理失败", "error" => error);
+    }
+    if let Some(state) = app.try_state::<SpecialOpsState>() {
+        let reason = match &result.stop {
+            round_runner::RoundStop::Completed => "轮次已完成",
+            round_runner::RoundStop::PauseRequested => "轮次已暂停",
+            round_runner::RoundStop::EmergencyStopped => "轮次已紧急停止",
+            round_runner::RoundStop::SystemFailure { .. } => "轮次发生系统错误",
+        };
+        state.profit_runtime.end_active_round(reason);
+    }
+    control.clear_pause_request();
+    scheduler.wake();
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_craft_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    config: Arc<craft_runtime::CraftRunConfig>,
+    station: StationKind,
+    duration_minutes: u32,
+) {
+    crate::log_debug!(
+        "special_ops::craft",
+        "制作 worker 开始",
+        "run_id" => run_id,
+        "station" => format!("{station:?}")
+    );
+    let driver = craft_runtime::ProductionCraftTrialDriver::new(
+        app.clone(),
+        Arc::clone(&runtime),
+        run_id,
+        config.game_executable_path.clone(),
+        config.mouse_parking_region.clone(),
+        config.targets.clone(),
+    );
+    let result = craft_runtime::run_craft_station(
+        &driver,
+        station.clone(),
+        config.delays,
+        Arc::clone(&cancelled),
+    )
+    .await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    let entered_input = runtime.entered_input(run_id).unwrap_or(false);
+    let active_account_id = || {
+        runtime.snapshot().and_then(|snapshot| {
+            snapshot
+                .filter(|snapshot| snapshot.run_id == run_id)
+                .map(|snapshot| snapshot.account_id)
+                .ok_or_else(|| "制作运行状态已丢失".to_string())
+        })
+    };
+    let mut success_message = "制作试运行成功，已保存下一次完成时间".to_string();
+    let persist_result = match stop_reason {
+        None => match decide_craft_persistence(result) {
+            CraftPersistenceDecision::NoChange => {
+                success_message = "当前制作尚未完成，本次未执行点击".to_string();
+                Ok(())
+            }
+            CraftPersistenceDecision::SaveStarted { started_at_ms } => active_account_id()
+                .and_then(|account_id| {
+                    persist_craft_success_with(
+                        &settings,
+                        &coordinator,
+                        &account_id,
+                        &station,
+                        started_at_ms,
+                        duration_minutes,
+                        |next| save_settings(&app, next),
+                    )
+                })
+                .map(|(_settings, revision)| {
+                    emit_state(&app, revision, now_ms());
+                })
+                .map_err(|error| {
+                    format!("制作已开始但完成时间保存失败，必须人工确认并修正完成时间：{error}")
+                }),
+            CraftPersistenceDecision::MarkIsolated { step, message } => {
+                let failure_message = format!("制作试运行步骤 {step} 失败：{message}");
+                match active_account_id().and_then(|account_id| {
+                    persist_craft_failure_isolated_with(
+                        &settings,
+                        &coordinator,
+                        &account_id,
+                        now_ms(),
+                        &step,
+                        &message,
+                        |next| save_settings(&app, next),
+                    )
+                }) {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err(failure_message)
+                    }
+                    Err(error) => Err(format!(
+                        "{failure_message}；隔离状态保存失败，必须人工确认：{error}"
+                    )),
+                }
+            }
+            CraftPersistenceDecision::MarkUncertain { step, message } => {
+                let failure_message = format!("制作试运行步骤 {step} 失败：{message}");
+                match active_account_id().and_then(|account_id| {
+                    persist_craft_failure_uncertain_with(
+                        &settings,
+                        &coordinator,
+                        &account_id,
+                        &station,
+                        now_ms(),
+                        &step,
+                        &message,
+                        |next| save_settings(&app, next),
+                    )
+                }) {
+                    Ok((_settings, revision)) => {
+                        emit_state(&app, revision, now_ms());
+                        Err(failure_message)
+                    }
+                    Err(error) => Err(format!(
+                        "{failure_message}；不确定状态保存失败，必须人工确认：{error}"
+                    )),
+                }
+            }
+            CraftPersistenceDecision::FailWithoutChange { step, message } => {
+                Err(format!("制作试运行步骤 {step} 失败：{message}"))
+            }
+        },
+        Some(_) => {
+            let account_id = active_account_id();
+            account_id.and_then(|account_id| {
+                persist_craft_stop_with(
+                    &runtime,
+                    run_id,
+                    &settings,
+                    &coordinator,
+                    &account_id,
+                    &station,
+                    now_ms(),
+                    entered_input,
+                    |next| save_settings(&app, next),
+                )
+                .map(|updated| {
+                    if let Some((_settings, revision)) = updated {
+                        emit_state(&app, revision, now_ms());
+                    }
+                })
+            })
+        }
+    };
+    let (status, message) = if stop_reason.is_some() {
+        (LoginRunStatus::Stopped, "制作试运行已停止".to_string())
+    } else if let Err(error) = &persist_result {
+        (LoginRunStatus::Failed, error.clone())
+    } else {
+        (LoginRunStatus::Succeeded, success_message)
+    };
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!("special_ops::craft", "制作试运行持久化或清理失败", "error" => error);
+    }
+    crate::log_debug!(
+        "special_ops::craft",
+        "制作 worker 结束",
+        "run_id" => run_id,
+        "station" => format!("{station:?}")
+    );
+}
+
+struct ProductionRoundSchedulerDriver {
+    app: AppHandle,
+}
+
+fn global_automation_enabled(app: &AppHandle) -> bool {
+    app.try_state::<crate::global_state::GlobalState>()
+        .map(|state| state.enabled())
+        .unwrap_or(true)
+}
+
+async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let settings_lock = Arc::clone(&state.settings);
+    let profit_runtime = Arc::clone(&state.profit_runtime);
+    let login_runtime = Arc::clone(&state.login_runtime);
+    let scheduler = Arc::clone(&state.round_scheduler);
+    let settings = settings_lock
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?
+        .clone();
+    let settings_revision = coordinator.current_revision()?;
+    let started_at_ms = now_ms();
+    if !settings.enabled
+        || settings.paused
+        || !global_automation_enabled(app)
+        || !scheduler.is_armed()
+        || login_runtime.snapshot()?.is_some()
+    {
+        return Ok(());
+    }
+
+    let window = build_profit_query_window(&settings, started_at_ms, settings_revision, false)?;
+    let snapshot = profit_runtime.sync_window(window.clone())?;
+    if started_at_ms < window.exchange_at_ms || started_at_ms >= window.cutoff_at_ms {
+        return Ok(());
+    }
+    if snapshot
+        .next_query_at_ms
+        .is_some_and(|next_query_at_ms| next_query_at_ms > started_at_ms)
+    {
+        return Ok(());
+    }
+    let rules = collect_pending_profit_rules(&settings, &window.day);
+    if rules.is_empty() {
+        return Ok(());
+    }
+
+    let lease =
+        match profit_runtime.begin_query(&window.day, settings_revision, started_at_ms, rules) {
+            Ok(lease) => lease,
+            Err(error) if error.contains("已有利润查询正在进行") => return Ok(()),
+            Err(error) => return Err(error),
+        };
+    let kkrb = KkrbAdapter::new()?;
+    let moligod = MoligodAdapter::new(app.clone());
+    let query_result = query_profit_rules_with_cancel(
+        &kkrb,
+        &moligod,
+        &lease.rules,
+        &lease.query_context(),
+        lease.cancellation(),
+    )
+    .await;
+    if lease.is_cancelled() || !profit_runtime.accepts(lease.generation) {
+        return Ok(());
+    }
+    let mut outcome = match query_result {
+        Ok(outcome) => outcome,
+        Err(error) if is_stale_profit_query_error(&error) => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let completed_at_ms = now_ms();
+    let next_query_at_ms = completed_at_ms.saturating_add(if lease.attempt >= 3 {
+        PROFIT_QUERY_FIFTY_MINUTES_MS
+    } else {
+        PROFIT_QUERY_FIVE_MINUTES_MS
+    });
+    for audit in &mut outcome.audits {
+        audit.next_query_at_ms = Some(next_query_at_ms);
+    }
+
+    let commit = coordinator.with_expected_revision_change(
+        settings_revision,
+        || -> Result<(SpecialOpsSettings, i64), String> {
+            let mut next = settings_lock
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let current_now_ms = now_ms();
+            let current_window =
+                build_profit_query_window(&next, current_now_ms, settings_revision, false)?;
+            let current_pending = collect_pending_profit_rules(&next, &current_window.day)
+                .into_iter()
+                .map(|rule| rule.id)
+                .collect::<std::collections::HashSet<_>>();
+            let requested = lease
+                .rules
+                .iter()
+                .map(|rule| rule.id.as_str())
+                .collect::<std::collections::HashSet<_>>();
+            if !profit_runtime.accepts(lease.generation)
+                || lease.is_cancelled()
+                || !next.enabled
+                || next.paused
+                || !global_automation_enabled(app)
+                || !scheduler.is_armed()
+                || login_runtime.snapshot()?.is_some()
+                || current_window.day != lease.day
+                || current_now_ms < current_window.exchange_at_ms
+                || current_now_ms >= current_window.cutoff_at_ms
+                || !requested
+                    .iter()
+                    .all(|rule_id| current_pending.contains(*rule_id))
+            {
+                return Err(PROFIT_QUERY_STALE.to_string());
+            }
+            replace_profit_audits(&mut next, outcome.audits.clone());
+            normalize_profit_settings(&mut next.profit_filter)?;
+            save_settings(app, &next)?;
+            *settings_lock
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            let _ = profit_runtime.complete_query_at_revision(
+                &lease,
+                completed_at_ms,
+                outcome.qualified_rule_ids.clone(),
+                outcome.summary.clone(),
+                settings_revision.saturating_add(1),
+            )?;
+            Ok((next, current_now_ms))
+        },
+    );
+    match commit {
+        Ok(((_settings, current_ms), revision)) => {
+            emit_state(app, revision, current_ms);
+            scheduler.wake();
+            Ok(())
+        }
+        Err(error) if is_stale_profit_query_error(&error) => {
+            profit_runtime.invalidate("利润查询结果已过期");
+            scheduler.wake();
+            Ok(())
+        }
+        Err(error) => {
+            profit_runtime.invalidate(&format!("利润审计保存失败：{error}"));
+            Err(error)
+        }
+    }
+}
+
+impl round_scheduler::SchedulerDriver for ProductionRoundSchedulerDriver {
+    fn poll(&self) -> Result<round_scheduler::SchedulerPoll, String> {
+        let state = self
+            .app
+            .try_state::<SpecialOpsState>()
+            .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let coordinator = self
+            .app
+            .try_state::<Arc<SettingsCoordinator>>()
+            .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+        let settings_revision = coordinator.current_revision()?;
+        let globally_enabled = global_automation_enabled(&self.app);
+        let now = now_ms();
+        let active_run = state.login_runtime.snapshot()?.is_some();
+        let mut query_at_ms = None;
+        let mut profit_snapshot = None;
+        let gate = if settings.profit_filter.enabled {
+            let window = build_profit_query_window(&settings, now, settings_revision, active_run)?;
+            let snapshot = state.profit_runtime.sync_window(window.clone())?;
+            profit_snapshot = Some(snapshot.clone());
+            let pending_rules = collect_pending_profit_rules(&settings, &window.day);
+            if settings.enabled
+                && globally_enabled
+                && !settings.paused
+                && !active_run
+                && !pending_rules.is_empty()
+            {
+                query_at_ms = snapshot.next_query_at_ms;
+            }
+            if now >= window.cutoff_at_ms {
+                AmmoProfitGate::CutoffBypass
+            } else {
+                AmmoProfitGate::Qualified(
+                    snapshot
+                        .qualified_rule_ids
+                        .into_iter()
+                        .collect::<std::collections::HashSet<_>>(),
+                )
+            }
+        } else {
+            AmmoProfitGate::Disabled
+        };
+        let schedule =
+            build_schedule_with_profit_runtime(&settings, now, &gate, profit_snapshot.as_ref());
+        Ok(round_scheduler::SchedulerPoll {
+            now_ms: now,
+            next_action: round_scheduler::choose_next_action(query_at_ms, schedule.next_wake_at_ms),
+            active_run,
+            enabled: settings.enabled && globally_enabled,
+            paused: settings.paused,
+        })
+    }
+
+    async fn execute_action(
+        &self,
+        action: round_scheduler::SchedulerAction,
+    ) -> Result<round_scheduler::SchedulerActionOutcome, String> {
+        match action {
+            round_scheduler::SchedulerAction::QueryProfit => {
+                crate::log_info!("special_ops::scheduler", "scheduler 开始查询利润");
+                let result = execute_profit_query_action(&self.app).await;
+                crate::log_info!(
+                    "special_ops::scheduler",
+                    "scheduler 利润查询结束",
+                    "success" => result.is_ok()
+                );
+                result.map(|_| round_scheduler::SchedulerActionOutcome::Completed)
+            }
+            round_scheduler::SchedulerAction::LaunchRound => {
+                crate::log_info!("special_ops::scheduler", "scheduler 开始启动到期轮次");
+                let state = self
+                    .app
+                    .try_state::<SpecialOpsState>()
+                    .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+                let coordinator = self
+                    .app
+                    .try_state::<Arc<SettingsCoordinator>>()
+                    .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+                let result = start_due_round_with_revision(
+                    &self.app,
+                    &state,
+                    &coordinator,
+                    coordinator.current_revision()?,
+                    round_planner::RoundTrigger::Scheduled,
+                );
+                crate::log_info!(
+                    "special_ops::scheduler",
+                    "scheduler 启动到期轮次结束",
+                    "success" => result.is_ok()
+                );
+                match result {
+                    Ok(_) => Ok(round_scheduler::SchedulerActionOutcome::Completed),
+                    Err(error) if error == OPERATION_WINDOW_LOAD_TIMEOUT => {
+                        crate::log_warn!(
+                            "special_ops::scheduler",
+                            "操作提示窗口加载超时，轮次将在一秒后重试"
+                        );
+                        Ok(round_scheduler::SchedulerActionOutcome::RetryAfter(
+                            OPERATION_WINDOW_RETRY_DELAY,
+                        ))
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+        }
+    }
+
+    fn pause_automation(&self, reason: &str) -> Result<(), String> {
+        persist_scheduler_pause(&self.app, reason)
+    }
+}
+
+fn persist_scheduler_pause(app: &AppHandle, reason: &str) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let (_settings, revision) = coordinator.with_runtime_change(|| {
+        let mut next = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        next.paused = true;
+        save_settings(app, &next)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    state
+        .profit_runtime
+        .invalidate("scheduler 已暂停，利润查询已取消");
+    state.round_scheduler.disarm();
+    emit_state(app, revision, now_ms());
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    crate::log_warn!("special_ops::scheduler", "制作 scheduler 已暂停", "reason" => reason);
+    Ok(())
 }
 
 pub fn initialize(app: &AppHandle) -> Result<SpecialOpsState, String> {
-    let settings = load_settings(app)?;
+    let mut settings = load_settings(app)?;
+    if !settings.paused {
+        settings.paused = true;
+        save_settings(app, &settings)?;
+    }
     Ok(SpecialOpsState {
         settings: Arc::new(Mutex::new(settings)),
         login_runtime: Arc::new(login_runtime::LoginRuntime::default()),
+        profit_runtime: Arc::new(ProfitQueryControl::default()),
+        round_control: Arc::new(RoundControl::default()),
+        round_scheduler: Arc::new(round_scheduler::RoundScheduler::default()),
     })
+}
+
+pub fn start_runtime(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let scheduler = Arc::clone(&state.round_scheduler);
+    let driver = Arc::new(ProductionRoundSchedulerDriver { app: app.clone() });
+    tauri::async_runtime::spawn(round_scheduler::run_scheduler(scheduler, driver));
+    Ok(())
+}
+
+pub fn shutdown(app: &AppHandle) -> Result<(), String> {
+    if let Some(state) = app.try_state::<SpecialOpsState>() {
+        state.profit_runtime.invalidate("应用关闭，利润查询已取消");
+        state.round_scheduler.shutdown();
+    }
+    stop_registered(app)
 }
 
 pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<SpecialOpsState>() else {
         return Ok(());
     };
+    state
+        .profit_runtime
+        .invalidate("运行资源释放，利润查询已取消");
+    state.round_scheduler.disarm();
     let active = state.login_runtime.snapshot()?;
     if let Some(snapshot) = active {
         let Some(stopped) = emit_login_run_change(app, &state.login_runtime, || {
@@ -2078,7 +6590,7 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     let coordinator = app
         .try_state::<Arc<SettingsCoordinator>>()
         .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
-    let (settings, revision) = coordinator.with_runtime_change(|| {
+    let (_settings, revision) = coordinator.with_runtime_change(|| {
         let current = state
             .settings
             .lock()
@@ -2093,7 +6605,7 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
             .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
         Ok::<_, String>(next)
     })?;
-    emit_state(app, &build_bootstrap(settings, revision, now_ms()));
+    emit_state(app, revision, now_ms());
     Ok(())
 }
 
@@ -2112,8 +6624,20 @@ pub fn special_ops_get_bootstrap(
         settings_coordinator.current_revision()?,
         now_ms(),
         &state.login_runtime,
+        &state.profit_runtime,
     )?;
     Ok(bootstrap)
+}
+
+fn ensure_no_active_special_ops_run(runtime: &login_runtime::LoginRuntime) -> Result<(), String> {
+    if runtime.snapshot()?.is_some() {
+        return Err("特勤处试运行尚未完成清理".to_string());
+    }
+    Ok(())
+}
+
+fn should_defer_round_pause(active: Option<LoginRunKind>, paused: bool) -> bool {
+    paused && active == Some(LoginRunKind::Round)
 }
 
 #[tauri::command]
@@ -2124,6 +6648,8 @@ pub async fn special_ops_start_login_trial(
     account_id: String,
     settings_revision: u64,
 ) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
     let runtime = Arc::clone(&state.login_runtime);
     let snapshot =
         settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
@@ -2143,8 +6669,10 @@ pub async fn special_ops_start_login_trial(
             let (_, snapshot) = start_login_run_with_resources(
                 &runtime,
                 account_id.clone(),
+                LoginRunKind::Login,
                 || register_emergency_hotkey(&app, registered_hotkey),
-                || create_operation_window(&app, &operation_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Login),
                 |snapshot| emit_run(&app, snapshot),
                 || release_login_resources_unlocked(&app),
                 |started| {
@@ -2166,6 +6694,410 @@ pub async fn special_ops_start_login_trial(
             )?;
             Ok(snapshot)
         })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_navigation_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let config = Arc::new(freeze_navigation_run_config(
+                &settings,
+                &account_id,
+                game_navigation::NavigationDestination::StationGrid,
+            )?);
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_config = Arc::clone(&config);
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::Navigation,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Navigation),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_navigation_worker(
+                            worker_app,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_config,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_craft_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    station_kind: StationKind,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let (config, duration_minutes) =
+                freeze_craft_run_config(&settings, &account_id, station_kind.clone())?;
+            let config = Arc::new(config);
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_coordinator = Arc::clone(&*settings_coordinator);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_config = Arc::clone(&config);
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::Craft,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Craft),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    let station = station_kind.clone();
+                    tauri::async_runtime::spawn(async move {
+                        run_craft_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_config,
+                            station,
+                            duration_minutes,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_craft_batch_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let frozen_now_ms = now_ms();
+            let frozen =
+                freeze_craft_batch_run_configs(&settings, &account_id, frozen_now_ms, None)?;
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_coordinator = Arc::clone(&*settings_coordinator);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_account_id = account_id.clone();
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::Craft,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Craft),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_craft_batch_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_account_id,
+                            frozen,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_ammo_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let frozen = freeze_ammo_run(&settings, &account_id, now_ms(), None)?;
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_coordinator = Arc::clone(&*settings_coordinator);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_account_id = account_id.clone();
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::Ammo,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Ammo),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_ammo_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_account_id,
+                            frozen,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+fn start_due_round_with_revision(
+    app: &AppHandle,
+    state: &SpecialOpsState,
+    settings_coordinator: &Arc<SettingsCoordinator>,
+    settings_revision: u64,
+    trigger: round_planner::RoundTrigger,
+) -> Result<LoginRunSnapshot, String> {
+    crate::log_info!("special_ops::startup", "到期轮次启动校验开始");
+    ensure_app_global_automation_enabled(app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let control = Arc::clone(&state.round_control);
+    let scheduler = Arc::clone(&state.round_scheduler);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            crate::log_info!("special_ops::startup", "到期轮次 revision 锁已获取");
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            if !settings.enabled {
+                return Err("特勤处总开关已关闭".to_string());
+            }
+            if settings.paused {
+                return Err("特勤处当前处于暂停状态，请先点击继续".to_string());
+            }
+            crate::log_info!("special_ops::startup", "开始冻结到期轮次计划");
+            let frozen_now_ms = now_ms();
+            let (profit_gate, profit_generation) = profit_gate_for_round(
+                &settings,
+                &state.profit_runtime,
+                frozen_now_ms,
+                settings_revision,
+            )?;
+            let frozen = freeze_round_run(
+                &settings,
+                frozen_now_ms,
+                trigger,
+                profit_gate,
+                profit_generation,
+            )?;
+            let initial_account_id = frozen
+                .plan
+                .accounts
+                .first()
+                .map(|task| task.account_id.clone())
+                .ok_or_else(|| "当前没有到期制作或子弹任务".to_string())?;
+            let consumed_profit_generation = if let Some(generation) = frozen.profit_generation {
+                let targets = frozen
+                    .plan
+                    .accounts
+                    .iter()
+                    .flat_map(|task| {
+                        task.ammo_target_ids
+                            .iter()
+                            .map(|target_id| ProfitTargetKey {
+                                account_id: task.account_id.clone(),
+                                target_id: target_id.clone(),
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                if !targets.is_empty() {
+                    state
+                        .profit_runtime
+                        .consume_for_round(generation, targets)?;
+                    Some(generation)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            crate::log_info!(
+                "special_ops::startup",
+                "到期轮次计划冻结完成",
+                "account_count" => frozen.plan.accounts.len()
+            );
+            control.clear_pause_request();
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_control = Arc::clone(&control);
+            let worker_coordinator = Arc::clone(settings_coordinator);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_scheduler = Arc::clone(&scheduler);
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            crate::log_info!("special_ops::startup", "开始获取到期轮次运行资源");
+            let start_result = start_login_run_with_resources(
+                &runtime,
+                initial_account_id.clone(),
+                LoginRunKind::Round,
+                || register_emergency_hotkey(app, registered_hotkey),
+                || hide_other_windows_for_special_ops(app),
+                || create_operation_window(app, &operation_hotkey, LoginRunKind::Round),
+                |snapshot| emit_run(app, snapshot),
+                || release_login_resources_unlocked(app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_round_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            worker_control,
+                            worker_scheduler,
+                            run_id,
+                            cancelled,
+                            frozen,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            );
+            let (_, snapshot) = match start_result {
+                Ok(started) => started,
+                Err(error) => {
+                    if let Some(generation) = consumed_profit_generation {
+                        if let Err(rollback_error) =
+                            state.profit_runtime.rollback_failed_round_start(generation)
+                        {
+                            return Err(format!(
+                                "{error}；轮次启动利润状态回滚失败：{rollback_error}"
+                            ));
+                        }
+                    }
+                    return Err(error);
+                }
+            };
+            crate::log_info!("special_ops::startup", "到期轮次运行资源获取完成");
+            Ok(snapshot)
+        })?;
+    crate::log_info!("special_ops::startup", "到期轮次启动校验结束");
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_due_round(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    let snapshot = start_due_round_with_revision(
+        &app,
+        &state,
+        &settings_coordinator,
+        settings_revision,
+        round_planner::RoundTrigger::Manual,
+    )
+    .map_err(AppError::from)?;
+    state.round_scheduler.arm();
     Ok(snapshot)
 }
 
@@ -2209,7 +7141,7 @@ pub fn special_ops_cancel_login_trial(
     Ok(stopped)
 }
 
-fn emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
+fn request_emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
     let state = app
         .try_state::<SpecialOpsState>()
         .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
@@ -2217,42 +7149,25 @@ fn emergency_stop_core(app: &AppHandle) -> Result<LoginRunSnapshot, String> {
         .login_runtime
         .snapshot()?
         .ok_or_else(|| "当前没有运行中的登录试运行".to_string())?;
-    let snapshot = emit_login_run_change(app, &state.login_runtime, || {
-        state
-            .login_runtime
-            .request_stop(active.run_id, login_runtime::StopReason::Emergency)
-    })
-    .map_err(|error| fail_closed_login_error(app, &state.login_runtime, active.run_id, error))?
-    .ok_or_else(|| "登录试运行状态已变化".to_string())?;
-    let resource_result =
-        release_login_resources_for_run(app, &state.login_runtime, snapshot.run_id);
-    let result = login_flow::LoginFlowResult::EmergencyStopped {
-        account_id: snapshot.account_id.clone(),
-        stopped_at: now_ms(),
-    };
-    persist_login_outcome(
-        app,
-        &state.login_runtime,
-        snapshot.run_id,
-        &snapshot.account_id,
-        &result,
-        "",
-    )?;
-    resource_result?;
-    if let Some(finished) =
-        state
-            .login_runtime
-            .finish(snapshot.run_id, LoginRunStatus::Stopped, "登录试运行已停止")?
-    {
-        emit_run(app, &finished);
-        return Ok(finished);
-    }
-    Ok(snapshot)
+    request_then_release_emergency(
+        || {
+            emit_login_run_change(app, &state.login_runtime, || {
+                state
+                    .login_runtime
+                    .request_stop(active.run_id, login_runtime::StopReason::Emergency)
+            })
+            .map_err(|error| {
+                fail_closed_login_error(app, &state.login_runtime, active.run_id, error)
+            })?
+            .ok_or_else(|| "登录试运行状态已变化".to_string())
+        },
+        crate::input_simulation::release_tracked_injected_inputs,
+    )
 }
 
 #[tauri::command]
 pub fn special_ops_emergency_stop(app: AppHandle) -> Result<LoginRunSnapshot, AppError> {
-    emergency_stop_core(&app).map_err(AppError::from)
+    request_emergency_stop_core(&app).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -2263,14 +7178,17 @@ pub fn special_ops_save_settings(
     settings_value: SpecialOpsSettings,
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
     let settings_value = normalize_settings(settings_value)?;
+    let should_arm_scheduler = settings_value.enabled && !settings_value.paused;
     if settings_value.enabled && !settings_value.paused {
         validate_execution_ready(&settings_value)?;
     }
-    settings_coordinator
-        .with_revision(
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
             settings_revision,
-            || -> Result<SpecialOpsBootstrap, String> {
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
                 save_settings(&app, &settings_value)?;
                 {
                     let mut settings = state
@@ -2279,60 +7197,411 @@ pub fn special_ops_save_settings(
                         .map_err(|_| "特勤处状态已损坏".to_string())?;
                     *settings = settings_value.clone();
                 }
-                let bootstrap = build_bootstrap_with_runtime(
-                    settings_value,
-                    settings_revision,
-                    now_ms(),
-                    &state.login_runtime,
-                )?;
-                emit_state(&app, &bootstrap);
-                Ok(bootstrap)
+                Ok((settings_value, now_ms()))
             },
         )
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("配置已修改，利润查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    if should_arm_scheduler {
+        state.round_scheduler.arm();
+    } else {
+        state.round_scheduler.disarm();
+    }
+    Ok(bootstrap)
 }
 
 #[tauri::command]
-pub fn special_ops_set_paused(
+pub fn special_ops_save_profit_settings(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    update: ProfitConfigurationUpdate,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                let current = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let validated = state.profit_runtime.validated_moligod_names()?;
+                let next = apply_profit_configuration(&current, update, &validated)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("利润配置已修改，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub async fn special_ops_fetch_profit_catalog() -> Result<ProfitCatalogSnapshot, AppError> {
+    let adapter = KkrbAdapter::new().map_err(AppError::from)?;
+    adapter
+        .fetch_catalog_with_busy_retry()
+        .await
+        .map_err(|error| AppError::from(error.to_string()))
+}
+
+#[tauri::command]
+pub async fn special_ops_validate_moligod_binding(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    exact_name: String,
+) -> Result<MoligodBindingValidation, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let exact_name = exact_name.trim().to_string();
+    if exact_name.is_empty() {
+        return Err(AppError::from("Moligod 精确名称不能为空"));
+    }
+    let generation = state.profit_runtime.generation();
+    let adapter = MoligodAdapter::new(app);
+    let snapshot = adapter
+        .fetch(
+            generation,
+            vec![MoligodRequestTarget {
+                rule_id: "binding-validation".to_string(),
+                exact_name: exact_name.clone(),
+            }],
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+        .map_err(AppError::from)?;
+    if snapshot.generation != generation || snapshot.results.len() != 1 {
+        return Err(AppError::from("Moligod 绑定验证结果无效"));
+    }
+    let result = snapshot
+        .results
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::from("Moligod 绑定验证缺少结果"))?;
+    if result.rule_id != "binding-validation" || result.exact_name != exact_name {
+        return Err(AppError::from("Moligod 精确名称未唯一命中"));
+    }
+    if result.status != MoligodRuleStatus::Matched {
+        return Err(AppError::from(
+            result
+                .detail
+                .unwrap_or_else(|| "Moligod 绑定验证失败".to_string()),
+        ));
+    }
+    let profit = result
+        .profit
+        .ok_or_else(|| AppError::from("Moligod 绑定验证结果缺少利润"))?;
+    state
+        .profit_runtime
+        .record_validated_moligod_name(exact_name.clone())?;
+    Ok(MoligodBindingValidation { exact_name, profit })
+}
+
+#[tauri::command]
+pub fn special_ops_confirm_account_station_states(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    stations: Vec<StationCorrectionInput>,
+    ammo_targets: Vec<AmmoCorrectionInput>,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let confirmed_at_ms = now_ms();
+                let current_day = local_day_and_minute(confirmed_at_ms).0;
+                apply_manual_account_corrections(
+                    &mut next,
+                    &account_id,
+                    &stations,
+                    &ammo_targets,
+                    confirmed_at_ms,
+                    &current_day,
+                )?;
+                let next = normalize_settings(next)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("账号状态已人工校正，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn special_ops_confirm_station_state(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    correction: StationCorrectionInput,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let confirmed_at_ms = now_ms();
+                apply_single_station_correction(
+                    &mut next,
+                    &account_id,
+                    &correction,
+                    confirmed_at_ms,
+                )?;
+                let next = normalize_settings(next)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("制作台状态已人工判定，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn special_ops_confirm_ammo_state(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    correction: AmmoCorrectionInput,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let confirmed_at_ms = now_ms();
+                let current_day = local_day_and_minute(confirmed_at_ms).0;
+                apply_single_ammo_correction(&mut next, &account_id, &correction, &current_day)?;
+                let next = normalize_settings(next)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("子弹状态已人工判定，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub async fn special_ops_set_paused(
     app: AppHandle,
     state: State<'_, SpecialOpsState>,
     settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
     paused: bool,
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
-    settings_coordinator
-        .with_revision(
-            settings_revision,
-            || -> Result<SpecialOpsBootstrap, String> {
-                if !paused {
+    crate::log_info!(
+        "special_ops::scheduler",
+        "暂停状态切换开始",
+        "paused" => paused,
+        "settings_revision" => settings_revision
+    );
+    let active = state.login_runtime.snapshot()?;
+    if should_defer_round_pause(active.as_ref().map(|snapshot| snapshot.run_kind), paused) {
+        return settings_coordinator
+            .with_revision(
+                settings_revision,
+                || -> Result<SpecialOpsBootstrap, String> {
+                    state.round_control.request_pause();
+                    if let Some(active) = active.as_ref() {
+                        if let Some(snapshot) = state.login_runtime.update(
+                            active.run_id,
+                            LoginRunStatus::Waiting,
+                            active.current_step,
+                            "已请求暂停，当前账号完成后停止切换",
+                            None,
+                        )? {
+                            emit_run(&app, &snapshot);
+                        }
+                    }
                     let settings = state
                         .settings
                         .lock()
-                        .map_err(|_| "特勤处状态已损坏".to_string())?;
-                    if settings.enabled {
-                        validate_execution_ready(&settings)?;
-                    }
+                        .map_err(|_| "特勤处状态已损坏".to_string())?
+                        .clone();
+                    build_bootstrap_with_runtime(
+                        settings,
+                        settings_revision,
+                        now_ms(),
+                        &state.login_runtime,
+                        &state.profit_runtime,
+                    )
+                },
+            )
+            .map_err(AppError::from);
+    }
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut settings = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                apply_paused_state(&mut settings, paused)?;
+                if !paused {
+                    state.round_control.clear_pause_request();
                 }
-                let settings = {
-                    let mut settings = state
-                        .settings
-                        .lock()
-                        .map_err(|_| "特勤处状态已损坏".to_string())?;
-                    settings.paused = paused;
-                    settings.clone()
-                };
+                crate::log_info!(
+                    "special_ops::scheduler",
+                    "暂停状态校验完成",
+                    "paused" => paused
+                );
                 save_settings(&app, &settings)?;
-                let bootstrap = build_bootstrap_with_runtime(
-                    settings,
-                    settings_revision,
-                    now_ms(),
-                    &state.login_runtime,
-                )?;
-                emit_state(&app, &bootstrap);
-                Ok(bootstrap)
+                crate::log_info!(
+                    "special_ops::scheduler",
+                    "暂停状态持久化完成",
+                    "paused" => paused
+                );
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+                Ok((settings, now_ms()))
             },
         )
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    state.profit_runtime.invalidate(if paused {
+        "自动化已暂停，利润查询已取消"
+    } else {
+        "自动化恢复，重新建立利润查询 generation"
+    });
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    crate::log_info!(
+        "special_ops::scheduler",
+        "暂停状态 bootstrap 构建完成",
+        "paused" => paused
+    );
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    crate::log_info!(
+        "special_ops::scheduler",
+        "暂停状态事件发送完成",
+        "paused" => paused
+    );
+    if paused {
+        state.round_scheduler.disarm();
+    } else {
+        state.round_scheduler.resume();
+    }
+    crate::log_info!(
+        "special_ops::scheduler",
+        "scheduler armed 状态已更新",
+        "paused" => paused,
+        "armed" => state.round_scheduler.is_armed()
+    );
+    crate::log_info!(
+        "special_ops::scheduler",
+        "暂停状态切换结束",
+        "paused" => paused,
+        "success" => true
+    );
+    Ok(bootstrap)
 }
 
 #[tauri::command]
@@ -2343,50 +7612,98 @@ pub async fn special_ops_test_calibration_target(
     environment_id: String,
     target_key: String,
     settings_revision: u64,
-) -> Result<CalibrationTemplateTestResult, AppError> {
-    let input = {
+) -> Result<CalibrationTestResult, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let (input, game_context) = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| AppError::from("特勤处状态已损坏"))?;
-        calibration_template_test_input(&settings, &environment_id, &target_key)?
+        let input = calibration_test_input(&settings, &environment_id, &target_key)?;
+        let game_context = if calibration_test_requires_game_context(&target_key) {
+            let game_path = std::fs::canonicalize(settings.game_executable_path.trim())
+                .map_err(|_| AppError::from("游戏 exe 路径无效"))?;
+            Some((game_path, mouse_parking_region(&settings)?))
+        } else {
+            None
+        };
+        (input, game_context)
     };
-    let first =
-        sample_template_similarity(input.region.clone(), input.reference_image_path.clone())
+    if let Some((game_path, mouse_parking)) = game_context {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        ensure_no_active_special_ops_run(&state.login_runtime)?;
+        tokio::task::spawn_blocking(move || {
+            use desktop_runtime::DesktopRuntime;
+            let desktop = desktop_runtime::WindowsDesktopRuntime;
+            let window = desktop
+                .find_primary_window(&game_path)?
+                .ok_or_else(|| "未找到游戏窗口".to_string())?;
+            desktop.restore_and_focus(&game_path, window)
+        })
+        .await
+        .map_err(|error| AppError::from(format!("游戏窗口任务失败: {error}")))??;
+        crate::input_simulation::move_region_center_cancellable(
+            mouse_parking,
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+        .map_err(AppError::from)?;
+    }
+    match input {
+        CalibrationTestInput::Ocr { region } => {
+            let first_texts = sample_numeric_ocr(region.clone()).await?;
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let second_texts = sample_numeric_ocr(region).await?;
+            let passed = !first_texts.is_empty() && !second_texts.is_empty();
+            Ok(CalibrationTestResult::Ocr {
+                first_texts,
+                second_texts,
+                passed,
+            })
+        }
+        CalibrationTestInput::Template(input) => {
+            let first = sample_template_similarity(
+                input.region.clone(),
+                input.reference_image_path.clone(),
+            )
             .await?;
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-    let second =
-        sample_template_similarity(input.region.clone(), input.reference_image_path.clone())
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let second = sample_template_similarity(
+                input.region.clone(),
+                input.reference_image_path.clone(),
+            )
             .await?;
-    let sample_similarities = [first, second];
-    let passed = template_test_passed(sample_similarities, input.match_threshold);
-    let verified_at_ms = passed.then(now_ms);
-    settings_coordinator
-        .with_revision(settings_revision, || -> Result<(), String> {
-            let mut settings = state
-                .settings
-                .lock()
-                .map_err(|_| "特勤处状态已损坏".to_string())?;
-            commit_calibration_test_verification(
-                &mut settings,
-                &environment_id,
-                &target_key,
-                &input.calibration_signature,
+            let sample_similarities = [first, second];
+            let passed = template_test_passed(sample_similarities, input.match_threshold);
+            let verified_at_ms = passed.then(now_ms);
+            settings_coordinator
+                .with_revision(settings_revision, || -> Result<(), String> {
+                    ensure_no_active_special_ops_run(&state.login_runtime)?;
+                    let mut settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?;
+                    commit_calibration_test_verification(
+                        &mut settings,
+                        &environment_id,
+                        &target_key,
+                        &input.calibration_signature,
+                        passed,
+                        verified_at_ms,
+                        |next| save_settings(&app, next),
+                    )?;
+                    drop(settings);
+                    emit_state(&app, settings_revision, now_ms());
+                    Ok(())
+                })
+                .map_err(AppError::from)?;
+            Ok(CalibrationTestResult::Template {
+                sample_similarities,
                 passed,
                 verified_at_ms,
-                |next| save_settings(&app, next),
-            )?;
-            let bootstrap = build_bootstrap(settings.clone(), settings_revision, now_ms());
-            drop(settings);
-            emit_state(&app, &bootstrap);
-            Ok(())
-        })
-        .map_err(AppError::from)?;
-    Ok(CalibrationTemplateTestResult {
-        sample_similarities,
-        passed,
-        verified_at_ms,
-    })
+            })
+        }
+    }
 }
 
 #[tauri::command]
@@ -2395,30 +7712,24 @@ pub async fn special_ops_begin_calibration_selection(
     state: State<'_, SpecialOpsState>,
     environment_id: String,
     target_key: String,
+    account_id: Option<String>,
     settings_revision: u64,
 ) -> Result<(), AppError> {
-    {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let target_kind = {
         let settings = state
             .settings
             .lock()
             .map_err(|_| AppError::from("特勤处状态已损坏"))?;
-        settings
-            .calibration_environments
-            .iter()
-            .find(|item| item.id == environment_id)
-            .and_then(|environment| {
-                environment
-                    .targets
-                    .iter()
-                    .find(|item| item.key == target_key)
-            })
-            .ok_or_else(|| AppError::from("校准目标不存在"))?;
-    }
-    let label = format!(
-        "special-ops-calibration-{}-{}",
-        safe_label_component(&environment_id),
-        safe_label_component(&target_key)
-    );
+        calibration_selection_kind(
+            &settings,
+            &environment_id,
+            &target_key,
+            account_id.as_deref(),
+        )
+        .map_err(AppError::from)?
+    };
+    let label = calibration_selection_label(&environment_id, &target_key, account_id.as_deref());
     destroy_window(&app, &label);
     let url = format!(
         "index.html?mode=special-ops-calibration&environment_id={}&target_key={}&settings_revision={}",
@@ -2426,6 +7737,14 @@ pub async fn special_ops_begin_calibration_selection(
         encoded_query_value(&target_key),
         settings_revision
     );
+    let url = format!(
+        "{url}&target_kind={}",
+        encoded_query_value(&format!("{target_kind:?}"))
+    );
+    let url = match account_id.as_deref() {
+        Some(account_id) => format!("{url}&account_id={}", encoded_query_value(account_id)),
+        None => url,
+    };
     let load_app = app.clone();
     let load_label = label.clone();
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
@@ -2490,36 +7809,54 @@ pub async fn special_ops_begin_calibration_selection(
 pub fn special_ops_submit_calibration_selection(
     app: AppHandle,
     state: State<'_, SpecialOpsState>,
-    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
     environment_id: String,
     target_key: String,
+    account_id: Option<String>,
     region: CalibrationRect,
     settings_revision: u64,
 ) -> Result<(), AppError> {
+    let settings_coordinator = app.state::<Arc<SettingsCoordinator>>();
     settings_coordinator
         .with_revision(settings_revision, || -> Result<(), String> {
-            if region.width <= 2 || region.height <= 2 {
-                return Err("校准区域太小".to_string());
-            }
+            ensure_no_active_special_ops_run(&state.login_runtime)?;
             let settings = {
                 let settings = state
                     .settings
                     .lock()
                     .map_err(|_| "特勤处状态已损坏".to_string())?;
                 let mut next = settings.clone();
-                let environment = next
-                    .calibration_environments
-                    .iter_mut()
-                    .find(|item| item.id == environment_id)
-                    .ok_or_else(|| "显示环境不存在".to_string())?;
-                let target = environment
-                    .targets
-                    .iter_mut()
-                    .find(|item| item.key == target_key)
-                    .ok_or_else(|| "校准目标不存在".to_string())?;
-                target.rect = Some(region);
-                target.verified_signature = None;
-                target.verified_at_ms = None;
+                let target_kind = calibration_selection_kind(
+                    &next,
+                    &environment_id,
+                    &target_key,
+                    account_id.as_deref(),
+                )?;
+                validate_calibration_selection(target_kind, &region)?;
+                if let Some(target_id) = business_ammo_target_id(&target_key) {
+                    apply_ammo_business_selection(
+                        &mut next,
+                        account_id.as_deref(),
+                        target_id,
+                        region,
+                    )?;
+                } else if let Some(account_id) = account_id.as_deref() {
+                    let station = account_recipe_station(&target_key)?;
+                    apply_account_recipe_selection(&mut next, account_id, station, region)?;
+                } else {
+                    let environment = next
+                        .calibration_environments
+                        .iter_mut()
+                        .find(|item| item.id == environment_id)
+                        .ok_or_else(|| "显示环境不存在".to_string())?;
+                    let target = environment
+                        .targets
+                        .iter_mut()
+                        .find(|item| item.key == target_key)
+                        .ok_or_else(|| "校准目标不存在".to_string())?;
+                    target.rect = Some(region);
+                    target.verified_signature = None;
+                    target.verified_at_ms = None;
+                }
                 next
             };
             save_settings(&app, &settings)?;
@@ -2527,15 +7864,9 @@ pub fn special_ops_submit_calibration_selection(
                 .settings
                 .lock()
                 .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
-            emit_state(
-                &app,
-                &build_bootstrap(settings, settings_revision, now_ms()),
-            );
-            let label = format!(
-                "special-ops-calibration-{}-{}",
-                safe_label_component(&environment_id),
-                safe_label_component(&target_key)
-            );
+            emit_state(&app, settings_revision, now_ms());
+            let label =
+                calibration_selection_label(&environment_id, &target_key, account_id.as_deref());
             destroy_window(&app, &label);
             restore_main_window(&app);
             Ok(())
@@ -2543,17 +7874,44 @@ pub fn special_ops_submit_calibration_selection(
         .map_err(AppError::from)
 }
 
+fn station_suffix(station: &StationKind) -> &'static str {
+    match station {
+        StationKind::TechnicalCenter => "technicalCenter",
+        StationKind::Workbench => "workbench",
+        StationKind::Pharmacy => "pharmacy",
+        StationKind::ArmorBench => "armorBench",
+    }
+}
+
+/// 校验校准提交尺寸；点击点使用单像素坐标，识别区域必须是可采样矩形。
+fn validate_calibration_selection(
+    kind: CalibrationTargetKind,
+    region: &CalibrationRect,
+) -> Result<(), String> {
+    match kind {
+        CalibrationTargetKind::ClickPoint if region.width == 1 && region.height == 1 => Ok(()),
+        CalibrationTargetKind::ClickPoint => Err("点击点必须提交单点坐标".to_string()),
+        CalibrationTargetKind::InputRegion | CalibrationTargetKind::RecognitionRegion
+            if region.width > 2 && region.height > 2 =>
+        {
+            Ok(())
+        }
+        CalibrationTargetKind::InputRegion | CalibrationTargetKind::RecognitionRegion => {
+            Err("校准区域太小".to_string())
+        }
+    }
+}
+
 #[tauri::command]
 pub fn special_ops_cancel_calibration_selection(
     app: AppHandle,
+    state: State<'_, SpecialOpsState>,
     environment_id: String,
     target_key: String,
+    account_id: Option<String>,
 ) -> Result<(), AppError> {
-    let label = format!(
-        "special-ops-calibration-{}-{}",
-        safe_label_component(&environment_id),
-        safe_label_component(&target_key)
-    );
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let label = calibration_selection_label(&environment_id, &target_key, account_id.as_deref());
     destroy_window(&app, &label);
     restore_main_window(&app);
     Ok(())
@@ -2608,11 +7966,239 @@ fn daily_exchange_at_ms(now_ms: i64, exchange_minute: u32) -> Option<i64> {
     Some(candidate)
 }
 
+fn build_timeline_tasks(
+    settings: &SpecialOpsSettings,
+    now_ms: i64,
+    timeline_end_ms: i64,
+    profit_snapshot: Option<&ProfitRuntimeSnapshot>,
+) -> Vec<TimelineTask> {
+    let exchange_minute = daily_exchange_minutes(&settings.daily_exchange_time).unwrap_or(0);
+    let today_exchange_at_ms = daily_exchange_at_ms(now_ms, exchange_minute).unwrap_or(now_ms);
+    let tomorrow_exchange_at_ms = today_exchange_at_ms.saturating_add(24 * 60 * 60_000);
+    let today = local_day_and_minute(today_exchange_at_ms).0;
+    let tomorrow = local_day_and_minute(tomorrow_exchange_at_ms).0;
+    let current_day = local_day_and_minute(now_ms).0;
+    let cutoff_at_ms = if settings.profit_filter.enabled {
+        daily_exchange_minutes(&settings.profit_filter.cutoff_time)
+            .and_then(|minute| daily_exchange_at_ms(now_ms, minute))
+    } else {
+        None
+    };
+    let mut tasks = Vec::new();
+
+    for account in settings.accounts.iter().filter(|account| account.enabled) {
+        let Ok(business) = resolve_account_business_config(settings, account) else {
+            continue;
+        };
+        for station_kind in StationKind::all() {
+            let Some(station) = account
+                .stations
+                .iter()
+                .find(|station| station.kind == station_kind)
+            else {
+                continue;
+            };
+            let Some(station_business) = business
+                .stations
+                .iter()
+                .find(|candidate| candidate.kind == station.kind && candidate.enabled)
+            else {
+                continue;
+            };
+            let manual_failure = account
+                .last_failure
+                .as_ref()
+                .filter(|failure| failure.station_kind.as_ref() == Some(&station.kind))
+                .cloned();
+            let scheduled_at_ms = if manual_failure.is_some() {
+                now_ms
+            } else {
+                let Some(value) = station.finishes_at_ms else {
+                    continue;
+                };
+                value
+            };
+            if manual_failure.is_none()
+                && (station.status == StationStatus::Uncertain
+                    || station.status == StationStatus::Idle
+                    || scheduled_at_ms > timeline_end_ms)
+            {
+                continue;
+            }
+            let station_order = StationKind::all()
+                .iter()
+                .position(|kind| *kind == station.kind)
+                .unwrap_or(0) as u32;
+            let id = format!(
+                "craft:{}:{}:{}",
+                account.id,
+                station.kind.calibration_suffix(),
+                scheduled_at_ms
+            );
+            let task = TimelineTask {
+                id: id.clone(),
+                account_id: account.id.clone(),
+                qq_account: account.qq_account.clone(),
+                kind: TimelineTaskKind::Craft,
+                station_kind: Some(station.kind.clone()),
+                ammo_target_id: None,
+                note: station_business.recipe_note.clone(),
+                scheduled_at_ms,
+                overdue: scheduled_at_ms <= now_ms,
+                account_status: account.status.clone(),
+                profit_state: None,
+                may_execute_earlier: false,
+                manual_failure,
+            };
+            tasks.push((scheduled_at_ms, account.order, station_order, id, task));
+        }
+
+        let mut ammo_targets = business
+            .ammo_targets
+            .iter()
+            .filter(|target| target.enabled)
+            .collect::<Vec<_>>();
+        ammo_targets.sort_by_key(|target| target.order);
+        for target in ammo_targets {
+            let runtime = account
+                .ammo_targets
+                .iter()
+                .find(|candidate| candidate.id == target.id);
+            if let Some(manual_failure) = runtime.and_then(|state| state.last_failure.clone()) {
+                let id = format!("ammo:{current_day}:{}:{}", account.id, target.id);
+                let task = TimelineTask {
+                    id: id.clone(),
+                    account_id: account.id.clone(),
+                    qq_account: account.qq_account.clone(),
+                    kind: TimelineTaskKind::Ammo,
+                    station_kind: None,
+                    ammo_target_id: Some(target.id.clone()),
+                    note: target.note.clone(),
+                    scheduled_at_ms: now_ms,
+                    overdue: true,
+                    account_status: account.status.clone(),
+                    profit_state: None,
+                    may_execute_earlier: false,
+                    manual_failure: Some(manual_failure),
+                };
+                tasks.push((now_ms, account.order, 100 + target.order, id, task));
+                continue;
+            }
+            for (day, scheduled_at_ms, day_order) in [
+                (today.as_str(), today_exchange_at_ms, 0_u32),
+                (tomorrow.as_str(), tomorrow_exchange_at_ms, 1_u32),
+            ] {
+                if scheduled_at_ms > timeline_end_ms
+                    || runtime.is_some_and(|state| state.last_success_day.as_deref() == Some(day))
+                {
+                    continue;
+                }
+                let (projected_at_ms, profit_state, may_execute_earlier) =
+                    if !settings.profit_filter.enabled || day != current_day {
+                        (scheduled_at_ms, None, false)
+                    } else if now_ms < today_exchange_at_ms {
+                        (
+                            today_exchange_at_ms,
+                            Some(TimelineProfitState::WaitingExchange),
+                            false,
+                        )
+                    } else if cutoff_at_ms.is_some_and(|cutoff| now_ms >= cutoff) {
+                        (
+                            scheduled_at_ms,
+                            Some(TimelineProfitState::CutoffBypass),
+                            false,
+                        )
+                    } else if profit_snapshot.is_some_and(|snapshot| {
+                        snapshot
+                            .active_round_targets
+                            .iter()
+                            .any(|key| key.account_id == account.id && key.target_id == target.id)
+                    }) {
+                        (now_ms, Some(TimelineProfitState::ActiveRound), false)
+                    } else {
+                        match target.profit_rule_id.as_deref() {
+                            None => (
+                                cutoff_at_ms.unwrap_or(scheduled_at_ms),
+                                Some(TimelineProfitState::Unconfigured),
+                                false,
+                            ),
+                            Some(rule_id)
+                                if profit_snapshot.is_some_and(|snapshot| {
+                                    snapshot
+                                        .qualified_rule_ids
+                                        .iter()
+                                        .any(|qualified| qualified == rule_id)
+                                }) =>
+                            {
+                                (now_ms, Some(TimelineProfitState::Qualified), false)
+                            }
+                            Some(_) => (
+                                cutoff_at_ms.unwrap_or(scheduled_at_ms),
+                                Some(TimelineProfitState::WaitingQuery),
+                                true,
+                            ),
+                        }
+                    };
+                let id = format!("ammo:{day}:{}:{}", account.id, target.id);
+                let task = TimelineTask {
+                    id: id.clone(),
+                    account_id: account.id.clone(),
+                    qq_account: account.qq_account.clone(),
+                    kind: TimelineTaskKind::Ammo,
+                    station_kind: None,
+                    ammo_target_id: Some(target.id.clone()),
+                    note: target.note.clone(),
+                    scheduled_at_ms: projected_at_ms,
+                    overdue: projected_at_ms <= now_ms,
+                    account_status: account.status.clone(),
+                    profit_state,
+                    may_execute_earlier,
+                    manual_failure: None,
+                };
+                tasks.push((
+                    projected_at_ms,
+                    account.order,
+                    100 + day_order * 10_000 + target.order,
+                    id,
+                    task,
+                ));
+            }
+        }
+    }
+
+    tasks.sort_by(|left, right| {
+        (&left.0, &left.1, &left.2, &left.3).cmp(&(&right.0, &right.1, &right.2, &right.3))
+    });
+    tasks.into_iter().map(|(_, _, _, _, task)| task).collect()
+}
+
 pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSnapshot {
+    build_schedule_with_profit(settings, now_ms, &AmmoProfitGate::DisplayOnly)
+}
+
+pub(crate) fn build_schedule_with_profit(
+    settings: &SpecialOpsSettings,
+    now_ms: i64,
+    gate: &AmmoProfitGate,
+) -> ScheduleSnapshot {
+    build_schedule_with_profit_runtime(settings, now_ms, gate, None)
+}
+
+pub(crate) fn build_schedule_with_profit_runtime(
+    settings: &SpecialOpsSettings,
+    now_ms: i64,
+    gate: &AmmoProfitGate,
+    profit_snapshot: Option<&ProfitRuntimeSnapshot>,
+) -> ScheduleSnapshot {
+    let timeline_end_ms = now_ms.saturating_add(24 * 60 * 60_000);
+    let timeline_tasks = build_timeline_tasks(settings, now_ms, timeline_end_ms, profit_snapshot);
     if !settings.enabled || settings.paused {
         return ScheduleSnapshot {
             due_accounts: Vec::new(),
             next_wake_at_ms: None,
+            timeline_start_ms: now_ms,
+            timeline_end_ms,
+            timeline_tasks,
         };
     }
 
@@ -2628,10 +8214,30 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
         if !account.enabled || !account.initialized || account.status != AccountStatus::Ready {
             continue;
         }
+        let Ok(business_config) = resolve_account_business_config(settings, account) else {
+            continue;
+        };
 
         let mut station_kinds = Vec::new();
-        for station in &account.stations {
-            if !station.enabled || station.status != StationStatus::Crafting {
+        for station_kind in StationKind::all() {
+            let Some(station) = account
+                .stations
+                .iter()
+                .find(|station| station.kind == station_kind)
+            else {
+                continue;
+            };
+            let enabled = business_config
+                .stations
+                .iter()
+                .find(|business| business.kind == station.kind)
+                .is_some_and(|business| business.enabled);
+            if !enabled
+                || matches!(
+                    station.status,
+                    StationStatus::Idle | StationStatus::Uncertain
+                )
+            {
                 continue;
             }
             let Some(finishes_at_ms) = station.finishes_at_ms else {
@@ -2654,11 +8260,23 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
             }
         }
 
-        let mut ammo_target_ids = account
+        let mut ammo_target_ids = business_config
             .ammo_targets
             .iter()
             .filter(|target| target.enabled)
-            .filter(|target| target.last_success_day.as_deref() != Some(today.as_str()))
+            .filter(|target| gate.allows(target.profit_rule_id.as_deref()))
+            .filter(|target| {
+                account
+                    .ammo_targets
+                    .iter()
+                    .find(|runtime| runtime.id == target.id)
+                    .is_none_or(|runtime| {
+                        runtime.last_failure.is_none()
+                            && runtime.last_success_day.as_deref() != Some(today.as_str())
+                            && (runtime.retry_day.as_deref() != Some(today.as_str())
+                                || runtime.retry_count < 2)
+                    })
+            })
             .filter(|_| {
                 exchange_minute.is_some_and(|minute| local_day_and_minute(now_ms).1 >= minute)
             })
@@ -2672,8 +8290,19 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
             if let Some(exchange_at) = exchange_at_ms.filter(|exchange_at| *exchange_at > now_ms) {
-                let has_pending_ammo = account.ammo_targets.iter().any(|target| {
-                    target.enabled && target.last_success_day.as_deref() != Some(today.as_str())
+                let has_pending_ammo = business_config.ammo_targets.iter().any(|target| {
+                    target.enabled
+                        && gate.allows(target.profit_rule_id.as_deref())
+                        && account
+                            .ammo_targets
+                            .iter()
+                            .find(|runtime| runtime.id == target.id)
+                            .is_none_or(|runtime| {
+                                runtime.last_failure.is_none()
+                                    && runtime.last_success_day.as_deref() != Some(today.as_str())
+                                    && (runtime.retry_day.as_deref() != Some(today.as_str())
+                                        || runtime.retry_count < 2)
+                            })
                 });
                 if has_pending_ammo {
                     next_wake_at_ms = Some(
@@ -2691,15 +8320,85 @@ pub fn build_schedule(settings: &SpecialOpsSettings, now_ms: i64) -> ScheduleSna
         }
     }
 
+    if !due_accounts.is_empty() {
+        next_wake_at_ms = Some(now_ms);
+    }
+
     ScheduleSnapshot {
         due_accounts,
         next_wake_at_ms,
+        timeline_start_ms: now_ms,
+        timeline_end_ms,
+        timeline_tasks,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn active_special_ops_run_rejects_mutating_commands_until_cleanup() {
+        let runtime = login_runtime::LoginRuntime::default();
+        ensure_no_active_special_ops_run(&runtime).unwrap();
+
+        runtime.try_start("account-a".to_string()).unwrap();
+
+        assert_eq!(
+            ensure_no_active_special_ops_run(&runtime).unwrap_err(),
+            "特勤处试运行尚未完成清理"
+        );
+    }
+
+    #[test]
+    fn round_pause_request_does_not_cancel_active_run() {
+        let control = RoundControl::default();
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime
+            .try_start_kind("account-a".to_string(), LoginRunKind::Round)
+            .unwrap();
+        control.request_pause();
+
+        assert!(control.pause_requested());
+        assert!(!started.cancelled.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn only_pause_true_for_active_round_can_be_deferred() {
+        assert!(should_defer_round_pause(Some(LoginRunKind::Round), true));
+        assert!(!should_defer_round_pause(Some(LoginRunKind::Round), false));
+        assert!(!should_defer_round_pause(Some(LoginRunKind::Craft), true));
+        assert!(!should_defer_round_pause(None, true));
+    }
+
+    #[test]
+    fn round_account_failure_preserves_started_time_and_does_not_pause_global() {
+        let mut settings = SpecialOpsSettings {
+            paused: false,
+            accounts: vec![account(
+                "selected",
+                AccountStatus::Ready,
+                vec![station(StationKind::Workbench, 100)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+        let started_at = settings.accounts[0].stations[0].started_at_ms;
+        let error = round_runner::AccountRunError::account_station(
+            StationKind::Workbench,
+            "craft.abort",
+            "识别失败",
+        );
+
+        apply_round_account_failure(&mut settings, "selected", &error, 200).unwrap();
+
+        assert!(!settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+        assert_eq!(
+            settings.accounts[0].stations[0].status,
+            StationStatus::Uncertain
+        );
+        assert_eq!(settings.accounts[0].stations[0].started_at_ms, started_at);
+    }
 
     fn persist_test_login_result(
         coordinator: &SettingsCoordinator,
@@ -2783,6 +8482,13 @@ mod tests {
                     height: 40,
                 });
             }
+            calibration_target_mut(&mut settings, "runtime.mouseParking").rect =
+                Some(CalibrationRect {
+                    x: 1,
+                    y: 1,
+                    width: 1,
+                    height: 1,
+                });
             Self {
                 settings,
                 _exe_files: vec![wegame_exe, game_exe],
@@ -2800,6 +8506,39 @@ mod tests {
             .iter_mut()
             .find(|target| target.key == key)
             .unwrap()
+    }
+
+    fn configure_required_execution_targets(
+        settings: &mut SpecialOpsSettings,
+    ) -> Vec<tempfile::NamedTempFile> {
+        let required_keys = required_execution_target_keys(settings);
+        let mut references = Vec::new();
+        for target in settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .filter(|target| required_keys.contains(&target.key))
+        {
+            let side = if target.kind == CalibrationTargetKind::ClickPoint {
+                1
+            } else {
+                30
+            };
+            target.rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: side,
+                height: side,
+            });
+            if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
+                let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+                std::fs::write(reference.path(), target.key.as_bytes()).unwrap();
+                target.reference_image_path = Some(reference.path().display().to_string());
+                target.verified_signature = Some(calibration_signature(target).unwrap());
+                target.verified_at_ms = Some(1);
+                references.push(reference);
+            }
+        }
+        references
     }
 
     fn station(kind: StationKind, finishes_at_ms: i64) -> StationPlan {
@@ -2822,6 +8561,8 @@ mod tests {
             initialized: true,
             order: 0,
             status,
+            independent_settings_enabled: false,
+            independent_business_config: None,
             stations,
             ammo_targets: Vec::new(),
             last_failure: None,
@@ -2844,7 +8585,7 @@ mod tests {
         );
 
         let mut calibration_changed = settings.clone();
-        calibration_changed.calibration_environments[0].targets[0]
+        calibration_target_mut(&mut calibration_changed, "wegame.loginMode")
             .rect
             .as_mut()
             .unwrap()
@@ -2873,6 +8614,385 @@ mod tests {
 
         assert!(settings.paused);
         assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+    }
+
+    #[test]
+    fn manual_login_failure_persists_redacted_message_only() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        apply_login_flow_result(
+            &mut settings,
+            "selected",
+            &login_flow::LoginFlowResult::NeedsManualLogin {
+                account_id: "selected".to_string(),
+                failed_step: login_flow::LoginStep::ScanRememberedAccounts,
+                failure_message: "未找到目标 QQ；扫描轨迹：页 1 槽位 1 (1719,755) -> ***3589"
+                    .to_string(),
+                failed_at: 42,
+            },
+            login_runtime::StopReason::Normal,
+            "v1-deadbeef",
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::NeedsManualLogin);
+        let failure = account.last_failure.as_ref().unwrap();
+        assert_eq!(
+            failure.message,
+            "未找到目标 QQ；扫描轨迹：页 1 槽位 1 (1719,755) -> ***3589"
+        );
+        assert!(!failure.message.contains("3079643589"));
+    }
+
+    #[test]
+    fn craft_cancel_after_input_marks_account_and_station_uncertain() {
+        let fixture = LoginFixture::complete();
+        let mut settings = fixture.settings;
+        settings.accounts[0].stations = vec![station(StationKind::Workbench, 10_000)];
+
+        mark_craft_cancel_uncertain(&mut settings, "selected", StationKind::Workbench, 42).unwrap();
+
+        assert!(settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+        assert_eq!(
+            settings.accounts[0].stations[0].status,
+            StationStatus::Uncertain
+        );
+        assert_eq!(
+            settings.accounts[0].last_failure.as_ref().unwrap().step,
+            "craftCancel"
+        );
+    }
+
+    #[test]
+    fn craft_success_persistence_returns_revision_without_reentrant_lock() {
+        let coordinator = SettingsCoordinator::new();
+        let initial_revision = coordinator.current_revision().unwrap();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![station(StationKind::TechnicalCenter, 10_000)];
+        let settings = Mutex::new(initial);
+
+        let (_, revision) = persist_craft_success_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::TechnicalCenter,
+            1_000,
+            60,
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        assert_eq!(revision, initial_revision + 1);
+        let stored = settings.lock().unwrap();
+        let station = stored.accounts[0]
+            .stations
+            .iter()
+            .find(|station| station.kind == StationKind::TechnicalCenter)
+            .unwrap();
+        assert_eq!(station.started_at_ms, Some(1_000));
+        assert_eq!(station.finishes_at_ms, Some(3_601_000));
+    }
+
+    #[test]
+    fn craft_success_persistence_failure_keeps_memory_unchanged() {
+        let coordinator = SettingsCoordinator::new();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![station(StationKind::TechnicalCenter, 10_000)];
+        let settings = Mutex::new(initial);
+        let before = settings.lock().unwrap().clone();
+
+        let error = persist_craft_success_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::TechnicalCenter,
+            1_000,
+            60,
+            |_| Err("测试保存失败".to_string()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "测试保存失败");
+        assert_eq!(*settings.lock().unwrap(), before);
+    }
+
+    #[test]
+    fn craft_cancel_before_first_input_keeps_business_state() {
+        assert!(!should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Normal),
+            false,
+        ));
+        assert!(should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Normal),
+            true,
+        ));
+        assert!(should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Emergency),
+            true,
+        ));
+    }
+
+    #[test]
+    fn craft_emergency_stop_requires_uncertain_state() {
+        assert!(should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Emergency),
+            false,
+        ));
+        assert!(should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Lifecycle { uncertain: true }),
+            false,
+        ));
+        assert!(!should_mark_craft_stop_uncertain(
+            Some(login_runtime::StopReason::Lifecycle { uncertain: false }),
+            true,
+        ));
+    }
+
+    #[test]
+    fn craft_outcome_maps_to_persistence_decision() {
+        assert_eq!(
+            decide_craft_persistence(Ok(craft_runtime::CraftStationOutcome::StillInProgress)),
+            CraftPersistenceDecision::NoChange,
+        );
+        assert_eq!(
+            decide_craft_persistence(Ok(craft_runtime::CraftStationOutcome::Started {
+                started_at_ms: 42,
+            })),
+            CraftPersistenceDecision::SaveStarted { started_at_ms: 42 },
+        );
+        let uncertain = craft_trial::CraftTrialFailure {
+            step: "craft.stationOpen".to_string(),
+            message: "三次点击后均未识别到奖励页或制作列表".to_string(),
+            requires_uncertain: true,
+        };
+        assert!(matches!(
+            decide_craft_persistence(Err(uncertain)),
+            CraftPersistenceDecision::MarkUncertain { .. }
+        ));
+        let isolated = craft_trial::CraftTrialFailure {
+            step: "craft.isolated".to_string(),
+            message: "材料购买重试后仍停留在购买页面".to_string(),
+            requires_uncertain: false,
+        };
+        assert!(matches!(
+            decide_craft_persistence(Err(isolated)),
+            CraftPersistenceDecision::MarkIsolated { ref step, .. }
+                if step == "craft.isolated"
+        ));
+    }
+
+    #[test]
+    fn batch_failure_uses_current_station_and_local_input_state() {
+        let failure = craft_batch::CraftBatchFailure {
+            station: StationKind::Workbench,
+            failure: craft_trial::CraftTrialFailure {
+                step: "craft.space".to_string(),
+                message: "已取消".to_string(),
+                requires_uncertain: false,
+            },
+            entered_input: false,
+        };
+
+        assert_eq!(
+            batch_stop_context(&failure),
+            (StationKind::Workbench, false)
+        );
+    }
+
+    #[test]
+    fn later_batch_failure_preserves_earlier_station_success() {
+        let coordinator = SettingsCoordinator::new();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![
+            station(StationKind::TechnicalCenter, 10_000),
+            station(StationKind::Workbench, 10_000),
+        ];
+        let settings = Mutex::new(initial);
+
+        persist_craft_success_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::TechnicalCenter,
+            100,
+            60,
+            |_| Ok(()),
+        )
+        .unwrap();
+        persist_craft_failure_uncertain_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::Workbench,
+            200,
+            "craft.abort",
+            "识别失败",
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        let saved = settings.lock().unwrap();
+        assert_eq!(saved.accounts[0].stations[0].started_at_ms, Some(100));
+        assert_eq!(
+            saved.accounts[0].stations[0].finishes_at_ms,
+            Some(3_600_100)
+        );
+        assert_eq!(
+            saved.accounts[0].stations[0].status,
+            StationStatus::Crafting
+        );
+        assert_eq!(
+            saved.accounts[0].stations[1].status,
+            StationStatus::Uncertain
+        );
+    }
+
+    #[test]
+    fn craft_stop_persistence_failure_keeps_memory_unchanged() {
+        let coordinator = SettingsCoordinator::new();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![station(StationKind::Workbench, 10_000)];
+        let settings = Mutex::new(initial);
+        let before = settings.lock().unwrap().clone();
+
+        let error = persist_craft_uncertain_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::Workbench,
+            42,
+            |_| Err("测试保存失败".to_string()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "测试保存失败");
+        assert_eq!(*settings.lock().unwrap(), before);
+    }
+
+    #[test]
+    fn craft_runtime_uncertain_persists_actual_failure_details() {
+        let coordinator = SettingsCoordinator::new();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![station(StationKind::Workbench, 10_000)];
+        let settings = Mutex::new(initial);
+
+        persist_craft_failure_uncertain_with(
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::Workbench,
+            42,
+            "craft.stationOpen",
+            "3 次点击后仍未识别到奖励页或制作列表",
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        let saved = settings.lock().unwrap();
+        let account = &saved.accounts[0];
+        assert_eq!(account.status, AccountStatus::Uncertain);
+        assert_eq!(
+            account.last_failure.as_ref().unwrap().step,
+            "craft.stationOpen"
+        );
+        assert_eq!(
+            account.last_failure.as_ref().unwrap().message,
+            "3 次点击后仍未识别到奖励页或制作列表"
+        );
+        assert_eq!(account.stations[0].status, StationStatus::Uncertain);
+    }
+
+    #[test]
+    fn craft_emergency_stop_persistence_unlocks_runtime_cleanup() {
+        let runtime = login_runtime::LoginRuntime::default();
+        let started = runtime
+            .try_start_kind("selected".to_string(), login_runtime::LoginRunKind::Craft)
+            .unwrap();
+        runtime
+            .request_stop(started.run_id, login_runtime::StopReason::Emergency)
+            .unwrap()
+            .unwrap();
+        let coordinator = SettingsCoordinator::new();
+        let fixture = LoginFixture::complete();
+        let mut initial = fixture.settings;
+        initial.accounts[0].stations = vec![station(StationKind::Workbench, 10_000)];
+        let settings = Mutex::new(initial);
+
+        persist_craft_stop_with(
+            &runtime,
+            started.run_id,
+            &settings,
+            &coordinator,
+            "selected",
+            &StationKind::Workbench,
+            42,
+            true,
+            |_| Ok(()),
+        )
+        .unwrap();
+
+        assert!(runtime.cleanup_ready(started.run_id).unwrap());
+    }
+
+    #[test]
+    fn operation_window_must_finish_loading_before_worker_handoff() {
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        ready_tx.send(()).unwrap();
+
+        wait_for_operation_window_ready(ready_rx, std::time::Duration::from_millis(10)).unwrap();
+    }
+
+    #[test]
+    fn operation_window_load_timeout_rejects_worker_handoff() {
+        let (_ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+
+        let error = wait_for_operation_window_ready(ready_rx, std::time::Duration::from_millis(1))
+            .unwrap_err();
+
+        assert_eq!(error, OPERATION_WINDOW_LOAD_TIMEOUT);
+    }
+
+    #[test]
+    fn operation_window_reuses_existing_label_and_hides_between_runs() {
+        let source = include_str!("mod.rs");
+        let create_start = source.find("fn create_operation_window(").unwrap();
+        let builder_offset = source[create_start..]
+            .find("tauri::WebviewWindowBuilder::new(")
+            .unwrap();
+        let setup = &source[create_start..create_start + builder_offset];
+
+        assert!(setup.contains("if let Some(window) = app.get_webview_window"));
+        assert!(setup.contains("window.show()"));
+        assert!(!setup.contains("destroy_operation_window"));
+        assert!(source.contains("fn hide_operation_window("));
+        assert!(source.contains("let result = hide_operation_window(app);"));
+    }
+
+    #[test]
+    fn navigation_emergency_stop_requires_uncertain_persistence() {
+        let outcome =
+            navigation_stop_outcome(Some(login_runtime::StopReason::Emergency), "selected", 42)
+                .unwrap();
+
+        assert_eq!(outcome.1, login_runtime::StopReason::Emergency);
+        assert!(matches!(
+            outcome.0,
+            login_flow::LoginFlowResult::EmergencyStopped {
+                account_id,
+                stopped_at: 42,
+            } if account_id == "selected"
+        ));
+        assert!(
+            navigation_stop_outcome(Some(login_runtime::StopReason::Normal), "selected", 42,)
+                .is_none()
+        );
     }
 
     #[test]
@@ -3153,7 +9273,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_worker_persistence_skips_cleanup_and_keeps_active_run() {
+    fn failed_worker_persistence_still_cleans_up_and_releases_active_run() {
         let runtime = login_runtime::LoginRuntime::default();
         let started = runtime.try_start("selected".to_string()).unwrap();
         let cleanup_calls = std::sync::atomic::AtomicUsize::new(0);
@@ -3162,15 +9282,27 @@ mod tests {
 
         let error = cleanup_login_worker_after_persistence(&persist_result, || {
             cleanup_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            runtime.finish(started.run_id, LoginRunStatus::Failed, "不应执行 cleanup")?;
+            runtime.finish(started.run_id, LoginRunStatus::Failed, "已清理")?;
             Ok(())
         })
         .unwrap_err();
 
         assert_eq!(error, "测试持久化失败");
-        assert_eq!(cleanup_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
-        assert_eq!(runtime.snapshot().unwrap().unwrap().run_id, started.run_id);
-        assert!(runtime.try_start("next".to_string()).is_err());
+        assert_eq!(cleanup_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(runtime.snapshot().unwrap().is_none());
+        assert!(runtime.try_start("next".to_string()).is_ok());
+    }
+
+    #[test]
+    fn failed_worker_persistence_combines_cleanup_error() {
+        let persist_result: Result<(), String> = Err("业务失败".to_string());
+
+        let error = cleanup_login_worker_after_persistence(&persist_result, || {
+            Err("资源清理失败".to_string())
+        })
+        .unwrap_err();
+
+        assert_eq!(error, "业务失败; 资源清理失败");
     }
 
     #[test]
@@ -3270,6 +9402,8 @@ mod tests {
         let (_, snapshot) = start_login_run_with_resources(
             &runtime,
             "selected".to_string(),
+            LoginRunKind::Login,
+            || Ok(()),
             || Ok(()),
             || Ok(()),
             |snapshot| events.lock().unwrap().push(snapshot.status),
@@ -3312,6 +9446,8 @@ mod tests {
             start_login_run_with_resources(
                 &start_runtime,
                 "selected".to_string(),
+                LoginRunKind::Login,
+                || Ok(()),
                 || Ok(()),
                 || {
                     create_entered_tx.send(()).unwrap();
@@ -3340,11 +9476,11 @@ mod tests {
             .unwrap();
         create_release_tx.send(()).unwrap();
 
-        assert_eq!(stopped.status, LoginRunStatus::Stopped);
+        assert_eq!(stopped.status, LoginRunStatus::Stopping);
         assert!(start.join().unwrap().is_err());
         assert_eq!(
             events.lock().unwrap().as_slice(),
-            &[LoginRunStatus::Stopped]
+            &[LoginRunStatus::Stopping]
         );
         assert_eq!(spawn_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(runtime.snapshot().unwrap().is_none());
@@ -3367,11 +9503,13 @@ mod tests {
             start_login_run_with_resources(
                 &start_runtime,
                 "selected".to_string(),
+                LoginRunKind::Login,
                 || {
                     register_entered_tx.send(()).unwrap();
                     register_release_rx.recv().unwrap();
                     Ok(())
                 },
+                || Ok(()),
                 || {
                     start_create_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     Ok(())
@@ -3498,10 +9636,22 @@ mod tests {
 
     #[test]
     fn resource_cleanup_attempts_hotkey_and_window_and_aggregates_errors() {
-        for (hotkey_fails, window_fails) in [(true, false), (false, true), (true, true)] {
+        for (input_fails, hotkey_fails, window_fails) in [
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+            (true, true, true),
+        ] {
             let calls = Mutex::new(Vec::new());
             let error = release_login_resources_with(
-                || calls.lock().unwrap().push("inputs"),
+                || {
+                    calls.lock().unwrap().push("inputs");
+                    if input_fails {
+                        Err("输入释放失败".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
                 || {
                     calls.lock().unwrap().push("hotkey");
                     if hotkey_fails {
@@ -3522,9 +9672,30 @@ mod tests {
             .unwrap_err();
 
             assert_eq!(*calls.lock().unwrap(), ["inputs", "hotkey", "window"]);
+            assert_eq!(error.contains("输入释放失败"), input_fails);
             assert_eq!(error.contains("热键清理失败"), hotkey_fails);
             assert_eq!(error.contains("窗口销毁失败"), window_fails);
         }
+    }
+
+    #[test]
+    fn emergency_dispatch_requests_stop_before_releasing_inputs() {
+        let calls = Mutex::new(Vec::new());
+
+        let snapshot = request_then_release_emergency(
+            || {
+                calls.lock().unwrap().push("request");
+                Ok(42_u64)
+            },
+            || {
+                calls.lock().unwrap().push("release");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(snapshot, 42);
+        assert_eq!(*calls.lock().unwrap(), ["request", "release"]);
     }
 
     #[test]
@@ -3736,6 +9907,8 @@ mod tests {
             step: "old".to_string(),
             message: "old".to_string(),
             at_ms: 1,
+            station_kind: None,
+            ammo_target_id: None,
         });
 
         apply_login_flow_result(
@@ -3775,7 +9948,9 @@ mod tests {
             scroll_steps: 7,
             order: 0,
             last_success_day: Some("2026-07-25".to_string()),
+            retry_day: Some("2026-07-25".to_string()),
             retry_count: 3,
+            last_failure: None,
         });
 
         assert_eq!(
@@ -3788,11 +9963,24 @@ mod tests {
     fn bootstrap_contains_current_run_snapshot() {
         let runtime = login_runtime::LoginRuntime::default();
         let started = runtime.try_start("selected".to_string()).unwrap();
+        let profit_runtime = ProfitQueryControl::default();
+        let settings = SpecialOpsSettings {
+            paused: false,
+            profit_filter: ProfitFilterSettings {
+                enabled: true,
+                ..ProfitFilterSettings::default()
+            },
+            ..SpecialOpsSettings::default()
+        };
 
         let bootstrap =
-            build_bootstrap_with_runtime(SpecialOpsSettings::default(), 7, 8, &runtime).unwrap();
+            build_bootstrap_with_runtime(settings, 7, 0, &runtime, &profit_runtime).unwrap();
 
         assert_eq!(bootstrap.run_snapshot.unwrap().run_id, started.run_id);
+        assert_ne!(
+            bootstrap.profit_runtime.phase,
+            profit::runtime::ProfitRuntimePhase::Disabled
+        );
     }
 
     #[test]
@@ -3921,7 +10109,7 @@ mod tests {
     #[test]
     fn schedule_groups_all_due_stations_and_skips_isolated_accounts() {
         let now = 10_000_000;
-        let settings = SpecialOpsSettings {
+        let mut settings = SpecialOpsSettings {
             enabled: true,
             paused: false,
             daily_exchange_time: "08:00".to_string(),
@@ -3943,6 +10131,8 @@ mod tests {
             ],
             ..SpecialOpsSettings::default()
         };
+        settings.default_business_config.ammo_targets =
+            business_config_from_account(&settings.accounts[0]).ammo_targets;
 
         let snapshot = build_schedule(&settings, now);
 
@@ -3955,11 +10145,416 @@ mod tests {
     }
 
     #[test]
+    fn ammo_scroll_segments_only_scroll_down_from_ad_reset_state() {
+        assert_eq!(
+            ammo_reset_keys(),
+            [
+                crate::hotkey_types::PrimaryKey::Letter('A'),
+                crate::hotkey_types::PrimaryKey::Letter('D')
+            ]
+        );
+        assert_eq!(AMMO_RESET_KEY_DELAY_MS, 100);
+        assert!(ammo_scroll_segments(0).is_empty());
+        assert_eq!(ammo_scroll_segments(11), vec![(1, 11)]);
+        assert_eq!(AMMO_SCROLL_STEP_INTERVAL_MS, 100);
+        assert_eq!(AMMO_SCROLL_SETTLE_MS, 1_000);
+    }
+
+    #[test]
+    fn business_action_migration_adds_notes_click_points_and_scroll_direction() {
+        let mut value = serde_json::to_value(SpecialOpsSettings::default()).unwrap();
+        value["defaultBusinessConfig"]["ammoTargets"] = serde_json::json!([{
+            "id": "legacy-a",
+            "name": "5.45 BT",
+            "enabled": true,
+            "seasonal": false,
+            "scrollDirection": "up",
+            "scrollSteps": 3,
+            "order": 0
+        }]);
+
+        let loaded: SpecialOpsSettings = serde_json::from_value(value).unwrap();
+        let once = normalize_settings(loaded).unwrap();
+        let twice = normalize_settings(once.clone()).unwrap();
+        let serialized = serde_json::to_value(&twice).unwrap();
+
+        assert_eq!(twice, once);
+        assert_eq!(
+            serialized["defaultBusinessConfig"]["stations"][0]["recipeNote"],
+            ""
+        );
+        let target = &serialized["defaultBusinessConfig"]["ammoTargets"][0];
+        assert_eq!(target["note"], "5.45 BT");
+        assert!(target["clickPoint"].is_null());
+        assert_eq!(target["scrollDirection"], "down");
+        assert_eq!(target["scrollSteps"], 3);
+    }
+
+    #[test]
+    fn business_point_scope_updates_only_selected_ammo_target() {
+        let target = AmmoBusinessTarget {
+            id: "ammo-a".to_string(),
+            note: "目标 A".to_string(),
+            enabled: true,
+            seasonal: false,
+            click_point: None,
+            scroll_direction: ScrollDirection::Down,
+            scroll_steps: 0,
+            order: 0,
+            profit_rule_id: None,
+        };
+        let mut settings = SpecialOpsSettings::default();
+        settings.default_business_config.ammo_targets = vec![target.clone()];
+        let mut independent = account("independent", AccountStatus::Ready, Vec::new());
+        independent.independent_settings_enabled = true;
+        independent.independent_business_config = Some(BusinessConfig {
+            ammo_targets: vec![target],
+            ..settings.default_business_config.clone()
+        });
+        settings.accounts.push(independent);
+        let default_point = CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 1,
+            height: 1,
+        };
+        let account_point = CalibrationRect {
+            x: 30,
+            y: 40,
+            width: 1,
+            height: 1,
+        };
+
+        apply_ammo_business_selection(&mut settings, None, "ammo-a", default_point.clone())
+            .unwrap();
+        apply_ammo_business_selection(
+            &mut settings,
+            Some("independent"),
+            "ammo-a",
+            account_point.clone(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            settings.default_business_config.ammo_targets[0].click_point,
+            Some(default_point)
+        );
+        assert_eq!(
+            settings.accounts[0]
+                .independent_business_config
+                .as_ref()
+                .unwrap()
+                .ammo_targets[0]
+                .click_point,
+            Some(account_point)
+        );
+    }
+
+    #[test]
+    fn recipe_reselection_keeps_recipe_note() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut selected = account("selected", AccountStatus::Ready, Vec::new());
+        selected.independent_settings_enabled = true;
+        selected.independent_business_config = Some(settings.default_business_config.clone());
+        selected
+            .independent_business_config
+            .as_mut()
+            .unwrap()
+            .stations[0]
+            .recipe_note = "高级燃料".to_string();
+        settings.accounts.push(selected);
+
+        apply_account_recipe_selection(
+            &mut settings,
+            "selected",
+            StationKind::TechnicalCenter,
+            CalibrationRect {
+                x: 1,
+                y: 2,
+                width: 1,
+                height: 1,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            settings.accounts[0]
+                .independent_business_config
+                .as_ref()
+                .unwrap()
+                .stations[0]
+                .recipe_note,
+            "高级燃料"
+        );
+    }
+
+    #[test]
+    fn schedule_timeline_projects_overdue_and_future_craft_tasks_for_all_statuses() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-30T10:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: true,
+            accounts: vec![
+                account(
+                    "ready",
+                    AccountStatus::Ready,
+                    vec![station(StationKind::TechnicalCenter, now - 60_000)],
+                ),
+                account(
+                    "isolated",
+                    AccountStatus::Isolated,
+                    vec![station(StationKind::ArmorBench, now + 60 * 60_000)],
+                ),
+            ],
+            ..SpecialOpsSettings::default()
+        };
+
+        let serialized = serde_json::to_value(build_schedule(&settings, now)).unwrap();
+        let tasks = serialized["timelineTasks"].as_array().unwrap();
+
+        assert_eq!(serialized["timelineStartMs"], now);
+        assert_eq!(serialized["timelineEndMs"], now + 24 * 60 * 60_000);
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0]["accountId"], "ready");
+        assert_eq!(tasks[0]["scheduledAtMs"], now - 60_000);
+        assert_eq!(tasks[0]["overdue"], true);
+        assert_eq!(tasks[1]["accountId"], "isolated");
+        assert_eq!(tasks[1]["accountStatus"], "isolated");
+    }
+
+    #[test]
+    fn timeline_projects_uncertain_station_as_due_manual_task() {
+        let mut selected = account(
+            "selected",
+            AccountStatus::Uncertain,
+            vec![station(StationKind::TechnicalCenter, 100)],
+        );
+        selected.stations[0].status = StationStatus::Uncertain;
+        selected.stations[0].finishes_at_ms = None;
+        selected.last_failure = Some(AccountFailure {
+            step: "craft.abort".to_string(),
+            message: "制作状态未确认".to_string(),
+            at_ms: 100,
+            station_kind: Some(StationKind::TechnicalCenter),
+            ammo_target_id: None,
+        });
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: true,
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        };
+
+        let schedule = build_schedule(&settings, 1_000);
+        let task = schedule
+            .timeline_tasks
+            .iter()
+            .find(|task| task.station_kind == Some(StationKind::TechnicalCenter))
+            .unwrap();
+
+        assert_eq!(task.scheduled_at_ms, 1_000);
+        assert!(task.overdue);
+        assert!(task.manual_failure.is_some());
+    }
+
+    #[test]
+    fn legacy_unlocated_failure_never_gets_task_level_controls() {
+        let mut selected = account(
+            "selected",
+            AccountStatus::Uncertain,
+            vec![station(StationKind::TechnicalCenter, 900)],
+        );
+        selected.last_failure = Some(AccountFailure {
+            step: "navigation.WaitStationGrid".to_string(),
+            message: "步骤超时".to_string(),
+            at_ms: 100,
+            station_kind: None,
+            ammo_target_id: None,
+        });
+        let settings = SpecialOpsSettings {
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        };
+
+        let schedule = build_schedule(&settings, 1_000);
+
+        assert!(!schedule.timeline_tasks.is_empty());
+        assert!(schedule
+            .timeline_tasks
+            .iter()
+            .all(|task| task.manual_failure.is_none()));
+    }
+
+    #[test]
+    fn timeline_projects_failed_ammo_once_even_when_retry_exhausted() {
+        let mut runtime = ammo_runtime_target("ammo-a");
+        runtime.enabled = true;
+        runtime.last_success_day = None;
+        runtime.retry_day = Some("1970-01-01".to_string());
+        runtime.retry_count = 2;
+        runtime.last_failure = Some(AccountFailure {
+            step: "ammo.success".to_string(),
+            message: "兑换状态未确认".to_string(),
+            at_ms: 100,
+            station_kind: None,
+            ammo_target_id: Some("ammo-a".to_string()),
+        });
+        let selected = AccountPlan {
+            ammo_targets: vec![runtime],
+            ..account("selected", AccountStatus::Ready, Vec::new())
+        };
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: true,
+            daily_exchange_time: "08:00".to_string(),
+            default_business_config: business_config_from_account(&selected),
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        };
+
+        let schedule = build_schedule(&settings, 1_000);
+        let tasks = schedule
+            .timeline_tasks
+            .iter()
+            .filter(|task| task.ammo_target_id.as_deref() == Some("ammo-a"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].scheduled_at_ms, 1_000);
+        assert!(tasks[0].manual_failure.is_some());
+    }
+
+    #[test]
+    fn schedule_timeline_keeps_tomorrow_ammo_after_today_succeeded() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-30T09:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let active = AccountPlan {
+            ammo_targets: vec![AmmoTarget {
+                id: "alpha".to_string(),
+                name: "目标 A".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: Some("2026-07-30".to_string()),
+                retry_day: Some("2026-07-30".to_string()),
+                retry_count: 0,
+                last_failure: None,
+            }],
+            ..account("active", AccountStatus::Ready, Vec::new())
+        };
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            default_business_config: business_config_from_account(&active),
+            accounts: vec![active],
+            ..SpecialOpsSettings::default()
+        };
+
+        let snapshot = build_schedule(&settings, now);
+
+        assert!(snapshot.due_accounts.is_empty());
+        assert_eq!(snapshot.timeline_tasks.len(), 1);
+        assert_eq!(snapshot.timeline_tasks[0].kind, TimelineTaskKind::Ammo);
+        assert_eq!(snapshot.timeline_tasks[0].note, "目标 A");
+        assert_eq!(
+            snapshot.timeline_tasks[0].scheduled_at_ms,
+            chrono::DateTime::parse_from_rfc3339("2026-07-31T08:00:00+08:00")
+                .unwrap()
+                .timestamp_millis()
+        );
+        assert!(!snapshot.timeline_tasks[0].overdue);
+    }
+
+    #[test]
+    fn profit_timeline_projects_query_wait_qualification_and_cutoff_without_changing_runtime_plan()
+    {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-30T10:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let mut active = account("active", AccountStatus::Ready, Vec::new());
+        active.ammo_targets = vec![ammo_runtime_target("alpha")];
+        active.ammo_targets[0].enabled = true;
+        active.ammo_targets[0].last_success_day = None;
+        active.ammo_targets[0].retry_day = None;
+        active.ammo_targets[0].retry_count = 0;
+        let mut settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            default_business_config: business_config_from_account(&active),
+            accounts: vec![active],
+            ..SpecialOpsSettings::default()
+        };
+        settings.default_business_config.ammo_targets[0].profit_rule_id =
+            Some("rule-a".to_string());
+        settings.profit_filter.enabled = true;
+        settings.profit_filter.cutoff_time = "17:00".to_string();
+        settings.profit_filter.rules = vec![profit::model::AmmoProfitRule {
+            id: "rule-a".to_string(),
+            display_name: "规则 A".to_string(),
+            kkrb_match_name: "KKRB A".to_string(),
+            moligod_match_name: None,
+            minimum_profit: 0,
+        }];
+
+        let waiting = build_schedule_with_profit_runtime(
+            &settings,
+            now,
+            &AmmoProfitGate::Qualified(std::collections::HashSet::new()),
+            Some(&ProfitRuntimeSnapshot::default()),
+        );
+        let task = &waiting.timeline_tasks[0];
+        assert_eq!(task.profit_state, Some(TimelineProfitState::WaitingQuery));
+        assert!(task.may_execute_earlier);
+        assert_eq!(
+            task.scheduled_at_ms,
+            chrono::DateTime::parse_from_rfc3339("2026-07-30T17:00:00+08:00")
+                .unwrap()
+                .timestamp_millis()
+        );
+
+        let qualified = build_schedule_with_profit_runtime(
+            &settings,
+            now,
+            &AmmoProfitGate::Qualified(std::collections::HashSet::from(["rule-a".to_string()])),
+            Some(&ProfitRuntimeSnapshot {
+                qualified_rule_ids: vec!["rule-a".to_string()],
+                ..ProfitRuntimeSnapshot::default()
+            }),
+        );
+        assert_eq!(
+            qualified.timeline_tasks[0].profit_state,
+            Some(TimelineProfitState::Qualified)
+        );
+        assert_eq!(qualified.timeline_tasks[0].scheduled_at_ms, now);
+
+        let after_cutoff = chrono::DateTime::parse_from_rfc3339("2026-07-30T18:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let bypass = build_schedule_with_profit_runtime(
+            &settings,
+            after_cutoff,
+            &AmmoProfitGate::CutoffBypass,
+            Some(&ProfitRuntimeSnapshot::default()),
+        );
+        assert_eq!(
+            bypass.timeline_tasks[0].profit_state,
+            Some(TimelineProfitState::CutoffBypass)
+        );
+        assert!(bypass.timeline_tasks[0].overdue);
+    }
+
+    #[test]
     fn schedule_includes_only_unredeemed_ammo_after_daily_time() {
         let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T09:00:00+08:00")
             .unwrap()
             .timestamp_millis();
-        let settings = SpecialOpsSettings {
+        let mut settings = SpecialOpsSettings {
             enabled: true,
             paused: false,
             daily_exchange_time: "08:00".to_string(),
@@ -3974,7 +10569,9 @@ mod tests {
                         scroll_steps: 0,
                         order: 1,
                         last_success_day: None,
+                        retry_day: None,
                         retry_count: 0,
+                        last_failure: None,
                     },
                     AmmoTarget {
                         id: "beta".to_string(),
@@ -3984,13 +10581,17 @@ mod tests {
                         scroll_steps: 2,
                         order: 2,
                         last_success_day: Some("2026-07-23".to_string()),
+                        retry_day: Some("2026-07-23".to_string()),
                         retry_count: 0,
+                        last_failure: None,
                     },
                 ],
                 ..account("active", AccountStatus::Ready, Vec::new())
             }],
             ..SpecialOpsSettings::default()
         };
+        settings.default_business_config.ammo_targets =
+            business_config_from_account(&settings.accounts[0]).ammo_targets;
 
         let snapshot = build_schedule(&settings, now);
 
@@ -4002,7 +10603,7 @@ mod tests {
         let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T07:00:00+08:00")
             .unwrap()
             .timestamp_millis();
-        let settings = SpecialOpsSettings {
+        let mut settings = SpecialOpsSettings {
             enabled: true,
             paused: false,
             daily_exchange_time: "08:00".to_string(),
@@ -4016,12 +10617,16 @@ mod tests {
                     scroll_steps: 0,
                     order: 0,
                     last_success_day: None,
+                    retry_day: None,
                     retry_count: 0,
+                    last_failure: None,
                 }],
                 ..account("active", AccountStatus::Ready, Vec::new())
             }],
             ..SpecialOpsSettings::default()
         };
+        settings.default_business_config.ammo_targets =
+            business_config_from_account(&settings.accounts[0]).ammo_targets;
 
         let snapshot = build_schedule(&settings, now);
 
@@ -4034,16 +10639,32 @@ mod tests {
         let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T07:57:00+08:00")
             .unwrap()
             .timestamp_millis();
+        let active = AccountPlan {
+            ammo_targets: vec![AmmoTarget {
+                id: "alpha".to_string(),
+                name: "目标 A".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            }],
+            ..account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, now - 1)],
+            )
+        };
         let settings = SpecialOpsSettings {
             enabled: true,
             paused: false,
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
-            accounts: vec![account(
-                "active",
-                AccountStatus::Ready,
-                vec![station(StationKind::TechnicalCenter, now - 1)],
-            )],
+            default_business_config: business_config_from_account(&active),
+            accounts: vec![active],
             ..SpecialOpsSettings::default()
         };
 
@@ -4051,6 +10672,15 @@ mod tests {
 
         assert!(snapshot.due_accounts.is_empty());
         assert_eq!(snapshot.next_wake_at_ms, Some(now + 3 * 60 * 1000));
+
+        let due = build_schedule(&settings, now + 3 * 60 * 1000);
+        assert_eq!(due.due_accounts.len(), 1);
+        assert_eq!(
+            due.due_accounts[0].station_kinds,
+            [StationKind::TechnicalCenter]
+        );
+        assert_eq!(due.due_accounts[0].ammo_target_ids, ["alpha"]);
+        assert_eq!(due.next_wake_at_ms, Some(now + 3 * 60 * 1000));
     }
 
     #[test]
@@ -4093,6 +10723,44 @@ mod tests {
     }
 
     #[test]
+    fn execution_preflight_rejects_unverified_required_template() {
+        let mut settings = SpecialOpsSettings {
+            accounts: vec![account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, 1)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+        let _references = configure_required_execution_targets(&mut settings);
+        assert!(validate_execution_ready(&settings).is_ok());
+
+        calibration_target_mut(&mut settings, "craft.produce").verified_signature = None;
+
+        assert!(validate_execution_ready(&settings)
+            .unwrap_err()
+            .contains("生产按钮识别与点击区域 尚未测试或验证失效"));
+    }
+
+    #[test]
+    fn resume_keeps_paused_when_execution_preflight_fails() {
+        let mut settings = SpecialOpsSettings {
+            paused: true,
+            accounts: vec![account(
+                "active",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, 1)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+
+        let error = apply_paused_state(&mut settings, false).unwrap_err();
+
+        assert!(error.contains("校准未完成"));
+        assert!(settings.paused);
+    }
+
+    #[test]
     fn execution_preflight_reports_deleted_target_in_execution_order() {
         let mut settings = SpecialOpsSettings {
             accounts: vec![account(
@@ -4102,6 +10770,8 @@ mod tests {
             )],
             ..SpecialOpsSettings::default()
         };
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), b"execution-preflight").unwrap();
         let environment = &mut settings.calibration_environments[0];
         for target in &mut environment.targets {
             target.rect = Some(CalibrationRect {
@@ -4111,8 +10781,9 @@ mod tests {
                 height: 10,
             });
             if target.recognition_method == Some(CalibrationRecognitionMethod::Template) {
-                target.reference_image_path =
-                    Some(std::env::current_exe().unwrap().display().to_string());
+                target.reference_image_path = Some(reference.path().display().to_string());
+                target.verified_signature = Some(calibration_signature(target).unwrap());
+                target.verified_at_ms = Some(1);
             }
         }
         environment
@@ -4140,17 +10811,27 @@ mod tests {
             scroll_steps: 0,
             order: 0,
             last_success_day: None,
+            retry_day: None,
             retry_count: 0,
+            last_failure: None,
         });
+        let default_business_config = business_config_from_account(&active);
         let settings = SpecialOpsSettings {
+            default_business_config,
             accounts: vec![active],
             ..SpecialOpsSettings::default()
         };
 
         let keys = required_execution_target_keys(&settings);
         assert!(keys.contains("craft.station.technicalCenter"));
+        assert!(keys.contains("craft.confirmPinned"));
+        assert!(keys.contains("craft.returnToStationGrid"));
+        assert!(keys.contains("craft.recipe.technicalCenter"));
+        assert!(!keys.contains("craft.recipeListReady.technicalCenter"));
+        assert!(!keys.contains("craft.openRecipeList.technicalCenter"));
         assert!(!keys.contains("craft.station.workbench"));
-        assert!(keys.contains("ammo.target"));
+        assert!(!keys.contains("ammo.target"));
+        assert!(!keys.contains("ammo.selectedTargetName"));
         assert!(!keys.contains("ammo.seasonal"));
     }
 
@@ -4222,13 +10903,10 @@ mod tests {
 
     #[test]
     fn state_changed_payload_excludes_settings_and_accounts() {
-        let mut settings = SpecialOpsSettings::default();
-        settings
-            .accounts
-            .push(account("selected", AccountStatus::Ready, Vec::new()));
-        let bootstrap = build_bootstrap(settings, 17, 23);
-
-        let payload = SpecialOpsStateChanged::from(&bootstrap);
+        let payload = SpecialOpsStateChanged {
+            settings_revision: 17,
+            now_ms: 23,
+        };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(!json.contains("\"password\""));
         assert!(!json.contains("\"settings\""));
@@ -4246,6 +10924,22 @@ mod tests {
         assert!(!template_test_passed([0.99, 0.99], f32::NAN));
         assert!(!template_test_passed([0.99, 0.99], -0.01));
         assert!(!template_test_passed([0.99, 0.99], 1.01));
+    }
+
+    #[test]
+    fn only_game_templates_require_game_test_context() {
+        for key in ["game.stationGrid", "craft.abort", "ammo.success"] {
+            assert!(calibration_test_requires_game_context(key));
+        }
+        assert!(!calibration_test_requires_game_context("wegame.launch"));
+    }
+
+    #[test]
+    fn ammo_success_diagnostic_filename_contains_safe_context() {
+        assert_eq!(
+            ammo_success_diagnostic_filename(1234, "3079643589"),
+            "1234-3079643589-ammo.success.png"
+        );
     }
 
     #[test]
@@ -4513,10 +11207,19 @@ mod tests {
         let actions = targets
             .iter()
             .filter(|target| {
-                matches!(
-                    target.kind,
-                    CalibrationTargetKind::ClickPoint | CalibrationTargetKind::InputRegion
-                )
+                target.key != "runtime.mouseParking"
+                    && target.key != "game.specialOps"
+                    && target.key != "ammo.supply"
+                    && target.key != "ammo.tactical"
+                    && target.key != "ammo.seasonal"
+                    && target.key != "craft.confirmPinned"
+                    && target.key != "craft.returnToStationGrid"
+                    && !target.key.starts_with("craft.station.")
+                    && !target.key.starts_with("craft.recipe.")
+                    && matches!(
+                        target.kind,
+                        CalibrationTargetKind::ClickPoint | CalibrationTargetKind::InputRegion
+                    )
             })
             .collect::<Vec<_>>();
 
@@ -4538,12 +11241,87 @@ mod tests {
     }
 
     #[test]
-    fn default_dynamic_text_targets_use_ocr() {
+    fn beacon_mode_is_click_point_guarded_by_mode_ready() {
+        let target = default_calibration_targets()
+            .into_iter()
+            .find(|target| target.key == "game.beaconMode")
+            .unwrap();
+
+        assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
+        assert_eq!(target.guard_any_of, vec!["game.modeReady".to_string()]);
+    }
+
+    #[test]
+    fn click_point_calibration_accepts_single_pixel_coordinate() {
+        assert!(validate_calibration_selection(
+            CalibrationTargetKind::ClickPoint,
+            &CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 1,
+                height: 1,
+            },
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn recognition_calibration_rejects_single_pixel_coordinate() {
+        assert_eq!(
+            validate_calibration_selection(
+                CalibrationTargetKind::RecognitionRegion,
+                &CalibrationRect {
+                    x: 10,
+                    y: 20,
+                    width: 1,
+                    height: 1,
+                },
+            )
+            .unwrap_err(),
+            "校准区域太小"
+        );
+    }
+
+    #[test]
+    fn normalize_clears_legacy_beacon_recognition_region() {
+        let mut settings = SpecialOpsSettings::default();
+        let target = calibration_target_mut(&mut settings, "game.beaconMode");
+        target.kind = CalibrationTargetKind::RecognitionRegion;
+        target.rect = Some(CalibrationRect {
+            x: 1,
+            y: 2,
+            width: 30,
+            height: 40,
+        });
+        target.reference_image_path = Some("legacy.png".to_string());
+        target.verified_signature = Some("legacy".to_string());
+        target.verified_at_ms = Some(1);
+
+        let normalized = normalize_settings(settings).unwrap();
+        let target = normalized.calibration_environments[0]
+            .targets
+            .iter()
+            .find(|target| target.key == "game.beaconMode")
+            .unwrap();
+
+        assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
+        assert!(target.rect.is_none());
+        assert!(target.reference_image_path.is_none());
+        assert!(target.verified_signature.is_none());
+        assert!(target.verified_at_ms.is_none());
+    }
+
+    #[test]
+    fn default_dynamic_text_targets_only_keep_remembered_account_ocr() {
         let targets = default_calibration_targets();
 
+        assert!(!targets
+            .iter()
+            .any(|target| target.key == "ammo.selectedTargetName"));
+        assert!(!targets.iter().any(|target| target.key == "ammo.target"));
         let target = targets
             .iter()
-            .find(|target| target.key == "ammo.selectedTargetName")
+            .find(|target| target.key == "wegame.accountList")
             .unwrap();
         assert_eq!(
             target.recognition_method,
@@ -4561,10 +11339,10 @@ mod tests {
     }
 
     #[test]
-    fn calibration_template_test_requires_template_region_and_reference() {
+    fn calibration_test_requires_template_region_and_reference() {
         let mut settings = SpecialOpsSettings::default();
         assert_eq!(
-            calibration_template_test_input(&settings, "default", "wegame.loginMode").unwrap_err(),
+            calibration_test_input(&settings, "default", "wegame.loginMode").unwrap_err(),
             "WeGame QQ 账号密码登录入口识别与点击区域 尚未框选"
         );
 
@@ -4583,8 +11361,11 @@ mod tests {
         std::fs::write(reference.path(), b"reference").unwrap();
         target.reference_image_path = Some(reference.path().display().to_string());
         let expected_signature = calibration_signature(target).unwrap();
-        let input =
-            calibration_template_test_input(&settings, "default", "wegame.loginMode").unwrap();
+        let CalibrationTestInput::Template(input) =
+            calibration_test_input(&settings, "default", "wegame.loginMode").unwrap()
+        else {
+            panic!("模板校准目标应返回模板测试输入");
+        };
         assert_eq!(
             (
                 input.region.x,
@@ -4600,10 +11381,46 @@ mod tests {
         );
         assert_eq!(input.match_threshold, 0.75);
         assert_eq!(input.calibration_signature, expected_signature);
+    }
+
+    #[test]
+    fn calibration_test_accepts_account_list_ocr_region() {
+        let mut settings = SpecialOpsSettings::default();
+        let target = settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "wegame.accountList")
+            .unwrap();
+        target.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+        });
+
+        assert!(matches!(
+            calibration_test_input(&settings, "default", "wegame.accountList"),
+            Ok(CalibrationTestInput::Ocr { .. })
+        ));
+    }
+
+    #[test]
+    fn calibration_ocr_test_result_serializes_camel_case_fields() {
+        let value = serde_json::to_value(CalibrationTestResult::Ocr {
+            first_texts: vec!["3079643589".to_string()],
+            second_texts: vec!["3079643589".to_string()],
+            passed: true,
+        })
+        .unwrap();
+
         assert_eq!(
-            calibration_template_test_input(&settings, "default", "ammo.selectedTargetName")
-                .unwrap_err(),
-            "OCR 测试尚未接入，不能伪造识别结果"
+            value,
+            serde_json::json!({
+                "method": "ocr",
+                "firstTexts": ["3079643589"],
+                "secondTexts": ["3079643589"],
+                "passed": true,
+            })
         );
     }
 
@@ -4621,8 +11438,126 @@ mod tests {
         assert_eq!(normalized.active_calibration_id.as_deref(), Some("default"));
     }
 
+    // 验证特勤处运行期不读取同步可见性，直接隐藏非主窗口和非操作提示窗。
     #[test]
-    fn normalize_replaces_shared_claim_ready_with_station_targets() {
+    fn special_ops_window_guard_filters_operation_and_detects_selection_overlays() {
+        assert!(!should_hide_for_special_ops("main"));
+        assert!(!should_hide_for_special_ops("special-ops-operation"));
+        assert!(should_hide_for_special_ops("timer-display-main"));
+        assert!(is_active_selection_overlay("morse-overlay"));
+        assert!(is_active_selection_overlay("timer-position-group"));
+        assert!(is_active_selection_overlay("counter-position-group"));
+        assert!(is_active_selection_overlay("rapidfire-position-group"));
+        assert!(is_active_selection_overlay(
+            "special-ops-calibration-default"
+        ));
+        assert!(!is_active_selection_overlay("timer-display-group"));
+    }
+
+    #[test]
+    fn hidden_tool_windows_use_tool_reconciliation_instead_of_direct_show() {
+        let plan = hidden_window_restore_plan([
+            "timer-display-main".to_string(),
+            "counter-display-main".to_string(),
+            "rapidfire-display-main".to_string(),
+            "recognition-overlay".to_string(),
+            "custom-window".to_string(),
+        ]);
+
+        assert!(plan.reconcile_tool_windows);
+        assert_eq!(plan.direct_labels, vec!["custom-window".to_string()]);
+    }
+
+    #[test]
+    fn craft_station_click_has_no_positive_guard() {
+        for kind in StationKind::all() {
+            let suffix = kind.calibration_suffix();
+            let guards = default_guard_any_of(&format!("craft.station.{suffix}"));
+            assert!(guards.is_empty());
+        }
+    }
+
+    // 验证统一资源清理会在输入、热键和操作窗口释放后执行窗口恢复闭包。
+    #[test]
+    fn release_login_resources_with_runs_window_restore_after_other_cleanup() {
+        let events = Mutex::new(Vec::new());
+        let result = release_login_resources_with(
+            || {
+                events.lock().unwrap().push("inputs");
+                Ok(())
+            },
+            || {
+                events.lock().unwrap().push("hotkey");
+                Ok(())
+            },
+            || {
+                events.lock().unwrap().push("window");
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(
+            events.into_inner().unwrap(),
+            vec!["inputs", "hotkey", "window"]
+        );
+    }
+
+    // 验证固定探测只保留制作台、共享确认置顶点和每台物品选择点。
+    #[test]
+    fn craft_fixed_probe_removes_recipe_list_ready_targets() {
+        let keys = default_calibration_targets()
+            .into_iter()
+            .map(|target| target.key)
+            .collect::<std::collections::HashSet<_>>();
+
+        for kind in StationKind::all() {
+            let suffix = kind.calibration_suffix();
+            assert!(keys.contains(&format!("craft.station.{suffix}")));
+            assert!(keys.contains(&format!("craft.recipe.{suffix}")));
+            assert!(!keys.contains(&format!("craft.recipeListReady.{suffix}")));
+            assert!(!keys.contains(&format!("craft.openRecipeList.{suffix}")));
+        }
+        assert!(keys.contains("craft.confirmPinned"));
+    }
+
+    // 验证旧配置中的独立进入列表点击点会在规范化时被白名单清理。
+    #[test]
+    fn normalize_removes_legacy_open_recipe_list_targets() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.calibration_environments[0]
+            .targets
+            .push(CalibrationTarget {
+                key: "craft.openRecipeList.technicalCenter".to_string(),
+                label: "旧技术中心进入制作列表点击区域".to_string(),
+                kind: CalibrationTargetKind::ClickPoint,
+                rect: Some(CalibrationRect {
+                    x: 10,
+                    y: 20,
+                    width: 1,
+                    height: 1,
+                }),
+                reference_image_path: None,
+                recognition_method: None,
+                guard_any_of: vec!["craft.idle.technicalCenter".to_string()],
+                match_threshold: default_match_threshold(),
+                verified_signature: None,
+                verified_at_ms: None,
+            });
+
+        let normalized = normalize_settings(settings).unwrap();
+        let keys = normalized.calibration_environments[0]
+            .targets
+            .iter()
+            .map(|target| target.key.as_str())
+            .collect::<std::collections::HashSet<_>>();
+
+        assert!(!keys.contains("craft.openRecipeList.technicalCenter"));
+        assert!(keys.contains("craft.station.technicalCenter"));
+    }
+
+    #[test]
+    fn normalize_removes_legacy_claim_ready_and_in_progress_targets() {
         let mut settings = SpecialOpsSettings::default();
         settings.calibration_environments[0]
             .targets
@@ -4655,8 +11590,11 @@ mod tests {
                 .iter()
                 .filter(|target| target.key.starts_with("craft.claimReady."))
                 .count(),
-            4
+            0
         );
+        assert!(!targets
+            .iter()
+            .any(|target| target.key.starts_with("craft.inProgress.")));
     }
 
     #[test]
@@ -4743,7 +11681,7 @@ mod tests {
                 .iter()
                 .filter(|target| target.key.starts_with("craft.idle."))
                 .count(),
-            4
+            0
         );
     }
 
@@ -4765,6 +11703,224 @@ mod tests {
         ));
 
         assert!(normalize_settings(settings).is_ok());
+    }
+
+    #[test]
+    fn navigation_delays_default_to_three_seconds() {
+        let settings = SpecialOpsSettings::default();
+
+        assert_eq!(settings.navigation_space_delay_ms, 3_000);
+        assert_eq!(settings.navigation_tab_delay_ms, 3_000);
+        assert_eq!(settings.navigation_special_ops_delay_ms, 3_000);
+        assert_eq!(settings.navigation_beacon_delay_ms, 3_000);
+    }
+
+    #[test]
+    fn navigation_delays_accept_boundaries_and_reject_above_sixty_seconds() {
+        let mut settings = SpecialOpsSettings {
+            navigation_space_delay_ms: 0,
+            navigation_tab_delay_ms: 60_000,
+            ..SpecialOpsSettings::default()
+        };
+        assert!(normalize_settings(settings.clone()).is_ok());
+
+        settings.navigation_special_ops_delay_ms = 60_001;
+        assert_eq!(
+            normalize_settings(settings).unwrap_err(),
+            "游戏内导航等待时间必须是 0–60000ms 的整数"
+        );
+    }
+
+    #[test]
+    fn ammo_entry_delays_default_to_three_seconds_and_validate_range() {
+        let mut settings = SpecialOpsSettings::default();
+        assert_eq!(settings.ammo_supply_delay_ms, 3_000);
+        assert_eq!(settings.ammo_tactical_delay_ms, 3_000);
+
+        settings.ammo_supply_delay_ms = 0;
+        settings.ammo_tactical_delay_ms = 60_000;
+        assert!(normalize_settings(settings.clone()).is_ok());
+
+        settings.ammo_tactical_delay_ms = 60_001;
+        assert_eq!(
+            normalize_settings(settings).unwrap_err(),
+            "子弹入口固定等待时间必须是 0–60000ms 的整数"
+        );
+    }
+
+    #[test]
+    fn ammo_entry_normalization_removes_list_templates_and_uses_click_points() {
+        let settings = normalize_settings(SpecialOpsSettings::default()).unwrap();
+        let targets = &settings.calibration_environments[0].targets;
+
+        assert!(targets
+            .iter()
+            .all(|target| !matches!(target.key.as_str(), "ammo.list" | "ammo.seasonalList")));
+        for key in ["ammo.supply", "ammo.tactical", "ammo.seasonal"] {
+            let target = targets.iter().find(|target| target.key == key).unwrap();
+            assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
+            assert_eq!(target.recognition_method, None);
+            assert_eq!(target.reference_image_path, None);
+        }
+    }
+
+    #[test]
+    fn ammo_retry_count_resets_when_retry_day_changes() {
+        let mut target = AmmoTarget {
+            id: "ammo".to_string(),
+            name: "测试子弹".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: Some("2026-07-30".to_string()),
+            retry_count: 2,
+            last_failure: None,
+        };
+
+        prepare_ammo_retry_state(&mut target, "2026-07-31");
+
+        assert_eq!(target.retry_day.as_deref(), Some("2026-07-31"));
+        assert_eq!(target.retry_count, 0);
+    }
+
+    #[test]
+    fn legacy_ammo_runtime_without_retry_day_migrates_to_none() {
+        let target: AmmoTarget = serde_json::from_str(
+            r#"{"id":"ammo","name":"测试子弹","enabled":true,"seasonal":false,"scrollSteps":0,"order":0,"lastSuccessDay":null,"retryCount":1}"#,
+        )
+        .unwrap();
+
+        assert_eq!(target.retry_day, None);
+        assert_eq!(target.retry_count, 1);
+    }
+
+    #[test]
+    fn craft_probe_defaults_replace_legacy_recognition_targets() {
+        let settings = SpecialOpsSettings::default();
+        assert_eq!(settings.craft_space_delay_ms, 3_000);
+        assert_eq!(settings.craft_reopen_delay_ms, 3_000);
+        assert_eq!(settings.craft_confirm_pinned_delay_ms, 3_000);
+
+        let targets = default_calibration_targets();
+        let keys = targets
+            .iter()
+            .map(|target| target.key.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(keys.contains("craft.confirmPinned"));
+        assert!(keys.contains("craft.returnToStationGrid"));
+        assert!(!keys.contains("craft.reward"));
+        assert!(!keys.iter().any(|key| key.starts_with("craft.inProgress.")));
+        assert!(!keys
+            .iter()
+            .any(|key| key.starts_with("craft.recipeListReady.")));
+        for kind in StationKind::all() {
+            let suffix = kind.calibration_suffix();
+            let recipe = targets
+                .iter()
+                .find(|target| target.key == format!("craft.recipe.{suffix}"))
+                .unwrap();
+            assert!(recipe.label.contains("制作物品选择点击点"));
+            assert!(recipe.guard_any_of.is_empty());
+        }
+    }
+
+    #[test]
+    fn ammo_confirmation_uses_shared_template_click_target() {
+        let targets = default_calibration_targets();
+        let confirm = targets
+            .iter()
+            .find(|target| target.key == "ammo.confirm")
+            .expect("默认校准必须包含子弹二次确认");
+        assert_eq!(confirm.label, "兑换二次确认按钮识别与点击区域");
+        assert_eq!(confirm.kind, CalibrationTargetKind::RecognitionRegion);
+        assert_eq!(
+            confirm.recognition_method,
+            Some(CalibrationRecognitionMethod::Template)
+        );
+
+        let success = targets
+            .iter()
+            .find(|target| target.key == "ammo.success")
+            .expect("默认校准必须包含兑换完成状态");
+        assert_eq!(success.label, "兑换完成状态识别区域");
+    }
+
+    #[test]
+    fn enabled_ammo_requires_confirm_template_before_execution() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.default_business_config.ammo_targets =
+            vec![ammo_business_target("normal", false, 0)];
+
+        let keys = required_execution_target_keys(&settings);
+
+        assert!(keys.contains("ammo.confirm"));
+    }
+
+    #[test]
+    fn craft_probe_delays_accept_boundaries_and_reject_above_limit() {
+        let settings = SpecialOpsSettings {
+            craft_space_delay_ms: 0,
+            craft_reopen_delay_ms: 60_000,
+            craft_confirm_pinned_delay_ms: 0,
+            ..SpecialOpsSettings::default()
+        };
+        assert!(normalize_settings(settings.clone()).is_ok());
+
+        let mut invalid = settings;
+        invalid.craft_confirm_pinned_delay_ms = 60_001;
+        assert_eq!(
+            normalize_settings(invalid).unwrap_err(),
+            "制作台固定等待时间必须是 0–60000ms 的整数"
+        );
+    }
+
+    #[test]
+    fn navigation_targets_remove_intermediate_templates() {
+        let targets = default_calibration_targets();
+
+        assert!(!targets
+            .iter()
+            .any(|target| target.key == "game.activityPopup"));
+        assert!(!targets.iter().any(|target| target.key == "game.startGame"));
+        let target = targets
+            .iter()
+            .find(|target| target.key == "game.specialOps")
+            .unwrap();
+        assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
+        assert_eq!(target.recognition_method, None);
+        assert!(target.guard_any_of.is_empty());
+    }
+
+    #[test]
+    fn normalize_clears_legacy_special_ops_template() {
+        let mut settings = SpecialOpsSettings::default();
+        let target = settings.calibration_environments[0]
+            .targets
+            .iter_mut()
+            .find(|target| target.key == "game.specialOps")
+            .unwrap();
+        target.kind = CalibrationTargetKind::RecognitionRegion;
+        target.rect = Some(CalibrationRect {
+            x: 1,
+            y: 2,
+            width: 20,
+            height: 20,
+        });
+        target.reference_image_path = Some("legacy.png".to_string());
+        target.verified_signature = Some("legacy".to_string());
+
+        let normalized = normalize_settings(settings).unwrap();
+        let migrated = normalized.calibration_environments[0]
+            .targets
+            .iter()
+            .find(|target| target.key == "game.specialOps")
+            .unwrap();
+        assert_eq!(migrated.kind, CalibrationTargetKind::ClickPoint);
+        assert_eq!(migrated.rect, None);
+        assert_eq!(migrated.reference_image_path, None);
+        assert_eq!(migrated.verified_signature, None);
     }
 
     #[test]
@@ -4815,6 +11971,40 @@ mod tests {
         settings.game_executable_path.clear();
         let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
         assert!(error.contains("游戏 .exe"));
+    }
+
+    #[test]
+    fn default_calibration_contains_special_ops_mouse_parking_point() {
+        let target = default_calibration_targets()
+            .into_iter()
+            .find(|target| target.key == "runtime.mouseParking")
+            .expect("应包含特勤处鼠标停放点");
+
+        assert_eq!(target.label, "特勤处鼠标停放点");
+        assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
+        assert!(target.reference_image_path.is_none());
+        assert!(target.recognition_method.is_none());
+    }
+
+    #[test]
+    fn special_ops_trials_reject_disabled_global_state() {
+        assert_eq!(
+            ensure_global_automation_enabled(false).unwrap_err(),
+            "全局总开关已关闭"
+        );
+        assert!(ensure_global_automation_enabled(true).is_ok());
+    }
+
+    #[test]
+    fn mouse_parking_region_requires_calibrated_point() {
+        let mut fixture = LoginFixture::complete();
+        let target = calibration_target_mut(&mut fixture.settings, "runtime.mouseParking");
+        target.rect = None;
+
+        assert_eq!(
+            mouse_parking_region(&fixture.settings).unwrap_err(),
+            "特勤处鼠标停放点尚未校准"
+        );
     }
 
     #[test]
@@ -4940,5 +12130,1596 @@ mod tests {
             let error = validate_login_trial_ready(&settings, "selected").unwrap_err();
             assert!(error.contains("尚未测试或验证失效"), "{error}");
         }
+    }
+
+    #[test]
+    fn navigation_trial_preflight_requires_two_templates_and_two_click_points() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.wegame_executable_path.clear();
+        for key in ["game.modeReady", "game.stationGrid"] {
+            let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+            std::fs::write(reference.path(), key).unwrap();
+            let target = calibration_target_mut(&mut fixture.settings, key);
+            target.rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 30,
+                height: 40,
+            });
+            target.reference_image_path = Some(reference.path().display().to_string());
+            target.verified_signature = Some(calibration_signature(target).unwrap());
+            target.verified_at_ms = Some(1);
+            fixture._reference_files.push(reference);
+        }
+        let beacon = calibration_target_mut(&mut fixture.settings, "game.beaconMode");
+        beacon.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 1,
+            height: 1,
+        });
+        let special_ops = calibration_target_mut(&mut fixture.settings, "game.specialOps");
+        special_ops.rect = Some(CalibrationRect {
+            x: 40,
+            y: 50,
+            width: 1,
+            height: 1,
+        });
+
+        let config = freeze_navigation_run_config(
+            &fixture.settings,
+            "selected",
+            game_navigation::NavigationDestination::StationGrid,
+        )
+        .unwrap();
+        let beacon = config.targets.get("game.beaconMode").unwrap();
+        let special_ops = config.targets.get("game.specialOps").unwrap();
+
+        assert_eq!(config.targets.len(), 4);
+        assert!(beacon.template.is_none());
+        assert_eq!(beacon.guard_any_of, vec!["game.modeReady".to_string()]);
+        assert!(special_ops.template.is_none());
+        assert!(special_ops.guard_any_of.is_empty());
+        assert_eq!(
+            config.destination,
+            game_navigation::NavigationDestination::StationGrid
+        );
+    }
+
+    #[test]
+    fn lobby_navigation_preflight_does_not_require_special_ops_targets() {
+        let mut fixture = LoginFixture::complete();
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), "game.modeReady").unwrap();
+        let ready = calibration_target_mut(&mut fixture.settings, "game.modeReady");
+        ready.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+        });
+        ready.reference_image_path = Some(reference.path().display().to_string());
+        ready.verified_signature = Some(calibration_signature(ready).unwrap());
+        ready.verified_at_ms = Some(1);
+        fixture._reference_files.push(reference);
+        calibration_target_mut(&mut fixture.settings, "game.beaconMode").rect =
+            Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 1,
+                height: 1,
+            });
+
+        let config = freeze_navigation_run_config(
+            &fixture.settings,
+            "selected",
+            game_navigation::NavigationDestination::Lobby,
+        )
+        .unwrap();
+
+        assert_eq!(config.targets.len(), 2);
+        assert!(!config.targets.contains_key("game.specialOps"));
+        assert!(!config.targets.contains_key("game.stationGrid"));
+        assert_eq!(
+            config.destination,
+            game_navigation::NavigationDestination::Lobby
+        );
+    }
+
+    #[test]
+    fn craft_trial_preflight_uses_fixed_probe_targets() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.accounts[0].stations.push(StationPlan {
+            kind: StationKind::TechnicalCenter,
+            enabled: true,
+            item_name: String::new(),
+            duration_minutes: 60,
+            started_at_ms: None,
+            finishes_at_ms: None,
+            status: StationStatus::Ready,
+        });
+        fixture.settings.craft_space_delay_ms = 100;
+        fixture.settings.craft_reopen_delay_ms = 200;
+        fixture.settings.craft_confirm_pinned_delay_ms = 300;
+        let keys = [
+            "craft.station.technicalCenter",
+            "craft.confirmPinned",
+            "craft.returnToStationGrid",
+            "craft.recipe.technicalCenter",
+            "game.stationGrid",
+            "craft.fill",
+            "craft.purchase",
+            "craft.produce",
+            "craft.abort",
+        ];
+        for key in keys {
+            let target = calibration_target_mut(&mut fixture.settings, key);
+            target.rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 30,
+                height: 40,
+            });
+            if target.kind != CalibrationTargetKind::ClickPoint {
+                let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+                std::fs::write(reference.path(), key).unwrap();
+                target.reference_image_path = Some(reference.path().display().to_string());
+                fixture._reference_files.push(reference);
+            }
+        }
+
+        let (config, _) =
+            freeze_craft_run_config(&fixture.settings, "selected", StationKind::TechnicalCenter)
+                .unwrap();
+
+        assert_eq!(
+            config
+                .targets
+                .keys()
+                .map(String::as_str)
+                .collect::<std::collections::HashSet<_>>(),
+            keys.into_iter().collect()
+        );
+        assert_eq!(
+            config.delays,
+            craft_runtime::CraftProbeDelays {
+                space_ms: 100,
+                reopen_ms: 200,
+                confirm_pinned_ms: 300,
+            }
+        );
+        assert!(!config.targets.contains_key("craft.reward"));
+        assert!(!config
+            .targets
+            .keys()
+            .any(|key| key.starts_with("craft.inProgress.")));
+        assert!(!config
+            .targets
+            .keys()
+            .any(|key| key.starts_with("craft.recipeListReady.")));
+
+        for missing_key in [
+            "craft.confirmPinned",
+            "craft.returnToStationGrid",
+            "craft.recipe.technicalCenter",
+        ] {
+            let mut missing = fixture.settings.clone();
+            calibration_target_mut(&mut missing, missing_key).rect = None;
+            assert!(
+                freeze_craft_run_config(&missing, "selected", StationKind::TechnicalCenter,)
+                    .err()
+                    .unwrap()
+                    .contains("未框选")
+            );
+        }
+
+        let mut missing_abort = fixture.settings.clone();
+        calibration_target_mut(&mut missing_abort, "craft.abort").reference_image_path = None;
+        assert!(
+            freeze_craft_run_config(&missing_abort, "selected", StationKind::TechnicalCenter,)
+                .err()
+                .unwrap()
+                .contains("尚未上传参考图")
+        );
+    }
+
+    #[test]
+    fn craft_batch_preflight_freezes_all_due_stations() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.accounts[0].stations = vec![
+            StationPlan {
+                kind: StationKind::Workbench,
+                enabled: true,
+                item_name: String::new(),
+                duration_minutes: 120,
+                started_at_ms: Some(0),
+                finishes_at_ms: Some(100),
+                status: StationStatus::Crafting,
+            },
+            StationPlan {
+                kind: StationKind::TechnicalCenter,
+                enabled: true,
+                item_name: String::new(),
+                duration_minutes: 60,
+                started_at_ms: Some(0),
+                finishes_at_ms: Some(100),
+                status: StationStatus::Crafting,
+            },
+        ];
+        for station in &mut fixture.settings.default_business_config.stations {
+            match station.kind {
+                StationKind::TechnicalCenter => station.duration_minutes = 480,
+                StationKind::Workbench => station.duration_minutes = 360,
+                _ => {}
+            }
+        }
+        let keys = [
+            "craft.station.technicalCenter",
+            "craft.station.workbench",
+            "craft.confirmPinned",
+            "craft.returnToStationGrid",
+            "craft.recipe.technicalCenter",
+            "craft.recipe.workbench",
+            "game.stationGrid",
+            "craft.fill",
+            "craft.purchase",
+            "craft.produce",
+            "craft.abort",
+        ];
+        for key in keys {
+            let target = calibration_target_mut(&mut fixture.settings, key);
+            target.rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 30,
+                height: 40,
+            });
+            if target.kind != CalibrationTargetKind::ClickPoint {
+                let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+                std::fs::write(reference.path(), key).unwrap();
+                target.reference_image_path = Some(reference.path().display().to_string());
+                fixture._reference_files.push(reference);
+            }
+        }
+
+        let frozen =
+            freeze_craft_batch_run_configs(&fixture.settings, "selected", 100, None).unwrap();
+
+        assert_eq!(frozen.len(), 2);
+        assert_eq!(frozen[0].task.station, StationKind::TechnicalCenter);
+        assert_eq!(frozen[0].task.duration_minutes, 480);
+        assert!(frozen[0]
+            .config
+            .targets
+            .contains_key("craft.recipe.technicalCenter"));
+        assert_eq!(frozen[1].task.station, StationKind::Workbench);
+        assert_eq!(frozen[1].task.duration_minutes, 360);
+        assert!(frozen[1]
+            .config
+            .targets
+            .contains_key("craft.recipe.workbench"));
+
+        let mut missing_second_recipe = fixture.settings.clone();
+        calibration_target_mut(&mut missing_second_recipe, "craft.recipe.workbench").rect = None;
+        assert!(
+            freeze_craft_batch_run_configs(&missing_second_recipe, "selected", 100, None)
+                .err()
+                .unwrap()
+                .contains("craft.recipe.workbench")
+        );
+
+        fixture.settings.accounts[0]
+            .stations
+            .iter_mut()
+            .for_each(|station| station.finishes_at_ms = Some(101));
+        assert_eq!(
+            freeze_craft_batch_run_configs(&fixture.settings, "selected", 100, None)
+                .err()
+                .unwrap(),
+            "当前账号没有到期制作台"
+        );
+    }
+
+    #[test]
+    fn default_business_config_enables_all_four_stations() {
+        let settings = SpecialOpsSettings::default();
+
+        assert_eq!(settings.default_business_config.stations.len(), 4);
+        assert!(settings
+            .default_business_config
+            .stations
+            .iter()
+            .all(|station| station.enabled));
+        assert!(settings.default_business_config.ammo_targets.is_empty());
+    }
+
+    #[test]
+    fn inherited_account_resolves_default_station_business_values() {
+        let mut settings = SpecialOpsSettings::default();
+        settings
+            .default_business_config
+            .stations
+            .iter_mut()
+            .find(|station| station.kind == StationKind::TechnicalCenter)
+            .unwrap()
+            .duration_minutes = 480;
+        let mut inherited = account(
+            "inherited",
+            AccountStatus::Ready,
+            vec![StationPlan {
+                kind: StationKind::TechnicalCenter,
+                enabled: true,
+                item_name: String::new(),
+                duration_minutes: 120,
+                started_at_ms: Some(10),
+                finishes_at_ms: Some(20),
+                status: StationStatus::Crafting,
+            }],
+        );
+        inherited.independent_settings_enabled = false;
+        inherited.independent_business_config = None;
+        settings.accounts.push(inherited);
+
+        let resolved = resolve_account_business_config(&settings, &settings.accounts[0]).unwrap();
+
+        assert_eq!(resolved.stations[0].duration_minutes, 480);
+        assert_eq!(settings.accounts[0].stations[0].finishes_at_ms, Some(20));
+    }
+
+    #[test]
+    fn account_recipe_selection_updates_only_independent_business_config() {
+        let mut settings = LoginFixture::complete().settings;
+        let global_rect = calibration_target_mut(&mut settings, "craft.recipe.technicalCenter")
+            .rect
+            .clone();
+        settings.accounts[0].independent_settings_enabled = true;
+        settings.accounts[0].independent_business_config =
+            Some(settings.default_business_config.clone());
+        let selected = CalibrationRect {
+            x: 321,
+            y: 654,
+            width: 1,
+            height: 1,
+        };
+
+        apply_account_recipe_selection(
+            &mut settings,
+            "selected",
+            StationKind::TechnicalCenter,
+            selected.clone(),
+        )
+        .unwrap();
+
+        let business = settings.accounts[0]
+            .independent_business_config
+            .as_ref()
+            .unwrap();
+        assert_eq!(business.recipe_points.len(), 1);
+        assert_eq!(business.recipe_points[0].kind, StationKind::TechnicalCenter);
+        assert_eq!(business.recipe_points[0].rect, selected);
+        assert_eq!(
+            calibration_target_mut(&mut settings, "craft.recipe.technicalCenter").rect,
+            global_rect
+        );
+    }
+
+    #[test]
+    fn account_recipe_selection_rejects_inherited_account() {
+        let mut settings = LoginFixture::complete().settings;
+
+        let error = apply_account_recipe_selection(
+            &mut settings,
+            "selected",
+            StationKind::TechnicalCenter,
+            CalibrationRect {
+                x: 1,
+                y: 2,
+                width: 1,
+                height: 1,
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("未开启独立设置"));
+    }
+
+    #[test]
+    fn manual_correction_initializes_and_restores_uncertain_account_after_all_four_stations_are_confirmed(
+    ) {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "selected",
+            AccountStatus::Uncertain,
+            StationKind::all()
+                .into_iter()
+                .map(|kind| station(kind, 1))
+                .collect(),
+        ));
+        settings.accounts[0].initialized = false;
+        let corrections = vec![
+            StationCorrectionInput {
+                kind: StationKind::TechnicalCenter,
+                state: ManualStationState::Crafting,
+                remaining_minutes: Some(160),
+            },
+            StationCorrectionInput {
+                kind: StationKind::Workbench,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            },
+            StationCorrectionInput {
+                kind: StationKind::Pharmacy,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            },
+            StationCorrectionInput {
+                kind: StationKind::ArmorBench,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            },
+        ];
+
+        apply_manual_station_corrections(&mut settings, "selected", &corrections, 1_000).unwrap();
+
+        let account = &settings.accounts[0];
+        assert!(account.initialized);
+        assert_eq!(account.status, AccountStatus::Ready);
+        assert_eq!(account.stations[0].status, StationStatus::Crafting);
+        assert_eq!(account.stations[0].finishes_at_ms, Some(9_601_000));
+        assert!(account.stations[1..]
+            .iter()
+            .all(|station| station.status == StationStatus::Ready
+                && station.finishes_at_ms == Some(1_000)));
+        settings.paused = false;
+        let plan =
+            round_planner::build_round_plan(&settings, 1_000, round_planner::RoundTrigger::Manual)
+                .unwrap();
+        assert_eq!(plan.accounts.len(), 1);
+        assert_eq!(plan.accounts[0].stations.len(), 3);
+    }
+
+    #[test]
+    fn manual_account_correction_allows_initialized_ready_account() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "selected",
+            AccountStatus::Ready,
+            StationKind::all()
+                .into_iter()
+                .map(|kind| station(kind, 1))
+                .collect(),
+        ));
+        let corrections = StationKind::all()
+            .into_iter()
+            .map(|kind| StationCorrectionInput {
+                kind,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            })
+            .collect::<Vec<_>>();
+
+        apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &corrections,
+            &[],
+            1_000,
+            "1970-01-01",
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::Ready);
+        assert!(account.stations.iter().all(|station| {
+            station.status == StationStatus::Ready && station.finishes_at_ms == Some(1_000)
+        }));
+    }
+
+    fn settings_with_station_failure(failed_kind: StationKind) -> SpecialOpsSettings {
+        let mut selected = account(
+            "selected",
+            AccountStatus::Uncertain,
+            vec![
+                station(StationKind::TechnicalCenter, 100),
+                station(StationKind::Workbench, 200),
+            ],
+        );
+        selected.last_failure = Some(AccountFailure {
+            step: "craft.abort".to_string(),
+            message: "制作状态未确认".to_string(),
+            at_ms: 100,
+            station_kind: Some(failed_kind),
+            ammo_target_id: None,
+        });
+        SpecialOpsSettings {
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        }
+    }
+
+    #[test]
+    fn station_correction_keeps_other_ammo_failure() {
+        let mut settings = settings_with_station_failure(StationKind::Workbench);
+        let untouched = settings.accounts[0].stations[0].clone();
+        let ammo_failure = AccountFailure {
+            step: "ammo.success".to_string(),
+            message: "兑换状态未确认".to_string(),
+            at_ms: 200,
+            station_kind: None,
+            ammo_target_id: Some("ammo-a".to_string()),
+        };
+        settings.accounts[0].ammo_targets.push(AmmoTarget {
+            id: "ammo-a".to_string(),
+            name: "子弹 A".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: None,
+            retry_count: 0,
+            last_failure: Some(ammo_failure.clone()),
+        });
+
+        apply_single_station_correction(
+            &mut settings,
+            "selected",
+            &StationCorrectionInput {
+                kind: StationKind::Workbench,
+                state: ManualStationState::Crafting,
+                remaining_minutes: Some(160),
+            },
+            1_000,
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::Ready);
+        assert_eq!(account.stations[0], untouched);
+        assert_eq!(account.stations[1].finishes_at_ms, Some(9_601_000));
+        assert_eq!(
+            account.ammo_targets[0].last_failure,
+            Some(ammo_failure.clone())
+        );
+        assert_eq!(account.last_failure, Some(ammo_failure));
+    }
+
+    #[test]
+    fn single_station_correction_maps_immediate_due_and_idle() {
+        let due = resolve_station_correction(
+            &StationCorrectionInput {
+                kind: StationKind::Workbench,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            },
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(due, (None, Some(1_000), StationStatus::Ready));
+
+        let idle = resolve_station_correction(
+            &StationCorrectionInput {
+                kind: StationKind::Workbench,
+                state: ManualStationState::Idle,
+                remaining_minutes: None,
+            },
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(idle, (None, None, StationStatus::Idle));
+    }
+
+    #[test]
+    fn single_station_correction_validates_remaining_minutes_boundaries() {
+        for remaining_minutes in [None, Some(0), Some(10_081)] {
+            let error = resolve_station_correction(
+                &StationCorrectionInput {
+                    kind: StationKind::Workbench,
+                    state: ManualStationState::Crafting,
+                    remaining_minutes,
+                },
+                1_000,
+            )
+            .unwrap_err();
+            assert_eq!(error, "正在制作的剩余时间必须为 1 分钟到 168 小时");
+        }
+        for remaining_minutes in [1, 10_080] {
+            assert!(resolve_station_correction(
+                &StationCorrectionInput {
+                    kind: StationKind::Workbench,
+                    state: ManualStationState::Crafting,
+                    remaining_minutes: Some(remaining_minutes),
+                },
+                1_000,
+            )
+            .is_ok());
+        }
+    }
+
+    #[test]
+    fn single_station_correction_rejects_wrong_failure_locator() {
+        let mut settings = settings_with_station_failure(StationKind::Workbench);
+        let error = apply_single_station_correction(
+            &mut settings,
+            "selected",
+            &StationCorrectionInput {
+                kind: StationKind::TechnicalCenter,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            },
+            1_000,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "当前制作台没有待人工判定的失败记录");
+    }
+
+    #[test]
+    fn single_station_correction_cannot_bypass_login_failures() {
+        for status in [AccountStatus::NeedsManualLogin, AccountStatus::LoginFailed] {
+            let mut settings = settings_with_station_failure(StationKind::Workbench);
+            settings.accounts[0].status = status;
+            let error = apply_single_station_correction(
+                &mut settings,
+                "selected",
+                &StationCorrectionInput {
+                    kind: StationKind::Workbench,
+                    state: ManualStationState::ImmediateDue,
+                    remaining_minutes: None,
+                },
+                1_000,
+            )
+            .unwrap_err();
+            assert_eq!(error, "需要人工登录或登录失败账号不能通过单项校正恢复");
+        }
+    }
+
+    fn settings_with_two_failed_ammo_targets() -> SpecialOpsSettings {
+        let mut selected = account("selected", AccountStatus::Ready, Vec::new());
+        selected.ammo_targets = ["ammo-a", "ammo-b"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| AmmoTarget {
+                id: id.to_string(),
+                name: id.to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: index as u32,
+                last_success_day: None,
+                retry_day: Some("2026-08-05".to_string()),
+                retry_count: 1,
+                last_failure: Some(AccountFailure {
+                    step: "ammo.success".to_string(),
+                    message: "兑换状态未确认".to_string(),
+                    at_ms: 100 + index as i64,
+                    station_kind: None,
+                    ammo_target_id: Some(id.to_string()),
+                }),
+            })
+            .collect();
+        selected.last_failure = selected.ammo_targets[1].last_failure.clone();
+        SpecialOpsSettings {
+            default_business_config: business_config_from_account(&selected),
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        }
+    }
+
+    #[test]
+    fn single_ammo_correction_clears_only_selected_failure() {
+        let mut settings = settings_with_two_failed_ammo_targets();
+
+        apply_single_ammo_correction(
+            &mut settings,
+            "selected",
+            &AmmoCorrectionInput {
+                target_id: "ammo-a".to_string(),
+                succeeded_today: true,
+            },
+            "2026-08-05",
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(
+            account.ammo_targets[0].last_success_day.as_deref(),
+            Some("2026-08-05")
+        );
+        assert_eq!(account.ammo_targets[0].last_failure, None);
+        assert!(account.ammo_targets[1].last_failure.is_some());
+        assert_eq!(
+            account
+                .last_failure
+                .as_ref()
+                .and_then(|failure| failure.ammo_target_id.as_deref()),
+            Some("ammo-b")
+        );
+    }
+
+    #[test]
+    fn ammo_correction_false_reenters_today_schedule() {
+        let mut settings = settings_with_two_failed_ammo_targets();
+        settings.enabled = true;
+        settings.paused = false;
+        settings.daily_exchange_time = "08:00".to_string();
+        settings.accounts[0].ammo_targets[0].last_success_day = Some("2026-08-05".to_string());
+        settings.accounts[0].ammo_targets[0].retry_count = 2;
+
+        apply_single_ammo_correction(
+            &mut settings,
+            "selected",
+            &AmmoCorrectionInput {
+                target_id: "ammo-a".to_string(),
+                succeeded_today: false,
+            },
+            "2026-08-05",
+        )
+        .unwrap();
+
+        let target = &settings.accounts[0].ammo_targets[0];
+        assert_eq!(target.last_success_day, None);
+        assert_eq!(target.retry_day.as_deref(), Some("2026-08-05"));
+        assert_eq!(target.retry_count, 0);
+        assert_eq!(target.last_failure, None);
+        let now = chrono::DateTime::parse_from_rfc3339("2026-08-05T09:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let schedule = build_schedule(&settings, now);
+        assert!(schedule.due_accounts.iter().any(|account| {
+            account.account_id == "selected"
+                && account
+                    .ammo_target_ids
+                    .iter()
+                    .any(|target| target == "ammo-a")
+        }));
+    }
+
+    #[test]
+    fn full_manual_correction_clears_all_target_failures() {
+        let mut settings = settings_with_two_failed_ammo_targets();
+        settings.accounts[0].stations = StationKind::all()
+            .into_iter()
+            .map(|kind| station(kind, 1))
+            .collect();
+        settings.default_business_config = business_config_from_account(&settings.accounts[0]);
+        let stations = StationKind::all()
+            .into_iter()
+            .map(|kind| StationCorrectionInput {
+                kind,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            })
+            .collect::<Vec<_>>();
+        let ammo = ["ammo-a", "ammo-b"]
+            .into_iter()
+            .map(|target_id| AmmoCorrectionInput {
+                target_id: target_id.to_string(),
+                succeeded_today: false,
+            })
+            .collect::<Vec<_>>();
+
+        apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &stations,
+            &ammo,
+            1_000,
+            "2026-08-05",
+        )
+        .unwrap();
+
+        assert!(settings.accounts[0]
+            .ammo_targets
+            .iter()
+            .all(|target| target.last_failure.is_none()));
+        assert_eq!(settings.accounts[0].last_failure, None);
+    }
+
+    #[test]
+    fn normal_ammo_retry_failure_does_not_require_manual_correction() {
+        let mut selected = account("selected", AccountStatus::Ready, Vec::new());
+        let mut runtime = ammo_runtime_target("ammo-a");
+        runtime.enabled = true;
+        runtime.last_success_day = None;
+        runtime.retry_day = None;
+        runtime.retry_count = 0;
+        selected.ammo_targets = vec![runtime];
+        let mut settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            default_business_config: BusinessConfig {
+                ammo_targets: vec![ammo_business_target("ammo-a", false, 0)],
+                ..BusinessConfig::default()
+            },
+            accounts: vec![selected],
+            ..SpecialOpsSettings::default()
+        };
+
+        apply_ammo_failure(
+            &mut settings,
+            "selected",
+            "ammo-a",
+            "2026-08-05",
+            "ammo.exchange",
+            "本次兑换失败",
+            1_000,
+        )
+        .unwrap();
+
+        let target = &settings.accounts[0].ammo_targets[0];
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(target.retry_count, 1);
+        assert_eq!(target.last_failure, None);
+    }
+
+    #[test]
+    fn legacy_json_uses_first_account_business_values_as_defaults() {
+        let mut legacy = SpecialOpsSettings::default();
+        legacy.accounts.push(account(
+            "first",
+            AccountStatus::Ready,
+            vec![StationPlan {
+                kind: StationKind::TechnicalCenter,
+                enabled: true,
+                item_name: String::new(),
+                duration_minutes: 240,
+                started_at_ms: Some(10),
+                finishes_at_ms: Some(20),
+                status: StationStatus::Crafting,
+            }],
+        ));
+        let mut json = serde_json::to_value(legacy).unwrap();
+        json.as_object_mut()
+            .unwrap()
+            .remove("defaultBusinessConfig");
+        let parsed: SpecialOpsSettings = serde_json::from_value(json).unwrap();
+
+        let normalized = normalize_settings(parsed).unwrap();
+
+        let technical = normalized
+            .default_business_config
+            .stations
+            .iter()
+            .find(|station| station.kind == StationKind::TechnicalCenter)
+            .unwrap();
+        assert_eq!(technical.duration_minutes, 240);
+        assert!(!normalized.accounts[0].independent_settings_enabled);
+        assert_eq!(normalized.accounts[0].stations[0].finishes_at_ms, Some(20));
+    }
+
+    fn ammo_business_target(id: &str, seasonal: bool, order: u32) -> AmmoBusinessTarget {
+        AmmoBusinessTarget {
+            id: id.to_string(),
+            note: format!("目标 {id}"),
+            enabled: true,
+            seasonal,
+            click_point: Some(CalibrationRect {
+                x: 100 + order as i32,
+                y: 200,
+                width: 1,
+                height: 1,
+            }),
+            scroll_direction: ScrollDirection::Down,
+            scroll_steps: order,
+            order,
+            profit_rule_id: None,
+        }
+    }
+
+    fn ammo_runtime_target(id: &str) -> AmmoTarget {
+        AmmoTarget {
+            id: id.to_string(),
+            name: format!("旧目标 {id}"),
+            enabled: false,
+            seasonal: false,
+            scroll_steps: 99,
+            order: 99,
+            last_success_day: Some("2026-07-30".to_string()),
+            retry_day: Some("2026-07-31".to_string()),
+            retry_count: 1,
+            last_failure: None,
+        }
+    }
+
+    #[test]
+    fn pending_profit_rules_only_include_ready_configured_retryable_targets_once() {
+        let day = "2026-08-02";
+        let mut settings = SpecialOpsSettings::default();
+        settings.default_business_config.ammo_targets = vec![
+            AmmoBusinessTarget {
+                profit_rule_id: Some("rule-a".to_string()),
+                ..ammo_business_target("shared", false, 0)
+            },
+            AmmoBusinessTarget {
+                click_point: None,
+                profit_rule_id: Some("rule-b".to_string()),
+                ..ammo_business_target("missing-point", false, 1)
+            },
+            AmmoBusinessTarget {
+                profit_rule_id: Some("rule-c".to_string()),
+                ..ammo_business_target("exhausted", false, 2)
+            },
+        ];
+        settings.profit_filter.enabled = true;
+        settings.profit_filter.rules = vec![
+            profit::model::AmmoProfitRule {
+                id: "rule-a".to_string(),
+                display_name: "规则 A".to_string(),
+                kkrb_match_name: "KKRB A".to_string(),
+                moligod_match_name: None,
+                minimum_profit: 1,
+            },
+            profit::model::AmmoProfitRule {
+                id: "rule-b".to_string(),
+                display_name: "规则 B".to_string(),
+                kkrb_match_name: "KKRB B".to_string(),
+                moligod_match_name: None,
+                minimum_profit: 1,
+            },
+            profit::model::AmmoProfitRule {
+                id: "rule-c".to_string(),
+                display_name: "规则 C".to_string(),
+                kkrb_match_name: "KKRB C".to_string(),
+                moligod_match_name: None,
+                minimum_profit: 1,
+            },
+        ];
+
+        let mut ready = account("ready", AccountStatus::Ready, Vec::new());
+        ready.ammo_targets = vec![
+            AmmoTarget {
+                id: "shared".to_string(),
+                name: String::new(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+            AmmoTarget {
+                id: "exhausted".to_string(),
+                name: String::new(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 2,
+                order: 2,
+                last_success_day: None,
+                retry_day: Some(day.to_string()),
+                retry_count: 2,
+                last_failure: None,
+            },
+        ];
+        let mut duplicate = ready.clone();
+        duplicate.id = "duplicate".to_string();
+        let mut succeeded = ready.clone();
+        succeeded.id = "succeeded".to_string();
+        succeeded.ammo_targets[0].last_success_day = Some(day.to_string());
+        let mut uninitialized = ready.clone();
+        uninitialized.id = "uninitialized".to_string();
+        uninitialized.initialized = false;
+        let mut isolated = ready.clone();
+        isolated.id = "isolated".to_string();
+        isolated.status = AccountStatus::Isolated;
+        settings.accounts = vec![ready, duplicate, succeeded, uninitialized, isolated];
+
+        let rules = collect_pending_profit_rules(&settings, day);
+
+        assert_eq!(
+            rules
+                .iter()
+                .map(|rule| rule.id.as_str())
+                .collect::<Vec<_>>(),
+            ["rule-a"]
+        );
+    }
+
+    #[test]
+    fn normalize_syncs_inherited_ammo_runtime_with_business_targets() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.default_business_config.ammo_targets = vec![
+            ammo_business_target("kept", false, 0),
+            ammo_business_target("new", true, 1),
+        ];
+        fixture.settings.accounts[0].ammo_targets =
+            vec![ammo_runtime_target("orphan"), ammo_runtime_target("kept")];
+
+        let normalized = normalize_settings(fixture.settings).unwrap();
+        let targets = &normalized.accounts[0].ammo_targets;
+
+        assert_eq!(
+            targets
+                .iter()
+                .map(|target| target.id.as_str())
+                .collect::<Vec<_>>(),
+            ["kept", "new"]
+        );
+        assert_eq!(targets[0].name, "目标 kept");
+        assert!(targets[0].enabled);
+        assert_eq!(targets[0].scroll_steps, 0);
+        assert_eq!(targets[0].last_success_day.as_deref(), Some("2026-07-30"));
+        assert_eq!(targets[0].retry_day.as_deref(), Some("2026-07-31"));
+        assert_eq!(targets[0].retry_count, 1);
+        assert_eq!(targets[1].last_success_day, None);
+        assert_eq!(targets[1].retry_day, None);
+        assert_eq!(targets[1].retry_count, 0);
+    }
+
+    #[test]
+    fn normalize_syncs_independent_ammo_runtime_with_effective_targets() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.default_business_config.ammo_targets =
+            vec![ammo_business_target("default", false, 0)];
+        fixture.settings.accounts[0].independent_settings_enabled = true;
+        fixture.settings.accounts[0].independent_business_config = Some(BusinessConfig {
+            stations: fixture.settings.default_business_config.stations.clone(),
+            recipe_points: Vec::new(),
+            ammo_targets: vec![ammo_business_target("independent", true, 0)],
+        });
+        fixture.settings.accounts[0].ammo_targets = vec![ammo_runtime_target("default")];
+
+        let normalized = normalize_settings(fixture.settings).unwrap();
+        let targets = &normalized.accounts[0].ammo_targets;
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].id, "independent");
+        assert_eq!(targets[0].name, "目标 independent");
+        assert!(targets[0].seasonal);
+        assert_eq!(targets[0].last_success_day, None);
+    }
+
+    #[test]
+    fn ammo_trial_freezes_ready_account_targets_and_daily_state() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.default_business_config.ammo_targets = vec![
+            ammo_business_target("seasonal", true, 2),
+            ammo_business_target("normal", false, 1),
+        ];
+        fixture.settings.accounts[0].ammo_targets = vec![
+            AmmoTarget {
+                id: "normal".to_string(),
+                name: "普通".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 1,
+                order: 1,
+                last_success_day: Some("1970-01-01".to_string()),
+                retry_day: Some("1970-01-01".to_string()),
+                retry_count: 1,
+                last_failure: None,
+            },
+            AmmoTarget {
+                id: "seasonal".to_string(),
+                name: "赛季".to_string(),
+                enabled: true,
+                seasonal: true,
+                scroll_steps: 2,
+                order: 2,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+        ];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+
+        let frozen = freeze_ammo_run(&fixture.settings, "selected", 0, None).unwrap();
+
+        assert_eq!(frozen.day, "1970-01-01");
+        assert_eq!(
+            frozen
+                .ammo_targets
+                .iter()
+                .map(|target| target.id.as_str())
+                .collect::<Vec<_>>(),
+            ["normal", "seasonal"]
+        );
+        assert!(frozen.ammo_targets[0].already_succeeded);
+        assert_eq!(frozen.ammo_targets[0].retry_count, 1);
+        assert!(!frozen.targets.contains_key("ammo.list"));
+        assert!(!frozen.targets.contains_key("ammo.seasonalList"));
+        assert!(frozen.targets["ammo.supply"].template.is_none());
+        assert!(frozen.targets["ammo.tactical"].template.is_none());
+        assert!(frozen.targets["ammo.seasonal"].template.is_none());
+        assert_eq!(frozen.entry_delays.supply_ms, 3_000);
+        assert_eq!(frozen.entry_delays.tactical_ms, 3_000);
+    }
+
+    #[test]
+    fn ammo_trial_preflight_rejects_non_ready_and_missing_click_points() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.default_business_config.ammo_targets =
+            vec![ammo_business_target("seasonal", true, 1)];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+
+        fixture.settings.accounts[0].status = AccountStatus::Isolated;
+        assert!(freeze_ammo_run(&fixture.settings, "selected", 0, None)
+            .unwrap_err()
+            .contains("Ready"));
+
+        fixture.settings.accounts[0].status = AccountStatus::Ready;
+        fixture.settings.default_business_config.ammo_targets[0].click_point = None;
+        assert!(freeze_ammo_run(&fixture.settings, "selected", 0, None)
+            .unwrap_err()
+            .contains("点击点"));
+
+        fixture.settings.default_business_config.ammo_targets[0].click_point =
+            Some(CalibrationRect {
+                x: 1,
+                y: 2,
+                width: 1,
+                height: 1,
+            });
+        calibration_target_mut(&mut fixture.settings, "ammo.seasonal").rect = None;
+        assert!(freeze_ammo_run(&fixture.settings, "selected", 0, None)
+            .unwrap_err()
+            .contains("ammo.seasonal"));
+    }
+
+    #[test]
+    fn round_freezes_only_planned_ammo_targets() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.paused = false;
+        fixture.settings.default_business_config.ammo_targets = vec![
+            ammo_business_target("pending", false, 0),
+            ammo_business_target("done", false, 1),
+        ];
+        fixture.settings.accounts[0].ammo_targets = vec![
+            AmmoTarget {
+                id: "pending".to_string(),
+                name: String::new(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+            AmmoTarget {
+                id: "done".to_string(),
+                name: String::new(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 1,
+                last_success_day: Some("1970-01-01".to_string()),
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+        ];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+
+        let frozen = freeze_round_run(
+            &fixture.settings,
+            0,
+            round_planner::RoundTrigger::Manual,
+            AmmoProfitGate::Disabled,
+            None,
+        )
+        .unwrap();
+        let task = &frozen.plan.accounts[0];
+        let account = frozen
+            .accounts
+            .get(&task.account_id)
+            .unwrap()
+            .as_ref()
+            .unwrap();
+
+        assert_eq!(task.ammo_target_ids, ["pending"]);
+        assert_eq!(
+            account
+                .ammo
+                .as_ref()
+                .unwrap()
+                .ammo_targets
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            ["pending"]
+        );
+    }
+
+    #[test]
+    fn ammo_isolation_keeps_account_isolated_in_round_failure_mapping() {
+        let mut settings = LoginFixture::complete().settings;
+        let error =
+            round_runner::AccountRunError::account("ammo.isolated", "材料购买重试后仍无法继续");
+
+        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+
+        assert_eq!(settings.accounts[0].status, AccountStatus::Isolated);
+    }
+
+    #[test]
+    fn round_ammo_failure_blocks_only_target() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.default_business_config.ammo_targets = vec![
+            ammo_business_target("ammo-a", false, 0),
+            ammo_business_target("ammo-b", false, 1),
+        ];
+        settings.accounts[0].ammo_targets = vec![
+            AmmoTarget {
+                id: "ammo-a".to_string(),
+                name: "子弹 A".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+            AmmoTarget {
+                id: "ammo-b".to_string(),
+                name: "子弹 B".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 1,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            },
+        ];
+        let error =
+            round_runner::AccountRunError::account_ammo("ammo-a", "ammo.success", "完成状态未命中");
+
+        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::Ready);
+        assert!(account.ammo_targets[0].last_failure.is_some());
+        assert!(account.ammo_targets[1].last_failure.is_none());
+    }
+
+    #[test]
+    fn craft_isolation_keeps_station_state_unchanged_in_round_failure_mapping() {
+        let mut settings = SpecialOpsSettings {
+            accounts: vec![account(
+                "selected",
+                AccountStatus::Ready,
+                vec![station(StationKind::Workbench, 100)],
+            )],
+            ..SpecialOpsSettings::default()
+        };
+        let initial_station_status = settings.accounts[0]
+            .stations
+            .iter()
+            .find(|station| station.kind == StationKind::Workbench)
+            .unwrap()
+            .status
+            .clone();
+        let error = round_runner::AccountRunError::account_station(
+            StationKind::Workbench,
+            "craft.isolated",
+            "材料购买重试后仍停留在购买页面",
+        );
+
+        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+
+        assert_eq!(settings.accounts[0].status, AccountStatus::Isolated);
+        assert_eq!(
+            settings.accounts[0]
+                .stations
+                .iter()
+                .find(|station| station.kind == StationKind::Workbench)
+                .unwrap()
+                .status,
+            initial_station_status
+        );
+    }
+
+    #[test]
+    fn round_ammo_result_preserves_account_and_system_error_scopes() {
+        let uncertain = map_round_ammo_stop(ammo_runtime::AmmoRunStop::Uncertain {
+            target_id: "normal".to_string(),
+            step: "ammo.confirm".to_string(),
+            message: "未识别到确认按钮".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(uncertain.scope, round_runner::ErrorScope::Account);
+        assert_eq!(uncertain.step, "ammo.confirm");
+        assert_eq!(uncertain.ammo_target_id.as_deref(), Some("normal"));
+
+        let isolated = map_round_ammo_stop(ammo_runtime::AmmoRunStop::Isolated {
+            target_id: "normal".to_string(),
+            step: "ammo.purchase".to_string(),
+            message: "材料购买重试耗尽".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(isolated.scope, round_runner::ErrorScope::Account);
+        assert_eq!(isolated.step, "ammo.isolated");
+        assert_eq!(isolated.ammo_target_id.as_deref(), Some("normal"));
+
+        let system = map_round_ammo_stop(ammo_runtime::AmmoRunStop::SystemFailure {
+            step: "ammo.window".to_string(),
+            message: "窗口异常".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(system.scope, round_runner::ErrorScope::System);
+        assert_eq!(system.step, "ammo.window");
+    }
+
+    #[test]
+    fn round_navigation_timeout_is_account_scoped_without_station() {
+        let error = map_round_navigation_result(game_navigation::GameNavigationResult::TimedOut {
+            failed_step: game_navigation::GameNavigationStep::WaitStationGrid,
+        })
+        .unwrap_err();
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(error.station, None);
+        assert_eq!(error.step, "navigation.WaitStationGrid");
+        assert_eq!(error.message, "步骤超时");
+
+        let mut settings = LoginFixture::complete().settings;
+        let before = settings.accounts[0].stations.clone();
+        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+        assert_eq!(settings.accounts[0].stations, before);
+    }
+
+    #[test]
+    fn round_navigation_execution_failure_remains_system_scoped() {
+        let error = map_round_navigation_result(game_navigation::GameNavigationResult::Paused {
+            failed_step: game_navigation::GameNavigationStep::OpenSpecialOps,
+            message: "游戏窗口恢复失败".to_string(),
+        })
+        .unwrap_err();
+        assert_eq!(error.scope, round_runner::ErrorScope::System);
+        assert_eq!(error.step, "navigation.OpenSpecialOps");
+    }
+
+    #[test]
+    fn single_ammo_uncertain_message_keeps_target_context() {
+        let stop = ammo_runtime::AmmoRunStop::Uncertain {
+            target_id: "normal".to_string(),
+            step: "ammo.confirm".to_string(),
+            message: "未识别到确认按钮".to_string(),
+        };
+
+        let (target_id, step, message) = ammo_stop_failure_detail(&stop).unwrap();
+
+        assert_eq!(target_id, Some("normal"));
+        assert_eq!(step, "ammo.confirm");
+        assert_eq!(message, "未识别到确认按钮");
+    }
+
+    #[test]
+    fn round_login_stop_game_failure_is_system_failure() {
+        let error = map_round_login_failure(login_flow::LoginStep::StopGame, "无法结束旧游戏进程");
+
+        assert_eq!(error.scope, round_runner::ErrorScope::System);
+        assert_eq!(error.step, "login.StopGame");
+    }
+
+    #[test]
+    fn round_login_form_failure_stays_account_failure() {
+        let error =
+            map_round_login_failure(login_flow::LoginStep::WaitGameEntry, "登录后未出现游戏入口");
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(error.step, "login.failed");
+    }
+
+    #[test]
+    fn ammo_success_failure_and_isolation_update_account_runtime_state() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.accounts[0].ammo_targets = vec![AmmoTarget {
+            id: "normal".to_string(),
+            name: "普通".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: Some("2026-07-30".to_string()),
+            retry_count: 2,
+            last_failure: None,
+        }];
+
+        apply_ammo_failure(
+            &mut settings,
+            "selected",
+            "normal",
+            "2026-07-31",
+            "ammo.success",
+            "兑换未成功",
+            100,
+        )
+        .unwrap();
+        assert_eq!(settings.accounts[0].ammo_targets[0].retry_count, 1);
+        assert_eq!(
+            settings.accounts[0].ammo_targets[0].retry_day.as_deref(),
+            Some("2026-07-31")
+        );
+        assert_eq!(
+            settings.accounts[0].last_failure.as_ref().unwrap().step,
+            "ammo.success"
+        );
+
+        apply_ammo_success(&mut settings, "selected", "normal", "2026-07-31").unwrap();
+        assert_eq!(settings.accounts[0].ammo_targets[0].retry_count, 0);
+        assert_eq!(
+            settings.accounts[0].ammo_targets[0]
+                .last_success_day
+                .as_deref(),
+            Some("2026-07-31")
+        );
+
+        apply_ammo_isolated(
+            &mut settings,
+            "selected",
+            "normal",
+            "ammo.purchase",
+            "仓库空间不足",
+            200,
+        )
+        .unwrap();
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(
+            settings.accounts[0].last_failure.as_ref().unwrap().message,
+            "仓库空间不足"
+        );
+        assert!(settings.accounts[0].ammo_targets[0].last_failure.is_some());
+    }
+
+    #[test]
+    fn account_business_correction_updates_stations_and_all_enabled_ammo_atomically() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "selected",
+            AccountStatus::Isolated,
+            StationKind::all()
+                .into_iter()
+                .map(|kind| station(kind, 1))
+                .collect(),
+        ));
+        settings.default_business_config.ammo_targets = vec![
+            ammo_business_target("normal", false, 0),
+            ammo_business_target("seasonal", true, 1),
+        ];
+        settings.accounts[0].ammo_targets = vec![
+            AmmoTarget {
+                id: "normal".to_string(),
+                name: "普通".to_string(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 1,
+                last_failure: None,
+            },
+            AmmoTarget {
+                id: "seasonal".to_string(),
+                name: "赛季".to_string(),
+                enabled: true,
+                seasonal: true,
+                scroll_steps: 1,
+                order: 1,
+                last_success_day: Some("1970-01-01".to_string()),
+                retry_day: Some("1970-01-01".to_string()),
+                retry_count: 2,
+                last_failure: None,
+            },
+        ];
+        let stations = StationKind::all()
+            .into_iter()
+            .map(|kind| StationCorrectionInput {
+                kind,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            })
+            .collect::<Vec<_>>();
+        let ammo = vec![
+            AmmoCorrectionInput {
+                target_id: "normal".to_string(),
+                succeeded_today: true,
+            },
+            AmmoCorrectionInput {
+                target_id: "seasonal".to_string(),
+                succeeded_today: false,
+            },
+        ];
+
+        apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &stations,
+            &ammo,
+            1_000,
+            "1970-01-01",
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::Ready);
+        assert_eq!(
+            account.ammo_targets[0].last_success_day.as_deref(),
+            Some("1970-01-01")
+        );
+        assert_eq!(account.ammo_targets[0].retry_count, 0);
+        assert_eq!(account.ammo_targets[1].last_success_day, None);
+        assert_eq!(account.ammo_targets[1].retry_count, 0);
+
+        let before = settings.clone();
+        assert!(apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &stations,
+            &ammo[..1],
+            2_000,
+            "1970-01-01",
+        )
+        .is_err());
+        assert_eq!(settings, before);
+    }
+
+    #[test]
+    fn account_failure_legacy_json_defaults_target_fields_to_none() {
+        let failure: AccountFailure = serde_json::from_str(
+            r#"{"step":"navigation.WaitStationGrid","message":"步骤超时","atMs":10}"#,
+        )
+        .unwrap();
+
+        assert_eq!(failure.station_kind, None);
+        assert_eq!(failure.ammo_target_id, None);
+    }
+
+    #[test]
+    fn normalize_rejects_failure_with_station_and_ammo_target() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.accounts[0].last_failure = Some(AccountFailure {
+            step: "invalid".to_string(),
+            message: "两个目标".to_string(),
+            at_ms: 10,
+            station_kind: Some(StationKind::Workbench),
+            ammo_target_id: Some("ammo-a".to_string()),
+        });
+
+        assert_eq!(
+            normalize_settings(settings).unwrap_err(),
+            "一条失败记录不能同时指向制作台和子弹目标"
+        );
+    }
+
+    #[test]
+    fn normalize_rejects_ammo_failure_attached_to_different_target() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.default_business_config.ammo_targets =
+            vec![ammo_business_target("ammo-a", false, 0)];
+        settings.accounts[0].ammo_targets = vec![AmmoTarget {
+            id: "ammo-a".to_string(),
+            name: "测试子弹".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: None,
+            retry_count: 0,
+            last_failure: Some(AccountFailure {
+                step: "ammo.success".to_string(),
+                message: "错误目标".to_string(),
+                at_ms: 10,
+                station_kind: None,
+                ammo_target_id: Some("other-target".to_string()),
+            }),
+        }];
+
+        assert_eq!(
+            normalize_settings(settings).unwrap_err(),
+            "子弹失败记录与目标 ID 不一致"
+        );
     }
 }

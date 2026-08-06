@@ -38,6 +38,7 @@
     "@vitejs/plugin-react": "6.0.3",
     "@vitest/coverage-v8": "4.1.9",
     "daisyui": "^5.6.10",
+    "linkedom": "^0.18.13",
     "tailwindcss": "4.3.2",
     "typescript": "~6.0.3",
     "vite": "8.1.2",

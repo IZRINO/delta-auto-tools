@@ -140,6 +140,14 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 - **运行态事件**：Timer/Counter/Rapidfire 的 `state-changed` 只用于 settings/结构变化；`runs-changed` 只携带运行态。工作台将 runs 与 Bootstrap/Form 分开存储，禁止 tick/count 触发表单转换。
 - **原生 shell 检测**：`useNativeShell()` 检查 `__TAURI_INTERNALS__`，浏览器预览模式下禁用所有原生命令
 
+### 特勤处联网利润筛选
+
+`special_ops` 的 `profitFilter` 独立保存全局开关、截止时间、规则与审计；子弹目标只引用稳定 `profitRuleId`。规则资格、查询 generation、查询节奏和 active round 目标均是进程内状态，历史审计不能在重启后直接触发兑换。查询窗口从每日兑换时间持续到利润截止时间，节奏为立即、5 分钟、5 分钟、50 分钟；KKRB 正常响应时只能使用 KKRB，整体失败才允许无 IPC 权限的 Moligod 隐藏 WebView 备用。未达标、目标缺失与来源失败不记当天失败，截止后绕过利润 gate。round 在资源启动前冻结并消费当代资格；启动回滚必须撤销同一 generation，避免遗留 `ActiveRound`。任何返回 `SpecialOpsBootstrap` 的写入命令都必须同时返回权威 `ProfitRuntimeSnapshot`。
+
+### 特勤处任务级人工判定
+
+`AccountFailure.stationKind` / `ammoTargetId` 互斥定位失败任务，`AmmoTarget.lastFailure` 是子弹目标人工冻结的权威状态。制作异常继续阻断账号；子弹补齐、购买、确认或完成异常只冻结当前目标，账号保持 `Ready`。24 小时时间轴通过 `TimelineTask.manualFailure` 提供单项判定；`special_ops_confirm_station_state` / `special_ops_confirm_ammo_state` 只改对应任务，账号页 `special_ops_confirm_account_station_states` 继续原子覆盖四制作台和全部启用子弹。旧版无定位失败不得按错误文案推断目标。
+
 ### Overlay 窗口系统
 
 两类机制：

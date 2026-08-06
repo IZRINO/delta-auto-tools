@@ -1,8 +1,8 @@
 use super::{
     desktop_runtime::WindowIdentity,
     remembered_account::{
-        select_remembered_account, AccountSelectionError, AccountSelectionPhase,
-        RememberedAccountDriver,
+        format_scan_attempts, redact_qq, select_remembered_account, AccountSelectionError,
+        AccountSelectionPhase, RememberedAccountDriver,
     },
     template_observer::RuntimeTarget,
 };
@@ -27,6 +27,7 @@ pub(crate) struct LoginRunConfig {
     pub qq_account: String,
     pub wegame_executable_path: PathBuf,
     pub game_executable_path: PathBuf,
+    pub mouse_parking_region: crate::morse::types::RegionRect,
     pub targets: HashMap<String, RuntimeTarget>,
 }
 
@@ -37,6 +38,7 @@ pub(crate) enum LoginObservation {
     CaptureFailed,
     ReferenceImageFailed,
     WindowNotFound,
+    WindowOperationFailed,
     LaunchFailed { windows_error_code: Option<i32> },
 }
 
@@ -44,6 +46,7 @@ pub(crate) enum LoginObservation {
 pub(crate) trait LoginDriver: RememberedAccountDriver + Send + Sync {
     fn reset_observation(&self);
     fn last_observation(&self) -> LoginObservation;
+    async fn initial_countdown(&self, cancelled: Arc<AtomicBool>) -> Result<(), String>;
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String>;
     async fn launch(&self, executable: &Path) -> Result<u32, String>;
     async fn wait_for_any(
@@ -61,6 +64,7 @@ pub(crate) trait LoginDriver: RememberedAccountDriver + Send + Sync {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum LoginStep {
+    InitialCountdown,
     StopGame,
     StopWeGame,
     StartWeGame,
@@ -76,6 +80,12 @@ pub(crate) enum LoginStep {
     WaitLaunchButton,
     LaunchGame,
     WaitGameWindow,
+    WaitModeReady,
+    OpenBeaconMode,
+    DismissActivityPopup,
+    SwitchLobbyView,
+    OpenSpecialOps,
+    WaitStationGrid,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -102,9 +112,8 @@ pub(crate) enum LoginFlowResult {
     },
     NeedsManualLogin {
         account_id: String,
-        target_qq: String,
-        actual_qq: Option<String>,
         failed_step: LoginStep,
+        failure_message: String,
         failed_at: i64,
     },
 }
@@ -119,113 +128,122 @@ where
     D: LoginDriver + ?Sized,
     F: FnMut(LoginStep),
 {
-    for attempt in 0..2 {
-        for (step, executable) in [
-            (LoginStep::StopGame, &config.game_executable_path),
-            (LoginStep::StopWeGame, &config.wegame_executable_path),
-        ] {
-            if let Err(result) = run_step(
-                driver,
-                step,
-                &config.account_id,
-                &cancelled,
-                &mut on_step,
-                driver.terminate_exact(executable),
-            )
-            .await
-            {
-                return result;
-            }
-        }
+    if let Err(result) = run_step(
+        driver,
+        LoginStep::InitialCountdown,
+        &config.account_id,
+        &cancelled,
+        &mut on_step,
+        driver.initial_countdown(cancelled.clone()),
+    )
+    .await
+    {
+        return result;
+    }
 
+    for (step, executable) in [
+        (LoginStep::StopGame, &config.game_executable_path),
+        (LoginStep::StopWeGame, &config.wegame_executable_path),
+    ] {
         if let Err(result) = run_step(
             driver,
-            LoginStep::StartWeGame,
+            step,
             &config.account_id,
             &cancelled,
             &mut on_step,
-            driver.launch(&config.wegame_executable_path),
+            driver.terminate_exact(executable),
         )
         .await
         {
             return result;
         }
+    }
 
-        let login_choice = match run_step(
-            driver,
-            LoginStep::WaitLoginChoice,
-            &config.account_id,
-            &cancelled,
-            &mut on_step,
-            async {
-                let key = driver
-                    .wait_for_any(
-                        &["wegame.loginFormReady", "wegame.loginMode"],
-                        cancelled.clone(),
-                    )
-                    .await?;
-                match key.as_str() {
-                    "wegame.loginFormReady" | "wegame.loginMode" => Ok(key),
-                    _ => Err("登录入口识别结果无效".to_string()),
-                }
-            },
-        )
-        .await
-        {
-            Ok(login_choice) => login_choice,
-            Err(result) => return result,
-        };
+    if let Err(result) = run_step(
+        driver,
+        LoginStep::StartWeGame,
+        &config.account_id,
+        &cancelled,
+        &mut on_step,
+        driver.launch(&config.wegame_executable_path),
+    )
+    .await
+    {
+        return result;
+    }
 
-        if login_choice == "wegame.loginMode" {
-            if let Err(result) = run_step(
-                driver,
-                LoginStep::OpenLoginForm,
-                &config.account_id,
-                &cancelled,
-                &mut on_step,
-                driver.click("wegame.loginMode", cancelled.clone()),
-            )
-            .await
-            {
-                return result;
+    let login_choice = match run_step(
+        driver,
+        LoginStep::WaitLoginChoice,
+        &config.account_id,
+        &cancelled,
+        &mut on_step,
+        async {
+            let key = driver
+                .wait_for_any(
+                    &["wegame.loginFormReady", "wegame.loginMode"],
+                    cancelled.clone(),
+                )
+                .await?;
+            match key.as_str() {
+                "wegame.loginFormReady" | "wegame.loginMode" => Ok(key),
+                _ => Err("登录入口识别结果无效".to_string()),
             }
-        }
+        },
+    )
+    .await
+    {
+        Ok(login_choice) => login_choice,
+        Err(result) => return result,
+    };
 
+    if login_choice == "wegame.loginMode" {
         if let Err(result) = run_step(
             driver,
-            LoginStep::OpenAccountList,
+            LoginStep::OpenLoginForm,
             &config.account_id,
             &cancelled,
             &mut on_step,
-            async {
-                driver
-                    .wait_for_any(&["wegame.loginFormReady"], cancelled.clone())
-                    .await?;
-                driver
-                    .click("wegame.accountDropdown", cancelled.clone())
-                    .await
-            },
+            driver.click("wegame.loginMode", cancelled.clone()),
         )
         .await
         {
             return result;
         }
+    }
 
-        match run_account_selection(driver, config, &cancelled, &mut on_step).await {
-            Ok(()) => break,
-            Err(SelectionAttemptFailure::Flow(result)) => return result,
-            Err(SelectionAttemptFailure::Manual { .. }) if attempt == 0 => continue,
-            Err(SelectionAttemptFailure::Manual {
-                actual_qq,
+    if let Err(result) = run_step(
+        driver,
+        LoginStep::OpenAccountList,
+        &config.account_id,
+        &cancelled,
+        &mut on_step,
+        async {
+            driver
+                .wait_for_any(&["wegame.loginFormReady"], cancelled.clone())
+                .await?;
+            driver
+                .click("wegame.accountDropdown", cancelled.clone())
+                .await
+        },
+    )
+    .await
+    {
+        return result;
+    }
+
+    match run_account_selection(driver, config, &cancelled, &mut on_step).await {
+        Ok(()) => {}
+        Err(SelectionAttemptFailure::Flow(result)) => return result,
+        Err(SelectionAttemptFailure::Manual {
+            failure_message,
+            failed_step,
+        }) => {
+            return LoginFlowResult::NeedsManualLogin {
+                account_id: config.account_id.clone(),
                 failed_step,
-            }) => {
-                return LoginFlowResult::NeedsManualLogin {
-                    account_id: config.account_id.clone(),
-                    target_qq: config.qq_account.clone(),
-                    actual_qq,
-                    failed_step,
-                    failed_at: now_ms(),
-                }
+                failure_message,
+                failed_at: now_ms(),
             }
         }
     }
@@ -330,8 +348,8 @@ where
 enum SelectionAttemptFailure {
     Flow(LoginFlowResult),
     Manual {
-        actual_qq: Option<String>,
         failed_step: LoginStep,
+        failure_message: String,
     },
 }
 
@@ -369,23 +387,27 @@ where
         }
         result = &mut selection => match result {
             Ok(()) => Ok(()),
-            Err(AccountSelectionError::NotFound) => Err(SelectionAttemptFailure::Manual {
-                actual_qq: None,
+            Err(AccountSelectionError::NotFound { attempts }) => {
+                Err(SelectionAttemptFailure::Manual {
+                    failed_step: LoginStep::ScanRememberedAccounts,
+                    failure_message: format_scan_attempts(&attempts),
+                })
+            }
+            Err(AccountSelectionError::ListUnavailable) => Err(SelectionAttemptFailure::Manual {
                 failed_step: LoginStep::ScanRememberedAccounts,
-            }),
-            Err(AccountSelectionError::Mismatch { actual }) => Err(SelectionAttemptFailure::Manual {
-                actual_qq: Some(actual),
-                failed_step: LoginStep::VerifySelectedAccount,
+                failure_message: "已记住账号列表未确认".to_string(),
             }),
             Err(AccountSelectionError::Driver(error)) => {
                 let failed_step = *current_step
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if failed_step == LoginStep::VerifySelectedAccount {
-                    if let Some(actual_qq) = copied_account_from_verification_error(&error) {
+                    if let Some(failure_message) =
+                        copied_account_failure_message(&error)
+                    {
                         return Err(SelectionAttemptFailure::Manual {
-                            actual_qq,
                             failed_step,
+                            failure_message,
                         });
                     }
                 }
@@ -412,13 +434,13 @@ where
     }
 }
 
-fn copied_account_from_verification_error(error: &str) -> Option<Option<String>> {
+fn copied_account_failure_message(error: &str) -> Option<String> {
     if error == "剪贴板未出现 QQ 文本" {
-        return Some(None);
+        return Some("账号复核未读取到 QQ".to_string());
     }
     error
         .strip_prefix("剪贴板内容不是纯数字 QQ: ")
-        .map(|actual| Some(actual.trim().to_string()))
+        .map(|actual| format!("账号复核不匹配，实际复制 QQ: {}", redact_qq(actual.trim())))
 }
 
 async fn run_step<D, T, F, Fut>(
@@ -485,6 +507,9 @@ fn format_observation(kind: &str, observation: LoginObservation) -> String {
             format!("{kind}；最后识别结果：参考图读取失败")
         }
         LoginObservation::WindowNotFound => format!("{kind}；最后识别结果：未找到游戏窗口"),
+        LoginObservation::WindowOperationFailed => {
+            format!("{kind}；最后识别结果：WeGame 窗口恢复或聚焦失败")
+        }
     }
 }
 
@@ -526,6 +551,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Action {
+        InitialCountdown,
         Terminate(&'static str),
         StartWeGame,
         Wait(Vec<String>),
@@ -544,6 +570,7 @@ mod tests {
         find_calls: AtomicUsize,
         fail_wait_call: AtomicUsize,
         copied_accounts: Mutex<VecDeque<Result<String, String>>>,
+        select_row_error: Mutex<Option<String>>,
         block_wait_call: AtomicUsize,
         cancel_error_wait_call: AtomicUsize,
         block_click_target: Mutex<Option<String>>,
@@ -566,6 +593,7 @@ mod tests {
                 find_calls: AtomicUsize::new(0),
                 fail_wait_call: AtomicUsize::new(0),
                 copied_accounts: Mutex::new(VecDeque::new()),
+                select_row_error: Mutex::new(None),
                 block_wait_call: AtomicUsize::new(0),
                 cancel_error_wait_call: AtomicUsize::new(0),
                 block_click_target: Mutex::new(None),
@@ -604,6 +632,11 @@ mod tests {
 
         fn last_observation(&self) -> LoginObservation {
             *self.last_observation.lock().unwrap()
+        }
+
+        async fn initial_countdown(&self, _: Arc<AtomicBool>) -> Result<(), String> {
+            self.actions.lock().unwrap().push(Action::InitialCountdown);
+            Ok(())
         }
 
         async fn terminate_exact(&self, executable: &Path) -> Result<(), String> {
@@ -695,14 +728,23 @@ mod tests {
     }
 
     impl RememberedAccountDriver for FakeDriver {
-        async fn sample_accounts(
+        async fn visible_account_rows(
             &self,
             _: Arc<AtomicBool>,
-        ) -> Result<Vec<super::super::windows_ocr::OcrWord>, String> {
-            Ok(vec![super::super::windows_ocr::OcrWord::new(
-                "123456789",
-                super::super::windows_ocr::OcrBounds::new(10.0, 20.0, 80.0, 18.0),
-            )])
+        ) -> Result<Vec<super::super::remembered_account::AccountRowSlot>, String> {
+            Ok(vec![
+                super::super::remembered_account::AccountRowSlot::Fallback { index: 0 },
+                super::super::remembered_account::AccountRowSlot::Fallback { index: 1 },
+                super::super::remembered_account::AccountRowSlot::Fallback { index: 2 },
+            ])
+        }
+
+        async fn open_account_list(&self, _: Arc<AtomicBool>) -> Result<(), String> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(Action::Click("open-account-list".to_string()));
+            Ok(())
         }
 
         async fn scroll_down(&self, _: Arc<AtomicBool>) -> Result<(), String> {
@@ -713,16 +755,23 @@ mod tests {
             Ok(())
         }
 
-        async fn select_bounds(
+        async fn select_row(
             &self,
-            _: super::super::windows_ocr::OcrBounds,
+            slot: super::super::remembered_account::AccountRowSlot,
             _: Arc<AtomicBool>,
-        ) -> Result<(), String> {
+        ) -> Result<super::super::remembered_account::AccountRowClick, String> {
+            if let Some(error) = self.select_row_error.lock().unwrap().take() {
+                return Err(error);
+            }
             self.actions
                 .lock()
                 .unwrap()
                 .push(Action::Click("ocr-account".to_string()));
-            Ok(())
+            Ok(super::super::remembered_account::AccountRowClick {
+                index: slot.index(),
+                x: 0,
+                y: 0,
+            })
         }
 
         async fn copy_selected_qq(&self, _: Arc<AtomicBool>) -> Result<String, String> {
@@ -744,6 +793,12 @@ mod tests {
             qq_account: "123456789".to_string(),
             wegame_executable_path: "wegame.exe".into(),
             game_executable_path: "game.exe".into(),
+            mouse_parking_region: crate::morse::types::RegionRect {
+                x: 0,
+                y: 0,
+                width: 1,
+                height: 1,
+            },
             targets: Default::default(),
         }
     }
@@ -759,6 +814,39 @@ mod tests {
 
     async fn run(driver: &FakeDriver) -> LoginFlowResult {
         run_login_flow(driver, &config(), Arc::new(AtomicBool::new(false)), |_| {}).await
+    }
+
+    #[tokio::test]
+    async fn initial_countdown_finishes_before_old_processes_are_terminated() {
+        let driver = FakeDriver::with_waits(ready_waits());
+
+        assert!(matches!(
+            run(&driver).await,
+            LoginFlowResult::GameReady { .. }
+        ));
+        assert_eq!(
+            driver.actions()[..3],
+            [
+                Action::InitialCountdown,
+                Action::Terminate("game"),
+                Action::Terminate("wegame"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_remembered_account_list_marks_account_needs_manual_login() {
+        let driver = FakeDriver::default();
+        *driver.select_row_error.lock().unwrap() = Some("已记住账号列表未确认".to_string());
+
+        assert!(matches!(
+            run(&driver).await,
+            LoginFlowResult::NeedsManualLogin {
+                failed_step: LoginStep::ScanRememberedAccounts,
+                failure_message,
+                ..
+            } if failure_message == "已记住账号列表未确认"
+        ));
     }
 
     #[tokio::test(start_paused = true)]
@@ -827,6 +915,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn window_operation_failure_has_distinct_safe_message() {
+        assert_eq!(
+            format_observation("步骤执行失败", LoginObservation::WindowOperationFailed),
+            "步骤执行失败；最后识别结果：WeGame 窗口恢复或聚焦失败"
+        );
+    }
+
     #[tokio::test]
     async fn step_clears_stale_observation_before_business_future_runs() {
         let driver = FakeDriver::default();
@@ -872,13 +968,13 @@ mod tests {
             "wegame.gameEntry",
             "wegame.launch",
         ]);
-
         let result = run(&driver).await;
 
         assert!(matches!(result, LoginFlowResult::GameReady { .. }));
         assert_eq!(
             driver.actions(),
             vec![
+                Action::InitialCountdown,
                 Action::Terminate("game"),
                 Action::Terminate("wegame"),
                 Action::StartWeGame,
@@ -955,7 +1051,7 @@ mod tests {
         let (result, ()) = tokio::join!(flow, cancel);
 
         assert!(matches!(result, LoginFlowResult::EmergencyStopped { .. }));
-        assert_eq!(driver.actions().len(), 4);
+        assert_eq!(driver.actions().len(), 5);
     }
 
     #[tokio::test(start_paused = true)]
@@ -998,7 +1094,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mismatched_copy_restarts_once_then_requires_manual_login() {
+    async fn non_target_rows_continue_scanning_without_restarting_wegame() {
         let driver = FakeDriver::with_waits([
             "wegame.loginFormReady",
             "wegame.loginFormReady",
@@ -1013,23 +1109,22 @@ mod tests {
 
         let result = run(&driver).await;
 
-        let LoginFlowResult::NeedsManualLogin {
-            failed_step,
-            actual_qq,
-            ..
-        } = &result
-        else {
-            panic!("预期账号转为需要人工登录");
-        };
-        assert_eq!(*failed_step, LoginStep::VerifySelectedAccount);
-        assert_eq!(actual_qq.as_deref(), Some("222222"));
+        assert!(matches!(result, LoginFlowResult::GameReady { .. }));
         assert_eq!(
             driver
                 .actions()
                 .iter()
                 .filter(|action| action == &&Action::StartWeGame)
                 .count(),
-            2
+            1
+        );
+        assert_eq!(
+            driver
+                .actions()
+                .iter()
+                .filter(|action| action == &&Action::Click("ocr-account".to_string()))
+                .count(),
+            3
         );
         let json = serde_json::to_string(&result).unwrap();
         assert!(!json.contains("secret-password"));
@@ -1038,7 +1133,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_copied_qq_restarts_once_then_requires_manual_login() {
+    async fn account_scan_failure_does_not_restart_wegame() {
         let driver = FakeDriver::with_waits([
             "wegame.loginFormReady",
             "wegame.loginFormReady",
@@ -1056,9 +1151,9 @@ mod tests {
             result,
             LoginFlowResult::NeedsManualLogin {
                 failed_step: LoginStep::VerifySelectedAccount,
-                actual_qq: None,
+                failure_message,
                 ..
-            }
+            } if failure_message == "账号复核未读取到 QQ"
         ));
         assert_eq!(
             driver
@@ -1066,8 +1161,57 @@ mod tests {
                 .iter()
                 .filter(|action| action == &&Action::StartWeGame)
                 .count(),
-            2
+            1
         );
+    }
+
+    #[tokio::test]
+    async fn not_found_scan_trace_reaches_manual_login_without_full_qq() {
+        let driver = FakeDriver::with_waits(["wegame.loginFormReady", "wegame.loginFormReady"]);
+        driver.copied_accounts.lock().unwrap().extend([
+            Ok("11112222".to_string()),
+            Ok("33334444".to_string()),
+            Ok("55556666".to_string()),
+            Ok("11112222".to_string()),
+            Ok("33334444".to_string()),
+            Ok("55556666".to_string()),
+        ]);
+
+        let LoginFlowResult::NeedsManualLogin {
+            failure_message, ..
+        } = run(&driver).await
+        else {
+            panic!("扫描到底后应转为需人工登录");
+        };
+
+        assert!(failure_message.contains("页 1 槽位 0"));
+        assert!(failure_message.contains("***2222"));
+        assert!(failure_message.contains("页 2 槽位 2"));
+        assert!(!failure_message.contains("11112222"));
+        assert!(!failure_message.contains("3079643589"));
+    }
+
+    #[tokio::test]
+    async fn manual_login_failure_keeps_only_redacted_copied_qq() {
+        let driver = FakeDriver::with_waits(["wegame.loginFormReady", "wegame.loginFormReady"]);
+        driver
+            .copied_accounts
+            .lock()
+            .unwrap()
+            .push_back(Err("剪贴板内容不是纯数字 QQ: 3079643589".to_string()));
+
+        let result = run(&driver).await;
+        let LoginFlowResult::NeedsManualLogin {
+            failure_message, ..
+        } = result
+        else {
+            panic!("应返回需人工登录结果");
+        };
+
+        assert!(failure_message.contains("***3589"));
+        assert!(!failure_message.contains("3079643589"));
+        let serialized = serde_json::to_string(&failure_message).unwrap();
+        assert!(!serialized.contains("3079643589"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -1123,7 +1267,6 @@ mod tests {
             "wegame.launch",
         ]);
         let mut steps = Vec::new();
-
         let result = run_login_flow(
             &driver,
             &config(),
@@ -1136,6 +1279,7 @@ mod tests {
         assert_eq!(
             steps,
             vec![
+                LoginStep::InitialCountdown,
                 LoginStep::StopGame,
                 LoginStep::StopWeGame,
                 LoginStep::StartWeGame,

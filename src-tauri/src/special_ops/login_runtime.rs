@@ -1,10 +1,10 @@
-use super::login_flow::LoginStep;
 use super::{
     desktop_runtime::{DesktopRuntime, WindowIdentity, WindowsDesktopRuntime},
     login_flow::{LoginDriver, LoginObservation, LoginRunConfig},
-    remembered_account::RememberedAccountDriver,
+    remembered_account::{AccountRowClick, AccountRowSlot, RememberedAccountDriver},
     template_observer::{RuntimeSimilaritySampler, RuntimeTemplate},
 };
+use super::{login_flow::LoginStep, StationKind};
 use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
@@ -34,12 +34,68 @@ pub(crate) fn emit_run_changed(app: &AppHandle, snapshot: &LoginRunSnapshot) {
 pub struct LoginRunSnapshot {
     pub run_id: u64,
     pub account_id: String,
+    pub run_kind: LoginRunKind,
     pub status: LoginRunStatus,
     pub current_step: Option<LoginStep>,
     pub message: String,
     pub countdown_seconds: Option<u8>,
+    #[serde(default)]
+    pub round_progress: Option<RoundProgress>,
     pub started_at_ms: i64,
     pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LoginRunKind {
+    Login,
+    Navigation,
+    Craft,
+    Ammo,
+    Round,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundProgress {
+    pub account_index: usize,
+    pub account_total: usize,
+    pub qq_account: String,
+    pub station_kind: Option<StationKind>,
+    pub station_index: usize,
+    pub station_total: usize,
+}
+
+impl LoginRunKind {
+    pub(crate) fn query_value(self) -> &'static str {
+        match self {
+            Self::Login => "login",
+            Self::Navigation => "navigation",
+            Self::Craft => "craft",
+            Self::Ammo => "ammo",
+            Self::Round => "round",
+        }
+    }
+
+    fn preparing_message(self) -> &'static str {
+        match self {
+            Self::Login => "正在准备登录试运行",
+            Self::Navigation => "正在准备游戏内导航试运行",
+            Self::Craft => "正在准备制作试运行",
+            Self::Ammo => "正在准备子弹兑换试运行",
+            Self::Round => "正在准备多账号制作轮次",
+        }
+    }
+
+    fn normal_cancel_message(self) -> &'static str {
+        match self {
+            Self::Login => "正在取消登录试运行",
+            Self::Navigation => "正在取消游戏内导航试运行",
+            Self::Craft => "正在取消制作试运行",
+            Self::Ammo => "正在取消子弹兑换试运行",
+            Self::Round => "正在停止多账号制作轮次",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -49,6 +105,7 @@ pub enum LoginRunStatus {
     Waiting,
     Countdown,
     Inputting,
+    Stopping,
     Succeeded,
     Failed,
     Stopped,
@@ -139,6 +196,7 @@ struct ActiveLoginRun {
     cancelled: Arc<AtomicBool>,
     stop_reason: Option<StopReason>,
     entered_input: bool,
+    first_input_countdown_claimed: bool,
     persistence_state: PersistenceState,
     cleanup_failed: bool,
     worker_handed_off: bool,
@@ -180,7 +238,16 @@ impl LoginRuntime {
         operation()
     }
 
+    #[cfg(test)]
     pub(crate) fn try_start(&self, account_id: String) -> Result<StartedLoginRun, String> {
+        self.try_start_kind(account_id, LoginRunKind::Login)
+    }
+
+    pub(crate) fn try_start_kind(
+        &self,
+        account_id: String,
+        run_kind: LoginRunKind,
+    ) -> Result<StartedLoginRun, String> {
         let mut inner = self
             .inner
             .lock()
@@ -196,21 +263,48 @@ impl LoginRuntime {
             snapshot: LoginRunSnapshot {
                 run_id,
                 account_id,
+                run_kind,
                 status: LoginRunStatus::Starting,
                 current_step: None,
-                message: "正在准备登录试运行".to_string(),
+                message: run_kind.preparing_message().to_string(),
                 countdown_seconds: None,
+                round_progress: None,
                 started_at_ms: now,
                 updated_at_ms: now,
             },
             cancelled: Arc::clone(&cancelled),
             stop_reason: None,
             entered_input: false,
+            first_input_countdown_claimed: false,
             persistence_state: PersistenceState::Unclaimed,
             cleanup_failed: false,
             worker_handed_off: false,
         });
         Ok(StartedLoginRun { run_id, cancelled })
+    }
+
+    pub(crate) fn next_input_countdown_seconds(
+        &self,
+        run_id: u64,
+        show_subsequent_countdown: bool,
+    ) -> Result<Option<u8>, String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let active = inner
+            .active
+            .as_mut()
+            .filter(|run| run.snapshot.run_id == run_id)
+            .ok_or_else(|| "特勤处 run 已结束，不能开始倒计时".to_string())?;
+        if !active.first_input_countdown_claimed {
+            active.first_input_countdown_claimed = true;
+            Ok(Some(5))
+        } else if show_subsequent_countdown {
+            Ok(Some(1))
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) fn update(
@@ -244,12 +338,57 @@ impl LoginRuntime {
         Ok(Some(active.snapshot.clone()))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn update_round_progress(
+        &self,
+        run_id: u64,
+        account_index: usize,
+        account_total: usize,
+        account_id: impl Into<String>,
+        qq_account: impl Into<String>,
+        station_kind: Option<StationKind>,
+        station_index: usize,
+        station_total: usize,
+    ) -> Result<Option<LoginRunSnapshot>, String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())?;
+        let Some(active) = inner
+            .active
+            .as_mut()
+            .filter(|run| run.snapshot.run_id == run_id)
+        else {
+            return Ok(None);
+        };
+        if active.stop_reason.is_some() || active.cancelled.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+        active.snapshot.account_id = account_id.into();
+        active.snapshot.round_progress = Some(RoundProgress {
+            account_index,
+            account_total,
+            qq_account: qq_account.into(),
+            station_kind,
+            station_index,
+            station_total,
+        });
+        active.snapshot.updated_at_ms = super::now_ms();
+        Ok(Some(active.snapshot.clone()))
+    }
+
     pub(crate) fn finish(
         &self,
         run_id: u64,
         status: LoginRunStatus,
         message: impl Into<String>,
     ) -> Result<Option<LoginRunSnapshot>, String> {
+        crate::log_debug!(
+            "special_ops::runtime",
+            "runtime finish 开始",
+            "run_id" => run_id,
+            "status" => format!("{status:?}")
+        );
         let mut inner = self
             .inner
             .lock()
@@ -270,6 +409,12 @@ impl LoginRuntime {
         active.snapshot.message = message.into();
         active.snapshot.countdown_seconds = None;
         active.snapshot.updated_at_ms = super::now_ms();
+        crate::log_debug!(
+            "special_ops::runtime",
+            "runtime finish 完成",
+            "run_id" => run_id,
+            "status" => format!("{:?}", active.snapshot.status)
+        );
         Ok(Some(active.snapshot))
     }
 
@@ -329,10 +474,10 @@ impl LoginRuntime {
             self.persistence_changed.notify_all();
         }
         active.cancelled.store(true, Ordering::SeqCst);
-        active.snapshot.status = LoginRunStatus::Stopped;
+        active.snapshot.status = LoginRunStatus::Stopping;
         active.snapshot.current_step = None;
         active.snapshot.message = match effective_reason {
-            StopReason::Normal => "正在取消登录试运行",
+            StopReason::Normal => active.snapshot.run_kind.normal_cancel_message(),
             StopReason::Emergency => "正在执行紧急停止",
             StopReason::Lifecycle { .. } => "正在停止登录试运行",
         }
@@ -359,6 +504,19 @@ impl LoginRuntime {
                     .as_ref()
                     .filter(|active| active.snapshot.run_id == run_id)
                     .and_then(|active| active.stop_reason)
+            })
+    }
+
+    pub(crate) fn entered_input(&self, run_id: u64) -> Result<bool, String> {
+        self.inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())
+            .map(|inner| {
+                inner
+                    .active
+                    .as_ref()
+                    .filter(|active| active.snapshot.run_id == run_id)
+                    .is_some_and(|active| active.entered_input)
             })
     }
 
@@ -419,6 +577,24 @@ impl LoginRuntime {
                     .as_ref()
                     .filter(|active| active.snapshot.run_id == run_id)
                     .is_some_and(|active| active.cleanup_failed)
+            })
+    }
+
+    pub(crate) fn cleanup_ready(&self, run_id: u64) -> Result<bool, String> {
+        self.inner
+            .lock()
+            .map_err(|_| "登录试运行状态已损坏".to_string())
+            .map(|inner| {
+                inner
+                    .active
+                    .as_ref()
+                    .filter(|active| active.snapshot.run_id == run_id)
+                    .is_none_or(|active| match active.stop_reason {
+                        None | Some(StopReason::Normal) => true,
+                        Some(StopReason::Emergency | StopReason::Lifecycle { .. }) => {
+                            active.persistence_state == PersistenceState::Persisted
+                        }
+                    })
             })
     }
 
@@ -591,6 +767,7 @@ pub(crate) struct ProductionLoginDriver {
     run_id: u64,
     config: Arc<LoginRunConfig>,
     observation: Mutex<LoginObservation>,
+    login_takeover_active: AtomicBool,
 }
 
 impl ProductionLoginDriver {
@@ -606,6 +783,7 @@ impl ProductionLoginDriver {
             run_id,
             config,
             observation: Mutex::new(LoginObservation::None),
+            login_takeover_active: AtomicBool::new(false),
         }
     }
 
@@ -636,7 +814,16 @@ impl ProductionLoginDriver {
     }
 
     async fn countdown(&self, cancelled: &Arc<AtomicBool>) -> Result<(), String> {
-        for seconds in [3, 2, 1] {
+        if !countdown_required(self.login_takeover_active.load(Ordering::SeqCst)) {
+            return Ok(());
+        }
+        let Some(total) = self
+            .runtime
+            .next_input_countdown_seconds(self.run_id, true)?
+        else {
+            return Ok(());
+        };
+        for seconds in (1..=total).rev() {
             ensure_not_cancelled(cancelled)?;
             self.emit_update(
                 LoginRunStatus::Countdown,
@@ -710,16 +897,55 @@ impl ProductionLoginDriver {
     }
 
     async fn verify_account_list_open(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
-        self.emit_update(LoginRunStatus::Waiting, "正在确认已记住账号列表", None)?;
-        loop {
+        const MAX_ATTEMPTS: u8 = 3;
+        for attempt in 1..=MAX_ATTEMPTS {
+            self.emit_update(
+                LoginRunStatus::Waiting,
+                format!("正在确认已记住账号列表（第 {attempt}/{MAX_ATTEMPTS} 次）"),
+                None,
+            )?;
             let first = self.sample_accounts(Arc::clone(&cancelled)).await?;
             wait_cancellable(Duration::from_millis(400), &cancelled).await?;
             let second = self.sample_accounts(Arc::clone(&cancelled)).await?;
-            if super::remembered_account::stable_account_screen(&first, &second).is_some() {
+            if super::remembered_account::account_list_visible_in_both_samples(&first, &second) {
                 return Ok(());
             }
+            if attempt < MAX_ATTEMPTS {
+                wait_cancellable(Duration::from_millis(400), &cancelled).await?;
+            }
         }
+        Err(super::remembered_account::ACCOUNT_LIST_UNAVAILABLE.to_string())
     }
+
+    async fn sample_accounts(
+        &self,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<Vec<super::windows_ocr::OcrWord>, String> {
+        ensure_not_cancelled(&cancelled)?;
+        let region = self
+            .config
+            .targets
+            .get("wegame.accountList")
+            .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
+            .region
+            .clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let image = crate::recognition::watcher::capture_region(&region)
+                .ok_or_else(|| "账号列表截图失败".to_string())?;
+            super::windows_ocr::recognize_numeric_words(image)
+        })
+        .await
+        .map_err(|error| format!("账号列表 OCR 任务失败: {error}"))?;
+        if result.is_err() {
+            self.set_observation(LoginObservation::CaptureFailed);
+        }
+        result
+    }
+}
+
+/// 判断当前动作是否需要显示键鼠接管倒计时。
+fn countdown_required(login_takeover_active: bool) -> bool {
+    !login_takeover_active
 }
 
 #[allow(async_fn_in_trait)]
@@ -733,6 +959,10 @@ impl LoginDriver for ProductionLoginDriver {
             .lock()
             .map(|observation| *observation)
             .unwrap_or(LoginObservation::None)
+    }
+
+    async fn initial_countdown(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
+        self.countdown(&cancelled).await
     }
 
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String> {
@@ -794,6 +1024,9 @@ impl LoginDriver for ProductionLoginDriver {
                 self.set_observation(LoginObservation::TemplateSamples {
                     samples: observation.samples,
                 });
+                if key == "wegame.gameEntry" {
+                    self.login_takeover_active.store(false, Ordering::SeqCst);
+                }
                 Ok(key)
             }
             Err(error) => {
@@ -814,12 +1047,13 @@ impl LoginDriver for ProductionLoginDriver {
         let focus_cancelled = Arc::clone(&cancelled);
         let guard_cancelled = Arc::clone(&cancelled);
         let action_cancelled = Arc::clone(&cancelled);
+        let mouse_parking_region = self.config.mouse_parking_region.clone();
         run_checked_action(
             self.countdown(&cancelled),
             async {
                 ensure_not_cancelled(&focus_cancelled)?;
-                self.focus_wegame().await.inspect_err(|_| {
-                    self.set_observation(LoginObservation::WindowNotFound);
+                self.focus_wegame().await.inspect_err(|error| {
+                    self.set_observation(window_observation(error));
                 })
             },
             async {
@@ -829,11 +1063,24 @@ impl LoginDriver for ProductionLoginDriver {
             async {
                 ensure_not_cancelled(&action_cancelled)?;
                 self.emit_update(LoginRunStatus::Inputting, "正在执行键鼠操作", None)?;
-                crate::input_simulation::click_region_center_cancellable(region, action_cancelled)
-                    .await
+                crate::input_simulation::click_region_center_held_cancellable(
+                    region,
+                    super::MOUSE_CLICK_HOLD_MS,
+                    Arc::clone(&action_cancelled),
+                )
+                .await?;
+                crate::input_simulation::move_region_center_cancellable(
+                    mouse_parking_region,
+                    action_cancelled,
+                )
+                .await
             },
         )
-        .await
+        .await?;
+        if matches!(target_key, "wegame.loginMode" | "wegame.accountDropdown") {
+            self.login_takeover_active.store(true, Ordering::SeqCst);
+        }
+        Ok(())
     }
 
     async fn find_process_window(
@@ -854,29 +1101,43 @@ impl LoginDriver for ProductionLoginDriver {
 }
 
 impl RememberedAccountDriver for ProductionLoginDriver {
-    async fn sample_accounts(
+    async fn visible_account_rows(
         &self,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<Vec<super::windows_ocr::OcrWord>, String> {
-        ensure_not_cancelled(&cancelled)?;
-        let region = self
+    ) -> Result<Vec<AccountRowSlot>, String> {
+        const MAX_ATTEMPTS: u8 = 3;
+        let list_height = self
             .config
             .targets
             .get("wegame.accountList")
             .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
             .region
-            .clone();
-        let result = tokio::task::spawn_blocking(move || {
-            let image = crate::recognition::watcher::capture_region(&region)
-                .ok_or_else(|| "账号列表截图失败".to_string())?;
-            super::windows_ocr::recognize_numeric_words(image)
-        })
-        .await
-        .map_err(|error| format!("账号列表 OCR 任务失败: {error}"))?;
-        if result.is_err() {
-            self.set_observation(LoginObservation::CaptureFailed);
+            .height;
+        for attempt in 1..=MAX_ATTEMPTS {
+            self.emit_update(
+                LoginRunStatus::Waiting,
+                format!("正在确认已记住账号列表（第 {attempt}/{MAX_ATTEMPTS} 次）"),
+                None,
+            )?;
+            let first = self.sample_accounts(Arc::clone(&cancelled)).await?;
+            wait_cancellable(Duration::from_millis(400), &cancelled).await?;
+            let second = self.sample_accounts(Arc::clone(&cancelled)).await?;
+            if super::remembered_account::account_list_visible_in_both_samples(&first, &second) {
+                return Ok(super::remembered_account::derive_visible_row_slots(
+                    &first,
+                    &second,
+                    list_height,
+                ));
+            }
+            if attempt < MAX_ATTEMPTS {
+                wait_cancellable(Duration::from_millis(400), &cancelled).await?;
+            }
         }
-        result
+        Err(super::remembered_account::ACCOUNT_LIST_UNAVAILABLE.to_string())
+    }
+
+    async fn open_account_list(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
+        <Self as LoginDriver>::click(self, "wegame.accountDropdown", cancelled).await
     }
 
     async fn scroll_down(&self, cancelled: Arc<AtomicBool>) -> Result<(), String> {
@@ -890,6 +1151,7 @@ impl RememberedAccountDriver for ProductionLoginDriver {
         let focus_cancelled = Arc::clone(&cancelled);
         let guard_cancelled = Arc::clone(&cancelled);
         let action_cancelled = Arc::clone(&cancelled);
+        let mouse_parking_region = self.config.mouse_parking_region.clone();
         run_checked_action(
             self.countdown(&cancelled),
             async {
@@ -903,18 +1165,31 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             async {
                 ensure_not_cancelled(&action_cancelled)?;
                 self.emit_update(LoginRunStatus::Inputting, "正在滚动账号列表", None)?;
-                crate::input_simulation::scroll_region_down_cancellable(region, 3, action_cancelled)
-                    .await
+                crate::input_simulation::scroll_region_down_cancellable(
+                    region,
+                    3,
+                    Arc::clone(&action_cancelled),
+                )
+                .await?;
+                crate::input_simulation::move_region_center_cancellable(
+                    mouse_parking_region,
+                    action_cancelled,
+                )
+                .await
             },
         )
         .await
     }
 
-    async fn select_bounds(
+    async fn select_row(
         &self,
-        bounds: super::windows_ocr::OcrBounds,
+        slot: AccountRowSlot,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<(), String> {
+    ) -> Result<AccountRowClick, String> {
+        let row = slot.index();
+        if row >= 3 {
+            return Err(format!("账号列表行号无效: {row}"));
+        }
         let region = self
             .config
             .targets
@@ -922,12 +1197,17 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             .ok_or_else(|| "登录校准目标 wegame.accountList 不存在".to_string())?
             .region
             .clone();
-        let screen = super::windows_ocr::to_screen_bounds(bounds, &region);
-        let x = screen.x.saturating_add(screen.width / 2);
-        let y = screen.y.saturating_add(screen.height / 2);
+        let x = region.x.saturating_add(region.width / 2);
+        let y = match slot {
+            AccountRowSlot::Ocr { center_y, .. } => region.y.saturating_add(center_y),
+            AccountRowSlot::Fallback { .. } => region
+                .y
+                .saturating_add(region.height.saturating_mul(i32::from(row) * 2 + 1) / 6),
+        };
         let focus_cancelled = Arc::clone(&cancelled);
         let guard_cancelled = Arc::clone(&cancelled);
         let action_cancelled = Arc::clone(&cancelled);
+        let mouse_parking_region = self.config.mouse_parking_region.clone();
         run_checked_action(
             self.countdown(&cancelled),
             async {
@@ -936,16 +1216,27 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             },
             async {
                 ensure_not_cancelled(&guard_cancelled)?;
-                self.verify_account_list_open(guard_cancelled).await
+                Ok(())
             },
             async {
                 ensure_not_cancelled(&action_cancelled)?;
                 self.emit_update(LoginRunStatus::Inputting, "正在选择目标 QQ", None)?;
-                crate::input_simulation::click_screen_point_cancellable(x, y, action_cancelled)
-                    .await
+                crate::input_simulation::click_screen_point_held_cancellable(
+                    x,
+                    y,
+                    super::MOUSE_CLICK_HOLD_MS,
+                    Arc::clone(&action_cancelled),
+                )
+                .await?;
+                crate::input_simulation::move_region_center_cancellable(
+                    mouse_parking_region,
+                    action_cancelled,
+                )
+                .await
             },
         )
-        .await
+        .await?;
+        Ok(AccountRowClick { index: row, x, y })
     }
 
     async fn copy_selected_qq(&self, cancelled: Arc<AtomicBool>) -> Result<String, String> {
@@ -963,6 +1254,7 @@ impl RememberedAccountDriver for ProductionLoginDriver {
         let focus_cancelled = Arc::clone(&cancelled);
         let guard_cancelled = Arc::clone(&cancelled);
         let action_cancelled = Arc::clone(&cancelled);
+        let mouse_parking_region = self.config.mouse_parking_region.clone();
         run_checked_action(
             self.countdown(&cancelled),
             async {
@@ -977,8 +1269,14 @@ impl RememberedAccountDriver for ProductionLoginDriver {
             async {
                 ensure_not_cancelled(&action_cancelled)?;
                 self.emit_update(LoginRunStatus::Inputting, "正在复制目标 QQ", None)?;
-                crate::input_simulation::double_click_region_and_copy_cancellable(
+                crate::input_simulation::double_click_region_and_copy_held_cancellable(
                     region,
+                    super::MOUSE_CLICK_HOLD_MS,
+                    Arc::clone(&action_cancelled),
+                )
+                .await?;
+                crate::input_simulation::move_region_center_cancellable(
+                    mouse_parking_region,
                     action_cancelled,
                 )
                 .await
@@ -1026,6 +1324,14 @@ fn launch_observation(error: &str) -> LoginObservation {
         .and_then(|value| value.strip_suffix('）'))
         .and_then(|value| value.parse().ok());
     LoginObservation::LaunchFailed { windows_error_code }
+}
+
+fn window_observation(error: &str) -> LoginObservation {
+    if error.contains("未找到 WeGame 窗口") {
+        LoginObservation::WindowNotFound
+    } else {
+        LoginObservation::WindowOperationFailed
+    }
 }
 
 fn ensure_not_cancelled(cancelled: &AtomicBool) -> Result<(), String> {
@@ -1083,6 +1389,18 @@ mod tests {
     }
 
     #[test]
+    fn window_error_observation_distinguishes_search_from_window_operation() {
+        assert_eq!(
+            window_observation("未找到 WeGame 窗口"),
+            LoginObservation::WindowNotFound
+        );
+        assert_eq!(
+            window_observation("聚焦目标窗口失败：C:\\private\\wegame.exe"),
+            LoginObservation::WindowOperationFailed
+        );
+    }
+
+    #[test]
     fn only_one_login_run_can_be_active() {
         let runtime = LoginRuntime::default();
         let first = runtime.try_start("account-a".to_string()).unwrap();
@@ -1127,7 +1445,7 @@ mod tests {
             .request_stop(current.run_id, StopReason::Normal)
             .unwrap()
             .unwrap();
-        assert_eq!(cancelled.status, LoginRunStatus::Stopped);
+        assert_eq!(cancelled.status, LoginRunStatus::Stopping);
         assert!(current.cancelled.load(Ordering::SeqCst));
         assert!(runtime.try_start("account-b".to_string()).is_err());
 
@@ -1135,6 +1453,26 @@ mod tests {
             .finish(current.run_id, LoginRunStatus::Stopped, "已停止")
             .unwrap();
         assert!(runtime.try_start("account-b".to_string()).is_ok());
+    }
+
+    #[test]
+    fn stop_request_stays_stopping_until_worker_finishes() {
+        let runtime = LoginRuntime::default();
+        let run = runtime.try_start("account-a".to_string()).unwrap();
+
+        let stopping = runtime
+            .request_stop(run.run_id, StopReason::Normal)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stopping.status, LoginRunStatus::Stopping);
+        assert!(runtime.snapshot().unwrap().is_some());
+
+        let stopped = runtime
+            .finish(run.run_id, LoginRunStatus::Failed, "制作试运行已停止")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stopped.status, LoginRunStatus::Stopped);
+        assert!(runtime.snapshot().unwrap().is_none());
     }
 
     #[test]
@@ -1158,7 +1496,7 @@ mod tests {
 
         assert!(updated.is_none());
         let snapshot = runtime.snapshot().unwrap().unwrap();
-        assert_eq!(snapshot.status, LoginRunStatus::Stopped);
+        assert_eq!(snapshot.status, LoginRunStatus::Stopping);
         assert_eq!(snapshot.current_step, None);
         assert_eq!(snapshot.message, "正在执行紧急停止");
     }
@@ -1262,6 +1600,24 @@ mod tests {
     }
 
     #[test]
+    fn emergency_stop_blocks_worker_cleanup_until_persisted() {
+        let runtime = LoginRuntime::default();
+        let current = runtime.try_start("account-a".to_string()).unwrap();
+        runtime
+            .request_stop(current.run_id, StopReason::Emergency)
+            .unwrap()
+            .unwrap();
+
+        assert!(!runtime.cleanup_ready(current.run_id).unwrap());
+        let PersistenceClaim::Acquired(guard) = runtime.claim_persistence(current.run_id).unwrap()
+        else {
+            panic!("应取得紧急停止持久化权限");
+        };
+        assert!(guard.complete().unwrap());
+        assert!(runtime.cleanup_ready(current.run_id).unwrap());
+    }
+
+    #[test]
     fn failed_emergency_persistence_releases_claim_for_retry() {
         let runtime = LoginRuntime::default();
         let current = runtime.try_start("account-a".to_string()).unwrap();
@@ -1358,16 +1714,46 @@ mod tests {
     #[test]
     fn run_snapshot_is_camel_case_and_contains_no_password_field() {
         let runtime = LoginRuntime::default();
-        runtime.try_start("account-a".to_string()).unwrap();
+        runtime
+            .try_start_kind("account-a".to_string(), LoginRunKind::Craft)
+            .unwrap();
 
         let json = serde_json::to_string(&runtime.snapshot().unwrap().unwrap()).unwrap();
 
         assert!(json.contains("\"runId\""));
         assert!(json.contains("\"accountId\""));
+        assert!(json.contains("\"runKind\":\"craft\""));
         assert!(json.contains("\"currentStep\""));
         assert!(json.contains("\"countdownSeconds\""));
         assert!(!json.contains("password"));
         assert!(!json.contains("settings"));
+    }
+
+    #[test]
+    fn round_snapshot_serializes_progress_in_camel_case() {
+        let runtime = LoginRuntime::default();
+        let started = runtime
+            .try_start_kind("account-a".to_string(), LoginRunKind::Round)
+            .unwrap();
+
+        runtime
+            .update_round_progress(
+                started.run_id,
+                2,
+                4,
+                "account-b",
+                "123456789",
+                Some(crate::special_ops::StationKind::Workbench),
+                1,
+                3,
+            )
+            .unwrap();
+
+        let value = serde_json::to_value(runtime.snapshot().unwrap().unwrap()).unwrap();
+        assert_eq!(value["runKind"], "round");
+        assert_eq!(value["accountId"], "account-b");
+        assert_eq!(value["roundProgress"]["accountIndex"], 2);
+        assert_eq!(value["roundProgress"]["stationKind"], "workbench");
     }
 
     #[test]
@@ -1422,6 +1808,59 @@ mod tests {
         assert!(wait_cancellable(Duration::from_secs(1), &started.cancelled)
             .await
             .is_err());
+    }
+
+    #[test]
+    fn normal_cancel_message_matches_run_kind() {
+        assert_eq!(
+            LoginRunKind::Login.normal_cancel_message(),
+            "正在取消登录试运行"
+        );
+        assert_eq!(
+            LoginRunKind::Navigation.normal_cancel_message(),
+            "正在取消游戏内导航试运行"
+        );
+        assert_eq!(
+            LoginRunKind::Craft.normal_cancel_message(),
+            "正在取消制作试运行"
+        );
+        assert_eq!(LoginRunKind::Ammo.query_value(), "ammo");
+        assert_eq!(
+            LoginRunKind::Ammo.normal_cancel_message(),
+            "正在取消子弹兑换试运行"
+        );
+    }
+
+    #[test]
+    fn login_takeover_suppresses_countdown_until_released() {
+        assert!(countdown_required(false));
+        assert!(!countdown_required(true));
+        assert!(countdown_required(false));
+    }
+
+    #[test]
+    fn first_input_gets_five_and_only_prompted_followups_get_one() {
+        let runtime = LoginRuntime::default();
+        let started = runtime.try_start("account-a".to_string()).unwrap();
+
+        assert_eq!(
+            runtime
+                .next_input_countdown_seconds(started.run_id, false)
+                .unwrap(),
+            Some(5)
+        );
+        assert_eq!(
+            runtime
+                .next_input_countdown_seconds(started.run_id, false)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            runtime
+                .next_input_countdown_seconds(started.run_id, true)
+                .unwrap(),
+            Some(1)
+        );
     }
 
     #[tokio::test]

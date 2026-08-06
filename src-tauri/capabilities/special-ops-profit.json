@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "special-ops-profit",
+  "description": "Moligod 隐藏利润 WebView，不授予 IPC 权限",
+  "local": false,
+  "remote": {
+    "urls": ["https://moligod.com/*"]
+  },
+  "webviews": ["special-ops-profit-*"],
+  "permissions": []
+}

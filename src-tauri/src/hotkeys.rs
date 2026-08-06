@@ -370,6 +370,27 @@ impl HotkeyManager {
         display_name: String,
         conflict_policy: ConflictPolicy,
     ) -> Result<(), String> {
+        self.replace_scope_with_global_gate(scope, bindings, display_name, conflict_policy, false)
+    }
+
+    pub fn replace_safety_scope(
+        &self,
+        scope: &str,
+        bindings: Vec<(String, HotkeyAction)>,
+        display_name: String,
+        conflict_policy: ConflictPolicy,
+    ) -> Result<(), String> {
+        self.replace_scope_with_global_gate(scope, bindings, display_name, conflict_policy, true)
+    }
+
+    fn replace_scope_with_global_gate(
+        &self,
+        scope: &str,
+        bindings: Vec<(String, HotkeyAction)>,
+        display_name: String,
+        conflict_policy: ConflictPolicy,
+        allow_when_global_disabled: bool,
+    ) -> Result<(), String> {
         if let Some(error) = &self.install_error {
             return Err(error.clone());
         }
@@ -382,6 +403,7 @@ impl HotkeyManager {
                 enabled: true,
                 display_name: display_name.clone(),
                 conflict_policy,
+                allow_when_global_disabled,
                 action,
             });
         }
@@ -464,6 +486,7 @@ impl HotkeyManager {
                 enabled: true,
                 display_name: display_name.clone(),
                 conflict_policy,
+                allow_when_global_disabled: false,
                 action,
             });
         }
@@ -665,7 +688,11 @@ fn run_listener(
                             action(app.clone(), hold_action);
                         }
                         if let Some(key_state) = key_state {
-                            for action in actions_for_key_state(&registrations, &key_state) {
+                            for action in actions_for_key_state_with_global_gate(
+                                &registrations,
+                                &key_state,
+                                global_enabled,
+                            ) {
                                 action(app.clone());
                             }
                         }
@@ -702,7 +729,11 @@ fn run_listener(
                         action(app.clone(), hold_action);
                     }
                     if let Some(key_state) = key_state {
-                        for action in actions_for_key_state(&registrations, &key_state) {
+                        for action in actions_for_key_state_with_global_gate(
+                            &registrations,
+                            &key_state,
+                            global_enabled,
+                        ) {
                             action(app.clone());
                         }
                     }
@@ -718,10 +749,24 @@ fn run_listener(
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", test))]
 fn actions_for_key_state(
     registrations: &Arc<Mutex<Vec<HotkeyRegistration>>>,
     key_state: &KeyState,
+) -> Vec<HotkeyAction> {
+    actions_for_key_state_with_global_gate(registrations, key_state, true)
+}
+
+#[cfg(target_os = "windows")]
+fn global_gate_allows_registration(global_enabled: bool, allow_when_global_disabled: bool) -> bool {
+    global_enabled || allow_when_global_disabled
+}
+
+#[cfg(target_os = "windows")]
+fn actions_for_key_state_with_global_gate(
+    registrations: &Arc<Mutex<Vec<HotkeyRegistration>>>,
+    key_state: &KeyState,
+    global_enabled: bool,
 ) -> Vec<HotkeyAction> {
     registrations
         .lock()
@@ -730,7 +775,12 @@ fn actions_for_key_state(
             registrations
                 .iter()
                 .filter(|registration| {
-                    registration.enabled && matches_binding(&registration.binding, key_state)
+                    registration.enabled
+                        && global_gate_allows_registration(
+                            global_enabled,
+                            registration.allow_when_global_disabled,
+                        )
+                        && matches_binding(&registration.binding, key_state)
                 })
                 .map(|registration| Arc::clone(&registration.action))
                 .collect::<Vec<_>>()
@@ -1073,6 +1123,13 @@ mod tests {
     }
 
     #[test]
+    fn global_gate_only_allows_explicit_safety_registration() {
+        assert!(global_gate_allows_registration(true, false));
+        assert!(!global_gate_allows_registration(false, false));
+        assert!(global_gate_allows_registration(false, true));
+    }
+
+    #[test]
     fn replace_mixed_scope_registers_and_pauses_normal_and_hold_bindings() {
         let manager = test_manager();
         let action: HotkeyAction = Arc::new(|_| {});
@@ -1188,6 +1245,7 @@ mod tests {
                 enabled: true,
                 display_name: "识别触发".into(),
                 conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
                 action: action_a,
             },
             HotkeyRegistration {
@@ -1196,6 +1254,7 @@ mod tests {
                 enabled: true,
                 display_name: "识别触发".into(),
                 conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
                 action: action_b,
             },
         ]));
@@ -1381,6 +1440,7 @@ mod tests {
             enabled: true,
             display_name: "计时器".to_string(),
             conflict_policy: ConflictPolicy::AllowHold,
+            allow_when_global_disabled: false,
             action: Arc::clone(&timer_action),
         }]));
         let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
@@ -1792,6 +1852,7 @@ mod tests {
                 enabled: true,
                 display_name: "计时器".to_string(),
                 conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
                 action: Arc::new(|_| {}),
             },
             HotkeyRegistration {
@@ -1800,6 +1861,7 @@ mod tests {
                 enabled: true,
                 display_name: "计时器".to_string(),
                 conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
                 action: Arc::new(|_| {}),
             },
             HotkeyRegistration {
@@ -1808,6 +1870,7 @@ mod tests {
                 enabled: true,
                 display_name: "摩斯密码解析".to_string(),
                 conflict_policy: ConflictPolicy::Strict,
+                allow_when_global_disabled: false,
                 action: Arc::new(|_| {}),
             },
         ]));

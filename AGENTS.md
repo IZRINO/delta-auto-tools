@@ -131,7 +131,21 @@ After modifying code, run `codegraph sync` to refresh the index — no need to s
 
 ## Project Overview
 
-新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号身份使用唯一纯数字 QQ；工具不保存或输入 QQ 密码，用户需提前在 WeGame 登录目标账号并勾选“记住密码”。账号内子弹目标按名称、普通/赛季类型、相对滚轮步数和顺序保存；当天成功/重试状态不得随模板复制。校准全局保存，通过 `special-ops-calibration-*` overlay 框选点击点与识别区域；静态 UI 使用用户参考图模板匹配并以 400ms 间隔双采样测试。登录使用 5 个 template 目标 `wegame.loginMode/loginFormReady/login/gameEntry/launch`、`wegame.accountDropdown` 点击点、`wegame.accountList` OCR 区域与 `wegame.selectedAccount` 双击复制区域。runtime 强制重启 WeGame，从列表顶部用 Windows OCR 双采样扫描动态账号顺序，选择后通过 Unicode 剪贴板精确复核 QQ；失败补偿重启一轮，仍失败标记 `NeedsManualLogin`。WeGame 与游戏 exe 由用户选择；runtime 按 canonical 完整路径结束目标实例，不递归结束进程树。登录试运行使用单实例 `LoginRuntime`，commands 为 `special_ops_start_login_trial`、`special_ops_cancel_login_trial`、`special_ops_emergency_stop`；固定 `special-ops-operation` window 与运行期 `special-ops-emergency` Strict 热键。`special-ops://run-changed` 仅发送 run snapshot，后台结果写入必须通过 `SettingsCoordinator::with_runtime_change`。当前闭环只到游戏 PID/HWND 出现；多账号 round、制作和子弹兑换执行器尚未实现。
+`special_ops` 新 schema 以 `defaultBusinessConfig` 保存默认制作台与子弹业务配置；制作台业务项包含 `recipeNote`，子弹业务目标包含稳定 ID、备注、普通/赛季类型、指定点击点、A/D 重置后向下滚动次数和顺序。兼容字段 `scrollDirection` 在 normalize 时固定归一化为 `down`，不参与 UI 或 runtime。账号通过 `independentSettingsEnabled` 选择继承或独立配置，独立配置可覆盖四台 `recipePoints` 与子弹目标，制作计时与当天子弹状态始终按账号保存。业务点复用现有 calibration overlay，以 `business.ammo.<targetId>` 和可选账号上下文区分默认/独立目标；账号级配方点不覆盖全局点击点，制作 runtime 优先读取账号级点。`AccountFailure` 以互斥的 `stationKind` / `ammoTargetId` 定位失败业务，`AmmoTarget.lastFailure` 保存目标级人工失败。`special_ops_confirm_station_state` 与 `special_ops_confirm_ammo_state` 只校正当前任务；`special_ops_confirm_account_station_states` 继续在 revision 临界区内原子校正四制作台及当天全部启用子弹状态。初始化后的 `Ready` 可主动重新校正；制作失败单项校正后恢复 `Ready`，未校正子弹失败继续只冻结对应目标；`NeedsManualLogin` / `LoginFailed` 不得借业务校正绕过登录处理。提交失败必须在对应行或完整人工校正 modal 内显示，禁止静默返回。
+
+新增开发中模块 `special_ops`：配置独立保存到 `special_ops_settings.json`，不进入 Profile。账号身份使用唯一纯数字 QQ；工具不保存或输入 QQ 密码，用户需提前在 WeGame 登录目标账号并勾选“记住密码”。账号内子弹运行态按当天成功日期、`retryDay` 和重试次数保存，不得随模板复制。账号下四制作台 UI 保存启用开关、小时/分钟及制作物品备注，兼容字段 `itemName` 不再由 UI 编辑。`ScheduleSnapshot.timelineTasks` 提供未来 24 小时制作/子弹权威投影并携带 `manualFailure`；逾期任务保留原 `scheduledAtMs`，前端显示“0 分钟后”，以首任务为锚将严格小于 10 分钟的任务视觉合并且不修改执行时间。可定位失败在自身任务行显示单项判定；旧版无定位失败只提示账号页完整处理。非 `Ready` 账号任务仍投影并携带状态；页面每分钟刷新时间和 bootstrap。
+
+校准全局保存，通过 `special-ops-calibration-*` overlay 框选点击点与识别区域；静态 UI 使用用户参考图模板匹配并以 400ms 间隔双采样测试。制作试运行不再保存奖励页、共享制作中或四台制作列表就绪模板；先按三段全局 `0–60000ms` 固定等待执行 `craft.station.<station>`、Space、再次点击制作台和共享 `craft.confirmPinned`，再双采样 `craft.abort`。连续命中时点击共享 `craft.returnToStationGrid` 返回点并等待 `game.stationGrid` 后结束当前台，不发送 Esc；两个有效低分样本进入当前台独立 `craft.recipe.<station>` 物品选择点；不一致、截图错误、返回点击或确认失败保存实际步骤并标记账号与当前台 `Uncertain`。run 首个键鼠操作块显示 5→4→3→2→1；后续原本需要提示的块只显示 1，固定探测中原本不提示的后续输入继续不提示；物品选择及后续生产动作按同一规则提示。`runtime.mouseParking` 是 special_ops 独占全局点击点，各输入后先把鼠标移至该点再截图，不影响其他工具。
+
+登录使用 5 个 template 目标 `wegame.loginMode/loginFormReady/login/gameEntry/launch`、`wegame.accountDropdown` 点击点、`wegame.accountList` OCR 区域与 `wegame.selectedAccount` 双击复制区域。runtime 强制重启 WeGame，从列表顶部逐行选择并通过 Unicode 剪贴板精确复核 QQ；扫描失败直接标记 `NeedsManualLogin`，不重启 WeGame。WeGame 与游戏 exe 由用户选择；runtime 按 canonical 完整路径结束目标实例，不递归结束进程树。单实例 runtime 支持登录、游戏内导航、单制作台试运行、当前账号四制作台批处理、`special_ops_start_ammo_trial` 单账号真实子弹兑换及 `special_ops_start_due_round` 多账号自动轮次。
+
+子弹入口只对 `ammo.department` 做模板识别；随后按独立 `0–60000ms` 等待直接点击 `ammo.supply` 与 `ammo.tactical`，普通目标全部完成后才在存在赛季目标时点击一次 `ammo.seasonal`，不再保存或校验 `ammo.list` / `ammo.seasonalList`。每个目标定位先在同一全局输入锁内按 `A`、等待 100ms、按 `D`、等待 100ms；再向下滚配置次数，滚轮事件间隔 100ms，滚动结束无论次数是否为 0 均等待 1000ms 后点击。run 首个键鼠操作块显示 5→4→3→2→1，后续原本需要提示的块只显示 1；识别、固定等待和持久化不倒计时。点击 `ammo.exchange` 后必须双采样命中全局用户参考图模板 `ammo.confirm` 并点击区域中心，再双采样 `ammo.success`；`ammo.success` 通过模板差异判断兑换完成，不读取颜色。确认模板超时、确认后完成状态未命中或购买重试耗尽 → 结束当前账号本轮并把失败写入当前 `AmmoTarget.lastFailure`，账号保持 `Ready`；窗口、截图、输入和持久化故障保持系统级失败。普通兑换 retry 只增加当天次数，不产生人工失败；成功逐项立即保存。
+
+round 启动时通过 `build_schedule()` 冻结所有启用且账号状态为 `Ready` 的到期制作台和当天可执行子弹；制作台状态为 `Crafting` 或 `Ready` 且完成时间到期时均可进入轮次。账号按 order、制作台按固定四台顺序串行执行；仅子弹账号导航停在 Tab 后大厅，制作与子弹同账号时先完成制作再兑换。逐台制作与逐种子弹成功立即持久化；制作异常阻断账号，子弹人工异常只阻断当前目标，二者均结束当前账号本轮并关闭旧游戏后继续下一账号；系统级失败全面暂停。round 正常完成或 `PauseRequested` 持久化后按冻结的 canonical 游戏 exe 路径关闭游戏并保留 WeGame；`SystemFailure` / `EmergencyStopped` 不关闭游戏以保留现场；正常完成时关闭失败转全局暂停，暂停分支关闭失败保持暂停并报告 `round.closeGame`。
+
+后台单 worker scheduler 默认未 armed，应用启动强制暂停；用户点击继续并成功持久化后立即 armed，逾期任务立即执行，未来任务到点执行。前端不提供“开始当前到期轮次”手动入口；scheduler 与 round 仍共用 `build_schedule()`，统一调度到期制作与当天子弹。每日兑换时间前 5 分钟内到期的制作延迟至兑换时间合并执行，当天成功或重试耗尽的子弹不再加入。设置保存、人工校正和 round 完成后通过 `Notify` 唤醒。30 秒健康检查发现定时器晚醒超过 60 秒时持久化暂停并聚焦主窗口。运行中暂停只登记 `pauseRequested`，当前账号完成后停止切号。`LoginRunSnapshot.runKind = round` 时携带 `roundProgress`。全局关闭只 disarm scheduler，应用关闭才 shutdown worker。
+
+联网利润筛选以 `profitFilter` 独立保存全局开关、截止时间、稳定规则 ID、KKRB/Moligod 精确名称、最低总利润与当天最近审计；`AmmoBusinessTarget.profitRuleId` 只引用规则 ID。运行期资格、query generation、cadence、active round targets 不持久化，重启不得复用历史审计。每天每日兑换时间至利润截止时间内按立即、5 分钟、5 分钟、50 分钟节奏查询；KKRB 正常响应时只使用 KKRB，只有整体失败才使用无 IPC 权限的 Moligod 隐藏 WebView。未达标、目标缺失或来源失败不记兑换失败，到截止时间后剩余目标绕过利润 gate。round 启动先消费同 generation 的达标目标；运行资源启动失败必须仅回滚该 generation，防止遗留 `ActiveRound`。所有返回 `SpecialOpsBootstrap` 的保存、人工校正和暂停路径均必须包含当前 `ProfitRuntimeSnapshot`，并在成功写盘后递增 revision。
 
 **Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
 
@@ -222,11 +236,9 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### Tauri command 注册
 
-新增 Tauri command 必须同时注册到：
-1. `src-tauri/src/lib.rs` 的 `generate_handler![]`
-2. 实际调用窗口对应的 capability：main 用 `default.json`，overlay 用 `overlays.json`，remote Strategy WebView 用 `strategy.json`
+新增应用自定义 `#[tauri::command]` 必须注册到 `src-tauri/src/lib.rs` 的 `generate_handler![]`。当前仓库尚未把全部 app commands 迁移到 Tauri app ACL；禁止只为单个新 command 创建 `src-tauri/permissions/*.toml` 或向 capability 添加无 namespace permission，否则 Tauri 会启用局部 `__app-acl__` 并拒绝未列入 allow 的既有 commands。若要启用 app ACL，必须在独立任务中一次迁移并验证全部 commands。
 
-Capability 不得重新使用 `core:default`、`opener:default`、`updater:default` 或 `process:default`；新增前端 Tauri API 调用时只增加对应 `allow-*` permission。生产 CSP 不得恢复为 `null` 或加入远程通配源。
+新增 Tauri core/plugin 前端 API 调用时，必须在实际调用窗口对应 capability 增加精确 `allow-*` permission：main 用 `default.json`，overlay 用 `overlays.json`，remote Strategy WebView 用 `strategy.json`。Capability 不得重新使用 `core:default`、`opener:default`、`updater:default` 或 `process:default`。生产 CSP 不得恢复为 `null` 或加入远程通配源。
 
 ### 版本号同步
 

@@ -15,6 +15,7 @@ use windows_sys::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
     PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
 };
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP, VK_MENU};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClientRect, GetForegroundWindow, GetWindow, GetWindowRect,
     GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow,
@@ -22,6 +23,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 const PROCESS_PATH_BUFFER_LEN: usize = 32_768;
+const FOREGROUND_SETTLE_TIMEOUT: Duration = Duration::from_millis(1_500);
+const FOREGROUND_SETTLE_POLL: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowIdentity {
@@ -654,16 +657,58 @@ fn restore_and_focus_verified(hwnd: HWND) -> Result<(), String> {
         )
         .map_err(|error| format_win32_error("恢复目标窗口失败", error))?;
     }
-    // SAFETY: caller validated hwnd and its process ownership immediately before this call.
-    unsafe {
-        if SetForegroundWindow(hwnd) == 0 {
-            return Err("聚焦目标窗口失败".to_string());
-        }
-        if GetForegroundWindow() != hwnd {
-            return Err("目标窗口未成为前台窗口".to_string());
-        }
+    focus_with_foreground_unlock(
+        hwnd,
+        |target| {
+            // SAFETY: caller validated hwnd and its process ownership immediately before this call.
+            unsafe { SetForegroundWindow(target) != 0 }
+        },
+        || {
+            // SAFETY: GetForegroundWindow has no preconditions.
+            unsafe { GetForegroundWindow() }
+        },
+        tap_alt_for_foreground_permission,
+    )
+}
+
+fn focus_with_foreground_unlock(
+    hwnd: HWND,
+    mut focus: impl FnMut(HWND) -> bool,
+    mut foreground: impl FnMut() -> HWND,
+    mut unlock: impl FnMut(),
+) -> Result<(), String> {
+    if foreground() == hwnd || (focus(hwnd) && wait_for_foreground(hwnd, &mut foreground)) {
+        return Ok(());
+    }
+    unlock();
+    if !focus(hwnd) {
+        return Err("聚焦目标窗口失败".to_string());
+    }
+    if !wait_for_foreground(hwnd, &mut foreground) {
+        return Err("目标窗口未成为前台窗口".to_string());
     }
     Ok(())
+}
+
+fn wait_for_foreground(hwnd: HWND, foreground: &mut impl FnMut() -> HWND) -> bool {
+    let deadline = Instant::now() + FOREGROUND_SETTLE_TIMEOUT;
+    loop {
+        if foreground() == hwnd {
+            return true;
+        }
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return false;
+        };
+        std::thread::sleep(FOREGROUND_SETTLE_POLL.min(remaining));
+    }
+}
+
+fn tap_alt_for_foreground_permission() {
+    // SAFETY: 注入一次成对的 Alt 按下/释放，用于解除 Windows 前台切换限制，不保留按键状态。
+    unsafe {
+        keybd_event(VK_MENU as u8, 0, 0, 0);
+        keybd_event(VK_MENU as u8, 0, KEYEVENTF_KEYUP, 0);
+    }
 }
 
 fn capture_win32_result<T>(
@@ -688,7 +733,7 @@ fn format_win32_error(action: &str, error: std::io::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
+    use std::cell::{Cell, RefCell};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command, Stdio};
@@ -761,6 +806,58 @@ mod tests {
             format_win32_error("原生调用失败", error),
             "原生调用失败（Windows 错误 5）"
         );
+    }
+
+    #[test]
+    fn foreground_lock_triggers_alt_unlock_then_retries_focus() {
+        let attempts = Cell::new(0);
+        let foreground = Cell::new(0_isize as HWND);
+        let events = RefCell::new(Vec::new());
+        let target = 42_isize as HWND;
+
+        focus_with_foreground_unlock(
+            target,
+            |_| {
+                let attempt = attempts.get() + 1;
+                attempts.set(attempt);
+                events.borrow_mut().push(format!("focus:{attempt}"));
+                if attempt == 2 {
+                    foreground.set(target);
+                    true
+                } else {
+                    false
+                }
+            },
+            || foreground.get(),
+            || events.borrow_mut().push("unlock".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(events.into_inner(), vec!["focus:1", "unlock", "focus:2"]);
+    }
+
+    #[test]
+    fn successful_focus_waits_for_foreground_transition() {
+        let foreground_reads = Cell::new(0);
+        let target = 42_isize as HWND;
+
+        focus_with_foreground_unlock(
+            target,
+            |_| true,
+            || {
+                let read = foreground_reads.get() + 1;
+                foreground_reads.set(read);
+                if read >= 4 {
+                    target
+                } else {
+                    std::ptr::null_mut()
+                }
+            },
+            || {},
+        )
+        .unwrap();
+
+        assert!(foreground_reads.get() >= 4);
     }
 
     #[test]

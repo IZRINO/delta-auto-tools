@@ -86,7 +86,7 @@ fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
 /// 同时重启热键监听并向前端推送最新状态。
 ///
 /// 各工具恢复独立执行，一个工具失败不影响其他工具恢复。
-fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
     use crate::counter;
     use crate::rapidfire;
     use crate::recognition;

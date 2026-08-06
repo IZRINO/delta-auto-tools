@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Moligod fixture</title>
+</head>
+<body>
+    <main>
+        <label>
+            子弹搜索
+            <input placeholder="搜索物品或兑换材料...">
+        </label>
+
+        <section data-result-page="1">
+            <article data-result-row>
+                <h3 data-result-name="5.45x39mm BT">5.45x39mm BT</h3>
+                <div><span>预估净利润</span><strong data-profit>+270,458</strong></div>
+                <button type="button">详情</button>
+            </article>
+            <article data-result-row>
+                <h3 data-result-name="5.45x39mm BT-U">5.45x39mm BT-U</h3>
+                <div><span>预估净利润</span><strong data-profit>+999,999</strong></div>
+                <button type="button">详情</button>
+            </article>
+            <article data-result-row>
+                <h3 data-result-name="零利润弹">零利润弹</h3>
+                <div><span>预估净利润</span><strong data-profit>0</strong></div>
+                <button type="button">详情</button>
+            </article>
+        </section>
+
+        <section data-result-page="2" hidden>
+            <article data-result-row>
+                <h3 data-result-name=".300 BLK">.300 BLK</h3>
+                <div><span>预估净利润</span><strong data-profit>-12,300</strong></div>
+                <button type="button">详情</button>
+            </article>
+        </section>
+
+        <button type="button" data-next-page>下一页</button>
+
+        <aside aria-hidden="true">
+            <article data-result-row>
+                <h3 data-result-name="5.45x39mm BT">5.45x39mm BT</h3>
+                <div><span>预估净利润</span><strong data-profit>+1</strong></div>
+                <button type="button">详情</button>
+            </article>
+        </aside>
+    </main>
+</body>
+</html>

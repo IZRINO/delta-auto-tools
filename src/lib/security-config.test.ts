@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 
 import defaultCapabilityJson from "../../src-tauri/capabilities/default.json?raw";
 import overlaysCapabilityJson from "../../src-tauri/capabilities/overlays.json?raw";
+import specialOpsProfitCapabilityJson from "../../src-tauri/capabilities/special-ops-profit.json?raw";
 import strategyCapabilityJson from "../../src-tauri/capabilities/strategy.json?raw";
 import tauriConfigJson from "../../src-tauri/tauri.conf.json?raw";
 
@@ -37,6 +38,13 @@ describe("Tauri security config", () => {
         expect(permissions).toContain("core:window:allow-destroy");
     });
 
+    it("未完整迁移全部 app commands 前禁止启用局部 app ACL", () => {
+        const capability = readJson<Capability>(defaultCapabilityJson);
+        const permissions = permissionIdentifiers(capability);
+
+        expect(permissions.every((permission) => permission.includes(":"))).toBe(true);
+    });
+
     it("overlay capability 独立存在且不授予高权限 plugin", () => {
         const capability = readJson<Capability>(overlaysCapabilityJson);
         const permissions = permissionIdentifiers(capability);
@@ -51,6 +59,16 @@ describe("Tauri security config", () => {
         expect(capability.local).toBe(false);
         expect(capability.webviews).toEqual(["strategy-content"]);
         expect(capability.permissions).toEqual([]);
+    });
+
+    it("Moligod 隐藏 WebView 只允许精确 origin 且无 IPC permission", () => {
+        const capability = readJson<Capability>(specialOpsProfitCapabilityJson);
+
+        expect(capability.local).toBe(false);
+        expect(capability.remote?.urls).toEqual(["https://moligod.com/*"]);
+        expect(capability.webviews).toEqual(["special-ops-profit-*"]);
+        expect(capability.permissions).toEqual([]);
+        expect(capability.identifier).not.toBe("strategy");
     });
 
     it("生产 CSP 禁止 unsafe-eval 与远程通配源", () => {

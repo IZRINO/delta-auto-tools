@@ -448,6 +448,7 @@ pub struct HotkeyRegistration {
     pub enabled: bool,
     pub display_name: String,
     pub conflict_policy: ConflictPolicy,
+    pub allow_when_global_disabled: bool,
     pub action: HotkeyAction,
 }
 

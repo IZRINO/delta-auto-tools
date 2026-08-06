@@ -1,9 +1,21 @@
+const OCR_IMAGE_SCALE: u32 = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct OcrBounds {
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
+}
+
+fn restore_bounds_after_ocr_scale(bounds: OcrBounds) -> OcrBounds {
+    let scale = OCR_IMAGE_SCALE as f32;
+    OcrBounds::new(
+        bounds.x / scale,
+        bounds.y / scale,
+        bounds.width / scale,
+        bounds.height / scale,
+    )
 }
 
 impl OcrBounds {
@@ -43,7 +55,11 @@ pub(crate) struct ScreenBounds {
 pub(crate) fn numeric_words(words: Vec<OcrWord>) -> Vec<OcrWord> {
     words
         .into_iter()
-        .filter(|word| !word.text.is_empty() && word.text.chars().all(|ch| ch.is_ascii_digit()))
+        .filter_map(|mut word| {
+            word.text.retain(|ch| !ch.is_whitespace());
+            (!word.text.is_empty() && word.text.chars().all(|ch| ch.is_ascii_digit()))
+                .then_some(word)
+        })
         .collect()
 }
 
@@ -67,7 +83,17 @@ pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<
         Storage::Streams::DataWriter,
     };
 
-    let rgba = image.to_rgba8();
+    let width = image
+        .width()
+        .checked_mul(OCR_IMAGE_SCALE)
+        .ok_or_else(|| "OCR 截图宽度超出范围".to_string())?;
+    let height = image
+        .height()
+        .checked_mul(OCR_IMAGE_SCALE)
+        .ok_or_else(|| "OCR 截图高度超出范围".to_string())?;
+    let rgba = image
+        .resize_exact(width, height, image::imageops::FilterType::Nearest)
+        .to_rgba8();
     let width = i32::try_from(rgba.width()).map_err(|_| "OCR 截图宽度超出范围".to_string())?;
     let height = i32::try_from(rgba.height()).map_err(|_| "OCR 截图高度超出范围".to_string())?;
     let mut bgra = rgba.into_raw();
@@ -128,7 +154,12 @@ pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<
                 .map_err(|error| format!("读取 Windows OCR 坐标失败: {error}"))?;
             words.push(OcrWord::new(
                 text,
-                OcrBounds::new(rect.X, rect.Y, rect.Width, rect.Height),
+                restore_bounds_after_ocr_scale(OcrBounds::new(
+                    rect.X,
+                    rect.Y,
+                    rect.Width,
+                    rect.Height,
+                )),
             ));
         }
     }
@@ -145,7 +176,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn numeric_words_only_keep_complete_ascii_qq_numbers() {
+    fn numeric_words_normalize_whitespace_and_reject_non_numeric_text() {
         let words = vec![
             OcrWord::new("123456", OcrBounds::new(10.0, 20.0, 60.0, 16.0)),
             OcrWord::new("123 456", OcrBounds::new(10.0, 40.0, 60.0, 16.0)),
@@ -154,8 +185,24 @@ mod tests {
 
         assert_eq!(
             numeric_words(words),
+            vec![
+                OcrWord::new("123456", OcrBounds::new(10.0, 20.0, 60.0, 16.0)),
+                OcrWord::new("123456", OcrBounds::new(10.0, 40.0, 60.0, 16.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn numeric_words_remove_internal_whitespace_before_filtering() {
+        let words = vec![OcrWord::new(
+            "3079 3589",
+            OcrBounds::new(10.0, 20.0, 60.0, 16.0),
+        )];
+
+        assert_eq!(
+            numeric_words(words),
             vec![OcrWord::new(
-                "123456",
+                "30793589",
                 OcrBounds::new(10.0, 20.0, 60.0, 16.0),
             )]
         );
@@ -178,6 +225,14 @@ mod tests {
                 width: 60,
                 height: 17,
             }
+        );
+    }
+
+    #[test]
+    fn scaled_ocr_bounds_return_to_source_coordinates() {
+        assert_eq!(
+            restore_bounds_after_ocr_scale(OcrBounds::new(31.5, 61.5, 180.0, 51.0)),
+            OcrBounds::new(10.5, 20.5, 60.0, 17.0),
         );
     }
 }

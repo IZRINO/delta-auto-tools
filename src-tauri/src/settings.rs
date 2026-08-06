@@ -138,6 +138,29 @@ impl SettingsCoordinator {
         operation()
     }
 
+    pub fn with_expected_revision_change<T, E>(
+        &self,
+        expected_revision: u64,
+        operation: impl FnOnce() -> Result<T, E>,
+    ) -> Result<(T, u64), E>
+    where
+        E: From<String>,
+    {
+        let mut revision = self
+            .revision
+            .lock()
+            .map_err(|_| E::from("配置写入协调器已损坏".to_string()))?;
+        if *revision != expected_revision {
+            return Err(E::from(format!(
+                "配置保存已陈旧：页面 revision {expected_revision}，当前 revision {}",
+                *revision
+            )));
+        }
+        let value = operation()?;
+        *revision = revision.saturating_add(1);
+        Ok((value, *revision))
+    }
+
     pub fn with_profile_change<T, E>(
         &self,
         operation: impl FnOnce(&mut bool) -> Result<T, E>,
@@ -523,5 +546,34 @@ mod tests {
 
         assert_eq!(error, "持久化失败");
         assert_eq!(coordinator.current_revision().unwrap(), initial_revision);
+    }
+
+    #[test]
+    fn expected_revision_change_is_atomic() {
+        let coordinator = SettingsCoordinator::new();
+        let initial = coordinator.current_revision().unwrap();
+
+        let (value, next) = coordinator
+            .with_expected_revision_change(initial, || Ok::<_, String>("saved"))
+            .unwrap();
+
+        assert_eq!(value, "saved");
+        assert_eq!(next, initial + 1);
+        assert!(coordinator
+            .with_expected_revision_change(initial, || Ok::<_, String>(()))
+            .unwrap_err()
+            .contains("配置保存已陈旧"));
+    }
+
+    #[test]
+    fn failed_expected_revision_change_keeps_revision() {
+        let coordinator = SettingsCoordinator::new();
+        let initial = coordinator.current_revision().unwrap();
+
+        let result = coordinator
+            .with_expected_revision_change(initial, || Err::<(), _>("写盘失败".to_string()));
+
+        assert!(result.is_err());
+        assert_eq!(coordinator.current_revision().unwrap(), initial);
     }
 }
