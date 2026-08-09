@@ -201,10 +201,12 @@ pub(crate) async fn run_scheduler<D: SchedulerDriver>(
             .now_ms
             .saturating_add(duration.as_millis().min(i64::MAX as u128) as i64);
         if matches!(wait_for_wake(&scheduler, duration).await, WaitResult::Timer) {
+            // poll 失败不能算时间跳变：原因不同，暂停理由会写错。
+            // 交给下一轮循环的 poll 处理 —— 那里会带上真实错误信息。
             let late_by_ms = driver
                 .poll()
                 .map(|next| next.now_ms.saturating_sub(expected_wake_at_ms))
-                .unwrap_or(CLOCK_JUMP_TOLERANCE_MS + 1);
+                .unwrap_or(0);
             if late_by_ms > CLOCK_JUMP_TOLERANCE_MS {
                 scheduler.disarm();
                 let _ = driver.pause_automation("检测到休眠或系统时间跳变");

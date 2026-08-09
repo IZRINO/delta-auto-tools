@@ -63,6 +63,8 @@ const PROFIT_QUERY_FIFTY_MINUTES_MS: i64 = 50 * 60_000;
 const PROFIT_QUERY_STALE: &str = "利润查询结果已过期";
 const OPERATION_WINDOW_LOAD_TIMEOUT: &str = "操作提示窗口加载超时，已取消本次试运行";
 const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
+/// poll 与 execute 判定不一致时的退避间隔，避免空转刷日志。
+const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -530,6 +532,10 @@ pub struct CalibrationEnvironment {
 pub struct SpecialOpsSettings {
     pub enabled: bool,
     pub paused: bool,
+    /// 最近一次自动暂停的原因，仅在 `paused` 为真时有意义。
+    /// 用户手动点暂停不写；用户点继续时清空 -> UI 只在「不是我点的」时给出解释。
+    #[serde(default)]
+    pub paused_reason: Option<String>,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
     #[serde(default = "default_navigation_delay_ms")]
@@ -574,6 +580,7 @@ impl Default for SpecialOpsSettings {
         Self {
             enabled: true,
             paused: true,
+            paused_reason: None,
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
             navigation_beacon_delay_ms: default_navigation_delay_ms(),
@@ -1783,7 +1790,8 @@ fn apply_account_manual_check(
 
 /// 一键恢复：把异常状态清成正常可调度状态。
 /// 账号状态回 `Ready`，`Uncertain` 制作台按存量计时还原异常前的剩余时间，
-/// 子弹目标回未兑换，限时商品 `Failed` 回 `Pending`。返回实际恢复的账号数。
+/// 子弹目标回未兑换（含清当天 `last_success_day`），限时商品 `Failed` 回 `Pending`。
+/// 返回实际恢复的账号数。
 fn restore_account_state(
     settings: &mut SpecialOpsSettings,
     account_id: Option<&str>,
@@ -1814,12 +1822,18 @@ fn restore_account_state(
             restore_station_from_stored_timing(station, confirmed_at_ms);
         }
         for target in account.ammo_targets.iter_mut() {
-            if target.last_failure.is_some() || target.retry_count > 0 {
+            if target.last_failure.is_some()
+                || target.retry_count > 0
+                || target.last_success_day.as_deref() == Some(current_day)
+            {
                 changed = true;
             }
-            // 只解冻失败目标：清 last_failure 与当天重试预算后它就回到未兑换、可再次调度。
-            // 绝不清 last_success_day —— 半程失败的账号里已成功的子弹会被二次兑换。
+            // 清 last_failure、当天成功标记与重试预算 -> 目标回到未兑换、可再次调度。
+            // 当天已成功的目标也会被清：流程内还有资格与库存检查分支兜底重复兑换。
             target.last_failure = None;
+            if target.last_success_day.as_deref() == Some(current_day) {
+                target.last_success_day = None;
+            }
             target.retry_day = Some(current_day.to_string());
             target.retry_count = 0;
         }
@@ -3003,6 +3017,8 @@ fn apply_paused_state(settings: &mut SpecialOpsSettings, paused: bool) -> Result
         validate_execution_ready(settings)?;
     }
     settings.paused = paused;
+    // 用户显式切换暂停 -> 自动暂停原因失效，避免旧原因一直挂在 UI 上。
+    settings.paused_reason = None;
     Ok(())
 }
 
@@ -6780,6 +6796,7 @@ impl ProductionRoundDriver {
                 .map_err(|_| "特勤处状态已损坏".to_string())?
                 .clone();
             next.paused = true;
+            next.paused_reason = Some(reason.to_string());
             save_settings(&self.app, &next)?;
             *self
                 .settings
@@ -8669,6 +8686,16 @@ impl round_scheduler::SchedulerDriver for ProductionRoundSchedulerDriver {
                             OPERATION_WINDOW_RETRY_DELAY,
                         ))
                     }
+                    Err(error) if is_transient_round_launch_error(&error) => {
+                        crate::log_warn!(
+                            "special_ops::scheduler",
+                            "到期轮次本次未启动，等待下一轮 poll",
+                            "reason" => error.as_str()
+                        );
+                        Ok(round_scheduler::SchedulerActionOutcome::RetryAfter(
+                            SCHEDULER_TRANSIENT_RETRY_DELAY,
+                        ))
+                    }
                     Err(error) => Err(error),
                 }
             }
@@ -8694,6 +8721,7 @@ fn persist_scheduler_pause(app: &AppHandle, reason: &str) -> Result<(), String> 
             .map_err(|_| "特勤处状态已损坏".to_string())?
             .clone();
         next.paused = true;
+        next.paused_reason = Some(reason.to_string());
         save_settings(app, &next)?;
         *state
             .settings
@@ -8854,6 +8882,22 @@ fn ensure_no_active_special_ops_run(runtime: &login_runtime::LoginRuntime) -> Re
 
 fn should_defer_round_pause(active: Option<LoginRunKind>, paused: bool) -> bool {
     paused && active == Some(LoginRunKind::Round)
+}
+
+/// scheduler 启动轮次失败是否属于「等下一轮 poll 即可」而非需要全局暂停。
+///
+/// poll 与 `freeze_round_run` 的过滤条件不完全一致（利润 gate、business config、
+/// 运行态在两次读取之间可能变化），因此 poll 认为到期、execute 却拿到空计划是正常竞态。
+/// 这类错误一律全局暂停会让自动化在用户毫不知情时停摆 —— 这正是「为什么全局暂停了」的来源。
+fn is_transient_round_launch_error(error: &str) -> bool {
+    const TRANSIENT: [&str; 5] = [
+        "当前没有到期制作或子弹任务",
+        "特勤处当前处于暂停状态，请先点击继续",
+        "特勤处总开关已关闭",
+        "特勤处试运行尚未完成清理",
+        "配置保存已陈旧",
+    ];
+    TRANSIENT.iter().any(|pattern| error.contains(pattern))
 }
 
 #[tauri::command]
@@ -9522,7 +9566,17 @@ pub fn special_ops_save_settings(
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
     ensure_no_active_special_ops_run(&state.login_runtime)?;
-    let settings_value = normalize_settings(settings_value)?;
+    let mut settings_value = normalize_settings(settings_value)?;
+    // paused / paused_reason 是运行态，只有 set_paused 与自动暂停能改。
+    // 前端草稿可能是自动暂停之前的快照，直接采信会把 paused 回滚成旧值。
+    {
+        let current = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        settings_value.paused = current.paused;
+        settings_value.paused_reason = current.paused_reason.clone();
+    }
     let should_arm_scheduler = settings_value.enabled && !settings_value.paused;
     if settings_value.enabled && !settings_value.paused {
         validate_execution_ready(&settings_value)?;
@@ -10985,8 +11039,21 @@ fn build_timeline_tasks(
         }
     }
 
+    // 任务栏按执行顺序排序，对齐 build_round_plan_with_profit：
+    // 到期任务先按账号分桶（账号内按时间），未到期任务整体排在后面并保持时间优先。
+    // 未到期桶保留 account.order 作次键 —— 同毫秒未来制作台必须同账号相邻，
+    // 否则 planner 的 future_accounts 合并会把一个账号拆成多个 AccountRoundTask。
+    let execution_key = |entry: &(i64, u32, u32, String, TimelineTask)| -> (u8, i64, i64) {
+        if entry.0 <= now_ms {
+            (0, i64::from(entry.1), entry.0)
+        } else {
+            (1, entry.0, i64::from(entry.1))
+        }
+    };
     tasks.sort_by(|left, right| {
-        (&left.0, &left.1, &left.2, &left.3).cmp(&(&right.0, &right.1, &right.2, &right.3))
+        execution_key(left)
+            .cmp(&execution_key(right))
+            .then_with(|| (&left.2, &left.3).cmp(&(&right.2, &right.3)))
     });
     tasks.into_iter().map(|(_, _, _, _, task)| task).collect()
 }
@@ -13284,6 +13351,97 @@ mod tests {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].scheduled_at_ms, 1_000);
         assert!(tasks[0].manual_failure.is_some());
+    }
+
+    #[test]
+    fn timeline_orders_due_tasks_by_account_then_future_tasks_by_time() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-30T10:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        // alpha 排在最后一位但有更早的到期时间 -> 到期桶按账号顺序，不按时间。
+        let alpha = AccountPlan {
+            order: 2,
+            ..account(
+                "alpha",
+                AccountStatus::Ready,
+                vec![
+                    station(StationKind::TechnicalCenter, now - 10 * 60_000),
+                    station(StationKind::ArmorBench, now + 30 * 60_000),
+                ],
+            )
+        };
+        let beta = AccountPlan {
+            order: 0,
+            ..account(
+                "beta",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, now - 60_000)],
+            )
+        };
+        let gamma = AccountPlan {
+            order: 1,
+            ..account(
+                "gamma",
+                AccountStatus::Ready,
+                vec![station(StationKind::TechnicalCenter, now + 60 * 60_000)],
+            )
+        };
+        let settings = SpecialOpsSettings {
+            enabled: true,
+            paused: true,
+            accounts: vec![alpha, beta, gamma],
+            ..SpecialOpsSettings::default()
+        };
+
+        let schedule = build_schedule(&settings, now);
+        let order = schedule
+            .timeline_tasks
+            .iter()
+            .map(|task| (task.account_id.as_str(), task.station_kind.clone()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            order,
+            vec![
+                // 到期桶：按 account.order 分桶，账号内按时间。
+                ("beta", Some(StationKind::TechnicalCenter)),
+                ("alpha", Some(StationKind::TechnicalCenter)),
+                // 未到期桶：整体排在到期任务之后，按时间优先。
+                ("alpha", Some(StationKind::ArmorBench)),
+                ("gamma", Some(StationKind::TechnicalCenter)),
+            ]
+        );
+    }
+
+    #[test]
+    fn transient_round_launch_errors_never_pause_automation() {
+        for error in [
+            "当前没有到期制作或子弹任务",
+            "特勤处当前处于暂停状态，请先点击继续",
+            "特勤处总开关已关闭",
+            "特勤处试运行尚未完成清理",
+            "配置保存已陈旧，请刷新后重试",
+        ] {
+            assert!(is_transient_round_launch_error(error), "{error}");
+        }
+        // 真实故障必须冒泡成全局暂停，否则问题会被静默重试掩盖。
+        for error in ["校准未完成", "账号配置缺失", "特勤处状态已损坏"] {
+            assert!(!is_transient_round_launch_error(error), "{error}");
+        }
+    }
+
+    #[test]
+    fn manual_pause_toggle_clears_auto_pause_reason() {
+        let mut settings = SpecialOpsSettings {
+            paused: false,
+            paused_reason: Some("检测到休眠或系统时间跳变".to_string()),
+            ..SpecialOpsSettings::default()
+        };
+
+        apply_paused_state(&mut settings, true).unwrap();
+
+        assert!(settings.paused);
+        assert_eq!(settings.paused_reason, None);
     }
 
     #[test]
@@ -15900,11 +16058,8 @@ mod tests {
         assert_eq!(selected.last_failure, None);
         assert_eq!(selected.stations[0].status, StationStatus::Crafting);
         assert_eq!(selected.stations[0].finishes_at_ms, Some(9_000));
-        // 失败目标解冻回未兑换，但当天成功记录必须保留，否则会二次兑换。
-        assert_eq!(
-            selected.ammo_targets[0].last_success_day.as_deref(),
-            Some("2026-08-09")
-        );
+        // 目标全量解冻回未兑换：当天成功标记一起清，重复兑换由流程内检查分支兜底。
+        assert_eq!(selected.ammo_targets[0].last_success_day, None);
         assert_eq!(
             selected.ammo_targets[0].retry_day.as_deref(),
             Some("2026-08-09")

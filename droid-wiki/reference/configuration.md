@@ -19,6 +19,8 @@
 
 Recognition Hotkey 卡片的 `hotkeyRepeatMode` 可取 `once` 或 `whileHeld`，缺失时按 `once` 读取。`whileHeld` 要求 `cooldownMs >= 10`；`once` 继续允许 `cooldownMs = 0`。RegionWatch / ColorWatch 保存时会把该字段归一为 `once`。
 
+特勤处 `paused` 旁新增可选 `pausedReason`（`string | null`，缺失按 `null` 读取），只在 `paused` 为真时有意义。自动暂停路径写入原因，用户手动切换暂停或继续时清空；`special_ops_save_settings` 忽略前端草稿里的 `paused` 与 `pausedReason`，强制沿用进程内运行态。
+
 特勤处军需处入口使用 `ammoSupplyDelayMs` 与兼容字段名 `ammoTacticalDelayMs`，分别控制点击 `ammo.supply` 和 `ammo.enterSupply` 前等待。`limitedSupply.researchDelayMs` 仅为旧配置兼容字段，不参与当前 UI、preflight 或 runtime。当前分支校准目标为 `ammo.enterSupply` 点击点、`ammo.tacticalDepartment` 与 `ammo.researchDepartment` 模板识别区域；旧 `ammo.tactical`、`limited.research` 在 normalize 时丢弃。
 
 ## Tauri 配置

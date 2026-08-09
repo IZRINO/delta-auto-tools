@@ -254,8 +254,32 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         // 单账号传 id、批量传 null，后端按 Option<String> 分流。
         expect(pageSource).toContain("restoreAccountState(account.id)");
         expect(pageSource).toContain("restoreAccountState(null)");
-        expect(pageSource).toContain("accountRestorable(account)");
-        expect(pageSource).toContain("bootstrap.settings.accounts.some(accountRestorable)");
+        expect(pageSource).toContain("accountRestorable(account, currentDay)");
+        expect(pageSource).toContain("anyAccountRestorable");
+    });
+
+    it("一键恢复按钮常驻显示，无可恢复项时 disabled 并说明原因", () => {
+        // 之前按 accountRestorable 条件渲染，干净状态下整块消失 -> 用户「找不到一键恢复 UI」。
+        expect(pageSource).not.toContain("accountRestorable(account) && <Button");
+        expect(pageSource).not.toContain("accounts.some(accountRestorable) && <Button");
+        expect(pageSource).toContain("disabled={!anyAccountRestorable}");
+        expect(pageSource).toContain("disabled={!accountRestorable(account, currentDay)}");
+        expect(pageSource).toContain("当前没有需要恢复的异常状态");
+        expect(pageSource).toContain("当前账号没有需要恢复的异常状态");
+    });
+
+    it("限时商品任务展示检查结果并提供高价值确认入口", () => {
+        // 后端只在 highValue 未确认时保留任务；不渲染结果会被误读成「没执行」。
+        expect(pageSource).toContain("limitedOutcomeLabels");
+        expect(pageSource).toContain("已发现高价值，等待人工确认");
+        expect(pageSource).toContain("special_ops_acknowledge_limited_supply");
+        expect(pageSource).toContain("已查看高价值商品");
+        expect(pageSource).toContain("onAcknowledgeLimited={acknowledgeLimitedSupply}");
+    });
+
+    it("自动暂停原因在页头显式展示", () => {
+        expect(pageSource).toContain("bootstrap.settings.pausedReason");
+        expect(pageSource).toContain("自动化已暂停：");
     });
 
     it("人工判定选正在制作时预填异常前剩余时间", () => {

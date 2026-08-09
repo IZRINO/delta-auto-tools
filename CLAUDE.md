@@ -148,7 +148,11 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 `AccountFailure.stationKind` / `ammoTargetId` 互斥定位失败任务，`AmmoTarget.lastFailure` 是子弹目标人工冻结的权威状态。制作异常继续阻断账号；子弹补齐、购买、确认或完成异常只冻结当前目标，账号保持 `Ready`。24 小时时间轴提供单项判定；`special_ops_confirm_station_state` / `special_ops_confirm_ammo_state` 只改对应任务，账号页 `special_ops_confirm_account_station_states` 继续原子覆盖四制作台和全部启用子弹。旧版无定位失败不得按错误文案推断目标。
 
-单项判定入口不能只看 `TimelineTask.manualFailure`：`NavigationTimedOut` 只写 `ManualCheckRequired` 且两个定位字段均为空，制作台 `Uncertain` 或账号 `ManualCheckRequired` 也必须出现入口，只有 `NeedsManualLogin` / `LoginFailed` 退回账号页（前端 `timelineTaskAllowsInlineCorrection` 与后端 `account_blocks_task_correction` 同步）。选“正在制作”时剩余时间预填存量计时，留空或 0 表示继承 `finishesAtMs`，后端无可继承值才拒绝。任何清账号状态的路径都必须同时还原 `Uncertain` 制作台，否则它在调度与任务栏双重过滤下永久消失。`special_ops_restore_account_state` 一键恢复单账号或全部账号，但绝不清 `lastSuccessDay`，避免半程失败账号二次兑换。
+单项判定入口不能只看 `TimelineTask.manualFailure`：`NavigationTimedOut` 只写 `ManualCheckRequired` 且两个定位字段均为空，制作台 `Uncertain` 或账号 `ManualCheckRequired` 也必须出现入口，只有 `NeedsManualLogin` / `LoginFailed` 退回账号页（前端 `timelineTaskAllowsInlineCorrection` 与后端 `account_blocks_task_correction` 同步）。选“正在制作”时剩余时间预填存量计时，留空或 0 表示继承 `finishesAtMs`，后端无可继承值才拒绝。任何清账号状态的路径都必须同时还原 `Uncertain` 制作台，否则它在调度与任务栏双重过滤下永久消失。`special_ops_restore_account_state` 一键恢复单账号或全部账号，并清当天 `lastSuccessDay` -> 目标回未兑换、可再次调度；重复兑换由流程内资格与库存检查分支兜底。两个一键恢复按钮常驻显示，无可恢复项时 disabled 并在 title 说明原因；前端 `accountRestorable` 必须与后端 `changed` 判定一致（含当天 `lastSuccessDay`），跨天判定用 `shanghaiDay` 对齐 Rust 固定 UTC+8 的 `local_day_and_minute`。
+
+### 特勤处自动暂停与任务栏顺序
+
+自动暂停必须写 `SpecialOpsSettings.pausedReason` 并在页头展示，否则用户看到的是无原因的静默停摆。`special_ops_set_paused` 两个方向都清空该字段；`special_ops_save_settings` 强制沿用进程内 `paused` / `pausedReason`，前端草稿不得回滚运行态。scheduler 晚醒判定只用 poll 成功返回的 `nowMs`；启动到期轮次的空计划、暂停中、总开关关闭、试运行未清理、revision 陈旧经 `is_transient_round_launch_error` 分流为 `RetryAfter(30s)`，不得全局暂停。`timelineTasks` 按执行顺序返回：到期任务按 `account.order` 分桶在前，未到期任务按时间在后且保留账号顺序作次键。限时商品 `highValue` 未确认时任务按设计留在任务栏，前端必须渲染 `limitedOutcome` 并提供 `special_ops_acknowledge_limited_supply` 入口。
 
 ### Overlay 窗口系统
 

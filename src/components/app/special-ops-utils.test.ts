@@ -19,6 +19,7 @@ import {
     insertNormalAmmoTarget,
     limitedColorToHex,
     parseLimitedColorHex,
+    shanghaiDay,
     specialOpsErrorAfterUpdate,
     persistSpecialOpsSaveRequest,
     timelineDelayMinutes,
@@ -610,11 +611,13 @@ function failure(patch: Partial<AccountFailure> = {}): AccountFailure {
 }
 
 describe("accountRestorable", () => {
-    it("干净账号不显示一键恢复", () => {
+    const currentDay = "2026-08-10";
+
+    it("干净账号不可恢复", () => {
         expect(accountRestorable(account("account-1", 0, {
             stations: [station({status: "crafting"})],
             ammoTargets: [ammoTarget({lastSuccessDay: "2026-08-09"})],
-        }))).toBe(false);
+        }), currentDay)).toBe(false);
     });
 
     it.each([
@@ -623,6 +626,7 @@ describe("accountRestorable", () => {
         ["制作台 Uncertain", {stations: [station({status: "uncertain"})]}],
         ["子弹目标带失败", {ammoTargets: [ammoTarget({lastFailure: failure()})]}],
         ["子弹目标已重试", {ammoTargets: [ammoTarget({retryCount: 1})]}],
+        ["子弹目标当天已兑换", {ammoTargets: [ammoTarget({lastSuccessDay: "2026-08-10"})]}],
         ["限时商品失败", {
             limitedSupply: {
                 cycleId: "2026-08-09T08:00",
@@ -635,7 +639,18 @@ describe("accountRestorable", () => {
             },
         }],
     ])("%s 时可恢复", (_label, patch) => {
-        expect(accountRestorable(account("account-1", 0, patch))).toBe(true);
+        expect(accountRestorable(account("account-1", 0, patch), currentDay)).toBe(true);
+    });
+});
+
+describe("shanghaiDay", () => {
+    it.each([
+        ["2026-08-09T23:59:00+08:00", "2026-08-09"],
+        ["2026-08-10T00:00:00+08:00", "2026-08-10"],
+        // UTC 仍是 8 月 9 日，但 Asia/Shanghai 已跨天 -> 必须按固定 UTC+8 取日
+        ["2026-08-09T16:30:00Z", "2026-08-10"],
+    ])("%s -> %s", (iso, expected) => {
+        expect(shanghaiDay(new Date(iso).getTime())).toBe(expected);
     });
 });
 

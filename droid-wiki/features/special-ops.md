@@ -12,7 +12,7 @@
 
 `NeedsManualLogin`、`LoginFailed` 和 `ManualCheckRequired` 账号显示“已人工检查”，`special_ops_confirm_account_manual_check` 恢复账号 `Ready` 并按存量 `finishesAtMs` 还原 `Uncertain` 制作台（未来时间→`Crafting`，已过→`Ready`，无计时→`Idle`），不改子弹成功日或 retry。只清账号状态会留下 `Uncertain` 制作台，它在调度与任务栏双重过滤下永久消失。
 
-账号卡片与账号区标题额外提供“一键恢复状态”。`special_ops_restore_account_state` 接收 `Option<String>`：传账号 ID 只恢复该账号，传 `null` 恢复全部异常账号。恢复内容为账号状态回 `Ready`、清 `lastFailure`、按存量计时还原 `Uncertain` 制作台、清子弹目标 `lastFailure` 与当天 retry 预算、限时商品 `Failed` 回 `Pending`。**不清 `lastSuccessDay`**：半程失败账号里已成功的子弹保持已兑换，否则会二次兑换并白扣货币。没有任何可恢复项时返回错误，不产生空转 revision；前端 `accountRestorable` 同步这条判定，避免按钮点下去只拿到报错。
+账号卡片与账号区标题额外提供“一键恢复状态”。`special_ops_restore_account_state` 接收 `Option<String>`：传账号 ID 只恢复该账号，传 `null` 恢复全部异常账号。恢复内容为账号状态回 `Ready`、清 `lastFailure`、按存量计时还原 `Uncertain` 制作台、清子弹目标 `lastFailure` 与当天 retry 预算、清当天 `lastSuccessDay`、限时商品 `Failed` 回 `Pending`。当天成功标记一起清 -> 目标回未兑换、可再次调度；重复兑换由流程内资格与库存检查分支兜底。没有任何可恢复项时返回错误，不产生空转 revision。两个按钮常驻显示：无可恢复项时按钮 disabled 并在 title 说明原因，不再整块隐藏。
 
 ## 子弹兑换配置
 
@@ -108,7 +108,7 @@
 
 `ScheduleSnapshot` 除现有 `dueAccounts` 和 `nextWakeAtMs` 外，返回 `timelineStartMs`、`timelineEndMs` 与排序后的 `timelineTasks`。制作任务来自启用制作台的实际 `finishesAtMs`；子弹任务来自当天尚未成功的启用目标，并在次日兑换时间落入窗口时投影次日目标。可定位失败任务即使不具备 runtime eligibility 也投影为当前到期，并携带 `manualFailure`；非 `Ready`、登录失败、状态不确定或隔离账号仍展示任务并携带 `accountStatus`，但这不代表 runtime 允许执行。
 
-前端显示滚动未来 24 小时小时网格，每分钟刷新当前时间和权威 bootstrap。逾期任务保留原计划时间，延迟固定显示“0 分钟后”。任务按计划时间排序，以每组第一项为锚，仅把严格小于 10 分钟的后续任务合并到同一视觉块，不链式扩展、不改执行时间、不提供拖动或改期入口。结构化制作失败行显示三个单项按钮；结构化子弹失败行显示两个单项按钮；账号级人工状态显示“已人工检查”。制作 scheduler 使用制作台实际完成时间触发，不使用视觉分组结果；启用联网利润筛选时，子弹任务额外显示等待查询、截止查询中、等待 5 分钟补查、已达标、当前轮次；当天已轮空目标不投影到任务时间轴，调度仍保留当天不兑换结果。
+前端显示滚动未来 24 小时小时网格，每分钟刷新当前时间和权威 bootstrap。逾期任务保留原计划时间，延迟固定显示“0 分钟后”。任务按执行顺序排序，对齐 `build_round_plan_with_profit`：已到期任务排在前面并按账号配置顺序分桶（同账号内按时间），未到期任务整体排在其后并按时间优先、账号顺序次之，同键再按制作台顺序与任务 ID 定序。未到期桶保留账号顺序作次键，避免同毫秒未来制作台被拆进多个 `AccountRoundTask`。视觉分组以每组第一项为锚，仅把严格小于 10 分钟的后续任务合并到同一视觉块，不链式扩展、不改执行时间、不提供拖动或改期入口。结构化制作失败行显示三个单项按钮；结构化子弹失败行显示两个单项按钮；账号级人工状态显示“已人工检查”。制作 scheduler 使用制作台实际完成时间触发，不使用视觉分组结果；启用联网利润筛选时，子弹任务额外显示等待查询、截止查询中、等待 5 分钟补查、已达标、当前轮次；当天已轮空目标不投影到任务时间轴，调度仍保留当天不兑换结果。
 
 ## 联网利润筛选
 
@@ -148,7 +148,9 @@
 
 轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame；关闭失败保持暂停并报告 `round.closeGame`。`PauseRequested` 先持久化暂停，再关闭游戏。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
 
-应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务按上述 10 分钟规则等待或留给下一轮；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、请求 active round 停止、刷新逾期任务并聚焦主窗口；用户继续后不复用休眠前游戏会话。全局总开关关闭时 disarm，应用退出时 shutdown。
+应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务按上述 10 分钟规则等待或留给下一轮；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、请求 active round 停止、刷新逾期任务并聚焦主窗口；用户继续后不复用休眠前游戏会话。判定晚醒必须用 poll 成功返回的 `nowMs`；poll 本身失败不算时间跳变，交给下一轮循环写真实错误原因。全局总开关关闭时 disarm，应用退出时 shutdown。
+
+scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过滤条件不完全一致（利润 gate、business config、运行态在两次读取之间可能变化），因此“当前没有到期制作或子弹任务”“处于暂停状态”“总开关已关闭”“试运行尚未完成清理”“配置保存已陈旧”属于正常竞态，只记 warn 并 `RetryAfter(30s)`，不暂停自动化；其余错误才全局暂停。所有自动暂停把原因写入 `SpecialOpsSettings.pausedReason`，页头以 warning alert 展示“自动化已暂停：{原因}”。用户手动切换暂停或继续都会清空该字段 -> UI 只在“不是我点的”时给出解释。`special_ops_save_settings` 强制沿用当前进程内的 `paused` 与 `pausedReason`，前端草稿不得回滚运行态；只有 `special_ops_set_paused` 与自动暂停路径能改这两个字段。
 
 ## 当前边界
 
@@ -167,7 +169,7 @@
 | `special_ops_start_due_round` | 冻结全部到期制作与当天子弹任务，按账号顺序执行多账号自动轮次 |
 | `special_ops_confirm_account_station_states` | 原子保存四制作台及当天全部启用子弹状态；`Uncertain` / `Isolated` 可恢复 `Ready` |
 | `special_ops_confirm_account_manual_check` | 仅确认登录、账号列表扫描或二次导航超时等账号级人工问题；恢复 `Ready` 并按存量计时还原 `Uncertain` 制作台，不改子弹成功日与 retry |
-| `special_ops_restore_account_state` | 一键恢复单账号或全部账号异常：账号回 `Ready`、`Uncertain` 制作台按存量计时还原、失败子弹解冻、限时商品 `Failed` 回 `Pending`；保留 `lastSuccessDay` |
+| `special_ops_restore_account_state` | 一键恢复单账号或全部账号异常：账号回 `Ready`、`Uncertain` 制作台按存量计时还原、失败子弹解冻、清当天 `lastSuccessDay`、限时商品 `Failed` 回 `Pending` |
 | `special_ops_confirm_station_state` | 只校正时间轴中结构化定位的失败制作台，保留其他子弹失败 |
 | `special_ops_confirm_ammo_state` | 只校正时间轴中结构化定位的失败子弹，写入或清除当天成功状态 |
 | `special_ops_cancel_login_trial` | 请求普通取消；等待 worker 完成统一清理 |
@@ -175,7 +177,9 @@
 
 ### 限时商品与交易行
 
-限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待首次进入动画并识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。任务栏“已检查”调用 `special_ops_acknowledge_limited_supply`，只清除当前周期提醒。
+限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待首次进入动画并识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。
+
+任务栏显示 `limitedOutcome` 文案：`pending` 尚未检查、`noHighValue` 未发现高价值、`highValue` 已发现高价值等待人工确认、`failed` 检查失败（error 色）。`noHighValue` 与已确认的 `highValue` 任务从任务栏移除，未确认的 `highValue` 按设计保留并附“已查看高价值商品”按钮，调用 `special_ops_acknowledge_limited_supply` 只清除当前 `cycleId` 的提醒；后端也只接受 `highValue` 状态。不渲染结果会让已完成的检查看起来像没执行。
 
 交易行任务固定在每日 02:00–04:00。先点击 `market.entry`，再按账号或全局配置点击商品入口，OCR `market.price`；价格小于等于设定值点击 `market.buy`，再点击独立的 `market.confirm` 最终确认购买点，否则点击 `market.return` 返回并继续，按购买次数计数，不判定购买成功。04:00 后任务标记关闭且不补做次日。交易行配置包含启用状态、购买次数、商品备注、最高价与商品入口点击点；账号关闭独立设置时继承默认配置。
 

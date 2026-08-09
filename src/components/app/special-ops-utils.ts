@@ -241,12 +241,25 @@ export function createInlineStationCorrectionDraft(
     };
 }
 
+/// 时间戳 -> Asia/Shanghai 的 `YYYY-MM-DD`。
+/// 对齐 Rust `local_day_and_minute` 的固定 UTC+8 偏移，不跟随宿主机时区。
+export function shanghaiDay(atMs: number): string {
+    const shifted = new Date(atMs + 8 * 60 * 60 * 1000);
+    const year = shifted.getUTCFullYear();
+    const month = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(shifted.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
 /// 账号是否存在可被一键恢复的异常残留。
-/// 与后端 `restore_account_state` 的判定保持一致，避免按钮点下去只拿到「没有需要恢复的异常状态」。
-export function accountRestorable(account: AccountPlan): boolean {
+/// 与后端 `restore_account_state` 的 `changed` 判定保持一致，避免按钮点下去只拿到「没有需要恢复的异常状态」。
+/// 当天已兑换成功的子弹目标也算可恢复项：后端会清当天 `lastSuccessDay` 让目标回到未兑换。
+export function accountRestorable(account: AccountPlan, currentDay: string): boolean {
     if (account.status !== "ready" || account.lastFailure) return true;
     if (account.stations.some((station) => station.status === "uncertain")) return true;
-    if (account.ammoTargets.some((target) => target.lastFailure || target.retryCount > 0)) return true;
+    if (account.ammoTargets.some((target) => target.lastFailure
+        || target.retryCount > 0
+        || target.lastSuccessDay === currentDay)) return true;
     return account.limitedSupply?.outcome === "failed";
 }
 

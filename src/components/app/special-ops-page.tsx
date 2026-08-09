@@ -69,6 +69,7 @@ import {
     parseNavigationDelayMs,
     parseLimitedColorHex,
     persistSpecialOpsSaveRequest,
+    shanghaiDay,
      specialOpsErrorAfterUpdate,
      timelineDelayMinutes,
     type SpecialOpsBootstrapUpdate,
@@ -294,6 +295,15 @@ const timelineProfitLabels: Record<NonNullable<TimelineTask["profitState"]>, str
     cutoffBypass: "已到截止时间，忽略利润",
 };
 
+/// 限时商品检查结果在任务栏的文案。
+/// `highValue` 未确认时任务会留在任务栏等人工确认，必须显式说明，否则看起来像没执行。
+const limitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
+    pending: "尚未检查",
+    noHighValue: "未发现高价值",
+    highValue: "已发现高价值，等待人工确认",
+    failed: "检查失败",
+};
+
 const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
     month: "2-digit",
@@ -384,18 +394,53 @@ function TimelineManualCorrection({
     </div>;
 }
 
+/// 限时商品高价值提醒的确认入口。
+/// 只在 `highValue` 且未确认时出现 —— 后端也只接受这一种状态，其余状态任务本身已被任务栏过滤。
+function TimelineLimitedAcknowledge({
+    task,
+    disabled,
+    onAcknowledge,
+}: {
+    task: TimelineTask;
+    disabled: boolean;
+    onAcknowledge: (task: TimelineTask) => Promise<SpecialOpsBootstrap>;
+}) {
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    if (task.kind !== "limitedSupplyCheck" || task.limitedOutcome !== "highValue" || !task.limitedCycleId) return null;
+    const submit = async () => {
+        setSubmitting(true);
+        setError(null);
+        try {
+            await onAcknowledge(task);
+        } catch (cause) {
+            setError(String(cause));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+    return <div className="mt-1 space-y-1">
+        <Button size="xs" variant="outline" disabled={disabled || submitting} onClick={() => void submit()}>
+            {submitting ? "正在确认" : "已查看高价值商品"}
+        </Button>
+        {error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs"><span>{error}</span></div>}
+    </div>;
+}
+
 function SpecialOpsTimeline({
     bootstrap,
     nowMs,
     disabled,
     onConfirmStation,
     onConfirmAmmo,
+    onAcknowledgeLimited,
 }: {
     bootstrap: SpecialOpsBootstrap;
     nowMs: number;
     disabled: boolean;
     onConfirmStation: (task: TimelineTask, correction: StationCorrectionInput) => Promise<SpecialOpsBootstrap>;
     onConfirmAmmo: (task: TimelineTask, succeededToday: boolean) => Promise<SpecialOpsBootstrap>;
+    onAcknowledgeLimited: (task: TimelineTask) => Promise<SpecialOpsBootstrap>;
 }) {
     const slots = buildTimelineHourSlots(nowMs);
     const groups = groupTimelineTasks(bootstrap.schedule.timelineTasks);
@@ -431,7 +476,10 @@ function SpecialOpsTimeline({
                                                 <div className="text-xs text-base-content/60">计划 {shanghaiTimeFormatter.format(task.scheduledAtMs)} · {timelineDelayMinutes(task, nowMs)} 分钟后</div>
                                                 {task.profitState && <div className="text-xs text-base-content/60">{timelineProfitLabels[task.profitState]}{task.mayExecuteEarlier ? "；最晚执行，利润达标后可能提前" : ""}</div>}
                                                 {task.manualFailure && <div className="text-xs text-error">{task.manualFailure.step}：{task.manualFailure.message}</div>}
+                                                {task.kind === "limitedSupplyCheck" && task.limitedOutcome
+                                                    && <div className={`text-xs ${task.limitedOutcome === "failed" ? "text-error" : "text-base-content/60"}`}>{limitedOutcomeLabels[task.limitedOutcome]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
+                                                <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledgeLimited}/>
                                                 {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -721,6 +769,9 @@ export function SpecialOpsPage() {
     const hasActiveRun = hasActiveSpecialOpsRun(runSnapshot);
     const controlsLocked = hasActiveRun || pauseTransition;
     const isActiveRound = runSnapshot?.runKind === "round";
+    // 一键恢复要清当天 lastSuccessDay，按 Asia/Shanghai 取当天，和后端 local_day_and_minute 对齐。
+    const currentDay = shanghaiDay(bootstrap.nowMs);
+    const anyAccountRestorable = bootstrap.settings.accounts.some((account) => accountRestorable(account, currentDay));
     const selectedAccount = bootstrap.settings.accounts.find(({id}) => id === selectedAccountId) ?? null;
     const correctionAccount = bootstrap.settings.accounts.find(({id}) => id === correctionAccountId) ?? null;
     const correctionPayload = buildCorrectionPayload(correctionDraft);
@@ -928,6 +979,21 @@ export function SpecialOpsPage() {
             setError(`一键恢复失败：${String(cause)}`);
         }
     };
+    /// 确认限时商品高价值提醒：确认后任务从任务栏移除，当期不再重复提示。
+    const acknowledgeLimitedSupply = async (task: TimelineTask) => {
+        if (!isNativeShell) throw new Error("浏览器预览不能写入配置，请使用桌面开发版");
+        if (!task.limitedCycleId) throw new Error("限时商品任务缺少周期 ID");
+        try {
+            const saved = await flushSettings();
+            return await requestBootstrap(() => invoke<SpecialOpsBootstrap>(
+                "special_ops_acknowledge_limited_supply",
+                {accountId: task.accountId, cycleId: task.limitedCycleId, settingsRevision: saved.settingsRevision},
+            ));
+        } catch (cause) {
+            if (String(cause).includes("配置保存已陈旧")) reload();
+            throw cause;
+        }
+    };
     const startLimitedSupplyTrial = async () => {
         if (!isNativeShell || !selectedAccountId || controlsLocked) return;
         try {
@@ -1084,6 +1150,10 @@ export function SpecialOpsPage() {
 
         {error && <div role="alert" className="alert alert-error"><span>{error}</span></div>}
 
+        {bootstrap.settings.paused && bootstrap.settings.pausedReason && <div role="alert" className="alert alert-warning alert-soft">
+            <span>自动化已暂停：{bootstrap.settings.pausedReason}。排查后点击「继续」恢复。</span>
+        </div>}
+
         <fieldset disabled={controlsLocked} className="contents">
         <section className="card card-border bg-base-100">
             <div className="card-body gap-4">
@@ -1196,6 +1266,7 @@ export function SpecialOpsPage() {
             disabled={controlsLocked}
             onConfirmStation={confirmTimelineStation}
             onConfirmAmmo={confirmTimelineAmmo}
+            onAcknowledgeLimited={acknowledgeLimitedSupply}
         />
 
         <SpecialOpsProfitFilter
@@ -1311,7 +1382,13 @@ export function SpecialOpsPage() {
         <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">账号</h2>
-                {bootstrap.settings.accounts.some(accountRestorable) && <Button size="sm" variant="outline" title="清除全部账号的异常状态" onClick={() => void restoreAccountState(null)}><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>}
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!anyAccountRestorable}
+                    title={anyAccountRestorable ? "清除全部账号的异常状态" : "当前没有需要恢复的异常状态"}
+                    onClick={() => void restoreAccountState(null)}
+                ><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>
             </div>
             {bootstrap.settings.accounts.length === 0 && <div className="rounded-box border border-dashed border-base-300 p-8 text-center text-sm text-base-content/60">暂无账号，点击“添加账号”开始配置</div>}
             {bootstrap.settings.accounts.map((account, index) => {
@@ -1324,7 +1401,15 @@ export function SpecialOpsPage() {
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                             <Button size="sm" variant="outline" onClick={() => openCorrection(account.id)}>人工校正制作与子弹状态</Button>
                             {manualCheckRequired && <Button size="sm" variant="outline" onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
-                            {accountRestorable(account) && <Button size="sm" variant="outline" title="清除异常状态：制作台按异常前剩余时间恢复，失败子弹回未兑换" onClick={() => void restoreAccountState(account.id)}><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>}
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!accountRestorable(account, currentDay)}
+                                title={accountRestorable(account, currentDay)
+                                    ? "清除异常状态：制作台按异常前剩余时间恢复，失败与当天已兑换子弹回未兑换"
+                                    : "当前账号没有需要恢复的异常状态"}
+                                onClick={() => void restoreAccountState(account.id)}
+                            ><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>
                             <span>启用</span>
                             <Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
                             <Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
