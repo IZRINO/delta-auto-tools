@@ -170,6 +170,7 @@ pub(crate) trait RoundDriver: Send + Sync {
     fn market_window_open(&self) -> bool;
     fn refresh_due_craft_tasks(&self) -> Result<Vec<AccountRoundTask>, String>;
     async fn close_game(&self) -> Result<(), String>;
+    fn report_close_game_failure(&self, reason: &str, message: &str);
     fn pause_requested(&self) -> Result<bool, String>;
     fn pause_preserves_game(&self) -> bool;
     fn persist_paused(&self, reason: &str) -> Result<(), String>;
@@ -215,14 +216,13 @@ fn persist_system_failure<D: RoundDriver + ?Sized>(
     }
 }
 
-async fn close_game_for_transition<D: RoundDriver + ?Sized>(
-    driver: &D,
-    _reason: &str,
-) -> Result<(), RoundStop> {
-    driver
-        .close_game()
-        .await
-        .map_err(|message| persist_system_failure(driver, "round.closeGame", message))
+/// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用
+/// 各自预算无条件重杀两个 exe -> 残留进程下轮自愈。这里全局暂停会把一次慢退出变成
+/// 停摆到人工点继续，代价远高于收益，因此只报告不中断。
+async fn close_game_for_transition<D: RoundDriver + ?Sized>(driver: &D, reason: &str) {
+    if let Err(message) = driver.close_game().await {
+        driver.report_close_game_failure(reason, &message);
+    }
 }
 
 async fn stop_for_pause<D: RoundDriver + ?Sized>(driver: &D) -> RoundStop {
@@ -362,13 +362,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                     && error.kind == AccountRunErrorKind::NavigationTimedOut
                     && queued.navigation_retries == 0 =>
             {
-                if let Err(stop) = close_game_for_transition(driver, "导航超时后关闭游戏失败").await
-                {
-                    return RoundRunResult {
-                        completed_accounts: completed_account_ids.len(),
-                        stop,
-                    };
-                }
+                close_game_for_transition(driver, "导航超时后关闭游戏失败").await;
                 session_account_id = None;
                 let mut retained = VecDeque::new();
                 queued.navigation_retries = 1;
@@ -398,13 +392,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 }
                 let failed_account_id = task.account_id.clone();
                 queue.retain(|queued| queued.task.account_id != failed_account_id);
-                if let Err(stop) = close_game_for_transition(driver, "账号失败后关闭游戏失败").await
-                {
-                    return RoundRunResult {
-                        completed_accounts: completed_account_ids.len(),
-                        stop,
-                    };
-                }
+                close_game_for_transition(driver, "账号失败后关闭游戏失败").await;
                 session_account_id = None;
             }
             Err(error) => {
@@ -509,13 +497,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 .is_some_and(|next| can_chain_follow_up(task, &next.task, now_ms))
                 && !force_new_session;
             if !keep_session {
-                if let Err(stop) = close_game_for_transition(driver, "会话结束关闭游戏失败").await
-                {
-                    return RoundRunResult {
-                        completed_accounts: completed_account_ids.len(),
-                        stop,
-                    };
-                }
+                close_game_for_transition(driver, "会话结束关闭游戏失败").await;
                 session_account_id = None;
             }
             if !continue_round {
@@ -695,6 +677,13 @@ mod tests {
 
         async fn close_game(&self) -> Result<(), String> {
             self.perform_close_game().await
+        }
+
+        fn report_close_game_failure(&self, _reason: &str, message: &str) {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(format!("report-close-failure:{message}"));
         }
 
         fn pause_requested(&self) -> Result<bool, String> {
@@ -1271,7 +1260,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completed_round_close_failure_pauses_automation() {
+    async fn session_close_failure_reports_and_continues_round() {
         let driver = FakeDriver::new(
             vec![
                 Ok(AccountRunSuccess::processed(1)),
@@ -1283,18 +1272,24 @@ mod tests {
 
         let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
 
+        // 慢退出不能变成停摆：下轮登录 StopGame 会重杀，残留进程自愈。
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(result.completed_accounts, 2);
         assert_eq!(
-            result.stop,
-            RoundStop::SystemFailure {
-                step: "round.closeGame".to_string(),
-                message: "无法结束游戏进程".to_string(),
-            }
+            driver.actions(),
+            [
+                "run:a",
+                "close-game",
+                "report-close-failure:无法结束游戏进程",
+                "run:b",
+                "close-game",
+            ]
         );
-        assert_eq!(driver.actions(), ["run:a", "close-game", "persist-pause"]);
+        assert!(!driver.actions().contains(&"persist-pause".to_string()));
     }
 
     #[tokio::test]
-    async fn isolated_account_close_failure_pauses_before_next_account() {
+    async fn isolated_account_close_failure_continues_to_next_account() {
         let driver = FakeDriver::new(
             vec![
                 Err(AccountRunError::account("ammo.isolated", "仓库空间不足")),
@@ -1306,17 +1301,19 @@ mod tests {
 
         let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
 
-        assert_eq!(
-            result.stop,
-            RoundStop::SystemFailure {
-                step: "round.closeGame".to_string(),
-                message: "无法结束游戏进程".to_string(),
-            }
-        );
-        assert_eq!(result.completed_accounts, 0);
+        // 账号已被隔离并出队，关闭失败不该再连带掐掉后面账号。
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(result.completed_accounts, 1);
         assert_eq!(
             driver.actions(),
-            ["run:a", "persist-account:a", "close-game", "persist-pause"]
+            [
+                "run:a",
+                "persist-account:a",
+                "close-game",
+                "report-close-failure:无法结束游戏进程",
+                "run:b",
+                "close-game",
+            ]
         );
     }
 

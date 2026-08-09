@@ -65,6 +65,9 @@ const OPERATION_WINDOW_LOAD_TIMEOUT: &str = "操作提示窗口加载超时，�
 const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
 /// poll 与 execute 判定不一致时的退避间隔，避免空转刷日志。
 const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
+/// 轮次内关闭游戏的预算。UE4 客户端带内核反作弊，退出常慢于登录流程的 15 秒，
+/// 原来的 10 秒比登录 StopGame 还紧 -> 正常退出被判成故障。
+const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(45);
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -7380,10 +7383,19 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
         let executable = self.game_executable_path.clone();
         tokio::task::spawn_blocking(move || {
             desktop_runtime::WindowsDesktopRuntime
-                .terminate_exact(&executable, std::time::Duration::from_secs(10))
+                .terminate_exact(&executable, ROUND_CLOSE_GAME_TIMEOUT)
         })
         .await
         .map_err(|error| format!("关闭游戏任务失败: {error}"))?
+    }
+
+    fn report_close_game_failure(&self, reason: &str, message: &str) {
+        crate::log_warn!(
+            "special_ops::round",
+            "轮次切换关闭游戏失败，继续本轮",
+            "reason" => reason,
+            "message" => message
+        );
     }
 
     fn pause_requested(&self) -> Result<bool, String> {

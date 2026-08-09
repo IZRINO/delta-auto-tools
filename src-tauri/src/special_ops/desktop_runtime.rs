@@ -542,12 +542,14 @@ fn wait_for_process(
 }
 
 fn remaining_until(deadline: Instant, process_id: Option<u32>) -> Result<Duration, String> {
+    // 预算耗尽与 WaitForSingleObject 真超时是两种故障：前者说明整体 timeout 给得不够，
+    // 后者说明单个进程拒绝退出。共用一条文案会让日志无法区分，只能靠猜。
     deadline
         .checked_duration_since(Instant::now())
         .filter(|remaining| !remaining.is_zero())
         .ok_or_else(|| match process_id {
-            Some(process_id) => format!("等待进程退出超时: PID {process_id}"),
-            None => "等待进程退出超时".to_string(),
+            Some(process_id) => format!("结束进程预算耗尽: PID {process_id}"),
+            None => "结束进程预算耗尽".to_string(),
         })
 }
 
@@ -990,7 +992,7 @@ mod tests {
                 if check == 0 {
                     Ok(Duration::from_millis(100))
                 } else {
-                    Err("等待进程退出超时: PID 10".to_string())
+                    Err("结束进程预算耗尽: PID 10".to_string())
                 }
             },
             |_| Ok(FakeProcessHandle(41)),
@@ -1003,7 +1005,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert_eq!(error, "等待进程退出超时: PID 10");
+        assert_eq!(error, "结束进程预算耗尽: PID 10");
         assert_eq!(budget_checks.get(), 2);
         assert!(!terminated.get());
     }

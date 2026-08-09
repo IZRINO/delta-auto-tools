@@ -152,7 +152,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 特勤处自动暂停与任务栏顺序
 
-自动暂停必须写 `SpecialOpsSettings.pausedReason` 并在页头展示，否则用户看到的是无原因的静默停摆。`special_ops_set_paused` 两个方向都清空该字段；`special_ops_save_settings` 强制沿用进程内 `paused` / `pausedReason`，前端草稿不得回滚运行态。scheduler 晚醒判定只用 poll 成功返回的 `nowMs`；启动到期轮次的空计划、暂停中、总开关关闭、试运行未清理、revision 陈旧经 `is_transient_round_launch_error` 分流为 `RetryAfter(30s)`，不得全局暂停。`timelineTasks` 按执行顺序返回：到期任务按 `account.order` 分桶在前，未到期任务按时间在后且保留账号顺序作次键。限时商品 `highValue` 未确认时任务按设计留在任务栏，前端必须渲染 `limitedOutcome` 并提供 `special_ops_acknowledge_limited_supply` 入口。
+自动暂停必须写 `SpecialOpsSettings.pausedReason` 并在页头展示，否则用户看到的是无原因的静默停摆。`special_ops_set_paused` 两个方向都清空该字段；`special_ops_save_settings` 强制沿用进程内 `paused` / `pausedReason`，前端草稿不得回滚运行态。scheduler 晚醒判定只用 poll 成功返回的 `nowMs`；启动到期轮次的空计划、暂停中、总开关关闭、试运行未清理、revision 陈旧经 `is_transient_round_launch_error` 分流为 `RetryAfter(30s)`，不得全局暂停。轮次切换关闭游戏（导航超时后、账号失败后、会话结束）失败只记 warn 并继续本轮，禁止全局暂停：登录头两步 `StopGame` / `StopWeGame` 无条件重杀两个 exe -> 残留进程下轮自愈。预算用 `ROUND_CLOSE_GAME_TIMEOUT = 45s`，不得回到比登录 `StopGame` 还紧的 10 秒。只有 `stop_for_pause` 的 `PauseRequested` 路径保留 `round.closeGame`，且暂停原因先落盘 -> 进程错误文本不进 `pausedReason`。`等待进程退出超时` 只由 `WaitForSingleObject` 真超时产生，预算耗尽用 `结束进程预算耗尽`，两者不得共用文案。`timelineTasks` 按执行顺序返回：到期任务按 `account.order` 分桶在前，未到期任务按时间在后且保留账号顺序作次键。限时商品 `highValue` 未确认时任务按设计留在任务栏，前端必须渲染 `limitedOutcome` 并提供 `special_ops_acknowledge_limited_supply` 入口。
 
 ### Overlay 窗口系统
 
