@@ -1,9 +1,9 @@
 //! 多配置 Profile 模块。
 //!
-//! 一个 Profile = 5 份工具 settings 快照（morse/timer/counter/rapidfire/recognition）。
+//! 一个 Profile = 既有工具与特勤处 settings 快照（specialOps 可选，兼容旧 Profile）。
 //! 切换 Profile 时：
 //! 1. 先停止所有运行态会话（rapidfire/timer/counter）
-//! 2. 把目标 Profile 的 5 份 settings 写盘（统一走 `settings::save_settings`）
+//! 2. 把目标 Profile 的既有工具与特勤处 settings 写盘（统一走 `settings::save_settings`）
 //! 3. 逐工具 reload 内存状态：normalize → swap inner.settings → restart 热键 → 刷新透明窗口 → emit_state
 //! 4. counter 运行值重置为目标 Profile 的 start_value 并落盘 counter_state.json
 //! 5. 更新 active_profile_id 并持久化 profile_settings.json
@@ -20,7 +20,10 @@ mod apply;
 use std::{
     fs,
     path::Path,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
 };
 
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -30,6 +33,7 @@ use crate::morse;
 use crate::rapidfire;
 use crate::recognition;
 use crate::settings::SettingsCoordinator;
+use crate::special_ops;
 use crate::timer;
 
 use self::apply::apply_snapshot_to_tools;
@@ -39,6 +43,7 @@ use self::types::{Profile, ProfileBootstrap, ProfileSettings};
 pub struct ProfileState {
     settings: Mutex<ProfileSettings>,
     apply_lock: Mutex<()>,
+    applying: AtomicBool,
     settings_coordinator: Arc<SettingsCoordinator>,
 }
 
@@ -55,6 +60,7 @@ impl ProfileState {
         Self {
             settings: Mutex::new(settings),
             apply_lock: Mutex::new(()),
+            applying: AtomicBool::new(false),
             settings_coordinator,
         }
     }
@@ -125,6 +131,7 @@ fn build_default_snapshot() -> types::ToolSettingsSnapshot {
         counter: Some(counter::CounterSettings::default()),
         rapidfire: Some(rapidfire::RapidfireSettings::default()),
         recognition: Some(recognition::RecognitionSettings::default()),
+        special_ops: Some(special_ops::SpecialOpsSettings::default()),
     }
 }
 
@@ -291,7 +298,8 @@ pub async fn profile_create_default(
     state: State<'_, ProfileState>,
 ) -> Result<ProfileBootstrap, String> {
     let _apply_guard = acquire_apply_lock(&state)?;
-    state
+    state.applying.store(true, Ordering::SeqCst);
+    let apply_result = state
         .settings_coordinator
         .with_profile_change(|side_effect_started| {
             let snapshot = build_default_snapshot();
@@ -309,7 +317,9 @@ pub async fn profile_create_default(
             let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
             settings.active_profile_id = profile_id;
             settings::save_settings(&app, &settings)
-        })?;
+        });
+    state.applying.store(false, Ordering::SeqCst);
+    apply_result?;
 
     let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
@@ -324,13 +334,14 @@ pub async fn profile_apply(
 ) -> Result<(), String> {
     let started_at = std::time::Instant::now();
     let _apply_guard = acquire_apply_lock(&state)?;
+    state.applying.store(true, Ordering::SeqCst);
     crate::log_info!(
         "profile",
         "开始切换 Profile",
         "profile_id" => id.clone()
     );
 
-    state
+    let apply_result = state
         .settings_coordinator
         .with_profile_change(|side_effect_started| {
             // 先取出目标 Profile 快照（不持有 Profile 锁做 IO）
@@ -350,7 +361,9 @@ pub async fn profile_apply(
             let mut settings = state.settings.lock().map_err(|_| "Profile 状态锁已损坏")?;
             settings.active_profile_id = id.clone();
             settings::save_settings(&app, &settings)
-        })?;
+        });
+    state.applying.store(false, Ordering::SeqCst);
+    apply_result?;
 
     let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
@@ -464,6 +477,12 @@ pub(crate) enum ActiveProfileSnapshotPatch {
     Counter(counter::CounterSettings),
     Rapidfire(rapidfire::RapidfireSettings),
     Recognition(recognition::RecognitionSettings),
+    SpecialOps(Box<crate::special_ops::SpecialOpsSettings>),
+}
+
+pub(crate) fn is_applying(app: &AppHandle) -> bool {
+    app.try_state::<ProfileState>()
+        .is_some_and(|state| state.applying.load(Ordering::SeqCst))
 }
 
 #[allow(dead_code)]
@@ -498,12 +517,15 @@ pub(crate) fn update_active_profile_snapshot(
         ActiveProfileSnapshotPatch::Recognition(value) => {
             profile.snapshot.recognition = Some(value)
         }
+        ActiveProfileSnapshotPatch::SpecialOps(value) => {
+            profile.snapshot.special_ops = Some(*value)
+        }
     }
     profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
     settings::save_settings(app, &settings)
 }
 
-/// 读取当前 5 份 settings 作为快照。
+/// 读取当前工具与特勤处 settings 作为快照。
 fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnapshot, String> {
     // 直接从内存状态读，避免重复 normalize
     let morse_settings = app
@@ -552,12 +574,18 @@ fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnaps
         })
         .transpose()?;
 
+    let special_ops_settings = app
+        .try_state::<special_ops::SpecialOpsState>()
+        .map(|state| state.settings_snapshot())
+        .transpose()?;
+
     Ok(types::ToolSettingsSnapshot {
         morse: morse_settings,
         timer: timer_settings,
         counter: counter_settings,
         rapidfire: rapidfire_settings,
         recognition: recognition_settings,
+        special_ops: special_ops_settings,
     })
 }
 
@@ -696,6 +724,7 @@ mod tests {
         assert!(snapshot.counter.is_some());
         assert!(snapshot.rapidfire.is_some());
         assert!(snapshot.recognition.is_some());
+        assert!(snapshot.special_ops.is_some());
     }
 
     #[test]

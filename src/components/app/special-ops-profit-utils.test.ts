@@ -40,6 +40,7 @@ function settings(): SpecialOpsSettings {
                 {id: "rule-b", displayName: "规则 B", kkrbMatchName: "KKRB B", moligodMatchName: null, minimumProfit: 200},
             ],
             audits: [],
+            cutoffState: null,
         },
         accounts: [
             {

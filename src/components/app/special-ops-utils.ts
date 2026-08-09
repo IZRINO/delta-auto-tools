@@ -10,6 +10,19 @@ import type {
     StationPlan,
     TimelineTask,
 } from "@/components/app/special-ops-types";
+import {STATION_LABELS} from "@/components/app/special-ops-types";
+
+export function limitedColorToHex(color: [number, number, number]): string {
+    return `#${color
+        .map((channel) => Math.max(0, Math.min(255, Math.trunc(channel))).toString(16).padStart(2, "0"))
+        .join("")}`;
+}
+
+export function parseLimitedColorHex(value: string): [number, number, number] | null {
+    const normalized = value.trim().replace(/^#/, "");
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+    return [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16)) as [number, number, number];
+}
 
 function renumberAmmoTargets(targets: AmmoBusinessTarget[]): AmmoBusinessTarget[] {
     return targets.map((target, order) => ({...target, order}));
@@ -190,24 +203,65 @@ export function timelineDelayMinutes(task: TimelineTask, nowMs: number): number 
     return Math.max(0, Math.ceil((task.scheduledAtMs - nowMs) / 60_000));
 }
 
+export function timelineTaskLabel(task: Pick<TimelineTask, "kind" | "stationKind">): string {
+    if (task.kind === "craft" && task.stationKind) return STATION_LABELS[task.stationKind];
+    if (task.kind === "ammo") return "子弹兑换";
+    if (task.kind === "limitedSupplyCheck") return "限时商品检查";
+    return "交易行购买";
+}
+
 export type InlineStationCorrectionDraft = {
     state: ManualStationState | null;
     hours: string;
     minutes: string;
 };
 
+export function createStationRemainingTimeDraft(
+    station: Pick<StationPlan, "finishesAtMs">,
+    nowMs: number,
+): Pick<InlineStationCorrectionDraft, "hours" | "minutes"> {
+    const remaining = station.finishesAtMs !== null && station.finishesAtMs > nowMs
+        ? Math.ceil((station.finishesAtMs - nowMs) / 60_000)
+        : null;
+    if (remaining === null || remaining > 10_080) return {hours: "", minutes: ""};
+    return {
+        hours: String(Math.floor(remaining / 60)),
+        minutes: String(remaining % 60),
+    };
+}
+
 export function createInlineStationCorrectionDraft(
     station: Pick<StationPlan, "finishesAtMs">,
     nowMs: number,
 ): InlineStationCorrectionDraft {
-    const remaining = station.finishesAtMs !== null && station.finishesAtMs > nowMs
-        ? Math.ceil((station.finishesAtMs - nowMs) / 60_000)
-        : null;
+    const remaining = createStationRemainingTimeDraft(station, nowMs);
     return {
         state: "crafting",
-        hours: remaining === null ? "" : String(Math.floor(remaining / 60)),
-        minutes: remaining === null ? "" : String(remaining % 60),
+        ...remaining,
     };
+}
+
+/// 账号是否存在可被一键恢复的异常残留。
+/// 与后端 `restore_account_state` 的判定保持一致，避免按钮点下去只拿到「没有需要恢复的异常状态」。
+export function accountRestorable(account: AccountPlan): boolean {
+    if (account.status !== "ready" || account.lastFailure) return true;
+    if (account.stations.some((station) => station.status === "uncertain")) return true;
+    if (account.ammoTargets.some((target) => target.lastFailure || target.retryCount > 0)) return true;
+    return account.limitedSupply?.outcome === "failed";
+}
+
+/// 任务栏单项人工判定的显示条件。
+/// 登录环节卡住的账号只能在账号页处理（后端也会拒绝单项判定）；
+/// 其余情况下带定位失败、Uncertain 制作台、或账号处于需人工验证都要给出入口。
+export function timelineTaskAllowsInlineCorrection(
+    task: Pick<TimelineTask, "kind" | "accountStatus" | "manualFailure">,
+    station: Pick<StationPlan, "status"> | null,
+): boolean {
+    if (task.kind !== "craft" && task.kind !== "ammo") return false;
+    if (task.accountStatus === "needsManualLogin" || task.accountStatus === "loginFailed") return false;
+    if (task.manualFailure) return true;
+    if (task.kind === "craft") return station?.status === "uncertain";
+    return task.accountStatus === "manualCheckRequired";
 }
 
 export function buildInlineStationCorrection(
@@ -216,13 +270,18 @@ export function buildInlineStationCorrection(
     minutes: string,
 ): Pick<StationCorrectionInput, "state" | "remainingMinutes"> | null {
     if (state !== "crafting") return {state, remainingMinutes: null};
-    if (!/^\d+$/.test(hours) || !/^\d+$/.test(minutes)) return null;
-    const parsedHours = Number(hours);
-    const parsedMinutes = Number(minutes);
+    // 留空或 0 表示继承异常前的存量剩余时间，由后端读 finishesAtMs 还原；
+    // 后端没有可继承值时才报错，前端不再直接把提交按钮锁死。
+    const normalizedHours = hours.trim() === "" ? "0" : hours.trim();
+    const normalizedMinutes = minutes.trim() === "" ? "0" : minutes.trim();
+    if (!/^\d+$/.test(normalizedHours) || !/^\d+$/.test(normalizedMinutes)) return null;
+    const parsedHours = Number(normalizedHours);
+    const parsedMinutes = Number(normalizedMinutes);
     if (!Number.isSafeInteger(parsedHours) || !Number.isSafeInteger(parsedMinutes)
         || parsedMinutes > 59) return null;
     const remainingMinutes = parsedHours * 60 + parsedMinutes;
-    if (remainingMinutes < 1 || remainingMinutes > 10_080) return null;
+    if (remainingMinutes === 0) return {state, remainingMinutes: null};
+    if (remainingMinutes > 10_080) return null;
     return {state, remainingMinutes};
 }
 

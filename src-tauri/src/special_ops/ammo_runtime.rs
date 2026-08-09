@@ -25,6 +25,7 @@ pub(crate) struct AmmoRunTarget {
     pub retry_count: u8,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AmmoEntryDelays {
     pub supply_ms: u32,
@@ -210,16 +211,34 @@ async fn fill_target<D: AmmoDriver + ?Sized>(
             return TargetAttempt::Stopped(stopped(error, "ammo.purchaseDelay"));
         }
         match driver
-            .wait_target(&["ammo.exchange", "ammo.purchase"], Arc::clone(&cancelled))
+            .wait_target(
+                &["ammo.exchange", "ammo.fill", "ammo.purchase"],
+                Arc::clone(&cancelled),
+            )
             .await
         {
             Ok(target) if target == "ammo.exchange" => {
                 return exchange_target(driver, cancelled).await;
             }
+            Ok(target) if target == "ammo.fill" && attempt < 2 => {
+                if let Err(error) = driver
+                    .wait_and_click("ammo.fill", Arc::clone(&cancelled))
+                    .await
+                {
+                    return TargetAttempt::Stopped(stopped(error, "ammo.fill"));
+                }
+            }
+            Ok(target) if target == "ammo.fill" => {
+                return TargetAttempt::Isolated {
+                    step: "ammo.isolated".to_string(),
+                    message: "补齐/购买重试 3 次后仍回到一键补齐，按仓库空间不足隔离账号"
+                        .to_string(),
+                };
+            }
             Ok(target) if target == "ammo.purchase" && attempt < 2 => {}
             Ok(target) if target == "ammo.purchase" => {
                 return TargetAttempt::Isolated {
-                    step: "ammo.purchase".to_string(),
+                    step: "ammo.isolated".to_string(),
                     message: "材料购买重试 3 次后仍停留在购买页面，按仓库空间不足隔离账号"
                         .to_string(),
                 };
@@ -277,10 +296,20 @@ async fn run_target<D: AmmoDriver + ?Sized>(
     }
 }
 
-pub(crate) async fn run_ammo_trial<D: AmmoDriver + ?Sized>(
+#[cfg(test)]
+async fn run_ammo_trial<D: AmmoDriver + ?Sized>(
     driver: &D,
     targets: &[AmmoRunTarget],
     entry_delays: AmmoEntryDelays,
+    cancelled: Arc<AtomicBool>,
+) -> AmmoRunResult {
+    let _ = (entry_delays.supply_ms, entry_delays.tactical_ms);
+    run_ammo_targets(driver, targets, cancelled).await
+}
+
+pub(crate) async fn run_ammo_targets<D: AmmoDriver + ?Sized>(
+    driver: &D,
+    targets: &[AmmoRunTarget],
     cancelled: Arc<AtomicBool>,
 ) -> AmmoRunResult {
     let runnable = targets
@@ -294,36 +323,6 @@ pub(crate) async fn run_ammo_trial<D: AmmoDriver + ?Sized>(
     }
     if let Err(stop) = ensure_active(&cancelled) {
         return AmmoRunResult { stop };
-    }
-
-    if let Err(error) = driver
-        .wait_and_click("ammo.department", Arc::clone(&cancelled))
-        .await
-    {
-        return AmmoRunResult {
-            stop: stopped(error, "ammo.department"),
-        };
-    }
-    for (delay_ms, entry) in [
-        (entry_delays.supply_ms, "ammo.supply"),
-        (entry_delays.tactical_ms, "ammo.tactical"),
-    ] {
-        if let Err(error) = driver
-            .delay(
-                Duration::from_millis(u64::from(delay_ms)),
-                Arc::clone(&cancelled),
-            )
-            .await
-        {
-            return AmmoRunResult {
-                stop: stopped(error, entry),
-            };
-        }
-        if let Err(error) = driver.click_unverified(entry, Arc::clone(&cancelled)).await {
-            return AmmoRunResult {
-                stop: stopped(error, entry),
-            };
-        }
     }
 
     for seasonal in [false, true] {
@@ -557,6 +556,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn target_branch_does_not_repeat_military_supply_entry() {
+        let driver = ScriptedDriver::new(["ammo.success"]);
+
+        let result = run_ammo_targets(
+            &driver,
+            &[target("normal", false, 11)],
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert_eq!(result.stop, AmmoRunStop::Completed);
+        assert!(driver.actions().iter().all(|action| {
+            !action.contains("ammo.department")
+                && !action.contains("ammo.supply")
+                && !action.contains("ammo.enterSupply")
+                && !action.contains("ammo.tacticalDepartment")
+        }));
+    }
+
+    #[tokio::test]
     async fn all_succeeded_targets_are_skipped_without_input() {
         let driver = ScriptedDriver::new([]);
         let mut skipped = target("skip", false, 10);
@@ -615,7 +634,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fixed_entries_skip_list_templates_and_open_seasonal_once() {
+    async fn target_branch_skips_entry_and_opens_seasonal_once() {
         let driver = ScriptedDriver::new(["ammo.success", "ammo.success", "ammo.success"]);
         let result = run_ammo_trial(
             &driver,
@@ -631,16 +650,11 @@ mod tests {
 
         assert_eq!(result.stop, AmmoRunStop::Completed);
         let actions = driver.actions();
-        assert_eq!(
-            &actions[..5],
-            [
-                "click:ammo.department",
-                "delay:100",
-                "unchecked:ammo.supply",
-                "delay:200",
-                "unchecked:ammo.tactical",
-            ]
-        );
+        assert!(!actions.iter().any(|action| {
+            action.contains("ammo.department")
+                || action.contains("ammo.supply")
+                || action.contains("ammo.tactical")
+        }));
         assert!(!actions.iter().any(|action| {
             action.contains("ammo.list") || action.contains("ammo.seasonalList")
         }));
@@ -883,6 +897,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn purchase_returns_to_fill_then_reopens_and_continues_exchange() {
+        let driver =
+            ScriptedDriver::new(["ammo.fill", "ammo.fill", "ammo.exchange", "ammo.success"]);
+        let result = run_ammo_trial(
+            &driver,
+            &[target("normal", false, 11)],
+            entry_delays(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert_eq!(result.stop, AmmoRunStop::Completed);
+        let actions = driver.actions();
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:ammo.fill")
+                .count(),
+            2
+        );
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:ammo.purchase")
+                .count(),
+            2
+        );
+        assert!(actions.contains(&"success:normal".to_string()));
+    }
+
+    #[tokio::test]
+    async fn purchase_returns_to_fill_three_times_isolates_target() {
+        let driver = ScriptedDriver::new(["ammo.fill", "ammo.fill", "ammo.fill", "ammo.fill"]);
+        let result = run_ammo_trial(
+            &driver,
+            &[target("normal", false, 11)],
+            entry_delays(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert!(matches!(result.stop, AmmoRunStop::Isolated { .. }));
+        let actions = driver.actions();
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:ammo.fill")
+                .count(),
+            3
+        );
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:ammo.purchase")
+                .count(),
+            3
+        );
+    }
+
+    #[tokio::test]
     async fn target_failure_is_persisted_and_next_target_runs() {
         let driver = ScriptedDriver {
             observations: Mutex::new(VecDeque::from([
@@ -921,22 +995,5 @@ mod tests {
 
         assert_eq!(result.stop, AmmoRunStop::EmergencyStopped);
         assert!(driver.actions().is_empty());
-    }
-
-    #[tokio::test]
-    async fn cancellation_during_supply_delay_stops_before_click() {
-        let driver = ScriptedDriver::new([]);
-        driver.cancel_on_delay.store(true, Ordering::SeqCst);
-
-        let result = run_ammo_trial(
-            &driver,
-            &[target("normal", false, 11)],
-            entry_delays(),
-            Arc::new(AtomicBool::new(false)),
-        )
-        .await;
-
-        assert_eq!(result.stop, AmmoRunStop::EmergencyStopped);
-        assert_eq!(driver.actions(), ["click:ammo.department", "delay:100"]);
     }
 }

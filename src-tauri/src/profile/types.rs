@@ -1,6 +1,6 @@
 //! 多配置 Profile 前端类型定义。
 //!
-//! 一个 Profile = 5 份工具 settings 的快照（morse/timer/counter/rapidfire/recognition），
+//! 一个 Profile = 既有工具与特勤处 settings 的快照（specialOps 可选，兼容旧 Profile），
 //! 切换 Profile 时一次性写盘 5 份 `*_settings.json` 并让各工具 reload 内存状态。
 //! 主题独立于 Profile，不打包进快照。
 
@@ -14,7 +14,7 @@ use crate::timer::TimerSettings;
 
 /// 单个工具的配置快照。
 ///
-/// `Option` 表示快照是否包含该工具的配置；当前实现中 5 个工具都会被打包，
+/// `Option` 表示快照是否包含该工具的配置；`specialOps` 可选以兼容旧快照，
 /// 用 `Option` 是为了未来支持「仅切换部分工具」的灵活场景。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -29,10 +29,12 @@ pub struct ToolSettingsSnapshot {
     pub rapidfire: Option<RapidfireSettings>,
     #[serde(default, alias = "audio")]
     pub recognition: Option<RecognitionSettings>,
+    #[serde(default)]
+    pub special_ops: Option<crate::special_ops::SpecialOpsSettings>,
 }
 
 impl ToolSettingsSnapshot {
-    /// 创建空快照（5 个工具都为 None）。
+    /// 创建空快照（所有工具和特勤处均为 None）。
     #[allow(dead_code)]
     pub fn empty() -> Self {
         Self {
@@ -41,6 +43,7 @@ impl ToolSettingsSnapshot {
             counter: None,
             rapidfire: None,
             recognition: None,
+            special_ops: None,
         }
     }
 }
@@ -114,6 +117,7 @@ mod tests {
         assert!(snap.counter.is_none());
         assert!(snap.rapidfire.is_none());
         assert!(snap.recognition.is_none());
+        assert!(snap.special_ops.is_none());
     }
 
     #[test]
@@ -146,6 +150,31 @@ mod tests {
             output_json["recognition"]["cards"][0]["effects"]["audio"]["audioFiles"][0],
             "a.mp3"
         );
+    }
+
+    #[test]
+    fn snapshot_serializes_special_ops_as_camel_case() {
+        let snapshot = ToolSettingsSnapshot {
+            special_ops: Some(crate::special_ops::SpecialOpsSettings::default()),
+            ..ToolSettingsSnapshot::empty()
+        };
+        let json = serde_json::to_value(&snapshot).unwrap();
+        assert!(json.get("specialOps").is_some());
+        assert!(json.get("special_ops").is_none());
+        let special_ops = &json["specialOps"];
+        assert!(special_ops.get("limitedSupply").is_some());
+        assert!(special_ops.get("marketPurchase").is_some());
+        assert!(special_ops["defaultBusinessConfig"].get("market").is_some());
+        assert_eq!(
+            serde_json::from_value::<ToolSettingsSnapshot>(json).unwrap(),
+            snapshot
+        );
+    }
+
+    #[test]
+    fn legacy_snapshot_without_special_ops_stays_compatible() {
+        let snapshot: ToolSettingsSnapshot = serde_json::from_str("{}").unwrap();
+        assert!(snapshot.special_ops.is_none());
     }
 
     #[test]

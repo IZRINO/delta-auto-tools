@@ -32,7 +32,10 @@ import {
      type AmmoBusinessTarget,
     type CalibrationEnvironment,
     type CalibrationTarget,
-    type LoginRunSnapshot,
+     type LoginRunSnapshot,
+     type LimitedSupplyColorTestResult,
+     type LimitedSupplySettings,
+     type MarketBusinessConfig,
     type ProfitConfigurationUpdate,
     type SpecialOpsBootstrap,
     type SpecialOpsSettings,
@@ -47,19 +50,24 @@ import {
 import {formatRecordedHotkey} from "@/components/app/morse-utils";
 import {SpecialOpsProfitFilter} from "@/components/app/special-ops-profit-filter";
 import {
+     accountRestorable,
      applySpecialOpsBootstrapUpdate,
      applyExecutableSelection,
      buildInlineStationCorrection,
      buildTimelineHourSlots,
      changeAmmoTargetSeasonal,
      createInlineStationCorrectionDraft,
+     createStationRemainingTimeDraft,
      eligibleLoginTrialAccounts,
      formatCalibrationTemplateTestResult,
      groupTimelineTasks,
      hasActiveSpecialOpsRun,
      insertNormalAmmoTarget,
+     limitedColorToHex,
      moveAmmoTargetWithinGroup,
+     timelineTaskAllowsInlineCorrection,
     parseNavigationDelayMs,
+    parseLimitedColorHex,
     persistSpecialOpsSaveRequest,
      specialOpsErrorAfterUpdate,
      timelineDelayMinutes,
@@ -91,8 +99,11 @@ const emptyBootstrap: SpecialOpsBootstrap = {
              stations: stationKinds.map((kind) => ({kind, enabled: true, durationMinutes: 60, recipeNote: ""})),
              recipePoints: [],
              ammoTargets: [],
+             market: {schemaVersion: 1, enabled: false, purchaseCount: 1, itemNote: "", productPoint: null, maxPrice: 1},
          },
-         profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: []},
+         profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: [], cutoffState: null},
+         limitedSupply: {enabled: false, researchDelayMs: 3000, readyTimeoutMs: 10000, colors: [[0, 0, 0], [255, 255, 255]], colorTolerances: [30, 30]},
+         marketPurchase: {enabled: false, entryDelayMs: 3000, purchaseCount: 1, itemNote: ""},
          accounts: [],
         activeCalibrationId: null,
         calibrationEnvironments: [],
@@ -162,12 +173,18 @@ type StationCorrectionDraft = {
     minutes: string;
 };
 
-function createCorrectionDraft(): Record<StationKind, StationCorrectionDraft> {
-    return Object.fromEntries(stationKinds.map((kind) => [kind, {
-        state: null,
-        hours: "0",
-        minutes: "0",
-    }])) as Record<StationKind, StationCorrectionDraft>;
+/// 剩余时间预填异常前的存量计时，避免人工判定选「正在制作」时丢掉制作进度。
+function createCorrectionDraft(
+    stations: StationPlan[] = [],
+    nowMs = Date.now(),
+): Record<StationKind, StationCorrectionDraft> {
+    return Object.fromEntries(stationKinds.map((kind) => {
+        const station = stations.find((candidate) => candidate.kind === kind);
+        return [kind, {
+            state: null,
+            ...createStationRemainingTimeDraft(station ?? {finishesAtMs: null}, nowMs),
+        }];
+    })) as Record<StationKind, StationCorrectionDraft>;
 }
 
 function buildCorrectionPayload(
@@ -177,15 +194,9 @@ function buildCorrectionPayload(
     for (const kind of stationKinds) {
         const item = draft[kind];
         if (!item.state) return null;
-        let remainingMinutes: number | null = null;
-        if (item.state === "crafting") {
-            const hours = Number(item.hours);
-            const minutes = Number(item.minutes);
-            if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || minutes < 0 || minutes > 59) return null;
-            remainingMinutes = hours * 60 + minutes;
-            if (remainingMinutes < 1 || remainingMinutes > 10_080) return null;
-        }
-        payload.push({kind, state: item.state, remainingMinutes});
+        const correction = buildInlineStationCorrection(item.state, item.hours, item.minutes);
+        if (!correction) return null;
+        payload.push({kind, ...correction});
     }
     return payload;
 }
@@ -269,6 +280,7 @@ const accountStatusLabels: Record<TimelineTask["accountStatus"], string> = {
     ready: "就绪",
     needsManualLogin: "需人工登录",
     loginFailed: "登录失败",
+    manualCheckRequired: "需人工验证",
     uncertain: "状态不确定",
     isolated: "已隔离",
 };
@@ -318,7 +330,7 @@ function TimelineManualCorrection({
         const draft = createInlineStationCorrectionDraft(station ?? {finishesAtMs: null}, nowMs);
         return {selected: null, hours: draft.hours, minutes: draft.minutes, submitting: false, error: null};
     });
-    if (!task.manualFailure) return null;
+    if (!timelineTaskAllowsInlineCorrection(task, station)) return null;
 
     const submitStation = async (selected: ManualStationState) => {
         if (!task.stationKind) {
@@ -327,7 +339,7 @@ function TimelineManualCorrection({
         }
         const correction = buildInlineStationCorrection(selected, state.hours, state.minutes);
         if (!correction) {
-            setState((current) => ({...current, selected, error: "剩余时间须为 1 分钟至 168 小时的整数"}));
+            setState((current) => ({...current, selected, error: "剩余时间须留空继承或填 1 分钟至 168 小时的整数"}));
             return;
         }
         setState((current) => ({...current, selected, submitting: true, error: null}));
@@ -362,6 +374,7 @@ function TimelineManualCorrection({
                 <label className="fieldset w-24"><span className="fieldset-legend">剩余小时</span><Input type="number" min={0} max={168} step={1} value={state.hours} disabled={locked} onChange={(event) => setState((current) => ({...current, hours: event.target.value, error: null}))}/></label>
                 <label className="fieldset w-24"><span className="fieldset-legend">剩余分钟</span><Input type="number" min={0} max={59} step={1} value={state.minutes} disabled={locked} onChange={(event) => setState((current) => ({...current, minutes: event.target.value, error: null}))}/></label>
                 <Button disabled={locked} size="xs" onClick={() => void submitStation("crafting")}>{state.submitting ? "正在保存" : "保存"}</Button>
+                <span className="text-xs text-base-content/60">留空继承异常前剩余时间</span>
             </div>}
         </> : <div className="join">
             <Button className="join-item" disabled={locked} size="xs" variant="outline" onClick={() => void submitAmmo(true)}>已兑换</Button>
@@ -386,6 +399,7 @@ function SpecialOpsTimeline({
 }) {
     const slots = buildTimelineHourSlots(nowMs);
     const groups = groupTimelineTasks(bootstrap.schedule.timelineTasks);
+    const accountNumbers = new Map(bootstrap.settings.accounts.map((account, index) => [account.id, String(index + 1).padStart(2, "0")]));
     const firstSlot = slots[0];
     const hourMs = 60 * 60_000;
     const groupsBySlot = slots.map(() => [] as typeof groups);
@@ -406,18 +420,19 @@ function SpecialOpsTimeline({
                             <div className="card-body py-2">
                                 <ul className="list">
                                     {group.tasks.map((task) => {
-                                        const needsManualCorrection = task.accountStatus === "uncertain" || task.accountStatus === "isolated";
+                                        const needsManualCorrection = task.accountStatus === "uncertain" || task.accountStatus === "isolated" || task.accountStatus === "manualCheckRequired";
                                         const station = task.stationKind
                                             ? bootstrap.settings.accounts.find(({id}) => id === task.accountId)?.stations.find(({kind}) => kind === task.stationKind) ?? null
                                             : null;
+                                        const inlineCorrectable = timelineTaskAllowsInlineCorrection(task, station);
                                         return <li key={task.id} className="list-row px-0 py-1">
                                             <div className="list-col-grow min-w-0">
-                                                <div className="truncate text-sm font-medium">账号 {task.qqAccount || task.accountId} · {task.kind === "craft" && task.stationKind ? STATION_LABELS[task.stationKind] : "子弹兑换"}{task.note ? ` · ${task.note}` : ""}</div>
+                                                <div className="truncate text-sm font-medium">账号 {accountNumbers.get(task.accountId) ?? "--"} {task.qqAccount || task.accountId} · {task.kind === "craft" && task.stationKind ? STATION_LABELS[task.stationKind] : task.kind === "limitedSupplyCheck" ? "限时商品检查" : task.kind === "marketPurchase" ? "交易行购买" : "子弹兑换"}{task.note ? ` · ${task.note}` : ""}</div>
                                                 <div className="text-xs text-base-content/60">计划 {shanghaiTimeFormatter.format(task.scheduledAtMs)} · {timelineDelayMinutes(task, nowMs)} 分钟后</div>
                                                 {task.profitState && <div className="text-xs text-base-content/60">{timelineProfitLabels[task.profitState]}{task.mayExecuteEarlier ? "；最晚执行，利润达标后可能提前" : ""}</div>}
                                                 {task.manualFailure && <div className="text-xs text-error">{task.manualFailure.step}：{task.manualFailure.message}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
-                                                {needsManualCorrection && !task.manualFailure && <div className="text-xs text-error">请在账号页处理</div>}
+                                                {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
                                                 <span className={`badge badge-sm ${task.accountStatus === "ready" ? "badge-success badge-soft" : needsManualCorrection ? "badge-error badge-soft" : "badge-warning badge-soft"}`}>{accountStatusLabels[task.accountStatus]}</span>
@@ -452,6 +467,7 @@ export function SpecialOpsPage() {
     const [error, setError] = useState<string | null>(null);
     const [testingTargetKey, setTestingTargetKey] = useState<string | null>(null);
     const [calibrationTestResult, setCalibrationTestResult] = useState<string | null>(null);
+    const [limitedColorFeedback, setLimitedColorFeedback] = useState<string | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
     const [selectedCraftStation, setSelectedCraftStation] = useState<StationKind>("technicalCenter");
     const [hotkeyStatus, setHotkeyStatus] = useState<string | null>(null);
@@ -715,7 +731,7 @@ export function SpecialOpsPage() {
         const account = bootstrap.settings.accounts.find(({id}) => id === accountId);
         if (!account) return;
         setCorrectionAccountId(account.id);
-        setCorrectionDraft(createCorrectionDraft());
+        setCorrectionDraft(createCorrectionDraft(account.stations, bootstrap.nowMs));
         setCorrectionAmmoDraft(Object.fromEntries(enabledAmmoTargets(bootstrap.settings, account).map((target) => [target.id, null])));
         setCorrectionConfirming(false);
         setCorrectionSubmitting(false);
@@ -892,6 +908,46 @@ export function SpecialOpsPage() {
             setError(String(cause));
         }
     };
+    const confirmAccountManualCheck = async (accountId: string) => {
+        if (!isNativeShell || controlsLocked) return;
+        try {
+            const saved = await flushSettings();
+            await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_confirm_account_manual_check", {accountId, settingsRevision: saved.settingsRevision}));
+        } catch (cause) {
+            setError(`人工检查提交失败：${String(cause)}`);
+        }
+    };
+    /// 一键恢复：accountId 为 null 时恢复全部异常账号。
+    const restoreAccountState = async (accountId: string | null) => {
+        if (!isNativeShell || controlsLocked) return;
+        try {
+            setError(null);
+            const saved = await flushSettings();
+            await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_restore_account_state", {accountId, settingsRevision: saved.settingsRevision}));
+        } catch (cause) {
+            setError(`一键恢复失败：${String(cause)}`);
+        }
+    };
+    const startLimitedSupplyTrial = async () => {
+        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        try {
+            const saved = await flushSettings();
+            const snapshot = await invoke<LoginRunSnapshot>("special_ops_start_limited_supply_trial", {accountId: selectedAccountId, settingsRevision: saved.settingsRevision});
+            applyRunSnapshot(snapshot);
+        } catch (cause) {
+            setError(String(cause));
+        }
+    };
+    const startMarketTrial = async () => {
+        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        try {
+            const saved = await flushSettings();
+            const snapshot = await invoke<LoginRunSnapshot>("special_ops_start_market_trial", {accountId: selectedAccountId, mode: "realSingleAttempt", settingsRevision: saved.settingsRevision});
+            applyRunSnapshot(snapshot);
+        } catch (cause) {
+            setError(String(cause));
+        }
+    };
     const cancelLoginTrial = async () => {
         if (!isNativeShell || !hasActiveRun || runSnapshot?.status === "stopping") return;
         try {
@@ -902,6 +958,40 @@ export function SpecialOpsPage() {
         }
     };
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
+    const limitedSupply: LimitedSupplySettings = bootstrap.settings.limitedSupply ?? emptyBootstrap.settings.limitedSupply!;
+    const defaultMarket: MarketBusinessConfig = settingsDraftRef.current.defaultBusinessConfig.market ?? emptyBootstrap.settings.defaultBusinessConfig.market!;
+    const updateLimitedSupply = (patch: Partial<LimitedSupplySettings>) => save({
+        ...settingsDraftRef.current,
+        limitedSupply: {...limitedSupply, ...patch},
+    });
+    const updateLimitedColor = (colorIndex: number, color: [number, number, number]) => {
+        const colors = [...limitedSupply.colors] as [[number, number, number], [number, number, number]];
+        colors[colorIndex] = color;
+        updateLimitedSupply({colors});
+    };
+    const commitLimitedColorHex = (colorIndex: number, value: string) => {
+        const color = parseLimitedColorHex(value);
+        if (!color) {
+            setError("颜色必须使用 #RRGGBB 格式");
+            return;
+        }
+        setError(null);
+        updateLimitedColor(colorIndex, color);
+    };
+    const testLimitedColors = async () => {
+        if (!isNativeShell || !activeEnvironment || controlsLocked) return;
+        try {
+            const saved = await flushSettings();
+            const results: LimitedSupplyColorTestResult[] = [];
+            for (let regionIndex = 1; regionIndex <= 9; regionIndex += 1) {
+                results.push(await invoke<LimitedSupplyColorTestResult>("special_ops_test_limited_supply_colors", {environmentId: activeEnvironment.id, regionIndex, settingsRevision: saved.settingsRevision}));
+            }
+            const passed = results.length > 0 && results.every((result) => result.passed);
+            setLimitedColorFeedback(`${passed ? "识色通过" : "识色未通过"}：${results.map((result) => `采样 ${result.firstSampledColor.join(",")} / ${result.secondSampledColor.join(",")}，目标 ${result.firstTargetColor.join(",")} / ${result.secondTargetColor.join(",")}，容差 ${result.firstTolerance}/${result.secondTolerance}`).join("；")}`);
+        } catch (cause) {
+            setLimitedColorFeedback(`限时商品识色测试失败：${String(cause)}`);
+        }
+    };
     const beginCalibration = async (
         environment: CalibrationEnvironment,
         targetKey: string,
@@ -1078,6 +1168,12 @@ export function SpecialOpsPage() {
                     <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startAmmoTrial()}>
                         <RiPlayLine data-icon="inline-start"/>子弹兑换试运行
                     </Button>
+                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startLimitedSupplyTrial()}>
+                        <RiPlayLine data-icon="inline-start"/>限时商品试运行
+                    </Button>
+                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startMarketTrial()}>
+                        <RiPlayLine data-icon="inline-start"/>交易行试运行
+                    </Button>
                     {!isActiveRound && <Button disabled={!hasActiveRun || runSnapshot?.status === "stopping"} variant="outline" onClick={() => void cancelLoginTrial()}>
                         <RiStopCircleLine data-icon="inline-start"/>取消本次试运行
                     </Button>}
@@ -1109,6 +1205,56 @@ export function SpecialOpsPage() {
         />
 
         <fieldset disabled={controlsLocked} className="contents">
+        <section className="card card-border bg-base-100">
+            <div className="card-body gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div><h2 className="card-title">限时商品通用设置</h2><p className="text-xs text-base-content/60">12:00、20:00 固定检查；颜色 1/2 共用全局配置。</p></div>
+                    <label className="flex items-center gap-2 text-sm"><Switch checked={limitedSupply.enabled} onCheckedChange={(enabled) => updateLimitedSupply({enabled})}/>启用</label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="form-control gap-1"><span className="label-text text-xs">页面就绪超时（ms）</span><DraftInput type="number" min={1000} max={60000} value={String(limitedSupply.readyTimeoutMs)} onCommit={(value) => updateLimitedSupply({readyTimeoutMs: Math.max(1000, Math.min(60000, Math.trunc(Number(value) || 0)))})}/></label>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                    {[0, 1].map((colorIndex) => {
+                        const color = limitedSupply.colors[colorIndex] ?? [0, 0, 0];
+                        return <div key={colorIndex} className="rounded-box border border-base-300 p-3">
+                            <h3 className="font-medium">颜色 {colorIndex + 1}</h3>
+                            <div className="mt-2 flex items-end gap-2">
+                                <label className="form-control gap-1">
+                                    <span className="label-text text-xs">目标颜色</span>
+                                    <input
+                                        type="color"
+                                        value={limitedColorToHex(color)}
+                                        onChange={(event) => {
+                                            const next = parseLimitedColorHex(event.target.value);
+                                            if (next) updateLimitedColor(colorIndex, next);
+                                        }}
+                                        className="h-9 w-12 cursor-pointer border border-base-300 bg-transparent p-0"
+                                        aria-label={`颜色 ${colorIndex + 1}`}
+                                    />
+                                </label>
+                                <label className="form-control min-w-0 flex-1 gap-1">
+                                    <span className="label-text text-xs">Hex</span>
+                                    <DraftInput className="font-mono" value={limitedColorToHex(color)} onCommit={(value) => commitLimitedColorHex(colorIndex, value)}/>
+                                </label>
+                                <label className="form-control w-28 gap-1">
+                                    <span className="label-text text-xs">容差</span>
+                                    <DraftInput type="number" min={0} max={255} value={String(limitedSupply.colorTolerances[colorIndex])} onCommit={(value) => {
+                                        const tolerances = [...limitedSupply.colorTolerances] as [number, number];
+                                        tolerances[colorIndex] = Math.max(0, Math.min(255, Math.trunc(Number(value) || 0)));
+                                        updateLimitedSupply({colorTolerances: tolerances});
+                                    }}/>
+                                </label>
+                            </div>
+                        </div>;
+                    })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={!activeEnvironment || controlsLocked} onClick={() => void testLimitedColors()}><RiPlayLine data-icon="inline-start"/>测试限时商品识色</Button>{limitedColorFeedback && <span role="alert" className="text-xs text-base-content/70">{limitedColorFeedback}</span>}</div>
+            </div>
+        </section>
+        </fieldset>
+
+        <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div><h2 className="text-lg font-semibold">默认账号配置</h2><p className="text-xs text-base-content/60">独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。</p></div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1128,6 +1274,19 @@ export function SpecialOpsPage() {
                     </div>;
                 })}
             </div>
+            <details className="collapse collapse-arrow">
+                <summary className="collapse-title">默认交易行购买</summary>
+                <div className="collapse-content grid gap-3 sm:grid-cols-2"><p className="text-xs text-base-content/60 sm:col-span-2">交易行通用设置</p>
+                    <label className="flex items-center gap-2 text-sm"><Switch checked={defaultMarket.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, enabled}}})}/>启用默认交易行购买</label>
+                    <label className="form-control gap-1"><span className="label-text text-xs">购买次数</span><DraftInput type="number" min={1} value={String(defaultMarket.purchaseCount)} onCommit={(value) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, purchaseCount: Math.max(1, Math.trunc(Number(value) || 1))}}})}/></label>
+                    <label className="form-control gap-1"><span className="label-text text-xs">最高价</span><DraftInput type="number" min={1} value={String(defaultMarket.maxPrice)} onCommit={(value) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, maxPrice: Math.max(1, Math.trunc(Number(value) || 1))}}})}/></label>
+                    <label className="form-control gap-1"><span className="label-text text-xs">商品备注</span><DraftInput value={defaultMarket.itemNote} onCommit={(itemNote) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, itemNote}}})}/></label>
+                    <div className="flex items-center justify-between gap-2 sm:col-span-2">
+                        <span className="text-xs text-base-content/60">商品入口点击点：{defaultMarket.productPoint ? `${defaultMarket.productPoint.x}, ${defaultMarket.productPoint.y}` : "未配置"}</span>
+                        <Button disabled={!activeEnvironment} size="sm" variant="outline" onClick={() => activeEnvironment && void beginCalibration(activeEnvironment, "business.market.product")}><RiCrosshair2Line data-icon="inline-start"/>{defaultMarket.productPoint ? "重选" : "选择"}</Button>
+                    </div>
+                </div>
+            </details>
             <details className="collapse collapse-arrow">
                 <summary className="collapse-title">默认子弹兑换顺序</summary>
                 <div className="collapse-content">
@@ -1150,16 +1309,22 @@ export function SpecialOpsPage() {
 
         <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3">
-            <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">账号</h2><Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">账号</h2>
+                {bootstrap.settings.accounts.some(accountRestorable) && <Button size="sm" variant="outline" title="清除全部账号的异常状态" onClick={() => void restoreAccountState(null)}><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>}
+            </div>
             {bootstrap.settings.accounts.length === 0 && <div className="rounded-box border border-dashed border-base-300 p-8 text-center text-sm text-base-content/60">暂无账号，点击“添加账号”开始配置</div>}
             {bootstrap.settings.accounts.map((account, index) => {
                 const due = bootstrap.schedule.dueAccounts.find((item) => item.accountId === account.id);
                 const business = account.independentBusinessConfig;
+                const manualCheckRequired = account.status === "needsManualLogin" || account.status === "loginFailed" || account.status === "manualCheckRequired" || account.status === "uncertain" || account.status === "isolated";
                 return <article key={account.id} className="rounded-box border border-base-300 bg-base-100 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{account.status}</p></div>
+                        <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{accountStatusLabels[account.status]}</p></div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                             <Button size="sm" variant="outline" onClick={() => openCorrection(account.id)}>人工校正制作与子弹状态</Button>
+                            {manualCheckRequired && <Button size="sm" variant="outline" onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
+                            {accountRestorable(account) && <Button size="sm" variant="outline" title="清除异常状态：制作台按异常前剩余时间恢复，失败子弹回未兑换" onClick={() => void restoreAccountState(account.id)}><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>}
                             <span>启用</span>
                             <Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
                             <Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
@@ -1206,10 +1371,25 @@ export function SpecialOpsPage() {
                         onChange={(ammoTargets) => updateIndependentBusiness(account, {ammoTargets})}
                         onSelectPoint={(target) => activeEnvironment && void beginCalibration(activeEnvironment, `business.ammo.${target.id}`, account.id)}
                     />
+                    {business.market && <details className="collapse collapse-arrow mt-3 border border-base-300">
+                        <summary className="collapse-title">独立交易行配置</summary>
+                        <div className="collapse-content grid gap-3 sm:grid-cols-2">
+                            <label className="flex items-center gap-2 text-sm"><Switch checked={business.market?.enabled ?? false} onCheckedChange={(enabled) => updateIndependentBusiness(account, {market: {...business.market!, enabled}})}/>启用独立交易行购买</label>
+                            <label className="form-control gap-1"><span className="label-text text-xs">购买次数</span><DraftInput type="number" min={1} value={String(business.market?.purchaseCount ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, purchaseCount: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
+                            <label className="form-control gap-1"><span className="label-text text-xs">最高价</span><DraftInput type="number" min={1} value={String(business.market?.maxPrice ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, maxPrice: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
+                            <label className="form-control gap-1"><span className="label-text text-xs">商品备注</span><DraftInput value={business.market?.itemNote ?? ""} onCommit={(itemNote) => updateIndependentBusiness(account, {market: {...business.market!, itemNote}})}/></label>
+                            <div className="flex items-center justify-between gap-2 sm:col-span-2">
+                                <span className="text-xs text-base-content/60">商品入口点击点：{business.market.productPoint ? `${business.market.productPoint.x}, ${business.market.productPoint.y}` : "未配置"}</span>
+                                <Button disabled={!activeEnvironment} size="sm" variant="outline" onClick={() => activeEnvironment && void beginCalibration(activeEnvironment, "business.market.product", account.id)}><RiCrosshair2Line data-icon="inline-start"/>{business.market.productPoint ? "重选" : "选择"}</Button>
+                            </div>
+                            <span className="text-xs text-base-content/60">独立配置未开启时继承默认交易行购买；业务点仍按显示环境全局校准。</span>
+                        </div>
+                    </details>}
                     </div>
                     </details> : <div role="alert" className="alert alert-error mt-3"><span>独立设置已开启，但独立业务配置缺失。请关闭后重新开启。</span></div>}
                 </article>;
             })}
+            <Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button>
         </section>
         </fieldset>
 
@@ -1247,8 +1427,8 @@ export function SpecialOpsPage() {
                             <td><div className="font-medium">点击军需处前等待</div></td>
                             <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoSupplyDelayMs)} onCommit={(value) => updateAutomationDelay("ammoSupplyDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                         </tr>}
-                        {target.key === "ammo.tactical" && <tr className="bg-base-200/50">
-                            <td><div className="font-medium">点击战术部门前等待</div></td>
+                        {target.key === "ammo.enterSupply" && <tr className="bg-base-200/50">
+                            <td><div className="font-medium">点击进入军需处前等待</div></td>
                             <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoTacticalDelayMs)} onCommit={(value) => updateAutomationDelay("ammoTacticalDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                         </tr>}
                         {target.key === "craft.confirmPinned" && <>

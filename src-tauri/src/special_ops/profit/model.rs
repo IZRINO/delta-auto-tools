@@ -14,6 +14,8 @@ pub struct ProfitFilterSettings {
     pub rules: Vec<AmmoProfitRule>,
     #[serde(default)]
     pub audits: Vec<AmmoProfitAudit>,
+    #[serde(default)]
+    pub cutoff_state: Option<ProfitCutoffState>,
 }
 
 impl Default for ProfitFilterSettings {
@@ -23,8 +25,37 @@ impl Default for ProfitFilterSettings {
             cutoff_time: default_profit_cutoff_time(),
             rules: Vec::new(),
             audits: Vec::new(),
+            cutoff_state: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfitCutoffState {
+    pub day: String,
+    pub targets: Vec<ProfitCutoffTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfitCutoffTarget {
+    pub account_id: String,
+    pub target_id: String,
+    #[serde(default)]
+    pub rule_id: Option<String>,
+    #[serde(default)]
+    pub skip_reason: Option<ProfitCutoffSkipReason>,
+    #[serde(default)]
+    pub decided_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProfitCutoffSkipReason {
+    BelowThreshold,
+    QueryUnavailable,
+    Unconfigured,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -164,6 +195,33 @@ pub(crate) fn normalize_profit_settings(settings: &mut ProfitFilterSettings) -> 
     settings
         .audits
         .retain(|audit| rule_ids.contains(audit.rule_id.as_str()));
+    if let Some(state) = settings.cutoff_state.as_mut() {
+        state.day = state.day.trim().to_string();
+        let mut seen = HashSet::new();
+        for target in &mut state.targets {
+            target.account_id = target.account_id.trim().to_string();
+            target.target_id = target.target_id.trim().to_string();
+            target.rule_id = target
+                .rule_id
+                .take()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            if target.decided_at_ms.is_none()
+                && target
+                    .rule_id
+                    .as_deref()
+                    .is_none_or(|rule_id| !rule_ids.contains(rule_id))
+            {
+                target.skip_reason = Some(ProfitCutoffSkipReason::Unconfigured);
+                target.decided_at_ms = Some(0);
+            }
+        }
+        state.targets.retain(|target| {
+            !target.account_id.is_empty()
+                && !target.target_id.is_empty()
+                && seen.insert((target.account_id.clone(), target.target_id.clone()))
+        });
+    }
     Ok(())
 }
 
@@ -488,6 +546,7 @@ mod tests {
                 rule("rule-b", "KKRB B", None, 200),
             ],
             audits: vec![audit("rule-a", 1), audit("rule-b", 2)],
+            cutoff_state: None,
         };
         let independent = BusinessConfig {
             ammo_targets: vec![business_target("independent-a", Some("rule-a"))],
@@ -506,6 +565,8 @@ mod tests {
             ammo_targets: vec![runtime_target("independent-a")],
             last_failure: None,
             login_trial_signature: None,
+            limited_supply: Default::default(),
+            market: Default::default(),
         });
         settings
     }
@@ -584,6 +645,7 @@ mod tests {
             cutoff_time: "08:00".to_string(),
             rules: Vec::new(),
             audits: Vec::new(),
+            cutoff_state: None,
         };
 
         assert!(
@@ -620,6 +682,7 @@ mod tests {
             cutoff_time: "17:00".to_string(),
             rules: vec![rule("existing", "目标 A", None, 1)],
             audits: Vec::new(),
+            cutoff_state: None,
         };
 
         assert!(
@@ -642,6 +705,7 @@ mod tests {
                 minimum_profit: 100,
             }],
             audits: vec![audit("rule-a", 2), audit("deleted", 3)],
+            cutoff_state: None,
         };
 
         normalize_profit_settings(&mut filter).unwrap();
@@ -836,5 +900,66 @@ mod tests {
             bindings: Vec::new(),
         };
         assert!(apply_profit_configuration(&current, unchanged, &HashSet::new()).is_ok());
+    }
+
+    #[test]
+    fn cutoff_state_defaults_normalizes_and_survives_configuration_changes() {
+        let mut filter: ProfitFilterSettings =
+            serde_json::from_str(r#"{"enabled":true,"cutoffTime":"17:00","rules":[],"audits":[]}"#)
+                .unwrap();
+        assert_eq!(filter.cutoff_state, None);
+        filter.cutoff_state = Some(ProfitCutoffState {
+            day: " 2026-08-06 ".to_string(),
+            targets: vec![
+                ProfitCutoffTarget {
+                    account_id: " account-a ".to_string(),
+                    target_id: " ammo-a ".to_string(),
+                    rule_id: Some(" rule-a ".to_string()),
+                    skip_reason: None,
+                    decided_at_ms: None,
+                },
+                ProfitCutoffTarget {
+                    account_id: "account-a".to_string(),
+                    target_id: "ammo-a".to_string(),
+                    rule_id: Some("rule-a".to_string()),
+                    skip_reason: Some(ProfitCutoffSkipReason::BelowThreshold),
+                    decided_at_ms: Some(1),
+                },
+                ProfitCutoffTarget {
+                    account_id: "".to_string(),
+                    target_id: "ammo-b".to_string(),
+                    rule_id: None,
+                    skip_reason: None,
+                    decided_at_ms: None,
+                },
+            ],
+        });
+
+        normalize_profit_settings(&mut filter).unwrap();
+
+        let state = filter.cutoff_state.as_ref().unwrap();
+        assert_eq!(state.day, "2026-08-06");
+        assert_eq!(state.targets.len(), 1);
+        assert_eq!(state.targets[0].account_id, "account-a");
+        assert_eq!(state.targets[0].target_id, "ammo-a");
+        assert_eq!(
+            state.targets[0].skip_reason,
+            Some(ProfitCutoffSkipReason::Unconfigured)
+        );
+        assert_eq!(state.targets[0].decided_at_ms, Some(0));
+
+        let mut current = settings_with_profit_configuration();
+        current.profit_filter.cutoff_state = filter.cutoff_state.clone();
+        let update = ProfitConfigurationUpdate {
+            enabled: true,
+            cutoff_time: "18:00".to_string(),
+            rules: current.profit_filter.rules.clone(),
+            bindings: Vec::new(),
+        };
+        let next = apply_profit_configuration(&current, update, &HashSet::new()).unwrap();
+        assert_eq!(
+            next.profit_filter.cutoff_state,
+            current.profit_filter.cutoff_state
+        );
     }
 }

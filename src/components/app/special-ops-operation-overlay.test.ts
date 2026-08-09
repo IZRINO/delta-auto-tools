@@ -42,6 +42,8 @@ describe("operationOverlayText", () => {
         expect(operationOverlayText(snapshot({runKind: "navigation"})).title).toBe("游戏内导航试运行中");
         expect(operationOverlayText(snapshot({runKind: "craft"})).title).toBe("制作试运行中");
         expect(operationOverlayText(snapshot({runKind: "ammo"})).title).toBe("子弹兑换操作中");
+        expect(operationOverlayText(snapshot({runKind: "limitedSupply"})).title).toBe("限时商品检查中");
+        expect(operationOverlayText(snapshot({runKind: "market"})).title).toBe("交易行购买中");
         expect(operationOverlayText(snapshot({runKind: "round" as LoginRunSnapshot["runKind"]})).title).toBe("多账号制作轮次中");
     });
 
@@ -57,6 +59,22 @@ describe("operationOverlayText", () => {
                 stationTotal: 3,
             },
         })).detail).toBe("账号 2/4 · QQ 12345 · 工作台 1/3");
+    });
+
+    it("多账号轮次等待时显示会话保持或切号状态", () => {
+        expect(operationOverlayText(snapshot({
+            runKind: "round",
+            status: "waiting",
+            message: "保持当前账号在线，等待同账号下一任务",
+            roundProgress: {
+                accountIndex: 1,
+                accountTotal: 2,
+                qqAccount: "12345",
+                stationKind: null,
+                stationIndex: 0,
+                stationTotal: 0,
+            },
+        })).detail).toBe("账号 1/2 · QQ 12345 · 保持当前账号在线，等待同账号下一任务");
     });
 });
 

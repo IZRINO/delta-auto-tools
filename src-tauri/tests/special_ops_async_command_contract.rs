@@ -50,3 +50,20 @@ fn operation_window_is_shown_before_waiting_for_page_load() {
         "操作提示窗口必须先显示，再等待 WebView 页面加载；隐藏窗口不会触发 PageLoad"
     );
 }
+
+#[test]
+fn limited_market_commands_are_registered_without_legacy_color_sampler() {
+    let source = include_str!("../src/lib.rs");
+    for command in [
+        "special_ops_start_limited_supply_trial",
+        "special_ops_start_market_trial",
+        "special_ops_acknowledge_limited_supply",
+        "special_ops_test_limited_supply_colors",
+    ] {
+        assert!(
+            source.contains(command),
+            "缺少 Tauri command 注册：{command}"
+        );
+    }
+    assert!(!source.contains("special_ops_sample_limited_supply_color"));
+}

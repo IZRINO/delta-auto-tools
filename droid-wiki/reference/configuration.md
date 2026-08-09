@@ -13,10 +13,13 @@
 | `recognition_settings.json` | 识别触发 | `recognitionEnabled`、cards 数组（trigger mode、`hotkeyRepeatMode`、activation、effects、cooldown、probes） |
 | `theme_settings.json` | 主题 | `activeThemeId`、custom themes、token overrides |
 | `profile_settings.json` | 配置 | `profiles` 数组、`activeProfileId` |
+| `special_ops_settings.json` | 特勤处 | 总开关、暂停状态、账号业务与运行态、校准目标、固定等待、利润筛选、限时商品及交易行配置 |
 | `counter_state.json` | 计数器（运行态） | 累积计数器值（独立于配置） |
 | `log_settings.json` | 日志 | 全局日志级别、按模块覆盖 |
 
 Recognition Hotkey 卡片的 `hotkeyRepeatMode` 可取 `once` 或 `whileHeld`，缺失时按 `once` 读取。`whileHeld` 要求 `cooldownMs >= 10`；`once` 继续允许 `cooldownMs = 0`。RegionWatch / ColorWatch 保存时会把该字段归一为 `once`。
+
+特勤处军需处入口使用 `ammoSupplyDelayMs` 与兼容字段名 `ammoTacticalDelayMs`，分别控制点击 `ammo.supply` 和 `ammo.enterSupply` 前等待。`limitedSupply.researchDelayMs` 仅为旧配置兼容字段，不参与当前 UI、preflight 或 runtime。当前分支校准目标为 `ammo.enterSupply` 点击点、`ammo.tacticalDepartment` 与 `ammo.researchDepartment` 模板识别区域；旧 `ammo.tactical`、`limited.research` 在 normalize 时丢弃。
 
 ## Tauri 配置
 

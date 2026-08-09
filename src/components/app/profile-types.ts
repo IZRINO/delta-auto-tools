@@ -9,8 +9,9 @@ import type {MorseSettings} from "@/components/app/morse-types";
 import type {CounterSettings, TimerSettings} from "@/components/app/timer-types";
 import type {RapidfireSettings} from "@/components/app/rapidfire-types";
 import type {RecognitionSettings} from "@/components/app/recognition-types";
+import type {SpecialOpsSettings} from "@/components/app/special-ops-types";
 
-/** 单个工具的配置快照（5 选 1，其余为 None）。 */
+/** 单个工具的配置快照；旧 Profile 可能缺少 specialOps。 */
 export interface ToolSettingsSnapshot {
     morse?: MorseSettings | null;
     timer?: TimerSettings | null;
@@ -18,6 +19,7 @@ export interface ToolSettingsSnapshot {
     rapidfire?: RapidfireSettings | null;
     recognition?: RecognitionSettings | null;
     audio?: RecognitionSettings | null;
+    specialOps?: SpecialOpsSettings | null;
 }
 
 /** 一个完整 Profile。 */

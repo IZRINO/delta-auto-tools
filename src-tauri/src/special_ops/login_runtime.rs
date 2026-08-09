@@ -52,6 +52,8 @@ pub enum LoginRunKind {
     Navigation,
     Craft,
     Ammo,
+    LimitedSupply,
+    Market,
     Round,
 }
 
@@ -73,6 +75,8 @@ impl LoginRunKind {
             Self::Navigation => "navigation",
             Self::Craft => "craft",
             Self::Ammo => "ammo",
+            Self::LimitedSupply => "limitedSupply",
+            Self::Market => "market",
             Self::Round => "round",
         }
     }
@@ -83,6 +87,8 @@ impl LoginRunKind {
             Self::Navigation => "正在准备游戏内导航试运行",
             Self::Craft => "正在准备制作试运行",
             Self::Ammo => "正在准备子弹兑换试运行",
+            Self::LimitedSupply => "正在准备限时商品试运行",
+            Self::Market => "正在准备交易行试运行",
             Self::Round => "正在准备多账号制作轮次",
         }
     }
@@ -93,6 +99,8 @@ impl LoginRunKind {
             Self::Navigation => "正在取消游戏内导航试运行",
             Self::Craft => "正在取消制作试运行",
             Self::Ammo => "正在取消子弹兑换试运行",
+            Self::LimitedSupply => "正在取消限时商品试运行",
+            Self::Market => "正在取消交易行试运行",
             Self::Round => "正在停止多账号制作轮次",
         }
     }
@@ -1828,6 +1836,16 @@ mod tests {
         assert_eq!(
             LoginRunKind::Ammo.normal_cancel_message(),
             "正在取消子弹兑换试运行"
+        );
+        assert_eq!(LoginRunKind::LimitedSupply.query_value(), "limitedSupply");
+        assert_eq!(
+            LoginRunKind::LimitedSupply.normal_cancel_message(),
+            "正在取消限时商品试运行"
+        );
+        assert_eq!(LoginRunKind::Market.query_value(), "market");
+        assert_eq!(
+            LoginRunKind::Market.normal_cancel_message(),
+            "正在取消交易行试运行"
         );
     }
 

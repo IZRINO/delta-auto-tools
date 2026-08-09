@@ -35,7 +35,10 @@ const runtimePhaseLabels = {
     querying: "正在查询利润",
     waitingNextQuery: "等待下轮利润查询",
     activeRound: "当前轮次正在执行",
-    cutoffBypass: "已到截止时间，忽略利润",
+    cutoffBypass: "截止后按最低利润门槛执行",
+    cutoffQuerying: "截止利润查询中",
+    waitingCutoffRetry: "等待截止利润补查",
+    cutoffComplete: "截止利润查询完成",
     paused: "自动化已暂停",
 } as const;
 

@@ -16,6 +16,7 @@ mod settings;
 mod types;
 pub(crate) mod watcher;
 
+pub(crate) use self::types::{ColorMatchMethod, ColorMatchMode, ColorProbe, ColorTarget};
 pub use self::types::{RecognitionBootstrap, RecognitionSettings, RecognitionTriggerMode};
 pub use events::*;
 

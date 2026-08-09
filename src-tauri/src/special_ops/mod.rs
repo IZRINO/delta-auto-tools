@@ -4,9 +4,14 @@ mod craft_runtime;
 mod craft_trial;
 pub(crate) mod desktop_runtime;
 mod game_navigation;
+mod limited_supply;
+mod limited_supply_runtime;
 #[allow(dead_code)]
 pub(crate) mod login_flow;
 mod login_runtime;
+mod market_purchase;
+mod market_runtime;
+mod military_supply_runtime;
 mod profit;
 #[allow(dead_code)]
 mod remembered_account;
@@ -32,16 +37,20 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::overlay_utils::{destroy_window, encoded_query_value, safe_label_component};
 use crate::{app_error::AppError, settings::SettingsCoordinator};
 
+use limited_supply::{LimitedSupplyAccountState, LimitedSupplySettings};
 pub use login_runtime::{LoginRunKind, LoginRunSnapshot, LoginRunStatus};
+use market_purchase::{MarketAccountState, MarketBusinessConfig, MarketPurchaseSettings};
 use profit::model::{
     apply_profit_configuration, normalize_profit_settings, validate_profit_configuration,
-    AmmoProfitAudit, AmmoProfitRule, ProfitConfigurationUpdate, ProfitFilterSettings,
+    AmmoProfitAudit, AmmoProfitRule, ProfitConfigurationUpdate, ProfitCutoffSkipReason,
+    ProfitCutoffState, ProfitCutoffTarget, ProfitFilterSettings,
 };
 use profit::query::query_profit_rules_with_cancel;
 use profit::runtime::{
     ProfitQueryControl, ProfitQueryWindow, ProfitRuntimeSnapshot, ProfitTargetKey,
 };
 use profit::{
+    cutoff::{classify_cutoff_audits, FINAL_MINIMUM_PROFIT},
     kkrb::{KkrbAdapter, ProfitCatalogSnapshot},
     moligod::{MoligodAdapter, MoligodRequestTarget, MoligodRuleStatus},
 };
@@ -97,6 +106,7 @@ pub enum AccountStatus {
     Ready,
     NeedsManualLogin,
     LoginFailed,
+    ManualCheckRequired,
     Uncertain,
     Isolated,
 }
@@ -228,7 +238,9 @@ fn apply_ammo_isolated(
         .iter_mut()
         .find(|account| account.id == account_id)
         .ok_or_else(|| "子弹兑换账号已不存在".to_string())?;
-    set_ammo_manual_failure(account, target_id, step, message, failed_at_ms)
+    set_ammo_manual_failure(account, target_id, step, message, failed_at_ms)?;
+    account.status = AccountStatus::Isolated;
+    Ok(())
 }
 
 fn set_ammo_manual_failure(
@@ -255,10 +267,7 @@ fn set_ammo_manual_failure(
         .last_failure
         .as_ref()
         .is_some_and(|current| current.station_kind.is_some());
-    let has_login_block = matches!(
-        account.status,
-        AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
-    );
+    let has_login_block = account_allows_manual_check(&account.status);
     if !has_station_failure && !has_login_block {
         account.last_failure = Some(failure);
         account.status = AccountStatus::Ready;
@@ -310,6 +319,8 @@ pub struct BusinessConfig {
     #[serde(default)]
     pub recipe_points: Vec<AccountRecipePoint>,
     pub ammo_targets: Vec<AmmoBusinessTarget>,
+    #[serde(default)]
+    pub market: MarketBusinessConfig,
 }
 
 impl Default for BusinessConfig {
@@ -326,6 +337,7 @@ impl Default for BusinessConfig {
                 .collect(),
             recipe_points: Vec::new(),
             ammo_targets: Vec::new(),
+            market: MarketBusinessConfig::default(),
         }
     }
 }
@@ -335,6 +347,7 @@ fn missing_business_config() -> BusinessConfig {
         stations: Vec::new(),
         recipe_points: Vec::new(),
         ammo_targets: Vec::new(),
+        market: MarketBusinessConfig::default(),
     }
 }
 
@@ -377,6 +390,7 @@ fn business_config_from_account(account: &AccountPlan) -> BusinessConfig {
                 profit_rule_id: None,
             })
             .collect(),
+        market: MarketBusinessConfig::default(),
     }
 }
 
@@ -406,6 +420,10 @@ pub struct AccountPlan {
     pub last_failure: Option<AccountFailure>,
     #[serde(default)]
     pub login_trial_signature: Option<String>,
+    #[serde(default)]
+    pub limited_supply: LimitedSupplyAccountState,
+    #[serde(default)]
+    pub market: MarketAccountState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -472,6 +490,24 @@ pub enum CalibrationTestResult {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LimitedSupplyColorTestResult {
+    pub first_sampled_color: [u8; 3],
+    pub first_matched_color: Option<[u8; 3]>,
+    pub first_target_color: [u8; 3],
+    pub first_tolerance: u8,
+    pub first_matched: bool,
+    pub second_matched_color: Option<[u8; 3]>,
+    pub second_sampled_color: [u8; 3],
+    pub second_target_color: [u8; 3],
+    pub second_tolerance: u8,
+    pub second_matched: bool,
+    pub first_nearest_distance: f32,
+    pub second_nearest_distance: f32,
+    pub passed: bool,
+}
+
 fn default_match_threshold() -> f32 {
     0.75
 }
@@ -522,6 +558,10 @@ pub struct SpecialOpsSettings {
     pub default_business_config: BusinessConfig,
     #[serde(default)]
     pub profit_filter: ProfitFilterSettings,
+    #[serde(default)]
+    pub limited_supply: LimitedSupplySettings,
+    #[serde(default)]
+    pub market_purchase: MarketPurchaseSettings,
     pub accounts: Vec<AccountPlan>,
     #[serde(default)]
     pub active_calibration_id: Option<String>,
@@ -549,6 +589,8 @@ impl Default for SpecialOpsSettings {
             game_executable_path: String::new(),
             default_business_config: BusinessConfig::default(),
             profit_filter: ProfitFilterSettings::default(),
+            limited_supply: LimitedSupplySettings::default(),
+            market_purchase: MarketPurchaseSettings::default(),
             accounts: Vec::new(),
             active_calibration_id: Some("default".to_string()),
             calibration_environments: vec![default_calibration_environment()],
@@ -675,15 +717,19 @@ fn restore_other_windows_after_special_ops(app: &AppHandle) -> Result<(), String
 }
 
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
+    if key.starts_with("limited.color.") {
+        return &["limited.ready"];
+    }
     match key {
         "wegame.accountDropdown" | "wegame.selectedAccount" => &["wegame.loginFormReady"],
-        "game.beaconMode" => &["game.modeReady"],
+        "game.beaconMode" | "market.entry" | "market.product" | "market.return" | "market.buy"
+        | "market.confirm" => &["game.modeReady"],
         _ => &[],
     }
 }
 
 fn default_calibration_targets() -> Vec<CalibrationTarget> {
-    use CalibrationTargetKind::{ClickPoint, RecognitionRegion};
+    use CalibrationTargetKind::{ClickPoint, InputRegion, RecognitionRegion};
     [
         ("runtime.mouseParking", "特勤处鼠标停放点", ClickPoint),
         (
@@ -778,7 +824,12 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         ("ammo.supply", "军需处点击点", ClickPoint),
-        ("ammo.tactical", "战术部门点击点", ClickPoint),
+        ("ammo.enterSupply", "进入军需处点击点", ClickPoint),
+        (
+            "ammo.tacticalDepartment",
+            "战术部门识别与点击区域",
+            RecognitionRegion,
+        ),
         ("ammo.seasonal", "赛季限定入口点击点", ClickPoint),
         ("ammo.fill", "子弹一键补齐区域", RecognitionRegion),
         (
@@ -793,11 +844,42 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             RecognitionRegion,
         ),
         ("ammo.success", "兑换完成状态识别区域", RecognitionRegion),
+        (
+            "ammo.researchDepartment",
+            "研发部门识别与点击区域",
+            RecognitionRegion,
+        ),
+        (
+            "limited.ready",
+            "研发部门页面就绪识别区域",
+            RecognitionRegion,
+        ),
+        ("limited.color.1", "限时商品识色区域 1", InputRegion),
+        ("limited.color.2", "限时商品识色区域 2", InputRegion),
+        ("limited.color.3", "限时商品识色区域 3", InputRegion),
+        ("limited.color.4", "限时商品识色区域 4", InputRegion),
+        ("limited.color.5", "限时商品识色区域 5", InputRegion),
+        ("limited.color.6", "限时商品识色区域 6", InputRegion),
+        ("limited.color.7", "限时商品识色区域 7", InputRegion),
+        ("limited.color.8", "限时商品识色区域 8", InputRegion),
+        ("limited.color.9", "限时商品识色区域 9", InputRegion),
+        (
+            "market.entry",
+            "交易行入口识别与点击区域",
+            RecognitionRegion,
+        ),
+        ("market.product", "默认商品入口点击点", ClickPoint),
+        ("market.price", "交易行价格 OCR 区域", RecognitionRegion),
+        ("market.return", "交易行高价返回点击点", ClickPoint),
+        ("market.buy", "交易行达标购买点击点", ClickPoint),
+        ("market.confirm", "交易行最终确认购买点击点", ClickPoint),
     ]
     .into_iter()
     .map(|(key, label, kind)| {
         let recognition_method = match (&kind, key) {
-            (RecognitionRegion, "wegame.accountList") => Some(CalibrationRecognitionMethod::Ocr),
+            (RecognitionRegion, "wegame.accountList" | "market.price") => {
+                Some(CalibrationRecognitionMethod::Ocr)
+            }
             (RecognitionRegion, _) => Some(CalibrationRecognitionMethod::Template),
             _ => None,
         };
@@ -851,6 +933,10 @@ pub struct DueAccount {
     pub account_id: String,
     pub station_kinds: Vec<StationKind>,
     pub ammo_target_ids: Vec<String>,
+    #[serde(default)]
+    pub limited_supply_due: bool,
+    #[serde(default)]
+    pub market_purchase_due: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -868,6 +954,8 @@ pub struct ScheduleSnapshot {
 pub enum TimelineTaskKind {
     Craft,
     Ammo,
+    LimitedSupplyCheck,
+    MarketPurchase,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -878,7 +966,9 @@ pub enum TimelineProfitState {
     Unconfigured,
     Qualified,
     ActiveRound,
-    CutoffBypass,
+    CutoffQuerying,
+    WaitingCutoffRetry,
+    CutoffSkipped,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -900,6 +990,16 @@ pub struct TimelineTask {
     pub may_execute_earlier: bool,
     #[serde(default)]
     pub manual_failure: Option<AccountFailure>,
+    #[serde(default)]
+    pub limited_cycle_id: Option<String>,
+    #[serde(default)]
+    pub limited_outcome: Option<limited_supply::LimitedSupplyOutcome>,
+    #[serde(default)]
+    pub market_completed_count: Option<u32>,
+    #[serde(default)]
+    pub market_target_count: Option<u32>,
+    #[serde(default)]
+    pub market_status: Option<market_purchase::MarketTaskStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -937,13 +1037,70 @@ pub struct SpecialOpsState {
     round_scheduler: Arc<round_scheduler::RoundScheduler>,
 }
 
+impl SpecialOpsState {
+    pub(crate) fn settings_snapshot(&self) -> Result<SpecialOpsSettings, String> {
+        self.settings
+            .lock()
+            .map(|settings| settings.clone())
+            .map_err(|_| "特勤处状态已损坏".to_string())
+    }
+
+    pub(crate) fn ensure_profile_apply_allowed(&self) -> Result<(), String> {
+        if self.login_runtime.snapshot()?.is_some() {
+            return Err("特勤处正在运行，完成或停止当前操作后才能切换 Profile".to_string());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn apply_profile_settings(
+        &self,
+        app: &AppHandle,
+        incoming: SpecialOpsSettings,
+    ) -> Result<(), String> {
+        let mut next = normalize_settings(incoming)?;
+        next.paused = true;
+
+        let was_armed = self.round_scheduler.is_armed();
+        self.round_scheduler.disarm();
+        if let Err(error) = save_settings(app, &next) {
+            if was_armed {
+                self.round_scheduler.arm();
+            }
+            return Err(error);
+        }
+
+        self.profit_runtime
+            .invalidate("Profile 已切换，利润查询已取消");
+        *self
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next;
+
+        let coordinator = app
+            .try_state::<Arc<SettingsCoordinator>>()
+            .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+        emit_state(app, coordinator.current_revision()?, now_ms());
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 struct RoundControl {
     pause_requested: std::sync::atomic::AtomicBool,
+    preserve_game: std::sync::atomic::AtomicBool,
 }
 
 impl RoundControl {
     fn request_pause(&self) {
+        self.preserve_game
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.pause_requested
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn request_system_pause(&self) {
+        self.preserve_game
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         self.pause_requested
             .store(true, std::sync::atomic::Ordering::SeqCst);
     }
@@ -956,6 +1113,12 @@ impl RoundControl {
     fn clear_pause_request(&self) {
         self.pause_requested
             .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.preserve_game
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn preserve_game(&self) -> bool {
+        self.preserve_game.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -1048,6 +1211,117 @@ fn collect_pending_profit_rules(settings: &SpecialOpsSettings, day: &str) -> Vec
         .collect()
 }
 
+fn cutoff_target_is_pending(account: &AccountPlan, target_id: &str, day: &str) -> bool {
+    account
+        .ammo_targets
+        .iter()
+        .find(|runtime| runtime.id == target_id)
+        .is_none_or(|runtime| {
+            runtime.last_success_day.as_deref() != Some(day)
+                && (runtime.retry_day.as_deref() != Some(day) || runtime.retry_count < 2)
+        })
+}
+
+fn build_profit_cutoff_state(
+    settings: &SpecialOpsSettings,
+    day: &str,
+    decided_at_ms: i64,
+) -> ProfitCutoffState {
+    let rules = settings
+        .profit_filter
+        .rules
+        .iter()
+        .map(|rule| (rule.id.as_str(), rule))
+        .collect::<std::collections::HashMap<_, _>>();
+    let mut targets = Vec::new();
+    for account in settings.accounts.iter().filter(|account| {
+        account.enabled && account.initialized && account.status == AccountStatus::Ready
+    }) {
+        let Ok(business) = resolve_account_business_config(settings, account) else {
+            continue;
+        };
+        for target in business.ammo_targets.iter().filter(|target| {
+            target.enabled
+                && target
+                    .click_point
+                    .as_ref()
+                    .is_some_and(|point| point.width == 1 && point.height == 1)
+                && cutoff_target_is_pending(account, &target.id, day)
+        }) {
+            let rule_id = target.profit_rule_id.clone();
+            let unconfigured = rule_id
+                .as_deref()
+                .is_none_or(|rule_id| !rules.contains_key(rule_id));
+            targets.push(ProfitCutoffTarget {
+                account_id: account.id.clone(),
+                target_id: target.id.clone(),
+                rule_id,
+                skip_reason: unconfigured.then_some(ProfitCutoffSkipReason::Unconfigured),
+                decided_at_ms: unconfigured.then_some(decided_at_ms),
+            });
+        }
+    }
+    ProfitCutoffState {
+        day: day.to_string(),
+        targets,
+    }
+}
+
+fn cutoff_state_for_day<'a>(
+    settings: &'a SpecialOpsSettings,
+    day: &str,
+) -> Option<&'a ProfitCutoffState> {
+    settings
+        .profit_filter
+        .cutoff_state
+        .as_ref()
+        .filter(|state| state.day == day)
+}
+
+fn cutoff_state_complete(settings: &SpecialOpsSettings, day: &str) -> bool {
+    cutoff_state_for_day(settings, day).is_some_and(|state| {
+        state
+            .targets
+            .iter()
+            .all(|target| target.decided_at_ms.is_some())
+    })
+}
+
+fn cutoff_qualified_targets(
+    settings: &SpecialOpsSettings,
+    day: &str,
+) -> std::collections::HashSet<(String, String)> {
+    cutoff_state_for_day(settings, day)
+        .into_iter()
+        .flat_map(|state| state.targets.iter())
+        .filter(|target| target.decided_at_ms.is_some() && target.skip_reason.is_none())
+        .map(|target| (target.account_id.clone(), target.target_id.clone()))
+        .collect()
+}
+
+fn cutoff_pending_rule_ids(
+    settings: &SpecialOpsSettings,
+    day: &str,
+) -> std::collections::HashSet<String> {
+    cutoff_state_for_day(settings, day)
+        .into_iter()
+        .flat_map(|state| state.targets.iter())
+        .filter(|target| target.decided_at_ms.is_none())
+        .filter_map(|target| target.rule_id.clone())
+        .collect()
+}
+
+fn cutoff_retry_at_ms(settings: &SpecialOpsSettings, day: &str) -> Option<i64> {
+    let pending = cutoff_pending_rule_ids(settings, day);
+    settings
+        .profit_filter
+        .audits
+        .iter()
+        .filter(|audit| audit.day == day && pending.contains(&audit.rule_id))
+        .filter_map(|audit| audit.next_query_at_ms)
+        .min()
+}
+
 fn replace_profit_audits(settings: &mut SpecialOpsSettings, audits: Vec<AmmoProfitAudit>) {
     let replaced = audits
         .iter()
@@ -1092,6 +1366,8 @@ fn build_profit_query_window(
     } else {
         exchange_at_ms
     };
+    let cutoff_complete = cutoff_state_complete(settings, &day);
+    let cutoff_retry_at_ms = cutoff_retry_at_ms(settings, &day);
     Ok(ProfitQueryWindow {
         enabled: settings.profit_filter.enabled,
         paused: settings.paused,
@@ -1101,6 +1377,8 @@ fn build_profit_query_window(
         now_ms,
         exchange_at_ms,
         cutoff_at_ms,
+        cutoff_complete,
+        cutoff_retry_at_ms,
     })
 }
 
@@ -1117,7 +1395,7 @@ fn profit_gate_for_round(
     let snapshot = profit_runtime.sync_window(window.clone())?;
     if now_ms >= window.cutoff_at_ms {
         return Ok((
-            AmmoProfitGate::CutoffBypass,
+            AmmoProfitGate::QualifiedTargets(cutoff_qualified_targets(settings, &window.day)),
             Some(profit_runtime.generation()),
         ));
     }
@@ -1167,6 +1445,7 @@ fn apply_account_recipe_selection(
 }
 
 const BUSINESS_AMMO_TARGET_PREFIX: &str = "business.ammo.";
+const BUSINESS_MARKET_PRODUCT_TARGET: &str = "business.market.product";
 
 fn business_ammo_target_id(target_key: &str) -> Option<&str> {
     target_key.strip_prefix(BUSINESS_AMMO_TARGET_PREFIX)
@@ -1210,12 +1489,44 @@ fn apply_ammo_business_selection(
     Ok(())
 }
 
+fn apply_market_business_selection(
+    settings: &mut SpecialOpsSettings,
+    account_id: Option<&str>,
+    rect: CalibrationRect,
+) -> Result<(), String> {
+    validate_calibration_selection(CalibrationTargetKind::ClickPoint, &rect)?;
+    ammo_business_config_mut(settings, account_id)?
+        .market
+        .product_point = Some(rect);
+    Ok(())
+}
+
 fn calibration_selection_kind(
     settings: &SpecialOpsSettings,
     environment_id: &str,
     target_key: &str,
     account_id: Option<&str>,
 ) -> Result<CalibrationTargetKind, String> {
+    if target_key == BUSINESS_MARKET_PRODUCT_TARGET {
+        let business = if let Some(account_id) = account_id {
+            let account = settings
+                .accounts
+                .iter()
+                .find(|account| account.id == account_id)
+                .ok_or_else(|| "账号不存在".to_string())?;
+            if !account.independent_settings_enabled {
+                return Err("账号未开启独立设置".to_string());
+            }
+            account
+                .independent_business_config
+                .as_ref()
+                .ok_or_else(|| "账号独立业务配置缺失".to_string())?
+        } else {
+            &settings.default_business_config
+        };
+        let _ = &business.market;
+        return Ok(CalibrationTargetKind::ClickPoint);
+    }
     if let Some(target_id) = business_ammo_target_id(target_key) {
         let business = if let Some(account_id) = account_id {
             let account = settings
@@ -1294,9 +1605,24 @@ fn calibration_selection_label(
     )
 }
 
+/// 把异常状态下残留的 `Uncertain` 制作台按存量计时恢复成正常状态。
+/// 失败落库只改 `status`，`started_at_ms` / `finishes_at_ms` 原样保留，因此这里
+/// 不需要额外快照字段就能还原异常前的剩余时间。
+fn restore_station_from_stored_timing(station: &mut StationPlan, now_ms: i64) {
+    if station.status != StationStatus::Uncertain {
+        return;
+    }
+    station.status = match station.finishes_at_ms {
+        Some(finishes_at_ms) if finishes_at_ms > now_ms => StationStatus::Crafting,
+        Some(_) => StationStatus::Ready,
+        None => StationStatus::Idle,
+    };
+}
+
 fn resolve_station_correction(
     correction: &StationCorrectionInput,
     confirmed_at_ms: i64,
+    stored_finishes_at_ms: Option<i64>,
 ) -> Result<(Option<i64>, Option<i64>, StationStatus), String> {
     match correction.state {
         ManualStationState::ImmediateDue => {
@@ -1306,13 +1632,20 @@ fn resolve_station_correction(
             Ok((None, Some(confirmed_at_ms), StationStatus::Ready))
         }
         ManualStationState::Crafting => {
-            let minutes = correction
-                .remaining_minutes
-                .filter(|minutes| (1..=10_080).contains(minutes))
-                .ok_or_else(|| "正在制作的剩余时间必须为 1 分钟到 168 小时".to_string())?;
-            let finishes_at_ms = confirmed_at_ms
-                .checked_add(i64::from(minutes) * 60_000)
-                .ok_or_else(|| "制作完成时间超出可保存范围".to_string())?;
+            let finishes_at_ms = match correction.remaining_minutes {
+                Some(minutes) => {
+                    if !(1..=10_080).contains(&minutes) {
+                        return Err("正在制作的剩余时间必须为 1 分钟到 168 小时".to_string());
+                    }
+                    confirmed_at_ms
+                        .checked_add(i64::from(minutes) * 60_000)
+                        .ok_or_else(|| "制作完成时间超出可保存范围".to_string())?
+                }
+                // 未填剩余时间时继承异常前的存量完成时间，避免人工判定丢失制作进度。
+                None => stored_finishes_at_ms
+                    .filter(|value| *value > confirmed_at_ms)
+                    .ok_or_else(|| "缺少可继承的剩余时间，请填写 1 分钟到 168 小时".to_string())?,
+            };
             Ok((None, Some(finishes_at_ms), StationStatus::Crafting))
         }
         ManualStationState::Idle => {
@@ -1333,6 +1666,19 @@ fn apply_manual_station_corrections(
     if corrections.len() != StationKind::all().len() {
         return Err("必须一次确认四个制作台的实际状态".to_string());
     }
+    // 先只读取存量完成时间，供未填剩余时间的「正在制作」继承；随后才取可变账号引用。
+    let stored_finishes = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .map(|account| {
+            account
+                .stations
+                .iter()
+                .map(|station| (station.kind.clone(), station.finishes_at_ms))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let mut kinds = Vec::new();
     let mut resolved = Vec::with_capacity(corrections.len());
     for correction in corrections {
@@ -1340,8 +1686,12 @@ fn apply_manual_station_corrections(
             return Err("四制作台人工校正包含重复制作台".to_string());
         }
         kinds.push(correction.kind.clone());
+        let stored_finishes_at_ms = stored_finishes
+            .iter()
+            .find(|(kind, _)| *kind == correction.kind)
+            .and_then(|(_, value)| *value);
         let (started_at_ms, finishes_at_ms, status) =
-            resolve_station_correction(correction, confirmed_at_ms)?;
+            resolve_station_correction(correction, confirmed_at_ms, stored_finishes_at_ms)?;
         resolved.push((
             correction.kind.clone(),
             started_at_ms,
@@ -1400,13 +1750,108 @@ fn refresh_account_failure(account: &mut AccountPlan) {
         .cloned();
 }
 
+fn account_allows_manual_check(status: &AccountStatus) -> bool {
+    matches!(
+        status,
+        AccountStatus::NeedsManualLogin
+            | AccountStatus::LoginFailed
+            | AccountStatus::ManualCheckRequired
+    )
+}
+
+fn apply_account_manual_check(
+    settings: &mut SpecialOpsSettings,
+    account_id: &str,
+    confirmed_at_ms: i64,
+) -> Result<(), String> {
+    let account = settings
+        .accounts
+        .iter_mut()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "人工检查账号不存在".to_string())?;
+    if !account_allows_manual_check(&account.status) {
+        return Err("当前账号状态不能通过“已人工检查”恢复".to_string());
+    }
+    account.status = AccountStatus::Ready;
+    account.last_failure = None;
+    // 只清账号状态会留下 Uncertain 制作台，它在调度与任务栏双重过滤下永久消失。
+    for station in account.stations.iter_mut() {
+        restore_station_from_stored_timing(station, confirmed_at_ms);
+    }
+    Ok(())
+}
+
+/// 一键恢复：把异常状态清成正常可调度状态。
+/// 账号状态回 `Ready`，`Uncertain` 制作台按存量计时还原异常前的剩余时间，
+/// 子弹目标回未兑换，限时商品 `Failed` 回 `Pending`。返回实际恢复的账号数。
+fn restore_account_state(
+    settings: &mut SpecialOpsSettings,
+    account_id: Option<&str>,
+    confirmed_at_ms: i64,
+    current_day: &str,
+) -> Result<usize, String> {
+    if let Some(account_id) = account_id {
+        if !settings
+            .accounts
+            .iter()
+            .any(|account| account.id == account_id)
+        {
+            return Err("一键恢复账号不存在".to_string());
+        }
+    }
+    let mut restored = 0usize;
+    for account in settings.accounts.iter_mut() {
+        if account_id.is_some_and(|target| target != account.id) {
+            continue;
+        }
+        let mut changed = account.status != AccountStatus::Ready || account.last_failure.is_some();
+        account.status = AccountStatus::Ready;
+        account.last_failure = None;
+        for station in account.stations.iter_mut() {
+            if station.status == StationStatus::Uncertain {
+                changed = true;
+            }
+            restore_station_from_stored_timing(station, confirmed_at_ms);
+        }
+        for target in account.ammo_targets.iter_mut() {
+            if target.last_failure.is_some() || target.retry_count > 0 {
+                changed = true;
+            }
+            // 只解冻失败目标：清 last_failure 与当天重试预算后它就回到未兑换、可再次调度。
+            // 绝不清 last_success_day —— 半程失败的账号里已成功的子弹会被二次兑换。
+            target.last_failure = None;
+            target.retry_day = Some(current_day.to_string());
+            target.retry_count = 0;
+        }
+        if account.limited_supply.outcome == limited_supply::LimitedSupplyOutcome::Failed {
+            account.limited_supply.outcome = limited_supply::LimitedSupplyOutcome::Pending;
+            changed = true;
+        }
+        if changed {
+            restored = restored.saturating_add(1);
+        }
+    }
+    if restored == 0 {
+        return Err("当前没有需要恢复的异常状态".to_string());
+    }
+    Ok(restored)
+}
+
+/// 只有登录环节被卡住的账号才禁止任务级人工判定。
+/// `ManualCheckRequired` 说明轮次已经跑到业务步骤，任务栏单项判定是有效恢复手段。
+fn account_blocks_task_correction(status: &AccountStatus) -> bool {
+    matches!(
+        status,
+        AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
+    )
+}
+
 fn apply_single_station_correction(
     settings: &mut SpecialOpsSettings,
     account_id: &str,
     correction: &StationCorrectionInput,
     confirmed_at_ms: i64,
 ) -> Result<(), String> {
-    let resolved = resolve_station_correction(correction, confirmed_at_ms)?;
     let account = settings
         .accounts
         .iter_mut()
@@ -1415,20 +1860,28 @@ fn apply_single_station_correction(
     if !account.initialized {
         return Err("账号尚未完成初始化，必须在账号页进行完整人工校正".to_string());
     }
-    if matches!(
-        account.status,
-        AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
-    ) {
+    if account_blocks_task_correction(&account.status) {
         return Err("需要人工登录或登录失败账号不能通过单项校正恢复".to_string());
     }
-    if account
+    let station_scoped_failure = account
         .last_failure
         .as_ref()
         .and_then(|failure| failure.station_kind.as_ref())
-        != Some(&correction.kind)
-    {
+        == Some(&correction.kind);
+    // 账号级失败（如导航超时）没有制作台定位，此时允许按任务逐台判定。
+    let account_scoped_failure =
+        account.last_failure.as_ref().is_some_and(|failure| {
+            failure.station_kind.is_none() && failure.ammo_target_id.is_none()
+        }) || account.status == AccountStatus::ManualCheckRequired;
+    if !station_scoped_failure && !account_scoped_failure {
         return Err("当前制作台没有待人工判定的失败记录".to_string());
     }
+    let stored_finishes_at_ms = account
+        .stations
+        .iter()
+        .find(|station| station.kind == correction.kind)
+        .and_then(|station| station.finishes_at_ms);
+    let resolved = resolve_station_correction(correction, confirmed_at_ms, stored_finishes_at_ms)?;
     let station = account
         .stations
         .iter_mut()
@@ -1437,9 +1890,28 @@ fn apply_single_station_correction(
     station.started_at_ms = resolved.0;
     station.finishes_at_ms = resolved.1;
     station.status = resolved.2;
-    account.last_failure = None;
-    refresh_account_failure(account);
-    account.status = AccountStatus::Ready;
+    if station_scoped_failure {
+        account.last_failure = None;
+        refresh_account_failure(account);
+        account.status = AccountStatus::Ready;
+        return Ok(());
+    }
+    // 账号级失败要等所有制作台都脱离 Uncertain 才恢复，否则残留台会永久掉出调度。
+    if account
+        .stations
+        .iter()
+        .all(|station| station.status != StationStatus::Uncertain)
+    {
+        account.last_failure = None;
+        refresh_account_failure(account);
+        if account
+            .last_failure
+            .as_ref()
+            .is_none_or(|failure| failure.station_kind.is_none())
+        {
+            account.status = AccountStatus::Ready;
+        }
+    }
     Ok(())
 }
 
@@ -1458,10 +1930,7 @@ fn apply_single_ammo_correction(
         if !account.initialized {
             return Err("账号尚未完成初始化，必须在账号页进行完整人工校正".to_string());
         }
-        if matches!(
-            account.status,
-            AccountStatus::NeedsManualLogin | AccountStatus::LoginFailed
-        ) {
+        if account_blocks_task_correction(&account.status) {
             return Err("需要人工登录或登录失败账号不能通过单项校正恢复".to_string());
         }
         let enabled = resolve_account_business_config(settings, account)?
@@ -1850,16 +2319,29 @@ fn apply_round_account_failure(
         .find(|account| account.id == account_id)
         .ok_or_else(|| "多账号轮次账号已不存在".to_string())?;
     if let Some(target_id) = error.ammo_target_id.as_deref() {
-        return set_ammo_manual_failure(
+        set_ammo_manual_failure(
             account,
             target_id,
             &error.step,
             &error.message,
             failed_at_ms,
-        );
+        )?;
+        if error.step == "ammo.isolated" {
+            account.status = AccountStatus::Isolated;
+            account.last_failure = Some(AccountFailure {
+                step: error.step.clone(),
+                message: error.message.clone(),
+                at_ms: failed_at_ms,
+                station_kind: None,
+                ammo_target_id: Some(target_id.to_string()),
+            });
+        }
+        return Ok(());
     }
     let account_isolated = matches!(error.step.as_str(), "ammo.isolated" | "craft.isolated");
-    account.status = if error.step == "login.needsManual" {
+    account.status = if error.kind == round_runner::AccountRunErrorKind::NavigationTimedOut {
+        AccountStatus::ManualCheckRequired
+    } else if error.step == "login.needsManual" {
         AccountStatus::NeedsManualLogin
     } else if error.step.starts_with("login.") {
         AccountStatus::LoginFailed
@@ -1951,6 +2433,10 @@ fn normalize_business_config(config: &mut BusinessConfig) -> Result<(), String> 
     for station in &mut config.stations {
         station.recipe_note = station.recipe_note.trim().to_string();
     }
+    if config.market.purchase_count == 0 {
+        return Err("交易行每日购买次数必须是正整数".to_string());
+    }
+    config.market.item_note = config.market.item_note.trim().to_string();
     config.ammo_targets.sort_by_key(|target| target.order);
     let mut ids = std::collections::HashSet::new();
     for (order, target) in config.ammo_targets.iter_mut().enumerate() {
@@ -1970,7 +2456,53 @@ fn normalize_business_config(config: &mut BusinessConfig) -> Result<(), String> 
         target.scroll_direction = ScrollDirection::Down;
         target.order = order as u32;
     }
+    if config.market.max_price == 0 {
+        return Err("交易行设定价格必须是正整数".to_string());
+    }
+    if let Some(point) = config.market.product_point.as_ref() {
+        validate_calibration_selection(CalibrationTargetKind::ClickPoint, point)?;
+    }
     Ok(())
+}
+
+fn migrate_legacy_market_business_config(settings: &mut SpecialOpsSettings) {
+    let legacy_market = settings.market_purchase.clone();
+    let legacy_has_business_values = legacy_market.enabled
+        || legacy_market.purchase_count != 1
+        || !legacy_market.item_note.trim().is_empty();
+    let market = &mut settings.default_business_config.market;
+    if market.schema_version == 0 {
+        market.enabled = settings.market_purchase.enabled;
+        market.purchase_count = settings.market_purchase.purchase_count;
+        market.item_note = settings.market_purchase.item_note.trim().to_string();
+        market.schema_version = 1;
+        settings.market_purchase.enabled = false;
+        settings.market_purchase.purchase_count = 1;
+        settings.market_purchase.item_note.clear();
+    }
+    let inherited_market = settings.default_business_config.market.clone();
+    for account in settings
+        .accounts
+        .iter_mut()
+        .filter(|account| account.independent_settings_enabled)
+    {
+        let Some(config) = account.independent_business_config.as_mut() else {
+            continue;
+        };
+        let market = &mut config.market;
+        if market.schema_version == 0 {
+            if legacy_has_business_values {
+                market.enabled = legacy_market.enabled;
+                market.purchase_count = legacy_market.purchase_count;
+                market.item_note = legacy_market.item_note.trim().to_string();
+            } else {
+                market.enabled = inherited_market.enabled;
+                market.purchase_count = inherited_market.purchase_count;
+                market.item_note = inherited_market.item_note.clone();
+            }
+            market.schema_version = 1;
+        }
+    }
 }
 
 fn sync_ammo_runtime_targets(
@@ -2013,7 +2545,9 @@ fn validate_failure_target(failure: &AccountFailure) -> Result<(), String> {
     Ok(())
 }
 
-fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSettings, String> {
+pub(crate) fn normalize_settings(
+    mut settings: SpecialOpsSettings,
+) -> Result<SpecialOpsSettings, String> {
     if daily_exchange_minutes(&settings.daily_exchange_time).is_none() {
         return Err("每日兑换时间必须是 HH:mm，范围 00:00-23:59".to_string());
     }
@@ -2021,6 +2555,16 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
         return Err("紧急停止快捷键不能为空".to_string());
     }
     normalize_profit_settings(&mut settings.profit_filter)?;
+    if !(5_000..=60_000).contains(&settings.limited_supply.ready_timeout_ms) {
+        return Err("研发部门页面就绪超时必须是 5000–60000ms 的整数".to_string());
+    }
+    if settings.market_purchase.entry_delay_ms > 60_000 {
+        return Err("交易行入口等待时间必须是 0–60000ms 的整数".to_string());
+    }
+    if settings.market_purchase.purchase_count == 0 {
+        return Err("交易行每日购买次数必须是正整数".to_string());
+    }
+    settings.market_purchase.item_note = settings.market_purchase.item_note.trim().to_string();
     if [
         settings.navigation_beacon_delay_ms,
         settings.navigation_space_delay_ms,
@@ -2067,6 +2611,7 @@ fn normalize_settings(mut settings: SpecialOpsSettings) -> Result<SpecialOpsSett
                 .then_some(legacy_business);
         }
     }
+    migrate_legacy_market_business_config(&mut settings);
     normalize_business_config(&mut settings.default_business_config)?;
     for account in &mut settings.accounts {
         if account.independent_settings_enabled {
@@ -2257,6 +2802,8 @@ fn required_execution_target_keys(
         .filter(|(_, business)| {
             business.stations.iter().any(|station| station.enabled)
                 || business.ammo_targets.iter().any(|target| target.enabled)
+                || settings.limited_supply.enabled
+                || business.market.enabled
         })
         .collect::<Vec<_>>();
     if active_accounts.is_empty() {
@@ -2318,9 +2865,7 @@ fn required_execution_target_keys(
     if has_ammo {
         keys.extend(
             [
-                "ammo.department",
-                "ammo.supply",
-                "ammo.tactical",
+                "ammo.tacticalDepartment",
                 "ammo.fill",
                 "ammo.purchase",
                 "ammo.exchange",
@@ -2338,6 +2883,32 @@ fn required_execution_target_keys(
         }) {
             keys.insert("ammo.seasonal".to_string());
         }
+    }
+    if has_ammo || settings.limited_supply.enabled {
+        keys.extend(
+            ["ammo.department", "ammo.supply", "ammo.enterSupply"]
+                .into_iter()
+                .map(str::to_string),
+        );
+    }
+    if settings.limited_supply.enabled {
+        keys.extend(
+            [
+                "ammo.researchDepartment",
+                "limited.ready",
+                "limited.color.1",
+                "limited.color.2",
+                "limited.color.3",
+                "limited.color.4",
+                "limited.color.5",
+                "limited.color.6",
+                "limited.color.7",
+                "limited.color.8",
+                "limited.color.9",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
     }
     keys
 }
@@ -2361,6 +2932,8 @@ fn validate_execution_ready(settings: &SpecialOpsSettings) -> Result<(), String>
         let business = resolve_account_business_config(settings, account)?;
         if !business.stations.iter().any(|station| station.enabled)
             && !business.ammo_targets.iter().any(|target| target.enabled)
+            && !settings.limited_supply.enabled
+            && !business.market.enabled
         {
             continue;
         }
@@ -2833,7 +3406,6 @@ struct FrozenAmmoRun {
     mouse_parking_region: crate::morse::types::RegionRect,
     targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
     ammo_targets: Vec<ammo_runtime::AmmoRunTarget>,
-    entry_delays: ammo_runtime::AmmoEntryDelays,
     day: String,
 }
 
@@ -2908,9 +3480,7 @@ fn freeze_ammo_run(
         .first()
         .ok_or_else(|| "子弹兑换校准环境不存在".to_string())?;
     let mut keys = vec![
-        "ammo.department",
-        "ammo.supply",
-        "ammo.tactical",
+        "ammo.tacticalDepartment",
         "ammo.fill",
         "ammo.purchase",
         "ammo.exchange",
@@ -2974,11 +3544,212 @@ fn freeze_ammo_run(
         mouse_parking_region: mouse_parking_region(settings)?,
         targets,
         ammo_targets,
-        entry_delays: ammo_runtime::AmmoEntryDelays {
-            supply_ms: settings.ammo_supply_delay_ms,
-            tactical_ms: settings.ammo_tactical_delay_ms,
-        },
         day,
+    })
+}
+
+struct FrozenMilitarySupplyEntry {
+    game_executable_path: std::path::PathBuf,
+    mouse_parking_region: crate::morse::types::RegionRect,
+    targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
+    config: military_supply_runtime::MilitarySupplyEntryConfig,
+}
+
+fn freeze_military_supply_entry(
+    settings: &SpecialOpsSettings,
+) -> Result<FrozenMilitarySupplyEntry, String> {
+    Ok(FrozenMilitarySupplyEntry {
+        game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+            .map_err(|_| "游戏 exe 路径无效".to_string())?,
+        mouse_parking_region: mouse_parking_region(settings)?,
+        targets: freeze_runtime_targets(
+            settings,
+            "军需处入口",
+            &[
+                ("ammo.department", true),
+                ("ammo.supply", false),
+                ("ammo.enterSupply", false),
+            ],
+        )?,
+        config: military_supply_runtime::MilitarySupplyEntryConfig {
+            supply_delay: std::time::Duration::from_millis(u64::from(
+                settings.ammo_supply_delay_ms,
+            )),
+            enter_supply_delay: std::time::Duration::from_millis(u64::from(
+                settings.ammo_tactical_delay_ms,
+            )),
+        },
+    })
+}
+
+fn freeze_runtime_targets(
+    settings: &SpecialOpsSettings,
+    context: &str,
+    targets: &[(&str, bool)],
+) -> Result<std::collections::HashMap<String, template_observer::RuntimeTarget>, String> {
+    let environment = settings
+        .calibration_environments
+        .first()
+        .ok_or_else(|| format!("{context}校准环境不存在"))?;
+    targets
+        .iter()
+        .map(|(key, template_required)| {
+            let target = environment
+                .targets
+                .iter()
+                .find(|target| target.key == *key)
+                .ok_or_else(|| format!("{context}校准目标 {key} 不存在"))?;
+            let rect = target
+                .rect
+                .as_ref()
+                .ok_or_else(|| format!("{context}校准目标 {key} 未框选"))?;
+            let region = crate::morse::types::RegionRect {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+            };
+            let template = if *template_required {
+                if !verification_is_current(target) {
+                    return Err(format!("{context}校准目标 {key} 尚未测试或验证失效"));
+                }
+                let (reference, threshold) = resolved_template_config(environment, target)
+                    .map_err(|error| format!("{context}校准目标 {key} 无效：{error}"))?;
+                Some(template_observer::RuntimeTemplate {
+                    key: (*key).to_string(),
+                    region: region.clone(),
+                    reference_image_path: std::fs::canonicalize(reference)
+                        .map_err(|_| format!("{context}校准目标 {key} 的参考图不存在"))?,
+                    threshold,
+                })
+            } else {
+                None
+            };
+            Ok((
+                (*key).to_string(),
+                template_observer::RuntimeTarget {
+                    key: (*key).to_string(),
+                    region,
+                    template,
+                    guard_any_of: target.guard_any_of.clone(),
+                },
+            ))
+        })
+        .collect()
+}
+
+struct FrozenLimitedSupplyRun {
+    game_executable_path: std::path::PathBuf,
+    mouse_parking_region: crate::morse::types::RegionRect,
+    targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
+    cycle_id: String,
+    config: limited_supply_runtime::LimitedRunConfig,
+    colors: [[u8; 3]; 2],
+    color_tolerances: [u8; 2],
+}
+
+fn freeze_limited_supply_run(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    cycle_id: &str,
+) -> Result<FrozenLimitedSupplyRun, String> {
+    if !settings
+        .accounts
+        .iter()
+        .any(|account| account.id == account_id)
+    {
+        return Err("限时商品账号不存在".to_string());
+    }
+    let mut keys = vec![("ammo.researchDepartment", true), ("limited.ready", true)];
+    for key in [
+        "limited.color.1",
+        "limited.color.2",
+        "limited.color.3",
+        "limited.color.4",
+        "limited.color.5",
+        "limited.color.6",
+        "limited.color.7",
+        "limited.color.8",
+        "limited.color.9",
+    ] {
+        keys.push((key, false));
+    }
+    Ok(FrozenLimitedSupplyRun {
+        game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+            .map_err(|_| "游戏 exe 路径无效".to_string())?,
+        mouse_parking_region: mouse_parking_region(settings)?,
+        targets: freeze_runtime_targets(settings, "限时商品", &keys)?,
+        cycle_id: cycle_id.to_string(),
+        config: limited_supply_runtime::LimitedRunConfig {
+            ready_timeout: std::time::Duration::from_millis(u64::from(
+                settings.limited_supply.ready_timeout_ms,
+            )),
+            sample_interval: std::time::Duration::from_millis(400),
+        },
+        colors: settings.limited_supply.colors,
+        color_tolerances: settings.limited_supply.color_tolerances,
+    })
+}
+
+struct FrozenMarketRun {
+    game_executable_path: std::path::PathBuf,
+    mouse_parking_region: crate::morse::types::RegionRect,
+    targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
+    day: String,
+    config: market_runtime::MarketRunConfig,
+}
+
+fn freeze_market_run(
+    settings: &SpecialOpsSettings,
+    account_id: &str,
+    day: &str,
+) -> Result<FrozenMarketRun, String> {
+    let account = settings
+        .accounts
+        .iter()
+        .find(|account| account.id == account_id)
+        .ok_or_else(|| "交易行账号不存在".to_string())?;
+    let market = &resolve_account_business_config(settings, account)?.market;
+    let product = market
+        .product_point
+        .as_ref()
+        .ok_or_else(|| "交易行商品入口点击点未配置".to_string())?;
+    let completed_count = if account.market.day.as_deref() == Some(day) {
+        account.market.completed_count
+    } else {
+        0
+    };
+    Ok(FrozenMarketRun {
+        game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
+            .map_err(|_| "游戏 exe 路径无效".to_string())?,
+        mouse_parking_region: mouse_parking_region(settings)?,
+        targets: freeze_runtime_targets(
+            settings,
+            "交易行",
+            &[
+                ("market.entry", true),
+                ("market.price", false),
+                ("market.return", false),
+                ("market.buy", false),
+                ("market.confirm", false),
+            ],
+        )?,
+        day: day.to_string(),
+        config: market_runtime::MarketRunConfig {
+            product_point: crate::morse::types::RegionRect {
+                x: product.x,
+                y: product.y,
+                width: product.width,
+                height: product.height,
+            },
+            max_price: market.max_price,
+            target_count: market.purchase_count,
+            completed_count,
+            entry_delay: std::time::Duration::from_millis(u64::from(
+                settings.market_purchase.entry_delay_ms,
+            )),
+            ocr_interval: std::time::Duration::from_millis(500),
+        },
     })
 }
 
@@ -2986,12 +3757,15 @@ struct FrozenRoundAccount {
     login: Arc<login_flow::LoginRunConfig>,
     navigation: Arc<game_navigation::NavigationRunConfig>,
     craft: Arc<Vec<FrozenCraftBatchTask>>,
+    military_supply_entry: Option<Arc<FrozenMilitarySupplyEntry>>,
     ammo: Option<Arc<FrozenAmmoRun>>,
+    limited_supply: Option<Arc<FrozenLimitedSupplyRun>>,
+    market: Option<Arc<FrozenMarketRun>>,
 }
 
 struct FrozenRoundRun {
     plan: round_planner::RoundPlan,
-    accounts: std::collections::HashMap<String, Result<FrozenRoundAccount, String>>,
+    accounts: std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>,
     game_executable_path: std::path::PathBuf,
     profit_generation: Option<u64>,
 }
@@ -3008,7 +3782,7 @@ fn freeze_round_run(
         .map_err(|_| "游戏 exe 路径无效".to_string())?;
     let plan = round_planner::build_round_plan_with_profit(settings, frozen_now_ms, trigger, gate)?;
     if plan.accounts.is_empty() {
-        return Err("当前没有到期制作或子弹任务".to_string());
+        return Err("当前没有到期特勤处任务".to_string());
     }
     let accounts = plan
         .accounts
@@ -3027,10 +3801,12 @@ fn freeze_round_run(
                 let craft = if task.stations.is_empty() {
                     Vec::new()
                 } else {
+                    // 到期桶的 scheduled_at_ms 是桶内最早完成时间，直接用它过滤会丢掉同桶里
+                    // 完成更晚但同样已到期的制作台；未来桶要保留自身计划时间才能通过过滤。
                     freeze_craft_batch_run_configs(
                         settings,
                         &task.account_id,
-                        frozen_now_ms,
+                        task.scheduled_at_ms.max(frozen_now_ms),
                         Some(&task.stations),
                     )?
                 };
@@ -3045,14 +3821,33 @@ fn freeze_round_run(
                     })
                     .transpose()?
                     .map(Arc::new);
-                Ok(FrozenRoundAccount {
+                let limited_supply = task
+                    .limited_supply_cycle_id
+                    .as_deref()
+                    .map(|cycle_id| freeze_limited_supply_run(settings, &task.account_id, cycle_id))
+                    .transpose()?
+                    .map(Arc::new);
+                let military_supply_entry = (ammo.is_some() || limited_supply.is_some())
+                    .then(|| freeze_military_supply_entry(settings))
+                    .transpose()?
+                    .map(Arc::new);
+                let market = task
+                    .market_purchase_day
+                    .as_deref()
+                    .map(|day| freeze_market_run(settings, &task.account_id, day))
+                    .transpose()?
+                    .map(Arc::new);
+                Ok(Arc::new(FrozenRoundAccount {
                     login: Arc::new(login),
                     navigation: Arc::new(navigation),
                     craft: Arc::new(craft),
+                    military_supply_entry,
                     ammo,
-                })
+                    limited_supply,
+                    market,
+                }))
             })();
-            (task.account_id.clone(), frozen)
+            ((task.account_id.clone(), task.scheduled_at_ms), frozen)
         })
         .collect();
     Ok(FrozenRoundRun {
@@ -3117,7 +3912,7 @@ enum CalibrationTestInput {
 }
 
 fn calibration_test_requires_game_context(target_key: &str) -> bool {
-    ["game.", "craft.", "ammo."]
+    ["game.", "craft.", "ammo.", "market."]
         .iter()
         .any(|prefix| target_key.starts_with(prefix))
 }
@@ -3258,7 +4053,14 @@ fn load_settings(app: &AppHandle) -> Result<SpecialOpsSettings, String> {
 
 fn save_settings(app: &AppHandle, settings: &SpecialOpsSettings) -> Result<(), String> {
     let path = settings_path(app)?;
-    crate::settings::save_settings(&path, settings)
+    crate::settings::save_settings(&path, settings)?;
+    if !crate::profile::is_applying(app) {
+        crate::profile::update_active_profile_snapshot(
+            app,
+            crate::profile::ActiveProfileSnapshotPatch::SpecialOps(Box::new(settings.clone())),
+        )?;
+    }
+    Ok(())
 }
 
 fn build_bootstrap(
@@ -3284,7 +4086,7 @@ fn build_bootstrap_with_runtime(
     profit_runtime: &ProfitQueryControl,
 ) -> Result<SpecialOpsBootstrap, String> {
     let mut bootstrap = build_bootstrap(settings.clone(), settings_revision, current_ms);
-    let snapshot = match build_profit_query_window(
+    let (snapshot, cutoff_day) = match build_profit_query_window(
         &settings,
         current_ms,
         settings_revision,
@@ -3292,17 +4094,20 @@ fn build_bootstrap_with_runtime(
             .snapshot()?
             .is_some_and(|snapshot| snapshot.run_kind == LoginRunKind::Round),
     ) {
-        Ok(window) => profit_runtime.sync_window(window)?,
+        Ok(window) => {
+            let cutoff_day = (current_ms >= window.cutoff_at_ms).then(|| window.day.clone());
+            (profit_runtime.sync_window(window)?, cutoff_day)
+        }
         Err(error) => {
             let mut snapshot = profit_runtime.snapshot()?;
             snapshot.configuration_error = Some(error);
-            snapshot
+            (snapshot, None)
         }
     };
     let gate = if !settings.profit_filter.enabled {
         AmmoProfitGate::Disabled
-    } else if snapshot.phase == profit::runtime::ProfitRuntimePhase::CutoffBypass {
-        AmmoProfitGate::CutoffBypass
+    } else if let Some(day) = cutoff_day {
+        AmmoProfitGate::QualifiedTargets(cutoff_qualified_targets(&settings, &day))
     } else {
         AmmoProfitGate::Qualified(snapshot.qualified_rule_ids.iter().cloned().collect())
     };
@@ -4817,6 +5622,33 @@ impl ProductionAmmoDriver {
         .await
     }
 
+    async fn click_region(
+        &self,
+        region: crate::morse::types::RegionRect,
+        step: &str,
+        countdown: bool,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        if countdown {
+            self.countdown(&cancelled).await?;
+        }
+        self.focus()
+            .await
+            .map_err(|error| Self::system_error("ammo.window", error))?;
+        self.emit_update(LoginRunStatus::Inputting, &format!("正在点击 {step}"))
+            .map_err(|error| Self::system_error(step, error))?;
+        crate::input_simulation::click_region_center_held_cancellable(
+            region,
+            MOUSE_CLICK_HOLD_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| Self::cancelled_or_system(&cancelled, step, error))?;
+        self.park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|error| Self::cancelled_or_system(&cancelled, step, error))
+    }
+
     async fn save_ammo_success_diagnostic(&self) -> Result<std::path::PathBuf, String> {
         let region = self
             .targets
@@ -4931,22 +5763,7 @@ impl ammo_runtime::AmmoDriver for ProductionAmmoDriver {
             .ok_or_else(|| Self::system_error(target, "校准目标不存在"))?
             .region
             .clone();
-        self.countdown(&cancelled).await?;
-        self.focus()
-            .await
-            .map_err(|error| Self::system_error("ammo.window", error))?;
-        self.emit_update(LoginRunStatus::Inputting, &format!("正在点击 {target}"))
-            .map_err(|error| Self::system_error(target, error))?;
-        crate::input_simulation::click_region_center_held_cancellable(
-            region,
-            MOUSE_CLICK_HOLD_MS,
-            Arc::clone(&cancelled),
-        )
-        .await
-        .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))?;
-        self.park_mouse(Arc::clone(&cancelled))
-            .await
-            .map_err(|error| Self::cancelled_or_system(&cancelled, target, error))
+        self.click_region(region, target, true, cancelled).await
     }
 
     async fn wait_target(
@@ -5107,6 +5924,58 @@ impl ammo_runtime::AmmoDriver for ProductionAmmoDriver {
     }
 }
 
+impl military_supply_runtime::MilitarySupplyEntryDriver for ProductionAmmoDriver {
+    async fn wait_and_click(
+        &self,
+        key: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), military_supply_runtime::MilitarySupplyEntryError> {
+        <Self as ammo_runtime::AmmoDriver>::wait_and_click(self, key, cancelled)
+            .await
+            .map_err(|error| map_military_supply_input_error(error, key))
+    }
+
+    async fn click_unverified(
+        &self,
+        key: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), military_supply_runtime::MilitarySupplyEntryError> {
+        <Self as ammo_runtime::AmmoDriver>::click_unverified(self, key, cancelled)
+            .await
+            .map_err(|error| map_military_supply_input_error(error, key))
+    }
+
+    async fn delay(
+        &self,
+        duration: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), military_supply_runtime::MilitarySupplyEntryError> {
+        <Self as ammo_runtime::AmmoDriver>::delay(self, duration, cancelled)
+            .await
+            .map_err(|error| map_military_supply_input_error(error, "ammo.entryDelay"))
+    }
+}
+
+fn map_military_supply_input_error(
+    error: ammo_runtime::AmmoDriverError,
+    fallback_step: &str,
+) -> military_supply_runtime::MilitarySupplyEntryError {
+    match error {
+        ammo_runtime::AmmoDriverError::Cancelled => {
+            military_supply_runtime::MilitarySupplyEntryError::Cancelled
+        }
+        ammo_runtime::AmmoDriverError::Target(message) => {
+            military_supply_runtime::MilitarySupplyEntryError::Target {
+                step: fallback_step.to_string(),
+                message,
+            }
+        }
+        ammo_runtime::AmmoDriverError::System { step, message } => {
+            military_supply_runtime::MilitarySupplyEntryError::System { step, message }
+        }
+    }
+}
+
 struct RoundCraftProgress {
     account_index: usize,
     account_total: usize,
@@ -5262,6 +6131,406 @@ impl craft_batch::CraftBatchDriver for ProductionCraftBatchDriver {
     }
 }
 
+struct ProductionLimitedSupplyDriver {
+    input: ProductionAmmoDriver,
+    cycle_id: String,
+    colors: [[u8; 3]; 2],
+    color_tolerances: [u8; 2],
+    persist_result: bool,
+}
+
+impl ProductionLimitedSupplyDriver {
+    fn map_input_error(
+        error: ammo_runtime::AmmoDriverError,
+    ) -> limited_supply_runtime::LimitedRunError {
+        match error {
+            ammo_runtime::AmmoDriverError::Cancelled => {
+                limited_supply_runtime::LimitedRunError::Cancelled
+            }
+            ammo_runtime::AmmoDriverError::Target(message) => {
+                limited_supply_runtime::LimitedRunError::System {
+                    step: "limited.input".to_string(),
+                    message,
+                }
+            }
+            ammo_runtime::AmmoDriverError::System { step, message } => {
+                limited_supply_runtime::LimitedRunError::System { step, message }
+            }
+        }
+    }
+}
+
+impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriver {
+    async fn wait_and_click(
+        &self,
+        key: &str,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), limited_supply_runtime::LimitedRunError> {
+        let result = <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::wait_and_click(
+            &self.input,
+            key,
+            cancelled,
+        )
+        .await;
+        result.map_err(Self::map_input_error)
+    }
+
+    async fn delay(
+        &self,
+        duration: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), limited_supply_runtime::LimitedRunError> {
+        <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(&self.input, duration, cancelled)
+            .await
+            .map_err(Self::map_input_error)
+    }
+
+    async fn wait_ready(
+        &self,
+        timeout: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), limited_supply_runtime::LimitedRunError> {
+        self.input
+            .emit_update(LoginRunStatus::Waiting, "正在识别限时商品页面")
+            .map_err(|message| limited_supply_runtime::LimitedRunError::System {
+                step: "limited.ready".to_string(),
+                message,
+            })?;
+        self.input.focus().await.map_err(|message| {
+            limited_supply_runtime::LimitedRunError::System {
+                step: "limited.window".to_string(),
+                message,
+            }
+        })?;
+        let template = self
+            .input
+            .targets
+            .get("limited.ready")
+            .and_then(|target| target.template.as_ref())
+            .ok_or_else(|| limited_supply_runtime::LimitedRunError::System {
+                step: "limited.ready".to_string(),
+                message: "限时商品页面就绪目标未配置已验证模板".to_string(),
+            })?;
+        match template_observer::wait_for_any_consistent_match_until(
+            &template_observer::RuntimeSimilaritySampler,
+            &[template],
+            Arc::clone(&cancelled),
+            timeout,
+        )
+        .await
+        {
+            Ok(_) => Ok(()),
+            Err(_) if cancelled.load(std::sync::atomic::Ordering::SeqCst) => {
+                Err(limited_supply_runtime::LimitedRunError::Cancelled)
+            }
+            Err(error) if error.contains("超时") => {
+                Err(limited_supply_runtime::LimitedRunError::ReadyTimeout)
+            }
+            Err(message) => Err(limited_supply_runtime::LimitedRunError::System {
+                step: "limited.ready".to_string(),
+                message,
+            }),
+        }
+    }
+
+    async fn sample_colors(
+        &self,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<
+        Option<limited_supply_runtime::LimitedColorSample>,
+        limited_supply_runtime::LimitedRunError,
+    > {
+        if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(limited_supply_runtime::LimitedRunError::Cancelled);
+        }
+        self.input
+            .emit_update(LoginRunStatus::Waiting, "正在识别限时商品")
+            .map_err(|message| limited_supply_runtime::LimitedRunError::System {
+                step: "limited.colors".to_string(),
+                message,
+            })?;
+        self.input.focus().await.map_err(|message| {
+            limited_supply_runtime::LimitedRunError::System {
+                step: "limited.window".to_string(),
+                message,
+            }
+        })?;
+        self.input
+            .park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|message| limited_supply_runtime::LimitedRunError::System {
+                step: "limited.mouseParking".to_string(),
+                message,
+            })?;
+        let regions = (1..=9)
+            .map(|index| {
+                self.input
+                    .targets
+                    .get(&format!("limited.color.{index}"))
+                    .map(|target| target.region.clone())
+                    .ok_or_else(|| limited_supply_runtime::LimitedRunError::System {
+                        step: "limited.colors".to_string(),
+                        message: format!("限时商品识色区域 {index} 未配置"),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let colors = self.colors;
+        let tolerances = self.color_tolerances;
+        tokio::task::spawn_blocking(move || {
+            let screenshots = regions
+                .iter()
+                .map(crate::recognition::watcher::capture_region)
+                .collect::<Option<Vec<_>>>()?;
+            limited_supply_runtime::match_limited_color_sample(&screenshots, colors, tolerances)
+        })
+        .await
+        .map_err(|error| limited_supply_runtime::LimitedRunError::System {
+            step: "limited.colors".to_string(),
+            message: format!("限时商品截图任务失败：{error}"),
+        })
+    }
+
+    fn persist_result(
+        &self,
+        result: &limited_supply_runtime::LimitedSupplyCheckResult,
+    ) -> Result<(), limited_supply_runtime::LimitedRunError> {
+        if !self.persist_result {
+            return Ok(());
+        }
+        let account_id = self.input.account_id.clone();
+        let cycle_id = self.cycle_id.clone();
+        let result = result.clone();
+        self.input
+            .persist_change("limited.persistResult", move |settings| {
+                let account = settings
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == account_id)
+                    .ok_or_else(|| "限时商品账号不存在".to_string())?;
+                account.limited_supply = limited_supply::LimitedSupplyAccountState {
+                    cycle_id: Some(cycle_id),
+                    outcome: result.outcome,
+                    checked_at_ms: Some(now_ms()),
+                    matched_region: result.matched_region,
+                    matched_color: result.matched_color,
+                    acknowledged: false,
+                    last_error: result.error,
+                };
+                Ok(())
+            })
+            .map_err(Self::map_input_error)
+    }
+}
+
+struct ProductionMarketDriver {
+    input: ProductionAmmoDriver,
+    control: Arc<RoundControl>,
+    day: String,
+    persist_official: bool,
+    trial_completed: std::sync::atomic::AtomicU32,
+}
+
+impl ProductionMarketDriver {
+    fn map_input_error(error: ammo_runtime::AmmoDriverError) -> market_runtime::MarketRunError {
+        match error {
+            ammo_runtime::AmmoDriverError::Cancelled => market_runtime::MarketRunError::Cancelled,
+            ammo_runtime::AmmoDriverError::Target(message) => {
+                market_runtime::MarketRunError::System {
+                    step: "market.input".to_string(),
+                    message,
+                }
+            }
+            ammo_runtime::AmmoDriverError::System { step, message } => {
+                market_runtime::MarketRunError::System { step, message }
+            }
+        }
+    }
+
+    fn system_error(step: &str, message: impl Into<String>) -> market_runtime::MarketRunError {
+        market_runtime::MarketRunError::System {
+            step: step.to_string(),
+            message: message.into(),
+        }
+    }
+
+    fn persist_status(
+        &self,
+        status: market_purchase::MarketTaskStatus,
+        error: Option<String>,
+    ) -> Result<(), market_runtime::MarketRunError> {
+        let account_id = self.input.account_id.clone();
+        let day = self.day.clone();
+        self.input
+            .persist_change("market.persistStatus", move |settings| {
+                let account = settings
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == account_id)
+                    .ok_or_else(|| "交易行账号不存在".to_string())?;
+                if account.market.day.as_deref() != Some(day.as_str()) {
+                    account.market.day = Some(day);
+                    account.market.completed_count = 0;
+                }
+                account.market.status = status;
+                account.market.last_error = error;
+                Ok(())
+            })
+            .map_err(Self::map_input_error)
+    }
+}
+
+impl market_runtime::MarketDriver for ProductionMarketDriver {
+    async fn click(
+        &self,
+        key: &str,
+        countdown: bool,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), market_runtime::MarketRunError> {
+        if key == "market.entry" {
+            <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::wait_target(
+                &self.input,
+                &[key],
+                Arc::clone(&cancelled),
+            )
+            .await
+            .map_err(Self::map_input_error)?;
+        }
+        let region = self
+            .input
+            .targets
+            .get(key)
+            .map(|target| target.region.clone())
+            .ok_or_else(|| Self::system_error(key, "交易行校准目标不存在"))?;
+        self.input
+            .click_region(region, key, countdown, cancelled)
+            .await
+            .map_err(Self::map_input_error)
+    }
+
+    async fn click_point(
+        &self,
+        point: &crate::morse::types::RegionRect,
+        countdown: bool,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), market_runtime::MarketRunError> {
+        self.input
+            .click_region(point.clone(), "market.product", countdown, cancelled)
+            .await
+            .map_err(Self::map_input_error)
+    }
+
+    async fn read_price(
+        &self,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<String, market_runtime::MarketRunError> {
+        if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(market_runtime::MarketRunError::Cancelled);
+        }
+        self.input
+            .emit_update(LoginRunStatus::Waiting, "正在读取交易行价格")
+            .map_err(|message| Self::system_error("market.price", message))?;
+        self.input
+            .focus()
+            .await
+            .map_err(|message| Self::system_error("market.window", message))?;
+        self.input
+            .park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(|message| Self::system_error("market.mouseParking", message))?;
+        let region = self
+            .input
+            .targets
+            .get("market.price")
+            .map(|target| target.region.clone())
+            .ok_or_else(|| Self::system_error("market.price", "交易行价格 OCR 区域未配置"))?;
+        tokio::task::spawn_blocking(move || {
+            let image = crate::recognition::watcher::capture_region(&region)
+                .ok_or_else(|| "截取交易行价格区域失败".to_string())?;
+            let words = windows_ocr::recognize_words(image)?;
+            Ok::<_, String>(
+                words
+                    .into_iter()
+                    .map(|word| word.text)
+                    .collect::<Vec<_>>()
+                    .join(""),
+            )
+        })
+        .await
+        .map_err(|error| Self::system_error("market.price", format!("价格 OCR 任务失败：{error}")))?
+        .map_err(|message| Self::system_error("market.price", message))
+    }
+
+    async fn delay(
+        &self,
+        duration: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), market_runtime::MarketRunError> {
+        <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(&self.input, duration, cancelled)
+            .await
+            .map_err(Self::map_input_error)
+    }
+
+    fn persist_purchase_click(&self) -> Result<u32, market_runtime::MarketRunError> {
+        if !self.persist_official {
+            return Ok(self
+                .trial_completed
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                .saturating_add(1));
+        }
+        let account_id = self.input.account_id.clone();
+        let day = self.day.clone();
+        let mut completed_count = 0;
+        self.input
+            .persist_change("market.persistPurchase", |settings| {
+                let account = settings
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == account_id)
+                    .ok_or_else(|| "交易行账号不存在".to_string())?;
+                if account.market.day.as_deref() != Some(day.as_str()) {
+                    account.market.day = Some(day);
+                    account.market.completed_count = 0;
+                }
+                account.market.completed_count = account.market.completed_count.saturating_add(1);
+                account.market.status = market_purchase::MarketTaskStatus::Running;
+                account.market.last_error = None;
+                completed_count = account.market.completed_count;
+                Ok(())
+            })
+            .map_err(Self::map_input_error)?;
+        Ok(completed_count)
+    }
+
+    fn minute_of_day(&self) -> u16 {
+        local_day_and_minute(now_ms()).1 as u16
+    }
+
+    fn now_ms(&self) -> i64 {
+        now_ms()
+    }
+
+    fn pause_requested(&self) -> bool {
+        self.control.pause_requested()
+    }
+
+    fn next_craft_at_ms(&self) -> Option<i64> {
+        let settings = self.input.settings.lock().ok()?;
+        build_schedule(&settings, now_ms())
+            .timeline_tasks
+            .into_iter()
+            .filter(|task| {
+                task.kind == TimelineTaskKind::Craft
+                    && task.account_status == AccountStatus::Ready
+                    && task.manual_failure.is_none()
+            })
+            .map(|task| task.scheduled_at_ms)
+            .min()
+    }
+}
+
+type FrozenRoundAccountCache =
+    Mutex<std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>>;
+
 struct ProductionRoundDriver {
     app: AppHandle,
     settings: Arc<Mutex<SpecialOpsSettings>>,
@@ -5269,7 +6538,8 @@ struct ProductionRoundDriver {
     runtime: Arc<login_runtime::LoginRuntime>,
     control: Arc<RoundControl>,
     run_id: u64,
-    accounts: std::collections::HashMap<String, Result<FrozenRoundAccount, String>>,
+    accounts: std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>,
+    dynamic_accounts: FrozenRoundAccountCache,
     game_executable_path: std::path::PathBuf,
 }
 
@@ -5293,12 +6563,103 @@ fn map_round_ammo_stop(
             target_id, step, message,
         )),
         ammo_runtime::AmmoRunStop::SystemFailure { step, message } => {
-            Err(round_runner::AccountRunError::system(step, message))
+            if step == "ammo.department" {
+                Err(round_runner::AccountRunError::navigation_timeout_with_message(step, message))
+            } else {
+                Err(round_runner::AccountRunError::system(step, message))
+            }
         }
         ammo_runtime::AmmoRunStop::EmergencyStopped => Err(round_runner::AccountRunError::system(
             "round.stopped",
             "多账号轮次已停止",
         )),
+    }
+}
+
+fn map_round_ammo_driver_error(
+    error: ammo_runtime::AmmoDriverError,
+    fallback_step: &str,
+) -> round_runner::AccountRunError {
+    match error {
+        ammo_runtime::AmmoDriverError::Cancelled => {
+            round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+        }
+        ammo_runtime::AmmoDriverError::Target(message) => {
+            round_runner::AccountRunError::system(fallback_step, message)
+        }
+        ammo_runtime::AmmoDriverError::System { step, message } => {
+            round_runner::AccountRunError::system(step, message)
+        }
+    }
+}
+
+fn map_round_military_supply_entry_error(
+    error: military_supply_runtime::MilitarySupplyEntryError,
+) -> round_runner::AccountRunError {
+    match error {
+        military_supply_runtime::MilitarySupplyEntryError::Cancelled => {
+            round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+        }
+        military_supply_runtime::MilitarySupplyEntryError::Target { step, message }
+            if step == "ammo.department" =>
+        {
+            round_runner::AccountRunError::navigation_timeout_with_message(step, message)
+        }
+        military_supply_runtime::MilitarySupplyEntryError::Target { step, message }
+        | military_supply_runtime::MilitarySupplyEntryError::System { step, message } => {
+            round_runner::AccountRunError::system(step, message)
+        }
+    }
+}
+
+fn ammo_driver_error_to_stop(
+    error: ammo_runtime::AmmoDriverError,
+    fallback_step: &str,
+) -> ammo_runtime::AmmoRunStop {
+    match error {
+        ammo_runtime::AmmoDriverError::Cancelled => ammo_runtime::AmmoRunStop::EmergencyStopped,
+        ammo_runtime::AmmoDriverError::Target(message) => {
+            ammo_runtime::AmmoRunStop::SystemFailure {
+                step: fallback_step.to_string(),
+                message,
+            }
+        }
+        ammo_runtime::AmmoDriverError::System { step, message } => {
+            ammo_runtime::AmmoRunStop::SystemFailure { step, message }
+        }
+    }
+}
+
+fn map_round_limited_error(
+    error: limited_supply_runtime::LimitedRunError,
+    fallback_step: &str,
+) -> round_runner::AccountRunError {
+    match error {
+        limited_supply_runtime::LimitedRunError::Cancelled => {
+            round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+        }
+        limited_supply_runtime::LimitedRunError::ReadyTimeout => {
+            round_runner::AccountRunError::system(fallback_step, "限时商品页面就绪超时")
+        }
+        limited_supply_runtime::LimitedRunError::System { step, message } => {
+            round_runner::AccountRunError::system(step, message)
+        }
+    }
+}
+
+fn limited_error_to_stop(
+    error: limited_supply_runtime::LimitedRunError,
+) -> limited_supply_runtime::LimitedRunStop {
+    match error {
+        limited_supply_runtime::LimitedRunError::Cancelled => {
+            limited_supply_runtime::LimitedRunStop::EmergencyStopped
+        }
+        limited_supply_runtime::LimitedRunError::ReadyTimeout => {
+            limited_supply_runtime::LimitedRunStop::RetryableReadyTimeout
+        }
+        limited_supply_runtime::LimitedRunError::System { step, message } => {
+            limited_supply_runtime::LimitedRunStop::SystemFailure { step, message }
+        }
     }
 }
 
@@ -5308,10 +6669,9 @@ fn map_round_navigation_result(
     match result {
         game_navigation::GameNavigationResult::Ready => Ok(()),
         game_navigation::GameNavigationResult::TimedOut { failed_step } => {
-            Err(round_runner::AccountRunError::account(
-                format!("navigation.{failed_step:?}"),
-                "步骤超时",
-            ))
+            Err(round_runner::AccountRunError::navigation_timeout(format!(
+                "navigation.{failed_step:?}"
+            )))
         }
         game_navigation::GameNavigationResult::Paused {
             failed_step,
@@ -5339,6 +6699,15 @@ fn map_round_login_failure(
             | login_flow::LoginStep::StartWeGame
     ) {
         round_runner::AccountRunError::system(format!("login.{failed_step:?}"), message)
+    } else if matches!(
+        failed_step,
+        login_flow::LoginStep::WaitGameEntry
+            | login_flow::LoginStep::OpenGameEntry
+            | login_flow::LoginStep::WaitLaunchButton
+            | login_flow::LoginStep::LaunchGame
+            | login_flow::LoginStep::WaitGameWindow
+    ) {
+        round_runner::AccountRunError::navigation_timeout(format!("login.{failed_step:?}"))
     } else {
         round_runner::AccountRunError::account("login.failed", message)
     }
@@ -5348,16 +6717,24 @@ impl ProductionRoundDriver {
     fn frozen(
         &self,
         task: &round_planner::AccountRoundTask,
-    ) -> Result<&FrozenRoundAccount, round_runner::AccountRunError> {
-        self.accounts
-            .get(&task.account_id)
+    ) -> Result<Arc<FrozenRoundAccount>, round_runner::AccountRunError> {
+        let key = (task.account_id.clone(), task.scheduled_at_ms);
+        if let Some(frozen) = self.accounts.get(&key) {
+            return frozen.clone().map_err(|message| {
+                round_runner::AccountRunError::account("round.preflight", message)
+            });
+        }
+        self.dynamic_accounts
+            .lock()
+            .map_err(|_| {
+                round_runner::AccountRunError::system("round.preflight", "动态冻结配置状态已损坏")
+            })?
+            .get(&key)
+            .cloned()
             .ok_or_else(|| {
                 round_runner::AccountRunError::account("round.preflight", "账号冻结配置不存在")
             })?
-            .as_ref()
-            .map_err(|message| {
-                round_runner::AccountRunError::account("round.preflight", message.clone())
-            })
+            .map_err(|message| round_runner::AccountRunError::account("round.preflight", message))
     }
 
     fn emit_step(&self, step: login_flow::LoginStep, message: &str) {
@@ -5419,6 +6796,31 @@ impl ProductionRoundDriver {
         emit_state(&self.app, revision, now_ms());
         Ok(())
     }
+
+    async fn focus_existing_game(&self) -> Result<(), round_runner::AccountRunError> {
+        use desktop_runtime::DesktopRuntime;
+        let executable = self.game_executable_path.clone();
+        tokio::task::spawn_blocking(move || {
+            let runtime = desktop_runtime::WindowsDesktopRuntime;
+            let window = runtime
+                .find_primary_window(&executable)?
+                .ok_or_else(|| "同账号等待结束后未找到游戏窗口".to_string())?;
+            runtime.restore_and_focus(&executable, window)
+        })
+        .await
+        .map_err(|error| {
+            round_runner::AccountRunError::navigation_timeout_with_message(
+                "round.sessionWindow",
+                format!("游戏窗口验证任务失败：{error}"),
+            )
+        })?
+        .map_err(|message| {
+            round_runner::AccountRunError::navigation_timeout_with_message(
+                "round.sessionWindow",
+                message,
+            )
+        })
+    }
 }
 
 impl round_account::AccountSessionDriver for ProductionRoundDriver {
@@ -5462,6 +6864,13 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
         task: &round_planner::AccountRoundTask,
         cancelled: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(), round_runner::AccountRunError> {
+        crate::log_info!(
+            "special_ops::round",
+            "账号开始游戏内导航",
+            "account_id" => &task.account_id,
+            "qq_account" => &task.qq_account,
+            "account_order" => task.account_order
+        );
         let frozen = self.frozen(task)?;
         let driver = game_navigation::ProductionGameNavigationDriver::new(
             self.app.clone(),
@@ -5480,7 +6889,15 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             },
         )
         .await;
-        map_round_navigation_result(result)
+        let mapped = map_round_navigation_result(result);
+        crate::log_info!(
+            "special_ops::round",
+            "账号游戏内导航结束",
+            "account_id" => &task.account_id,
+            "qq_account" => &task.qq_account,
+            "success" => mapped.is_ok()
+        );
+        mapped
     }
 
     async fn craft(
@@ -5522,34 +6939,208 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             })
     }
 
-    async fn ammo(
+    async fn military_supply(
         &self,
         task: &round_planner::AccountRoundTask,
         cancelled: Arc<std::sync::atomic::AtomicBool>,
-    ) -> Result<(), round_runner::AccountRunError> {
-        let frozen = self.frozen(task)?.ammo.as_ref().ok_or_else(|| {
-            round_runner::AccountRunError::account("ammo.preflight", "子弹冻结配置缺失")
-        })?;
-        let driver = ProductionAmmoDriver {
+    ) -> Result<round_account::MilitarySupplySessionResult, round_runner::AccountRunError> {
+        let frozen_account = self.frozen(task)?;
+        let entry = frozen_account
+            .military_supply_entry
+            .as_ref()
+            .ok_or_else(|| {
+                round_runner::AccountRunError::account(
+                    "ammo.entryPreflight",
+                    "军需处入口冻结配置缺失",
+                )
+            })?;
+        let entry_driver = ProductionAmmoDriver {
             app: self.app.clone(),
             settings: Arc::clone(&self.settings),
             coordinator: Arc::clone(&self.coordinator),
             runtime: Arc::clone(&self.runtime),
             run_id: self.run_id,
             account_id: task.account_id.clone(),
-            day: frozen.day.clone(),
-            game_executable_path: frozen.game_executable_path.clone(),
-            mouse_parking_region: frozen.mouse_parking_region.clone(),
-            targets: frozen.targets.clone(),
+            day: local_day_and_minute(now_ms()).0,
+            game_executable_path: entry.game_executable_path.clone(),
+            mouse_parking_region: entry.mouse_parking_region.clone(),
+            targets: entry.targets.clone(),
         };
-        let result = ammo_runtime::run_ammo_trial(
-            &driver,
-            &frozen.ammo_targets,
-            frozen.entry_delays,
-            cancelled,
+        military_supply_runtime::enter_military_supply(
+            &entry_driver,
+            entry.config,
+            Arc::clone(&cancelled),
         )
-        .await;
-        map_round_ammo_stop(result.stop)
+        .await
+        .map_err(map_round_military_supply_entry_error)?;
+
+        if let Some(frozen) = frozen_account.ammo.as_ref() {
+            let driver = ProductionAmmoDriver {
+                app: self.app.clone(),
+                settings: Arc::clone(&self.settings),
+                coordinator: Arc::clone(&self.coordinator),
+                runtime: Arc::clone(&self.runtime),
+                run_id: self.run_id,
+                account_id: task.account_id.clone(),
+                day: frozen.day.clone(),
+                game_executable_path: frozen.game_executable_path.clone(),
+                mouse_parking_region: frozen.mouse_parking_region.clone(),
+                targets: frozen.targets.clone(),
+            };
+            <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::wait_and_click(
+                &driver,
+                "ammo.tacticalDepartment",
+                Arc::clone(&cancelled),
+            )
+            .await
+            .map_err(|error| map_round_ammo_driver_error(error, "ammo.tacticalDepartment"))?;
+            let result = ammo_runtime::run_ammo_targets(
+                &driver,
+                &frozen.ammo_targets,
+                Arc::clone(&cancelled),
+            )
+            .await;
+            map_round_ammo_stop(result.stop)?;
+        }
+
+        let mut result = round_account::MilitarySupplySessionResult::default();
+        let Some(frozen) = frozen_account.limited_supply.as_ref() else {
+            return Ok(result);
+        };
+        let driver = ProductionLimitedSupplyDriver {
+            input: ProductionAmmoDriver {
+                app: self.app.clone(),
+                settings: Arc::clone(&self.settings),
+                coordinator: Arc::clone(&self.coordinator),
+                runtime: Arc::clone(&self.runtime),
+                run_id: self.run_id,
+                account_id: task.account_id.clone(),
+                day: frozen.cycle_id.clone(),
+                game_executable_path: frozen.game_executable_path.clone(),
+                mouse_parking_region: frozen.mouse_parking_region.clone(),
+                targets: frozen.targets.clone(),
+            },
+            cycle_id: frozen.cycle_id.clone(),
+            colors: frozen.colors,
+            color_tolerances: frozen.color_tolerances,
+            persist_result: true,
+        };
+        <ProductionLimitedSupplyDriver as limited_supply_runtime::LimitedSupplyDriver>::wait_and_click(
+            &driver,
+            "ammo.researchDepartment",
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(|error| map_round_limited_error(error, "ammo.researchDepartment"))?;
+        match limited_supply_runtime::run_limited_supply_branch(&driver, frozen.config, cancelled)
+            .await
+        {
+            limited_supply_runtime::LimitedRunStop::Completed(_) => Ok(result),
+            limited_supply_runtime::LimitedRunStop::RetryableReadyTimeout => {
+                result.limited_retry_requested = true;
+                Ok(result)
+            }
+            limited_supply_runtime::LimitedRunStop::EmergencyStopped => Err(
+                round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止"),
+            ),
+            limited_supply_runtime::LimitedRunStop::SystemFailure { step, message } => {
+                Err(round_runner::AccountRunError::system(step, message))
+            }
+        }
+    }
+
+    async fn market(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<round_account::MarketSessionResult, round_runner::AccountRunError> {
+        let frozen_account = self.frozen(task)?;
+        let frozen = frozen_account.market.as_ref().ok_or_else(|| {
+            round_runner::AccountRunError::account("market.preflight", "交易行冻结配置缺失")
+        })?;
+        let driver = ProductionMarketDriver {
+            input: ProductionAmmoDriver {
+                app: self.app.clone(),
+                settings: Arc::clone(&self.settings),
+                coordinator: Arc::clone(&self.coordinator),
+                runtime: Arc::clone(&self.runtime),
+                run_id: self.run_id,
+                account_id: task.account_id.clone(),
+                day: frozen.day.clone(),
+                game_executable_path: frozen.game_executable_path.clone(),
+                mouse_parking_region: frozen.mouse_parking_region.clone(),
+                targets: frozen.targets.clone(),
+            },
+            control: Arc::clone(&self.control),
+            day: frozen.day.clone(),
+            persist_official: true,
+            trial_completed: std::sync::atomic::AtomicU32::new(0),
+        };
+        match market_runtime::run_market(&driver, frozen.config.clone(), cancelled).await {
+            market_runtime::MarketRunStop::Completed => {
+                driver
+                    .persist_status(market_purchase::MarketTaskStatus::Completed, None)
+                    .map_err(|error| match error {
+                        market_runtime::MarketRunError::Cancelled => {
+                            round_runner::AccountRunError::system(
+                                "round.stopped",
+                                "多账号轮次已停止",
+                            )
+                        }
+                        market_runtime::MarketRunError::System { step, message } => {
+                            round_runner::AccountRunError::system(step, message)
+                        }
+                    })?;
+                Ok(round_account::MarketSessionResult::Completed)
+            }
+            market_runtime::MarketRunStop::YieldedForCraft => {
+                Ok(round_account::MarketSessionResult::YieldedForCraft)
+            }
+            market_runtime::MarketRunStop::PauseRequested => {
+                Ok(round_account::MarketSessionResult::PauseRequested)
+            }
+            market_runtime::MarketRunStop::WindowClosed => {
+                driver
+                    .persist_status(market_purchase::MarketTaskStatus::WindowClosed, None)
+                    .map_err(|error| match error {
+                        market_runtime::MarketRunError::Cancelled => {
+                            round_runner::AccountRunError::system(
+                                "round.stopped",
+                                "多账号轮次已停止",
+                            )
+                        }
+                        market_runtime::MarketRunError::System { step, message } => {
+                            round_runner::AccountRunError::system(step, message)
+                        }
+                    })?;
+                Ok(round_account::MarketSessionResult::WindowClosed)
+            }
+            market_runtime::MarketRunStop::PriceRecognitionFailed => {
+                driver
+                    .persist_status(
+                        market_purchase::MarketTaskStatus::PriceRecognitionFailed,
+                        Some("连续三个商品页未识别到有效价格".to_string()),
+                    )
+                    .map_err(|error| match error {
+                        market_runtime::MarketRunError::Cancelled => {
+                            round_runner::AccountRunError::system(
+                                "round.stopped",
+                                "多账号轮次已停止",
+                            )
+                        }
+                        market_runtime::MarketRunError::System { step, message } => {
+                            round_runner::AccountRunError::system(step, message)
+                        }
+                    })?;
+                Ok(round_account::MarketSessionResult::Completed)
+            }
+            market_runtime::MarketRunStop::EmergencyStopped => Err(
+                round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止"),
+            ),
+            market_runtime::MarketRunStop::SystemFailure { step, message } => {
+                Err(round_runner::AccountRunError::system(step, message))
+            }
+        }
     }
 }
 
@@ -5561,6 +7152,16 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
         task: &round_planner::AccountRoundTask,
         cancelled: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<round_runner::AccountRunSuccess, round_runner::AccountRunError> {
+        crate::log_info!(
+            "special_ops::round",
+            "账号开始轮换",
+            "account_id" => &task.account_id,
+            "qq_account" => &task.qq_account,
+            "account_index" => index,
+            "account_total" => total,
+            "station_count" => task.stations.len(),
+            "ammo_target_count" => task.ammo_target_ids.len()
+        );
         let snapshot = self
             .runtime
             .update_round_progress(
@@ -5581,12 +7182,180 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
         round_account::run_account_session(self, task, cancelled).await
     }
 
+    async fn continue_account(
+        &self,
+        index: usize,
+        total: usize,
+        task: &round_planner::AccountRoundTask,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<round_runner::AccountRunSuccess, round_runner::AccountRunError> {
+        self.focus_existing_game().await?;
+        let snapshot = self
+            .runtime
+            .update_round_progress(
+                self.run_id,
+                index,
+                total,
+                &task.account_id,
+                &task.qq_account,
+                None,
+                0,
+                task.stations.len(),
+            )
+            .map_err(|message| round_runner::AccountRunError::system("round.progress", message))?
+            .ok_or_else(|| {
+                round_runner::AccountRunError::system("round.progress", "多账号轮次运行状态已变化")
+            })?;
+        emit_run(&self.app, &snapshot);
+        round_account::run_task_in_session(self, task, cancelled).await
+    }
+
+    async fn wait_until(
+        &self,
+        index: usize,
+        total: usize,
+        task: &round_planner::AccountRoundTask,
+        keep_session: bool,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), round_runner::AccountRunError> {
+        let message = if keep_session {
+            "保持当前账号在线，等待同账号下一任务"
+        } else {
+            "游戏已关闭，等待切换下一账号"
+        };
+        let snapshot = self
+            .runtime
+            .update_round_progress(
+                self.run_id,
+                index,
+                total,
+                &task.account_id,
+                &task.qq_account,
+                None,
+                0,
+                task.stations.len(),
+            )
+            .map_err(|message| round_runner::AccountRunError::system("round.progress", message))?
+            .ok_or_else(|| {
+                round_runner::AccountRunError::system("round.progress", "多账号轮次运行状态已变化")
+            })?;
+        emit_run(&self.app, &snapshot);
+        if let Ok(Some(snapshot)) =
+            self.runtime
+                .update(self.run_id, LoginRunStatus::Waiting, None, message, None)
+        {
+            emit_run(&self.app, &snapshot);
+        }
+        while now_ms() < task.scheduled_at_ms
+            && !cancelled.load(std::sync::atomic::Ordering::SeqCst)
+            && !self.control.pause_requested()
+        {
+            let wall_before_ms = now_ms();
+            let monotonic_before = std::time::Instant::now();
+            let remaining_ms = task.scheduled_at_ms.saturating_sub(now_ms()).max(1) as u64;
+            tokio::time::sleep(std::time::Duration::from_millis(remaining_ms.min(1_000))).await;
+            let wall_elapsed_ms = now_ms().saturating_sub(wall_before_ms);
+            let monotonic_elapsed_ms =
+                monotonic_before.elapsed().as_millis().min(i64::MAX as u128) as i64;
+            if wall_elapsed_ms.abs_diff(monotonic_elapsed_ms) > 60_000 {
+                return Err(round_runner::AccountRunError::system(
+                    "round.clockJump",
+                    "检测到休眠或系统时间跳变",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn now_ms(&self) -> i64 {
+        now_ms()
+    }
+
     fn persist_account_failure(
         &self,
         task: &round_planner::AccountRoundTask,
         error: &round_runner::AccountRunError,
     ) -> Result<(), String> {
         self.persist_account_error(&task.account_id, error)
+    }
+
+    fn persist_limited_failure(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        message: &str,
+    ) -> Result<(), String> {
+        let account_id = task.account_id.clone();
+        let cycle_id = task
+            .limited_supply_cycle_id
+            .clone()
+            .ok_or_else(|| "限时商品补偿任务缺少周期".to_string())?;
+        let message = message.to_string();
+        let (_settings, revision) = self.coordinator.with_runtime_change(|| {
+            let mut next = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let account = next
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == account_id)
+                .ok_or_else(|| "限时商品账号不存在".to_string())?;
+            account.limited_supply = limited_supply::LimitedSupplyAccountState {
+                cycle_id: Some(cycle_id),
+                outcome: limited_supply::LimitedSupplyOutcome::Failed,
+                checked_at_ms: Some(now_ms()),
+                matched_region: None,
+                matched_color: None,
+                acknowledged: false,
+                last_error: Some(message),
+            };
+            save_settings(&self.app, &next)?;
+            *self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            Ok::<_, String>(next)
+        })?;
+        emit_state(&self.app, revision, now_ms());
+        Ok(())
+    }
+
+    fn market_window_open(&self) -> bool {
+        market_purchase::market_window_open(local_day_and_minute(now_ms()).1 as u16)
+    }
+
+    fn refresh_due_craft_tasks(&self) -> Result<Vec<round_planner::AccountRoundTask>, String> {
+        let current_ms = now_ms();
+        let settings = self
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let mut refreshed = freeze_round_run(
+            &settings,
+            current_ms,
+            round_planner::RoundTrigger::Scheduled,
+            AmmoProfitGate::DisplayOnly,
+            None,
+        )?;
+        let tasks = refreshed
+            .plan
+            .accounts
+            .into_iter()
+            .filter(|task| !task.stations.is_empty() && task.scheduled_at_ms <= current_ms)
+            .collect::<Vec<_>>();
+        let mut dynamic = self
+            .dynamic_accounts
+            .lock()
+            .map_err(|_| "动态冻结配置状态已损坏".to_string())?;
+        for task in &tasks {
+            let key = (task.account_id.clone(), task.scheduled_at_ms);
+            if let Some(frozen) = refreshed.accounts.remove(&key) {
+                dynamic.insert(key, frozen);
+            }
+        }
+        Ok(tasks)
     }
 
     async fn close_game(&self) -> Result<(), String> {
@@ -5604,6 +7373,10 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
         Ok(self.control.pause_requested())
     }
 
+    fn pause_preserves_game(&self) -> bool {
+        self.control.preserve_game()
+    }
+
     fn persist_paused(&self, reason: &str) -> Result<(), String> {
         self.persist_global_pause(reason)
     }
@@ -5618,8 +7391,21 @@ async fn run_ammo_worker(
     run_id: u64,
     cancelled: Arc<std::sync::atomic::AtomicBool>,
     account_id: String,
+    entry: FrozenMilitarySupplyEntry,
     frozen: FrozenAmmoRun,
 ) {
+    let entry_driver = ProductionAmmoDriver {
+        app: app.clone(),
+        settings: Arc::clone(&settings),
+        coordinator: Arc::clone(&coordinator),
+        runtime: Arc::clone(&runtime),
+        run_id,
+        account_id: account_id.clone(),
+        day: frozen.day.clone(),
+        game_executable_path: entry.game_executable_path,
+        mouse_parking_region: entry.mouse_parking_region,
+        targets: entry.targets,
+    };
     let driver = ProductionAmmoDriver {
         app: app.clone(),
         settings: Arc::clone(&settings),
@@ -5632,13 +7418,39 @@ async fn run_ammo_worker(
         mouse_parking_region: frozen.mouse_parking_region,
         targets: frozen.targets,
     };
-    let result = ammo_runtime::run_ammo_trial(
-        &driver,
-        &frozen.ammo_targets,
-        frozen.entry_delays,
-        cancelled,
+    let result = match military_supply_runtime::enter_military_supply(
+        &entry_driver,
+        entry.config,
+        Arc::clone(&cancelled),
     )
-    .await;
+    .await
+    {
+        Ok(()) => match <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::wait_and_click(
+            &driver,
+            "ammo.tacticalDepartment",
+            Arc::clone(&cancelled),
+        )
+        .await
+        {
+            Ok(()) => {
+                ammo_runtime::run_ammo_targets(&driver, &frozen.ammo_targets, cancelled).await
+            }
+            Err(error) => ammo_runtime::AmmoRunResult {
+                stop: ammo_driver_error_to_stop(error, "ammo.tacticalDepartment"),
+            },
+        },
+        Err(military_supply_runtime::MilitarySupplyEntryError::Cancelled) => {
+            ammo_runtime::AmmoRunResult {
+                stop: ammo_runtime::AmmoRunStop::EmergencyStopped,
+            }
+        }
+        Err(military_supply_runtime::MilitarySupplyEntryError::Target { step, message })
+        | Err(military_supply_runtime::MilitarySupplyEntryError::System { step, message }) => {
+            ammo_runtime::AmmoRunResult {
+                stop: ammo_runtime::AmmoRunStop::SystemFailure { step, message },
+            }
+        }
+    };
     let stop_reason = runtime.stop_reason(run_id).ok().flatten();
     let entered_input = runtime.entered_input(run_id).unwrap_or(false);
     let persist_result = if stop_reason.is_some() {
@@ -5738,6 +7550,196 @@ async fn run_ammo_worker(
             "子弹兑换持久化或清理失败",
             "error" => error
         );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_limited_supply_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    account_id: String,
+    entry: FrozenMilitarySupplyEntry,
+    frozen: FrozenLimitedSupplyRun,
+) {
+    let entry_driver = ProductionAmmoDriver {
+        app: app.clone(),
+        settings: Arc::clone(&settings),
+        coordinator: Arc::clone(&coordinator),
+        runtime: Arc::clone(&runtime),
+        run_id,
+        account_id: account_id.clone(),
+        day: frozen.cycle_id.clone(),
+        game_executable_path: entry.game_executable_path,
+        mouse_parking_region: entry.mouse_parking_region,
+        targets: entry.targets,
+    };
+    let driver = ProductionLimitedSupplyDriver {
+        input: ProductionAmmoDriver {
+            app: app.clone(),
+            settings,
+            coordinator,
+            runtime: Arc::clone(&runtime),
+            run_id,
+            account_id,
+            day: frozen.cycle_id.clone(),
+            game_executable_path: frozen.game_executable_path,
+            mouse_parking_region: frozen.mouse_parking_region,
+            targets: frozen.targets,
+        },
+        cycle_id: frozen.cycle_id,
+        colors: frozen.colors,
+        color_tolerances: frozen.color_tolerances,
+        persist_result: false,
+    };
+    let result = match military_supply_runtime::enter_military_supply(
+        &entry_driver,
+        entry.config,
+        Arc::clone(&cancelled),
+    )
+    .await
+    {
+        Ok(()) => match <ProductionLimitedSupplyDriver as limited_supply_runtime::LimitedSupplyDriver>::wait_and_click(
+            &driver,
+            "ammo.researchDepartment",
+            Arc::clone(&cancelled),
+        )
+        .await
+        {
+            Ok(()) => limited_supply_runtime::run_limited_supply_branch(
+                &driver,
+                frozen.config,
+                Arc::clone(&cancelled),
+            )
+            .await,
+            Err(error) => limited_error_to_stop(error),
+        },
+        Err(military_supply_runtime::MilitarySupplyEntryError::Cancelled) => {
+            limited_supply_runtime::LimitedRunStop::EmergencyStopped
+        }
+        Err(military_supply_runtime::MilitarySupplyEntryError::Target { step, message })
+        | Err(military_supply_runtime::MilitarySupplyEntryError::System { step, message }) => {
+            limited_supply_runtime::LimitedRunStop::SystemFailure { step, message }
+        }
+    };
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    if stop_reason.is_none()
+        && !matches!(
+            &result,
+            limited_supply_runtime::LimitedRunStop::EmergencyStopped
+        )
+    {
+        if let Err(error) = driver.input.park_mouse(Arc::clone(&cancelled)).await {
+            crate::log_error!(
+                "special_ops::limited",
+                "限时商品试运行结束停放鼠标失败",
+                "error" => error
+            );
+        }
+    }
+    let (status, message) = if stop_reason.is_some() {
+        (LoginRunStatus::Stopped, "限时商品试运行已停止".to_string())
+    } else {
+        match result {
+            limited_supply_runtime::LimitedRunStop::Completed(result) => (
+                LoginRunStatus::Succeeded,
+                format!("限时商品试运行完成：{:?}", result.outcome),
+            ),
+            limited_supply_runtime::LimitedRunStop::RetryableReadyTimeout => {
+                (LoginRunStatus::Failed, "限时商品页面就绪超时".to_string())
+            }
+            limited_supply_runtime::LimitedRunStop::EmergencyStopped => (
+                LoginRunStatus::Stopped,
+                "限时商品试运行已紧急停止".to_string(),
+            ),
+            limited_supply_runtime::LimitedRunStop::SystemFailure { step, message } => (
+                LoginRunStatus::Failed,
+                format!("限时商品试运行步骤 {step} 失败：{message}"),
+            ),
+        }
+    };
+    let persist_result: Result<(), String> = Ok(());
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!("special_ops::limited", "限时商品试运行清理失败", "error" => error);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_market_trial_worker(
+    app: AppHandle,
+    settings: Arc<Mutex<SpecialOpsSettings>>,
+    coordinator: Arc<SettingsCoordinator>,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    account_id: String,
+    mut frozen: FrozenMarketRun,
+    mode: market_runtime::MarketTrialMode,
+) {
+    frozen.config.target_count = 1;
+    frozen.config.completed_count = 0;
+    let driver = ProductionMarketDriver {
+        input: ProductionAmmoDriver {
+            app: app.clone(),
+            settings,
+            coordinator,
+            runtime: Arc::clone(&runtime),
+            run_id,
+            account_id,
+            day: frozen.day.clone(),
+            game_executable_path: frozen.game_executable_path,
+            mouse_parking_region: frozen.mouse_parking_region,
+            targets: frozen.targets,
+        },
+        control: Arc::new(RoundControl::default()),
+        day: frozen.day,
+        persist_official: false,
+        trial_completed: std::sync::atomic::AtomicU32::new(0),
+    };
+    let result =
+        market_runtime::run_market_trial(&driver, &frozen.config, mode, Arc::clone(&cancelled))
+            .await;
+    let stop_reason = runtime.stop_reason(run_id).ok().flatten();
+    if stop_reason.is_none() && !matches!(&result, Err(market_runtime::MarketRunError::Cancelled)) {
+        if let Err(error) = driver.input.park_mouse(Arc::clone(&cancelled)).await {
+            crate::log_error!(
+                "special_ops::market",
+                "交易行试运行结束停放鼠标失败",
+                "error" => error
+            );
+        }
+    }
+    let (status, message) = if stop_reason.is_some() {
+        (LoginRunStatus::Stopped, "交易行试运行已停止".to_string())
+    } else {
+        match result {
+            Ok(result) => (
+                LoginRunStatus::Succeeded,
+                format!(
+                    "交易行试运行完成：价格 {}，上限 {}，分支 {:?}",
+                    result.raw_text, result.max_price, result.action
+                ),
+            ),
+            Err(market_runtime::MarketRunError::Cancelled) => (
+                LoginRunStatus::Stopped,
+                "交易行试运行已紧急停止".to_string(),
+            ),
+            Err(market_runtime::MarketRunError::System { step, message }) => (
+                LoginRunStatus::Failed,
+                format!("交易行试运行步骤 {step} 失败：{message}"),
+            ),
+        }
+    };
+    let persist_result: Result<(), String> = Ok(());
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!("special_ops::market", "交易行试运行清理失败", "error" => error);
     }
 }
 
@@ -5956,6 +7958,7 @@ async fn run_round_worker(
         control: Arc::clone(&control),
         run_id,
         accounts: frozen.accounts,
+        dynamic_accounts: Mutex::new(std::collections::HashMap::new()),
         game_executable_path: frozen.game_executable_path,
     };
     let result = round_runner::run_round(&driver, &frozen.plan, cancelled).await;
@@ -6013,6 +8016,10 @@ async fn run_round_worker(
             LoginRunStatus::Succeeded,
             "当前账号已完成，多账号自动轮次已暂停".to_string(),
         ),
+        (round_runner::RoundStop::PauseRequestedPreservingGame, None) => (
+            LoginRunStatus::Succeeded,
+            "检测到休眠或系统暂停，已保留游戏现场".to_string(),
+        ),
         (round_runner::RoundStop::SystemFailure { step, message }, None) => (
             LoginRunStatus::Failed,
             format!("多账号自动轮次步骤 {step} 失败：{message}"),
@@ -6027,6 +8034,7 @@ async fn run_round_worker(
         let reason = match &result.stop {
             round_runner::RoundStop::Completed => "轮次已完成",
             round_runner::RoundStop::PauseRequested => "轮次已暂停",
+            round_runner::RoundStop::PauseRequestedPreservingGame => "轮次已暂停并保留游戏现场",
             round_runner::RoundStop::EmergencyStopped => "轮次已紧急停止",
             round_runner::RoundStop::SystemFailure { .. } => "轮次发生系统错误",
         };
@@ -6205,6 +8213,198 @@ fn global_automation_enabled(app: &AppHandle) -> bool {
         .unwrap_or(true)
 }
 
+async fn execute_cutoff_profit_query_action(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let settings_lock = Arc::clone(&state.settings);
+    let profit_runtime = Arc::clone(&state.profit_runtime);
+    let login_runtime = Arc::clone(&state.login_runtime);
+    let scheduler = Arc::clone(&state.round_scheduler);
+    let initial_settings = settings_lock
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?
+        .clone();
+    let initial_revision = coordinator.current_revision()?;
+    let started_at_ms = now_ms();
+    if !initial_settings.enabled
+        || initial_settings.paused
+        || !global_automation_enabled(app)
+        || !scheduler.is_armed()
+        || login_runtime.snapshot()?.is_some()
+    {
+        return Ok(());
+    }
+    let initial_window =
+        build_profit_query_window(&initial_settings, started_at_ms, initial_revision, false)?;
+    if started_at_ms < initial_window.cutoff_at_ms {
+        return Ok(());
+    }
+
+    let (settings, settings_revision) =
+        if cutoff_state_for_day(&initial_settings, &initial_window.day).is_none() {
+            let ((next, _), revision) = coordinator.with_expected_revision_change(
+                initial_revision,
+                || -> Result<(SpecialOpsSettings, i64), String> {
+                    let mut next = settings_lock
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?
+                        .clone();
+                    let state =
+                        build_profit_cutoff_state(&next, &initial_window.day, started_at_ms);
+                    let pending_rule_ids = state
+                        .targets
+                        .iter()
+                        .filter(|target| target.decided_at_ms.is_none())
+                        .filter_map(|target| target.rule_id.clone())
+                        .collect::<std::collections::HashSet<_>>();
+                    next.profit_filter.cutoff_state = Some(state);
+                    for audit in &mut next.profit_filter.audits {
+                        if audit.day == initial_window.day
+                            && pending_rule_ids.contains(&audit.rule_id)
+                        {
+                            audit.next_query_at_ms = None;
+                        }
+                    }
+                    normalize_profit_settings(&mut next.profit_filter)?;
+                    save_settings(app, &next)?;
+                    *settings_lock
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                    Ok((next, now_ms()))
+                },
+            )?;
+            emit_state(app, revision, started_at_ms);
+            (next, revision)
+        } else {
+            (initial_settings, initial_revision)
+        };
+
+    let window = build_profit_query_window(&settings, started_at_ms, settings_revision, false)?;
+    let snapshot = profit_runtime.sync_window(window.clone())?;
+    if snapshot
+        .next_query_at_ms
+        .is_some_and(|next_query_at_ms| next_query_at_ms > started_at_ms)
+    {
+        return Ok(());
+    }
+    let pending_rule_ids = cutoff_pending_rule_ids(&settings, &window.day);
+    let cutoff_rules = settings
+        .profit_filter
+        .rules
+        .iter()
+        .filter(|rule| pending_rule_ids.contains(&rule.id))
+        .cloned()
+        .map(|mut rule| {
+            rule.minimum_profit = FINAL_MINIMUM_PROFIT;
+            rule
+        })
+        .collect::<Vec<_>>();
+    if cutoff_rules.is_empty() {
+        return Ok(());
+    }
+    let attempt = if cutoff_retry_at_ms(&settings, &window.day).is_some() {
+        2
+    } else {
+        1
+    };
+    let lease = match profit_runtime.begin_cutoff_query(
+        &window.day,
+        settings_revision,
+        started_at_ms,
+        cutoff_rules,
+        attempt,
+    ) {
+        Ok(lease) => lease,
+        Err(error) if error.contains("已有利润查询正在进行") => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let kkrb = KkrbAdapter::new()?;
+    let moligod = MoligodAdapter::new(app.clone());
+    let mut outcome = query_profit_rules_with_cancel(
+        &kkrb,
+        &moligod,
+        &lease.rules,
+        &lease.query_context(),
+        lease.cancellation(),
+    )
+    .await?;
+    if lease.is_cancelled() || !profit_runtime.accepts(lease.generation) {
+        return Ok(());
+    }
+    let completed_at_ms = now_ms();
+    let classification = classify_cutoff_audits(&outcome.audits, attempt);
+    let retry_at_ms = completed_at_ms.saturating_add(profit::cutoff::FINAL_RETRY_DELAY_MS);
+    for audit in &mut outcome.audits {
+        audit.threshold = FINAL_MINIMUM_PROFIT;
+        audit.next_query_at_ms = classification
+            .retry_rule_ids
+            .contains(&audit.rule_id)
+            .then_some(retry_at_ms);
+    }
+    let commit = coordinator.with_expected_revision_change(
+        settings_revision,
+        || -> Result<(SpecialOpsSettings, i64), String> {
+            let mut next = settings_lock
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            replace_profit_audits(&mut next, outcome.audits.clone());
+            let current_state = next
+                .profit_filter
+                .cutoff_state
+                .as_mut()
+                .filter(|state| state.day == lease.day)
+                .ok_or_else(|| PROFIT_QUERY_STALE.to_string())?;
+            for target in &mut current_state.targets {
+                let Some(rule_id) = target.rule_id.as_deref() else {
+                    continue;
+                };
+                if classification.qualified_rule_ids.contains(rule_id) {
+                    target.skip_reason = None;
+                    target.decided_at_ms = Some(completed_at_ms);
+                } else if let Some(reason) = classification.skipped.get(rule_id) {
+                    target.skip_reason = Some(*reason);
+                    target.decided_at_ms = Some(completed_at_ms);
+                }
+            }
+            normalize_profit_settings(&mut next.profit_filter)?;
+            save_settings(app, &next)?;
+            *settings_lock
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            let _ = profit_runtime.complete_cutoff_query_at_revision(
+                &lease,
+                completed_at_ms,
+                classification.qualified_rule_ids.clone(),
+                outcome.summary.clone(),
+                settings_revision.saturating_add(1),
+                !classification.retry_rule_ids.is_empty(),
+            )?;
+            Ok((next, completed_at_ms))
+        },
+    );
+    match commit {
+        Ok(((_settings, current_ms), revision)) => {
+            emit_state(app, revision, current_ms);
+            scheduler.wake();
+            Ok(())
+        }
+        Err(error) if is_stale_profit_query_error(&error) => {
+            profit_runtime.invalidate("截止利润查询结果已过期");
+            scheduler.wake();
+            Ok(())
+        }
+        Err(error) => {
+            profit_runtime.invalidate(&format!("截止利润审计保存失败：{error}"));
+            Err(error)
+        }
+    }
+}
+
 async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<SpecialOpsState>()
@@ -6233,7 +8433,10 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
 
     let window = build_profit_query_window(&settings, started_at_ms, settings_revision, false)?;
     let snapshot = profit_runtime.sync_window(window.clone())?;
-    if started_at_ms < window.exchange_at_ms || started_at_ms >= window.cutoff_at_ms {
+    if started_at_ms >= window.cutoff_at_ms {
+        return execute_cutoff_profit_query_action(app).await;
+    }
+    if started_at_ms < window.exchange_at_ms {
         return Ok(());
     }
     if snapshot
@@ -6375,18 +8578,28 @@ impl round_scheduler::SchedulerDriver for ProductionRoundSchedulerDriver {
             let window = build_profit_query_window(&settings, now, settings_revision, active_run)?;
             let snapshot = state.profit_runtime.sync_window(window.clone())?;
             profit_snapshot = Some(snapshot.clone());
-            let pending_rules = collect_pending_profit_rules(&settings, &window.day);
-            if settings.enabled
-                && globally_enabled
-                && !settings.paused
-                && !active_run
-                && !pending_rules.is_empty()
-            {
-                query_at_ms = snapshot.next_query_at_ms;
-            }
             if now >= window.cutoff_at_ms {
-                AmmoProfitGate::CutoffBypass
+                let cutoff_state_exists = cutoff_state_for_day(&settings, &window.day).is_some();
+                let cutoff_pending = cutoff_pending_rule_ids(&settings, &window.day);
+                if settings.enabled
+                    && globally_enabled
+                    && !settings.paused
+                    && !active_run
+                    && (!cutoff_state_exists || !cutoff_pending.is_empty())
+                {
+                    query_at_ms = snapshot.next_query_at_ms;
+                }
+                AmmoProfitGate::QualifiedTargets(cutoff_qualified_targets(&settings, &window.day))
             } else {
+                let pending_rules = collect_pending_profit_rules(&settings, &window.day);
+                if settings.enabled
+                    && globally_enabled
+                    && !settings.paused
+                    && !active_run
+                    && !pending_rules.is_empty()
+                {
+                    query_at_ms = snapshot.next_query_at_ms;
+                }
                 AmmoProfitGate::Qualified(
                     snapshot
                         .qualified_rule_ids
@@ -6491,6 +8704,9 @@ fn persist_scheduler_pause(app: &AppHandle, reason: &str) -> Result<(), String> 
     state
         .profit_runtime
         .invalidate("scheduler 已暂停，利润查询已取消");
+    if state.login_runtime.snapshot()?.is_some() {
+        state.round_control.request_system_pause();
+    }
     state.round_scheduler.disarm();
     emit_state(app, revision, now_ms());
     if let Some(window) = app.get_webview_window("main") {
@@ -6901,6 +9117,7 @@ pub async fn special_ops_start_ammo_trial(
                 .lock()
                 .map_err(|_| "特勤处状态已损坏".to_string())?
                 .clone();
+            let entry = freeze_military_supply_entry(&settings)?;
             let frozen = freeze_ammo_run(&settings, &account_id, now_ms(), None)?;
             let worker_app = app.clone();
             let worker_runtime = Arc::clone(&runtime);
@@ -6930,7 +9147,133 @@ pub async fn special_ops_start_ammo_trial(
                             run_id,
                             cancelled,
                             worker_account_id,
+                            entry,
                             frozen,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_limited_supply_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let entry = freeze_military_supply_entry(&settings)?;
+            let frozen = freeze_limited_supply_run(&settings, &account_id, "trial")?;
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_coordinator = Arc::clone(&*settings_coordinator);
+            let worker_account_id = account_id.clone();
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::LimitedSupply,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::LimitedSupply),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_limited_supply_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_account_id,
+                            entry,
+                            frozen,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            Ok(snapshot)
+        })?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn special_ops_start_market_trial(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    mode: market_runtime::MarketTrialMode,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, AppError> {
+    ensure_app_global_automation_enabled(&app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    let settings_lock = Arc::clone(&state.settings);
+    let snapshot =
+        settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let day = local_day_and_minute(now_ms()).0;
+            let frozen = freeze_market_run(&settings, &account_id, &day)?;
+            let worker_app = app.clone();
+            let worker_runtime = Arc::clone(&runtime);
+            let worker_settings = Arc::clone(&settings_lock);
+            let worker_coordinator = Arc::clone(&*settings_coordinator);
+            let worker_account_id = account_id.clone();
+            let registered_hotkey = settings.emergency_hotkey.clone();
+            let operation_hotkey = settings.emergency_hotkey.clone();
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::Market,
+                || register_emergency_hotkey(&app, registered_hotkey),
+                || hide_other_windows_for_special_ops(&app),
+                || create_operation_window(&app, &operation_hotkey, LoginRunKind::Market),
+                |snapshot| emit_run(&app, snapshot),
+                || release_login_resources_unlocked(&app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_market_trial_worker(
+                            worker_app,
+                            worker_settings,
+                            worker_coordinator,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_account_id,
+                            frozen,
+                            mode,
                         )
                         .await;
                     });
@@ -7380,6 +9723,104 @@ pub fn special_ops_confirm_account_station_states(
 }
 
 #[tauri::command]
+pub fn special_ops_confirm_account_manual_check(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                apply_account_manual_check(&mut next, &account_id, now_ms())?;
+                let next = normalize_settings(next)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("账号已人工检查，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+/// 一键恢复状态：`account_id` 为空时恢复全部异常账号。
+#[tauri::command]
+pub fn special_ops_restore_account_state(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: Option<String>,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let confirmed_at_ms = now_ms();
+                let current_day = local_day_and_minute(confirmed_at_ms).0;
+                restore_account_state(
+                    &mut next,
+                    account_id.as_deref(),
+                    confirmed_at_ms,
+                    &current_day,
+                )?;
+                let next = normalize_settings(next)?;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    state
+        .profit_runtime
+        .invalidate("账号状态已一键恢复，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
 pub fn special_ops_confirm_station_state(
     app: AppHandle,
     state: State<'_, SpecialOpsState>,
@@ -7467,6 +9908,59 @@ pub fn special_ops_confirm_ammo_state(
     state
         .profit_runtime
         .invalidate("子弹状态已人工判定，旧查询已取消");
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+#[tauri::command]
+pub fn special_ops_acknowledge_limited_supply(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    cycle_id: String,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let account = next
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == account_id)
+                    .ok_or_else(|| "限时商品账号不存在".to_string())?;
+                if account.limited_supply.cycle_id.as_deref() != Some(cycle_id.as_str()) {
+                    return Err("限时商品提醒周期已变化，请刷新后重试".to_string());
+                }
+                if account.limited_supply.outcome != limited_supply::LimitedSupplyOutcome::HighValue
+                {
+                    return Err("当前限时商品任务没有待确认高价值提醒".to_string());
+                }
+                account.limited_supply.acknowledged = true;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -7602,6 +10096,117 @@ pub async fn special_ops_set_paused(
         "success" => true
     );
     Ok(bootstrap)
+}
+
+#[tauri::command]
+pub async fn special_ops_test_limited_supply_colors(
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    environment_id: String,
+    region_index: u8,
+    settings_revision: u64,
+) -> Result<LimitedSupplyColorTestResult, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    if !(1..=9).contains(&region_index) {
+        return Err(AppError::from("限时商品识色区域编号必须为 1-9"));
+    }
+    let (region, colors, tolerances, game_path, parking) = settings_coordinator
+        .with_revision(settings_revision, || -> Result<_, String> {
+            let settings = state
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?;
+            let environment = settings
+                .calibration_environments
+                .iter()
+                .find(|environment| environment.id == environment_id)
+                .ok_or_else(|| "显示环境不存在".to_string())?;
+            let key = format!("limited.color.{region_index}");
+            let target = environment
+                .targets
+                .iter()
+                .find(|target| target.key == key)
+                .ok_or_else(|| format!("未找到校准目标 {key}"))?;
+            let rect = target
+                .rect
+                .clone()
+                .ok_or_else(|| format!("校准目标 {key} 尚未配置"))?;
+            let game_path = std::fs::canonicalize(settings.game_executable_path.trim())
+                .map_err(|_| "游戏 exe 路径无效".to_string())?;
+            Ok((
+                crate::morse::types::RegionRect {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                },
+                settings.limited_supply.colors,
+                settings.limited_supply.color_tolerances,
+                game_path,
+                mouse_parking_region(&settings)?,
+            ))
+        })
+        .map_err(AppError::from)?;
+    tokio::task::spawn_blocking(move || {
+        use desktop_runtime::DesktopRuntime;
+        let desktop = desktop_runtime::WindowsDesktopRuntime;
+        let window = desktop
+            .find_primary_window(&game_path)?
+            .ok_or_else(|| "未找到游戏窗口".to_string())?;
+        desktop.restore_and_focus(&game_path, window)?;
+        Ok::<_, String>(())
+    })
+    .await
+    .map_err(|error| AppError::from(format!("游戏窗口任务失败：{error}")))??;
+    crate::input_simulation::move_region_center_cancellable(
+        parking,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
+    .await
+    .map_err(AppError::from)?;
+    let sample = |region: crate::morse::types::RegionRect| async move {
+        tokio::task::spawn_blocking(move || {
+            let screenshot = crate::recognition::watcher::capture_region(&region)
+                .ok_or_else(|| "识色区域截图失败".to_string())?;
+            let probe = crate::recognition::ColorProbe {
+                region: None,
+                targets: colors
+                    .into_iter()
+                    .zip(tolerances)
+                    .map(|(color, tolerance)| crate::recognition::ColorTarget { color, tolerance })
+                    .collect(),
+                probe_match_mode: crate::recognition::ColorMatchMode::Any,
+                legacy_target_color: None,
+                legacy_tolerance: None,
+            };
+            Ok::<_, String>(crate::recognition::watcher::probe_hit(
+                &screenshot,
+                &probe,
+                crate::recognition::ColorMatchMethod::AnyPixel,
+                true,
+            ))
+        })
+        .await
+        .map_err(|error| format!("识色截图任务失败：{error}"))?
+    };
+    let first = sample(region.clone()).await.map_err(AppError::from)?;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let second = sample(region).await.map_err(AppError::from)?;
+    Ok(LimitedSupplyColorTestResult {
+        first_sampled_color: first.sampled_color,
+        first_matched_color: first.matched.then_some(first.target_color),
+        first_target_color: first.target_color,
+        first_tolerance: first.tolerance,
+        first_matched: first.matched,
+        second_matched_color: second.matched.then_some(second.target_color),
+        second_sampled_color: second.sampled_color,
+        second_target_color: second.target_color,
+        second_tolerance: second.tolerance,
+        second_matched: second.matched,
+        first_nearest_distance: first.distance,
+        second_nearest_distance: second.distance,
+        passed: first.matched && second.matched,
+    })
 }
 
 #[tauri::command]
@@ -7832,7 +10437,9 @@ pub fn special_ops_submit_calibration_selection(
                     account_id.as_deref(),
                 )?;
                 validate_calibration_selection(target_kind, &region)?;
-                if let Some(target_id) = business_ammo_target_id(&target_key) {
+                if target_key == BUSINESS_MARKET_PRODUCT_TARGET {
+                    apply_market_business_selection(&mut next, account_id.as_deref(), region)?;
+                } else if let Some(target_id) = business_ammo_target_id(&target_key) {
                     apply_ammo_business_selection(
                         &mut next,
                         account_id.as_deref(),
@@ -7966,6 +10573,69 @@ fn daily_exchange_at_ms(now_ms: i64, exchange_minute: u32) -> Option<i64> {
     Some(candidate)
 }
 
+fn limited_cycle_projections(
+    now_ms: i64,
+    timeline_end_ms: i64,
+) -> Vec<(limited_supply::LimitedSupplyCycle, i64)> {
+    let (day, minute) = local_day_and_minute(now_ms);
+    let Some(current) = limited_supply::LimitedSupplyCycle::for_day_and_minute(
+        &day,
+        u16::try_from(minute).unwrap_or(u16::MAX),
+    ) else {
+        return Vec::new();
+    };
+    let Some(today_noon) = daily_exchange_at_ms(now_ms, 12 * 60) else {
+        return Vec::new();
+    };
+    let mut scheduled_at_ms = if minute < 12 * 60 {
+        today_noon.saturating_sub(16 * 60 * 60_000)
+    } else if minute < 20 * 60 {
+        today_noon
+    } else {
+        today_noon.saturating_add(8 * 60 * 60_000)
+    };
+    let mut projections = vec![(current, scheduled_at_ms)];
+    loop {
+        let start_minute = local_day_and_minute(scheduled_at_ms).1;
+        let delta = if start_minute == 12 * 60 {
+            8 * 60 * 60_000
+        } else {
+            16 * 60 * 60_000
+        };
+        scheduled_at_ms = scheduled_at_ms.saturating_add(delta);
+        if scheduled_at_ms > timeline_end_ms {
+            break;
+        }
+        let (day, minute) = local_day_and_minute(scheduled_at_ms);
+        let Some(cycle) = limited_supply::LimitedSupplyCycle::for_day_and_minute(
+            &day,
+            u16::try_from(minute).unwrap_or(u16::MAX),
+        ) else {
+            break;
+        };
+        projections.push((cycle, scheduled_at_ms));
+    }
+    projections
+}
+
+fn market_start_projections(now_ms: i64, timeline_end_ms: i64) -> Vec<i64> {
+    let minute = local_day_and_minute(now_ms).1;
+    let Some(today_start) = daily_exchange_at_ms(now_ms, 2 * 60) else {
+        return Vec::new();
+    };
+    let mut scheduled_at_ms = if minute < 4 * 60 {
+        today_start
+    } else {
+        today_start.saturating_add(24 * 60 * 60_000)
+    };
+    let mut projections = Vec::new();
+    while scheduled_at_ms <= timeline_end_ms {
+        projections.push(scheduled_at_ms);
+        scheduled_at_ms = scheduled_at_ms.saturating_add(24 * 60 * 60_000);
+    }
+    projections
+}
+
 fn build_timeline_tasks(
     settings: &SpecialOpsSettings,
     now_ms: i64,
@@ -8010,7 +10680,10 @@ fn build_timeline_tasks(
                 .as_ref()
                 .filter(|failure| failure.station_kind.as_ref() == Some(&station.kind))
                 .cloned();
-            let scheduled_at_ms = if manual_failure.is_some() {
+            // Uncertain 台子在调度与任务栏双重过滤下会永久消失，人工判定就没了入口。
+            // 保留在任务栏（不进调度，因为 due 集合仍然跳过 Uncertain）才能人工恢复。
+            let station_uncertain = station.status == StationStatus::Uncertain;
+            let scheduled_at_ms = if manual_failure.is_some() || station_uncertain {
                 now_ms
             } else {
                 let Some(value) = station.finishes_at_ms else {
@@ -8019,9 +10692,8 @@ fn build_timeline_tasks(
                 value
             };
             if manual_failure.is_none()
-                && (station.status == StationStatus::Uncertain
-                    || station.status == StationStatus::Idle
-                    || scheduled_at_ms > timeline_end_ms)
+                && !station_uncertain
+                && (station.status == StationStatus::Idle || scheduled_at_ms > timeline_end_ms)
             {
                 continue;
             }
@@ -8049,6 +10721,11 @@ fn build_timeline_tasks(
                 profit_state: None,
                 may_execute_earlier: false,
                 manual_failure,
+                limited_cycle_id: None,
+                limited_outcome: None,
+                market_completed_count: None,
+                market_target_count: None,
+                market_status: None,
             };
             tasks.push((scheduled_at_ms, account.order, station_order, id, task));
         }
@@ -8080,6 +10757,11 @@ fn build_timeline_tasks(
                     profit_state: None,
                     may_execute_earlier: false,
                     manual_failure: Some(manual_failure),
+                    limited_cycle_id: None,
+                    limited_outcome: None,
+                    market_completed_count: None,
+                    market_target_count: None,
+                    market_status: None,
                 };
                 tasks.push((now_ms, account.order, 100 + target.order, id, task));
                 continue;
@@ -8093,6 +10775,18 @@ fn build_timeline_tasks(
                 {
                     continue;
                 }
+                let active_round_target = profit_snapshot.is_some_and(|snapshot| {
+                    snapshot
+                        .active_round_targets
+                        .iter()
+                        .any(|key| key.account_id == account.id && key.target_id == target.id)
+                });
+                let cutoff_target =
+                    cutoff_state_for_day(settings, &current_day).and_then(|state| {
+                        state.targets.iter().find(|candidate| {
+                            candidate.account_id == account.id && candidate.target_id == target.id
+                        })
+                    });
                 let (projected_at_ms, profit_state, may_execute_earlier) =
                     if !settings.profit_filter.enabled || day != current_day {
                         (scheduled_at_ms, None, false)
@@ -8102,19 +10796,43 @@ fn build_timeline_tasks(
                             Some(TimelineProfitState::WaitingExchange),
                             false,
                         )
-                    } else if cutoff_at_ms.is_some_and(|cutoff| now_ms >= cutoff) {
-                        (
-                            scheduled_at_ms,
-                            Some(TimelineProfitState::CutoffBypass),
-                            false,
-                        )
-                    } else if profit_snapshot.is_some_and(|snapshot| {
-                        snapshot
-                            .active_round_targets
-                            .iter()
-                            .any(|key| key.account_id == account.id && key.target_id == target.id)
-                    }) {
+                    } else if active_round_target {
                         (now_ms, Some(TimelineProfitState::ActiveRound), false)
+                    } else if cutoff_at_ms.is_some_and(|cutoff| now_ms >= cutoff) {
+                        match cutoff_target {
+                            Some(target_state)
+                                if target_state.decided_at_ms.is_some()
+                                    && target_state.skip_reason.is_none() =>
+                            {
+                                (now_ms, Some(TimelineProfitState::Qualified), false)
+                            }
+                            Some(target_state) if target_state.decided_at_ms.is_some() => (
+                                scheduled_at_ms,
+                                Some(TimelineProfitState::CutoffSkipped),
+                                false,
+                            ),
+                            Some(_) => {
+                                let phase = profit_snapshot.map(|snapshot| snapshot.phase);
+                                if phase
+                                    == Some(profit::runtime::ProfitRuntimePhase::CutoffQuerying)
+                                {
+                                    (now_ms, Some(TimelineProfitState::CutoffQuerying), false)
+                                } else {
+                                    (
+                                        profit_snapshot
+                                            .and_then(|snapshot| snapshot.next_query_at_ms)
+                                            .unwrap_or(now_ms),
+                                        Some(TimelineProfitState::WaitingCutoffRetry),
+                                        false,
+                                    )
+                                }
+                            }
+                            None => (
+                                scheduled_at_ms,
+                                Some(TimelineProfitState::CutoffSkipped),
+                                false,
+                            ),
+                        }
                     } else {
                         match target.profit_rule_id.as_deref() {
                             None => (
@@ -8139,6 +10857,9 @@ fn build_timeline_tasks(
                             ),
                         }
                     };
+                if profit_state == Some(TimelineProfitState::CutoffSkipped) {
+                    continue;
+                }
                 let id = format!("ammo:{day}:{}:{}", account.id, target.id);
                 let task = TimelineTask {
                     id: id.clone(),
@@ -8154,6 +10875,11 @@ fn build_timeline_tasks(
                     profit_state,
                     may_execute_earlier,
                     manual_failure: None,
+                    limited_cycle_id: None,
+                    limited_outcome: None,
+                    market_completed_count: None,
+                    market_target_count: None,
+                    market_status: None,
                 };
                 tasks.push((
                     projected_at_ms,
@@ -8162,6 +10888,99 @@ fn build_timeline_tasks(
                     id,
                     task,
                 ));
+            }
+        }
+
+        if settings.limited_supply.enabled {
+            for (cycle, scheduled_at_ms) in limited_cycle_projections(now_ms, timeline_end_ms) {
+                let is_current = scheduled_at_ms <= now_ms;
+                let state_matches =
+                    account.limited_supply.cycle_id.as_deref() == Some(cycle.id.as_str());
+                let outcome = if is_current && state_matches {
+                    account.limited_supply.outcome.clone()
+                } else {
+                    limited_supply::LimitedSupplyOutcome::Pending
+                };
+                let acknowledged =
+                    is_current && state_matches && account.limited_supply.acknowledged;
+                if outcome == limited_supply::LimitedSupplyOutcome::NoHighValue
+                    || (outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged)
+                {
+                    continue;
+                }
+                let id = format!("limited:{}:{}", cycle.id, account.id);
+                let task = TimelineTask {
+                    id: id.clone(),
+                    account_id: account.id.clone(),
+                    qq_account: account.qq_account.clone(),
+                    kind: TimelineTaskKind::LimitedSupplyCheck,
+                    station_kind: None,
+                    ammo_target_id: None,
+                    note: "限时商品检查".to_string(),
+                    scheduled_at_ms,
+                    overdue: scheduled_at_ms <= now_ms,
+                    account_status: account.status.clone(),
+                    profit_state: None,
+                    may_execute_earlier: false,
+                    manual_failure: None,
+                    limited_cycle_id: Some(cycle.id),
+                    limited_outcome: Some(outcome),
+                    market_completed_count: None,
+                    market_target_count: None,
+                    market_status: None,
+                };
+                tasks.push((scheduled_at_ms, account.order, 200, id, task));
+            }
+        }
+
+        if business.market.enabled {
+            for scheduled_at_ms in market_start_projections(now_ms, timeline_end_ms) {
+                let day = local_day_and_minute(scheduled_at_ms).0;
+                let is_current = scheduled_at_ms <= now_ms;
+                let state_matches = account.market.day.as_deref() == Some(day.as_str());
+                let status = if is_current && state_matches {
+                    account.market.status.clone()
+                } else {
+                    market_purchase::MarketTaskStatus::Pending
+                };
+                let completed_count = if is_current && state_matches {
+                    account.market.completed_count
+                } else {
+                    0
+                };
+                if matches!(
+                    status,
+                    market_purchase::MarketTaskStatus::Completed
+                        | market_purchase::MarketTaskStatus::WindowClosed
+                ) {
+                    continue;
+                }
+                let id = format!("market:{day}:{}", account.id);
+                let task = TimelineTask {
+                    id: id.clone(),
+                    account_id: account.id.clone(),
+                    qq_account: account.qq_account.clone(),
+                    kind: TimelineTaskKind::MarketPurchase,
+                    station_kind: None,
+                    ammo_target_id: None,
+                    note: if business.market.item_note.is_empty() {
+                        "交易行购买".to_string()
+                    } else {
+                        business.market.item_note.clone()
+                    },
+                    scheduled_at_ms,
+                    overdue: scheduled_at_ms <= now_ms,
+                    account_status: account.status.clone(),
+                    profit_state: None,
+                    may_execute_earlier: false,
+                    manual_failure: None,
+                    limited_cycle_id: None,
+                    limited_outcome: None,
+                    market_completed_count: Some(completed_count),
+                    market_target_count: Some(business.market.purchase_count),
+                    market_status: Some(status),
+                };
+                tasks.push((scheduled_at_ms, account.order, 300, id, task));
             }
         }
     }
@@ -8209,7 +11028,17 @@ pub(crate) fn build_schedule_with_profit_runtime(
     let today = local_day_and_minute(now_ms).0;
     let exchange_at_ms = exchange_minute.and_then(|minute| daily_exchange_at_ms(now_ms, minute));
     let mut due_accounts = Vec::new();
-    let mut next_wake_at_ms = None;
+    let mut next_wake_at_ms = timeline_tasks
+        .iter()
+        .filter(|task| {
+            task.scheduled_at_ms > now_ms
+                && matches!(
+                    task.kind,
+                    TimelineTaskKind::LimitedSupplyCheck | TimelineTaskKind::MarketPurchase
+                )
+        })
+        .map(|task| task.scheduled_at_ms)
+        .min();
     for account in accounts {
         if !account.enabled || !account.initialized || account.status != AccountStatus::Ready {
             continue;
@@ -8264,7 +11093,7 @@ pub(crate) fn build_schedule_with_profit_runtime(
             .ammo_targets
             .iter()
             .filter(|target| target.enabled)
-            .filter(|target| gate.allows(target.profit_rule_id.as_deref()))
+            .filter(|target| gate.allows(&account.id, &target.id, target.profit_rule_id.as_deref()))
             .filter(|target| {
                 account
                     .ammo_targets
@@ -8288,11 +11117,34 @@ pub(crate) fn build_schedule_with_profit_runtime(
             .map(|(_, id)| id)
             .collect::<Vec<_>>();
 
+        let (current_day, current_minute) = local_day_and_minute(now_ms);
+        let limited_supply_due = settings.limited_supply.enabled
+            && limited_supply::LimitedSupplyCycle::for_day_and_minute(
+                &current_day,
+                u16::try_from(current_minute).unwrap_or(u16::MAX),
+            )
+            .is_some_and(|cycle| {
+                account.limited_supply.cycle_id.as_deref() != Some(cycle.id.as_str())
+                    || account.limited_supply.outcome
+                        == limited_supply::LimitedSupplyOutcome::Pending
+            });
+        let market_purchase_due = business_config.market.enabled
+            && market_purchase::market_window_open(
+                u16::try_from(current_minute).unwrap_or(u16::MAX),
+            )
+            && (account.market.day.as_deref() != Some(current_day.as_str())
+                || (account.market.completed_count < business_config.market.purchase_count
+                    && matches!(
+                        account.market.status,
+                        market_purchase::MarketTaskStatus::Pending
+                            | market_purchase::MarketTaskStatus::Running
+                    )));
+
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
             if let Some(exchange_at) = exchange_at_ms.filter(|exchange_at| *exchange_at > now_ms) {
                 let has_pending_ammo = business_config.ammo_targets.iter().any(|target| {
                     target.enabled
-                        && gate.allows(target.profit_rule_id.as_deref())
+                        && gate.allows(&account.id, &target.id, target.profit_rule_id.as_deref())
                         && account
                             .ammo_targets
                             .iter()
@@ -8311,11 +11163,17 @@ pub(crate) fn build_schedule_with_profit_runtime(
                 }
             }
         }
-        if !station_kinds.is_empty() || !ammo_target_ids.is_empty() {
+        if !station_kinds.is_empty()
+            || !ammo_target_ids.is_empty()
+            || limited_supply_due
+            || market_purchase_due
+        {
             due_accounts.push(DueAccount {
                 account_id: account.id.clone(),
                 station_kinds,
                 ammo_target_ids,
+                limited_supply_due,
+                market_purchase_due,
             });
         }
     }
@@ -8567,6 +11425,8 @@ mod tests {
             ammo_targets: Vec::new(),
             last_failure: None,
             login_trial_signature: None,
+            limited_supply: Default::default(),
+            market: Default::default(),
         }
     }
 
@@ -10536,17 +13396,94 @@ mod tests {
         let after_cutoff = chrono::DateTime::parse_from_rfc3339("2026-07-30T18:00:00+08:00")
             .unwrap()
             .timestamp_millis();
-        let bypass = build_schedule_with_profit_runtime(
+        settings.profit_filter.cutoff_state = Some(ProfitCutoffState {
+            day: "2026-07-30".to_string(),
+            targets: vec![ProfitCutoffTarget {
+                account_id: "active".to_string(),
+                target_id: "alpha".to_string(),
+                rule_id: Some("rule-a".to_string()),
+                skip_reason: Some(ProfitCutoffSkipReason::BelowThreshold),
+                decided_at_ms: Some(after_cutoff),
+            }],
+        });
+        let skipped = build_schedule_with_profit_runtime(
             &settings,
             after_cutoff,
-            &AmmoProfitGate::CutoffBypass,
-            Some(&ProfitRuntimeSnapshot::default()),
+            &AmmoProfitGate::QualifiedTargets(std::collections::HashSet::new()),
+            Some(&ProfitRuntimeSnapshot {
+                phase: profit::runtime::ProfitRuntimePhase::CutoffComplete,
+                ..ProfitRuntimeSnapshot::default()
+            }),
+        );
+        assert!(skipped
+            .timeline_tasks
+            .iter()
+            .all(|task| task.profit_state != Some(TimelineProfitState::CutoffSkipped)));
+        assert!(skipped
+            .timeline_tasks
+            .iter()
+            .any(|task| task.scheduled_at_ms > after_cutoff));
+        assert!(skipped.due_accounts.is_empty());
+
+        settings
+            .profit_filter
+            .cutoff_state
+            .as_mut()
+            .unwrap()
+            .targets[0]
+            .skip_reason = None;
+        settings
+            .profit_filter
+            .cutoff_state
+            .as_mut()
+            .unwrap()
+            .targets[0]
+            .decided_at_ms = None;
+        let retry_at_ms = after_cutoff + profit::cutoff::FINAL_RETRY_DELAY_MS;
+        let retrying = build_schedule_with_profit_runtime(
+            &settings,
+            after_cutoff,
+            &AmmoProfitGate::QualifiedTargets(std::collections::HashSet::new()),
+            Some(&ProfitRuntimeSnapshot {
+                phase: profit::runtime::ProfitRuntimePhase::WaitingCutoffRetry,
+                next_query_at_ms: Some(retry_at_ms),
+                ..ProfitRuntimeSnapshot::default()
+            }),
         );
         assert_eq!(
-            bypass.timeline_tasks[0].profit_state,
-            Some(TimelineProfitState::CutoffBypass)
+            retrying.timeline_tasks[0].profit_state,
+            Some(TimelineProfitState::WaitingCutoffRetry)
         );
-        assert!(bypass.timeline_tasks[0].overdue);
+        assert_eq!(retrying.timeline_tasks[0].scheduled_at_ms, retry_at_ms);
+
+        settings
+            .profit_filter
+            .cutoff_state
+            .as_mut()
+            .unwrap()
+            .targets[0]
+            .decided_at_ms = Some(after_cutoff);
+        let qualified_after_cutoff = build_schedule_with_profit_runtime(
+            &settings,
+            after_cutoff,
+            &AmmoProfitGate::QualifiedTargets(std::collections::HashSet::from([(
+                "active".to_string(),
+                "alpha".to_string(),
+            )])),
+            Some(&ProfitRuntimeSnapshot {
+                phase: profit::runtime::ProfitRuntimePhase::CutoffComplete,
+                ..ProfitRuntimeSnapshot::default()
+            }),
+        );
+        assert_eq!(
+            qualified_after_cutoff.timeline_tasks[0].profit_state,
+            Some(TimelineProfitState::Qualified)
+        );
+        assert_eq!(
+            qualified_after_cutoff.timeline_tasks[0].scheduled_at_ms,
+            after_cutoff
+        );
+        assert_eq!(qualified_after_cutoff.due_accounts.len(), 1);
     }
 
     #[test]
@@ -10928,7 +13865,12 @@ mod tests {
 
     #[test]
     fn only_game_templates_require_game_test_context() {
-        for key in ["game.stationGrid", "craft.abort", "ammo.success"] {
+        for key in [
+            "game.stationGrid",
+            "craft.abort",
+            "ammo.success",
+            "market.entry",
+        ] {
             assert!(calibration_test_requires_game_context(key));
         }
         assert!(!calibration_test_requires_game_context("wegame.launch"));
@@ -11210,7 +14152,7 @@ mod tests {
                 target.key != "runtime.mouseParking"
                     && target.key != "game.specialOps"
                     && target.key != "ammo.supply"
-                    && target.key != "ammo.tactical"
+                    && target.key != "ammo.enterSupply"
                     && target.key != "ammo.seasonal"
                     && target.key != "craft.confirmPinned"
                     && target.key != "craft.returnToStationGrid"
@@ -11436,6 +14378,24 @@ mod tests {
             default_calibration_targets().len()
         );
         assert_eq!(normalized.active_calibration_id.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn military_supply_targets_replace_legacy_tactical_and_research_points() {
+        let keys = default_calibration_targets()
+            .into_iter()
+            .map(|target| target.key)
+            .collect::<std::collections::HashSet<_>>();
+
+        for key in [
+            "ammo.enterSupply",
+            "ammo.tacticalDepartment",
+            "ammo.researchDepartment",
+        ] {
+            assert!(keys.contains(key), "缺少新军需处校准目标 {key}");
+        }
+        assert!(!keys.contains("ammo.tactical"));
+        assert!(!keys.contains("limited.research"));
     }
 
     // 验证特勤处运行期不读取同步可见性，直接隐藏非主窗口和非操作提示窗。
@@ -11749,18 +14709,26 @@ mod tests {
     }
 
     #[test]
-    fn ammo_entry_normalization_removes_list_templates_and_uses_click_points() {
+    fn ammo_entry_normalization_uses_shared_points_and_department_templates() {
         let settings = normalize_settings(SpecialOpsSettings::default()).unwrap();
         let targets = &settings.calibration_environments[0].targets;
 
         assert!(targets
             .iter()
             .all(|target| !matches!(target.key.as_str(), "ammo.list" | "ammo.seasonalList")));
-        for key in ["ammo.supply", "ammo.tactical", "ammo.seasonal"] {
+        for key in ["ammo.supply", "ammo.enterSupply", "ammo.seasonal"] {
             let target = targets.iter().find(|target| target.key == key).unwrap();
             assert_eq!(target.kind, CalibrationTargetKind::ClickPoint);
             assert_eq!(target.recognition_method, None);
             assert_eq!(target.reference_image_path, None);
+        }
+        for key in ["ammo.tacticalDepartment", "ammo.researchDepartment"] {
+            let target = targets.iter().find(|target| target.key == key).unwrap();
+            assert_eq!(target.kind, CalibrationTargetKind::RecognitionRegion);
+            assert_eq!(
+                target.recognition_method,
+                Some(CalibrationRecognitionMethod::Template)
+            );
         }
     }
 
@@ -12574,8 +15542,11 @@ mod tests {
         let plan =
             round_planner::build_round_plan(&settings, 1_000, round_planner::RoundTrigger::Manual)
                 .unwrap();
-        assert_eq!(plan.accounts.len(), 1);
+        assert_eq!(plan.accounts.len(), 2);
+        assert_eq!(plan.accounts[0].scheduled_at_ms, 1_000);
         assert_eq!(plan.accounts[0].stations.len(), 3);
+        assert_eq!(plan.accounts[1].scheduled_at_ms, 9_601_000);
+        assert_eq!(plan.accounts[1].stations, [StationKind::TechnicalCenter]);
     }
 
     #[test]
@@ -12693,6 +15664,7 @@ mod tests {
                 remaining_minutes: None,
             },
             1_000,
+            None,
         )
         .unwrap();
         assert_eq!(due, (None, Some(1_000), StationStatus::Ready));
@@ -12704,6 +15676,7 @@ mod tests {
                 remaining_minutes: None,
             },
             1_000,
+            None,
         )
         .unwrap();
         assert_eq!(idle, (None, None, StationStatus::Idle));
@@ -12711,7 +15684,7 @@ mod tests {
 
     #[test]
     fn single_station_correction_validates_remaining_minutes_boundaries() {
-        for remaining_minutes in [None, Some(0), Some(10_081)] {
+        for remaining_minutes in [Some(0), Some(10_081)] {
             let error = resolve_station_correction(
                 &StationCorrectionInput {
                     kind: StationKind::Workbench,
@@ -12719,6 +15692,7 @@ mod tests {
                     remaining_minutes,
                 },
                 1_000,
+                None,
             )
             .unwrap_err();
             assert_eq!(error, "正在制作的剩余时间必须为 1 分钟到 168 小时");
@@ -12731,8 +15705,40 @@ mod tests {
                     remaining_minutes: Some(remaining_minutes),
                 },
                 1_000,
+                None,
             )
             .is_ok());
+        }
+    }
+
+    #[test]
+    fn crafting_correction_inherits_stored_remaining_time_when_unspecified() {
+        let correction = StationCorrectionInput {
+            kind: StationKind::Workbench,
+            state: ManualStationState::Crafting,
+            remaining_minutes: None,
+        };
+
+        // 有存量完成时间 → 继承，剩余时间保持异常前的进度。
+        let inherited = resolve_station_correction(&correction, 1_000, Some(9_000)).unwrap();
+        assert_eq!(inherited, (None, Some(9_000), StationStatus::Crafting));
+
+        // 显式剩余时间优先于存量值。
+        let explicit = resolve_station_correction(
+            &StationCorrectionInput {
+                remaining_minutes: Some(2),
+                ..correction.clone()
+            },
+            1_000,
+            Some(9_000),
+        )
+        .unwrap();
+        assert_eq!(explicit, (None, Some(121_000), StationStatus::Crafting));
+
+        // 存量完成时间已过或缺失 → 无可继承值，要求填写。
+        for stored in [None, Some(1_000), Some(500)] {
+            let error = resolve_station_correction(&correction, 1_000, stored).unwrap_err();
+            assert_eq!(error, "缺少可继承的剩余时间，请填写 1 分钟到 168 小时");
         }
     }
 
@@ -12772,6 +15778,149 @@ mod tests {
             .unwrap_err();
             assert_eq!(error, "需要人工登录或登录失败账号不能通过单项校正恢复");
         }
+    }
+
+    #[test]
+    fn account_manual_check_only_restores_account_level_failures() {
+        for status in [
+            AccountStatus::NeedsManualLogin,
+            AccountStatus::LoginFailed,
+            AccountStatus::ManualCheckRequired,
+        ] {
+            let mut settings = SpecialOpsSettings::default();
+            let mut selected = account(
+                "selected",
+                status,
+                vec![station(StationKind::Workbench, 9_000)],
+            );
+            selected.last_failure = Some(AccountFailure {
+                step: "navigation.WaitStationGrid".to_string(),
+                message: "步骤超时".to_string(),
+                at_ms: 1,
+                station_kind: None,
+                ammo_target_id: None,
+            });
+            let stations_before = selected.stations.clone();
+            settings.accounts.push(selected);
+
+            apply_account_manual_check(&mut settings, "selected", 1_000).unwrap();
+
+            assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+            assert_eq!(settings.accounts[0].stations, stations_before);
+            assert_eq!(settings.accounts[0].last_failure, None);
+        }
+
+        let mut settings = SpecialOpsSettings::default();
+        settings
+            .accounts
+            .push(account("selected", AccountStatus::Uncertain, Vec::new()));
+        assert!(apply_account_manual_check(&mut settings, "selected", 1_000).is_err());
+    }
+
+    #[test]
+    fn account_manual_check_restores_uncertain_stations_from_stored_timing() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut selected = account(
+            "selected",
+            AccountStatus::ManualCheckRequired,
+            vec![
+                station(StationKind::Workbench, 9_000),
+                station(StationKind::Pharmacy, 500),
+                station(StationKind::ArmorBench, 9_000),
+            ],
+        );
+        selected.stations[0].status = StationStatus::Uncertain;
+        selected.stations[1].status = StationStatus::Uncertain;
+        selected.stations[2].status = StationStatus::Uncertain;
+        selected.stations[2].started_at_ms = None;
+        selected.stations[2].finishes_at_ms = None;
+        settings.accounts.push(selected);
+
+        apply_account_manual_check(&mut settings, "selected", 1_000).unwrap();
+
+        let stations = &settings.accounts[0].stations;
+        // 完成时间还在未来 → 继续制作，剩余时间沿用存量 finishes_at_ms。
+        assert_eq!(stations[0].status, StationStatus::Crafting);
+        assert_eq!(stations[0].finishes_at_ms, Some(9_000));
+        // 完成时间已过 → 待收取。
+        assert_eq!(stations[1].status, StationStatus::Ready);
+        // 无计时 → 空闲。
+        assert_eq!(stations[2].status, StationStatus::Idle);
+    }
+
+    #[test]
+    fn restore_account_state_clears_all_manual_blockers() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut selected = account(
+            "selected",
+            AccountStatus::NeedsManualLogin,
+            vec![station(StationKind::Workbench, 9_000)],
+        );
+        selected.stations[0].status = StationStatus::Uncertain;
+        selected.last_failure = Some(AccountFailure {
+            step: "login.WaitLobby".to_string(),
+            message: "步骤超时".to_string(),
+            at_ms: 1,
+            station_kind: None,
+            ammo_target_id: None,
+        });
+        selected.ammo_targets = vec![AmmoTarget {
+            id: "ammo-a".to_string(),
+            name: "ammo-a".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: Some("2026-08-09".to_string()),
+            retry_day: Some("2026-08-09".to_string()),
+            retry_count: 2,
+            last_failure: Some(AccountFailure {
+                step: "ammo.Confirm".to_string(),
+                message: "确认异常".to_string(),
+                at_ms: 2,
+                station_kind: None,
+                ammo_target_id: Some("ammo-a".to_string()),
+            }),
+        }];
+        selected.limited_supply = LimitedSupplyAccountState {
+            outcome: limited_supply::LimitedSupplyOutcome::Failed,
+            ..Default::default()
+        };
+        settings.accounts.push(selected);
+        settings
+            .accounts
+            .push(account("other", AccountStatus::Ready, Vec::new()));
+
+        let restored =
+            restore_account_state(&mut settings, Some("selected"), 1_000, "2026-08-09").unwrap();
+
+        assert_eq!(restored, 1);
+        let selected = &settings.accounts[0];
+        assert_eq!(selected.status, AccountStatus::Ready);
+        assert_eq!(selected.last_failure, None);
+        assert_eq!(selected.stations[0].status, StationStatus::Crafting);
+        assert_eq!(selected.stations[0].finishes_at_ms, Some(9_000));
+        // 失败目标解冻回未兑换，但当天成功记录必须保留，否则会二次兑换。
+        assert_eq!(
+            selected.ammo_targets[0].last_success_day.as_deref(),
+            Some("2026-08-09")
+        );
+        assert_eq!(
+            selected.ammo_targets[0].retry_day.as_deref(),
+            Some("2026-08-09")
+        );
+        assert_eq!(selected.ammo_targets[0].retry_count, 0);
+        assert_eq!(selected.ammo_targets[0].last_failure, None);
+        assert_eq!(
+            selected.limited_supply.outcome,
+            limited_supply::LimitedSupplyOutcome::Pending
+        );
+
+        // 无异常时报错，避免空转产生一次 settings revision。
+        assert!(restore_account_state(&mut settings, Some("other"), 1_000, "2026-08-09").is_err());
+        assert!(
+            restore_account_state(&mut settings, Some("missing"), 1_000, "2026-08-09").is_err()
+        );
     }
 
     fn settings_with_two_failed_ammo_targets() -> SpecialOpsSettings {
@@ -13024,6 +16173,57 @@ mod tests {
     }
 
     #[test]
+    fn cutoff_state_freezes_initial_targets_and_qualifies_by_account_and_target() {
+        let day = "2026-08-06";
+        let mut settings = SpecialOpsSettings::default();
+        settings.profit_filter.enabled = true;
+        settings.profit_filter.rules = vec![profit::model::AmmoProfitRule {
+            id: "rule-a".to_string(),
+            display_name: "规则 A".to_string(),
+            kkrb_match_name: "KKRB A".to_string(),
+            moligod_match_name: None,
+            minimum_profit: 1,
+        }];
+        settings.default_business_config.ammo_targets = vec![AmmoBusinessTarget {
+            profit_rule_id: Some("rule-a".to_string()),
+            ..ammo_business_target("alpha", false, 0)
+        }];
+        let mut ready = account("ready", AccountStatus::Ready, Vec::new());
+        ready.ammo_targets = vec![ammo_runtime_target("alpha")];
+        settings.accounts = vec![ready];
+
+        let mut cutoff = build_profit_cutoff_state(&settings, day, 1_000);
+        cutoff.targets[0].decided_at_ms = Some(2_000);
+        settings.profit_filter.cutoff_state = Some(cutoff);
+
+        settings
+            .default_business_config
+            .ammo_targets
+            .push(AmmoBusinessTarget {
+                profit_rule_id: Some("rule-a".to_string()),
+                ..ammo_business_target("beta", false, 1)
+            });
+        settings.accounts[0]
+            .ammo_targets
+            .push(ammo_runtime_target("beta"));
+
+        assert_eq!(
+            settings
+                .profit_filter
+                .cutoff_state
+                .as_ref()
+                .unwrap()
+                .targets
+                .len(),
+            1
+        );
+        assert_eq!(
+            cutoff_qualified_targets(&settings, day),
+            std::collections::HashSet::from([("ready".to_string(), "alpha".to_string())])
+        );
+    }
+
+    #[test]
     fn pending_profit_rules_only_include_ready_configured_retryable_targets_once() {
         let day = "2026-08-02";
         let mut settings = SpecialOpsSettings::default();
@@ -13159,6 +16359,7 @@ mod tests {
             stations: fixture.settings.default_business_config.stations.clone(),
             recipe_points: Vec::new(),
             ammo_targets: vec![ammo_business_target("independent", true, 0)],
+            market: Default::default(),
         });
         fixture.settings.accounts[0].ammo_targets = vec![ammo_runtime_target("default")];
 
@@ -13222,11 +16423,14 @@ mod tests {
         assert_eq!(frozen.ammo_targets[0].retry_count, 1);
         assert!(!frozen.targets.contains_key("ammo.list"));
         assert!(!frozen.targets.contains_key("ammo.seasonalList"));
-        assert!(frozen.targets["ammo.supply"].template.is_none());
-        assert!(frozen.targets["ammo.tactical"].template.is_none());
+        assert!(frozen.targets["ammo.tacticalDepartment"].template.is_some());
         assert!(frozen.targets["ammo.seasonal"].template.is_none());
-        assert_eq!(frozen.entry_delays.supply_ms, 3_000);
-        assert_eq!(frozen.entry_delays.tactical_ms, 3_000);
+        let entry = freeze_military_supply_entry(&fixture.settings).unwrap();
+        assert!(entry.targets["ammo.department"].template.is_some());
+        assert!(entry.targets["ammo.supply"].template.is_none());
+        assert!(entry.targets["ammo.enterSupply"].template.is_none());
+        assert_eq!(entry.config.supply_delay.as_millis(), 3_000);
+        assert_eq!(entry.config.enter_supply_delay.as_millis(), 3_000);
     }
 
     #[test]
@@ -13307,7 +16511,7 @@ mod tests {
         let task = &frozen.plan.accounts[0];
         let account = frozen
             .accounts
-            .get(&task.account_id)
+            .get(&(task.account_id.clone(), task.scheduled_at_ms))
             .unwrap()
             .as_ref()
             .unwrap();
@@ -13323,6 +16527,104 @@ mod tests {
                 .map(|item| item.id.as_str())
                 .collect::<Vec<_>>(),
             ["pending"]
+        );
+    }
+
+    #[test]
+    fn round_freezes_each_same_account_time_bucket_without_overwrite() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.paused = false;
+        fixture.settings.accounts[0].stations = vec![
+            station(StationKind::TechnicalCenter, 1_000),
+            station(StationKind::Workbench, 5_000),
+        ];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+
+        let frozen = freeze_round_run(
+            &fixture.settings,
+            1_000,
+            round_planner::RoundTrigger::Scheduled,
+            AmmoProfitGate::Disabled,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            frozen
+                .plan
+                .accounts
+                .iter()
+                .map(|task| (task.scheduled_at_ms, task.stations.clone()))
+                .collect::<Vec<_>>(),
+            [
+                (1_000, vec![StationKind::TechnicalCenter]),
+                (5_000, vec![StationKind::Workbench]),
+            ]
+        );
+        for task in &frozen.plan.accounts {
+            let account = frozen
+                .accounts
+                .get(&(task.account_id.clone(), task.scheduled_at_ms))
+                .unwrap()
+                .as_ref()
+                .unwrap();
+            assert_eq!(
+                account
+                    .craft
+                    .iter()
+                    .map(|item| item.task.station.clone())
+                    .collect::<Vec<_>>(),
+                task.stations
+            );
+        }
+    }
+
+    #[test]
+    fn round_freezes_all_overdue_stations_in_one_account_bucket() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.paused = false;
+        // 两个制作台都已到期但完成时间不同：桶的 scheduled_at_ms 取最早值 1_000，
+        // 直接拿它当 frozen_now 过滤会丢掉 3_000 那台，退化成一台一轮。
+        fixture.settings.accounts[0].stations = vec![
+            station(StationKind::TechnicalCenter, 1_000),
+            station(StationKind::Workbench, 3_000),
+        ];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+
+        let frozen = freeze_round_run(
+            &fixture.settings,
+            5_000,
+            round_planner::RoundTrigger::Scheduled,
+            AmmoProfitGate::Disabled,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            frozen
+                .plan
+                .accounts
+                .iter()
+                .map(|task| (task.scheduled_at_ms, task.stations.clone()))
+                .collect::<Vec<_>>(),
+            [(
+                1_000,
+                vec![StationKind::TechnicalCenter, StationKind::Workbench]
+            )]
+        );
+        let account = frozen
+            .accounts
+            .get(&("selected".to_string(), 1_000))
+            .unwrap()
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            account
+                .craft
+                .iter()
+                .map(|item| item.task.station.clone())
+                .collect::<Vec<_>>(),
+            vec![StationKind::TechnicalCenter, StationKind::Workbench]
         );
     }
 
@@ -13379,6 +16681,30 @@ mod tests {
         assert_eq!(account.status, AccountStatus::Ready);
         assert!(account.ammo_targets[0].last_failure.is_some());
         assert!(account.ammo_targets[1].last_failure.is_none());
+    }
+
+    #[test]
+    fn round_ammo_isolation_marks_account_isolated() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.accounts[0].ammo_targets = vec![AmmoTarget {
+            id: "ammo-a".to_string(),
+            name: "子弹 A".to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: None,
+            retry_count: 0,
+            last_failure: None,
+        }];
+        let error =
+            round_runner::AccountRunError::account_ammo("ammo-a", "ammo.isolated", "仓库空间不足");
+
+        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+
+        assert_eq!(settings.accounts[0].status, AccountStatus::Isolated);
+        assert!(settings.accounts[0].ammo_targets[0].last_failure.is_some());
     }
 
     #[test]
@@ -13450,6 +16776,56 @@ mod tests {
     }
 
     #[test]
+    fn round_ammo_department_timeout_is_account_scoped_for_retry() {
+        let error = map_round_ammo_stop(ammo_runtime::AmmoRunStop::SystemFailure {
+            step: "ammo.department".to_string(),
+            message: "模板识别超时".to_string(),
+        })
+        .unwrap_err();
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
+        assert_eq!(error.step, "ammo.department");
+    }
+
+    #[test]
+    fn military_supply_target_error_keeps_target_classification() {
+        let error = map_military_supply_input_error(
+            ammo_runtime::AmmoDriverError::Target("模板识别超时".to_string()),
+            "ammo.department",
+        );
+
+        assert_eq!(
+            error,
+            military_supply_runtime::MilitarySupplyEntryError::Target {
+                step: "ammo.department".to_string(),
+                message: "模板识别超时".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn round_military_supply_target_error_becomes_navigation_timeout() {
+        let error = map_round_military_supply_entry_error(
+            military_supply_runtime::MilitarySupplyEntryError::Target {
+                step: "ammo.department".to_string(),
+                message: "模板识别超时".to_string(),
+            },
+        );
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
+        assert_eq!(error.step, "ammo.department");
+        assert_eq!(error.message, "模板识别超时");
+    }
+
+    #[test]
     fn round_navigation_timeout_is_account_scoped_without_station() {
         let error = map_round_navigation_result(game_navigation::GameNavigationResult::TimedOut {
             failed_step: game_navigation::GameNavigationStep::WaitStationGrid,
@@ -13463,7 +16839,10 @@ mod tests {
         let mut settings = LoginFixture::complete().settings;
         let before = settings.accounts[0].stations.clone();
         apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
-        assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
+        assert_eq!(
+            settings.accounts[0].status,
+            AccountStatus::ManualCheckRequired
+        );
         assert_eq!(settings.accounts[0].stations, before);
     }
 
@@ -13502,12 +16881,37 @@ mod tests {
     }
 
     #[test]
-    fn round_login_form_failure_stays_account_failure() {
-        let error =
-            map_round_login_failure(login_flow::LoginStep::WaitGameEntry, "登录后未出现游戏入口");
+    fn round_login_game_start_failure_is_navigation_timeout() {
+        for step in [
+            login_flow::LoginStep::WaitGameEntry,
+            login_flow::LoginStep::OpenGameEntry,
+            login_flow::LoginStep::WaitLaunchButton,
+            login_flow::LoginStep::LaunchGame,
+            login_flow::LoginStep::WaitGameWindow,
+        ] {
+            let error = map_round_login_failure(step, "登录后未找到游戏入口");
 
-        assert_eq!(error.scope, round_runner::ErrorScope::Account);
-        assert_eq!(error.step, "login.failed");
+            assert_eq!(error.scope, round_runner::ErrorScope::Account);
+            assert_eq!(
+                error.kind,
+                round_runner::AccountRunErrorKind::NavigationTimedOut
+            );
+            assert_eq!(error.step, format!("login.{step:?}"));
+        }
+    }
+
+    #[test]
+    fn round_login_account_steps_stay_regular_account_failure() {
+        for step in [
+            login_flow::LoginStep::WaitLoginChoice,
+            login_flow::LoginStep::SubmitLogin,
+        ] {
+            let error = map_round_login_failure(step, "登录步骤失败");
+
+            assert_eq!(error.scope, round_runner::ErrorScope::Account);
+            assert_eq!(error.kind, round_runner::AccountRunErrorKind::Regular);
+            assert_eq!(error.step, "login.failed");
+        }
     }
 
     #[test]
@@ -13564,7 +16968,7 @@ mod tests {
             200,
         )
         .unwrap();
-        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Isolated);
         assert_eq!(
             settings.accounts[0].last_failure.as_ref().unwrap().message,
             "仓库空间不足"
@@ -13721,5 +17125,319 @@ mod tests {
             normalize_settings(settings).unwrap_err(),
             "子弹失败记录与目标 ID 不一致"
         );
+    }
+
+    #[test]
+    fn legacy_settings_gain_disabled_limited_and_market_features() {
+        let mut value = serde_json::to_value(SpecialOpsSettings::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("limitedSupply");
+        object.remove("marketPurchase");
+
+        let normalized = normalize_settings(serde_json::from_value(value).unwrap()).unwrap();
+
+        assert!(!normalized.limited_supply.enabled);
+        assert!(!normalized.market_purchase.enabled);
+        assert_eq!(normalized.default_business_config.market.max_price, 1);
+        assert_eq!(normalized.market_purchase.purchase_count, 1);
+    }
+
+    #[test]
+    fn legacy_market_purchase_fields_migrate_to_default_business_config() {
+        let mut value = serde_json::to_value(SpecialOpsSettings::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object["marketPurchase"] = serde_json::json!({
+            "enabled": true,
+            "entryDelayMs": 3000,
+            "purchaseCount": 7,
+            "itemNote": "旧交易行目标"
+        });
+        let market = object["defaultBusinessConfig"]["market"]
+            .as_object_mut()
+            .unwrap();
+        market.remove("schemaVersion");
+        market.remove("enabled");
+        market.remove("purchaseCount");
+        market.remove("itemNote");
+
+        let normalized = normalize_settings(serde_json::from_value(value).unwrap()).unwrap();
+
+        assert!(normalized.default_business_config.market.enabled);
+        assert_eq!(normalized.default_business_config.market.purchase_count, 7);
+        assert_eq!(
+            normalized.default_business_config.market.item_note,
+            "旧交易行目标"
+        );
+        assert_eq!(normalized.market_purchase.entry_delay_ms, 3000);
+    }
+
+    #[test]
+    fn explicit_default_market_business_config_wins_over_legacy_values() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.default_business_config.market.enabled = true;
+        settings.default_business_config.market.purchase_count = 2;
+        settings.market_purchase.enabled = false;
+        settings.market_purchase.purchase_count = 9;
+
+        let normalized = normalize_settings(settings).unwrap();
+
+        assert!(normalized.default_business_config.market.enabled);
+        assert_eq!(normalized.default_business_config.market.purchase_count, 2);
+    }
+
+    #[test]
+    fn legacy_independent_market_config_inherits_migrated_business_fields() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.market_purchase.enabled = true;
+        settings.market_purchase.purchase_count = 3;
+        settings.market_purchase.item_note = "默认旧目标".to_string();
+        settings.accounts[0].independent_settings_enabled = true;
+        settings.accounts[0].independent_business_config = Some(BusinessConfig::default());
+        settings.accounts[0]
+            .independent_business_config
+            .as_mut()
+            .unwrap()
+            .market
+            .schema_version = 0;
+
+        let normalized = normalize_settings(settings).unwrap();
+        let independent = normalized.accounts[0]
+            .independent_business_config
+            .as_ref()
+            .unwrap();
+
+        assert!(independent.market.enabled);
+        assert_eq!(independent.market.purchase_count, 3);
+        assert_eq!(independent.market.item_note, "默认旧目标");
+    }
+
+    #[test]
+    fn default_calibration_contains_limited_and_market_targets() {
+        let targets = default_calibration_targets();
+        let keys = targets
+            .iter()
+            .map(|target| target.key.clone())
+            .collect::<std::collections::HashSet<_>>();
+
+        for key in [
+            "ammo.researchDepartment",
+            "limited.ready",
+            "limited.color.1",
+            "limited.color.9",
+            "market.entry",
+            "market.product",
+            "market.price",
+            "market.return",
+            "market.buy",
+            "market.confirm",
+        ] {
+            assert!(keys.contains(key), "缺少校准目标 {key}");
+        }
+        assert_eq!(
+            targets
+                .iter()
+                .find(|target| target.key == "market.entry")
+                .map(|target| target.kind.clone()),
+            Some(CalibrationTargetKind::RecognitionRegion)
+        );
+        assert_eq!(
+            targets
+                .iter()
+                .find(|target| target.key == "market.confirm")
+                .map(|target| target.kind.clone()),
+            Some(CalibrationTargetKind::ClickPoint)
+        );
+    }
+
+    #[test]
+    fn market_trial_freezes_entry_template_for_recognition() {
+        let mut fixture = LoginFixture::complete();
+        fixture
+            .settings
+            .default_business_config
+            .market
+            .product_point = Some(CalibrationRect {
+            x: 50,
+            y: 60,
+            width: 1,
+            height: 1,
+        });
+
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), b"market.entry").unwrap();
+        let entry = calibration_target_mut(&mut fixture.settings, "market.entry");
+        entry.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+        });
+        entry.reference_image_path = Some(reference.path().display().to_string());
+        entry.verified_signature = Some(calibration_signature(entry).unwrap());
+        entry.verified_at_ms = Some(1);
+        fixture._reference_files.push(reference);
+
+        for key in [
+            "market.price",
+            "market.return",
+            "market.buy",
+            "market.confirm",
+        ] {
+            calibration_target_mut(&mut fixture.settings, key).rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 30,
+                height: 40,
+            });
+        }
+
+        let frozen = freeze_market_run(&fixture.settings, "selected", "2026-08-09").unwrap();
+        assert!(frozen.targets["market.entry"].template.is_some());
+    }
+
+    #[test]
+    fn account_market_selection_only_updates_selected_business_config() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.accounts[0].independent_settings_enabled = true;
+        settings.accounts[0].independent_business_config =
+            Some(settings.default_business_config.clone());
+        let global_point = CalibrationRect {
+            x: 1,
+            y: 2,
+            width: 1,
+            height: 1,
+        };
+        let account_point = CalibrationRect {
+            x: 3,
+            y: 4,
+            width: 1,
+            height: 1,
+        };
+
+        apply_market_business_selection(&mut settings, None, global_point.clone()).unwrap();
+        apply_market_business_selection(&mut settings, Some("selected"), account_point.clone())
+            .unwrap();
+
+        assert_eq!(
+            settings.default_business_config.market.product_point,
+            Some(global_point)
+        );
+        assert_eq!(
+            settings.accounts[0]
+                .independent_business_config
+                .as_ref()
+                .unwrap()
+                .market
+                .product_point,
+            Some(account_point)
+        );
+    }
+
+    fn shanghai_test_ms(value: &str) -> i64 {
+        let offset = FixedOffset::east_opt(8 * 60 * 60).unwrap();
+        chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M")
+            .unwrap()
+            .and_local_timezone(offset)
+            .single()
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    #[test]
+    fn schedule_projects_current_limited_cycle_and_market_window() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.limited_supply.enabled = true;
+        settings.default_business_config.market.enabled = true;
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+
+        let snapshot = build_schedule(&settings, now_ms);
+
+        assert!(snapshot
+            .timeline_tasks
+            .iter()
+            .any(|task| task.kind == TimelineTaskKind::LimitedSupplyCheck
+                && task.limited_cycle_id.as_deref() == Some("2026-08-07T20:00")));
+        assert!(snapshot
+            .timeline_tasks
+            .iter()
+            .any(|task| task.kind == TimelineTaskKind::MarketPurchase
+                && task.scheduled_at_ms == shanghai_test_ms("2026-08-08 02:00")));
+        assert!(snapshot.due_accounts.iter().any(|due| {
+            due.account_id == "selected" && due.limited_supply_due && due.market_purchase_due
+        }));
+    }
+
+    #[test]
+    fn schedule_uses_independent_market_business_config() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.default_business_config.market.enabled = false;
+        settings.accounts[0].independent_settings_enabled = true;
+        let mut independent = settings.default_business_config.clone();
+        independent.market.enabled = true;
+        independent.market.purchase_count = 4;
+        independent.market.item_note = "账号专用交易行目标".to_string();
+        settings.accounts[0].independent_business_config = Some(independent);
+
+        let snapshot = build_schedule(&settings, shanghai_test_ms("2026-08-08 02:30"));
+        let task = snapshot
+            .timeline_tasks
+            .iter()
+            .find(|task| task.kind == TimelineTaskKind::MarketPurchase)
+            .unwrap();
+
+        assert_eq!(task.account_id, "selected");
+        assert_eq!(task.note, "账号专用交易行目标");
+        assert_eq!(task.market_target_count, Some(4));
+        assert!(snapshot
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.market_purchase_due));
+    }
+
+    #[test]
+    fn new_limited_cycle_discards_old_high_value_reminder() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.limited_supply.enabled = true;
+        settings.accounts[0].limited_supply = LimitedSupplyAccountState {
+            cycle_id: Some("2026-08-08T12:00".to_string()),
+            outcome: limited_supply::LimitedSupplyOutcome::HighValue,
+            checked_at_ms: Some(shanghai_test_ms("2026-08-08 12:01")),
+            matched_region: Some(3),
+            matched_color: Some([1, 2, 3]),
+            acknowledged: false,
+            last_error: None,
+        };
+
+        let snapshot = build_schedule(&settings, shanghai_test_ms("2026-08-08 20:00"));
+
+        assert!(!snapshot
+            .timeline_tasks
+            .iter()
+            .any(|task| { task.limited_cycle_id.as_deref() == Some("2026-08-08T12:00") }));
+        assert!(snapshot.timeline_tasks.iter().any(|task| {
+            task.limited_cycle_id.as_deref() == Some("2026-08-08T20:00") && task.overdue
+        }));
+    }
+
+    #[test]
+    fn non_ready_new_tasks_project_but_do_not_become_due() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.limited_supply.enabled = true;
+        settings.default_business_config.market.enabled = true;
+        settings.accounts[0].status = AccountStatus::ManualCheckRequired;
+
+        let snapshot = build_schedule(&settings, shanghai_test_ms("2026-08-08 02:30"));
+
+        assert!(snapshot.timeline_tasks.iter().any(|task| {
+            matches!(
+                task.kind,
+                TimelineTaskKind::LimitedSupplyCheck | TimelineTaskKind::MarketPurchase
+            )
+        }));
+        assert!(snapshot.due_accounts.is_empty());
     }
 }

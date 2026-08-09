@@ -146,7 +146,9 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 特勤处任务级人工判定
 
-`AccountFailure.stationKind` / `ammoTargetId` 互斥定位失败任务，`AmmoTarget.lastFailure` 是子弹目标人工冻结的权威状态。制作异常继续阻断账号；子弹补齐、购买、确认或完成异常只冻结当前目标，账号保持 `Ready`。24 小时时间轴通过 `TimelineTask.manualFailure` 提供单项判定；`special_ops_confirm_station_state` / `special_ops_confirm_ammo_state` 只改对应任务，账号页 `special_ops_confirm_account_station_states` 继续原子覆盖四制作台和全部启用子弹。旧版无定位失败不得按错误文案推断目标。
+`AccountFailure.stationKind` / `ammoTargetId` 互斥定位失败任务，`AmmoTarget.lastFailure` 是子弹目标人工冻结的权威状态。制作异常继续阻断账号；子弹补齐、购买、确认或完成异常只冻结当前目标，账号保持 `Ready`。24 小时时间轴提供单项判定；`special_ops_confirm_station_state` / `special_ops_confirm_ammo_state` 只改对应任务，账号页 `special_ops_confirm_account_station_states` 继续原子覆盖四制作台和全部启用子弹。旧版无定位失败不得按错误文案推断目标。
+
+单项判定入口不能只看 `TimelineTask.manualFailure`：`NavigationTimedOut` 只写 `ManualCheckRequired` 且两个定位字段均为空，制作台 `Uncertain` 或账号 `ManualCheckRequired` 也必须出现入口，只有 `NeedsManualLogin` / `LoginFailed` 退回账号页（前端 `timelineTaskAllowsInlineCorrection` 与后端 `account_blocks_task_correction` 同步）。选“正在制作”时剩余时间预填存量计时，留空或 0 表示继承 `finishesAtMs`，后端无可继承值才拒绝。任何清账号状态的路径都必须同时还原 `Uncertain` 制作台，否则它在调度与任务栏双重过滤下永久消失。`special_ops_restore_account_state` 一键恢复单账号或全部账号，但绝不清 `lastSuccessDay`，避免半程失败账号二次兑换。
 
 ### Overlay 窗口系统
 

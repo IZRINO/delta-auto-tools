@@ -1,12 +1,14 @@
 import {describe, expect, it, vi} from "vitest";
 
 import {
+    accountRestorable,
     applySpecialOpsBootstrapUpdate,
     applyExecutableSelection,
     buildInlineStationCorrection,
     buildTimelineHourSlots,
     changeAmmoTargetSeasonal,
     createInlineStationCorrectionDraft,
+    createStationRemainingTimeDraft,
     eligibleLoginTrialAccounts,
     formatCalibrationTemplateTestResult,
     groupTimelineTasks,
@@ -15,17 +17,39 @@ import {
     moveAmmoTargetWithinGroup,
     parseNavigationDelayMs,
     insertNormalAmmoTarget,
+    limitedColorToHex,
+    parseLimitedColorHex,
     specialOpsErrorAfterUpdate,
     persistSpecialOpsSaveRequest,
     timelineDelayMinutes,
+    timelineTaskAllowsInlineCorrection,
+    timelineTaskLabel,
 } from "@/components/app/special-ops-utils";
 import type {
+    AccountFailure,
     AccountPlan,
     AmmoBusinessTarget,
+    AmmoTarget,
     LoginRunSnapshot,
     SpecialOpsBootstrap,
     SpecialOpsSettings,
+    StationPlan,
+    TimelineTask,
 } from "@/components/app/special-ops-types";
+
+describe("限时商品颜色转换", () => {
+    it("把 RGB 转成六位小写 hex", () => {
+        expect(limitedColorToHex([0, 15, 255])).toBe("#000fff");
+        expect(limitedColorToHex([255, 255, 255])).toBe("#ffffff");
+    });
+
+    it("只接受六位 hex 并返回 RGB", () => {
+        expect(parseLimitedColorHex("#00Ff80")).toEqual([0, 255, 128]);
+        expect(parseLimitedColorHex("00ff80")).toEqual([0, 255, 128]);
+        expect(parseLimitedColorHex("#fff")).toBeNull();
+        expect(parseLimitedColorHex("#gg0000")).toBeNull();
+    });
+});
 
 describe("createInlineStationCorrectionDraft", () => {
     it("未来完成时间按分钟向上取整", () => {
@@ -45,23 +69,59 @@ describe("createInlineStationCorrectionDraft", () => {
     });
 });
 
+describe("createStationRemainingTimeDraft", () => {
+    it("按完成时间生成剩余小时和分钟并向上取整", () => {
+        const nowMs = 1_000_000;
+        expect(createStationRemainingTimeDraft({finishesAtMs: nowMs + 61_001}, nowMs))
+            .toEqual({hours: "0", minutes: "2"});
+        expect(createStationRemainingTimeDraft({finishesAtMs: nowMs}, nowMs))
+            .toEqual({hours: "", minutes: ""});
+        expect(createStationRemainingTimeDraft(
+            {finishesAtMs: nowMs + 10_081 * 60_000},
+            nowMs,
+        )).toEqual({hours: "", minutes: ""});
+    });
+});
+
 describe("buildInlineStationCorrection", () => {
+    // 留空/0 与非法输入必须区分：前者提交 remainingMinutes: null 让后端继承存量计时，
+    // 后者返回 null 对象锁住提交按钮。只比较 remainingMinutes 会让两者都过。
     it.each([
-        ["", "", null],
-        ["0", "0", null],
-        ["-1", "0", null],
-        ["1.5", "0", null],
-        ["0", "60", null],
+        ["", ""],
+        ["0", "0"],
+        ["", "0"],
+        ["0", ""],
+        [" ", " "],
+    ])("留空或 0（%s 小时 %s 分钟）提交继承标记", (hours, minutes) => {
+        expect(buildInlineStationCorrection("crafting", hours, minutes)).toEqual({
+            state: "crafting",
+            remainingMinutes: null,
+        });
+    });
+
+    it.each([
+        ["-1", "0"],
+        ["1.5", "0"],
+        ["0", "60"],
+        ["168", "1"],
+        ["abc", "0"],
+    ])("非法输入 %s 小时 %s 分钟返回 null", (hours, minutes) => {
+        expect(buildInlineStationCorrection("crafting", hours, minutes)).toBeNull();
+    });
+
+    it.each([
         ["0", "1", 1],
+        ["1", "30", 90],
         ["168", "0", 10_080],
-        ["168", "1", null],
-    ])("校验 %s 小时 %s 分钟", (hours, minutes, expected) => {
-        expect(buildInlineStationCorrection("crafting", hours, minutes)?.remainingMinutes ?? null)
-            .toBe(expected);
+    ])("%s 小时 %s 分钟折算成 %i 分钟", (hours, minutes, expected) => {
+        expect(buildInlineStationCorrection("crafting", hours, minutes)).toEqual({
+            state: "crafting",
+            remainingMinutes: expected,
+        });
     });
 
     it.each(["immediateDue", "idle"] as const)("%s 不携带剩余时间", (state) => {
-        expect(buildInlineStationCorrection(state, "", "")).toEqual({
+        expect(buildInlineStationCorrection(state, "12", "30")).toEqual({
             state,
             remainingMinutes: null,
         });
@@ -85,7 +145,7 @@ function ammoBusinessTarget(id: string, seasonal: boolean, order: number): AmmoB
 function account(
     id: string,
     order: number,
-    patch: Partial<Pick<AccountPlan, "enabled" | "qqAccount">> = {},
+    patch: Partial<AccountPlan> = {},
 ): AccountPlan {
     return {
         id,
@@ -141,7 +201,7 @@ function bootstrap(
             wegameExecutablePath: "wegame.exe",
             gameExecutablePath: "game.exe",
             defaultBusinessConfig: {stations: [], recipePoints: [], ammoTargets: []},
-            profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: []},
+            profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: [], cutoffState: null},
             accounts: [account("account-1", 0)],
             activeCalibrationId: null,
             calibrationEnvironments: [],
@@ -419,7 +479,7 @@ describe("特勤处登录试运行 helpers", () => {
             wegameExecutablePath: "wegame.exe",
             gameExecutablePath: "game.exe",
             defaultBusinessConfig: {stations: [], recipePoints: [], ammoTargets: []},
-            profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: []},
+            profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: [], cutoffState: null},
             accounts: [],
             activeCalibrationId: null,
             calibrationEnvironments: [],
@@ -502,4 +562,135 @@ describe("特勤处 24 小时任务时间轴", () => {
         expect(slots[0]).toBe(new Date("2026-07-30T10:00:00+08:00").getTime());
         expect(slots[23]).toBe(new Date("2026-07-31T09:00:00+08:00").getTime());
     });
+
+    it("识别新增限时商品与交易行任务标签", () => {
+        expect(timelineTaskLabel({...taskAt("limited", 0), kind: "limitedSupplyCheck", stationKind: null})).toBe("限时商品检查");
+        expect(timelineTaskLabel({...taskAt("market", 0), kind: "marketPurchase", stationKind: null})).toBe("交易行购买");
+    });
 });
+
+function station(patch: Partial<StationPlan> = {}): StationPlan {
+    return {
+        kind: "technicalCenter",
+        enabled: true,
+        itemName: "配方",
+        durationMinutes: 60,
+        startedAtMs: null,
+        finishesAtMs: null,
+        status: "idle",
+        ...patch,
+    };
+}
+
+function ammoTarget(patch: Partial<AmmoTarget> = {}): AmmoTarget {
+    return {
+        id: "target-1",
+        name: "子弹",
+        enabled: true,
+        seasonal: false,
+        scrollSteps: 0,
+        order: 0,
+        lastSuccessDay: null,
+        retryDay: null,
+        retryCount: 0,
+        lastFailure: null,
+        ...patch,
+    };
+}
+
+function failure(patch: Partial<AccountFailure> = {}): AccountFailure {
+    return {
+        step: "ammo.confirm",
+        message: "确认失败",
+        atMs: 1_000,
+        stationKind: null,
+        ammoTargetId: null,
+        ...patch,
+    };
+}
+
+describe("accountRestorable", () => {
+    it("干净账号不显示一键恢复", () => {
+        expect(accountRestorable(account("account-1", 0, {
+            stations: [station({status: "crafting"})],
+            ammoTargets: [ammoTarget({lastSuccessDay: "2026-08-09"})],
+        }))).toBe(false);
+    });
+
+    it.each([
+        ["账号状态异常", {status: "manualCheckRequired"} as Partial<AccountPlan>],
+        ["账号带失败记录", {lastFailure: failure()}],
+        ["制作台 Uncertain", {stations: [station({status: "uncertain"})]}],
+        ["子弹目标带失败", {ammoTargets: [ammoTarget({lastFailure: failure()})]}],
+        ["子弹目标已重试", {ammoTargets: [ammoTarget({retryCount: 1})]}],
+        ["限时商品失败", {
+            limitedSupply: {
+                cycleId: "2026-08-09T08:00",
+                outcome: "failed" as const,
+                checkedAtMs: 1_000,
+                matchedRegion: null,
+                matchedColor: null,
+                acknowledged: false,
+                lastError: "识别超时",
+            },
+        }],
+    ])("%s 时可恢复", (_label, patch) => {
+        expect(accountRestorable(account("account-1", 0, patch))).toBe(true);
+    });
+});
+
+describe("timelineTaskAllowsInlineCorrection", () => {
+    const task = (patch: Partial<TimelineTask> = {}): Pick<TimelineTask, "kind" | "accountStatus" | "manualFailure"> => ({
+        kind: "craft",
+        accountStatus: "ready",
+        manualFailure: null,
+        ...patch,
+    });
+
+    it("带定位失败的制作与子弹任务给出入口", () => {
+        expect(timelineTaskAllowsInlineCorrection(
+            task({manualFailure: failure({stationKind: "workbench"})}),
+            station({status: "uncertain"}),
+        )).toBe(true);
+        expect(timelineTaskAllowsInlineCorrection(
+            task({kind: "ammo", manualFailure: failure({ammoTargetId: "target-1"})}),
+            null,
+        )).toBe(true);
+    });
+
+    it("无定位失败但制作台 Uncertain 仍给出入口", () => {
+        // NavigationTimedOut 只落 ManualCheckRequired，manualFailure 为空，
+        // 旧逻辑在这里直接返回 null → 任务栏没有任何人工判定选项。
+        expect(timelineTaskAllowsInlineCorrection(
+            task({accountStatus: "manualCheckRequired"}),
+            station({status: "uncertain"}),
+        )).toBe(true);
+        expect(timelineTaskAllowsInlineCorrection(
+            task({kind: "ammo", accountStatus: "manualCheckRequired"}),
+            null,
+        )).toBe(true);
+    });
+
+    it("制作台正常时不给出入口", () => {
+        expect(timelineTaskAllowsInlineCorrection(
+            task({accountStatus: "manualCheckRequired"}),
+            station({status: "crafting"}),
+        )).toBe(false);
+        expect(timelineTaskAllowsInlineCorrection(task(), null)).toBe(false);
+    });
+
+    it.each(["needsManualLogin", "loginFailed"] as const)("%s 只能在账号页处理", (accountStatus) => {
+        expect(timelineTaskAllowsInlineCorrection(
+            task({accountStatus, manualFailure: failure({stationKind: "workbench"})}),
+            station({status: "uncertain"}),
+        )).toBe(false);
+    });
+
+    it.each(["limitedSupplyCheck", "marketPurchase"] as const)("%s 不支持单项判定", (kind) => {
+        expect(timelineTaskAllowsInlineCorrection(
+            task({kind, manualFailure: failure()}),
+            null,
+        )).toBe(false);
+    });
+});
+

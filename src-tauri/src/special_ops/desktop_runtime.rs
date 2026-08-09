@@ -876,6 +876,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "需要交互式 Windows 桌面，沙箱和 CI 无可枚举窗口"]
     fn real_enum_windows_call_succeeds() {
         enumerate_windows().unwrap();
     }

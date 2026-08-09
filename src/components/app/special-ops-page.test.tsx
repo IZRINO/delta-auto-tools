@@ -126,6 +126,40 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain('<summary className="collapse-title">默认子弹兑换顺序</summary>');
     });
 
+    it("限时商品使用原生颜色面板且不再绑定取色区域", () => {
+        const html = renderToStaticMarkup(createElement(SpecialOpsPage));
+        expect((html.match(/type="color"/g) ?? []).length).toBe(2);
+        expect(pageSource).toContain("limitedColorToHex");
+        expect(pageSource).toContain("parseLimitedColorHex");
+        expect(pageSource).not.toContain("colorSampleRegions");
+        expect(pageSource).not.toContain("samplingLimitedColor");
+        expect(pageSource).not.toContain("sampleLimitedColor");
+        expect(pageSource).not.toContain("special_ops_sample_limited_supply_color");
+        expect(pageSource).not.toContain("取色区域");
+        expect(pageSource).not.toContain("限时商品识色区域校准");
+    });
+
+    it("交易行业务配置位于默认与独立账号配置", () => {
+        expect(pageSource).toContain("默认交易行购买");
+        expect(pageSource).toContain("独立交易行配置");
+        expect(pageSource).toContain("defaultMarket.purchaseCount");
+        expect(pageSource).toContain("business.market?.purchaseCount");
+        expect(pageSource).toContain("交易行通用设置");
+        expect(pageSource).not.toContain("默认设定价格");
+    });
+
+    it("交易行默认与账号独立配置提供商品入口点击点校准", () => {
+        expect(pageSource).toContain("defaultMarket.productPoint");
+        expect(pageSource).toContain("business.market.productPoint");
+        expect(pageSource).toContain('beginCalibration(activeEnvironment, "business.market.product"');
+        expect(pageSource).toContain('beginCalibration(activeEnvironment, "business.market.product", account.id)');
+    });
+
+    it("交易行试运行使用 Rust 支持的真实单次尝试模式", () => {
+        expect(pageSource).toContain('mode: "realSingleAttempt"');
+        expect(pageSource).not.toContain('mode: "single"');
+    });
+
     it("账号独立设置默认折叠", () => {
         expect(pageSource).toContain('<summary className="collapse-title">独立设置</summary>');
         expect(pageSource).toContain('<div className="collapse-content">');
@@ -133,7 +167,8 @@ describe("SpecialOpsPage 登录试运行配置", () => {
 
     it("子弹入口显示两段固定等待并按普通与赛季稳定分组", () => {
         expect(pageSource).toContain("点击军需处前等待");
-        expect(pageSource).toContain("点击战术部门前等待");
+        expect(pageSource).toContain("点击进入军需处前等待");
+        expect(pageSource).not.toContain("研发部门等待（ms）");
         expect(pageSource).toContain("ammoSupplyDelayMs");
         expect(pageSource).toContain("ammoTacticalDelayMs");
         expect(pageSource).toContain("changeAmmoTargetSeasonal");
@@ -187,5 +222,54 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     it("账号页完整人工校正入口保持不变", () => {
         expect(pageSource).toContain("人工校正制作与子弹状态");
         expect(pageSource).toContain("special_ops_confirm_account_station_states");
+    });
+
+    it("新增账号入口位于账号列表末尾", () => {
+        const header = pageSource.indexOf('<h2 className="text-lg font-semibold">账号</h2>');
+        const list = pageSource.indexOf("bootstrap.settings.accounts.map((account, index) => {", header);
+        const trailingButton = pageSource.indexOf('<Button size="sm" onClick={addAccount}>', list);
+
+        expect(header).toBeGreaterThanOrEqual(0);
+        expect(list).toBeGreaterThan(header);
+        expect(trailingButton).toBeGreaterThan(list);
+    });
+
+    it("时间轴按账号配置顺序显示两位账号序号", () => {
+        expect(pageSource).toContain("const accountNumbers = new Map(");
+        expect(pageSource).toContain("bootstrap.settings.accounts.map((account, index)");
+        expect(pageSource).toContain('String(index + 1).padStart(2, "0")');
+        expect(pageSource).toContain('accountNumbers.get(task.accountId) ?? "--"');
+    });
+
+    it("账号级失败可从账号卡片与时间轴确认已人工检查", () => {
+        expect(pageSource).toContain("special_ops_confirm_account_manual_check");
+        expect(pageSource).toContain("已人工检查");
+        expect(pageSource).toContain("manualCheckRequired");
+    });
+
+    it("账号卡片与账号区标题提供一键恢复状态", () => {
+        expect(pageSource).toContain("special_ops_restore_account_state");
+        expect(pageSource).toContain("一键恢复状态");
+        expect(pageSource).toContain("全部一键恢复");
+        // 单账号传 id、批量传 null，后端按 Option<String> 分流。
+        expect(pageSource).toContain("restoreAccountState(account.id)");
+        expect(pageSource).toContain("restoreAccountState(null)");
+        expect(pageSource).toContain("accountRestorable(account)");
+        expect(pageSource).toContain("bootstrap.settings.accounts.some(accountRestorable)");
+    });
+
+    it("人工判定选正在制作时预填异常前剩余时间", () => {
+        expect(pageSource).toContain("createStationRemainingTimeDraft");
+        expect(pageSource).toContain("createCorrectionDraft(account.stations, bootstrap.nowMs)");
+        expect(pageSource).toContain("留空继承异常前剩余时间");
+        expect(pageSource).toContain("buildInlineStationCorrection");
+        // 剩余时间不再硬编码 0/0，否则提交校验永远按 < 1 分钟拒绝。
+        expect(pageSource).not.toContain('hours: "0", minutes: "0"');
+    });
+
+    it("时间轴单项判定入口不再只看定位失败", () => {
+        expect(pageSource).toContain("timelineTaskAllowsInlineCorrection(task, station)");
+        expect(pageSource).toContain("needsManualCorrection && !inlineCorrectable");
+        expect(pageSource).not.toContain("if (!task.manualFailure) return null;");
     });
 });

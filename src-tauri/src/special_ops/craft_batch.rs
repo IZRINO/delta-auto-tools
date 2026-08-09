@@ -206,6 +206,8 @@ mod tests {
             ammo_targets: Vec::new(),
             last_failure: None,
             login_trial_signature: None,
+            limited_supply: Default::default(),
+            market: Default::default(),
         }
     }
 
@@ -223,6 +225,7 @@ mod tests {
                 .collect(),
             recipe_points: Vec::new(),
             ammo_targets: Vec::new(),
+            market: Default::default(),
         }
     }
 

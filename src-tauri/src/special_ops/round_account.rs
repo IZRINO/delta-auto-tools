@@ -4,6 +4,19 @@ use super::{
 };
 use std::sync::{atomic::AtomicBool, Arc};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct MilitarySupplySessionResult {
+    pub(crate) limited_retry_requested: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MarketSessionResult {
+    Completed,
+    YieldedForCraft,
+    PauseRequested,
+    WindowClosed,
+}
+
 #[allow(async_fn_in_trait)]
 pub(crate) trait AccountSessionDriver: Send + Sync {
     async fn login(
@@ -21,11 +34,16 @@ pub(crate) trait AccountSessionDriver: Send + Sync {
         task: &AccountRoundTask,
         cancelled: Arc<AtomicBool>,
     ) -> Result<usize, AccountRunError>;
-    async fn ammo(
+    async fn military_supply(
         &self,
         task: &AccountRoundTask,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<(), AccountRunError>;
+    ) -> Result<MilitarySupplySessionResult, AccountRunError>;
+    async fn market(
+        &self,
+        task: &AccountRoundTask,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<MarketSessionResult, AccountRunError>;
 }
 
 pub(crate) async fn run_account_session<D: AccountSessionDriver + ?Sized>(
@@ -33,17 +51,49 @@ pub(crate) async fn run_account_session<D: AccountSessionDriver + ?Sized>(
     task: &AccountRoundTask,
     cancelled: Arc<AtomicBool>,
 ) -> Result<AccountRunSuccess, AccountRunError> {
+    start_account_session(driver, task, Arc::clone(&cancelled)).await?;
+    run_task_in_session(driver, task, cancelled).await
+}
+
+pub(crate) async fn start_account_session<D: AccountSessionDriver + ?Sized>(
+    driver: &D,
+    task: &AccountRoundTask,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), AccountRunError> {
     driver.login(task, Arc::clone(&cancelled)).await?;
-    driver.navigate(task, Arc::clone(&cancelled)).await?;
+    driver.navigate(task, cancelled).await
+}
+
+pub(crate) async fn run_task_in_session<D: AccountSessionDriver + ?Sized>(
+    driver: &D,
+    task: &AccountRoundTask,
+    cancelled: Arc<AtomicBool>,
+) -> Result<AccountRunSuccess, AccountRunError> {
     let processed_stations = if task.stations.is_empty() {
         0
     } else {
         driver.craft(task, Arc::clone(&cancelled)).await?
     };
-    if !task.ammo_target_ids.is_empty() {
-        driver.ammo(task, cancelled).await?;
-    }
-    Ok(AccountRunSuccess { processed_stations })
+    let military_supply =
+        if !task.ammo_target_ids.is_empty() || task.limited_supply_cycle_id.is_some() {
+            driver.military_supply(task, Arc::clone(&cancelled)).await?
+        } else {
+            MilitarySupplySessionResult::default()
+        };
+    let market_result = if task.market_purchase_day.is_some() {
+        Some(driver.market(task, cancelled).await?)
+    } else {
+        None
+    };
+    Ok(AccountRunSuccess {
+        processed_stations,
+        limited_retry_requested: military_supply.limited_retry_requested,
+        market_pending: matches!(
+            market_result,
+            Some(MarketSessionResult::YieldedForCraft | MarketSessionResult::PauseRequested)
+        ),
+        market_yielded: market_result == Some(MarketSessionResult::YieldedForCraft),
+    })
 }
 
 #[cfg(test)]
@@ -100,13 +150,22 @@ mod tests {
             self.craft_error.clone().map_or(Ok(2), Err)
         }
 
-        async fn ammo(
+        async fn military_supply(
             &self,
             _task: &AccountRoundTask,
             _cancelled: Arc<AtomicBool>,
-        ) -> Result<(), AccountRunError> {
-            self.actions.lock().unwrap().push("ammo");
-            Ok(())
+        ) -> Result<MilitarySupplySessionResult, AccountRunError> {
+            self.actions.lock().unwrap().push("militarySupply");
+            Ok(MilitarySupplySessionResult::default())
+        }
+
+        async fn market(
+            &self,
+            _task: &AccountRoundTask,
+            _cancelled: Arc<AtomicBool>,
+        ) -> Result<MarketSessionResult, AccountRunError> {
+            self.actions.lock().unwrap().push("market");
+            Ok(MarketSessionResult::Completed)
         }
     }
 
@@ -115,8 +174,11 @@ mod tests {
             account_id: "a".to_string(),
             qq_account: "123456789".to_string(),
             account_order: 0,
+            scheduled_at_ms: 0,
             stations: vec![StationKind::TechnicalCenter, StationKind::Workbench],
             ammo_target_ids: Vec::new(),
+            limited_supply_cycle_id: None,
+            market_purchase_day: None,
         }
     }
 
@@ -131,7 +193,8 @@ mod tests {
         assert_eq!(
             result,
             AccountRunSuccess {
-                processed_stations: 2
+                processed_stations: 2,
+                ..Default::default()
             }
         );
         assert_eq!(
@@ -167,7 +230,7 @@ mod tests {
 
         assert_eq!(
             *driver.actions.lock().unwrap(),
-            ["login", "navigation", "ammo"]
+            ["login", "navigation", "militarySupply"]
         );
     }
 
@@ -183,7 +246,25 @@ mod tests {
 
         assert_eq!(
             *driver.actions.lock().unwrap(),
-            ["login", "navigation", "craft", "ammo"]
+            ["login", "navigation", "craft", "militarySupply"]
+        );
+    }
+
+    #[tokio::test]
+    async fn account_runs_craft_then_one_military_supply_action_then_market() {
+        let mut task = task();
+        task.ammo_target_ids = vec!["normal".to_string()];
+        task.limited_supply_cycle_id = Some("2026-08-08T12:00".to_string());
+        task.market_purchase_day = Some("2026-08-08".to_string());
+        let driver = FakeDriver::success();
+
+        run_task_in_session(&driver, &task, Arc::new(AtomicBool::new(false)))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *driver.actions.lock().unwrap(),
+            ["craft", "militarySupply", "market"]
         );
     }
 
@@ -208,5 +289,17 @@ mod tests {
             *driver.actions.lock().unwrap(),
             ["login", "navigation", "craft"]
         );
+    }
+
+    #[tokio::test]
+    async fn follow_up_task_in_same_session_skips_login_and_navigation() {
+        let driver = FakeDriver::success();
+
+        let result = run_task_in_session(&driver, &task(), Arc::new(AtomicBool::new(false)))
+            .await
+            .unwrap();
+
+        assert_eq!(result.processed_stations, 2);
+        assert_eq!(*driver.actions.lock().unwrap(), ["craft"]);
     }
 }

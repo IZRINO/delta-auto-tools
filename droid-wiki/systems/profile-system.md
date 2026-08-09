@@ -1,13 +1,13 @@
 # 配置系统
 
-多配置 Profile 系统（`src-tauri/src/profile/` + `src/hooks/use-profile.tsx` + `src/components/app/profile-*.tsx`）允许用户将全部 5 个工具的 settings 快照为命名配置并在运行时切换。切换 profile 时写入 5 份 settings JSON 文件到磁盘，重载各工具内存状态（复用各工具的 `pub(crate)` 热键/窗口/emit 函数），重置计数器运行值，更新 `active_profile_id`。写命令执行成功后 emit `profile://changed` 事件到 main 窗口，前端 `ProfileProvider` 监听该事件刷新 bootstrap。`ProfileBootstrap.settingsRevision` 随 Profile 切换递增；旧页面继续提交旧 revision 时，后端在写盘前拒绝。前端使用 `reloadNonce` 强制重挂载当前工具页，清除待处理的 autosave 定时器并重新获取配置。
+多配置 Profile 系统（`src-tauri/src/profile/` + `src/hooks/use-profile.tsx` + `src/components/app/profile-*.tsx`）允许用户将既有工具与特勤处 settings 快照为命名配置并在运行时切换。切换 profile 时写入既有工具和特勤处 settings JSON 文件到磁盘，重载各工具内存状态（复用各工具的 `pub(crate)` 热键/窗口/emit 函数），重置计数器运行值；特勤处 scheduler 强制暂停并取消利润查询。写命令执行成功后 emit `profile://changed` 事件到 main 窗口，前端 `ProfileProvider` 监听该事件刷新 bootstrap。`ProfileBootstrap.settingsRevision` 随 Profile 切换递增；旧页面继续提交旧 revision 时，后端在写盘前拒绝。前端使用 `reloadNonce` 强制重挂载当前工具页，清除待处理的 autosave 定时器并重新获取配置。
 
 顶栏 Profile 切换器提供新增、复制、重命名、删除、导入、导出入口。删除当前激活 Profile 会被拒绝；复制沿用当前运行态快照创建新 Profile 并切换到副本；导入/导出只处理单个 Profile JSON，导入时生成新 ID、刷新时间戳并加入列表，不自动切换当前运行态。
 
 ## 用途
 
-- 将 5 个工具的当前内存 settings 快照为单个 `Profile`，存储在 `profile_settings.json`
-- 应用 profile 时写入 5 份文件到磁盘，然后重载各工具运行时状态而无需重启应用；settings 使用 `.{name}.{pid}.{seq}.tmp` 唯一临时文件并串行替换目标 JSON，避免并发冲突或进程中断留下半截配置
+- 将既有工具与特勤处的当前内存 settings 快照为单个 `Profile`，存储在 `profile_settings.json`；字段 `specialOps` 缺失时兼容旧 Profile
+- 应用 profile 时写入各工具 settings 文件到磁盘，然后重载各工具运行时状态而无需重启应用；特勤处运行中拒绝切换，应用成功后保持暂停，settings 使用 `.{name}.{pid}.{seq}.tmp` 唯一临时文件并串行替换目标 JSON，避免并发冲突或进程中断留下半截配置
 - 切换时重置计数器运行值为目标 profile 的 `start_value` 并持久化 `counter_state.json`
 - 主题独立于 profile，不打包进快照
 
@@ -38,9 +38,9 @@ src/components/app/
 | `Profile` | `src-tauri/src/profile/types.rs` | `{ id, name, created_at, updated_at, snapshot }`，命名配置 |
 | `ProfileSettings` | `src-tauri/src/profile/types.rs` | 持久化状态：`profiles`、`active_profile_id`、`next_profile_number` |
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` + `apply_lock` 串行化 Profile 应用 |
-| `SettingsCoordinator` | `src-tauri/src/settings.rs` | 同一 guard 串行化 5 类工具保存与 Profile 切换，并校验 `settingsRevision` |
+| `SettingsCoordinator` | `src-tauri/src/settings.rs` | 同一 guard 串行化既有工具与特勤处保存及 Profile 切换，并校验 `settingsRevision` |
 | `LatestSaveQueue` | `src/hooks/autosave-queue.ts` | 每个工具最多一个 in-flight save，等待区只保留最新 snapshot/version |
-| `apply_snapshot_to_tools` | `src-tauri/src/profile/apply.rs` | 配置应用入口：停止会话 -> 写 5 文件 -> 重载各工具 -> 重置计数器 -> 调度窗口刷新 |
+| `apply_snapshot_to_tools` | `src-tauri/src/profile/apply.rs` | 配置应用入口：停止会话 -> 校验并写既有工具与特勤处配置 -> 重载各工具 -> 重置计数器 -> 特勤处强制暂停并取消利润查询 -> 调度窗口刷新 |
 | `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
 | `ProfileProvider` | `src/hooks/use-profile.tsx` | React context：bootstrap、事件监听、`reloadNonce` |
@@ -58,7 +58,7 @@ flowchart TD
     L --> B["锁定 ProfileState，查找 snapshot，克隆，解锁"]
     B --> C["apply_snapshot_to_tools(snapshot)"]
     C --> D["1. 停止所有会话：rapidfire/timer/counter stop_all"]
-    D --> E["2. 写 5 份 settings 文件到磁盘"]
+    D --> E["2. 写既有工具与特勤处 settings 文件到磁盘"]
     E --> F["3. 逐工具重载内存状态"]
     F --> F1["morse: normalize → restart_hotkey → swap"]
     F --> F2["timer: normalize → restart_hotkey → swap → emit_state"]
@@ -141,3 +141,5 @@ Profile state 切换阶段只写文件、换内存状态、重启热键/watchers
 | `src/hooks/use-profile.tsx` | `ProfileProvider`：bootstrap、事件监听、`reloadNonce` |
 | `src/components/app/profile-switcher.tsx` | 顶栏配置切换下拉 |
 | `src/components/app/profile-utils.ts` | 工具函数 + 测试 |
+
+特勤处 `SpecialOpsSettings` 同时写入独立 `special_ops_settings.json` 与 Profile `specialOps` 快照。限时商品周期结果、交易行当日完成次数属于账号运行态，随快照保存；试运行结果保持内存态。Profile 不复制校准图片本体，仅保存参考图片路径。

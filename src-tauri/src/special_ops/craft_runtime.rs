@@ -526,7 +526,11 @@ pub(crate) async fn run_craft_station<D: CraftTrialDriver + ?Sized>(
                     .map_err(|message| failure_after_input("craft.purchase", &message))?;
                 match driver
                     .wait_button(
-                        &[CraftButton::Produce, CraftButton::Purchase],
+                        &[
+                            CraftButton::Produce,
+                            CraftButton::Fill,
+                            CraftButton::Purchase,
+                        ],
                         Arc::clone(&cancelled),
                     )
                     .await
@@ -538,16 +542,25 @@ pub(crate) async fn run_craft_station<D: CraftTrialDriver + ?Sized>(
                             .map_err(|message| failure_after_input("craft.produce", &message))?;
                         break;
                     }
+                    Ok(CraftButton::Fill) => {
+                        if attempt >= 2 {
+                            return Err(isolated_failure(
+                                "材料购买重试 3 次后仍回到一键补齐，按仓库空间不足隔离账号",
+                            ));
+                        }
+                        driver
+                            .click("craft.fill", Arc::clone(&cancelled))
+                            .await
+                            .map_err(|message| failure_after_input("craft.fill", &message))?;
+                        driver
+                            .wait_ready("craft.purchase", Arc::clone(&cancelled))
+                            .await
+                            .map_err(|message| failure_after_input("craft.purchase", &message))?;
+                    }
                     Ok(CraftButton::Purchase) if attempt < 2 => {}
                     Ok(CraftButton::Purchase) => {
                         return Err(isolated_failure(
                             "材料购买重试 3 次后仍停留在购买页面，按仓库空间不足隔离账号",
-                        ));
-                    }
-                    Ok(CraftButton::Fill) => {
-                        return Err(failure_after_input(
-                            "craft.purchase",
-                            "购买后错误命中一键补齐按钮",
                         ));
                     }
                     Err(message) => return Err(failure_after_input("craft.purchase", &message)),
@@ -917,6 +930,87 @@ mod fixed_probe_tests {
 
         assert_eq!(error.step, "craft.purchase");
         assert!(error.requires_uncertain);
+    }
+
+    #[tokio::test]
+    async fn purchase_returns_to_fill_then_reopens_and_continues_production() {
+        let driver = FixedProbeDriver::with_buttons(
+            Ok(SingleConsistency::NotMatched {
+                samples: [0.1, 0.2],
+            }),
+            [
+                Ok(CraftButton::Fill),
+                Ok(CraftButton::Fill),
+                Ok(CraftButton::Produce),
+            ],
+        );
+
+        let result = run_craft_station(
+            &driver,
+            StationKind::TechnicalCenter,
+            delays(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, CraftStationOutcome::Started { started_at_ms: 100 });
+        let actions = driver.actions();
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:craft.fill")
+                .count(),
+            2
+        );
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:craft.purchase")
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn purchase_returns_to_fill_three_times_returns_isolated() {
+        let driver = FixedProbeDriver::with_buttons(
+            Ok(SingleConsistency::NotMatched {
+                samples: [0.1, 0.2],
+            }),
+            [
+                Ok(CraftButton::Fill),
+                Ok(CraftButton::Fill),
+                Ok(CraftButton::Fill),
+                Ok(CraftButton::Fill),
+            ],
+        );
+
+        let error = run_craft_station(
+            &driver,
+            StationKind::TechnicalCenter,
+            delays(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.step, "craft.isolated");
+        let actions = driver.actions();
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:craft.fill")
+                .count(),
+            3
+        );
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| *action == "click:craft.purchase")
+                .count(),
+            3
+        );
     }
 
     #[tokio::test]

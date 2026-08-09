@@ -6,7 +6,13 @@
 
 账号卡片继续提供完整“四制作台与全部启用子弹人工校正”入口。四台必须一次逐项选择“立即到期”“正在制作”或“空闲”；正在制作需填写 1 分钟至 168 小时的剩余时间。提交前显示第二次确认摘要，后端在 `SettingsCoordinator` revision 临界区内完成全量校验、账号初始化、一次磁盘写入和内存替换。初始化后的 `Ready` 账号允许主动覆盖实际制作与当天子弹状态；`NeedsManualLogin` / `LoginFailed` 不得通过业务状态校正恢复。提交期间按钮显示“正在保存”并禁止重复点击；浏览器预览、页面状态变化或后端拒绝均在 modal 内显示错误，禁止静默返回。
 
-24 小时任务时间轴不再打开完整 modal。`AccountFailure.stationKind` 与 `AccountFailure.ammoTargetId` 互斥定位失败业务，`AmmoTarget.lastFailure` 保存目标级子弹人工失败，`TimelineTask.manualFailure` 把失败带到对应任务行。制作行提供“立即到期”“正在制作”“空闲中”，子弹行提供“已兑换”“未兑换”；每行独立保存和显示错误。`special_ops_confirm_station_state` 只校正失败制作台并恢复账号 `Ready`，`special_ops_confirm_ammo_state` 只清除对应目标失败；未处理子弹继续单独冻结。旧版无定位失败及登录、导航、窗口异常只提示“请在账号页处理”。
+24 小时任务时间轴不再打开完整 modal。`AccountFailure.stationKind` 与 `AccountFailure.ammoTargetId` 互斥定位失败业务，`AmmoTarget.lastFailure` 保存目标级子弹人工失败，`TimelineTask.manualFailure` 把失败带到对应任务行。制作行提供“立即到期”“正在制作”“空闲中”，子弹行提供“已兑换”“未兑换”；每行独立保存和显示错误。`special_ops_confirm_station_state` 只校正失败制作台并恢复账号 `Ready`，`special_ops_confirm_ammo_state` 只清除对应目标失败；未处理子弹继续单独冻结。
+
+单项判定入口不只看 `manualFailure`。`NavigationTimedOut` 只写 `ManualCheckRequired` 且 `stationKind` / `ammoTargetId` 均为空，因此制作台 `Uncertain` 或账号处于 `ManualCheckRequired` 时也必须给出任务行入口；只有 `NeedsManualLogin` / `LoginFailed` 才退回账号页处理，前端 `timelineTaskAllowsInlineCorrection` 与后端 `account_blocks_task_correction` 同步这条判定。选择“正在制作”时剩余时间预填异常前的存量计时，留空或填 0 表示继承 `finishesAtMs`；后端确实没有可继承值时才拒绝并要求填写 1 分钟至 168 小时。
+
+`NeedsManualLogin`、`LoginFailed` 和 `ManualCheckRequired` 账号显示“已人工检查”，`special_ops_confirm_account_manual_check` 恢复账号 `Ready` 并按存量 `finishesAtMs` 还原 `Uncertain` 制作台（未来时间→`Crafting`，已过→`Ready`，无计时→`Idle`），不改子弹成功日或 retry。只清账号状态会留下 `Uncertain` 制作台，它在调度与任务栏双重过滤下永久消失。
+
+账号卡片与账号区标题额外提供“一键恢复状态”。`special_ops_restore_account_state` 接收 `Option<String>`：传账号 ID 只恢复该账号，传 `null` 恢复全部异常账号。恢复内容为账号状态回 `Ready`、清 `lastFailure`、按存量计时还原 `Uncertain` 制作台、清子弹目标 `lastFailure` 与当天 retry 预算、限时商品 `Failed` 回 `Pending`。**不清 `lastSuccessDay`**：半程失败账号里已成功的子弹保持已兑换，否则会二次兑换并白扣货币。没有任何可恢复项时返回错误，不产生空转 revision；前端 `accountRestorable` 同步这条判定，避免按钮点下去只拿到报错。
 
 ## 子弹兑换配置
 
@@ -75,24 +81,26 @@
 | 进入制作列表 | `craft.abort` 两个有效低分样本 | 按 run 级规则显示倒计时，点击当前台 `craft.recipe.<station>` 制作物品选择点 |
 | 判断生产路径 | 制作物品选择点已点击 | 等待 `craft.fill` 或 `craft.produce` |
 | 点击制作一键补齐 | `craft.fill` 自身模板 | `craft.purchase` |
-| 购买制作材料 | `craft.purchase` 按钮自身模板 | 每次点击后等待 1 秒，只双采样 `craft.produce` 或 `craft.purchase`；购买按钮仍出现时重试，第三次仍出现则隔离账号 |
+| 购买制作材料 | `craft.purchase` 按钮自身模板 | 每次点击后等待 1 秒，双采样 `craft.produce`、`craft.purchase` 或购买 UI 消失后重新出现的 `craft.fill`；命中 `craft.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
 | 开始制作 | `craft.produce` 按钮自身模板 | `craft.abort` |
 | 返回部门页 | `ammo.department` 已命中时跳过；否则仅在 `game.stationGrid` 或 `craft.abort` 命中时按一次 Tab | `ammo.department` |
 | 点击部门 | `ammo.department` 自身模板 | 识别命中后倒计时一次，再点击模板中心 |
 | 点击军需处 | 独立固定等待 `ammoSupplyDelayMs` | 等待结束后倒计时一次，直接点击 `ammo.supply` 点击点，不识别该入口 |
-| 点击战术部门 | 独立固定等待 `ammoTacticalDelayMs` | 等待结束后倒计时一次，直接点击 `ammo.tactical` 点击点，不识别列表就绪状态 |
+| 进入军需处 | 独立固定等待 `ammoTacticalDelayMs` | 等待结束后倒计时一次，直接点击 `ammo.enterSupply` 点击点；同账号子弹与限时商品共享该入口 |
+| 点击战术部门 | `ammo.tacticalDepartment` 自身模板 | 子弹分支识别命中后点击模板中心 |
+| 点击研发部门 | `ammo.researchDepartment` 自身模板 | 限时商品分支识别命中后点击模板中心 |
 | 点击普通目标子弹 | 普通目标配置顺序 | run 级倒计时；先按 A、D（各间隔 100ms），再向下滚配置次数，事件间隔 100ms，结束等待 1000ms 后点击；随后等待 `ammo.success`、`ammo.fill` 或 `ammo.exchange` |
 | 切换赛季限定 | 全部普通目标结束且存在赛季目标 | 按 run 级规则显示倒计时，直接点击 `ammo.seasonal` 点击点；多个赛季目标之间不重复点击 |
 | 点击赛季目标子弹 | 赛季目标配置顺序 | run 级倒计时；先按 A、D（各间隔 100ms），再向下滚配置次数，事件间隔 100ms，结束等待 1000ms 后点击；随后等待 `ammo.success`、`ammo.fill` 或 `ammo.exchange` |
 | 点击子弹一键补齐 | `ammo.fill` 自身模板 | 按 run 级规则显示倒计时后点击，随后识别 `ammo.purchase` |
-| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | 每次购买点击前倒计时一次，点击后等待 1 秒，只双采样 `ammo.exchange` 或 `ammo.purchase`；购买按钮仍出现时重试，第三次仍出现则隔离账号 |
+| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | 每次购买点击前倒计时一次，点击后等待 1 秒，双采样 `ammo.exchange`、`ammo.purchase` 或购买 UI 消失后重新出现的 `ammo.fill`；命中 `ammo.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
 | 兑换子弹 | `ammo.exchange` 可兑换状态模板 | 按 run 级规则显示倒计时后点击兑换；双采样命中全局 `ammo.confirm` 用户参考图后再次按规则提示并点击区域中心，再以 `ammo.success` 用户参考图确认完成；均不读取颜色 |
 
 `ammo.success` 在 30 秒内未连续命中时，runtime 重新截取已配置区域，保存到 `<应用数据目录>/special_ops_diagnostics/<时间戳>-<账号QQ>-ammo.success.png`。失败消息保留目标、阈值与最后双采样，并附截图绝对路径；截图保存失败只能附加说明，不得覆盖原识别失败。诊断图不截全屏，也不包含 WeGame 登录区域。
 
 每个普通裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。固定探测中的 `craft.station.*`、`craft.confirmPinned`、`craft.returnToStationGrid` 与 `craft.recipe.*` 属于显式状态机动作：制作台与确认置顶点不执行通用倒计时或正向模板守卫；返回点只在 `craft.abort` 连续命中后无倒计时点击；物品选择点恢复倒计时但仍不做正向守卫。安全边界由固定顺序、`craft.abort` 一次性双采样、`game.stationGrid` 返回确认和失败后 `Uncertain` 保证。窗口恢复、进程启动、进程结束和窗口存在使用 native 状态，不以截图模板替代。
 
-制作或子弹补齐购买最多点击 3 次，每次点击后等待 1 秒。购买结果只在“继续动作按钮”与“购买按钮仍出现”之间双采样判定：制作对应 `craft.produce` / `craft.purchase`，子弹对应 `ammo.exchange` / `ammo.purchase`。第三次仍稳定命中购买按钮时，不依赖短暂仓库公告文本：制作分支把账号标记为 `Isolated`；子弹分支只写当前 `AmmoTarget.lastFailure`。两者都结束当前账号剩余流程并切换下一账号。双采样不一致、无稳定状态或截图/窗口/输入错误不得误判仓库空间不足，仍按目标级人工失败或系统级失败处理。
+制作或子弹补齐购买最多点击 3 次，每次点击后等待 1 秒。购买结果双采样判定：制作对应 `craft.produce` / `craft.purchase` / `craft.fill`，子弹对应 `ammo.exchange` / `ammo.purchase` / `ammo.fill`。购买 UI 消失并回到补齐按钮时，重新点击补齐后再购买；第三次仍回到补齐或停留购买按钮时，不依赖短暂仓库公告文本，账号标记为 `Isolated`。两者都结束当前账号剩余流程并切换下一账号；切换前关闭游戏失败按 `round.closeGame` 转为全局暂停。双采样不一致、无稳定状态或截图/窗口/输入错误不得误判仓库空间不足，仍按目标级人工失败或系统级失败处理。
 
 单账号登录试运行 preflight 只检查所选账号为非空纯数字 QQ、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名、账号列表展开点击点、账号列表 OCR 区域和顶部账号双击区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ、启用制作台缺有效时长、启用子弹缺备注或指定点击点，或任一必需目标缺配置、参考图、有效双采样签名时均拒绝启动并报告首个失败步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
 
@@ -100,15 +108,17 @@
 
 `ScheduleSnapshot` 除现有 `dueAccounts` 和 `nextWakeAtMs` 外，返回 `timelineStartMs`、`timelineEndMs` 与排序后的 `timelineTasks`。制作任务来自启用制作台的实际 `finishesAtMs`；子弹任务来自当天尚未成功的启用目标，并在次日兑换时间落入窗口时投影次日目标。可定位失败任务即使不具备 runtime eligibility 也投影为当前到期，并携带 `manualFailure`；非 `Ready`、登录失败、状态不确定或隔离账号仍展示任务并携带 `accountStatus`，但这不代表 runtime 允许执行。
 
-前端显示滚动未来 24 小时小时网格，每分钟刷新当前时间和权威 bootstrap。逾期任务保留原计划时间，延迟固定显示“0 分钟后”。任务按计划时间排序，以每组第一项为锚，仅把严格小于 10 分钟的后续任务合并到同一视觉块，不链式扩展、不改执行时间、不提供拖动或改期入口。结构化制作失败行显示三个单项按钮；结构化子弹失败行显示两个单项按钮；无结构化定位、`NeedsManualLogin` 或 `LoginFailed` 只显示状态和账号页处理提示。制作 scheduler 使用制作台实际完成时间触发，不使用视觉分组结果；启用联网利润筛选时，子弹任务额外显示等待查询、已达标、当前轮次或截止后绕过利润等状态，时间轴投影不反向修改实际 scheduler 时间。
+前端显示滚动未来 24 小时小时网格，每分钟刷新当前时间和权威 bootstrap。逾期任务保留原计划时间，延迟固定显示“0 分钟后”。任务按计划时间排序，以每组第一项为锚，仅把严格小于 10 分钟的后续任务合并到同一视觉块，不链式扩展、不改执行时间、不提供拖动或改期入口。结构化制作失败行显示三个单项按钮；结构化子弹失败行显示两个单项按钮；账号级人工状态显示“已人工检查”。制作 scheduler 使用制作台实际完成时间触发，不使用视觉分组结果；启用联网利润筛选时，子弹任务额外显示等待查询、截止查询中、等待 5 分钟补查、已达标、当前轮次；当天已轮空目标不投影到任务时间轴，调度仍保留当天不兑换结果。
 
 ## 联网利润筛选
 
-`profitFilter` 保存独立开关、利润截止时间、规则和当天最近审计。规则包含工具生成的稳定 ID、显示名、KKRB 精确名称、可选 Moligod 精确名称和非负最低总利润；默认业务配置与账号独立业务配置中的子弹目标只保存 `profitRuleId` 引用。规则、绑定和审计写入 `special_ops_settings.json`，但 qualified rule IDs、查询 generation、组内 cadence、取消令牌和 active round targets 只保存在进程内；重启后审计只能展示，不得复用为兑换资格。
+`profitFilter` 保存独立开关、利润截止时间、规则、当天最近审计及 `cutoffState`。规则包含工具生成的稳定 ID、显示名、KKRB 精确名称、可选 Moligod 精确名称和非负最低总利润；默认业务配置与账号独立业务配置中的子弹目标只保存 `profitRuleId` 引用。规则、绑定、审计和当天截止决策写入 `special_ops_settings.json`；常规 qualified rule IDs、查询 generation、组内 cadence、取消令牌和 active round targets 只保存在进程内，重启后审计不得复用为常规兑换资格。
+
+特勤处配置同时纳入顶栏 Profile 快照 `specialOps`。快照保存完整 `SpecialOpsSettings`，校准参考图片只保存本地路径，不复制图片二进制；运行中的轮次或试运行存在时拒绝切换 Profile。应用含特勤处快照的 Profile 后，特勤处 scheduler 强制 disarm、配置强制暂停、利润查询 runtime 失效，必须由用户点击“继续”恢复。
 
 筛选默认关闭，关闭时现有多账号子弹流程不读取规则或审计。启用后，从每日兑换时间到利润截止时间按“立即 → 5 分钟 → 5 分钟 → 50 分钟”串行查询；KKRB 结构化数据是主源，只有主源 HTTP、根 schema、业务错误或“系统繁忙”等整体失败时才调用 Moligod。KKRB 正常但目标缺失、重复或利润无效时不使用 Moligod 覆盖该结果。Moligod 使用只允许 `https://moligod.com/*` 且无 IPC permission 的主窗口外侧 child Remote WebView，不创建顶级查询窗口；通过 DOM 精确名称读取网页已显示的“预估净利润”，不使用截图、OCR、网页排序、键鼠或配方重算。页面仍显示“加载军需处兑换价格中...”时不得把稳定的空 DOM 当成结果，必须等加载提示消失后再开始精确名称扫描。child WebView 关闭后，独立数据目录在后台最多重试 30 秒清理；仍被 WebView2 锁定时只写 warning，不覆盖已取得的利润结果或向 UI 返回 `os error 32`。配置页手动“刷新 KKRB 名称”遇到业务码 `-101` 时最多重试 3 次、每次间隔 1 秒；3 次仍繁忙则保留已加载名称并提示“KKRB 暂时繁忙，名称列表未更新。可直接手工填写并保存‘KKRB 精确名称’”。该规则不影响后台查询节奏或 Moligod fallback。
 
-达到最低利润的规则可冻结进本轮；同一规则被多个 `Ready` 账号引用时，所有符合当天状态的目标一起进入轮次。未达标、规则未绑定、目标缺失或两站失败保持待执行，不增加游戏内 retry，不标记账号失败。截止时间后，未成功且未耗尽 retry 的已配置目标绕过利润 gate。round 启动时消费同一 generation 的资格并记录 active targets；窗口、热键或 worker handoff 启动失败时立即撤销该 generation，禁止遗留 `ActiveRound`。正常或失败的已启动轮次结束后也使旧资格失效，后续任务必须重新查询。
+截止前达到各自最低利润的规则可冻结进本轮；同一规则被多个 `Ready` 账号引用时，所有符合当天状态的目标一起进入轮次。未达标、规则未绑定、目标缺失或两站失败保持待执行，不增加游戏内 retry，不标记账号失败。到达截止时间时冻结当日剩余账号与子弹目标，执行一次固定最低总利润 10,000 的最终查询：低于阈值直接标记当天轮空；目标缺失、来源失败或利润无效在 5 分钟后补查一次，第二次仍失败则当天轮空；未绑定有效规则的目标直接轮空。截止达标结果按 `(accountId, targetId)` 放行，截止后新增目标不加入当日冻结范围。round 启动时消费同一 generation 的资格并记录 active targets；窗口、热键或 worker handoff 启动失败时立即撤销该 generation，禁止遗留 `ActiveRound`。正常或失败的已启动轮次结束后也使旧常规资格失效。
 
 ## WeGame 进程与窗口约束
 
@@ -128,13 +138,17 @@
 
 ## 多账号自动轮次
 
-`special_ops_start_due_round` 与后台 scheduler 共用 `build_schedule()` 和同一 worker。轮次启动时冻结启用、已初始化、`Ready` 账号中已到期且业务配置启用的制作台，以及当天已到兑换时间、未成功且重试未耗尽的启用子弹。制作台状态为 `Crafting` 或 `Ready` 且完成时间到期时均可加入。账号按 `order` 排序，账号内按技术中心 → 工作台 → 制药台 → 防具台执行；同账号制作与子弹合并为一次登录。仅子弹账号停在 Tab 后大厅，制作与子弹同账号时先进入四制作台完成制作，再从四制作台页面进入子弹兑换。轮次启动后新到期任务留到下一轮。
+`special_ops_start_due_round` 与后台 scheduler 共用 `build_schedule()` 和同一 worker。轮次启动时冻结启用、已初始化、`Ready` 账号中已到期且业务配置启用的制作台、当天可执行子弹、限时商品、交易行，以及未来 24 小时制作任务的只读 lookahead。全部已到期业务先按账号配置顺序分桶，同账号制作台、子弹、限时商品和交易行合并为一个 `AccountRoundTask`；桶内制作台按技术中心 → 工作台 → 制药台 → 防具台排序，子弹按业务配置顺序执行。未来制作任务仍按时间追加，不并入已到期账号桶，只用于后继判断，不得提前执行。
 
-每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录、导航超时和制作异常保存账号失败，阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`，账号保持 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。导航窗口、截图、输入、持久化和 runtime 资源故障视为系统级错误，持久化全局暂停并停止本轮。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`TimedOut` 将账号标记为 `Uncertain` 且不修改制作台，`Paused` 保持系统级。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
+已到期账号桶按账号配置顺序依次执行，不再让其他账号已到期任务插入同账号桶。同账号桶内先制作，再通过一次共享军需处入口串行执行子弹和限时商品，最后执行交易行。当前任务成功后检查未来下一任务：下一任务已逾期，或与当前任务计划时间差 `<=10` 分钟时，本轮继续；同账号保留游戏并等待到期，不重新登录，其他账号先关闭旧游戏再走正常登录流程。下一任务尚未到期且时间差 `>10` 分钟时关闭游戏并结束本轮，由 scheduler 到点重新规划。未来任务仍按计划时间排序，禁止提前并入已到期账号桶。
 
-轮次正常完成时按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame。`PauseRequested` 先持久化暂停，再关闭游戏；关闭失败保持暂停并报告 `round.closeGame`。正常完成时关闭失败转全局暂停。`SystemFailure` 与 `EmergencyStopped` 不关闭游戏，保留现场供人工确认。
+到期桶的 `scheduledAtMs` 取桶内最早完成时间，`freeze_round_run` 冻结制作配置时必须用 `scheduledAtMs.max(frozenNowMs)`：`select_due_craft_tasks` 按 `finishesAtMs <= frozenNowMs` 过滤，直接把桶的最早时间当过滤基准会丢掉同桶里完成更晚但同样已到期的制作台，桶被冻结阶段重新拆成一台一轮。未来桶必须保留自身计划时间才能通过过滤，因此只能取 `max` 而非固定用当前时间。
 
-应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务等待计划时间；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间，不得复用启动或休眠前游戏会话。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、刷新逾期任务并聚焦主窗口，不执行登录。全局总开关关闭时 disarm，应用退出时 shutdown。
+每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段：首次 `TimedOut` 不持久化失败并把账号移到当前轮次队尾，重试从登录流程重新开始；第二次仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
+
+轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame；关闭失败保持暂停并报告 `round.closeGame`。`PauseRequested` 先持久化暂停，再关闭游戏。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
+
+应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务按上述 10 分钟规则等待或留给下一轮；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、请求 active round 停止、刷新逾期任务并聚焦主窗口；用户继续后不复用休眠前游戏会话。全局总开关关闭时 disarm，应用退出时 shutdown。
 
 ## 当前边界
 
@@ -152,10 +166,22 @@
 | `special_ops_start_ammo_trial` | 冻结当前账号全部启用子弹，按普通组、赛季组执行真实兑换并即时保存结果 |
 | `special_ops_start_due_round` | 冻结全部到期制作与当天子弹任务，按账号顺序执行多账号自动轮次 |
 | `special_ops_confirm_account_station_states` | 原子保存四制作台及当天全部启用子弹状态；`Uncertain` / `Isolated` 可恢复 `Ready` |
+| `special_ops_confirm_account_manual_check` | 仅确认登录、账号列表扫描或二次导航超时等账号级人工问题；恢复 `Ready` 并按存量计时还原 `Uncertain` 制作台，不改子弹成功日与 retry |
+| `special_ops_restore_account_state` | 一键恢复单账号或全部账号异常：账号回 `Ready`、`Uncertain` 制作台按存量计时还原、失败子弹解冻、限时商品 `Failed` 回 `Pending`；保留 `lastSuccessDay` |
 | `special_ops_confirm_station_state` | 只校正时间轴中结构化定位的失败制作台，保留其他子弹失败 |
 | `special_ops_confirm_ammo_state` | 只校正时间轴中结构化定位的失败子弹，写入或清除当天成功状态 |
 | `special_ops_cancel_login_trial` | 请求普通取消；等待 worker 完成统一清理 |
 | `special_ops_emergency_stop` | 立即释放输入并将当前账号标记为不确定 |
+
+### 限时商品与交易行
+
+限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待首次进入动画并识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。任务栏“已检查”调用 `special_ops_acknowledge_limited_supply`，只清除当前周期提醒。
+
+交易行任务固定在每日 02:00–04:00。先点击 `market.entry`，再按账号或全局配置点击商品入口，OCR `market.price`；价格小于等于设定值点击 `market.buy`，再点击独立的 `market.confirm` 最终确认购买点，否则点击 `market.return` 返回并继续，按购买次数计数，不判定购买成功。04:00 后任务标记关闭且不补做次日。交易行配置包含启用状态、购买次数、商品备注、最高价与商品入口点击点；账号关闭独立设置时继承默认配置。
+
+试运行 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`。交易行试运行支持 `inspectOnly` 和 `realSingleAttempt`，不写正式购买次数；限时商品颜色测试只双采样，不写正式周期结果。
+
+`ammo.researchDepartment` 与 `limited.ready` 使用用户参考图模板；页面仅暴露 `limited.ready` 超时配置。兼容字段 `limitedSupply.researchDelayMs` 可继续读取，但不参与 UI、preflight 或 runtime。9 个识色区域测试显示双采样命中颜色与距离。颜色 1/2 使用原生 `input[type=color]`，可打开系统颜色面板使用吸管，也可输入 `#RRGGBB`；不保存截图。9 个 `limited.color.1`–`limited.color.9` 区域只用于正式 `AnyPixel` 识别与测试。`market.entry` 为模板识别与点击区域，命中后才点击入口；`market.price` 仅为 OCR 区域，`market.confirm` 为独立最终确认购买点击点。限时商品与交易行试运行正常结束后停放鼠标到 `runtime.mouseParking`，其他试运行不增加停放动作。
 
 五类运行 command 的运行态通过 `special-ops://run-changed` 同时发送到主窗口与 `special-ops-operation` window；payload 只有带 `runKind` 的 `LoginRunSnapshot`，round 可附带 `roundProgress`，不得包含 QQ 密码。
 

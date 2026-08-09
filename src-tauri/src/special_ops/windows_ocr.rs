@@ -76,7 +76,7 @@ pub(crate) fn to_screen_bounds(
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
+pub(crate) fn recognize_words(image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
     use windows::{
         Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap},
         Media::Ocr::OcrEngine,
@@ -163,12 +163,16 @@ pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<
             ));
         }
     }
-    Ok(numeric_words(words))
+    Ok(words)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn recognize_numeric_words(_image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
+pub(crate) fn recognize_words(_image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
     Err("Windows OCR 仅支持 Windows".to_string())
+}
+
+pub(crate) fn recognize_numeric_words(image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
+    recognize_words(image).map(numeric_words)
 }
 
 #[cfg(test)]

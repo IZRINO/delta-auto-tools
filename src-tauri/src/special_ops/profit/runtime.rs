@@ -1,3 +1,4 @@
+use super::cutoff::FINAL_RETRY_DELAY_MS;
 use super::model::AmmoProfitRule;
 use super::query::ProfitQueryContext;
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,9 @@ pub(crate) enum ProfitRuntimePhase {
     Querying,
     WaitingNextQuery,
     ActiveRound,
-    CutoffBypass,
+    CutoffQuerying,
+    WaitingCutoffRetry,
+    CutoffComplete,
     Paused,
 }
 
@@ -52,6 +55,8 @@ pub(crate) struct ProfitQueryWindow {
     pub now_ms: i64,
     pub exchange_at_ms: i64,
     pub cutoff_at_ms: i64,
+    pub cutoff_complete: bool,
+    pub cutoff_retry_at_ms: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -61,8 +66,15 @@ pub(crate) struct QueryLease {
     pub day: String,
     pub rules: Vec<AmmoProfitRule>,
     pub attempt: u8,
+    pub mode: ProfitQueryMode,
     started_at_ms: i64,
     cancellation: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProfitQueryMode {
+    Regular,
+    Cutoff { attempt: u8 },
 }
 
 impl QueryLease {
@@ -309,13 +321,20 @@ impl ProfitQueryControl {
                 state.phase = ProfitRuntimePhase::WaitingExchange;
                 state.next_query_at_ms = Some(window.exchange_at_ms);
             } else if window.now_ms >= window.cutoff_at_ms {
-                if state.active_query || !state.qualified_rule_ids.is_empty() {
-                    state.reset_runtime(ProfitRuntimePhase::CutoffBypass, None);
-                    self.generation.fetch_add(1, Ordering::SeqCst);
-                    notify_cancel = true;
+                if state.active_query {
+                    state.phase = ProfitRuntimePhase::CutoffQuerying;
+                } else if window.cutoff_complete {
+                    state.phase = ProfitRuntimePhase::CutoffComplete;
+                    state.next_query_at_ms = None;
+                } else {
+                    state.phase = ProfitRuntimePhase::WaitingCutoffRetry;
+                    state.next_query_at_ms = Some(
+                        window
+                            .cutoff_retry_at_ms
+                            .unwrap_or(window.now_ms)
+                            .max(window.now_ms),
+                    );
                 }
-                state.phase = ProfitRuntimePhase::CutoffBypass;
-                state.next_query_at_ms = None;
             } else if !matches!(
                 state.phase,
                 ProfitRuntimePhase::Querying | ProfitRuntimePhase::WaitingNextQuery
@@ -372,6 +391,56 @@ impl ProfitQueryControl {
             day: day.to_string(),
             rules,
             attempt,
+            mode: ProfitQueryMode::Regular,
+            started_at_ms,
+            cancellation,
+        })
+    }
+
+    pub(crate) fn begin_cutoff_query(
+        &self,
+        day: &str,
+        settings_revision: u64,
+        started_at_ms: i64,
+        rules: Vec<AmmoProfitRule>,
+        attempt: u8,
+    ) -> Result<QueryLease, String> {
+        if rules.is_empty() {
+            return Err("截止利润查询目标为空".to_string());
+        }
+        if !(1..=2).contains(&attempt) {
+            return Err("截止利润查询次数无效".to_string());
+        }
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| "利润查询状态已损坏".to_string())?;
+        if state.phase == ProfitRuntimePhase::ActiveRound {
+            return Err("当前轮次期间禁止启动利润查询".to_string());
+        }
+        if state.active_query {
+            return Err("已有利润查询正在进行".to_string());
+        }
+        if state.day != day || state.settings_revision != settings_revision {
+            state.reset_runtime(ProfitRuntimePhase::Disabled, None);
+            state.day = day.to_string();
+            state.settings_revision = settings_revision;
+            self.generation.fetch_add(1, Ordering::SeqCst);
+            self.cancel.notify_waiters();
+        }
+        let cancellation = Arc::new(AtomicBool::new(false));
+        state.group_attempt = attempt - 1;
+        state.active_query = true;
+        state.active_cancellation = Some(Arc::clone(&cancellation));
+        state.next_query_at_ms = None;
+        state.phase = ProfitRuntimePhase::CutoffQuerying;
+        Ok(QueryLease {
+            generation: self.generation(),
+            settings_revision,
+            day: day.to_string(),
+            rules,
+            attempt,
+            mode: ProfitQueryMode::Cutoff { attempt },
             started_at_ms,
             cancellation,
         })
@@ -413,6 +482,9 @@ impl ProfitQueryControl {
         summary: String,
         persisted_settings_revision: Option<u64>,
     ) -> Result<bool, String> {
+        if lease.mode != ProfitQueryMode::Regular {
+            return Err("截止利润查询不能按常规 cadence 完成".to_string());
+        }
         let mut state = self
             .inner
             .lock()
@@ -452,6 +524,62 @@ impl ProfitQueryControl {
         state.qualified_rule_ids = qualified_rule_ids;
         state.last_summary = Some(summary);
         state.complete_attempt(completed_at_ms);
+        Ok(true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn complete_cutoff_query_at_revision(
+        &self,
+        lease: &QueryLease,
+        completed_at_ms: i64,
+        qualified_rule_ids: HashSet<String>,
+        summary: String,
+        persisted_settings_revision: u64,
+        retry_required: bool,
+    ) -> Result<bool, String> {
+        if !matches!(lease.mode, ProfitQueryMode::Cutoff { .. }) {
+            return Err("常规利润查询不能按截止查询完成".to_string());
+        }
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| "利润查询状态已损坏".to_string())?;
+        let active_matches = state
+            .active_cancellation
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, &lease.cancellation));
+        if !self.accepts(lease.generation)
+            || lease.is_cancelled()
+            || state.day != lease.day
+            || state.settings_revision != lease.settings_revision
+            || !state.active_query
+            || !active_matches
+        {
+            return Ok(false);
+        }
+        let requested_rule_ids = lease
+            .rules
+            .iter()
+            .map(|rule| rule.id.as_str())
+            .collect::<HashSet<_>>();
+        if qualified_rule_ids
+            .iter()
+            .any(|id| !requested_rule_ids.contains(id.as_str()))
+        {
+            return Err("截止利润查询结果包含未请求规则".to_string());
+        }
+        state.active_query = false;
+        state.active_cancellation = None;
+        state.settings_revision = persisted_settings_revision;
+        state.qualified_rule_ids = qualified_rule_ids;
+        state.last_summary = Some(summary);
+        if retry_required {
+            state.phase = ProfitRuntimePhase::WaitingCutoffRetry;
+            state.next_query_at_ms = Some(completed_at_ms.saturating_add(FINAL_RETRY_DELAY_MS));
+        } else {
+            state.phase = ProfitRuntimePhase::CutoffComplete;
+            state.next_query_at_ms = None;
+        }
         Ok(true)
     }
 
@@ -536,6 +664,8 @@ mod tests {
             now_ms,
             exchange_at_ms,
             cutoff_at_ms,
+            cutoff_complete: false,
+            cutoff_retry_at_ms: None,
         }
     }
 
@@ -661,8 +791,8 @@ mod tests {
         let cutoff = control
             .sync_window(query_window("2026-08-02", 2_000, 1_000, 2_000))
             .unwrap();
-        assert_eq!(cutoff.phase, ProfitRuntimePhase::CutoffBypass);
-        assert_eq!(cutoff.next_query_at_ms, None);
+        assert_eq!(cutoff.phase, ProfitRuntimePhase::WaitingCutoffRetry);
+        assert_eq!(cutoff.next_query_at_ms, Some(2_000));
     }
 
     #[test]
@@ -826,6 +956,45 @@ mod tests {
             .unwrap()
             .current_session_rule_ids
             .is_empty());
+    }
+
+    #[test]
+    fn cutoff_query_retries_once_then_completes() {
+        let control = ProfitQueryControl::default();
+        let first = control
+            .begin_cutoff_query("2026-08-06", 4, 2_000, vec![rule("rule-a")], 1)
+            .unwrap();
+        assert_eq!(first.mode, ProfitQueryMode::Cutoff { attempt: 1 });
+        assert!(control
+            .complete_cutoff_query_at_revision(
+                &first,
+                3_000,
+                HashSet::new(),
+                "等待补查".to_string(),
+                5,
+                true,
+            )
+            .unwrap());
+        let waiting = control.snapshot().unwrap();
+        assert_eq!(waiting.phase, ProfitRuntimePhase::WaitingCutoffRetry);
+        assert_eq!(waiting.next_query_at_ms, Some(3_000 + 5 * 60_000));
+
+        let second = control
+            .begin_cutoff_query("2026-08-06", 5, 3_000 + 5 * 60_000, vec![rule("rule-a")], 2)
+            .unwrap();
+        assert!(control
+            .complete_cutoff_query_at_revision(
+                &second,
+                304_000,
+                HashSet::new(),
+                "截止处理完成".to_string(),
+                6,
+                false,
+            )
+            .unwrap());
+        let completed = control.snapshot().unwrap();
+        assert_eq!(completed.phase, ProfitRuntimePhase::CutoffComplete);
+        assert_eq!(completed.next_query_at_ms, None);
     }
 
     #[tokio::test]

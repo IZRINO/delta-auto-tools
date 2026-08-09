@@ -12,6 +12,8 @@ const RUN_TITLES: Record<LoginRunKind, string> = {
     navigation: "游戏内导航试运行中",
     craft: "制作试运行中",
     ammo: "子弹兑换操作中",
+    limitedSupply: "限时商品检查中",
+    market: "交易行购买中",
     round: "多账号制作轮次中",
 };
 
@@ -20,6 +22,8 @@ const RUN_PREPARING_DETAILS: Record<LoginRunKind, string> = {
     navigation: "正在准备游戏内导航试运行",
     craft: "正在准备制作试运行",
     ammo: "正在准备子弹兑换试运行",
+    limitedSupply: "正在准备限时商品试运行",
+    market: "正在准备交易行试运行",
     round: "正在准备多账号制作轮次",
 };
 
@@ -27,6 +31,9 @@ function roundDetail(snapshot: LoginRunSnapshot): string {
     const progress = snapshot.roundProgress;
     if (!progress) return snapshot.message;
     const account = `账号 ${progress.accountIndex}/${progress.accountTotal} · QQ ${progress.qqAccount}`;
+    if (snapshot.status === "waiting" && snapshot.message.includes("等待")) {
+        return `${account} · ${snapshot.message}`;
+    }
     if (!progress.stationKind) return account;
     return `${account} · ${STATION_LABELS[progress.stationKind]} ${progress.stationIndex}/${progress.stationTotal}`;
 }
@@ -74,7 +81,7 @@ export function SpecialOpsOperationOverlay() {
     const hotkey = search.get("emergencyHotkey")
         ?? DEFAULT_EMERGENCY_HOTKEY;
     const requestedRunKind = search.get("runKind");
-    const runKind: LoginRunKind = requestedRunKind === "navigation" || requestedRunKind === "craft" || requestedRunKind === "ammo" || requestedRunKind === "round"
+    const runKind: LoginRunKind = requestedRunKind === "navigation" || requestedRunKind === "craft" || requestedRunKind === "ammo" || requestedRunKind === "limitedSupply" || requestedRunKind === "market" || requestedRunKind === "round"
         ? requestedRunKind
         : "login";
     const text = snapshot
