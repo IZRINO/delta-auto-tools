@@ -13,7 +13,8 @@
       "Bash(git push origin *)",
       "Bash(gh issue comment *)",
       "Bash(gh issue edit *)",
-      "Bash(gh release create *)"
+      "Bash(gh release create *)",
+      "mcp__codegraph__*"
     ],
     "autoMode": {
       "allow": [
@@ -22,5 +23,17 @@
         "Pushing git tags (v*) for this repo's release workflow"
       ]
     }
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codegraph prompt-hook"
+          }
+        ]
+      }
+    ]
   }
 }
