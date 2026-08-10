@@ -953,6 +953,43 @@ mod tests {
     }
 
     #[test]
+    fn completion_is_rejected_when_revision_moved_and_must_not_be_ignored() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        // 查询期间任何设置写入都会带着新 revision 走 sync_window -> 身份变化 -> 重置。
+        control
+            .sync_window(ProfitQueryWindow {
+                enabled: true,
+                paused: false,
+                active_round: false,
+                day: "2026-08-02".to_string(),
+                settings_revision: 5,
+                now_ms: 1_500,
+                exchange_at_ms: 0,
+                cutoff_at_ms: i64::MAX,
+                cutoff_complete: false,
+                cutoff_retry_at_ms: None,
+            })
+            .unwrap();
+
+        let accepted = control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+
+        // 必须明确返回 false：调用方丢弃这个信号就会让审计写着 qualified 而
+        // 进程内 gate 恒空 -> 子弹被整个滤掉且不报错。
+        assert!(!accepted);
+        assert!(control.snapshot().unwrap().qualified_rule_ids.is_empty());
+    }
+
+    #[test]
     fn restored_profit_eligibility_survives_repeated_launch_failures() {
         let control = ProfitQueryControl::default();
         let lease = control

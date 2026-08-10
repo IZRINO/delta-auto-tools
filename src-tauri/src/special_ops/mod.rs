@@ -8581,13 +8581,18 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
             *settings_lock
                 .lock()
                 .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
-            let _ = profit_runtime.complete_query_at_revision(
+            // 返回 false 表示 generation 或 revision 已变，达标集合没写进进程内状态。
+            // 丢弃这个信号会让审计写着「qualified」而 gate 永远是空的：子弹被整个滤掉，
+            // 日志里 ammoTargetCount 恒为 0，且没有任何报错。按陈旧处理让 cadence 重查。
+            if !profit_runtime.complete_query_at_revision(
                 &lease,
                 completed_at_ms,
                 outcome.qualified_rule_ids.clone(),
                 outcome.summary.clone(),
                 settings_revision.saturating_add(1),
-            )?;
+            )? {
+                return Err(PROFIT_QUERY_STALE.to_string());
+            }
             Ok((next, current_now_ms))
         },
     );
