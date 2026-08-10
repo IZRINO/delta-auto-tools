@@ -179,7 +179,9 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 
 限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待首次进入动画并识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。
 
-任务栏显示 `limitedOutcome` 文案：`pending` 尚未检查、`noHighValue` 未发现高价值、`highValue` 已发现高价值等待人工确认、`failed` 检查失败（error 色）。`noHighValue` 与已确认的 `highValue` 任务从任务栏移除，未确认的 `highValue` 按设计保留并附“已查看高价值商品”按钮，调用 `special_ops_acknowledge_limited_supply` 只清除当前 `cycleId` 的提醒；后端也只接受 `highValue` 状态。不渲染结果会让已完成的检查看起来像没执行。
+只有判定**通过**（`highValue`）且未确认的任务留在任务栏，附“已查看高价值商品”按钮，调用 `special_ops_acknowledge_limited_supply` 只清除当前 `cycleId` 的提醒；后端也只接受 `highValue` 状态。判定未通过一律出栏：`noHighValue` 是正常轮空，`failed` 是本周期判定不成立，留在栏里会让人以为还要执行。失败原因只写入 `limitedSupply.lastError`，任务栏不再显示“检查失败”。前端 `limitedOutcomeLabels` 保留 `noHighValue` / `failed` 文案仅为兼容旧 payload。
+
+`compare_samples` 判定 `highValue` 的条件是两次采样的命中区域集合**完全相等**，且该区域两次命中的目标颜色相同。取交集非空就判定会把命中抖动（第一次命中 1、3，第二次只命中 3）算成一致；只读第二次采样的颜色会把跨色命中（第一次颜色 1、第二次颜色 2）算成稳定结果。两者都会误报高价值，因此都必须继续采样，直到超时写入 `failed`。两次均无命中仍直接判 `noHighValue`。
 
 交易行任务固定在每日 02:00–04:00。先点击 `market.entry`，再按账号或全局配置点击商品入口，OCR `market.price`；价格小于等于设定值点击 `market.buy`，再点击独立的 `market.confirm` 最终确认购买点，否则点击 `market.return` 返回并继续，按购买次数计数，不判定购买成功。04:00 后任务标记关闭且不补做次日。交易行配置包含启用状态、购买次数、商品备注、最高价与商品入口点击点；账号关闭独立设置时继承默认配置。
 

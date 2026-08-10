@@ -11002,8 +11002,14 @@ fn build_timeline_tasks(
                 };
                 let acknowledged =
                     is_current && state_matches && account.limited_supply.acknowledged;
-                if outcome == limited_supply::LimitedSupplyOutcome::NoHighValue
-                    || (outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged)
+                // 只有真正判定通过（HighValue）且未确认时才把任务留在任务栏等人工确认。
+                // 未通过一律出栏：NoHighValue 是正常轮空，Failed 是本周期判定不成立，
+                // 留着会让人以为还要执行；失败原因仍写在 limitedSupply.lastError。
+                if matches!(
+                    outcome,
+                    limited_supply::LimitedSupplyOutcome::NoHighValue
+                        | limited_supply::LimitedSupplyOutcome::Failed
+                ) || (outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged)
                 {
                     continue;
                 }
@@ -17582,6 +17588,57 @@ mod tests {
             .single()
             .unwrap()
             .timestamp_millis()
+    }
+
+    #[test]
+    fn failed_limited_check_leaves_the_timeline_instead_of_waiting_for_acknowledgement() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.limited_supply.enabled = true;
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+        let cycle_id = "2026-08-07T20:00".to_string();
+        let account = settings
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == "selected")
+            .expect("测试账号必须存在");
+        account.limited_supply.cycle_id = Some(cycle_id.clone());
+        account.limited_supply.acknowledged = false;
+
+        let current_task = |settings: &SpecialOpsSettings| {
+            build_schedule(settings, now_ms)
+                .timeline_tasks
+                .into_iter()
+                .find(|task| {
+                    task.kind == TimelineTaskKind::LimitedSupplyCheck
+                        && task.limited_cycle_id.as_deref() == Some(cycle_id.as_str())
+                })
+        };
+
+        // 判定通过且未确认：任务留在栏里等人工确认。
+        settings
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == "selected")
+            .unwrap()
+            .limited_supply
+            .outcome = limited_supply::LimitedSupplyOutcome::HighValue;
+        assert!(current_task(&settings).is_some());
+
+        // 判定未通过：任务必须消失，不再占着任务栏等一个不存在的确认入口。
+        for outcome in [
+            limited_supply::LimitedSupplyOutcome::Failed,
+            limited_supply::LimitedSupplyOutcome::NoHighValue,
+        ] {
+            settings
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == "selected")
+                .unwrap()
+                .limited_supply
+                .outcome = outcome.clone();
+            assert!(current_task(&settings).is_none(), "{outcome:?} 必须出栏");
+        }
     }
 
     #[test]

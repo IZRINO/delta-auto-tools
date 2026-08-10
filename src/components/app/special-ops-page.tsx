@@ -297,6 +297,7 @@ const timelineProfitLabels: Record<NonNullable<TimelineTask["profitState"]>, str
 
 /// 限时商品检查结果在任务栏的文案。
 /// `highValue` 未确认时任务会留在任务栏等人工确认，必须显式说明，否则看起来像没执行。
+/// `noHighValue` 与 `failed` 由后端直接出栏，这里保留文案只为兼容旧 payload。
 const limitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
     pending: "尚未检查",
     noHighValue: "未发现高价值",

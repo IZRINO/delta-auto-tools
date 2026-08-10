@@ -162,16 +162,29 @@ fn compare_samples(
             error: None,
         });
     }
-    let region = first_hits.intersection(&second_hits).next().copied()?;
-    let matched_color = second
-        .regions
-        .iter()
-        .find(|candidate| candidate.region == region)
-        .and_then(|candidate| candidate.matched_color);
+    // 命中集合必须两次完全相同。取交集非空就判定会让「第一次命中 1、3，第二次只命中 3」
+    // 这种抖动算成一致 -> 误报高价值。
+    if first_hits != second_hits {
+        return None;
+    }
+    let region = first_hits.iter().next().copied()?;
+    let color_of = |sample: &LimitedColorSample| {
+        sample
+            .regions
+            .iter()
+            .find(|candidate| candidate.region == region)
+            .and_then(|candidate| candidate.matched_color)
+    };
+    let first_color = color_of(first);
+    // 同一区域两次命中的目标颜色也必须相同：只读第二次的颜色会让「第一次命中颜色 1、
+    // 第二次命中颜色 2」被当成稳定结果，同样是误报。
+    if first_color.is_none() || first_color != color_of(second) {
+        return None;
+    }
     Some(LimitedSupplyCheckResult {
         outcome: LimitedSupplyOutcome::HighValue,
         matched_region: Some(region),
-        matched_color,
+        matched_color: first_color,
         error: None,
     })
 }
@@ -361,9 +374,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn high_value_requires_same_region_in_two_valid_samples() {
+    async fn high_value_requires_same_region_and_same_color_in_two_valid_samples() {
         let driver =
-            FakeDriver::with_samples([sample(&[(2, [1, 2, 3])]), sample(&[(2, [4, 5, 6])])]);
+            FakeDriver::with_samples([sample(&[(2, [1, 2, 3])]), sample(&[(2, [1, 2, 3])])]);
 
         let stop =
             run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
@@ -373,16 +386,31 @@ mod tests {
         };
         assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
         assert_eq!(result.matched_region, Some(2));
-        assert_eq!(result.matched_color, Some([4, 5, 6]));
+        assert_eq!(result.matched_color, Some([1, 2, 3]));
     }
 
     #[tokio::test]
-    async fn inconsistent_samples_are_discarded_before_resampling() {
+    async fn same_region_with_different_colors_is_not_high_value() {
+        // 同一区域两次命中不同目标颜色不是稳定结果：只读第二次颜色会误报高价值。
+        let driver =
+            FakeDriver::with_samples([sample(&[(2, [1, 2, 3])]), sample(&[(2, [4, 5, 6])])]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::Failed);
+        assert_eq!(result.matched_region, None);
+    }
+
+    #[tokio::test]
+    async fn partially_overlapping_hit_sets_are_not_high_value() {
+        // 命中集合抖动（1,3 -> 3）取交集非空就判定会误报，必须要求两次集合完全相同。
         let driver = FakeDriver::with_samples([
-            sample(&[(1, [1, 1, 1])]),
-            sample(&[(2, [2, 2, 2])]),
+            sample(&[(1, [1, 1, 1]), (3, [3, 3, 3])]),
             sample(&[(3, [3, 3, 3])]),
-            sample(&[(3, [4, 4, 4])]),
         ]);
 
         let stop =
@@ -391,6 +419,26 @@ mod tests {
         let LimitedRunStop::Completed(result) = stop else {
             panic!("预期完成");
         };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::Failed);
+        assert_eq!(result.matched_region, None);
+    }
+
+    #[tokio::test]
+    async fn inconsistent_samples_are_discarded_before_resampling() {
+        let driver = FakeDriver::with_samples([
+            sample(&[(1, [1, 1, 1])]),
+            sample(&[(2, [2, 2, 2])]),
+            sample(&[(3, [3, 3, 3])]),
+            sample(&[(3, [3, 3, 3])]),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
         assert_eq!(result.matched_region, Some(3));
         assert_eq!(driver.persisted.lock().unwrap().len(), 1);
     }
