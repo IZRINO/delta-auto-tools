@@ -142,7 +142,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 特勤处联网利润筛选
 
-`special_ops` 的 `profitFilter` 独立保存全局开关、截止时间、规则与审计；子弹目标只引用稳定 `profitRuleId`。规则资格、查询 generation、查询节奏和 active round 目标均是进程内状态，历史审计不能在重启后直接触发兑换。查询窗口从每日兑换时间持续到利润截止时间，节奏为立即、5 分钟、5 分钟、50 分钟；KKRB 正常响应时只能使用 KKRB，整体失败才允许无 IPC 权限的 Moligod 隐藏 WebView 备用。未达标、目标缺失与来源失败不记当天失败，截止后绕过利润 gate。round 在资源启动前冻结并消费当代资格；启动回滚必须撤销同一 generation，避免遗留 `ActiveRound`。任何返回 `SpecialOpsBootstrap` 的写入命令都必须同时返回权威 `ProfitRuntimeSnapshot`。
+`special_ops` 的 `profitFilter` 独立保存全局开关、截止时间、规则与审计；子弹目标只引用稳定 `profitRuleId`。规则资格、查询 generation、查询节奏和 active round 目标均是进程内状态，历史审计不能在重启后直接触发兑换。查询窗口从每日兑换时间持续到利润截止时间，节奏为立即、5 分钟、5 分钟、50 分钟；KKRB 正常响应时只能使用 KKRB，整体失败才允许无 IPC 权限的 Moligod 隐藏 WebView 备用。未达标、目标缺失与来源失败不记当天失败，截止后绕过利润 gate。round 在资源启动前冻结并消费当代资格；启动回滚必须撤销同一 generation，避免遗留 `ActiveRound`。`consume_for_round` 只把 `qualifiedRuleIds` 取到 `consumedRuleIds` 暂存，`rollback_failed_round_start` 必须原样放回并转 `WaitingNextQuery`，禁止 `reset_runtime` 清空：freeze 已 consume 后启动失败多是操作提示窗加载超时这类瞬时故障，1 秒后就重试，烧掉当天资格会让重试的 gate 变空 -> 子弹被整个滤掉 -> 当天只跑制作然后关游戏、再也不兑换。清空只允许发生在 `end_active_round`（轮次真正结束）。任何返回 `SpecialOpsBootstrap` 的写入命令都必须同时返回权威 `ProfitRuntimeSnapshot`。
 
 ### 特勤处任务级人工判定
 
