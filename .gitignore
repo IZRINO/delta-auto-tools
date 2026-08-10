@@ -28,6 +28,11 @@ coverage/
 *.sw?
 .worktrees/
 .superpowers/
+
+# impeccable live mode 运行态（config.json 保留入库）
+.impeccable/live/sessions/
+.impeccable/live/roots.json
+.impeccable/live/inject-journal.json
 .claude/worktrees/
 .claude/settings.local.json
 temp/
