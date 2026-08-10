@@ -212,9 +212,12 @@ impl ProductionCraftTrialDriver {
         countdown: bool,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(), String> {
+        // 复核仍用 key 的识别区域，点击改用独立点击点；冻结配置缺点击点时回落识别区域。
+        let click_key = super::click_target_key(key);
         let region = self
             .targets
-            .get(key)
+            .get(click_key)
+            .or_else(|| self.targets.get(key))
             .ok_or_else(|| format!("制作点击目标 {key} 不存在"))?
             .region
             .clone();

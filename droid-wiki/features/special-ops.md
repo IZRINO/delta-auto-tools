@@ -81,7 +81,7 @@
 | 进入制作列表 | `craft.abort` 两个有效低分样本 | 按 run 级规则显示倒计时，点击当前台 `craft.recipe.<station>` 制作物品选择点 |
 | 判断生产路径 | 制作物品选择点已点击 | 等待 `craft.fill` 或 `craft.produce` |
 | 点击制作一键补齐 | `craft.fill` 自身模板 | `craft.purchase` |
-| 购买制作材料 | `craft.purchase` 按钮自身模板 | 每次点击后等待 1 秒，双采样 `craft.produce`、`craft.purchase` 或购买 UI 消失后重新出现的 `craft.fill`；命中 `craft.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
+| 购买制作材料 | `craft.purchase` 按钮自身模板 | 识别命中后点击独立点击点 `craft.purchaseClick`，每次点击后等待 1 秒，双采样 `craft.produce`、`craft.purchase` 或购买 UI 消失后重新出现的 `craft.fill`；命中 `craft.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
 | 开始制作 | `craft.produce` 按钮自身模板 | `craft.abort` |
 | 返回部门页 | `ammo.department` 已命中时跳过；否则仅在 `game.stationGrid` 或 `craft.abort` 命中时按一次 Tab | `ammo.department` |
 | 点击部门 | `ammo.department` 自身模板 | 识别命中后倒计时一次，再点击模板中心 |
@@ -93,14 +93,14 @@
 | 切换赛季限定 | 全部普通目标结束且存在赛季目标 | 按 run 级规则显示倒计时，直接点击 `ammo.seasonal` 点击点；多个赛季目标之间不重复点击 |
 | 点击赛季目标子弹 | 赛季目标配置顺序 | run 级倒计时；先按 A、D（各间隔 100ms），再向下滚配置次数，事件间隔 100ms，结束等待 1000ms 后点击；随后等待 `ammo.success`、`ammo.fill` 或 `ammo.exchange` |
 | 点击子弹一键补齐 | `ammo.fill` 自身模板 | 按 run 级规则显示倒计时后点击，随后识别 `ammo.purchase` |
-| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | 每次购买点击前倒计时一次，点击后等待 1 秒，双采样 `ammo.exchange`、`ammo.purchase` 或购买 UI 消失后重新出现的 `ammo.fill`；命中 `ammo.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
+| 购买子弹材料 | `ammo.purchase` 按钮自身模板 | 识别命中后点击独立点击点 `ammo.purchaseClick`，每次购买点击前倒计时一次，点击后等待 1 秒，双采样 `ammo.exchange`、`ammo.purchase` 或购买 UI 消失后重新出现的 `ammo.fill`；命中 `ammo.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
 | 兑换子弹 | `ammo.exchange` 可兑换状态模板 | 按 run 级规则显示倒计时后点击兑换；双采样命中全局 `ammo.confirm` 用户参考图后再次按规则提示并点击区域中心，再以 `ammo.success` 用户参考图确认完成；均不读取颜色 |
 
 `ammo.success` 在 30 秒内未连续命中时，runtime 重新截取已配置区域，保存到 `<应用数据目录>/special_ops_diagnostics/<时间戳>-<账号QQ>-ammo.success.png`。失败消息保留目标、阈值与最后双采样，并附截图绝对路径；截图保存失败只能附加说明，不得覆盖原识别失败。诊断图不截全屏，也不包含 WeGame 登录区域。
 
 每个普通裸动作的允许前置状态保存于校准目标 `guardAnyOf`，其语义为 OR。执行器必须先确认其中至少一个守卫连续两次命中，才能使用该动作坐标。固定探测中的 `craft.station.*`、`craft.confirmPinned`、`craft.returnToStationGrid` 与 `craft.recipe.*` 属于显式状态机动作：制作台与确认置顶点不执行通用倒计时或正向模板守卫；返回点只在 `craft.abort` 连续命中后无倒计时点击；物品选择点恢复倒计时但仍不做正向守卫。安全边界由固定顺序、`craft.abort` 一次性双采样、`game.stationGrid` 返回确认和失败后 `Uncertain` 保证。窗口恢复、进程启动、进程结束和窗口存在使用 native 状态，不以截图模板替代。
 
-制作或子弹补齐购买最多点击 3 次，每次点击后等待 1 秒。购买结果双采样判定：制作对应 `craft.produce` / `craft.purchase` / `craft.fill`，子弹对应 `ammo.exchange` / `ammo.purchase` / `ammo.fill`。购买 UI 消失并回到补齐按钮时，重新点击补齐后再购买；第三次仍回到补齐或停留购买按钮时，不依赖短暂仓库公告文本，账号标记为 `Isolated`。两者都结束当前账号剩余流程并切换下一账号；切换前关闭游戏失败只记 warn 并继续下一账号，不再转为全局暂停。双采样不一致、无稳定状态或截图/窗口/输入错误不得误判仓库空间不足，仍按目标级人工失败或系统级失败处理。
+制作或子弹补齐购买最多点击 3 次，每次点击后等待 1 秒。购买结果双采样判定：制作对应 `craft.produce` / `craft.purchase` / `craft.fill`，子弹对应 `ammo.exchange` / `ammo.purchase` / `ammo.fill`。购买材料按钮的识别区域与点击点分离：`craft.purchase` / `ammo.purchase` 保持 RecognitionRegion 只做识别与复核，实际点击落在 `craft.purchaseClick` / `ammo.purchaseClick` 两个 ClickPoint 上，映射集中在 `click_target_key()`。两个点击点以对应识别区域作 `guardAnyOf` 守卫，识别命中购买按钮才允许点击，不存在盲点；冻结配置缺少点击点时回落到识别区域，避免旧配置在轮次中途硬失败，由 preflight 要求补校准。重试次数与仓库空间不足判定流程不变。购买 UI 消失并回到补齐按钮时，重新点击补齐后再购买；第三次仍回到补齐或停留购买按钮时，不依赖短暂仓库公告文本，账号标记为 `Isolated`。两者都结束当前账号剩余流程并切换下一账号；切换前关闭游戏失败只记 warn 并继续下一账号，不再转为全局暂停。双采样不一致、无稳定状态或截图/窗口/输入错误不得误判仓库空间不足，仍按目标级人工失败或系统级失败处理。
 
 单账号登录试运行 preflight 只检查所选账号为非空纯数字 QQ、两个有效绝对 `.exe` 文件，以及上述 5 个 template 的有效双采样签名、账号列表展开点击点、账号列表 OCR 区域和顶部账号双击区域。完整自动化的业务 preflight 仍按启用制作台、普通子弹和赛季限定子弹计算必需校准项；账号缺 QQ、启用制作台缺有效时长、启用子弹缺备注或指定点击点，或任一必需目标缺配置、参考图、有效双采样签名时均拒绝启动并报告首个失败步骤。暂停状态允许保存不完整草稿，避免配置期间反复报错。
 
@@ -182,6 +182,8 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 任务栏显示 `limitedOutcome` 文案：`pending` 尚未检查、`noHighValue` 未发现高价值、`highValue` 已发现高价值等待人工确认、`failed` 检查失败（error 色）。`noHighValue` 与已确认的 `highValue` 任务从任务栏移除，未确认的 `highValue` 按设计保留并附“已查看高价值商品”按钮，调用 `special_ops_acknowledge_limited_supply` 只清除当前 `cycleId` 的提醒；后端也只接受 `highValue` 状态。不渲染结果会让已完成的检查看起来像没执行。
 
 交易行任务固定在每日 02:00–04:00。先点击 `market.entry`，再按账号或全局配置点击商品入口，OCR `market.price`；价格小于等于设定值点击 `market.buy`，再点击独立的 `market.confirm` 最终确认购买点，否则点击 `market.return` 返回并继续，按购买次数计数，不判定购买成功。04:00 后任务标记关闭且不补做次日。交易行配置包含启用状态、购买次数、商品备注、最高价与商品入口点击点；账号关闭独立设置时继承默认配置。
+
+当前账号必须跑满配置购买次数才切换下一账号。每个原子流程结束后只让位给**新**到期的制作：`MarketDriver::latest_due_craft_at_ms()` 在已到期制作里取最晚计划时间，与入口点击、固定等待之后取的基线比较，仅当出现比基线更晚的到期制作时返回 `YieldedForCraft`。取 `max` 而非 `min` 是因为让位要回答「有没有新制作到期」，新完成的制作台计划时间必然晚于开跑前就已逾期的那些，`min` 会被陈旧任务永久钉住。开跑前就已逾期的制作属于本轮队列自身业务——交易行排在同账号制作之后，其他账号的到期制作还排在交易行后面——拿它当让位理由会让账号每买一件就退出换号，购买次数永远停在 1，且每次重排队都要重新登录，窗口耗尽后 `market_window_open` 会静默丢弃剩余交易行任务。让位后仍按 `market_retry_task` 排在最后一个已到期制作之后，按已保存次数续跑。
 
 试运行 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`。交易行试运行支持 `inspectOnly` 和 `realSingleAttempt`，不写正式购买次数；限时商品颜色测试只双采样，不写正式周期结果。
 

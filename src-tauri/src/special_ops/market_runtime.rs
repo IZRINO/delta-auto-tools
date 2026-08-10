@@ -87,9 +87,11 @@ pub(crate) trait MarketDriver: Send + Sync {
     ) -> Result<(), MarketRunError>;
     fn persist_purchase_click(&self) -> Result<u32, MarketRunError>;
     fn minute_of_day(&self) -> u16;
-    fn now_ms(&self) -> i64;
     fn pause_requested(&self) -> bool;
-    fn next_craft_at_ms(&self) -> Option<i64>;
+    /// 当前已到期制作任务里最晚的计划时间，没有到期任务时为 `None`。
+    /// 取 max 而非 min：让位判定要回答“有没有**新**制作到期”，新完成的制作台
+    /// 计划时间必然晚于开跑前就已逾期的那些，min 会被陈旧任务永久钉住。
+    fn latest_due_craft_at_ms(&self) -> Option<i64>;
 }
 
 fn stopped(error: MarketRunError) -> MarketRunStop {
@@ -235,6 +237,9 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
         return stopped(error);
     }
 
+    // 入口点击与固定等待之后再取基线：这段时间本身可能有制作到期，算进基线才不会
+    // 在第一件商品后就误判成“新到期”。
+    let due_craft_baseline_ms = driver.latest_due_craft_at_ms();
     let mut completed_count = config.completed_count;
     let mut consecutive_failed_pages = 0u8;
     loop {
@@ -267,10 +272,10 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
         if completed_count >= config.target_count {
             return MarketRunStop::Completed;
         }
-        if driver
-            .next_craft_at_ms()
-            .is_some_and(|scheduled_at_ms| scheduled_at_ms <= driver.now_ms())
-        {
+        // 只让位给开跑之后**新**到期的制作。开跑前就已逾期的制作是本轮队列自己的
+        // 业务（交易行跑在同账号 craft 之后，其他账号的到期制作还排在后面），
+        // 拿它当让位理由会让每买一件就退出换号 -> 购买次数永远停在 1。
+        if driver.latest_due_craft_at_ms() > due_craft_baseline_ms {
             return MarketRunStop::YieldedForCraft;
         }
     }
@@ -413,17 +418,14 @@ mod tests {
             self.minute.load(Ordering::SeqCst)
         }
 
-        fn now_ms(&self) -> i64 {
-            self.now_ms.load(Ordering::SeqCst)
-        }
-
         fn pause_requested(&self) -> bool {
             self.pause.load(Ordering::SeqCst)
         }
 
-        fn next_craft_at_ms(&self) -> Option<i64> {
+        fn latest_due_craft_at_ms(&self) -> Option<i64> {
             let value = self.craft_at_ms.load(Ordering::SeqCst);
-            (value >= 0).then_some(value)
+            let now_ms = self.now_ms.load(Ordering::SeqCst);
+            (value >= 0 && value <= now_ms).then_some(value)
         }
     }
 
@@ -579,5 +581,33 @@ mod tests {
             run_market(&driver, config(2), Arc::new(AtomicBool::new(false))).await,
             MarketRunStop::YieldedForCraft
         );
+    }
+
+    #[tokio::test]
+    async fn craft_already_due_at_start_does_not_cut_the_purchase_count() {
+        // 开跑前就逾期的制作是本轮队列自己的业务：其他账号的到期制作排在交易行之后，
+        // 拿它让位会让账号每买一件就退出换号，配置的 3 次永远停在 1 次。
+        let driver = FakeDriver::with_ocr(["100", "100", "100"]);
+        driver.craft_at_ms.store(500, Ordering::SeqCst);
+
+        let stop = run_market(&driver, config(3), Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(stop, MarketRunStop::Completed);
+        assert_eq!(driver.completed.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn craft_newly_due_during_loop_still_yields() {
+        // 陈旧到期任务不让位，但跑动过程中新完成的制作台必须仍能抢回控制权。
+        let driver = FakeDriver {
+            boundary_after_purchase: Boundary::Craft,
+            ..FakeDriver::with_ocr(["100", "100", "100"])
+        };
+        driver.craft_at_ms.store(500, Ordering::SeqCst);
+
+        let stop = run_market(&driver, config(3), Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(stop, MarketRunStop::YieldedForCraft);
+        assert_eq!(driver.completed.load(Ordering::SeqCst), 1);
     }
 }

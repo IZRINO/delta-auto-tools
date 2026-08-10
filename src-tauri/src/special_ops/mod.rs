@@ -732,6 +732,9 @@ fn default_guard_any_of(key: &str) -> &'static [&'static str] {
     }
     match key {
         "wegame.accountDropdown" | "wegame.selectedAccount" => &["wegame.loginFormReady"],
+        // 购买点击点由对应识别区域守卫：识别命中购买按钮才允许点击，避免盲点。
+        "craft.purchaseClick" => &["craft.purchase"],
+        "ammo.purchaseClick" => &["ammo.purchase"],
         "game.beaconMode" | "market.entry" | "market.product" | "market.return" | "market.buy"
         | "market.confirm" => &["game.modeReady"],
         _ => &[],
@@ -821,11 +824,8 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             ClickPoint,
         ),
         ("craft.fill", "一键补齐识别与点击区域", RecognitionRegion),
-        (
-            "craft.purchase",
-            "购买材料按钮识别与点击区域",
-            RecognitionRegion,
-        ),
+        ("craft.purchase", "购买材料按钮识别区域", RecognitionRegion),
+        ("craft.purchaseClick", "购买材料按钮点击点", ClickPoint),
         ("craft.produce", "生产按钮识别与点击区域", RecognitionRegion),
         ("craft.abort", "中止按钮识别区域", RecognitionRegion),
         (
@@ -844,9 +844,10 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         ("ammo.fill", "子弹一键补齐区域", RecognitionRegion),
         (
             "ammo.purchase",
-            "子弹材料购买按钮识别与点击区域",
+            "子弹材料购买按钮识别区域",
             RecognitionRegion,
         ),
+        ("ammo.purchaseClick", "子弹材料购买按钮点击点", ClickPoint),
         ("ammo.exchange", "兑换按钮区域", RecognitionRegion),
         (
             "ammo.confirm",
@@ -910,6 +911,17 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         }
     })
     .collect()
+}
+
+/// 购买材料按钮的识别区域与点击点分离：按钮文案位置固定但可点击区域偏移，
+/// 用识别区域直接点击会打在无效像素上。识别仍用 `*.purchase`，点击改用
+/// `*.purchaseClick`；其余目标保持识别即点击，返回原 key。
+fn click_target_key(recognition_key: &str) -> &str {
+    match recognition_key {
+        "craft.purchase" => "craft.purchaseClick",
+        "ammo.purchase" => "ammo.purchaseClick",
+        other => other,
+    }
 }
 
 fn mouse_parking_region(
@@ -2855,6 +2867,7 @@ fn required_execution_target_keys(
                 "craft.returnToStationGrid",
                 "craft.fill",
                 "craft.purchase",
+                "craft.purchaseClick",
                 "craft.produce",
                 "craft.abort",
             ]
@@ -2885,6 +2898,7 @@ fn required_execution_target_keys(
                 "ammo.tacticalDepartment",
                 "ammo.fill",
                 "ammo.purchase",
+                "ammo.purchaseClick",
                 "ammo.exchange",
                 "ammo.confirm",
                 "ammo.success",
@@ -3348,6 +3362,7 @@ fn freeze_craft_run_config(
         "game.stationGrid".to_string(),
         "craft.fill".to_string(),
         "craft.purchase".to_string(),
+        "craft.purchaseClick".to_string(),
         "craft.produce".to_string(),
         "craft.abort".to_string(),
     ];
@@ -3502,6 +3517,7 @@ fn freeze_ammo_run(
         "ammo.tacticalDepartment",
         "ammo.fill",
         "ammo.purchase",
+        "ammo.purchaseClick",
         "ammo.exchange",
         "ammo.confirm",
         "ammo.success",
@@ -5747,9 +5763,13 @@ impl ammo_runtime::AmmoDriver for ProductionAmmoDriver {
                 format!("识别结果与目标不一致：{matched}"),
             ));
         }
+        // 识别用 target，点击用 click_target_key(target)。冻结配置里缺少独立点击点时
+        // 回落到识别区域 -> 旧配置不会在轮次中途硬失败，preflight 负责要求补校准。
+        let click_key = click_target_key(target);
         let region = self
             .targets
-            .get(target)
+            .get(click_key)
+            .or_else(|| self.targets.get(target))
             .ok_or_else(|| Self::system_error(target, "校准目标不存在"))?
             .region
             .clone();
@@ -6524,26 +6544,24 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
         local_day_and_minute(now_ms()).1 as u16
     }
 
-    fn now_ms(&self) -> i64 {
-        now_ms()
-    }
-
     fn pause_requested(&self) -> bool {
         self.control.pause_requested()
     }
 
-    fn next_craft_at_ms(&self) -> Option<i64> {
+    fn latest_due_craft_at_ms(&self) -> Option<i64> {
         let settings = self.input.settings.lock().ok()?;
-        build_schedule(&settings, now_ms())
+        let now_ms = now_ms();
+        build_schedule(&settings, now_ms)
             .timeline_tasks
             .into_iter()
             .filter(|task| {
                 task.kind == TimelineTaskKind::Craft
                     && task.account_status == AccountStatus::Ready
                     && task.manual_failure.is_none()
+                    && task.scheduled_at_ms <= now_ms
             })
             .map(|task| task.scheduled_at_ms)
-            .min()
+            .max()
     }
 }
 
@@ -14314,6 +14332,39 @@ mod tests {
     }
 
     #[test]
+    fn purchase_buttons_recognize_and_click_separate_targets() {
+        // 只有两个购买按钮拆分识别与点击；其余目标必须保持识别即点击。
+        assert_eq!(click_target_key("craft.purchase"), "craft.purchaseClick");
+        assert_eq!(click_target_key("ammo.purchase"), "ammo.purchaseClick");
+        for key in ["craft.fill", "craft.produce", "ammo.fill", "ammo.exchange"] {
+            assert_eq!(click_target_key(key), key);
+        }
+
+        let targets = default_calibration_targets();
+        for (click_key, recognition_key) in [
+            ("craft.purchaseClick", "craft.purchase"),
+            ("ammo.purchaseClick", "ammo.purchase"),
+        ] {
+            let click = targets
+                .iter()
+                .find(|target| target.key == click_key)
+                .expect("购买点击点必须注册");
+            assert_eq!(click.kind, CalibrationTargetKind::ClickPoint);
+            // 点击点不能盲点：必须由对应识别区域守卫。
+            assert_eq!(click.guard_any_of, [recognition_key.to_string()]);
+            let recognition = targets
+                .iter()
+                .find(|target| target.key == recognition_key)
+                .expect("购买识别区域必须保留");
+            assert_eq!(
+                recognition.kind,
+                CalibrationTargetKind::RecognitionRegion,
+                "{recognition_key} 必须保持识别区域"
+            );
+        }
+    }
+
+    #[test]
     fn default_click_and_input_targets_have_recognition_guards() {
         let targets = default_calibration_targets();
         let actions = targets
@@ -15387,6 +15438,7 @@ mod tests {
             "game.stationGrid",
             "craft.fill",
             "craft.purchase",
+            "craft.purchaseClick",
             "craft.produce",
             "craft.abort",
         ];
@@ -15501,6 +15553,7 @@ mod tests {
             "game.stationGrid",
             "craft.fill",
             "craft.purchase",
+            "craft.purchaseClick",
             "craft.produce",
             "craft.abort",
         ];
