@@ -8432,14 +8432,19 @@ async fn execute_cutoff_profit_query_action(app: &AppHandle) -> Result<(), Strin
             *settings_lock
                 .lock()
                 .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
-            let _ = profit_runtime.complete_cutoff_query_at_revision(
+            // 与常规路径同理：返回 false 表示 generation 或 revision 已变，达标集合没写进
+            // 进程内状态。丢弃这个信号会让 cutoffState 落盘为达标而 gate 恒空 -> 截止后
+            // 子弹被整个滤掉且无报错。按陈旧处理让截止查询重跑。
+            if !profit_runtime.complete_cutoff_query_at_revision(
                 &lease,
                 completed_at_ms,
                 classification.qualified_rule_ids.clone(),
                 outcome.summary.clone(),
                 settings_revision.saturating_add(1),
                 !classification.retry_rule_ids.is_empty(),
-            )?;
+            )? {
+                return Err(PROFIT_QUERY_STALE.to_string());
+            }
             Ok((next, completed_at_ms))
         },
     );
