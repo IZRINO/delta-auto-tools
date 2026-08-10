@@ -105,6 +105,10 @@ pub(crate) struct ProfitQueryState {
     active_cancellation: Option<Arc<AtomicBool>>,
     phase: ProfitRuntimePhase,
     qualified_rule_ids: HashSet<String>,
+    /// `consume_for_round` 取走的达标规则暂存处。轮次启动失败要能原样放回：
+    /// 操作提示窗加载超时之类的瞬时故障 1 秒后就重试，若把当天资格一起烧掉，
+    /// 重试时 gate 变空 -> 子弹被滤掉 -> 只跑制作然后关游戏，当天再也不兑换。
+    consumed_rule_ids: HashSet<String>,
     current_session_rule_ids: HashSet<String>,
     active_round_targets: Vec<ProfitTargetKey>,
     last_summary: Option<String>,
@@ -128,6 +132,7 @@ impl ProfitQueryState {
             active_cancellation: None,
             phase: ProfitRuntimePhase::Disabled,
             qualified_rule_ids: HashSet::new(),
+            consumed_rule_ids: HashSet::new(),
             current_session_rule_ids: HashSet::new(),
             active_round_targets: Vec::new(),
             last_summary: None,
@@ -164,6 +169,7 @@ impl ProfitQueryState {
         self.active_query = false;
         self.phase = phase;
         self.qualified_rule_ids.clear();
+        self.consumed_rule_ids.clear();
         self.current_session_rule_ids.clear();
         self.active_round_targets.clear();
         self.last_summary = summary;
@@ -598,7 +604,8 @@ impl ProfitQueryControl {
         if state.active_query {
             return Err("利润查询进行中，禁止冻结 round".to_string());
         }
-        state.qualified_rule_ids.clear();
+        // 取走而非丢弃：轮次真正跑起来后由 end_active_round 清掉，启动失败则原样放回。
+        state.consumed_rule_ids = std::mem::take(&mut state.qualified_rule_ids);
         state.active_round_targets = targets;
         state.active_round_targets.sort();
         state.active_round_targets.dedup();
@@ -616,10 +623,16 @@ impl ProfitQueryControl {
             if self.generation() != generation || state.phase != ProfitRuntimePhase::ActiveRound {
                 false
             } else {
-                state.reset_runtime(
-                    ProfitRuntimePhase::Paused,
-                    Some("轮次启动失败，利润资格已撤销".to_string()),
-                );
+                // 只撤销 ActiveRound 占用，把 consume_for_round 取走的达标资格放回：
+                // 启动失败多是操作提示窗超时这类瞬时故障，1 秒后就重试，烧掉当天资格
+                // 会让重试的 gate 变空 -> 子弹被滤掉 -> 当天只跑制作，再也不兑换。
+                let restored = std::mem::take(&mut state.consumed_rule_ids);
+                state.active_round_targets.clear();
+                state.active_query = false;
+                state.next_query_at_ms = None;
+                state.qualified_rule_ids = restored;
+                state.phase = ProfitRuntimePhase::WaitingNextQuery;
+                state.last_summary = Some("轮次启动失败，已保留当天利润资格".to_string());
                 self.generation.fetch_add(1, Ordering::SeqCst);
                 true
             }
@@ -928,12 +941,80 @@ mod tests {
             .rollback_failed_round_start(lease.generation)
             .unwrap());
         let snapshot = control.snapshot().unwrap();
-        assert_eq!(snapshot.phase, ProfitRuntimePhase::Paused);
+        // 只撤销 ActiveRound 占用，当天达标资格必须原样放回：启动失败多是操作提示窗
+        // 超时这类瞬时故障，1 秒后就重试，烧掉资格会让重试把子弹整个滤掉。
+        assert_eq!(snapshot.phase, ProfitRuntimePhase::WaitingNextQuery);
         assert!(snapshot.active_round_targets.is_empty());
+        assert_eq!(snapshot.qualified_rule_ids, ["rule-a"]);
         assert_ne!(control.generation(), lease.generation);
         assert!(!control
             .rollback_failed_round_start(lease.generation)
             .unwrap());
+    }
+
+    #[test]
+    fn restored_profit_eligibility_survives_repeated_launch_failures() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+
+        // 操作提示窗超时会连续重试：每轮 consume -> 启动失败 -> rollback，
+        // 资格必须每次都还在，否则当天只跑制作、永不兑换。
+        for _ in 0..3 {
+            let generation = control.generation();
+            control
+                .consume_for_round(
+                    generation,
+                    vec![ProfitTargetKey {
+                        account_id: "account-a".to_string(),
+                        target_id: "ammo-a".to_string(),
+                    }],
+                )
+                .unwrap();
+            assert!(control.rollback_failed_round_start(generation).unwrap());
+            assert_eq!(control.snapshot().unwrap().qualified_rule_ids, ["rule-a"]);
+        }
+    }
+
+    #[test]
+    fn successful_round_end_still_clears_profit_eligibility() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+        control
+            .consume_for_round(
+                lease.generation,
+                vec![ProfitTargetKey {
+                    account_id: "account-a".to_string(),
+                    target_id: "ammo-a".to_string(),
+                }],
+            )
+            .unwrap();
+
+        // 轮次真的跑完就该清掉，避免同一天凭旧资格重复兑换。
+        control.end_active_round("轮次已完成");
+
+        let snapshot = control.snapshot().unwrap();
+        assert!(snapshot.qualified_rule_ids.is_empty());
+        assert!(snapshot.active_round_targets.is_empty());
     }
 
     #[test]
