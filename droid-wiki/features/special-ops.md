@@ -81,7 +81,7 @@
 | 进入制作列表 | `craft.abort` 两个有效低分样本 | 按 run 级规则显示倒计时，点击当前台 `craft.recipe.<station>` 制作物品选择点 |
 | 判断生产路径 | 制作物品选择点已点击 | 等待 `craft.fill` 或 `craft.produce` |
 | 点击制作一键补齐 | `craft.fill` 自身模板 | `craft.purchase` |
-| 购买制作材料 | `craft.purchase` 按钮自身模板 | 识别命中后点击独立点击点 `craft.purchaseClick`，每次点击后等待 1 秒，双采样 `craft.produce`、`craft.purchase` 或购买 UI 消失后重新出现的 `craft.fill`；命中 `craft.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
+| 购买制作材料 | 由前一步 `wait_ready` / `wait_button` 确认 `craft.purchase`，点击本身不再重复复核 | 识别命中后点击独立点击点 `craft.purchaseClick`，每次点击后等待 1 秒，双采样 `craft.produce`、`craft.purchase` 或购买 UI 消失后重新出现的 `craft.fill`；命中 `craft.fill` 时再次点击补齐并购买，连续 3 次仍回到补齐则隔离账号 |
 | 开始制作 | `craft.produce` 按钮自身模板 | `craft.abort` |
 | 返回部门页 | `ammo.department` 已命中时跳过；否则仅在 `game.stationGrid` 或 `craft.abort` 命中时按一次 Tab | `ammo.department` |
 | 点击部门 | `ammo.department` 自身模板 | 识别命中后倒计时一次，再点击模板中心 |
@@ -150,7 +150,7 @@
 
 应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务按上述 10 分钟规则等待或留给下一轮；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、请求 active round 停止、刷新逾期任务并聚焦主窗口；用户继续后不复用休眠前游戏会话。判定晚醒必须用 poll 成功返回的 `nowMs`；poll 本身失败不算时间跳变，交给下一轮循环写真实错误原因。全局总开关关闭时 disarm，应用退出时 shutdown。
 
-scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过滤条件不完全一致（利润 gate、business config、运行态在两次读取之间可能变化），因此“当前没有到期制作或子弹任务”“处于暂停状态”“总开关已关闭”“试运行尚未完成清理”“配置保存已陈旧”属于正常竞态，只记 warn 并 `RetryAfter(30s)`，不暂停自动化；其余错误才全局暂停。所有自动暂停把原因写入 `SpecialOpsSettings.pausedReason`，页头以 warning alert 展示“自动化已暂停：{原因}”。用户手动切换暂停或继续都会清空该字段 -> UI 只在“不是我点的”时给出解释。`special_ops_save_settings` 强制沿用当前进程内的 `paused` 与 `pausedReason`，前端草稿不得回滚运行态；只有 `special_ops_set_paused` 与自动暂停路径能改这两个字段。
+scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过滤条件不完全一致（利润 gate、business config、运行态在两次读取之间可能变化），因此“当前没有到期特勤处任务”“当前没有到期制作或子弹任务”“处于暂停状态”“总开关已关闭”“试运行尚未完成清理”“配置保存已陈旧”属于正常竞态，只记 warn 并 `RetryAfter(30s)`，不暂停自动化；其余错误才全局暂停。空计划文案由常量 `EMPTY_ROUND_PLAN_ERROR` 同时供 `freeze_round_run` 抛出与分流列表匹配，禁止两处各写字面量：一旦漂移，利润达标当天的空计划竞态会被判成故障全局暂停，而暂停会让 `sync_window` 走 `paused` 分支执行 `reset_runtime` 清空 `qualifiedRuleIds`，当天已达标的子弹就再也不会兑换。所有自动暂停把原因写入 `SpecialOpsSettings.pausedReason`，页头以 warning alert 展示“自动化已暂停：{原因}”。用户手动切换暂停或继续都会清空该字段 -> UI 只在“不是我点的”时给出解释。`special_ops_save_settings` 强制沿用当前进程内的 `paused` 与 `pausedReason`，前端草稿不得回滚运行态；只有 `special_ops_set_paused` 与自动暂停路径能改这两个字段。
 
 ## 当前边界
 

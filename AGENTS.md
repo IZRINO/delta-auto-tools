@@ -354,7 +354,7 @@ set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& g
 
 `SpecialOpsSettings` 同时保存于 `special_ops_settings.json` 和 Profile 快照 `specialOps`；Profile 只保存校准参考图片路径，不复制图片本体。
 
-特勤处限时商品颜色使用原生 `input[type=color]` 控件，可通过系统颜色面板吸管或 Hex 输入设置；不保存截图，9 个 `limited.color.1`–`limited.color.9` 校准区域只用于正式 `AnyPixel` 识别与双采样测试。交易行入口 `market.entry` 为模板识别与点击区域。购买材料按钮识别与点击分离：`craft.purchase` / `ammo.purchase` 只做识别，点击用 `craft.purchaseClick` / `ammo.purchaseClick` 两个 ClickPoint，并以对应识别区域作 `guardAnyOf` 守卫；映射集中在 `click_target_key()`，冻结配置缺点击点时回落识别区域。补齐/购买重试 3 次判定仓库空间不足的流程不变。
+特勤处限时商品颜色使用原生 `input[type=color]` 控件，可通过系统颜色面板吸管或 Hex 输入设置；不保存截图，9 个 `limited.color.1`–`limited.color.9` 校准区域只用于正式 `AnyPixel` 识别与双采样测试。交易行入口 `market.entry` 为模板识别与点击区域。购买材料按钮识别与点击分离：`craft.purchase` / `ammo.purchase` 只做识别，点击用 `craft.purchaseClick` / `ammo.purchaseClick` 两个 ClickPoint，并以对应识别区域作 `guardAnyOf` 守卫；映射集中在 `click_target_key()`，`wait_and_click` 与 `click_unverified` 两条路径都必须走该映射，冻结配置缺点击点时回落识别区域。制作购买点击改用 `click_unverified` 不再重复复核：到达该点击的三条路径都刚确认过同一张模板，内层 `verify` 只是白付一次 400ms 双采样。补齐/购买重试 3 次判定仓库空间不足的流程不变。
 
 ### 特勤处限时商品与交易行
 

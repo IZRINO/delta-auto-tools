@@ -68,6 +68,11 @@ const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
 /// 轮次内关闭游戏的预算。UE4 客户端带内核反作弊，退出常慢于登录流程的 15 秒，
 /// 原来的 10 秒比登录 StopGame 还紧 -> 正常退出被判成故障。
 const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(45);
+/// `freeze_round_run` 的空计划文案。必须与 `is_transient_round_launch_error` 的
+/// TRANSIENT 列表共用同一常量：poll 与 freeze 的过滤条件本就允许不一致（利润 gate、
+/// business config、运行态在两次读取之间会变），空计划是正常竞态而非故障。两处各写
+/// 一份字面量时曾漂移成两句不同的话 -> 分流失配 -> 利润达标当天被全局暂停吞掉。
+const EMPTY_ROUND_PLAN_ERROR: &str = "当前没有到期特勤处任务";
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -3817,7 +3822,7 @@ fn freeze_round_run(
         .map_err(|_| "游戏 exe 路径无效".to_string())?;
     let plan = round_planner::build_round_plan_with_profit(settings, frozen_now_ms, trigger, gate)?;
     if plan.accounts.is_empty() {
-        return Err("当前没有到期特勤处任务".to_string());
+        return Err(EMPTY_ROUND_PLAN_ERROR.to_string());
     }
     let accounts = plan
         .accounts
@@ -5796,9 +5801,13 @@ impl ammo_runtime::AmmoDriver for ProductionAmmoDriver {
         target: &str,
         cancelled: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<(), ammo_runtime::AmmoDriverError> {
+        // 与 wait_and_click 走同一套点击点解析：否则同一个目标经由这条路径点击时
+        // 会落回识别区域，静默绕过购买按钮的识别/点击分离。
+        let click_key = click_target_key(target);
         let region = self
             .targets
-            .get(target)
+            .get(click_key)
+            .or_else(|| self.targets.get(target))
             .ok_or_else(|| Self::system_error(target, "校准目标不存在"))?
             .region
             .clone();
@@ -8920,7 +8929,8 @@ fn should_defer_round_pause(active: Option<LoginRunKind>, paused: bool) -> bool 
 /// 运行态在两次读取之间可能变化），因此 poll 认为到期、execute 却拿到空计划是正常竞态。
 /// 这类错误一律全局暂停会让自动化在用户毫不知情时停摆 —— 这正是「为什么全局暂停了」的来源。
 fn is_transient_round_launch_error(error: &str) -> bool {
-    const TRANSIENT: [&str; 5] = [
+    const TRANSIENT: [&str; 6] = [
+        EMPTY_ROUND_PLAN_ERROR,
         "当前没有到期制作或子弹任务",
         "特勤处当前处于暂停状态，请先点击继续",
         "特勤处总开关已关闭",
@@ -13445,6 +13455,12 @@ mod tests {
 
     #[test]
     fn transient_round_launch_errors_never_pause_automation() {
+        // freeze_round_run 真正抛出的文案必须被分流，否则利润达标当天的空计划竞态
+        // 会被当成故障全局暂停，而暂停又会清空 qualified_rule_ids -> 当天不再兑换。
+        assert!(
+            is_transient_round_launch_error(EMPTY_ROUND_PLAN_ERROR),
+            "{EMPTY_ROUND_PLAN_ERROR}"
+        );
         for error in [
             "当前没有到期制作或子弹任务",
             "特勤处当前处于暂停状态，请先点击继续",

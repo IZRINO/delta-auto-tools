@@ -516,8 +516,13 @@ pub(crate) async fn run_craft_station<D: CraftTrialDriver + ?Sized>(
                 .await
                 .map_err(|message| failure_after_input("craft.purchase", &message))?;
             for attempt in 0..3 {
+                // 到这里 craft.purchase 一定刚被确认过：首次进入由上面的 wait_ready
+                // 确认，命中 Fill 的重试由 click(fill) 后的 wait_ready 确认，命中
+                // Purchase 的重试由 wait_button 确认。click() 内部的 verify 会把同一
+                // 张模板紧接着再识别一遍，每次多付一个 SAMPLE_INTERVAL 的双采样却拿不到
+                // 新信息 -> 改为不重复复核的点击，保留倒计时。
                 driver
-                    .click("craft.purchase", Arc::clone(&cancelled))
+                    .click_unverified("craft.purchase", true, Arc::clone(&cancelled))
                     .await
                     .map_err(|message| failure_after_input("craft.purchase", &message))?;
                 driver
@@ -869,7 +874,7 @@ mod fixed_probe_tests {
             driver
                 .actions()
                 .iter()
-                .filter(|action| *action == "click:craft.purchase")
+                .filter(|action| *action == "unchecked:craft.purchase:true")
                 .count(),
             3
         );
@@ -903,7 +908,7 @@ mod fixed_probe_tests {
         assert_eq!(
             actions
                 .iter()
-                .filter(|action| *action == "click:craft.purchase")
+                .filter(|action| *action == "unchecked:craft.purchase:true")
                 .count(),
             3
         );
@@ -969,7 +974,7 @@ mod fixed_probe_tests {
         assert_eq!(
             actions
                 .iter()
-                .filter(|action| *action == "click:craft.purchase")
+                .filter(|action| *action == "unchecked:craft.purchase:true")
                 .count(),
             2
         );
@@ -1010,7 +1015,7 @@ mod fixed_probe_tests {
         assert_eq!(
             actions
                 .iter()
-                .filter(|action| *action == "click:craft.purchase")
+                .filter(|action| *action == "unchecked:craft.purchase:true")
                 .count(),
             3
         );
