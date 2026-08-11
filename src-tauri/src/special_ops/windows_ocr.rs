@@ -63,6 +63,37 @@ pub(crate) fn numeric_words(words: Vec<OcrWord>) -> Vec<OcrWord> {
         .collect()
 }
 
+/// 同一个数字内的相邻字符间距上限，按字高比例取。Windows OCR 会把 `7,000` 这类
+/// 带千分位的价格拆成多个 word，直接 `join("")` 才能还原；但价格区域框得宽时同时
+/// 会捕获旁边的数量/库存数字，无条件 `join("")` 就把 `700` 和 `12` 连成 `70012`。
+const SAME_NUMBER_GAP_RATIO: f32 = 0.6;
+
+/// 把 OCR word 按横向间距分组拼接：同一个数字内部的碎片直接相连，间距超过
+/// `SAME_NUMBER_GAP_RATIO * 字高` 的按空格分隔，交给调用方按 token 取值。
+pub(crate) fn join_words_by_gap(words: Vec<OcrWord>) -> String {
+    let mut words = words;
+    words.sort_by(|left, right| {
+        left.bounds
+            .x
+            .partial_cmp(&right.bounds.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut joined = String::new();
+    let mut previous: Option<&OcrWord> = None;
+    for word in &words {
+        if let Some(previous) = previous {
+            let gap = word.bounds.x - (previous.bounds.x + previous.bounds.width);
+            let threshold = previous.bounds.height.max(word.bounds.height) * SAME_NUMBER_GAP_RATIO;
+            if gap > threshold {
+                joined.push(' ');
+            }
+        }
+        joined.push_str(&word.text);
+        previous = Some(word);
+    }
+    joined
+}
+
 pub(crate) fn to_screen_bounds(
     bounds: OcrBounds,
     region: &crate::morse::types::RegionRect,
@@ -194,6 +225,29 @@ mod tests {
                 OcrWord::new("123456", OcrBounds::new(10.0, 40.0, 60.0, 16.0)),
             ]
         );
+    }
+
+    #[test]
+    fn gap_join_keeps_one_number_together_and_splits_neighbours() {
+        // 字高 16 -> 阈值 9.6px。`7` 与 `,000` 间距 1px（同一个价格），
+        // `,000` 与 `12` 间距 40px（旁边的数量）。
+        let words = vec![
+            OcrWord::new("7", OcrBounds::new(0.0, 0.0, 9.0, 16.0)),
+            OcrWord::new(",000", OcrBounds::new(10.0, 0.0, 30.0, 16.0)),
+            OcrWord::new("12", OcrBounds::new(80.0, 0.0, 18.0, 16.0)),
+        ];
+
+        assert_eq!(join_words_by_gap(words), "7,000 12");
+    }
+
+    #[test]
+    fn gap_join_sorts_words_left_to_right() {
+        let words = vec![
+            OcrWord::new("12", OcrBounds::new(80.0, 0.0, 18.0, 16.0)),
+            OcrWord::new("700", OcrBounds::new(0.0, 0.0, 30.0, 16.0)),
+        ];
+
+        assert_eq!(join_words_by_gap(words), "700 12");
     }
 
     #[test]

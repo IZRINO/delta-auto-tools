@@ -6494,14 +6494,12 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
         tokio::task::spawn_blocking(move || {
             let image = crate::recognition::watcher::capture_region(&region)
                 .ok_or_else(|| "截取交易行价格区域失败".to_string())?;
-            let words = windows_ocr::recognize_words(image)?;
-            Ok::<_, String>(
-                words
-                    .into_iter()
-                    .map(|word| word.text)
-                    .collect::<Vec<_>>()
-                    .join(""),
-            )
+            // 按横向间距分组：同一个数字内部（`7,000` 被拆成多 word）直接相连，
+            // 宽框捕获到的相邻数量/库存数字之间留空格，由 parse_market_price 按
+            // token 取最长的那段 -> 用户不必把区域框得刚好贴住价格。
+            Ok::<_, String>(windows_ocr::join_words_by_gap(
+                windows_ocr::recognize_words(image)?,
+            ))
         })
         .await
         .map_err(|error| Self::system_error("market.price", format!("价格 OCR 任务失败：{error}")))?
@@ -7422,6 +7420,20 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
             "轮次切换关闭游戏失败，继续本轮",
             "reason" => reason,
             "message" => message
+        );
+    }
+
+    fn report_navigation_retry_deferred(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        deferred_tasks: usize,
+    ) {
+        crate::log_info!(
+            "special_ops::round",
+            "导航超时，账号任务已挪到队尾重试",
+            "account_id" => &task.account_id,
+            "qq_account" => &task.qq_account,
+            "deferred_tasks" => deferred_tasks
         );
     }
 

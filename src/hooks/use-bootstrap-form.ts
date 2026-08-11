@@ -92,7 +92,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
         useStartTransition: shouldUseStartTransition = false,
         beforeUpdateForm,
     } = options;
-    const {bootstrap: profileBootstrap} = useProfile();
+    const {bootstrap: profileBootstrap, refreshSettingsRevision} = useProfile();
 
     // 稳定 spec 引用，避免页面级内联对象字面量导致无限循环（Issues #47/#48）
     const specRef = useRef(spec);
@@ -157,15 +157,32 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
             pendingVersion?: number;
             settingsRevision: number;
         }) => {
+            const doInvoke = (revision: number) =>
+                invoke<TBootstrap>(specRef.current.saveSettingsCommand, {
+                    settingsValue,
+                    settingsRevision: revision,
+                });
+
             try {
                 setSaving(true);
                 if (saveInProgressMessage) {
                     setStatusMessage(saveInProgressMessage);
                 }
-                const next = await invoke<TBootstrap>(specRef.current.saveSettingsCommand, {
-                    settingsValue,
-                    settingsRevision,
-                });
+
+                // 首次尝试；若 revision 已被特勤处后台写入推进，捕获后刷新一次再重试。
+                let next: TBootstrap;
+                try {
+                    next = await doInvoke(settingsRevision);
+                } catch (firstError) {
+                    const firstMsg = getErrorMessage(firstError);
+                    if (firstMsg.includes("配置保存已陈旧")) {
+                        // 重新拉取最新 revision（不阻塞 UI，直接用返回值）
+                        const freshRevision = await refreshSettingsRevision();
+                        next = await doInvoke(freshRevision);
+                    } else {
+                        throw firstError;
+                    }
+                }
 
                 if (isStaleSave(pendingVersion, autosaveVersionRef)) {
                     return;
@@ -193,7 +210,7 @@ export function useBootstrapForm<TBootstrap extends { settings: Record<string, u
                 setSaving(false);
             }
         },
-        [autosaveVersionRef, saveInProgressMessage, saveSuccessMessage, updateState],
+        [autosaveVersionRef, refreshSettingsRevision, saveInProgressMessage, saveSuccessMessage, updateState],
     );
 
     // 手动保存与 autosave 共用 latest-wins queue，同一工具最多一个 in-flight 请求。

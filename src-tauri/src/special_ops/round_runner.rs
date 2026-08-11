@@ -7,6 +7,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ErrorScope {
@@ -171,6 +172,10 @@ pub(crate) trait RoundDriver: Send + Sync {
     fn refresh_due_craft_tasks(&self) -> Result<Vec<AccountRoundTask>, String>;
     async fn close_game(&self) -> Result<(), String>;
     fn report_close_game_failure(&self, reason: &str, message: &str);
+    /// 导航超时把账号整体挪到队尾时上报。没有这条记录时，日志里
+    /// `账号游戏内导航结束 success:false` 之后是一段完全的空白，
+    /// 无法区分「重排队了但下一账号卡住」和「压根没走到重排队」。
+    fn report_navigation_retry_deferred(&self, task: &AccountRoundTask, deferred_tasks: usize);
     fn pause_requested(&self) -> Result<bool, String>;
     fn pause_preserves_game(&self) -> bool;
     fn persist_paused(&self, reason: &str) -> Result<(), String>;
@@ -216,12 +221,21 @@ fn persist_system_failure<D: RoundDriver + ?Sized>(
     }
 }
 
+/// 转场关闭游戏的兜底预算。`close_game` 自身已按 `ROUND_CLOSE_GAME_TIMEOUT` 限时，
+/// 这里再包一层是防「future 根本不 resolve」：blocking 线程池饥饿、底层 Win32 调用
+/// 卡在内核态时，前者的 deadline 检查压根不会被执行到。转场关闭只是清场，卡住它
+/// 就把整轮队列一起卡死（账号不重排、下一账号不登录、日志全无），代价远高于
+/// 少杀一次进程。
+const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(60);
+
 /// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用
 /// 各自预算无条件重杀两个 exe -> 残留进程下轮自愈。这里全局暂停会把一次慢退出变成
 /// 停摆到人工点继续，代价远高于收益，因此只报告不中断。
 async fn close_game_for_transition<D: RoundDriver + ?Sized>(driver: &D, reason: &str) {
-    if let Err(message) = driver.close_game().await {
-        driver.report_close_game_failure(reason, &message);
+    match tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, driver.close_game()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(message)) => driver.report_close_game_failure(reason, &message),
+        Err(_) => driver.report_close_game_failure(reason, "关闭游戏未在兜底预算内返回"),
     }
 }
 
@@ -376,6 +390,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                         retained.push_back(candidate);
                     }
                 }
+                driver.report_navigation_retry_deferred(&queued.task, deferred.len());
                 retained.extend(deferred);
                 queue = retained;
             }
@@ -686,6 +701,13 @@ mod tests {
                 .push(format!("report-close-failure:{message}"));
         }
 
+        fn report_navigation_retry_deferred(&self, task: &AccountRoundTask, deferred_tasks: usize) {
+            self.actions.lock().unwrap().push(format!(
+                "defer-navigation:{}:{}",
+                task.account_id, deferred_tasks
+            ));
+        }
+
         fn pause_requested(&self) -> Result<bool, String> {
             Ok(self.pause_requested)
         }
@@ -830,6 +852,48 @@ mod tests {
             [
                 "run:a",
                 "close-game",
+                "defer-navigation:a:2",
+                "wait:2000",
+                "run:b",
+                "close-game",
+                "run:a",
+                "wait:4000",
+                "continue:a",
+                "close-game",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn navigation_timeout_close_failure_still_defers_account() {
+        let driver = FakeDriver::new(
+            vec![
+                Err(AccountRunError::navigation_timeout(
+                    "navigation.WaitStationGrid",
+                )),
+                Ok(AccountRunSuccess::processed(1)),
+                Ok(AccountRunSuccess::processed(1)),
+                Ok(AccountRunSuccess::processed(1)),
+            ],
+            false,
+        )
+        .with_close_failure("WeGame 仍在运行");
+
+        let result = run_round(
+            &driver,
+            &plan_tasks(&[("a", 1_000), ("b", 2_000), ("a", 4_000)]),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "close-game",
+                "report-close-failure:WeGame 仍在运行",
+                "defer-navigation:a:2",
                 "wait:2000",
                 "run:b",
                 "close-game",
@@ -1100,6 +1164,7 @@ mod tests {
             [
                 "run:a",
                 "close-game",
+                "defer-navigation:a:1",
                 "run:b",
                 "close-game",
                 "run:a",
@@ -1131,6 +1196,7 @@ mod tests {
             [
                 "run:a",
                 "close-game",
+                "defer-navigation:a:1",
                 "run:b",
                 "close-game",
                 "run:a",

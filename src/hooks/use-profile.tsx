@@ -57,6 +57,16 @@ type ProfileContextValue = {
     exportProfileToPath: (id: string, path: string) => Promise<void>;
     /** 从用户选择的路径导入单个 Profile；不自动切换。 */
     importProfileFromPath: (path: string) => Promise<void>;
+    /**
+     * 重新拉取 profile bootstrap 并更新 settingsRevision。
+     *
+     * 供 useBootstrapForm 在收到「配置保存已陈旧」错误时调用：
+     * 特勤处后台写入会令共享 SettingsCoordinator revision 递增但不 emit profile://changed，
+     * 导致其他工具的 autosave 携带陈旧 revision。调此方法可以拿到最新 revision 用于重试。
+     *
+     * @returns 最新 settingsRevision
+     */
+    refreshSettingsRevision: () => Promise<number>;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -236,6 +246,12 @@ export function ProfileProvider({children}: ProfileProviderProps) {
         }
     }, []);
 
+    const refreshSettingsRevision = useCallback(async (): Promise<number> => {
+        const boot = await invoke<ProfileBootstrap>("profile_get_bootstrap");
+        setBootstrap(boot);
+        return boot.settingsRevision;
+    }, []);
+
     const activeProfile = useMemo(() => getActiveProfile(bootstrap), [bootstrap]);
     const activeProfileName = useMemo(() => getProfileDisplayName(bootstrap), [bootstrap]);
 
@@ -257,6 +273,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             importProfile,
             exportProfileToPath,
             importProfileFromPath,
+            refreshSettingsRevision,
         }),
         [
             bootstrap,
@@ -275,6 +292,7 @@ export function ProfileProvider({children}: ProfileProviderProps) {
             importProfile,
             exportProfileToPath,
             importProfileFromPath,
+            refreshSettingsRevision,
         ],
     );
 
