@@ -11257,10 +11257,16 @@ pub(crate) fn build_schedule_with_profit_runtime(
             )
             && (account.market.day.as_deref() != Some(current_day.as_str())
                 || (account.market.completed_count < business_config.market.purchase_count
+                    // 必须与任务栏投影（build_timeline_tasks）的出栏条件保持互补：
+                    // 任务栏只在 Completed | WindowClosed 时移除任务，所以
+                    // PriceRecognitionFailed 仍然显示。planner 这里漏掉它就会出现
+                    // 「任务栏有任务、点继续却不执行」——窗口内还剩时间、次数也没跑满，
+                    // 价格识别失败属于可重试失败，不该把当天剩余次数直接判死。
                     && matches!(
                         account.market.status,
                         market_purchase::MarketTaskStatus::Pending
                             | market_purchase::MarketTaskStatus::Running
+                            | market_purchase::MarketTaskStatus::PriceRecognitionFailed
                     )));
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
