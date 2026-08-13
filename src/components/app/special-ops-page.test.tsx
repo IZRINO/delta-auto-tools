@@ -144,7 +144,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("独立交易行配置");
         expect(pageSource).toContain("defaultMarket.purchaseCount");
         expect(pageSource).toContain("business.market?.purchaseCount");
-        expect(pageSource).toContain("交易行通用设置");
+        expect(pageSource).toContain("windowStartMinute");
         expect(pageSource).not.toContain("默认设定价格");
     });
 
@@ -262,19 +262,45 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         // 之前按 accountRestorable 条件渲染，干净状态下整块消失 -> 用户「找不到一键恢复 UI」。
         expect(pageSource).not.toContain("accountRestorable(account) && <Button");
         expect(pageSource).not.toContain("accounts.some(accountRestorable) && <Button");
-        expect(pageSource).toContain("disabled={!anyAccountRestorable}");
-        expect(pageSource).toContain("disabled={!accountRestorable(account, currentDay)}");
+        expect(pageSource).toContain("disabled={!anyAccountRestorable || !isNativeShell}");
+        expect(pageSource).toContain("disabled={!accountRestorable(account, currentDay) || !isNativeShell}");
         expect(pageSource).toContain("当前没有需要恢复的异常状态");
         expect(pageSource).toContain("当前账号没有需要恢复的异常状态");
     });
 
-    it("限时商品任务展示检查结果并提供高价值确认入口", () => {
-        // 后端只在 highValue 未确认时保留任务；不渲染结果会被误读成「没执行」。
+    it("限时商品任务栏展示检查结果并只保留高价值确认入口", () => {
+        // 已检查过的周期仍留在任务栏；不渲染结果会被误读成「没执行」。
         expect(pageSource).toContain("limitedOutcomeLabels");
         expect(pageSource).toContain("已发现高价值，等待人工确认");
         expect(pageSource).toContain("special_ops_acknowledge_limited_supply");
         expect(pageSource).toContain("已查看高价值商品");
         expect(pageSource).toContain("onAcknowledgeLimited={acknowledgeLimitedSupply}");
+        // 任务栏结果文案要指向重新检查的真实位置（账号人工校正），否则用户在任务栏找不到入口。
+        expect(pageSource).toContain("本周期已检查：未发现高价值，可在账号人工校正里重新检查");
+        expect(pageSource).toContain("本周期检查失败，可在账号人工校正里重新检查");
+        // 重新检查已移出任务栏，任务栏不再有该 prop。
+        expect(pageSource).not.toContain("onRecheckLimited");
+    });
+
+    it("限时商品重新检查入口在账号人工校正面板内", () => {
+        // 入口挂在账号而非任务栏任务上：noHighValue / failed 周期在任务栏没有可挂的动作，
+        // 而复位需要的只是 accountId + 账号自己的 cycleId。
+        expect(pageSource).toContain("CorrectionLimitedSupply");
+        expect(pageSource).toContain("special_ops_recheck_limited_supply");
+        expect(pageSource).toContain("重新检查");
+        expect(pageSource).toContain("account.limitedSupply");
+        expect(pageSource).toContain("onRecheck(account.id, cycleId)");
+        expect(pageSource).toContain("onRecheck={recheckLimitedSupply}");
+        expect(pageSource).toContain("correctionLimitedOutcomeLabels");
+        // 未检查的周期不给复位入口：本来就等着自动执行。
+        expect(pageSource).toContain("disabled={disabled || submitting || !checked || !cycleId}");
+    });
+
+    it("账号级动作失败在按钮旁展示原因", () => {
+        // 顶部横幅在账号列表里不可见 -> 点「已人工检查」报错看起来像「没反应」。
+        expect(pageSource).toContain("accountActionError");
+        expect(pageSource).toContain("accountActionError?.accountId === account.id");
+        expect(pageSource).toContain("setAccountActionError({accountId, message: `人工检查提交失败：${String(cause)}`})");
     });
 
     it("自动暂停原因在页头显式展示", () => {

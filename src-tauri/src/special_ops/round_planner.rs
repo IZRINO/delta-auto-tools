@@ -1,6 +1,6 @@
 use super::{
-    build_schedule_with_profit, resolve_account_business_config, AccountStatus, SpecialOpsSettings,
-    StationKind,
+    build_schedule_with_profit_runtime, resolve_account_business_config, AccountStatus,
+    ProfitRuntimeSnapshot, SpecialOpsSettings, StationKind,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -81,7 +81,13 @@ pub(crate) fn build_round_plan(
     created_at_ms: i64,
     trigger: RoundTrigger,
 ) -> Result<RoundPlan, String> {
-    build_round_plan_with_profit(settings, created_at_ms, trigger, AmmoProfitGate::Disabled)
+    build_round_plan_with_profit(
+        settings,
+        created_at_ms,
+        trigger,
+        AmmoProfitGate::Disabled,
+        None,
+    )
 }
 
 pub(crate) fn build_round_plan_with_profit(
@@ -89,13 +95,18 @@ pub(crate) fn build_round_plan_with_profit(
     created_at_ms: i64,
     trigger: RoundTrigger,
     gate: AmmoProfitGate,
+    profit_snapshot: Option<&ProfitRuntimeSnapshot>,
 ) -> Result<RoundPlan, String> {
     for account in settings.accounts.iter().filter(|account| {
         account.enabled && account.initialized && account.status == AccountStatus::Ready
     }) {
         resolve_account_business_config(settings, account)?;
     }
-    let schedule = build_schedule_with_profit(settings, created_at_ms, &gate);
+    // 必须用带快照的变体：任务栏投影靠 `qualified_rule_ids` 把达标子弹的计划时间提到
+    // 「现在」。无快照时投影会退到「等待查询」分支并把子弹排到截止时刻，下面的 `is_due`
+    // 就恒为 false -> 达标了也不提前兑换。
+    let schedule =
+        build_schedule_with_profit_runtime(settings, created_at_ms, &gate, profit_snapshot);
     let due_accounts = schedule
         .due_accounts
         .iter()
@@ -109,7 +120,8 @@ pub(crate) fn build_round_plan_with_profit(
         })
         .map(|account| (account.id.as_str(), account))
         .collect::<HashMap<_, _>>();
-    let mut due_tasks_by_account = HashMap::<String, Vec<super::TimelineTask>>::new();
+    let mut non_market_tasks_by_account = HashMap::<String, Vec<super::TimelineTask>>::new();
+    let mut market_tasks_by_account = HashMap::<String, Vec<super::TimelineTask>>::new();
     let mut future_tasks = Vec::<super::TimelineTask>::new();
 
     for task in schedule.timeline_tasks {
@@ -141,24 +153,49 @@ pub(crate) fn build_round_plan_with_profit(
             continue;
         }
         if is_due {
-            due_tasks_by_account
-                .entry(task.account_id.clone())
-                .or_default()
-                .push(task);
+            if matches!(task.kind, super::TimelineTaskKind::MarketPurchase) {
+                market_tasks_by_account
+                    .entry(task.account_id.clone())
+                    .or_default()
+                    .push(task);
+            } else {
+                non_market_tasks_by_account
+                    .entry(task.account_id.clone())
+                    .or_default()
+                    .push(task);
+            }
         } else if is_future_craft {
             future_tasks.push(task);
         }
     }
 
-    let mut accounts = Vec::new();
-    for (account_id, tasks) in due_tasks_by_account {
+    let mut non_market_accounts = Vec::new();
+    for (account_id, tasks) in non_market_tasks_by_account {
         let Some(account) = eligible_accounts.get(account_id.as_str()) else {
             continue;
         };
         let business = resolve_account_business_config(settings, account)?;
-        accounts.push(merge_account_tasks(account, business, tasks));
+        non_market_accounts.push(merge_account_tasks(account, business, tasks));
     }
-    accounts.sort_by_key(|task| (task.account_order, task.scheduled_at_ms));
+    non_market_accounts.sort_by_key(|task| (task.account_order, task.scheduled_at_ms));
+
+    let mut market_accounts = Vec::new();
+    for (account_id, tasks) in market_tasks_by_account {
+        let Some(account) = eligible_accounts.get(account_id.as_str()) else {
+            continue;
+        };
+        let business = resolve_account_business_config(settings, account)?;
+        market_accounts.push(merge_account_tasks(account, business, tasks));
+    }
+    market_accounts.sort_by_key(|task| (task.account_order, task.scheduled_at_ms));
+
+    // 交易行全局排最后，不参与账号顺序混排：非交易行桶按账号顺序跑完，才轮到交易行桶。
+    // 这里再按 (account_order, scheduled_at_ms) 整体重排会把交易行桶塞回它自己账号后面
+    // -> 账号 1 交易行插到账号 2 之前，交易行就不是最后了。
+    // 只有一个账号有任务时，两桶天然相邻且账号相同，`can_chain_follow_up` 会保持会话
+    // 不重登。
+    let mut accounts = non_market_accounts;
+    accounts.extend(market_accounts);
 
     if !accounts.is_empty() {
         let mut future_accounts = Vec::<AccountRoundTask>::new();
@@ -406,8 +443,10 @@ mod tests {
             .any(|task| { task.market_purchase_day.as_deref() == Some("2026-08-08") }));
     }
 
+    /// 非交易行业务（制作 / 子弹 / 限时商品）合并成一个桶，交易行独立成第二个桶。
+    /// 交易行必须全局排最后，所以不能和同账号的特勤处业务合并进同一桶。
     #[test]
-    fn planner_merges_all_due_business_into_one_account_bucket() {
+    fn planner_splits_market_into_its_own_bucket_after_special_ops() {
         let mut settings = settings();
         settings.accounts.truncate(1);
         settings.paused = false;
@@ -420,18 +459,69 @@ mod tests {
 
         let plan = build_round_plan(&settings, now_ms, RoundTrigger::Scheduled).unwrap();
 
-        let bucket = plan
+        let buckets = plan
             .accounts
             .iter()
-            .find(|task| task.account_id == settings.accounts[0].id)
-            .unwrap();
-        assert!(!bucket.stations.is_empty());
-        assert_eq!(bucket.ammo_target_ids, ["ignored-ammo"]);
+            .filter(|task| task.account_id == settings.accounts[0].id)
+            .collect::<Vec<_>>();
+        assert_eq!(buckets.len(), 2);
+        let special_ops = buckets[0];
+        assert!(!special_ops.stations.is_empty());
+        assert_eq!(special_ops.ammo_target_ids, ["ignored-ammo"]);
         assert_eq!(
-            bucket.limited_supply_cycle_id.as_deref(),
+            special_ops.limited_supply_cycle_id.as_deref(),
             Some("2026-08-07T20:00")
         );
-        assert_eq!(bucket.market_purchase_day.as_deref(), Some("2026-08-08"));
+        assert!(special_ops.market_purchase_day.is_none());
+        let market = buckets[1];
+        assert_eq!(market.market_purchase_day.as_deref(), Some("2026-08-08"));
+        assert!(market.stations.is_empty());
+        assert!(market.ammo_target_ids.is_empty());
+        assert!(market.limited_supply_cycle_id.is_none());
+        // 同账号相邻两桶必须能续用会话，否则每买一件都要重登。
+        assert!(can_chain_follow_up(special_ops, market, now_ms));
+    }
+
+    /// 交易行全局最后：账号 a（特勤处 + 交易行，order 1）+ 账号 b（特勤处，order 2）
+    /// 必须跑成 a 特勤处 -> b 特勤处 -> a 交易行。
+    /// 按 (account_order, scheduled_at_ms) 整体重排会把 a 的交易行插到 b 前面。
+    #[test]
+    fn planner_orders_market_buckets_after_every_non_market_account() {
+        let mut settings = settings();
+        settings.paused = false;
+        settings.daily_exchange_time = "02:00".to_string();
+        settings.default_business_config.market.enabled = true;
+        for account in settings.accounts.iter_mut() {
+            for station in account.stations.iter_mut() {
+                station.finishes_at_ms = Some(0);
+                station.status = StationStatus::Ready;
+            }
+        }
+        // 只有先跑的账号 a（order 1）开交易行；后跑的 b（order 2）用独立配置关掉。
+        let mut business = settings.default_business_config.clone();
+        business.market.enabled = false;
+        settings.accounts[0].independent_settings_enabled = true;
+        settings.accounts[0].independent_business_config = Some(business);
+        let market_account = settings.accounts[1].id.clone();
+        let plain_account = settings.accounts[0].id.clone();
+        let now_ms = shanghai_ms("2026-08-08 02:30");
+
+        let plan = build_round_plan(&settings, now_ms, RoundTrigger::Scheduled).unwrap();
+
+        let due = plan
+            .accounts
+            .iter()
+            .filter(|task| task.scheduled_at_ms <= now_ms)
+            .map(|task| (task.account_id.as_str(), task.market_purchase_day.is_some()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            due,
+            [
+                (market_account.as_str(), false),
+                (plain_account.as_str(), false),
+                (market_account.as_str(), true),
+            ]
+        );
     }
 
     #[test]
@@ -810,6 +900,7 @@ mod tests {
             1_000,
             RoundTrigger::Scheduled,
             AmmoProfitGate::Qualified(std::collections::HashSet::from(["rule-a".to_string()])),
+            None,
         )
         .unwrap();
         let qualified_ammo = qualified
@@ -831,6 +922,7 @@ mod tests {
                 "a".to_string(),
                 "ammo-b".to_string(),
             )])),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -842,5 +934,96 @@ mod tests {
                 .ammo_target_ids,
             ["ammo-b"]
         );
+    }
+
+    /// 利润达标必须**立刻**进入轮次，不等截止时间。
+    ///
+    /// 任务栏投影只在拿到 `ProfitRuntimeSnapshot.qualified_rule_ids` 时才把达标子弹的
+    /// 计划时间提到「现在」；没有快照会退到「等待查询」分支并排到截止时刻 -> planner
+    /// 的 `is_due`（`scheduled_at_ms <= created_at_ms`）恒为 false -> 计划为空 ->
+    /// 达标当天一直重试到截止时间才兑换。
+    #[test]
+    fn qualified_rule_with_snapshot_enters_round_before_cutoff() {
+        let mut settings = settings();
+        settings.accounts.truncate(2);
+        settings.enabled = true;
+        settings.paused = false;
+        settings.daily_exchange_time = "02:00".to_string();
+        settings.profit_filter.enabled = true;
+        settings.profit_filter.cutoff_time = "17:00".to_string();
+        settings.profit_filter.rules = vec![crate::special_ops::profit::model::AmmoProfitRule {
+            id: "rule-a".to_string(),
+            display_name: "规则 A".to_string(),
+            kkrb_match_name: "KKRB A".to_string(),
+            moligod_match_name: None,
+            minimum_profit: 1,
+        }];
+        settings.default_business_config.ammo_targets = vec![AmmoBusinessTarget {
+            id: "ammo-a".to_string(),
+            note: "子弹 A".to_string(),
+            enabled: true,
+            seasonal: false,
+            click_point: Some(CalibrationRect {
+                x: 1,
+                y: 1,
+                width: 1,
+                height: 1,
+            }),
+            scroll_direction: ScrollDirection::Down,
+            scroll_steps: 0,
+            order: 0,
+            profit_rule_id: Some("rule-a".to_string()),
+        }];
+        for account in settings.accounts.iter_mut() {
+            account.stations.clear();
+            account.ammo_targets = vec![AmmoTarget {
+                id: "ammo-a".to_string(),
+                name: String::new(),
+                enabled: true,
+                seasonal: false,
+                scroll_steps: 0,
+                order: 0,
+                last_success_day: None,
+                retry_day: None,
+                retry_count: 0,
+                last_failure: None,
+            }];
+        }
+        // 兑换时间之后、截止时间之前。
+        let now_ms = shanghai_ms("2026-08-08 03:00");
+        let gate =
+            AmmoProfitGate::Qualified(std::collections::HashSet::from(["rule-a".to_string()]));
+        let snapshot = crate::special_ops::profit::runtime::ProfitRuntimeSnapshot {
+            qualified_rule_ids: vec!["rule-a".to_string()],
+            ..Default::default()
+        };
+
+        let with_snapshot = build_round_plan_with_profit(
+            &settings,
+            now_ms,
+            RoundTrigger::Scheduled,
+            gate.clone(),
+            Some(&snapshot),
+        )
+        .unwrap();
+
+        assert_eq!(
+            with_snapshot
+                .accounts
+                .iter()
+                .filter(|task| !task.ammo_target_ids.is_empty())
+                .count(),
+            2
+        );
+        assert!(with_snapshot
+            .accounts
+            .iter()
+            .all(|task| task.scheduled_at_ms <= now_ms));
+
+        // 反向对照：丢掉快照就退化成「排到截止时间」，计划为空。
+        let without_snapshot =
+            build_round_plan_with_profit(&settings, now_ms, RoundTrigger::Scheduled, gate, None)
+                .unwrap();
+        assert!(without_snapshot.accounts.is_empty());
     }
 }

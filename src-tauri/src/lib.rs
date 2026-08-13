@@ -293,6 +293,7 @@ pub fn run() {
             special_ops::special_ops_start_limited_supply_trial,
             special_ops::special_ops_start_market_trial,
             special_ops::special_ops_acknowledge_limited_supply,
+            special_ops::special_ops_recheck_limited_supply,
             special_ops::special_ops_test_limited_supply_colors,
             special_ops::special_ops_start_due_round,
             special_ops::special_ops_cancel_login_trial,

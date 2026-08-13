@@ -21,7 +21,7 @@ Recognition Hotkey 卡片的 `hotkeyRepeatMode` 可取 `once` 或 `whileHeld`，
 
 特勤处 `paused` 旁新增可选 `pausedReason`（`string | null`，缺失按 `null` 读取），只在 `paused` 为真时有意义。自动暂停路径写入原因，用户手动切换暂停或继续时清空；`special_ops_save_settings` 忽略前端草稿里的 `paused` 与 `pausedReason`，强制沿用进程内运行态。
 
-特勤处军需处入口使用 `ammoSupplyDelayMs` 与兼容字段名 `ammoTacticalDelayMs`，分别控制点击 `ammo.supply` 和 `ammo.enterSupply` 前等待。`limitedSupply.researchDelayMs` 仅为旧配置兼容字段，不参与当前 UI、preflight 或 runtime。当前分支校准目标为 `ammo.enterSupply` 点击点、`ammo.tacticalDepartment` 与 `ammo.researchDepartment` 模板识别区域；旧 `ammo.tactical`、`limited.research` 在 normalize 时丢弃。
+特勤处军需处入口使用 `ammoSupplyDelayMs` 与兼容字段名 `ammoTacticalDelayMs`，分别控制点击 `ammo.supply` 和 `ammo.enterSupply` 前等待。`limitedSupply.researchDelayMs`（0–60000，默认 3000）是点完研发部门到开始识别页面之间的固定等待，UI 标签「研发部门页面等待（ms）」，preflight 校验上限，runtime 作为 `LimitedRunConfig.enter_delay` 消费；太短会让 `limited.ready` 在上一页命中并误报高价值。当前分支校准目标为 `ammo.enterSupply` 点击点、`ammo.tacticalDepartment` 与 `ammo.researchDepartment` 模板识别区域、`market.backToEntry` 返回大厅列表点击点；旧 `ammo.tactical`、`limited.research` 在 normalize 时丢弃。
 
 ## Tauri 配置
 

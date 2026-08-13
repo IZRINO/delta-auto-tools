@@ -740,8 +740,8 @@ fn default_guard_any_of(key: &str) -> &'static [&'static str] {
         // 购买点击点由对应识别区域守卫：识别命中购买按钮才允许点击，避免盲点。
         "craft.purchaseClick" => &["craft.purchase"],
         "ammo.purchaseClick" => &["ammo.purchase"],
-        "game.beaconMode" | "market.entry" | "market.product" | "market.return" | "market.buy"
-        | "market.confirm" => &["game.modeReady"],
+        "game.beaconMode" | "market.backToEntry" | "market.entry" | "market.product"
+        | "market.return" | "market.buy" | "market.confirm" => &["game.modeReady"],
         _ => &[],
     }
 }
@@ -884,6 +884,7 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
             "交易行入口识别与点击区域",
             RecognitionRegion,
         ),
+        ("market.backToEntry", "返回大厅列表点击点", ClickPoint),
         ("market.product", "默认商品入口点击点", ClickPoint),
         ("market.price", "交易行价格 OCR 区域", RecognitionRegion),
         ("market.return", "交易行高价返回点击点", ClickPoint),
@@ -1103,10 +1104,10 @@ impl SpecialOpsState {
             .lock()
             .map_err(|_| "特勤处状态已损坏".to_string())? = next;
 
-        let coordinator = app
-            .try_state::<Arc<SettingsCoordinator>>()
-            .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
-        emit_state(app, coordinator.current_revision()?, now_ms());
+        // emit_state 不在这里调用：调用方处于 SettingsCoordinator::with_profile_change
+        // 持有 revision 锁的闭包内，current_revision() 会再次尝试锁同一 Mutex 导致死锁。
+        // 由 profile_apply / profile_create_default 在闭包返回后调用
+        // emit_state_for_profile_change 完成通知。
         Ok(())
     }
 }
@@ -1374,6 +1375,18 @@ fn is_stale_profit_query_error(error: &str) -> bool {
         || error.contains("利润查询已取消")
 }
 
+/// 保存 settings 时判断是否要连当天达标资格一起清掉。
+///
+/// 只看利润查询自身的输入：总开关、截止时间、规则集合、每日兑换时间（决定查询窗口起点）。
+/// 审计历史与 cutoff_state 是查询的**产物**，不算输入。改一个无关设置（延迟、点击点、
+/// 账号顺序）就清资格 -> 利润 gate 恒空 -> 当天达标的子弹目标全被滤掉、不提前兑换。
+fn profit_query_identity_changed(current: &SpecialOpsSettings, next: &SpecialOpsSettings) -> bool {
+    current.profit_filter.enabled != next.profit_filter.enabled
+        || current.profit_filter.cutoff_time != next.profit_filter.cutoff_time
+        || current.profit_filter.rules != next.profit_filter.rules
+        || current.daily_exchange_time != next.daily_exchange_time
+}
+
 fn build_profit_query_window(
     settings: &SpecialOpsSettings,
     now_ms: i64,
@@ -1414,26 +1427,38 @@ fn profit_gate_for_round(
     profit_runtime: &ProfitQueryControl,
     now_ms: i64,
     settings_revision: u64,
-) -> Result<(AmmoProfitGate, Option<u64>), String> {
+) -> Result<(AmmoProfitGate, Option<u64>, Option<ProfitRuntimeSnapshot>), String> {
     if !settings.profit_filter.enabled {
-        return Ok((AmmoProfitGate::Disabled, None));
+        return Ok((AmmoProfitGate::Disabled, None, None));
     }
     let window = build_profit_query_window(settings, now_ms, settings_revision, false)?;
     let snapshot = profit_runtime.sync_window(window.clone())?;
+    crate::log_info!(
+        "special_ops::profit_gate",
+        "profit_gate_for_round snapshot",
+        "phase" => format!("{:?}", snapshot.phase),
+        "qualified_rule_ids" => format!("{:?}", snapshot.qualified_rule_ids),
+        "settings_revision" => settings_revision,
+        "window.day" => window.day.as_str(),
+        "now_ms" => now_ms,
+        "cutoff_at_ms" => window.cutoff_at_ms
+    );
     if now_ms >= window.cutoff_at_ms {
         return Ok((
             AmmoProfitGate::QualifiedTargets(cutoff_qualified_targets(settings, &window.day)),
             Some(profit_runtime.generation()),
+            Some(snapshot),
         ));
     }
+    let qualified_rule_ids = snapshot
+        .qualified_rule_ids
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashSet<_>>();
     Ok((
-        AmmoProfitGate::Qualified(
-            snapshot
-                .qualified_rule_ids
-                .into_iter()
-                .collect::<std::collections::HashSet<_>>(),
-        ),
+        AmmoProfitGate::Qualified(qualified_rule_ids),
         Some(profit_runtime.generation()),
+        Some(snapshot),
     ))
 }
 
@@ -1777,13 +1802,11 @@ fn refresh_account_failure(account: &mut AccountPlan) {
         .cloned();
 }
 
+/// 「已人工检查」必须覆盖全部非 Ready 状态。前端按钮对 `Uncertain` / `Isolated`
+/// 同样显示，gate 漏掉这两个会让点击只拿到一句被顶部横幅吞掉的报错 —— 用户看到的
+/// 就是「点了没反应，只有一键恢复能处理」。
 fn account_allows_manual_check(status: &AccountStatus) -> bool {
-    matches!(
-        status,
-        AccountStatus::NeedsManualLogin
-            | AccountStatus::LoginFailed
-            | AccountStatus::ManualCheckRequired
-    )
+    !matches!(status, AccountStatus::Ready)
 }
 
 fn apply_account_manual_check(
@@ -1799,8 +1822,24 @@ fn apply_account_manual_check(
     if !account_allows_manual_check(&account.status) {
         return Err("当前账号状态不能通过“已人工检查”恢复".to_string());
     }
+    // `Isolated` 由子弹目标失败升级而来，账号级 last_failure 指向出事的那个目标。
+    // 只清账号状态会留下目标自己的 last_failure -> 目标继续被调度过滤 -> 账号回
+    // Ready 了却依然不兑换。只清被指名的那一个，不动其他目标的判定结果。
+    let blamed_target_id = account
+        .last_failure
+        .as_ref()
+        .and_then(|failure| failure.ammo_target_id.clone());
     account.status = AccountStatus::Ready;
     account.last_failure = None;
+    if let Some(target_id) = blamed_target_id {
+        if let Some(target) = account
+            .ammo_targets
+            .iter_mut()
+            .find(|target| target.id == target_id)
+        {
+            target.last_failure = None;
+        }
+    }
     // 只清账号状态会留下 Uncertain 制作台，它在调度与任务栏双重过滤下永久消失。
     for station in account.stations.iter_mut() {
         restore_station_from_stored_timing(station, confirmed_at_ms);
@@ -1859,6 +1898,21 @@ fn restore_account_state(
         }
         if account.limited_supply.outcome == limited_supply::LimitedSupplyOutcome::Failed {
             account.limited_supply.outcome = limited_supply::LimitedSupplyOutcome::Pending;
+            changed = true;
+        }
+        // 交易行的封锁状态也要放回，否则一键恢复后点「继续」不会再上线跑交易行：
+        // `WindowClosed` / `PriceRecognitionFailed` / 残留 `Running` 会让任务在任务栏
+        // 与 planner 双重过滤下永久消失。`Completed` 不动 —— 购买次数已经花掉了。
+        if account.market.day.as_deref() == Some(current_day)
+            && matches!(
+                account.market.status,
+                market_purchase::MarketTaskStatus::Running
+                    | market_purchase::MarketTaskStatus::PriceRecognitionFailed
+                    | market_purchase::MarketTaskStatus::WindowClosed
+            )
+        {
+            account.market.status = market_purchase::MarketTaskStatus::Pending;
+            account.market.last_error = None;
             changed = true;
         }
         if changed {
@@ -2591,6 +2645,9 @@ pub(crate) fn normalize_settings(
     normalize_profit_settings(&mut settings.profit_filter)?;
     if !(5_000..=60_000).contains(&settings.limited_supply.ready_timeout_ms) {
         return Err("研发部门页面就绪超时必须是 5000–60000ms 的整数".to_string());
+    }
+    if settings.limited_supply.research_delay_ms > 60_000 {
+        return Err("研发部门页面等待时间必须是 0–60000ms 的整数".to_string());
     }
     if settings.market_purchase.entry_delay_ms > 60_000 {
         return Err("交易行入口等待时间必须是 0–60000ms 的整数".to_string());
@@ -3725,6 +3782,9 @@ fn freeze_limited_supply_run(
                 settings.limited_supply.ready_timeout_ms,
             )),
             sample_interval: std::time::Duration::from_millis(400),
+            enter_delay: std::time::Duration::from_millis(u64::from(
+                settings.limited_supply.research_delay_ms,
+            )),
         },
         colors: settings.limited_supply.colors,
         color_tolerances: settings.limited_supply.color_tolerances,
@@ -3767,6 +3827,7 @@ fn freeze_market_run(
             settings,
             "交易行",
             &[
+                ("market.backToEntry", false),
                 ("market.entry", true),
                 ("market.price", false),
                 ("market.return", false),
@@ -3789,6 +3850,7 @@ fn freeze_market_run(
                 settings.market_purchase.entry_delay_ms,
             )),
             ocr_interval: std::time::Duration::from_millis(500),
+            window_end_minute: settings.market_purchase.window_end_minute,
         },
     })
 }
@@ -3805,7 +3867,8 @@ struct FrozenRoundAccount {
 
 struct FrozenRoundRun {
     plan: round_planner::RoundPlan,
-    accounts: std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>,
+    accounts:
+        std::collections::HashMap<FrozenRoundAccountKey, Result<Arc<FrozenRoundAccount>, String>>,
     game_executable_path: std::path::PathBuf,
     profit_generation: Option<u64>,
 }
@@ -3816,11 +3879,18 @@ fn freeze_round_run(
     trigger: round_planner::RoundTrigger,
     gate: AmmoProfitGate,
     profit_generation: Option<u64>,
+    profit_snapshot: Option<&ProfitRuntimeSnapshot>,
 ) -> Result<FrozenRoundRun, String> {
     validate_execution_ready(settings)?;
     let game_executable_path = std::fs::canonicalize(&settings.game_executable_path)
         .map_err(|_| "游戏 exe 路径无效".to_string())?;
-    let plan = round_planner::build_round_plan_with_profit(settings, frozen_now_ms, trigger, gate)?;
+    let plan = round_planner::build_round_plan_with_profit(
+        settings,
+        frozen_now_ms,
+        trigger,
+        gate,
+        profit_snapshot,
+    )?;
     if plan.accounts.is_empty() {
         return Err(EMPTY_ROUND_PLAN_ERROR.to_string());
     }
@@ -3887,7 +3957,7 @@ fn freeze_round_run(
                     market,
                 }))
             })();
-            ((task.account_id.clone(), task.scheduled_at_ms), frozen)
+            (frozen_round_account_key(task), frozen)
         })
         .collect();
     Ok(FrozenRoundRun {
@@ -4167,6 +4237,16 @@ fn emit_state(app: &AppHandle, settings_revision: u64, current_ms: i64) {
             now_ms: current_ms,
         },
     );
+}
+
+/// Profile 切换完成后、`SettingsCoordinator::revision` 锁已释放时调用，
+/// 向前端发送最新 `settings_revision`，触发特勤处页面重载。
+pub(crate) fn emit_state_for_profile_change(app: &AppHandle) {
+    if let Some(coordinator) = app.try_state::<Arc<SettingsCoordinator>>() {
+        if let Ok(revision) = coordinator.current_revision() {
+            emit_state(app, revision, now_ms());
+        }
+    }
 }
 
 fn emit_run(app: &AppHandle, snapshot: &LoginRunSnapshot) {
@@ -4961,7 +5041,11 @@ fn persist_navigation_pause(app: &AppHandle) -> Result<(), String> {
             .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
         Ok::<_, String>(next)
     })?;
-    state.profit_runtime.invalidate("导航失败，利润查询已取消");
+    // 只取消在跑的查询：导航失败是瞬时故障 + 自动暂停，当天「哪些规则达标」的结论没变。
+    // 用 invalidate 会清掉 qualified_rule_ids -> 排查后点「继续」gate 恒空 -> 当天不兑换。
+    state
+        .profit_runtime
+        .cancel_in_flight("导航失败，利润查询已取消");
     emit_state(app, revision, now_ms());
     Ok(())
 }
@@ -6572,8 +6656,24 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
     }
 }
 
-type FrozenRoundAccountCache =
-    Mutex<std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>>;
+/// 冻结配置的 key。交易行任务独立成桶后，同账号可能同时存在「非交易行桶」与
+/// 「交易行桶」；两者的 `scheduled_at_ms` 都是分钟对齐的（子弹取每日兑换时间、
+/// 交易行取窗口起点），配成同一分钟时二元组完全相同 -> `collect()` 只留下后插入的
+/// 交易行桶 -> 非交易行桶拿到 `craft: []` / `ammo: None` 的冻结配置，制作与子弹被
+/// 静默跳过。第三位用「是否交易行桶」把两者分开。
+type FrozenRoundAccountKey = (String, i64, bool);
+
+fn frozen_round_account_key(task: &round_planner::AccountRoundTask) -> FrozenRoundAccountKey {
+    (
+        task.account_id.clone(),
+        task.scheduled_at_ms,
+        task.market_purchase_day.is_some(),
+    )
+}
+
+type FrozenRoundAccountCache = Mutex<
+    std::collections::HashMap<FrozenRoundAccountKey, Result<Arc<FrozenRoundAccount>, String>>,
+>;
 
 struct ProductionRoundDriver {
     app: AppHandle,
@@ -6582,7 +6682,8 @@ struct ProductionRoundDriver {
     runtime: Arc<login_runtime::LoginRuntime>,
     control: Arc<RoundControl>,
     run_id: u64,
-    accounts: std::collections::HashMap<(String, i64), Result<Arc<FrozenRoundAccount>, String>>,
+    accounts:
+        std::collections::HashMap<FrozenRoundAccountKey, Result<Arc<FrozenRoundAccount>, String>>,
     dynamic_accounts: FrozenRoundAccountCache,
     game_executable_path: std::path::PathBuf,
 }
@@ -6762,7 +6863,7 @@ impl ProductionRoundDriver {
         &self,
         task: &round_planner::AccountRoundTask,
     ) -> Result<Arc<FrozenRoundAccount>, round_runner::AccountRunError> {
-        let key = (task.account_id.clone(), task.scheduled_at_ms);
+        let key = frozen_round_account_key(task);
         if let Some(frozen) = self.accounts.get(&key) {
             return frozen.clone().map_err(|message| {
                 round_runner::AccountRunError::account("round.preflight", message)
@@ -6834,9 +6935,10 @@ impl ProductionRoundDriver {
         })?;
         crate::log_warn!("special_ops::round", "多账号轮次已暂停", "reason" => reason);
         if let Some(state) = self.app.try_state::<SpecialOpsState>() {
+            // 暂停 -> 排查 -> 继续是常规动作，资格必须留着。
             state
                 .profit_runtime
-                .invalidate("轮次已暂停，利润查询已取消");
+                .cancel_in_flight("轮次已暂停，利润查询已取消");
         }
         emit_state(&self.app, revision, now_ms());
         Ok(())
@@ -7121,6 +7223,40 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             persist_official: true,
             trial_completed: std::sync::atomic::AtomicU32::new(0),
         };
+        // 军需处（子弹/限时商品）跑完后界面停在部门页，`market.entry` 模板不可能命中。
+        // 这一步把界面退回大厅列表，只在本会话真的进过军需处时才点：没有部门任务时
+        // 界面已经在大厅，提前点会把界面带进别的面板。
+        if !task.ammo_target_ids.is_empty() || task.limited_supply_cycle_id.is_some() {
+            <ProductionMarketDriver as market_runtime::MarketDriver>::click(
+                &driver,
+                "market.backToEntry",
+                false,
+                Arc::clone(&cancelled),
+            )
+            .await
+            .map_err(|error| match error {
+                market_runtime::MarketRunError::Cancelled => {
+                    round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+                }
+                market_runtime::MarketRunError::System { step, message } => {
+                    round_runner::AccountRunError::system(step, message)
+                }
+            })?;
+            <ProductionMarketDriver as market_runtime::MarketDriver>::delay(
+                &driver,
+                frozen.config.entry_delay,
+                Arc::clone(&cancelled),
+            )
+            .await
+            .map_err(|error| match error {
+                market_runtime::MarketRunError::Cancelled => {
+                    round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+                }
+                market_runtime::MarketRunError::System { step, message } => {
+                    round_runner::AccountRunError::system(step, message)
+                }
+            })?;
+        }
         match market_runtime::run_market(&driver, frozen.config.clone(), cancelled).await {
             market_runtime::MarketRunStop::Completed => {
                 driver
@@ -7367,7 +7503,13 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     }
 
     fn market_window_open(&self) -> bool {
-        market_purchase::market_window_open(local_day_and_minute(now_ms()).1 as u16)
+        let minute = local_day_and_minute(now_ms()).1 as u16;
+        let settings = self.settings.lock().unwrap_or_else(|e| e.into_inner());
+        market_purchase::market_window_open(
+            minute,
+            settings.market_purchase.window_start_minute,
+            settings.market_purchase.window_end_minute,
+        )
     }
 
     fn refresh_due_craft_tasks(&self) -> Result<Vec<round_planner::AccountRoundTask>, String> {
@@ -7383,6 +7525,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
             round_planner::RoundTrigger::Scheduled,
             AmmoProfitGate::DisplayOnly,
             None,
+            None,
         )?;
         let tasks = refreshed
             .plan
@@ -7395,7 +7538,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
             .lock()
             .map_err(|_| "动态冻结配置状态已损坏".to_string())?;
         for task in &tasks {
-            let key = (task.account_id.clone(), task.scheduled_at_ms);
+            let key = frozen_round_account_key(task);
             if let Some(frozen) = refreshed.accounts.remove(&key) {
                 dynamic.insert(key, frozen);
             }
@@ -8466,13 +8609,14 @@ async fn execute_cutoff_profit_query_action(app: &AppHandle) -> Result<(), Strin
             scheduler.wake();
             Ok(())
         }
+        // 本次查询结果作废 ≠ 之前已提交的达标资格作废：只取消，等下一次 cadence 重查。
         Err(error) if is_stale_profit_query_error(&error) => {
-            profit_runtime.invalidate("截止利润查询结果已过期");
+            profit_runtime.cancel_in_flight("截止利润查询结果已过期");
             scheduler.wake();
             Ok(())
         }
         Err(error) => {
-            profit_runtime.invalidate(&format!("截止利润审计保存失败：{error}"));
+            profit_runtime.cancel_in_flight(&format!("截止利润审计保存失败：{error}"));
             Err(error)
         }
     }
@@ -8594,22 +8738,23 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
             }
             replace_profit_audits(&mut next, outcome.audits.clone());
             normalize_profit_settings(&mut next.profit_filter)?;
-            save_settings(app, &next)?;
-            *settings_lock
-                .lock()
-                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
-            // 返回 false 表示 generation 或 revision 已变，达标集合没写进进程内状态。
-            // 丢弃这个信号会让审计写着「qualified」而 gate 永远是空的：子弹被整个滤掉，
-            // 日志里 ammoTargetCount 恒为 0，且没有任何报错。按陈旧处理让 cadence 重查。
+            // 先写 qualified_rule_ids 到 profit state（revision 保持当前值），再 bump coordinator。
+            // 否则 poll() 可能在两者之间读到新 revision 但空 qualified_rule_ids -> ammo_target_count=0。
             if !profit_runtime.complete_query_at_revision(
                 &lease,
                 completed_at_ms,
                 outcome.qualified_rule_ids.clone(),
                 outcome.summary.clone(),
-                settings_revision.saturating_add(1),
+                settings_revision,
             )? {
                 return Err(PROFIT_QUERY_STALE.to_string());
             }
+            save_settings(app, &next)?;
+            *settings_lock
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            // 同步 profit state revision 到新值（save_settings 已 bump coordinator）
+            profit_runtime.sync_persisted_revision(settings_revision.saturating_add(1))?;
             Ok((next, current_now_ms))
         },
     );
@@ -8619,13 +8764,14 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
             scheduler.wake();
             Ok(())
         }
+        // 同上：作废的是这一次查询，不是当天已提交的资格。
         Err(error) if is_stale_profit_query_error(&error) => {
-            profit_runtime.invalidate("利润查询结果已过期");
+            profit_runtime.cancel_in_flight("利润查询结果已过期");
             scheduler.wake();
             Ok(())
         }
         Err(error) => {
-            profit_runtime.invalidate(&format!("利润审计保存失败：{error}"));
+            profit_runtime.cancel_in_flight(&format!("利润审计保存失败：{error}"));
             Err(error)
         }
     }
@@ -8790,9 +8936,10 @@ fn persist_scheduler_pause(app: &AppHandle, reason: &str) -> Result<(), String> 
             .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
         Ok::<_, String>(next)
     })?;
+    // 自动暂停只停查询，资格留到用户点「继续」。
     state
         .profit_runtime
-        .invalidate("scheduler 已暂停，利润查询已取消");
+        .cancel_in_flight("scheduler 已暂停，利润查询已取消");
     if state.login_runtime.snapshot()?.is_some() {
         state.round_control.request_system_pause();
     }
@@ -8844,9 +8991,11 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<SpecialOpsState>() else {
         return Ok(());
     };
+    // 全局总开关关闭走这里。资格是进程内当天结论，重新打开总开关后应该还在，
+    // 否则关一次开关就等于当天不再兑换。
     state
         .profit_runtime
-        .invalidate("运行资源释放，利润查询已取消");
+        .cancel_in_flight("运行资源释放，利润查询已取消");
     state.round_scheduler.disarm();
     let active = state.login_runtime.snapshot()?;
     if let Some(snapshot) = active {
@@ -9421,18 +9570,22 @@ fn start_due_round_with_revision(
             }
             crate::log_info!("special_ops::startup", "开始冻结到期轮次计划");
             let frozen_now_ms = now_ms();
-            let (profit_gate, profit_generation) = profit_gate_for_round(
+            let (profit_gate, profit_generation, profit_snapshot) = profit_gate_for_round(
                 &settings,
                 &state.profit_runtime,
                 frozen_now_ms,
                 settings_revision,
             )?;
+            // 快照必须一路带到 planner：任务栏投影靠 `qualified_rule_ids` 把达标目标的
+            // 计划时间提到「现在」。planner 拿不到快照就会把子弹排到截止时刻 ->
+            // `is_due` 恒为 false -> 计划为空 -> 达标当天只能等到截止才兑换。
             let frozen = freeze_round_run(
                 &settings,
                 frozen_now_ms,
                 trigger,
                 profit_gate,
                 profit_generation,
+                profit_snapshot.as_ref(),
             )?;
             let initial_account_id = frozen
                 .plan
@@ -9631,6 +9784,7 @@ pub fn special_ops_save_settings(
     let mut settings_value = normalize_settings(settings_value)?;
     // paused / paused_reason 是运行态，只有 set_paused 与自动暂停能改。
     // 前端草稿可能是自动暂停之前的快照，直接采信会把 paused 回滚成旧值。
+    let profit_identity_changed;
     {
         let current = state
             .settings
@@ -9638,6 +9792,7 @@ pub fn special_ops_save_settings(
             .map_err(|_| "特勤处状态已损坏".to_string())?;
         settings_value.paused = current.paused;
         settings_value.paused_reason = current.paused_reason.clone();
+        profit_identity_changed = profit_query_identity_changed(&current, &settings_value);
     }
     let should_arm_scheduler = settings_value.enabled && !settings_value.paused;
     if settings_value.enabled && !settings_value.paused {
@@ -9660,9 +9815,17 @@ pub fn special_ops_save_settings(
             },
         )
         .map_err(AppError::from)?;
-    state
-        .profit_runtime
-        .invalidate("配置已修改，利润查询已取消");
+    // 只有利润查询自身的输入变了才清当天资格。任何 settings autosave 都会走这里，
+    // 一律 invalidate 会把当天达标结论烧掉 -> 利润 gate 恒空 -> 达标也不提前兑换。
+    if profit_identity_changed {
+        state
+            .profit_runtime
+            .invalidate("利润查询配置已修改，当天资格已清空");
+    } else {
+        state
+            .profit_runtime
+            .cancel_in_flight("配置已修改，利润查询已取消");
+    }
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -9823,9 +9986,10 @@ pub fn special_ops_confirm_account_station_states(
             },
         )
         .map_err(AppError::from)?;
+    // 人工校正只改账号/任务状态，与「哪些规则利润达标」无关：只取消在跑的查询。
     state
         .profit_runtime
-        .invalidate("账号状态已人工校正，旧查询已取消");
+        .cancel_in_flight("账号状态已人工校正，旧查询已取消");
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -9846,12 +10010,10 @@ pub fn special_ops_confirm_account_manual_check(
     account_id: String,
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
-    ensure_no_active_special_ops_run(&state.login_runtime)?;
     let ((settings, current_ms), revision) = settings_coordinator
         .with_expected_revision_change(
             settings_revision,
             || -> Result<(SpecialOpsSettings, i64), String> {
-                ensure_no_active_special_ops_run(&state.login_runtime)?;
                 let mut next = state
                     .settings
                     .lock()
@@ -9870,7 +10032,7 @@ pub fn special_ops_confirm_account_manual_check(
         .map_err(AppError::from)?;
     state
         .profit_runtime
-        .invalidate("账号已人工检查，旧查询已取消");
+        .cancel_in_flight("账号已人工检查，旧查询已取消");
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -9892,12 +10054,10 @@ pub fn special_ops_restore_account_state(
     account_id: Option<String>,
     settings_revision: u64,
 ) -> Result<SpecialOpsBootstrap, AppError> {
-    ensure_no_active_special_ops_run(&state.login_runtime)?;
     let ((settings, current_ms), revision) = settings_coordinator
         .with_expected_revision_change(
             settings_revision,
             || -> Result<(SpecialOpsSettings, i64), String> {
-                ensure_no_active_special_ops_run(&state.login_runtime)?;
                 let mut next = state
                     .settings
                     .lock()
@@ -9921,9 +10081,11 @@ pub fn special_ops_restore_account_state(
             },
         )
         .map_err(AppError::from)?;
+    // 一键恢复的目的就是让当天任务重跑。清资格会让恢复后的子弹目标被利润 gate 整个滤掉
+    // -> 点「继续」只跑制作，达标了也不提前兑换。只取消在跑的查询。
     state
         .profit_runtime
-        .invalidate("账号状态已一键恢复，旧查询已取消");
+        .cancel_in_flight("账号状态已一键恢复，旧查询已取消");
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -9975,7 +10137,7 @@ pub fn special_ops_confirm_station_state(
         .map_err(AppError::from)?;
     state
         .profit_runtime
-        .invalidate("制作台状态已人工判定，旧查询已取消");
+        .cancel_in_flight("制作台状态已人工判定，旧查询已取消");
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -10023,7 +10185,7 @@ pub fn special_ops_confirm_ammo_state(
         .map_err(AppError::from)?;
     state
         .profit_runtime
-        .invalidate("子弹状态已人工判定，旧查询已取消");
+        .cancel_in_flight("子弹状态已人工判定，旧查询已取消");
     let bootstrap = build_bootstrap_with_runtime(
         settings,
         revision,
@@ -10068,6 +10230,67 @@ pub fn special_ops_acknowledge_limited_supply(
                     return Err("当前限时商品任务没有待确认高价值提醒".to_string());
                 }
                 account.limited_supply.acknowledged = true;
+                save_settings(&app, &next)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+                Ok((next, now_ms()))
+            },
+        )
+        .map_err(AppError::from)?;
+    let bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
+    state.round_scheduler.wake();
+    Ok(bootstrap)
+}
+
+/// 重新检查当前周期的限时商品：把账号的判定结果复位到 `Pending`。
+///
+/// 任务栏出栏条件与 planner 的 `limited_supply_due` 是 AND 关系，两个门都只认
+/// `Pending`（或换周期）。所以复位一次即可让本周期任务重新变成可执行，
+/// 而自动调度「每周期只跑一次」的语义不变——重跑只由人工触发。
+/// `cycle_id` 保留：任务栏的 `state_matches` 靠它认领当前周期任务。
+#[tauri::command]
+pub fn special_ops_recheck_limited_supply(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    account_id: String,
+    cycle_id: String,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let ((settings, current_ms), revision) = settings_coordinator
+        .with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                let mut next = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let account = next
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == account_id)
+                    .ok_or_else(|| "限时商品账号不存在".to_string())?;
+                if account.limited_supply.cycle_id.as_deref() != Some(cycle_id.as_str()) {
+                    return Err("限时商品周期已变化，请刷新后重试".to_string());
+                }
+                if account.limited_supply.outcome == limited_supply::LimitedSupplyOutcome::Pending {
+                    return Err("当前限时商品任务尚未检查，无需重新检查".to_string());
+                }
+                account.limited_supply = limited_supply::LimitedSupplyAccountState {
+                    cycle_id: Some(cycle_id.clone()),
+                    ..Default::default()
+                };
                 save_settings(&app, &next)?;
                 *state
                     .settings
@@ -10171,7 +10394,8 @@ pub async fn special_ops_set_paused(
             },
         )
         .map_err(AppError::from)?;
-    state.profit_runtime.invalidate(if paused {
+    // 两个方向都只取消：点「继续」时资格还在才可能立刻跑提前兑换。
+    state.profit_runtime.cancel_in_flight(if paused {
         "自动化已暂停，利润查询已取消"
     } else {
         "自动化恢复，重新建立利润查询 generation"
@@ -10734,12 +10958,17 @@ fn limited_cycle_projections(
     projections
 }
 
-fn market_start_projections(now_ms: i64, timeline_end_ms: i64) -> Vec<i64> {
+fn market_start_projections(
+    now_ms: i64,
+    timeline_end_ms: i64,
+    start_minute: u16,
+    end_minute: u16,
+) -> Vec<i64> {
     let minute = local_day_and_minute(now_ms).1;
-    let Some(today_start) = daily_exchange_at_ms(now_ms, 2 * 60) else {
+    let Some(today_start) = daily_exchange_at_ms(now_ms, u32::from(start_minute)) else {
         return Vec::new();
     };
-    let mut scheduled_at_ms = if minute < 4 * 60 {
+    let mut scheduled_at_ms = if minute < u32::from(end_minute) {
         today_start
     } else {
         today_start.saturating_add(24 * 60 * 60_000)
@@ -11019,15 +11248,12 @@ fn build_timeline_tasks(
                 };
                 let acknowledged =
                     is_current && state_matches && account.limited_supply.acknowledged;
-                // 只有真正判定通过（HighValue）且未确认时才把任务留在任务栏等人工确认。
-                // 未通过一律出栏：NoHighValue 是正常轮空，Failed 是本周期判定不成立，
-                // 留着会让人以为还要执行；失败原因仍写在 limitedSupply.lastError。
-                if matches!(
-                    outcome,
-                    limited_supply::LimitedSupplyOutcome::NoHighValue
-                        | limited_supply::LimitedSupplyOutcome::Failed
-                ) || (outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged)
-                {
+                // 只有判定通过（HighValue）且**已**确认才出栏——提醒已经被人看过。
+                // NoHighValue / Failed 留在任务栏并展示结果：当前周期已检查过的任务需要一个
+                // 重新检查入口（`special_ops_recheck_limited_supply` 把状态复位到 Pending）。
+                // 出栏会让 planner 的 `is_due` 永远匹配不到任务 -> 本周期彻底不可重跑，
+                // 用户看到的就是「已检查过的限时商品既没结果行也没有可执行任务」。
+                if outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged {
                     continue;
                 }
                 let id = format!("limited:{}:{}", cycle.id, account.id);
@@ -11056,7 +11282,12 @@ fn build_timeline_tasks(
         }
 
         if business.market.enabled {
-            for scheduled_at_ms in market_start_projections(now_ms, timeline_end_ms) {
+            for scheduled_at_ms in market_start_projections(
+                now_ms,
+                timeline_end_ms,
+                settings.market_purchase.window_start_minute,
+                settings.market_purchase.window_end_minute,
+            ) {
                 let day = local_day_and_minute(scheduled_at_ms).0;
                 let is_current = scheduled_at_ms <= now_ms;
                 let state_matches = account.market.day.as_deref() == Some(day.as_str());
@@ -11070,11 +11301,14 @@ fn build_timeline_tasks(
                 } else {
                     0
                 };
-                if matches!(
-                    status,
-                    market_purchase::MarketTaskStatus::Completed
-                        | market_purchase::MarketTaskStatus::WindowClosed
-                ) {
+                if status == market_purchase::MarketTaskStatus::WindowClosed {
+                    continue;
+                }
+                // Completed 且已达到当前配置次数才出栏；若配置次数上调（completed_count <
+                // purchase_count），则重新显示任务，允许继续购买剩余次数。
+                if status == market_purchase::MarketTaskStatus::Completed
+                    && completed_count >= business.market.purchase_count
+                {
                     continue;
                 }
                 let id = format!("market:{day}:{}", account.id);
@@ -11228,7 +11462,21 @@ pub(crate) fn build_schedule_with_profit_runtime(
             .ammo_targets
             .iter()
             .filter(|target| target.enabled)
-            .filter(|target| gate.allows(&account.id, &target.id, target.profit_rule_id.as_deref()))
+            .filter(|target| {
+                let allowed =
+                    gate.allows(&account.id, &target.id, target.profit_rule_id.as_deref());
+                if !allowed {
+                    crate::log_info!(
+                        "special_ops::schedule",
+                        "ammo target filtered by profit gate",
+                        "account_id" => account.id.as_str(),
+                        "target_id" => target.id.as_str(),
+                        "profit_rule_id" => format!("{:?}", target.profit_rule_id),
+                        "gate" => format!("{:?}", gate)
+                    );
+                }
+                allowed
+            })
             .filter(|target| {
                 account
                     .ammo_targets
@@ -11241,6 +11489,9 @@ pub(crate) fn build_schedule_with_profit_runtime(
                                 || runtime.retry_count < 2)
                     })
             })
+            // 每日兑换时间之前一律不到期。利润达标提前兑换发生在窗口**内**（查询窗口本身
+            // 从兑换时间才开始），所以这道闸不挡提前兑换；删掉它会让 due_accounts 从 00:00
+            // 就非空 -> next_wake_at_ms = now -> 计划为空的轮次每 30 秒重试到兑换时间。
             .filter(|_| {
                 exchange_minute.is_some_and(|minute| local_day_and_minute(now_ms).1 >= minute)
             })
@@ -11266,19 +11517,21 @@ pub(crate) fn build_schedule_with_profit_runtime(
         let market_purchase_due = business_config.market.enabled
             && market_purchase::market_window_open(
                 u16::try_from(current_minute).unwrap_or(u16::MAX),
+                settings.market_purchase.window_start_minute,
+                settings.market_purchase.window_end_minute,
             )
             && (account.market.day.as_deref() != Some(current_day.as_str())
                 || (account.market.completed_count < business_config.market.purchase_count
                     // 必须与任务栏投影（build_timeline_tasks）的出栏条件保持互补：
-                    // 任务栏只在 Completed | WindowClosed 时移除任务，所以
-                    // PriceRecognitionFailed 仍然显示。planner 这里漏掉它就会出现
-                    // 「任务栏有任务、点继续却不执行」——窗口内还剩时间、次数也没跑满，
-                    // 价格识别失败属于可重试失败，不该把当天剩余次数直接判死。
+                    // 任务栏只在 WindowClosed 或 Completed 且已达配置次数时移除任务，
+                    // PriceRecognitionFailed / Completed 但次数未达标时仍显示。
+                    // planner 这里漏掉会出现「任务栏有任务、点继续却不执行」。
                     && matches!(
                         account.market.status,
                         market_purchase::MarketTaskStatus::Pending
                             | market_purchase::MarketTaskStatus::Running
                             | market_purchase::MarketTaskStatus::PriceRecognitionFailed
+                            | market_purchase::MarketTaskStatus::Completed
                     )));
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
@@ -16053,12 +16306,16 @@ mod tests {
         }
     }
 
+    /// 「已人工检查」必须接受全部非 Ready 状态，含 `Uncertain` / `Isolated`。
+    /// 前端对这两种状态同样渲染按钮，gate 拒收只会返回一句报错 -> 表现为「点了没反应」。
     #[test]
-    fn account_manual_check_only_restores_account_level_failures() {
+    fn account_manual_check_accepts_every_non_ready_status() {
         for status in [
             AccountStatus::NeedsManualLogin,
             AccountStatus::LoginFailed,
             AccountStatus::ManualCheckRequired,
+            AccountStatus::Uncertain,
+            AccountStatus::Isolated,
         ] {
             let mut settings = SpecialOpsSettings::default();
             let mut selected = account(
@@ -16083,11 +16340,55 @@ mod tests {
             assert_eq!(settings.accounts[0].last_failure, None);
         }
 
+        // Ready 仍然拒收：没有可恢复的东西。
         let mut settings = SpecialOpsSettings::default();
         settings
             .accounts
-            .push(account("selected", AccountStatus::Uncertain, Vec::new()));
+            .push(account("selected", AccountStatus::Ready, Vec::new()));
         assert!(apply_account_manual_check(&mut settings, "selected", 1_000).is_err());
+    }
+
+    /// `Isolated` 由子弹目标失败升级而来，账号级 `last_failure` 指名出事的目标。
+    /// 只清账号状态会留下目标自己的 `last_failure` -> 目标继续被调度过滤
+    /// -> 账号回 Ready 了却依然不兑换，只有一键恢复能救。
+    #[test]
+    fn account_manual_check_clears_blamed_ammo_target_failure() {
+        let mut settings = SpecialOpsSettings::default();
+        let mut selected = account("selected", AccountStatus::Isolated, Vec::new());
+        let ammo_target = |id: &str, step: &str, at_ms: i64| AmmoTarget {
+            id: id.to_string(),
+            name: id.to_string(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: None,
+            retry_count: 0,
+            last_failure: Some(AccountFailure {
+                step: step.to_string(),
+                message: "步骤失败".to_string(),
+                at_ms,
+                station_kind: None,
+                ammo_target_id: Some(id.to_string()),
+            }),
+        };
+        selected.ammo_targets = vec![
+            ammo_target("blamed", "ammo.Purchase", 1),
+            ammo_target("other", "ammo.Confirm", 2),
+        ];
+        selected.last_failure = selected.ammo_targets[0].last_failure.clone();
+        settings.accounts.push(selected);
+
+        apply_account_manual_check(&mut settings, "selected", 1_000).unwrap();
+
+        let targets = &settings.accounts[0].ammo_targets;
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(settings.accounts[0].last_failure, None);
+        // 被指名的目标解冻。
+        assert_eq!(targets[0].last_failure, None);
+        // 其他目标的判定结果不动。
+        assert!(targets[1].last_failure.is_some());
     }
 
     #[test]
@@ -16159,6 +16460,12 @@ mod tests {
             outcome: limited_supply::LimitedSupplyOutcome::Failed,
             ..Default::default()
         };
+        selected.market = market_purchase::MarketAccountState {
+            day: Some("2026-08-09".to_string()),
+            completed_count: 1,
+            status: market_purchase::MarketTaskStatus::WindowClosed,
+            last_error: Some("交易行窗口已关闭".to_string()),
+        };
         settings.accounts.push(selected);
         settings
             .accounts
@@ -16185,12 +16492,113 @@ mod tests {
             selected.limited_supply.outcome,
             limited_supply::LimitedSupplyOutcome::Pending
         );
+        // 交易行封锁必须放回 Pending：否则任务在任务栏与 planner 双重过滤下永久消失，
+        // 一键恢复后点「继续」不会再上线跑交易行。已花掉的购买次数保留。
+        assert_eq!(
+            selected.market.status,
+            market_purchase::MarketTaskStatus::Pending
+        );
+        assert_eq!(selected.market.last_error, None);
+        assert_eq!(selected.market.completed_count, 1);
 
         // 无异常时报错，避免空转产生一次 settings revision。
         assert!(restore_account_state(&mut settings, Some("other"), 1_000, "2026-08-09").is_err());
         assert!(
             restore_account_state(&mut settings, Some("missing"), 1_000, "2026-08-09").is_err()
         );
+    }
+
+    /// 一键恢复只放回**当天**的封锁状态，`Completed` 一律不动：购买次数已经花掉，
+    /// 放回 Pending 会让同一天重复买满配置次数。
+    #[test]
+    fn restore_account_state_keeps_completed_and_other_day_market_state() {
+        for (day, status) in [
+            ("2026-08-09", market_purchase::MarketTaskStatus::Completed),
+            (
+                "2026-08-08",
+                market_purchase::MarketTaskStatus::WindowClosed,
+            ),
+        ] {
+            let mut settings = SpecialOpsSettings::default();
+            let mut selected = account("selected", AccountStatus::Ready, Vec::new());
+            selected.market = market_purchase::MarketAccountState {
+                day: Some(day.to_string()),
+                completed_count: 3,
+                status: status.clone(),
+                last_error: None,
+            };
+            settings.accounts.push(selected);
+
+            // 只有交易行这一处「异常」，不放回就没有可恢复项 -> 报错。
+            assert!(
+                restore_account_state(&mut settings, Some("selected"), 1_000, "2026-08-09")
+                    .is_err()
+            );
+            assert_eq!(settings.accounts[0].market.status, status);
+        }
+    }
+
+    /// 只有利润查询自身的输入变了才算身份变化。改无关设置就清当天资格 ->
+    /// 利润 gate 恒空 -> 达标的子弹目标全被滤掉、不提前兑换。
+    #[test]
+    fn profit_query_identity_only_tracks_query_inputs() {
+        let base = SpecialOpsSettings {
+            daily_exchange_time: "08:00".to_string(),
+            profit_filter: profit::model::ProfitFilterSettings {
+                enabled: true,
+                cutoff_time: "20:00".to_string(),
+                rules: vec![profit::model::AmmoProfitRule {
+                    id: "rule-a".to_string(),
+                    display_name: "规则 A".to_string(),
+                    kkrb_match_name: "KKRB A".to_string(),
+                    moligod_match_name: None,
+                    minimum_profit: 100,
+                }],
+                ..Default::default()
+            },
+            ..SpecialOpsSettings::default()
+        };
+
+        assert!(!profit_query_identity_changed(&base, &base));
+
+        // 无关设置：延迟、账号、审计历史。
+        let mut unrelated = base.clone();
+        unrelated.navigation_beacon_delay_ms += 100;
+        unrelated
+            .accounts
+            .push(account("added", AccountStatus::Ready, Vec::new()));
+        unrelated
+            .profit_filter
+            .audits
+            .push(profit::model::AmmoProfitAudit {
+                day: "2026-08-09".to_string(),
+                rule_id: "rule-a".to_string(),
+                queried_at_ms: 1,
+                source: Some(profit::model::ProfitSource::Kkrb),
+                attempted_sources: vec![profit::model::ProfitSource::Kkrb],
+                source_data_at: None,
+                source_version: None,
+                profit: Some(200),
+                threshold: 100,
+                outcome: profit::model::ProfitAuditOutcome::Qualified,
+                detail: "达标".to_string(),
+                next_query_at_ms: None,
+            });
+        assert!(!profit_query_identity_changed(&base, &unrelated));
+
+        // 查询输入：总开关、截止时间、规则、每日兑换时间。
+        for mutate in [
+            (|next: &mut SpecialOpsSettings| next.profit_filter.enabled = false)
+                as fn(&mut SpecialOpsSettings),
+            |next: &mut SpecialOpsSettings| next.profit_filter.cutoff_time = "21:00".to_string(),
+            |next: &mut SpecialOpsSettings| next.profit_filter.rules[0].minimum_profit = 200,
+            |next: &mut SpecialOpsSettings| next.profit_filter.rules.clear(),
+            |next: &mut SpecialOpsSettings| next.daily_exchange_time = "09:00".to_string(),
+        ] {
+            let mut next = base.clone();
+            mutate(&mut next);
+            assert!(profit_query_identity_changed(&base, &next));
+        }
     }
 
     fn settings_with_two_failed_ammo_targets() -> SpecialOpsSettings {
@@ -16776,12 +17184,13 @@ mod tests {
             round_planner::RoundTrigger::Manual,
             AmmoProfitGate::Disabled,
             None,
+            None,
         )
         .unwrap();
         let task = &frozen.plan.accounts[0];
         let account = frozen
             .accounts
-            .get(&(task.account_id.clone(), task.scheduled_at_ms))
+            .get(&frozen_round_account_key(task))
             .unwrap()
             .as_ref()
             .unwrap();
@@ -16800,6 +17209,107 @@ mod tests {
         );
     }
 
+    /// 交易行独立成桶后，同账号可能同时存在「非交易行桶」与「交易行桶」。
+    /// 两者的 `scheduled_at_ms` 都是分钟对齐的（子弹取每日兑换时间、交易行取窗口起点），
+    /// 配成同一分钟时 `(account_id, scheduled_at_ms)` 二元组完全相同 -> `collect()`
+    /// 只留下后插入的交易行桶 -> 非交易行桶拿到空冻结配置，制作与子弹被静默跳过。
+    #[test]
+    fn round_freezes_same_minute_market_and_non_market_buckets_separately() {
+        let mut fixture = LoginFixture::complete();
+        fixture.settings.paused = false;
+        // 兑换时间与交易行窗口起点都落在 02:00 -> 两桶 scheduled_at_ms 相同。
+        fixture.settings.daily_exchange_time = "02:00".to_string();
+        fixture.settings.market_purchase.window_start_minute = 2 * 60;
+        fixture.settings.market_purchase.window_end_minute = 20 * 60;
+        fixture.settings.default_business_config.market.enabled = true;
+        fixture
+            .settings
+            .default_business_config
+            .market
+            .product_point = Some(CalibrationRect {
+            x: 50,
+            y: 60,
+            width: 1,
+            height: 1,
+        });
+        fixture.settings.default_business_config.ammo_targets =
+            vec![ammo_business_target("pending", false, 0)];
+        fixture.settings.accounts[0].ammo_targets = vec![AmmoTarget {
+            id: "pending".to_string(),
+            name: String::new(),
+            enabled: true,
+            seasonal: false,
+            scroll_steps: 0,
+            order: 0,
+            last_success_day: None,
+            retry_day: None,
+            retry_count: 0,
+            last_failure: None,
+        }];
+        fixture._reference_files = configure_required_execution_targets(&mut fixture.settings);
+        // 交易行的校准键不在 `required_execution_target_keys` 里，只有 freeze 时才校验，
+        // 所以这里得自己框选。
+        let reference = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(reference.path(), b"market.entry").unwrap();
+        let entry = calibration_target_mut(&mut fixture.settings, "market.entry");
+        entry.rect = Some(CalibrationRect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 40,
+        });
+        entry.reference_image_path = Some(reference.path().display().to_string());
+        entry.verified_signature = Some(calibration_signature(entry).unwrap());
+        entry.verified_at_ms = Some(1);
+        fixture._reference_files.push(reference);
+        for key in [
+            "market.backToEntry",
+            "market.price",
+            "market.return",
+            "market.buy",
+            "market.confirm",
+        ] {
+            calibration_target_mut(&mut fixture.settings, key).rect = Some(CalibrationRect {
+                x: 10,
+                y: 20,
+                width: 1,
+                height: 1,
+            });
+        }
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+
+        let frozen = freeze_round_run(
+            &fixture.settings,
+            now_ms,
+            round_planner::RoundTrigger::Scheduled,
+            AmmoProfitGate::Disabled,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let buckets = &frozen.plan.accounts;
+        assert_eq!(buckets.len(), 2);
+        assert_eq!(frozen.accounts.len(), 2);
+        // 两桶各自拿到自己的冻结内容，互不覆盖。
+        let non_market = frozen
+            .accounts
+            .get(&frozen_round_account_key(&buckets[0]))
+            .unwrap()
+            .as_ref()
+            .unwrap();
+        assert!(non_market.ammo.is_some());
+        let market = frozen
+            .accounts
+            .get(&frozen_round_account_key(&buckets[1]))
+            .unwrap()
+            .as_ref()
+            .unwrap();
+        assert!(market.market.is_some());
+        assert!(buckets[1].market_purchase_day.is_some());
+        assert_eq!(buckets[0].scheduled_at_ms, buckets[1].scheduled_at_ms);
+    }
+
     #[test]
     fn round_freezes_each_same_account_time_bucket_without_overwrite() {
         let mut fixture = LoginFixture::complete();
@@ -16815,6 +17325,7 @@ mod tests {
             1_000,
             round_planner::RoundTrigger::Scheduled,
             AmmoProfitGate::Disabled,
+            None,
             None,
         )
         .unwrap();
@@ -16834,7 +17345,7 @@ mod tests {
         for task in &frozen.plan.accounts {
             let account = frozen
                 .accounts
-                .get(&(task.account_id.clone(), task.scheduled_at_ms))
+                .get(&frozen_round_account_key(task))
                 .unwrap()
                 .as_ref()
                 .unwrap();
@@ -16867,6 +17378,7 @@ mod tests {
             round_planner::RoundTrigger::Scheduled,
             AmmoProfitGate::Disabled,
             None,
+            None,
         )
         .unwrap();
 
@@ -16884,7 +17396,7 @@ mod tests {
         );
         let account = frozen
             .accounts
-            .get(&("selected".to_string(), 1_000))
+            .get(&("selected".to_string(), 1_000, false))
             .unwrap()
             .as_ref()
             .unwrap();
@@ -17494,6 +18006,7 @@ mod tests {
             "limited.ready",
             "limited.color.1",
             "limited.color.9",
+            "market.backToEntry",
             "market.entry",
             "market.product",
             "market.price",
@@ -17548,6 +18061,7 @@ mod tests {
         fixture._reference_files.push(reference);
 
         for key in [
+            "market.backToEntry",
             "market.price",
             "market.return",
             "market.buy",
@@ -17614,7 +18128,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_limited_check_leaves_the_timeline_instead_of_waiting_for_acknowledgement() {
+    fn checked_limited_cycle_stays_in_timeline_until_high_value_acknowledged() {
         let mut settings = LoginFixture::complete().settings;
         settings.paused = false;
         settings.limited_supply.enabled = true;
@@ -17638,30 +18152,58 @@ mod tests {
                 })
         };
 
+        let set_outcome =
+            |settings: &mut SpecialOpsSettings, outcome: limited_supply::LimitedSupplyOutcome| {
+                settings
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == "selected")
+                    .unwrap()
+                    .limited_supply
+                    .outcome = outcome;
+            };
+
         // 判定通过且未确认：任务留在栏里等人工确认。
-        settings
-            .accounts
-            .iter_mut()
-            .find(|account| account.id == "selected")
-            .unwrap()
-            .limited_supply
-            .outcome = limited_supply::LimitedSupplyOutcome::HighValue;
+        set_outcome(
+            &mut settings,
+            limited_supply::LimitedSupplyOutcome::HighValue,
+        );
         assert!(current_task(&settings).is_some());
 
-        // 判定未通过：任务必须消失，不再占着任务栏等一个不存在的确认入口。
+        // 已检查过（未通过 / 失败）仍留在任务栏：结果要看得见，且需要重新检查入口。
+        // 出栏会让 planner 的 `is_due` 永远匹配不到任务 -> 本周期不可重跑。
         for outcome in [
             limited_supply::LimitedSupplyOutcome::Failed,
             limited_supply::LimitedSupplyOutcome::NoHighValue,
         ] {
-            settings
-                .accounts
-                .iter_mut()
-                .find(|account| account.id == "selected")
-                .unwrap()
-                .limited_supply
-                .outcome = outcome.clone();
-            assert!(current_task(&settings).is_none(), "{outcome:?} 必须出栏");
+            set_outcome(&mut settings, outcome.clone());
+            let task = current_task(&settings)
+                .unwrap_or_else(|| panic!("{outcome:?} 必须留在任务栏以提供重新检查入口"));
+            assert_eq!(task.limited_outcome, Some(outcome));
+            // 复位到 Pending 前不得自动重跑。
+            assert!(!build_schedule(&settings, now_ms)
+                .due_accounts
+                .iter()
+                .any(|due| due.account_id == "selected" && due.limited_supply_due));
         }
+
+        // 人工重新检查 = 复位到 Pending，两个门同时打开。
+        set_outcome(&mut settings, limited_supply::LimitedSupplyOutcome::Pending);
+        assert!(current_task(&settings).is_some());
+        assert!(build_schedule(&settings, now_ms)
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.limited_supply_due));
+
+        // 高价值已确认才出栏——提醒已经被人看过。
+        let account = settings
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == "selected")
+            .unwrap();
+        account.limited_supply.outcome = limited_supply::LimitedSupplyOutcome::HighValue;
+        account.limited_supply.acknowledged = true;
+        assert!(current_task(&settings).is_none());
     }
 
     #[test]

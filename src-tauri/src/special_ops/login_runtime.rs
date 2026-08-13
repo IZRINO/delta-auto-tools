@@ -309,7 +309,7 @@ impl LoginRuntime {
             active.first_input_countdown_claimed = true;
             Ok(Some(5))
         } else if show_subsequent_countdown {
-            Ok(Some(1))
+            Ok(Some(0))
         } else {
             Ok(None)
         }
@@ -1857,7 +1857,7 @@ mod tests {
     }
 
     #[test]
-    fn first_input_gets_five_and_only_prompted_followups_get_one() {
+    fn first_input_gets_five_and_followups_get_zero() {
         let runtime = LoginRuntime::default();
         let started = runtime.try_start("account-a".to_string()).unwrap();
 
@@ -1877,7 +1877,7 @@ mod tests {
             runtime
                 .next_input_countdown_seconds(started.run_id, true)
                 .unwrap(),
-            Some(1)
+            Some(0)
         );
     }
 

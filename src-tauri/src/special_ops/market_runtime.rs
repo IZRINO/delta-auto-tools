@@ -21,6 +21,8 @@ pub(crate) struct MarketRunConfig {
     pub(crate) completed_count: u32,
     pub(crate) entry_delay: Duration,
     pub(crate) ocr_interval: Duration,
+    /// 交易行开放结束时间（分钟，从 0 点起算）。
+    pub(crate) window_end_minute: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,8 +140,12 @@ pub(crate) async fn run_market_atomic<D: MarketDriver + ?Sized>(
             driver
                 .click("market.buy", false, Arc::clone(&cancelled))
                 .await?;
-            driver.click("market.confirm", false, cancelled).await?;
+            driver
+                .click("market.confirm", false, Arc::clone(&cancelled))
+                .await?;
             let completed_count = driver.persist_purchase_click()?;
+            // 确认购买后点击高价返回，回到商品列表继续下一件。
+            driver.click("market.return", false, cancelled).await?;
             Ok(MarketAtomicResult::Purchased { completed_count })
         }
     }
@@ -195,6 +201,7 @@ pub(crate) async fn run_market_trial<D: MarketDriver + ?Sized>(
                     .click("market.confirm", false, Arc::clone(&cancelled))
                     .await?;
                 driver.persist_purchase_click()?;
+                driver.click("market.return", false, cancelled).await?;
             }
             MarketTrialAction::Return | MarketTrialAction::OcrFailed => {
                 driver.click("market.return", false, cancelled).await?;
@@ -218,7 +225,7 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
     if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         return MarketRunStop::EmergencyStopped;
     }
-    if driver.minute_of_day() >= 4 * 60 {
+    if driver.minute_of_day() >= config.window_end_minute {
         return MarketRunStop::WindowClosed;
     }
     if config.completed_count >= config.target_count {
@@ -266,7 +273,7 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
         if driver.pause_requested() {
             return MarketRunStop::PauseRequested;
         }
-        if driver.minute_of_day() >= 4 * 60 {
+        if driver.minute_of_day() >= config.window_end_minute {
             return MarketRunStop::WindowClosed;
         }
         if completed_count >= config.target_count {
@@ -357,7 +364,7 @@ mod tests {
             match self.boundary_after_purchase {
                 Boundary::None => {}
                 Boundary::Pause => self.pause.store(true, Ordering::SeqCst),
-                Boundary::Close => self.minute.store(4 * 60, Ordering::SeqCst),
+                Boundary::Close => self.minute.store(24 * 60, Ordering::SeqCst),
                 Boundary::Craft => self.craft_at_ms.store(1_000, Ordering::SeqCst),
             }
         }
@@ -442,6 +449,7 @@ mod tests {
             completed_count: 0,
             entry_delay: Duration::ZERO,
             ocr_interval: Duration::ZERO,
+            window_end_minute: 20 * 60,
         }
     }
 
@@ -476,9 +484,10 @@ mod tests {
                 "click:market.product",
                 "click:market.buy",
                 "click:market.confirm",
+                "click:market.return",
             ]
         );
-        assert_eq!(driver.actions.lock().unwrap().last().unwrap(), "persist:1");
+        assert_eq!(driver.completed.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

@@ -2,11 +2,16 @@ use serde::{Deserialize, Serialize};
 
 use super::CalibrationRect;
 
-pub(crate) const MARKET_WINDOW_START_MINUTE: u16 = 2 * 60;
-pub(crate) const MARKET_WINDOW_END_MINUTE: u16 = 4 * 60;
-
 fn default_entry_delay_ms() -> u32 {
     3_000
+}
+
+fn default_window_start_minute() -> u16 {
+    2 * 60
+}
+
+fn default_window_end_minute() -> u16 {
+    20 * 60
 }
 
 fn default_purchase_count() -> u32 {
@@ -30,6 +35,12 @@ pub struct MarketPurchaseSettings {
     pub purchase_count: u32,
     #[serde(default)]
     pub item_note: String,
+    /// 交易行开放开始时间（分钟，从 0 点起算），默认 02:00 = 120。
+    #[serde(default = "default_window_start_minute")]
+    pub window_start_minute: u16,
+    /// 交易行开放结束时间（分钟，从 0 点起算），默认 20:00 = 1200。
+    #[serde(default = "default_window_end_minute")]
+    pub window_end_minute: u16,
 }
 
 impl Default for MarketPurchaseSettings {
@@ -39,6 +50,8 @@ impl Default for MarketPurchaseSettings {
             entry_delay_ms: default_entry_delay_ms(),
             purchase_count: default_purchase_count(),
             item_note: String::new(),
+            window_start_minute: default_window_start_minute(),
+            window_end_minute: default_window_end_minute(),
         }
     }
 }
@@ -80,8 +93,8 @@ pub(crate) const fn price_decision(price: u64, max_price: u64) -> PriceDecision 
     }
 }
 
-pub(crate) const fn market_window_open(minute: u16) -> bool {
-    minute >= MARKET_WINDOW_START_MINUTE && minute < MARKET_WINDOW_END_MINUTE
+pub(crate) const fn market_window_open(minute: u16, start: u16, end: u16) -> bool {
+    minute >= start && minute < end
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,10 +183,12 @@ mod tests {
     }
 
     #[test]
-    fn market_window_stops_at_four_hundred() {
-        assert!(!market_window_open(119));
-        assert!(market_window_open(2 * 60));
-        assert!(market_window_open(3 * 60 + 59));
-        assert!(!market_window_open(4 * 60));
+    fn market_window_stops_at_eight_pm() {
+        let start = 2 * 60;
+        let end = 20 * 60;
+        assert!(!market_window_open(119, start, end));
+        assert!(market_window_open(2 * 60, start, end));
+        assert!(market_window_open(19 * 60 + 59, start, end));
+        assert!(!market_window_open(20 * 60, start, end));
     }
 }

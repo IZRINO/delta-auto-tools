@@ -254,13 +254,18 @@ export function shanghaiDay(atMs: number): string {
 /// 账号是否存在可被一键恢复的异常残留。
 /// 与后端 `restore_account_state` 的 `changed` 判定保持一致，避免按钮点下去只拿到「没有需要恢复的异常状态」。
 /// 当天已兑换成功的子弹目标也算可恢复项：后端会清当天 `lastSuccessDay` 让目标回到未兑换。
+/// 当天被封锁的交易行状态同样算：后端会把它放回 `pending`，否则点「继续」不会再跑交易行。
 export function accountRestorable(account: AccountPlan, currentDay: string): boolean {
     if (account.status !== "ready" || account.lastFailure) return true;
     if (account.stations.some((station) => station.status === "uncertain")) return true;
     if (account.ammoTargets.some((target) => target.lastFailure
         || target.retryCount > 0
         || target.lastSuccessDay === currentDay)) return true;
-    return account.limitedSupply?.outcome === "failed";
+    if (account.limitedSupply?.outcome === "failed") return true;
+    return account.market?.day === currentDay
+        && (account.market.status === "running"
+            || account.market.status === "priceRecognitionFailed"
+            || account.market.status === "windowClosed");
 }
 
 /// 任务栏单项人工判定的显示条件。

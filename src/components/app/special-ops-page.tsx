@@ -36,6 +36,7 @@ import {
      type LimitedSupplyColorTestResult,
      type LimitedSupplySettings,
      type MarketBusinessConfig,
+     type MarketPurchaseSettings,
     type ProfitConfigurationUpdate,
     type SpecialOpsBootstrap,
     type SpecialOpsSettings,
@@ -104,7 +105,7 @@ const emptyBootstrap: SpecialOpsBootstrap = {
          },
          profitFilter: {enabled: false, cutoffTime: "17:00", rules: [], audits: [], cutoffState: null},
          limitedSupply: {enabled: false, researchDelayMs: 3000, readyTimeoutMs: 10000, colors: [[0, 0, 0], [255, 255, 255]], colorTolerances: [30, 30]},
-         marketPurchase: {enabled: false, entryDelayMs: 3000, purchaseCount: 1, itemNote: ""},
+         marketPurchase: {enabled: false, entryDelayMs: 3000, purchaseCount: 1, itemNote: "", windowStartMinute: 120, windowEndMinute: 1200},
          accounts: [],
         activeCalibrationId: null,
         calibrationEnvironments: [],
@@ -186,6 +187,17 @@ function createCorrectionDraft(
             ...createStationRemainingTimeDraft(station ?? {finishesAtMs: null}, nowMs),
         }];
     })) as Record<StationKind, StationCorrectionDraft>;
+}
+
+function minutesToTime(minutes: number): string {
+    const h = Math.floor(minutes / 60) % 24;
+    const m = minutes % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function timeToMinutes(value: string): number {
+    const [hStr, mStr] = value.split(":");
+    return (parseInt(hStr ?? "0", 10) || 0) * 60 + (parseInt(mStr ?? "0", 10) || 0);
 }
 
 function buildCorrectionPayload(
@@ -296,13 +308,21 @@ const timelineProfitLabels: Record<NonNullable<TimelineTask["profitState"]>, str
 };
 
 /// 限时商品检查结果在任务栏的文案。
-/// `highValue` 未确认时任务会留在任务栏等人工确认，必须显式说明，否则看起来像没执行。
-/// `noHighValue` 与 `failed` 由后端直接出栏，这里保留文案只为兼容旧 payload。
+/// 已检查过的周期仍留在任务栏（结果要看得见），必须显式说明本周期已经跑过，否则看起来
+/// 像还没执行。只有 `highValue` 已确认才出栏。重新检查入口在账号的人工校正面板里。
 const limitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
     pending: "尚未检查",
-    noHighValue: "未发现高价值",
+    noHighValue: "本周期已检查：未发现高价值，可在账号人工校正里重新检查",
     highValue: "已发现高价值，等待人工确认",
-    failed: "检查失败",
+    failed: "本周期检查失败，可在账号人工校正里重新检查",
+};
+
+/// 人工校正面板里的同一组结果文案。重新检查按钮就在旁边，不需要再指路。
+const correctionLimitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
+    pending: "尚未检查，等待自动执行",
+    noHighValue: "本周期已检查：未发现高价值",
+    highValue: "已发现高价值，等待任务栏确认",
+    failed: "本周期检查失败",
 };
 
 const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -395,9 +415,10 @@ function TimelineManualCorrection({
     </div>;
 }
 
-/// 限时商品高价值提醒的确认入口。
-/// 只在 `highValue` 且未确认时出现 —— 后端也只接受这一种状态，其余状态任务本身已被任务栏过滤。
-function TimelineLimitedAcknowledge({
+/// 限时商品任务在任务栏的唯一人工入口：确认已看过高价值商品，确认后任务出栏。
+/// 重新检查不在这里——它在账号的人工校正面板（`CorrectionLimitedSupply`），因为
+/// `noHighValue` / `failed` 周期同样要能重跑，而那两种结果没有任务栏动作可挂。
+function TimelineLimitedActions({
     task,
     disabled,
     onAcknowledge,
@@ -408,7 +429,8 @@ function TimelineLimitedAcknowledge({
 }) {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    if (task.kind !== "limitedSupplyCheck" || task.limitedOutcome !== "highValue" || !task.limitedCycleId) return null;
+    if (task.kind !== "limitedSupplyCheck" || !task.limitedCycleId) return null;
+    if (task.limitedOutcome !== "highValue") return null;
     const submit = async () => {
         setSubmitting(true);
         setError(null);
@@ -425,6 +447,57 @@ function TimelineLimitedAcknowledge({
             {submitting ? "正在确认" : "已查看高价值商品"}
         </Button>
         {error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs"><span>{error}</span></div>}
+    </div>;
+}
+
+/// 人工校正面板里的限时商品分区：展示本周期判定结果 + 重新检查入口。
+/// 与制作台/子弹校正各自独立提交——重新检查只复位限时商品状态，不参与那份原子覆盖，
+/// 所以放在核对流程之外，点了立刻生效。
+function CorrectionLimitedSupply({
+    account,
+    disabled,
+    onRecheck,
+}: {
+    account: AccountPlan;
+    disabled: boolean;
+    onRecheck: (accountId: string, cycleId: string) => Promise<SpecialOpsBootstrap>;
+}) {
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const limited = account.limitedSupply;
+    const cycleId = limited?.cycleId ?? null;
+    const checked = limited !== undefined && limited.outcome !== "pending";
+    const submit = async () => {
+        if (!cycleId) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+            await onRecheck(account.id, cycleId);
+        } catch (cause) {
+            setError(String(cause));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+    return <div className="mt-4 rounded-box border border-base-300 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="font-medium">本周期限时商品</h4>
+            <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled || submitting || !checked || !cycleId}
+                title={checked && cycleId ? "把本周期判定复位到未检查，任务重新变为可执行" : "本周期尚未检查，无需重新检查"}
+                onClick={() => void submit()}
+            ><RiRefreshLine data-icon="inline-start"/>{submitting ? "正在复位" : "重新检查"}</Button>
+        </div>
+        <p className="mt-2 text-sm text-base-content/70">
+            {limited === undefined
+                ? "当前账号没有限时商品记录"
+                : correctionLimitedOutcomeLabels[limited.outcome]}
+            {limited?.checkedAtMs ? ` · 检查于 ${shanghaiTimeFormatter.format(limited.checkedAtMs)}` : ""}
+        </p>
+        {limited?.lastError && <p className="mt-1 text-xs text-error">{limited.lastError}</p>}
+        {error && <div role="alert" className="alert alert-error alert-soft mt-2 py-2 text-xs"><span>{error}</span></div>}
     </div>;
 }
 
@@ -480,7 +553,7 @@ function SpecialOpsTimeline({
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome
                                                     && <div className={`text-xs ${task.limitedOutcome === "failed" ? "text-error" : "text-base-content/60"}`}>{limitedOutcomeLabels[task.limitedOutcome]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
-                                                <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledgeLimited}/>
+                                                <TimelineLimitedActions task={task} disabled={disabled} onAcknowledge={onAcknowledgeLimited}/>
                                                 {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -526,6 +599,9 @@ export function SpecialOpsPage() {
     const [correctionConfirming, setCorrectionConfirming] = useState(false);
     const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
     const [correctionError, setCorrectionError] = useState<string | null>(null);
+    // 账号级动作（已人工检查 / 一键恢复）的失败原因。顶部横幅在账号列表里看不见——
+    // 用户点了按钮、报错滚出视口，看起来就是「点了没反应」。错误必须落在按钮旁边。
+    const [accountActionError, setAccountActionError] = useState<{accountId: string; message: string} | null>(null);
     const [pauseTransition, setPauseTransition] = useState(false);
     const bootstrapRef = useRef(emptyBootstrap);
     const appliedResponseSequenceRef = useRef(0);
@@ -961,22 +1037,26 @@ export function SpecialOpsPage() {
         }
     };
     const confirmAccountManualCheck = async (accountId: string) => {
-        if (!isNativeShell || controlsLocked) return;
+        if (!isNativeShell) return;
         try {
+            setAccountActionError(null);
             const saved = await flushSettings();
             await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_confirm_account_manual_check", {accountId, settingsRevision: saved.settingsRevision}));
         } catch (cause) {
+            setAccountActionError({accountId, message: `人工检查提交失败：${String(cause)}`});
             setError(`人工检查提交失败：${String(cause)}`);
         }
     };
     /// 一键恢复：accountId 为 null 时恢复全部异常账号。
     const restoreAccountState = async (accountId: string | null) => {
-        if (!isNativeShell || controlsLocked) return;
+        if (!isNativeShell) return;
         try {
             setError(null);
+            setAccountActionError(null);
             const saved = await flushSettings();
             await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_restore_account_state", {accountId, settingsRevision: saved.settingsRevision}));
         } catch (cause) {
+            if (accountId) setAccountActionError({accountId, message: `一键恢复失败：${String(cause)}`});
             setError(`一键恢复失败：${String(cause)}`);
         }
     };
@@ -989,6 +1069,22 @@ export function SpecialOpsPage() {
             return await requestBootstrap(() => invoke<SpecialOpsBootstrap>(
                 "special_ops_acknowledge_limited_supply",
                 {accountId: task.accountId, cycleId: task.limitedCycleId, settingsRevision: saved.settingsRevision},
+            ));
+        } catch (cause) {
+            if (String(cause).includes("配置保存已陈旧")) reload();
+            throw cause;
+        }
+    };
+    /// 重新检查本周期限时商品：后端把状态复位到 `pending`，任务重新变成可执行。
+    /// 自动调度「每周期一次」的语义不变，重跑只由这里触发。
+    /// 入口在账号人工校正面板，所以取账号自己的 `limitedSupply.cycleId`，不依赖任务栏任务。
+    const recheckLimitedSupply = async (accountId: string, cycleId: string) => {
+        if (!isNativeShell) throw new Error("浏览器预览不能写入配置，请使用桌面开发版");
+        try {
+            const saved = await flushSettings();
+            return await requestBootstrap(() => invoke<SpecialOpsBootstrap>(
+                "special_ops_recheck_limited_supply",
+                {accountId, cycleId, settingsRevision: saved.settingsRevision},
             ));
         } catch (cause) {
             if (String(cause).includes("配置保存已陈旧")) reload();
@@ -1026,10 +1122,15 @@ export function SpecialOpsPage() {
     };
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
     const limitedSupply: LimitedSupplySettings = bootstrap.settings.limitedSupply ?? emptyBootstrap.settings.limitedSupply!;
+    const marketPurchase: MarketPurchaseSettings = bootstrap.settings.marketPurchase ?? emptyBootstrap.settings.marketPurchase!;
     const defaultMarket: MarketBusinessConfig = settingsDraftRef.current.defaultBusinessConfig.market ?? emptyBootstrap.settings.defaultBusinessConfig.market!;
     const updateLimitedSupply = (patch: Partial<LimitedSupplySettings>) => save({
         ...settingsDraftRef.current,
         limitedSupply: {...limitedSupply, ...patch},
+    });
+    const updateMarketPurchase = (patch: Partial<MarketPurchaseSettings>) => save({
+        ...settingsDraftRef.current,
+        marketPurchase: {...marketPurchase, ...patch},
     });
     const updateLimitedColor = (colorIndex: number, color: [number, number, number]) => {
         const colors = [...limitedSupply.colors] as [[number, number, number], [number, number, number]];
@@ -1053,8 +1154,17 @@ export function SpecialOpsPage() {
             for (let regionIndex = 1; regionIndex <= 9; regionIndex += 1) {
                 results.push(await invoke<LimitedSupplyColorTestResult>("special_ops_test_limited_supply_colors", {environmentId: activeEnvironment.id, regionIndex, settingsRevision: saved.settingsRevision}));
             }
+            // 全部 9 个区域必须连续命中才算高价值（与 compare_samples 语义一致）
             const passed = results.length > 0 && results.every((result) => result.passed);
-            setLimitedColorFeedback(`${passed ? "识色通过" : "识色未通过"}：${results.map((result) => `采样 ${result.firstSampledColor.join(",")} / ${result.secondSampledColor.join(",")}，目标 ${result.firstTargetColor.join(",")} / ${result.secondTargetColor.join(",")}，容差 ${result.firstTolerance}/${result.secondTolerance}`).join("；")}`);
+            const passedRegions = results
+                .map((result, i) => result.passed ? i + 1 : null)
+                .filter((i): i is number => i !== null);
+            const regionDetail = results
+                .map((r, i) => `区${i + 1}${r.passed ? "✓" : "✗"}(距${r.firstNearestDistance.toFixed(0)}/${r.secondNearestDistance.toFixed(0)})`)
+                .join(" ");
+            setLimitedColorFeedback(
+                `${passed ? `识色通过（全部9区命中）` : `识色未通过（${passedRegions.length}/9 区命中：${passedRegions.length ? passedRegions.join("、") : "无"}）`} — ${regionDetail}`
+            );
         } catch (cause) {
             setLimitedColorFeedback(`限时商品识色测试失败：${String(cause)}`);
         }
@@ -1284,6 +1394,7 @@ export function SpecialOpsPage() {
                     <label className="flex items-center gap-2 text-sm"><Switch checked={limitedSupply.enabled} onCheckedChange={(enabled) => updateLimitedSupply({enabled})}/>启用</label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="form-control gap-1"><span className="label-text text-xs">研发部门页面等待（ms）</span><DraftInput type="number" min={0} max={60000} value={String(limitedSupply.researchDelayMs)} onCommit={(value) => updateLimitedSupply({researchDelayMs: Math.max(0, Math.min(60000, Math.trunc(Number(value) || 0)))})}/><span className="text-xs text-base-content/60">点完研发部门后先等这段时间再识别页面，太短会在上一页误判</span></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">页面就绪超时（ms）</span><DraftInput type="number" min={1000} max={60000} value={String(limitedSupply.readyTimeoutMs)} onCommit={(value) => updateLimitedSupply({readyTimeoutMs: Math.max(1000, Math.min(60000, Math.trunc(Number(value) || 0)))})}/></label>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -1326,6 +1437,7 @@ export function SpecialOpsPage() {
         </section>
         </fieldset>
 
+
         <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div><h2 className="text-lg font-semibold">默认账号配置</h2><p className="text-xs text-base-content/60">独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。</p></div>
@@ -1348,8 +1460,13 @@ export function SpecialOpsPage() {
             </div>
             <details className="collapse collapse-arrow">
                 <summary className="collapse-title">默认交易行购买</summary>
-                <div className="collapse-content grid gap-3 sm:grid-cols-2"><p className="text-xs text-base-content/60 sm:col-span-2">交易行通用设置</p>
-                    <label className="flex items-center gap-2 text-sm"><Switch checked={defaultMarket.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, enabled}}})}/>启用默认交易行购买</label>
+                <div className="collapse-content grid gap-3 sm:grid-cols-2">
+                    <p className="text-xs text-base-content/60 sm:col-span-2">时间窗口适用于所有账号</p>
+                    <label className="form-control gap-1"><span className="label-text text-xs">开放开始时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowStartMinute)} onCommit={(value) => updateMarketPurchase({windowStartMinute: timeToMinutes(value)})}/></label>
+                    <label className="form-control gap-1"><span className="label-text text-xs">开放结束时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowEndMinute)} onCommit={(value) => updateMarketPurchase({windowEndMinute: timeToMinutes(value)})}/></label>
+                    <label className="form-control gap-1"><span className="label-text text-xs">进入后等待（ms）</span><DraftInput type="number" min={0} max={60000} value={String(marketPurchase.entryDelayMs)} onCommit={(value) => updateMarketPurchase({entryDelayMs: Math.max(0, Math.min(60000, Math.trunc(Number(value) || 0)))})}/><span className="text-xs text-base-content/60">点击进入交易行大厅后等待页面稳定的时间</span></label>
+                    <p className="text-xs text-base-content/60 sm:col-span-2 mt-1">以下为默认购买配置，独立设置关闭的账号继承</p>
+                    <label className="flex items-center gap-2 text-sm"><Switch checked={defaultMarket.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, enabled}}})}/>启用默认购买</label>
                     <label className="form-control gap-1"><span className="label-text text-xs">购买次数</span><DraftInput type="number" min={1} value={String(defaultMarket.purchaseCount)} onCommit={(value) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, purchaseCount: Math.max(1, Math.trunc(Number(value) || 1))}}})}/></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">最高价</span><DraftInput type="number" min={1} value={String(defaultMarket.maxPrice)} onCommit={(value) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, maxPrice: Math.max(1, Math.trunc(Number(value) || 1))}}})}/></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">商品备注</span><DraftInput value={defaultMarket.itemNote} onCommit={(itemNote) => save({...settingsDraftRef.current, defaultBusinessConfig: {...settingsDraftRef.current.defaultBusinessConfig, market: {...defaultMarket, itemNote}}})}/></label>
@@ -1379,14 +1496,13 @@ export function SpecialOpsPage() {
         </section>
         </fieldset>
 
-        <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">账号</h2>
                 <Button
                     size="sm"
                     variant="outline"
-                    disabled={!anyAccountRestorable}
+                    disabled={!anyAccountRestorable || !isNativeShell}
                     title={anyAccountRestorable ? "清除全部账号的异常状态" : "当前没有需要恢复的异常状态"}
                     onClick={() => void restoreAccountState(null)}
                 ><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>
@@ -1400,22 +1516,28 @@ export function SpecialOpsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{accountStatusLabels[account.status]}</p></div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                            <Button size="sm" variant="outline" onClick={() => openCorrection(account.id)}>人工校正制作与子弹状态</Button>
-                            {manualCheckRequired && <Button size="sm" variant="outline" onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
+                            <fieldset disabled={controlsLocked} className="contents">
+                                <Button size="sm" variant="outline" onClick={() => openCorrection(account.id)}>人工校正制作与子弹状态</Button>
+                            </fieldset>
+                            {manualCheckRequired && <Button size="sm" variant="outline" disabled={!isNativeShell} onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
                             <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={!accountRestorable(account, currentDay)}
+                                disabled={!accountRestorable(account, currentDay) || !isNativeShell}
                                 title={accountRestorable(account, currentDay)
                                     ? "清除异常状态：制作台按异常前剩余时间恢复，失败与当天已兑换子弹回未兑换"
                                     : "当前账号没有需要恢复的异常状态"}
                                 onClick={() => void restoreAccountState(account.id)}
                             ><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>
-                            <span>启用</span>
-                            <Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
-                            <Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
+                            <fieldset disabled={controlsLocked} className="contents">
+                                <span>启用</span>
+                                <Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
+                                <Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
+                            </fieldset>
                         </div>
                     </div>
+                    {accountActionError?.accountId === account.id && <div role="alert" className="alert alert-error alert-soft mt-2 py-2 text-xs"><span>{accountActionError.message}</span></div>}
+                    <fieldset disabled={controlsLocked} className="contents">
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <label className="form-control gap-1"><span className="label-text">QQ 账号（纯数字）</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/><span className="text-xs text-base-content/60">需提前在 WeGame 登录并勾选“记住密码”</span></label>
                         <label className="flex items-center gap-2 self-end text-sm"><Switch checked={account.independentSettingsEnabled} onCheckedChange={(enabled) => setIndependentSettings(account, enabled)}/>独立设置</label>
@@ -1473,11 +1595,13 @@ export function SpecialOpsPage() {
                     </details>}
                     </div>
                     </details> : <div role="alert" className="alert alert-error mt-3"><span>独立设置已开启，但独立业务配置缺失。请关闭后重新开启。</span></div>}
+                    </fieldset>
                 </article>;
             })}
-            <Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button>
+            <fieldset disabled={controlsLocked} className="contents">
+                <Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button>
+            </fieldset>
         </section>
-        </fieldset>
 
         <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
@@ -1606,7 +1730,12 @@ export function SpecialOpsPage() {
                                 <label className="label cursor-pointer gap-2"><input className="radio radio-sm" type="radio" name={`ammo-correction-${target.id}`} checked={correctionAmmoDraft[target.id] === false} onChange={() => { setCorrectionAmmoDraft((current) => ({...current, [target.id]: false})); setCorrectionConfirming(false); }}/>当天未成功兑换</label>
                             </li>)}
                         </ul>}
-                    </div></>
+                    </div>
+                    <CorrectionLimitedSupply
+                        account={correctionAccount}
+                        disabled={controlsLocked || !isNativeShell || correctionSubmitting}
+                        onRecheck={recheckLimitedSupply}
+                    /></>
                 )}
                 <div className="modal-action">
                     <Button variant="ghost" onClick={closeCorrection}>取消</Button>

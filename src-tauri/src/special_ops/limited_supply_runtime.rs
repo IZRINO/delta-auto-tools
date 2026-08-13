@@ -97,6 +97,9 @@ pub(crate) enum LimitedRunStop {
 pub(crate) struct LimitedRunConfig {
     pub(crate) ready_timeout: Duration,
     pub(crate) sample_interval: Duration,
+    /// 点完研发部门到开始识别页面之间的固定等待。研发部门点击后立刻采样，`limited.ready`
+    /// 有机会在**上一页**连续命中两次 -> 识色跑在错误页面上 -> 误判高价值。
+    pub(crate) enter_delay: Duration,
 }
 
 #[allow(async_fn_in_trait)]
@@ -204,6 +207,15 @@ pub(crate) async fn run_limited_supply_branch<D: LimitedSupplyDriver + ?Sized>(
     config: LimitedRunConfig,
     cancelled: Arc<AtomicBool>,
 ) -> LimitedRunStop {
+    // 先等页面落地再开始识别：研发部门点击后立刻采样，`limited.ready` 可能在上一页
+    // 连续命中两次直接放行，后面的识色就跑在错误页面上，两次采样同样稳定 ->
+    // 800ms 内写下「发现高价值」，看起来就是没检查就标记。
+    if let Err(error) = driver
+        .delay(config.enter_delay, Arc::clone(&cancelled))
+        .await
+    {
+        return stopped(error, "limited.enterDelay");
+    }
     if let Err(error) = driver
         .wait_ready(config.ready_timeout, Arc::clone(&cancelled))
         .await
@@ -212,20 +224,22 @@ pub(crate) async fn run_limited_supply_branch<D: LimitedSupplyDriver + ?Sized>(
     }
 
     let deadline = tokio::time::Instant::now() + config.ready_timeout;
-    let mut first = None;
+    let mut previous: Option<LimitedColorSample> = None;
     while tokio::time::Instant::now() < deadline {
         if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
             return LimitedRunStop::EmergencyStopped;
         }
         match driver.sample_colors(Arc::clone(&cancelled)).await {
             Ok(Some(sample)) => {
-                if let Some(previous) = first.take() {
-                    if let Some(result) = compare_samples(&previous, &sample) {
+                // 滑动窗口：比对失败时保留本次采样当下一轮的前项。`take()` 后丢弃会把
+                // 采样切成互不相交的 (1,2) (3,4) 对 -> 一次抖动毁掉整对，连续一致
+                // 的语义也丢了。
+                if let Some(first) = previous.as_ref() {
+                    if let Some(result) = compare_samples(first, &sample) {
                         return persist_or_stop(driver, result).await;
                     }
-                } else {
-                    first = Some(sample);
                 }
+                previous = Some(sample);
             }
             Ok(None) => {}
             Err(error) => return stopped(error, "limited.colors"),
@@ -268,6 +282,7 @@ mod tests {
         samples: Mutex<VecDeque<Option<LimitedColorSample>>>,
         ready_error: Option<LimitedRunError>,
         persisted: Mutex<Vec<LimitedSupplyOutcome>>,
+        actions: Mutex<Vec<String>>,
     }
 
     impl FakeDriver {
@@ -276,6 +291,7 @@ mod tests {
                 samples: Mutex::new(samples.into_iter().collect()),
                 ready_error: None,
                 persisted: Mutex::new(Vec::new()),
+                actions: Mutex::new(Vec::new()),
             }
         }
 
@@ -284,6 +300,7 @@ mod tests {
                 samples: Mutex::new(VecDeque::new()),
                 ready_error: Some(LimitedRunError::ReadyTimeout),
                 persisted: Mutex::new(Vec::new()),
+                actions: Mutex::new(Vec::new()),
             }
         }
     }
@@ -300,9 +317,13 @@ mod tests {
 
         async fn delay(
             &self,
-            _duration: Duration,
+            duration: Duration,
             _cancelled: Arc<AtomicBool>,
         ) -> Result<(), LimitedRunError> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(format!("delay:{}", duration.as_millis()));
             Ok(())
         }
 
@@ -311,6 +332,7 @@ mod tests {
             _timeout: Duration,
             _cancelled: Arc<AtomicBool>,
         ) -> Result<(), LimitedRunError> {
+            self.actions.lock().unwrap().push("ready".to_string());
             self.ready_error.clone().map_or(Ok(()), Err)
         }
 
@@ -318,6 +340,7 @@ mod tests {
             &self,
             _cancelled: Arc<AtomicBool>,
         ) -> Result<Option<LimitedColorSample>, LimitedRunError> {
+            self.actions.lock().unwrap().push("sample".to_string());
             Ok(self.samples.lock().unwrap().pop_front().flatten())
         }
 
@@ -357,6 +380,7 @@ mod tests {
         LimitedRunConfig {
             ready_timeout: Duration::from_secs(1),
             sample_interval: Duration::ZERO,
+            enter_delay: Duration::ZERO,
         }
     }
 
@@ -374,7 +398,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn high_value_requires_same_region_and_same_color_in_two_valid_samples() {
+    async fn high_value_when_consistent_regions_hit_in_two_samples() {
+        let driver = FakeDriver::with_samples([
+            sample(&[
+                (1, [1, 1, 1]),
+                (2, [1, 1, 1]),
+                (3, [1, 1, 1]),
+                (4, [1, 1, 1]),
+                (5, [1, 1, 1]),
+                (6, [1, 1, 1]),
+                (7, [1, 1, 1]),
+                (8, [1, 1, 1]),
+                (9, [1, 1, 1]),
+            ]),
+            sample(&[
+                (1, [1, 1, 1]),
+                (2, [1, 1, 1]),
+                (3, [1, 1, 1]),
+                (4, [1, 1, 1]),
+                (5, [1, 1, 1]),
+                (6, [1, 1, 1]),
+                (7, [1, 1, 1]),
+                (8, [1, 1, 1]),
+                (9, [1, 1, 1]),
+            ]),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
+        assert_eq!(result.matched_region, Some(1));
+        assert_eq!(result.matched_color, Some([1, 1, 1]));
+    }
+
+    #[tokio::test]
+    async fn partial_region_match_is_high_value() {
+        // 任意区域两次稳定命中即判高价值，无需全部 9 个区域命中。
         let driver =
             FakeDriver::with_samples([sample(&[(2, [1, 2, 3])]), sample(&[(2, [1, 2, 3])])]);
 
@@ -425,11 +488,22 @@ mod tests {
 
     #[tokio::test]
     async fn inconsistent_samples_are_discarded_before_resampling() {
+        let all_nine = &[
+            (1, [3, 3, 3]),
+            (2, [3, 3, 3]),
+            (3, [3, 3, 3]),
+            (4, [3, 3, 3]),
+            (5, [3, 3, 3]),
+            (6, [3, 3, 3]),
+            (7, [3, 3, 3]),
+            (8, [3, 3, 3]),
+            (9, [3, 3, 3]),
+        ];
         let driver = FakeDriver::with_samples([
             sample(&[(1, [1, 1, 1])]),
             sample(&[(2, [2, 2, 2])]),
-            sample(&[(3, [3, 3, 3])]),
-            sample(&[(3, [3, 3, 3])]),
+            sample(all_nine),
+            sample(all_nine),
         ]);
 
         let stop =
@@ -439,8 +513,70 @@ mod tests {
             panic!("预期完成");
         };
         assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
-        assert_eq!(result.matched_region, Some(3));
+        assert_eq!(result.matched_region, Some(1));
         assert_eq!(driver.persisted.lock().unwrap().len(), 1);
+    }
+
+    /// 采样必须是滑动窗口：第 2、3 次一致就应判定。旧实现把采样切成互不相交的
+    /// (1,2) (3,4) 对，第 1 次抖动会让第 2 次被整个丢掉 -> 这里只有 3 次采样时
+    /// 永远凑不出一对 -> 超时写 Failed。
+    #[tokio::test]
+    async fn consecutive_samples_are_compared_as_sliding_window() {
+        let all_nine = &[
+            (1, [3, 3, 3]),
+            (2, [3, 3, 3]),
+            (3, [3, 3, 3]),
+            (4, [3, 3, 3]),
+            (5, [3, 3, 3]),
+            (6, [3, 3, 3]),
+            (7, [3, 3, 3]),
+            (8, [3, 3, 3]),
+            (9, [3, 3, 3]),
+        ];
+        let driver = FakeDriver::with_samples([
+            sample(&[(1, [1, 1, 1])]),
+            sample(all_nine),
+            sample(all_nine),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
+        assert_eq!(result.matched_region, Some(1));
+    }
+
+    /// 研发部门点击后必须先等 `enter_delay` 再识别页面，否则 `limited.ready` 有机会在
+    /// 上一页连续命中两次 -> 识色跑在错误页面 -> 误报高价值。
+    #[tokio::test]
+    async fn enter_delay_runs_before_page_ready_check() {
+        let driver = FakeDriver::with_samples([sample(&[]), sample(&[])]);
+
+        let stop = run_limited_supply_branch(
+            &driver,
+            LimitedRunConfig {
+                ready_timeout: Duration::from_secs(1),
+                sample_interval: Duration::ZERO,
+                enter_delay: Duration::from_millis(7),
+            },
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert!(matches!(stop, LimitedRunStop::Completed(_)));
+        let actions = driver.actions.lock().unwrap().clone();
+        let delay_index = actions
+            .iter()
+            .position(|action| action == "delay:7")
+            .expect("应在识别页面前等待 enter_delay");
+        let ready_index = actions
+            .iter()
+            .position(|action| action == "ready")
+            .expect("应识别限时商品页面");
+        assert!(delay_index < ready_index, "实际顺序：{actions:?}");
     }
 
     #[tokio::test]

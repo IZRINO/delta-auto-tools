@@ -638,8 +638,25 @@ describe("accountRestorable", () => {
                 lastError: "识别超时",
             },
         }],
+        // 交易行被封锁同样算可恢复：后端会放回 pending，否则点「继续」不会再跑交易行。
+        ["交易行窗口已关闭", {market: {day: "2026-08-10", completedCount: 1, status: "windowClosed" as const, lastError: null}}],
+        ["交易行价格识别失败", {market: {day: "2026-08-10", completedCount: 0, status: "priceRecognitionFailed" as const, lastError: "OCR 失败"}}],
+        ["交易行残留运行中", {market: {day: "2026-08-10", completedCount: 0, status: "running" as const, lastError: null}}],
     ])("%s 时可恢复", (_label, patch) => {
         expect(accountRestorable(account("account-1", 0, patch), currentDay)).toBe(true);
+    });
+
+    it.each([
+        // 购买次数已经花掉，后端不动 Completed -> 前端也不能亮按钮。
+        ["交易行当天已完成", {market: {day: "2026-08-10", completedCount: 3, status: "completed" as const, lastError: null}}],
+        // 昨天的封锁状态与今天无关，后端只放回当天的。
+        ["交易行封锁属于昨天", {market: {day: "2026-08-09", completedCount: 1, status: "windowClosed" as const, lastError: null}}],
+    ])("%s 时不可恢复", (_label, patch) => {
+        expect(accountRestorable(account("account-1", 0, {
+            stations: [station({status: "crafting"})],
+            ammoTargets: [ammoTarget({lastSuccessDay: "2026-08-09"})],
+            ...patch,
+        }), currentDay)).toBe(false);
     });
 });
 

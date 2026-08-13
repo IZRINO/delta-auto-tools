@@ -321,6 +321,8 @@ pub async fn profile_create_default(
     state.applying.store(false, Ordering::SeqCst);
     apply_result?;
 
+    special_ops::emit_state_for_profile_change(&app);
+
     let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);
     Ok(bootstrap)
@@ -364,6 +366,8 @@ pub async fn profile_apply(
         });
     state.applying.store(false, Ordering::SeqCst);
     apply_result?;
+
+    special_ops::emit_state_for_profile_change(&app);
 
     let bootstrap = build_bootstrap(&state)?;
     emit_profile_changed(&app, &bootstrap);

@@ -160,6 +160,32 @@ impl ProfitQueryState {
         self.phase = ProfitRuntimePhase::WaitingNextQuery;
     }
 
+    /// 只取消在跑的查询与节奏，**保留**当天已达标资格。
+    ///
+    /// 导航失败、账号人工判定、settings autosave、暂停这类事件都只是让当前 in-flight
+    /// 查询作废，当天「哪些规则利润达标」这个结论并没有失效。走 `reset_runtime` 会把
+    /// `qualified_rule_ids` 一起清掉 -> `profit_gate_for_round` 拿到空集合 ->
+    /// 利润 gate 下的子弹目标全被滤掉 -> 达标了也不提前兑换。
+    ///
+    /// `ActiveRound` 相位不降级：资格已经被 `consume_for_round` 取到
+    /// `consumed_rule_ids`，只有 `rollback_failed_round_start` / `end_active_round`
+    /// 能收尾，降级会让这两条路径都匹配不到相位 -> 暂存资格永久悬空。
+    fn cancel_runtime(&mut self, summary: Option<String>) {
+        if let Some(cancellation) = self.active_cancellation.take() {
+            cancellation.store(true, Ordering::SeqCst);
+        }
+        self.group_attempt = 0;
+        self.next_query_at_ms = None;
+        self.active_query = false;
+        if self.phase != ProfitRuntimePhase::ActiveRound {
+            self.phase = ProfitRuntimePhase::Paused;
+        }
+        self.last_summary = summary;
+        self.configuration_error = None;
+    }
+
+    /// 连当天资格一起清空。只用于身份真的没了：换天、总开关关闭、切 Profile、
+    /// 利润规则本身被改、轮次真正结束。
     fn reset_runtime(&mut self, phase: ProfitRuntimePhase, summary: Option<String>) {
         if let Some(cancellation) = self.active_cancellation.take() {
             cancellation.store(true, Ordering::SeqCst);
@@ -255,6 +281,16 @@ impl ProfitQueryControl {
         self.generation() == generation
     }
 
+    /// 取消在跑的查询，保留当天达标资格。绝大多数「旧查询已取消」场景都该用这个。
+    pub(crate) fn cancel_in_flight(&self, reason: &str) {
+        if let Ok(mut state) = self.inner.lock() {
+            state.cancel_runtime(Some(reason.to_string()));
+            self.generation.fetch_add(1, Ordering::SeqCst);
+        }
+        self.cancel.notify_waiters();
+    }
+
+    /// 取消查询并清空当天资格。只在身份真的失效时调用，见 `reset_runtime` 注释。
     pub(crate) fn invalidate(&self, reason: &str) {
         if let Ok(mut state) = self.inner.lock() {
             state.reset_runtime(ProfitRuntimePhase::Paused, Some(reason.to_string()));
@@ -284,14 +320,20 @@ impl ProfitQueryControl {
                 .inner
                 .lock()
                 .map_err(|_| "利润查询状态已损坏".to_string())?;
-            let identity_changed =
-                state.day != window.day || state.settings_revision != window.settings_revision;
-            if identity_changed {
+            // 换天才是身份失效 -> 全清。只是 revision 前进（任何 settings 写入都会 bump，
+            // 包括 autosave、人工判定、一键恢复）不能清资格：清了 `profit_gate_for_round`
+            // 就拿到空集合，当天达标的子弹目标全被滤掉 -> 达标也不提前兑换。
+            if state.day != window.day {
                 state.reset_runtime(
                     ProfitRuntimePhase::Disabled,
-                    Some("利润查询日期或配置已更新".to_string()),
+                    Some("利润查询日期已更新".to_string()),
                 );
                 state.day = window.day;
+                state.settings_revision = window.settings_revision;
+                self.generation.fetch_add(1, Ordering::SeqCst);
+                notify_cancel = true;
+            } else if state.settings_revision != window.settings_revision {
+                state.cancel_runtime(Some("配置已更新，旧查询已取消".to_string()));
                 state.settings_revision = window.settings_revision;
                 self.generation.fetch_add(1, Ordering::SeqCst);
                 notify_cancel = true;
@@ -307,11 +349,13 @@ impl ProfitQueryControl {
                     notify_cancel = true;
                 }
             } else if window.paused {
-                if state.phase != ProfitRuntimePhase::Paused {
-                    state.reset_runtime(
-                        ProfitRuntimePhase::Paused,
-                        Some("自动化已暂停".to_string()),
-                    );
+                // 暂停只停查询，不清当天资格：暂停 -> 排查 -> 点「继续」是常规动作，
+                // 清了资格恢复后 gate 恒空，当天再也不兑换。
+                if !matches!(
+                    state.phase,
+                    ProfitRuntimePhase::Paused | ProfitRuntimePhase::ActiveRound
+                ) {
+                    state.cancel_runtime(Some("自动化已暂停".to_string()));
                     self.generation.fetch_add(1, Ordering::SeqCst);
                     notify_cancel = true;
                 }
@@ -375,9 +419,15 @@ impl ProfitQueryControl {
         if state.active_query {
             return Err("已有利润查询正在进行".to_string());
         }
-        if state.day != day || state.settings_revision != settings_revision {
+        // 与 sync_window 同一套语义：换天清资格，仅 revision 前进只取消在跑的查询。
+        if state.day != day {
             state.reset_runtime(ProfitRuntimePhase::Disabled, None);
             state.day = day.to_string();
+            state.settings_revision = settings_revision;
+            self.generation.fetch_add(1, Ordering::SeqCst);
+            self.cancel.notify_waiters();
+        } else if state.settings_revision != settings_revision {
+            state.cancel_runtime(None);
             state.settings_revision = settings_revision;
             self.generation.fetch_add(1, Ordering::SeqCst);
             self.cancel.notify_waiters();
@@ -427,9 +477,15 @@ impl ProfitQueryControl {
         if state.active_query {
             return Err("已有利润查询正在进行".to_string());
         }
-        if state.day != day || state.settings_revision != settings_revision {
+        // 同上：换天清资格，仅 revision 前进只取消在跑的查询。
+        if state.day != day {
             state.reset_runtime(ProfitRuntimePhase::Disabled, None);
             state.day = day.to_string();
+            state.settings_revision = settings_revision;
+            self.generation.fetch_add(1, Ordering::SeqCst);
+            self.cancel.notify_waiters();
+        } else if state.settings_revision != settings_revision {
+            state.cancel_runtime(None);
             state.settings_revision = settings_revision;
             self.generation.fetch_add(1, Ordering::SeqCst);
             self.cancel.notify_waiters();
@@ -499,6 +555,23 @@ impl ProfitQueryControl {
             .active_cancellation
             .as_ref()
             .is_some_and(|active| Arc::ptr_eq(active, &lease.cancellation));
+
+        crate::log_info!(
+            "special_ops::profit::complete_query",
+            "complete_query_at_revision validation",
+            "accepts_generation" => self.accepts(lease.generation),
+            "lease_cancelled" => lease.is_cancelled(),
+            "day_match" => (state.day == lease.day),
+            "state.day" => state.day.as_str(),
+            "lease.day" => lease.day.as_str(),
+            "revision_match" => (state.settings_revision == lease.settings_revision),
+            "state.settings_revision" => state.settings_revision,
+            "lease.settings_revision" => lease.settings_revision,
+            "state.active_query" => state.active_query,
+            "active_matches" => active_matches,
+            "qualified_count" => qualified_rule_ids.len()
+        );
+
         if !self.accepts(lease.generation)
             || lease.is_cancelled()
             || state.day != lease.day
@@ -506,6 +579,11 @@ impl ProfitQueryControl {
             || !state.active_query
             || !active_matches
         {
+            crate::log_info!(
+                "special_ops::profit::complete_query",
+                "complete_query_at_revision REJECTED",
+                "reason" => "validation failed"
+            );
             return Ok(false);
         }
         let requested_rule_ids = lease
@@ -527,9 +605,14 @@ impl ProfitQueryControl {
         state
             .current_session_rule_ids
             .extend(lease.rules.iter().map(|rule| rule.id.clone()));
-        state.qualified_rule_ids = qualified_rule_ids;
+        state.qualified_rule_ids = qualified_rule_ids.clone();
         state.last_summary = Some(summary);
         state.complete_attempt(completed_at_ms);
+        crate::log_info!(
+            "special_ops::profit::complete_query",
+            "complete_query_at_revision ACCEPTED",
+            "qualified_rule_ids" => format!("{:?}", qualified_rule_ids)
+        );
         Ok(true)
     }
 
@@ -645,6 +728,15 @@ impl ProfitQueryControl {
 
     pub(crate) fn end_active_round(&self, reason: &str) {
         self.invalidate(reason);
+    }
+
+    pub(crate) fn sync_persisted_revision(&self, persisted_revision: u64) -> Result<(), String> {
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| "利润查询状态已损坏".to_string())?;
+        state.settings_revision = persisted_revision;
+        Ok(())
     }
 }
 
@@ -837,6 +929,128 @@ mod tests {
             .begin_query("2026-08-02", 4, 1_001, vec![rule("rule-a")])
             .unwrap_err()
             .contains("正在进行"));
+    }
+
+    /// 任何 settings 写入都会 bump revision（autosave、人工判定、一键恢复）。
+    /// 这不代表当天「哪些规则达标」失效：清掉资格会让 `profit_gate_for_round`
+    /// 拿到空集合 -> 利润 gate 下的子弹目标全被滤掉 -> 达标也不提前兑换。
+    #[test]
+    fn revision_only_change_keeps_the_day_qualification() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+
+        let mut bumped = query_window("2026-08-02", 2_500, 1_000, 10_000);
+        bumped.settings_revision = 5;
+        let snapshot = control.sync_window(bumped).unwrap();
+
+        assert_eq!(snapshot.qualified_rule_ids, ["rule-a"]);
+        assert_ne!(control.generation(), lease.generation);
+    }
+
+    /// 暂停 -> 排查 -> 点「继续」是常规动作，资格必须活过暂停。
+    #[test]
+    fn pause_and_resume_keeps_the_day_qualification() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+
+        let mut paused = query_window("2026-08-02", 2_500, 1_000, 10_000);
+        paused.paused = true;
+        let paused = control.sync_window(paused).unwrap();
+        assert_eq!(paused.phase, ProfitRuntimePhase::Paused);
+        assert_eq!(paused.qualified_rule_ids, ["rule-a"]);
+
+        let resumed = control
+            .sync_window(query_window("2026-08-02", 3_000, 1_000, 10_000))
+            .unwrap();
+        assert_eq!(resumed.qualified_rule_ids, ["rule-a"]);
+    }
+
+    /// 导航失败/人工判定/一键恢复都走 `cancel_in_flight`：generation 要前进、
+    /// in-flight 查询要作废，但当天资格留着。
+    #[test]
+    fn cancel_in_flight_drops_the_query_but_not_the_qualification() {
+        let control = ProfitQueryControl::default();
+        let completed = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &completed,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+        let lease = control
+            .begin_query("2026-08-02", 4, 3_000, vec![rule("rule-a")])
+            .unwrap();
+
+        control.cancel_in_flight("账号状态已一键恢复");
+
+        assert!(!control.accepts(lease.generation));
+        assert!(lease.is_cancelled());
+        let snapshot = control.snapshot().unwrap();
+        assert_eq!(snapshot.qualified_rule_ids, ["rule-a"]);
+        assert_eq!(snapshot.phase, ProfitRuntimePhase::Paused);
+    }
+
+    /// `ActiveRound` 期间的取消不能降级相位：资格已被 `consume_for_round` 取到
+    /// `consumed_rule_ids`，降级会让 rollback 与 end_active_round 都匹配不到相位
+    /// -> 暂存资格永久悬空。
+    #[test]
+    fn cancel_in_flight_during_active_round_keeps_rollback_possible() {
+        let control = ProfitQueryControl::default();
+        let lease = control
+            .begin_query("2026-08-02", 4, 1_000, vec![rule("rule-a")])
+            .unwrap();
+        control
+            .complete_query(
+                &lease,
+                2_000,
+                HashSet::from(["rule-a".to_string()]),
+                "达标".to_string(),
+            )
+            .unwrap();
+        control
+            .consume_for_round(
+                lease.generation,
+                vec![ProfitTargetKey {
+                    account_id: "account-a".to_string(),
+                    target_id: "ammo-a".to_string(),
+                }],
+            )
+            .unwrap();
+
+        control.cancel_in_flight("轮次已暂停");
+        assert_eq!(
+            control.snapshot().unwrap().phase,
+            ProfitRuntimePhase::ActiveRound
+        );
+
+        assert!(control
+            .rollback_failed_round_start(control.generation())
+            .unwrap());
+        assert_eq!(control.snapshot().unwrap().qualified_rule_ids, ["rule-a"]);
     }
 
     #[test]
