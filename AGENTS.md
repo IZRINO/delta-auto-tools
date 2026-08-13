@@ -326,7 +326,7 @@ set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& g
 ## Repo-Specific Cautions
 
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
-- `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
+- `.agents/skills/`、`.claude/skills/`、`.factory/skills/` 三个目录镜像存储技能，内容逐字节一致，`skills-lock.json` 记录来源
 - 忽略：`node_modules`、`dist`、`src-tauri/target`、`.claude/worktrees/`、`temp/`、`test-results/`
 - localStorage 偏好 key 统一前缀 `delta-auto-tools:`
 - GitHub 远端：`https://github.com/IZRINO/delta-auto-tools`

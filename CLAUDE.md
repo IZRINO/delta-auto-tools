@@ -435,6 +435,6 @@ Single-context 布局：根目录 `CONTEXT.md` + `docs/adr/`。详见 `docs/agen
 - 不存在 `tailwind.config.js`
 - Vitest coverage 统计全部 `src/**/*.{ts,tsx}`；全局阈值为 lines 25.49%、statements 25.67%、functions 22.31%、branches 25.76%，`autosave-queue`、`tauri-listener`、`recognition-card-reducer` 的 lines 阈值为 90%
 - `bun run check` 是本地与 Windows GitHub Actions 共用门禁，顺序执行 TypeScript、Vitest、coverage、Rust fmt、Clippy `-D warnings`、Rust tests
-- `.agents/skills/` 和 `.omp/extensions/` 是项目级扩展目录，不要误删
+- `.agents/skills/`、`.claude/skills/`、`.factory/skills/` 三个目录镜像存储技能，内容逐字节一致，`skills-lock.json` 记录来源
 - `README.md`、`AGENTS.md` 和 `CLAUDE.md` 需随重大功能变更一起更新
 - 修改代码时，如果改动涉及 `droid-wiki/` 已记录的内容，必须同步更新对应 wiki 页面（改动工具模块行为→`features/<tool>.md`/`systems/<system>.md`；改动架构/约定→`overview/architecture.md`/`how-to-contribute/patterns-and-conventions.md`；改动配置/依赖→`reference/`；改动发布流程→`deployment.md`）；纯文案或纯重构无需更新
