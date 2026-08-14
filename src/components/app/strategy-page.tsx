@@ -478,7 +478,7 @@ export function StrategyPage() {
                             <span
                                 className="border border-base-300 bg-base-content px-1.5 py-0.5 font-heading text-sm font-semibold text-primary">04</span>
                             <Badge variant="secondary" className="h-6 px-2">攻略</Badge>
-                            <p className="font-mono text-[0.55rem] font-semibold text-base-content/60">INTEL</p>
+                            <p className="font-mono text-caption font-semibold text-base-content/60">INTEL</p>
                         </div>
 
                         <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}
@@ -488,9 +488,9 @@ export function StrategyPage() {
                                           className="h-8 min-w-max justify-start border-0 bg-transparent p-0 group-data-horizontal/tabs:h-8">
                                     {allSites.map((site, siteIndex) => (
                                         <TabsTrigger key={site.id} value={site.id}
-                                                     className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-[0.66rem] font-semibold">
+                                                     className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-caption font-semibold">
                                             <span
-                                                className="text-[0.55rem] text-base-content/60 data-[state=active]:text-primary">{String(siteIndex + 1).padStart(2, "0")}</span>
+                                                className="text-caption text-base-content/60 data-[state=active]:text-primary">{String(siteIndex + 1).padStart(2, "0")}</span>
                                             <img alt="" aria-hidden
                                                  className="size-3.5 border border-base-content bg-base-100 object-contain"
                                                  src={site.favicon}/>
@@ -502,7 +502,7 @@ export function StrategyPage() {
                         </Tabs>
 
                         <div
-                            className="hidden min-w-0 max-w-[24rem] truncate border border-base-300 bg-base-200 px-2 py-1.5 font-mono text-[0.62rem] font-bold text-base-content xl:block"
+                            className="hidden min-w-0 max-w-[24rem] truncate border border-base-300 bg-base-200 px-2 py-1.5 font-mono text-caption font-bold text-base-content xl:block"
                             title={activeSite?.description ? `${activeUrl}\n${activeSite.description}` : activeUrl}
                         >
                             {activeUrl || "未选择站点"}
@@ -596,7 +596,7 @@ export function StrategyPage() {
                     <div className="col-span-full border-t-2 border-base-content bg-base-100 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                             <span
-                                className="mr-1 font-mono text-[0.62rem] font-semibold text-base-content/60">自动刷新档位</span>
+                                className="mr-1 font-mono text-caption font-semibold text-base-content/60">自动刷新档位</span>
                             {STRATEGY_REFRESH_OPTIONS.map((option) => (
                                 <Button
                                     key={option.seconds}
@@ -623,9 +623,9 @@ export function StrategyPage() {
                 <div
                     className="pointer-events-none absolute inset-0 grid place-items-center bg-base-100 px-6 text-center">
                     <div className="max-w-xl border border-base-300 bg-base-200 px-5 py-4">
-                        <p className="font-mono text-[0.62rem] font-semibold text-primary">当前内容窗口宿主区</p>
+                        <p className="font-mono text-caption font-semibold text-primary">当前内容窗口宿主区</p>
                         <p className="mt-3 text-sm font-semibold text-base-content">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
-                        <p className="mt-2 font-mono text-[0.68rem] font-bold leading-relaxed text-base-content/60">
+                        <p className="mt-2 font-mono text-caption font-bold leading-relaxed text-base-content/60">
                             {isNativeShell
                                 ? "网页内容会贴合此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
                                 : "浏览器预览模式无法创建 Tauri 内容窗口，请在桌面端使用。"}

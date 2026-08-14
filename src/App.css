@@ -50,6 +50,8 @@
     --font-heading: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
     --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-mono: "JetBrains Mono Variable", "Cascadia Mono", "Consolas", monospace;
+    --text-caption: 0.6875rem;
+    --text-caption--line-height: 1.5;
 
     --color-background: var(--color-base-100);
     --color-foreground: var(--color-base-content);
@@ -153,8 +155,37 @@
 }
 
 @layer utilities {
-    .favorite-highlight {
-        animation: favorite-highlight-pulse 1.5s ease-out 1;
+    .favorite-highlight,
+    .attention-mark {
+        animation: favorite-highlight-pulse 1.5s cubic-bezier(0.16, 1, 0.3, 1) 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .zoom-in-95,
+    .zoom-out-95,
+    .slide-in-from-top-2,
+    .slide-in-from-bottom-2,
+    .slide-in-from-left-2,
+    .slide-in-from-right-2 {
+        animation-name: none;
+        --tw-enter-scale: 1;
+        --tw-exit-scale: 1;
+        --tw-enter-translate-x: 0;
+        --tw-enter-translate-y: 0;
+        --tw-exit-translate-x: 0;
+        --tw-exit-translate-y: 0;
+    }
+
+    .animate-pulse,
+    .animate-spin {
+        animation: none;
+    }
+
+    .favorite-highlight,
+    .attention-mark {
+        animation: none;
+        outline: 2px solid color-mix(in oklab, var(--color-primary) 82%, transparent);
     }
 }
 

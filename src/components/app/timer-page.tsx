@@ -20,7 +20,7 @@ import {
   HotkeyField,
   InlineControl,
   MacroHeader,
-  PagePreviewBanner,
+  runStateClass,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
@@ -431,12 +431,6 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                 </div>
             ) : null}
 
-            {!isNativeShell ? (
-                <div className="col-span-12">
-                    <PagePreviewBanner/>
-                </div>
-            ) : null}
-
             <div className="col-span-12">
                 <StatusMatrix items={[
                     {id: "timer", state: form?.timerEnabled ? "active" : "idle", label: "计时通道"},
@@ -586,7 +580,7 @@ function TimerCard({
 
     return (
         <TacticalCard active={isDragging}
-                      className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", run?.status === "running" ? "border-l-4 border-l-primary" : run?.status === "finished" ? "border-l-4 border-l-success" : "")}
+                      className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", runStateClass(run?.status))}
                       data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
             <SectionHeader
                 eyebrow="计时器"

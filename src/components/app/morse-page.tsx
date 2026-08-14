@@ -23,7 +23,6 @@ import {
     FieldUnit,
     HelpHint,
     MacroHeader,
-    PagePreviewBanner,
     SaveStateBadge,
     StatusMatrix,
 } from "@/components/app/app-ui";
@@ -215,7 +214,6 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
     const savedSettings = bootstrap?.settings ?? null;
     const configuredCount = savedSettings?.regions.filter(Boolean).length ?? 0;
     const runDetails = normalizeRunDetails(latestRun);
-    const latestResultValue = latestRun?.value ?? null;
     const hasLatestResult = Boolean(latestRun);
     const canRun = configuredCount === REGION_LABELS.length;
     const isBusy = loading || saving || running || selectingSlot !== null;
@@ -316,15 +314,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
     }
 
     const statusItems: { id: string; state: "idle" | "active" | "valid" | "warning" | "error"; label: string }[] = [
-        {id: "regions", state: configuredCount >= 1 ? "valid" : "idle", label: "采样窗位"},
         {id: "hotkey", state: form?.hotkey ? "valid" : "idle", label: "热键绑定"},
-        {id: "threshold", state: form?.binaryThreshold ? "valid" : "idle", label: "二值化阈值"},
-        {
-            id: "verification",
-            state: verificationStatus === "success" ? "valid" : verificationStatus === "error" ? "error" : verificationStatus === "running" ? "active" : "idle",
-            label: "验证状态"
-        },
-        {id: "latest", state: latestResultValue ? "valid" : "idle", label: "最新报码"},
         {id: "ready", state: canRun ? "valid" : "warning", label: "就绪状态"},
     ];
 
@@ -351,12 +341,6 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             <div className="col-span-12">
                 <StatusMatrix items={statusItems}/>
             </div>
-
-            {!isNativeShell ? (
-                <div className="col-span-12">
-                    <PagePreviewBanner/>
-                </div>
-            ) : null}
 
             {/* Channel Tabs */}
             <div className="col-span-12">

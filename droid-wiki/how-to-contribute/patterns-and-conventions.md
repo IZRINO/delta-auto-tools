@@ -35,7 +35,7 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 原生 shell 检测
 
-`useNativeShell()`（`src/hooks/use-native-shell.ts`）检查 `__TAURI_INTERNALS__`。浏览器预览模式禁用所有 `invoke()` 调用并显示提示。每个调用 Tauri command 的工具页应使用此 hook 守卫，使页面可在普通浏览器中渲染用于 UI 开发。
+`useNativeShell()`（`src/hooks/use-native-shell.ts`）检查 `__TAURI_INTERNALS__`。浏览器预览模式禁用所有 `invoke()` 调用。预览提示由应用壳 `PagePreviewBanner` 说一次，工具页不要再各自挂一条。每个调用 Tauri command 的工具页应使用此 hook 守卫，使页面可在普通浏览器中渲染用于 UI 开发。
 
 ## 透明窗口
 

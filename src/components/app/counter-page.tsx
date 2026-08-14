@@ -28,7 +28,6 @@ import {
   HotkeyField,
   InlineControl,
   MacroHeader,
-  PagePreviewBanner,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
@@ -464,12 +463,6 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
             {pageError ? (
                 <div className="col-span-12">
                     <FieldError>{pageError}</FieldError>
-                </div>
-            ) : null}
-
-            {!isNativeShell ? (
-                <div className="col-span-12">
-                    <PagePreviewBanner/>
                 </div>
             ) : null}
 

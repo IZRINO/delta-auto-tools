@@ -324,13 +324,6 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
                             <Badge variant="outline">{summary.total} 项</Badge>
                         </>
                     }
-                    actions={
-                        <>
-                            <SignalTile label="计时器" value={summary.timerCount} detail="已收藏的计时器数量"/>
-                            <SignalTile label="计数器" value={summary.counterCount} detail="已收藏的计数器数量"/>
-                            <SignalTile label="连发器" value={summary.rapidfireCount} detail="已收藏的连发器数量"/>
-                        </>
-                    }
                 />
                 <TacticalEmptyState className="col-span-12" icon={<RiStarLine/>} title="还没有收藏"
                                     description="去计时器、计数器或连发器工具里，点击卡片头部的星标即可加入收藏。"/>
@@ -386,25 +379,25 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
                     <Switch id="fav-show-hotkey" checked={view.showHotkey}
                             onCheckedChange={(checked) => updateView({showHotkey: checked})}/>
                     <FieldLabel htmlFor="fav-show-hotkey"
-                                className="cursor-pointer font-mono text-[0.66rem] font-semibold text-base-content">快捷键</FieldLabel>
+                                className="cursor-pointer font-mono text-caption font-semibold text-base-content">快捷键</FieldLabel>
                 </Field>
                 <Field orientation="horizontal" className="w-auto gap-2">
                     <Switch id="fav-compact" checked={view.compactMode}
                             onCheckedChange={(checked) => updateView({compactMode: checked})}/>
                     <FieldLabel htmlFor="fav-compact"
-                                className="cursor-pointer font-mono text-[0.66rem] font-semibold text-base-content">紧凑</FieldLabel>
+                                className="cursor-pointer font-mono text-caption font-semibold text-base-content">紧凑</FieldLabel>
                 </Field>
                 <Field orientation="horizontal" className="w-auto gap-2">
                     <Switch id="fav-show-progress" checked={view.showProgress}
                             onCheckedChange={(checked) => updateView({showProgress: checked})}/>
                     <FieldLabel htmlFor="fav-show-progress"
-                                className="cursor-pointer font-mono text-[0.66rem] font-semibold text-base-content">计时进度</FieldLabel>
+                                className="cursor-pointer font-mono text-caption font-semibold text-base-content">计时进度</FieldLabel>
                 </Field>
                 <Field orientation="horizontal" className="w-auto gap-2">
                     <Switch id="fav-show-counter" checked={view.showCounter}
                             onCheckedChange={(checked) => updateView({showCounter: checked})}/>
                     <FieldLabel htmlFor="fav-show-counter"
-                                className="cursor-pointer font-mono text-[0.66rem] font-semibold text-base-content">计数值</FieldLabel>
+                                className="cursor-pointer font-mono text-caption font-semibold text-base-content">计数值</FieldLabel>
                 </Field>
             </ControlTile>
 
@@ -467,7 +460,7 @@ function FavoriteCard({
                             <RiDeleteBinLine/>
                         </Button>
                     </div>
-                    <p className="font-mono text-[0.68rem] font-bold text-base-content/60">该卡片已被删除。点击移除清理此条目。</p>
+                    <p className="font-mono text-caption font-bold text-base-content/60">该卡片已被删除。点击移除清理此条目。</p>
                 </CardBody>
             </TacticalCard>
         );
@@ -491,7 +484,7 @@ function FavoriteCard({
             </span>
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-base-100">{detail.card.name || defaultName(detail)}</p>
-                            <p className="mt-0.5 font-mono text-[0.62rem] font-semibold text-base-200">
+                            <p className="mt-0.5 font-mono text-caption font-semibold text-base-200">
                                 {kindLabel(detail.kind)} · {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
                             </p>
                         </div>
@@ -533,7 +526,7 @@ function FavoriteCard({
                 <div className="flex items-center justify-between gap-3">
                     <Badge variant="secondary">已收藏</Badge>
                     <span
-                        className="flex items-center gap-1 font-mono text-[0.62rem] font-semibold text-base-content/60">
+                        className="flex items-center gap-1 font-mono text-caption font-semibold text-base-content/60">
             <RiStarFill className="size-3.5 text-primary"/>
             点击跳转
           </span>
@@ -557,7 +550,7 @@ function TimerSummary({detail, showProgress, showHotkey}: {
     return (
         <div className="flex w-full flex-col gap-2">
             <div
-                className="flex flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold text-base-content/60">
+                className="flex flex-wrap items-center gap-2 font-mono text-caption font-bold text-base-content/60">
                 <Badge variant="secondary">{directionLabel}</Badge>
                 <span>{totalSeconds} 秒</span>
                 {showHotkey ? <span>快捷键 · {card.hotkey || "未设置"}</span> : null}
@@ -567,8 +560,11 @@ function TimerSummary({detail, showProgress, showHotkey}: {
             {showProgress && run ? (
                 <div className="h-2 w-full border border-base-content bg-base-200">
                     <div
-                        className={cn("h-full bg-primary transition-[width]", progressPercent > 0 ? "" : "opacity-0")}
-                        style={{width: `${Math.max(0, Math.min(100, progressPercent))}%`}}
+                        className={cn(
+                            "h-full origin-left bg-primary transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+                            progressPercent > 0 ? "" : "opacity-0",
+                        )}
+                        style={{transform: `scaleX(${Math.max(0, Math.min(1, progressPercent / 100))})`}}
                     />
                 </div>
             ) : null}
@@ -584,7 +580,7 @@ function CounterSummary({detail, showCounter, showHotkey}: {
     const {card, run} = detail;
     return (
         <div
-            className="flex w-full flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold text-base-content/60">
+            className="flex w-full flex-wrap items-center gap-2 font-mono text-caption font-bold text-base-content/60">
             {showCounter ? (
                 <Badge variant="secondary">
                     当前 {run?.value ?? card.startValue} · 起点 {card.startValue}
@@ -603,7 +599,7 @@ function RapidfireSummary({detail, showHotkey}: { detail: RapidfireFavoriteDetai
     const interval = card.intervalMs ? Number.parseInt(card.intervalMs, 10) : null;
     return (
         <div
-            className="flex w-full flex-wrap items-center gap-2 font-mono text-[0.68rem] font-bold text-base-content/60">
+            className="flex w-full flex-wrap items-center gap-2 font-mono text-caption font-bold text-base-content/60">
             <span>{card.triggerKey || "--"} → {card.targetKey || "--"}</span>
             {interval ? <Badge variant="secondary">{interval} ms</Badge> : null}
             <Badge variant={card.skipCompensation ? "outline" : "secondary"}>

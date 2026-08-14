@@ -35,6 +35,7 @@ import {
   ControlTile,
   InlineNotice,
   MacroHeader,
+  runStateClass,
   SaveStateBadge,
   SectionHeader,
   SignalTile,
@@ -519,15 +520,6 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                 </InlineNotice>
             )}
 
-            {!isNativeShell ? (
-                <div className="col-span-12">
-                    <InlineNotice title="浏览器预览模式">
-                        当前在浏览器中运行，所有设置控件已禁用。请通过桌面端应用操作：运行 <code
-                        className="font-mono text-primary">bun run tauri dev</code> 或使用安装后的桌面应用。
-                    </InlineNotice>
-                </div>
-            ) : null}
-
             <MacroHeader
                 code="R-03"
                 title="RAPIDFIRE / CONTROL"
@@ -898,6 +890,7 @@ function RapidfireCardEditor({
                 status.error && "border-primary bg-base-200 outline-2 outline-primary",
                 isDragging && "outline-4 outline-primary",
                 isHighlighted && "outline-4 outline-primary",
+                runStateClass(run?.status),
             )}
         >
             <SectionHeader

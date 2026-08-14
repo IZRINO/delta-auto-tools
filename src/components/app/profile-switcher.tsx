@@ -213,7 +213,7 @@ export function ProfileSwitcher() {
                     type="button"
                     variant="outline"
                     size="lg"
-                    className="h-[34px] min-w-[132px] justify-between border px-2 text-[0.58rem]"
+                    className="h-8 min-w-32 justify-between border px-2 text-xs"
                     aria-label="切换配置"
                     disabled={loading}
                 >
@@ -225,14 +225,14 @@ export function ProfileSwitcher() {
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 gap-2 p-2">
                 <div className="border-b border-base-content pb-2">
-                    <p className="font-mono text-[0.58rem] font-semibold text-base-content/60">
+                    <p className="font-mono text-caption font-semibold text-base-content/60">
                         PROFILE / CONFIG SLOT
                     </p>
                     <p className="mt-1 truncate text-sm font-semibold">{activeProfileName}</p>
                 </div>
 
                 {message ? (
-                    <div className="border border-warning bg-warning/10 px-2 py-1 font-mono text-[0.58rem] text-warning">
+                    <div className="border border-warning bg-warning/10 px-2 py-1 font-mono text-caption text-warning">
                         {message}
                     </div>
                 ) : null}
@@ -286,7 +286,7 @@ export function ProfileSwitcher() {
                                             <span className="block truncate text-xs font-semibold">
                                                 {switching ? "切换中" : profile.name}
                                             </span>
-                                            <span className="mt-0.5 block font-mono text-[0.56rem] text-base-content/60">
+                                            <span className="mt-0.5 block font-mono text-caption text-base-content/60">
                                                 {switching ? "SWITCHING" : active ? "ACTIVE" : "READY"}
                                             </span>
                                         </button>

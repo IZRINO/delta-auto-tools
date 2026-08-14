@@ -22,6 +22,7 @@ function settings(): SpecialOpsSettings {
         navigationSpecialOpsDelayMs: 3000,
         ammoSupplyDelayMs: 3000,
         ammoTacticalDelayMs: 3000,
+        ammoExchangeEntryDelayMs: 3000,
         craftSpaceDelayMs: 3000,
         craftReopenDelayMs: 3000,
         craftConfirmPinnedDelayMs: 3000,

@@ -21,7 +21,16 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
 
     useTimerOverlayBootstrap(isNativeShell, setBootstrap, setRuntimeRuns);
 
+    const [overlayVisible, setOverlayVisible] = useState(() => document.visibilityState === "visible");
+
     useEffect(() => {
+        const syncVisibility = () => setOverlayVisible(document.visibilityState === "visible");
+        document.addEventListener("visibilitychange", syncVisibility);
+        return () => document.removeEventListener("visibilitychange", syncVisibility);
+    }, []);
+
+    useEffect(() => {
+        if (!overlayVisible) return;
         let rafId: number;
         const tick = () => {
             setNow(Date.now());
@@ -29,7 +38,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
         };
         rafId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafId);
-    }, []);
+    }, [overlayVisible]);
 
     const runs = runtimeRuns ?? bootstrap?.runs ?? [];
     const runsById = useMemo(() => timerRunsById(runs), [runs]);
@@ -115,7 +124,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
                             <div className="relative flex min-w-0 items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-1.5">
                   {isActive ? <span aria-hidden="true"
-                                    className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary"/> : null}
+                                    className={cn("h-1.5 w-1.5 shrink-0 rounded-full bg-primary", overlayVisible && "animate-pulse motion-reduce:animate-none")}/> : null}
                     <span
                         className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
                   <span
