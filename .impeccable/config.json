@@ -1,0 +1,9 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "src/components/app/fixtures/moligod-ammo-exchange.html"
+    ],
+    "ignoreValues": []
+  }
+}

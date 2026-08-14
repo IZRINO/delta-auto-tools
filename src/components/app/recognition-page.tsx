@@ -21,7 +21,6 @@ import {
     CardBody,
     ControlTile,
     MacroHeader,
-    PagePreviewBanner,
     SaveStateBadge,
     SectionHeader,
     SignalTile,
@@ -676,8 +675,6 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                     [ 全局 ] {globalStatusMessage}
                 </div>
             )}
-
-            {!isNativeShell && <div className="col-span-12"><PagePreviewBanner/></div>}
 
             <TacticalCard className="col-span-12 mt-3">
                 <SectionHeader eyebrow="全局设置" title="全局设置"/>

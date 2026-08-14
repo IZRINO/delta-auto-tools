@@ -140,12 +140,12 @@ export function StatusMatrix({items, className}: StatusMatrixProps) {
         error: "badge-error",
     };
     return (
-        <div className={cn("flex flex-wrap gap-2", className)}>
+        <div className={cn("flex flex-wrap gap-2", className)} aria-label="只读状态">
             {items.map((item) => (
                 <span
                     key={item.id}
                     data-state={item.state}
-                    className={cn("badge badge-sm gap-2", stateColor[item.state])}
+                    className={cn("badge badge-outline badge-sm gap-2 font-mono text-xs", stateColor[item.state])}
                     title={item.label}
                 >
                     {item.label ?? item.id}
@@ -186,12 +186,25 @@ type TacticalCardProps = ComponentProps<typeof Card> & {
     active?: boolean;
 };
 
+export function runStateClass(status?: string | null) {
+    if (status === "running" || status === "firing") {
+        return "outline outline-1 -outline-offset-1 outline-primary";
+    }
+    if (status === "finished") {
+        return "outline outline-1 -outline-offset-1 outline-success";
+    }
+    if (status === "pendingCompensation") {
+        return "outline outline-1 -outline-offset-1 outline-warning";
+    }
+    return "";
+}
+
 export function TacticalCard({active, children, className, size = "sm", ...props}: TacticalCardProps) {
     return (
         <Card
             size={size}
             className={cn(
-                "bg-base-200 text-base-content shadow-none transition-[background-color,outline-color]",
+                "bg-base-200 text-base-content shadow-none transition-[background-color,outline-color] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:duration-150",
                 active && "ring-2 ring-primary",
                 className,
             )}
@@ -533,7 +546,7 @@ export function HotkeyField({
                         title={helperText} type="button" variant="outline">
                     <span>{isRecording ? "录制中..." : hotkey || "未设置"}</span>
                     <span
-                        className="text-[0.6875rem] text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
+                        className="text-caption text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
                 </Button>
             </FieldContent>
         </Field>
@@ -664,18 +677,14 @@ type TacticalEmptyStateProps = {
 
 export function TacticalEmptyState({children, className, description, icon, title}: TacticalEmptyStateProps) {
     return (
-        <TacticalCard className={cn("min-h-48", className)}>
-            <CardBody className="flex h-full items-center justify-center">
-                <Empty className="min-h-40 rounded-box border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center">
-                    {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
-                    <EmptyHeader>
-                        <EmptyTitle>{title}</EmptyTitle>
-                        <EmptyDescription>{description}</EmptyDescription>
-                    </EmptyHeader>
-                    {children}
-                </Empty>
-            </CardBody>
-        </TacticalCard>
+        <Empty className={cn("min-h-48 rounded-box border border-dashed border-base-300 bg-base-200 px-4 py-8 text-center", className)}>
+            {icon ? <EmptyMedia variant="icon">{icon}</EmptyMedia> : null}
+            <EmptyHeader>
+                <EmptyTitle>{title}</EmptyTitle>
+                <EmptyDescription>{description}</EmptyDescription>
+            </EmptyHeader>
+            {children}
+        </Empty>
     );
 }
 

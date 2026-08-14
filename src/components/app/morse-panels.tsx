@@ -80,7 +80,7 @@ export function SelectionPanel({
                                          style={{opacity: configuredCount >= 3 ? 1 : 0.18}}/>
                                 </div>
                                 <div className="min-w-0">
-                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">采样主控</p>
+                                    <p className="font-mono text-caption font-semibold text-base-content/60">采样主控</p>
                                     <p className="mt-1 text-sm font-medium text-foreground">已锁定 {configuredCount}/3
                                         个窗位</p>
                                     <p className="mt-1 hidden text-xs text-muted-foreground sm:block">推荐在同一轮完成三段框选，避免后续校准链路漂移。</p>
@@ -104,7 +104,7 @@ export function SelectionPanel({
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span
-                                                    className="font-mono text-[0.68rem] font-semibold text-base-content/60">{`窗位 0${index + 1}`}</span>
+                                                    className="font-mono text-caption font-semibold text-base-content/60">{`窗位 0${index + 1}`}</span>
                                                 <span className="text-sm font-medium text-foreground">{label}</span>
                                             </div>
                                             <Badge className="shrink-0"
@@ -117,8 +117,8 @@ export function SelectionPanel({
                                             <>
                                                 <InlineControl
                                                     className="border border-base-300 bg-base-100 px-3 py-2">
-                                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">坐标纪要</p>
-                                                    <p className="mt-1 overflow-hidden font-mono text-[0.6875rem] text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
+                                                    <p className="font-mono text-caption font-semibold text-base-content/60">坐标纪要</p>
+                                                    <p className="mt-1 overflow-hidden font-mono text-caption text-foreground/80 text-ellipsis whitespace-nowrap">{formatRegion(region)}</p>
                                                 </InlineControl>
                                                 <Button
                                                     className="w-full"
@@ -226,8 +226,8 @@ export function WorkbenchControlPanel({
                             <div className="flex items-start gap-2">
                                 <RiSettings3Line className="mt-0.5 text-primary"/>
                                 <div>
-                                    <h3 className="font-mono text-[0.68rem] font-semibold">字段机架</h3>
-                                    <p className="mt-1 font-mono text-[0.62rem] font-bold text-base-200">热键、阈值与自动点击链路写入后即刻自动保存</p>
+                                    <h3 className="font-mono text-caption font-semibold">字段机架</h3>
+                                    <p className="mt-1 font-mono text-caption font-bold text-base-200">热键、阈值与自动点击链路写入后即刻自动保存</p>
                                 </div>
                             </div>
                         </div>
@@ -241,7 +241,7 @@ export function WorkbenchControlPanel({
                                         <FieldContent className="xl:flex xl:min-h-0 xl:flex-col xl:gap-2.2">
                                             <Button
                                                 ref={hotkeyButtonRef}
-                                                className="h-auto w-full justify-between gap-4 border border-base-300 bg-base-100 px-3 py-3 font-mono text-[0.78rem] font-semibold text-base-content"
+                                                className="h-auto w-full justify-between gap-4 border border-base-300 bg-base-100 px-3 py-3 font-mono text-xs font-semibold text-base-content"
                                                 id="hotkey-recorder"
                                                 onBlur={onHotkeyRecorderBlur}
                                                 onClick={onBeginHotkeyRecording}
@@ -251,7 +251,7 @@ export function WorkbenchControlPanel({
                                             >
                                                 <span>{isRecordingHotkey ? "正在录制，按下快捷键..." : form.hotkey || "点击录制热键"}</span>
                                                 <span
-                                                    className="text-[0.6875rem] text-muted-foreground">{isRecordingHotkey ? "失焦取消" : "点击录制"}</span>
+                                                    className="text-caption text-muted-foreground">{isRecordingHotkey ? "失焦取消" : "点击录制"}</span>
                                             </Button>
                                             <FieldError>{hotkeyError}</FieldError>
                                         </FieldContent>
@@ -292,7 +292,7 @@ export function WorkbenchControlPanel({
                                         <Switch checked={autoClickEnabled} disabled={isBusy}
                                                 onCheckedChange={onAutoClickEnabledChange}/>
                                         <div className="min-w-0">
-                                            <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">自动点击链路</p>
+                                            <p className="font-mono text-caption font-semibold text-base-content/60">自动点击链路</p>
                                             <p className="mt-1 text-sm font-medium text-foreground">识别成功后按设定顺序执行点击</p>
                                             <p className="mt-1 text-xs text-muted-foreground">每个点击区域都保留单独延迟，供战局内细调节奏。</p>
                                         </div>
@@ -303,7 +303,7 @@ export function WorkbenchControlPanel({
                                                      className="border border-base-300 bg-base-100">
                                             <CollapsibleTrigger asChild>
                                                 <Button
-                                                    className="h-auto w-full justify-between px-3 py-3 font-mono text-[0.72rem] font-semibold"
+                                                    className="h-auto w-full justify-between px-3 py-3 font-mono text-xs font-semibold"
                                                     type="button" variant="ghost">
                                                     点击区域配置
                                                     <Badge
@@ -389,8 +389,8 @@ export function WorkbenchControlPanel({
                             <div className="flex items-start gap-2">
                                 <RiSparklingLine className="mt-0.5 text-primary"/>
                                 <div>
-                                    <h3 className="font-mono text-[0.68rem] font-semibold">即时验证</h3>
-                                    <p className="mt-1 font-mono text-[0.62rem] font-bold text-base-200">聚焦输入框或手动触发，执行一次仅识别回路</p>
+                                    <h3 className="font-mono text-caption font-semibold">即时验证</h3>
+                                    <p className="mt-1 font-mono text-caption font-bold text-base-200">聚焦输入框或手动触发，执行一次仅识别回路</p>
                                 </div>
                             </div>
                         </div>
@@ -417,7 +417,7 @@ export function WorkbenchControlPanel({
                             </div>
 
                             <InlineControl className="mt-4 border border-base-300 bg-base-200 p-4">
-                                <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">即时验证输入</p>
+                                <p className="font-mono text-caption font-semibold text-base-content/60">即时验证输入</p>
                                 <Input
                                     className="mt-3 h-12 border border-base-300 bg-base-100 px-4 font-mono text-base"
                                     id="verification-input"
@@ -431,7 +431,7 @@ export function WorkbenchControlPanel({
 
                             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                                 <InlineControl className="border border-base-300 bg-base-200 px-3 py-3">
-                                    <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">验证状态</p>
+                                    <p className="font-mono text-caption font-semibold text-base-content/60">验证状态</p>
                                     <p className="mt-1 text-sm text-foreground">{isVerifying ? "正在执行仅识别流程..." : "聚焦输入框或按按钮即可重新验证"}</p>
                                 </InlineControl>
                                 <Button className="rounded-none" disabled={isVerifying} onClick={onVerificationRetry}
@@ -496,7 +496,7 @@ export function ResultPanel({
                                 {latestTriggeredBy ? <Badge variant="outline">来源 {latestTriggeredBy}</Badge> : null}
                                 {latestAutoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
                             </div>
-                            <p className="mt-4 font-mono text-[0.68rem] font-semibold text-base-200">最新三码输出</p>
+                            <p className="mt-4 font-mono text-caption font-semibold text-base-200">最新三码输出</p>
                             <p className="mt-4 break-all font-mono text-4xl font-semibold text-primary sm:text-5xl">
                                 {latestRunValue ?? "---"}
                             </p>
@@ -510,7 +510,7 @@ export function ResultPanel({
                                                className="border border-base-300 bg-base-200 p-3">
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">
-                                            <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
+                                            <p className="font-mono text-caption font-semibold text-base-content/60">{REGION_LABELS[detail.slot] ?? `位置 ${detail.slot + 1}`}</p>
                                             <p className="mt-1 font-mono text-sm font-semibold text-foreground">{detail.morse ?? "--"}</p>
                                         </div>
                                         <Badge
@@ -571,7 +571,7 @@ export function HistoryPanel({history, isPreviewMode}: HistoryPanelProps) {
                                         <div
                                             className="flex flex-wrap items-center justify-between gap-2 border-b border-base-content pb-3">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="font-mono text-[0.68rem] font-semibold text-base-content/60">{entry.result ? `报码 ${entry.result}` : "识别失败"}</p>
+                                                <p className="font-mono text-caption font-semibold text-base-content/60">{entry.result ? `报码 ${entry.result}` : "识别失败"}</p>
                                                 <Badge
                                                     variant={entry.success ? "default" : "outline"}>{entry.success ? "成功" : "失败"}</Badge>
                                                 <Badge variant="outline">{entry.triggeredBy}</Badge>

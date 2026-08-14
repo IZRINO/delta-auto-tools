@@ -43,6 +43,11 @@ typography:
     fontSize: "0.75rem"
     fontWeight: 400
     lineHeight: 1.5
+  caption:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, system-ui, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 400
+    lineHeight: 1.5
   readout:
     fontFamily: "JetBrains Mono Variable, Cascadia Mono, Consolas, monospace"
     fontSize: "1rem"
@@ -179,9 +184,10 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 - **Display**（600, 3rem, lh 1, tabular-nums）：MacroNumber 巨数，单页最多一处，用于真正需要「一眼读数」的量（如剩余时间、总计数）。
 - **Headline**（600, 2.25rem, lh 1.25）：PageHero / MacroHeader 的页面标题 `text-4xl`，每页一个。
 - **Title**（600, 1rem, lh 1.5）：CardTitle / SectionHeader / DialogTitle `text-base`。
-- **Body**（400, 0.875rem, lh 1.625）：正文 `text-sm`，行宽限 `max-w-[64ch]`，长文本一律 truncate 防溢出。
+- **Body**（400, 0.875rem, lh 1.625）：正文 `text-sm`，行宽限 `max-w-[64ch]`，长文本一律 truncate 防溢出。桌面密集工具正当例外，不要「修正」到 1rem。
 - **Label**（400, 0.75rem, lh 1.5）：标签、元信息、按钮文字 `text-xs`，次级内容用 `text-base-content/60`。
-- **Readout**（600, 1rem, tracking 0.025em, tabular-nums）：overlay 读数、快捷键录制框、ConfigRow 数值列、DataWell/JsonPreBlock 全文。
+- **Caption**（400, 0.6875rem, lh 1.5）：密集元信息唯一小级 `text-caption`。时间轴行、档案次级、收藏格子标注。禁止再散落任意 px/rem。
+- **Readout**（600, 1rem, tracking 0.025em, tabular-nums）：overlay 读数、快捷键录制框、ConfigRow 数值列、DataWell/JsonPreBlock 全文。暗底补偿只加在 readout 的 `letterSpacing: 0.025em`，界面字不引入第三档字重。
 
 ### Named Rules
 
@@ -193,7 +199,13 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 应用壳是固定网格：顶栏 48px（`grid-rows-[48px_1fr]`），≥1024px 时左侧 240px Index Rail，内容区独立滚动；<1024px 时 Rail 收起为顶部横向 Tab Bar。窗口最小 1280×800。页面内容在 12 列 Work Grid（`AppPage`，gap-3）上排布，常规工具页限宽 `max-w-7xl`，攻略页 `max-w-none` 铺满。
 
-卡片内边距分两档：标准 `px-5 py-5`，紧凑 `card-sm` 用 `px-4 py-4`。行内控件（ControlTile/InlineControl）`p-4`/`p-3`。Rail 内导航项 `px-3 py-2`，宏观区（MacroHeader）`gap-4`。数值节奏锚点：0.75rem 是行内基准间隙，1.25rem 是卡片基准。
+间距三档按职责用，禁止单值复读到所有层级：
+
+- **tight `0.5rem`（`gap-2`）**：组内兄弟。芯片行、按钮簇、表单控件之间。
+- **base `0.75rem`（`gap-3`）**：组与组。`AppPage` 栅格、卡片之间、章节之间。
+- **roomy `1.25rem`（`px-5 py-5`）**：标准卡片内边距。`card-md` / MacroHeader。工具业务卡默认 `TacticalCard size="sm"` → `px-4 py-4`，是紧凑档不是锚点失效。
+
+行内控件（ControlTile/InlineControl）`p-4`/`p-3`。Rail 导航项 `px-3 py-2`，宏观区（MacroHeader）`gap-4`。
 
 overlay 窗口无布局网格——它们是按 `?mode=` 进入的独立表面，跟随游戏画面，不服从应用壳。
 

@@ -1614,7 +1614,7 @@ export function SpecialOpsPage() {
                     <table className="table table-sm">
                         <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th>参考图</th><th className="text-right">操作</th></tr></thead>
                         <tbody>{activeEnvironment.targets.map((target) => <Fragment key={target.key}><tr>
-                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-[11px] text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
+                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-caption text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-caption text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
                             <td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : target.recognitionMethod === "ocr" ? "OCR 区域" : "模板识别区域"}</td>
                             <td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td>
                             <td className="max-w-40 truncate text-xs" title={target.referenceImagePath ?? undefined}>
@@ -1657,15 +1657,15 @@ export function SpecialOpsPage() {
                         </>}
                         {target.key === "game.beaconMode" && <>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">点击烽火地带前等待</div><div className="text-[11px] text-base-content/60">模式选择识别成功后</div></td>
+                                <td><div className="font-medium">点击烽火地带前等待</div><div className="text-caption text-base-content/60">模式选择识别成功后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationBeaconDelayMs)} onCommit={(value) => updateAutomationDelay("navigationBeaconDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">Space 前等待</div><div className="text-[11px] text-base-content/60">点击烽火地带后</div></td>
+                                <td><div className="font-medium">Space 前等待</div><div className="text-caption text-base-content/60">点击烽火地带后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationSpaceDelayMs)} onCommit={(value) => updateAutomationDelay("navigationSpaceDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">Tab 前等待</div><div className="text-[11px] text-base-content/60">按 Space 后</div></td>
+                                <td><div className="font-medium">Tab 前等待</div><div className="text-caption text-base-content/60">按 Space 后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationTabDelayMs)} onCommit={(value) => updateAutomationDelay("navigationTabDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                         </>}

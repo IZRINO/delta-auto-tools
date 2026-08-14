@@ -17,9 +17,11 @@ import {FavoritesProvider, useFavorites} from "@/hooks/use-favorites";
 import {GlobalEnabledProvider, useGlobalEnabled} from "@/hooks/use-global-enabled";
 import {ThemeProvider} from "@/hooks/use-theme";
 import {ProfileProvider, useProfile} from "@/hooks/use-profile";
+import {PagePreviewBanner} from "@/components/app/app-ui";
 import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
+import {useNativeShell} from "@/hooks/use-native-shell";
 import {Switch} from "@/components/ui/switch";
 import {cn} from "@/lib/utils";
 
@@ -335,6 +337,7 @@ function AppShell() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const favorites = useFavorites();
     const {reloadNonce} = useProfile();
+    const isNativeShell = useNativeShell();
     const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
 
     const handleFavoritesNavigate = useCallback((kind: FavoriteCardKind, cardId: string) => {
@@ -552,6 +555,7 @@ function AppShell() {
                     <div
                         key={reloadNonce}
                         className={cn("mx-auto min-h-full w-full px-2 py-2 xl:px-3 xl:py-3", activeTool === "strategy" ? "max-w-none" : "max-w-7xl")}>
+                        {isNativeShell ? null : <div className="mb-2"><PagePreviewBanner/></div>}
                         <GlobalEnabledConsumer activeTool={activeTool}/>
                         <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
                     </div>
