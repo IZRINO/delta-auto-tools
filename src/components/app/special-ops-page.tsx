@@ -419,8 +419,43 @@ function TimelineManualCorrection({
     </div>;
 }
 
+/// 任务栏内限时商品高价值确认行：仅在 `limitedOutcome === "highValue"` 时渲染，
+/// 提供与账号人工校正面板相同的「已查看高价值商品」按钮，避免用户必须进账号页才能确认。
+function TimelineLimitedAcknowledge({
+    task,
+    disabled,
+    onAcknowledge,
+}: {
+    task: TimelineTask;
+    disabled: boolean;
+    onAcknowledge: (accountId: string, cycleId: string) => Promise<SpecialOpsBootstrap>;
+}) {
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const cycleId = task.limitedCycleId ?? null;
+    const submit = async () => {
+        if (!cycleId) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+            await onAcknowledge(task.accountId, cycleId);
+        } catch (cause) {
+            setError(String(cause));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+    return <div className="mt-1">
+        <Button size="xs" variant="outline" disabled={disabled || submitting || !cycleId} onClick={() => void submit()}>
+            {submitting ? "正在确认" : "已查看高价值商品"}
+        </Button>
+        {error && <div role="alert" className="alert alert-error alert-soft mt-1 py-1 text-xs"><span>{error}</span></div>}
+    </div>;
+}
+
 /// 人工校正面板里的限时商品分区：展示本周期判定结果 + 确认高价值 + 重新检查入口。
-/// 任务栏在检查完成（任何终态）后就出栏，所以这里是本周期结果与人工动作的**唯一**位置。
+/// 任务栏内也有「已查看高价值商品」按钮（`TimelineLimitedAcknowledge`）——两者功能相同，
+/// 不同入口满足不同使用场景，共用 `acknowledgeLimitedSupply` 后端命令。
 /// 与制作台/子弹校正各自独立提交——两个动作都只碰限时商品状态，不参与那份原子覆盖，
 /// 所以放在核对流程之外，点了立刻生效。
 function CorrectionLimitedSupply({
@@ -489,12 +524,14 @@ function SpecialOpsTimeline({
     disabled,
     onConfirmStation,
     onConfirmAmmo,
+    onAcknowledge,
 }: {
     bootstrap: SpecialOpsBootstrap;
     nowMs: number;
     disabled: boolean;
     onConfirmStation: (task: TimelineTask, correction: StationCorrectionInput) => Promise<SpecialOpsBootstrap>;
     onConfirmAmmo: (task: TimelineTask, succeededToday: boolean) => Promise<SpecialOpsBootstrap>;
+    onAcknowledge: (accountId: string, cycleId: string) => Promise<SpecialOpsBootstrap>;
 }) {
     const slots = buildTimelineHourSlots(nowMs);
     const groups = groupTimelineTasks(bootstrap.schedule.timelineTasks);
@@ -533,6 +570,7 @@ function SpecialOpsTimeline({
                                                 {task.kind === "marketPurchase" && task.marketStatus
                                                     && <div className={`text-xs ${task.marketStatus === "priceRecognitionFailed" ? "text-error" : "text-base-content/60"}`}>已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
+                                                {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && task.limitedCycleId && <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledge}/>}
                                                 {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -557,6 +595,7 @@ type AutomationDelayField =
     | "navigationSpecialOpsDelayMs"
     | "ammoSupplyDelayMs"
     | "ammoTacticalDelayMs"
+    | "ammoSeasonalEntryDelayMs"
     | "craftSpaceDelayMs"
     | "craftReopenDelayMs"
     | "craftConfirmPinnedDelayMs";
@@ -1357,6 +1396,7 @@ export function SpecialOpsPage() {
             disabled={controlsLocked}
             onConfirmStation={confirmTimelineStation}
             onConfirmAmmo={confirmTimelineAmmo}
+            onAcknowledge={acknowledgeLimitedSupply}
         />
 
         <SpecialOpsProfitFilter
@@ -1619,6 +1659,10 @@ export function SpecialOpsPage() {
                         {target.key === "ammo.enterSupply" && <tr className="bg-base-200/50">
                             <td><div className="font-medium">点击进入军需处前等待</div></td>
                             <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoTacticalDelayMs)} onCommit={(value) => updateAutomationDelay("ammoTacticalDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
+                        </tr>}
+                        {target.key === "ammo.seasonal" && <tr className="bg-base-200/50">
+                            <td><div className="font-medium">点击赛季限定入口后等待</div><div className="text-xs text-base-content/60">开始子弹兑换前等待界面稳定</div></td>
+                            <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoSeasonalEntryDelayMs)} onCommit={(value) => updateAutomationDelay("ammoSeasonalEntryDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                         </tr>}
                         {target.key === "craft.confirmPinned" && <>
                             <tr className="bg-base-200/50">

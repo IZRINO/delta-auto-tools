@@ -559,6 +559,8 @@ pub struct SpecialOpsSettings {
     #[serde(default = "default_navigation_delay_ms")]
     pub ammo_tactical_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
+    pub ammo_seasonal_entry_delay_ms: u32,
+    #[serde(default = "default_navigation_delay_ms")]
     pub craft_space_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
     pub craft_reopen_delay_ms: u32,
@@ -597,6 +599,7 @@ impl Default for SpecialOpsSettings {
             navigation_special_ops_delay_ms: default_navigation_delay_ms(),
             ammo_supply_delay_ms: default_navigation_delay_ms(),
             ammo_tactical_delay_ms: default_navigation_delay_ms(),
+            ammo_seasonal_entry_delay_ms: default_navigation_delay_ms(),
             craft_space_delay_ms: default_navigation_delay_ms(),
             craft_reopen_delay_ms: default_navigation_delay_ms(),
             craft_confirm_pinned_delay_ms: default_navigation_delay_ms(),
@@ -1018,10 +1021,17 @@ pub struct TimelineTask {
     pub may_execute_earlier: bool,
     #[serde(default)]
     pub manual_failure: Option<AccountFailure>,
-    /// 限时商品周期 ID。只有仍待检查（`Pending`）的当前/未来周期才会出现在任务栏，
-    /// 所以这里不再携带判定结果：结果与人工入口都在账号人工校正面板。
+    /// 限时商品周期 ID。`Pending` 或 `HighValue + !acknowledged` 才出现在任务栏：
+    /// 前者等待执行，后者需用户确认高价值（仍携带结果供前端渲染按钮）。
+    /// `NoHighValue` / `Failed` / `HighValue + acknowledged` 出栏；结果与人工入口
+    /// 都在账号人工校正面板的限时商品分区（`CorrectionLimitedSupply`）。
     #[serde(default)]
     pub limited_cycle_id: Option<String>,
+    /// 限时商品判定结果，仅 `LimitedSupplyCheck` 任务携带，用于前端渲染确认按钮。
+    /// `None` 等价于 `Pending`（待检查任务不需区分，前端统一当「待执行」展示）；
+    /// 目前只有 `HighValue` 会出现在这里（`!acknowledged` gate 保证）。
+    #[serde(default)]
+    pub limited_outcome: Option<limited_supply::LimitedSupplyOutcome>,
     #[serde(default)]
     pub market_completed_count: Option<u32>,
     #[serde(default)]
@@ -3508,6 +3518,7 @@ struct FrozenAmmoRun {
     targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
     ammo_targets: Vec<ammo_runtime::AmmoRunTarget>,
     day: String,
+    seasonal_entry_delay_ms: u32,
 }
 
 fn freeze_ammo_run(
@@ -3647,6 +3658,7 @@ fn freeze_ammo_run(
         targets,
         ammo_targets,
         day,
+        seasonal_entry_delay_ms: settings.ammo_seasonal_entry_delay_ms,
     })
 }
 
@@ -7149,6 +7161,7 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             let result = ammo_runtime::run_ammo_targets(
                 &driver,
                 &frozen.ammo_targets,
+                frozen.seasonal_entry_delay_ms,
                 Arc::clone(&cancelled),
             )
             .await;
@@ -7649,7 +7662,13 @@ async fn run_ammo_worker(
         .await
         {
             Ok(()) => {
-                ammo_runtime::run_ammo_targets(&driver, &frozen.ammo_targets, cancelled).await
+                ammo_runtime::run_ammo_targets(
+                    &driver,
+                    &frozen.ammo_targets,
+                    frozen.seasonal_entry_delay_ms,
+                    cancelled,
+                )
+                .await
             }
             Err(error) => ammo_runtime::AmmoRunResult {
                 stop: ammo_driver_error_to_stop(error, "ammo.tacticalDepartment"),
@@ -11073,6 +11092,7 @@ fn build_timeline_tasks(
                 may_execute_earlier: false,
                 manual_failure,
                 limited_cycle_id: None,
+                limited_outcome: None,
                 market_completed_count: None,
                 market_target_count: None,
                 market_status: None,
@@ -11108,6 +11128,7 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: Some(manual_failure),
                     limited_cycle_id: None,
+                    limited_outcome: None,
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11225,6 +11246,7 @@ fn build_timeline_tasks(
                     may_execute_earlier,
                     manual_failure: None,
                     limited_cycle_id: None,
+                    limited_outcome: None,
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11249,18 +11271,24 @@ fn build_timeline_tasks(
                 } else {
                     limited_supply::LimitedSupplyOutcome::Pending
                 };
-                // 检查完就出栏：本周期任何终态（NoHighValue / HighValue / Failed）都不再
-                // 是待执行任务，留在任务栏只是噪音。结果与人工入口都在账号人工校正面板的
-                // 限时商品分区（`CorrectionLimitedSupply`），不依赖任务栏任务。
+                // 出栏规则：
+                // - `NoHighValue` / `Failed` / `HighValue + acknowledged`：检查完不需用户操作，立刻出栏。
+                // - `HighValue + !acknowledged`：留在任务栏，前端渲染「已查看高价值商品」确认按钮；
+                //   此时任务是纯信息展示，**不是待执行任务**——planner 的 `limited_supply_due`
+                //   仍只认 `Pending`，点「继续」不会重跑限时商品检查，符合预期。
+                // - `Pending`（或跨周期默认值）：正常待执行，两侧 gate 一致放行。
                 //
-                // 出栏安全的前提是这里的条件与 planner 的 `limited_supply_due` **同源**：
-                // 两侧都只认「换周期」或「`Pending`」。`special_ops_recheck_limited_supply`
-                // 把判定复位成 `Pending`（保留 `cycle_id`）时，两个 gate 同时重新放行 ->
-                // 任务回到任务栏且立刻到期。禁止只放宽一侧：任务栏更宽 -> 任务栏有任务点
-                // 继续却不执行；planner 更宽 -> 每周期无限重登重查。
-                if outcome != limited_supply::LimitedSupplyOutcome::Pending {
+                // `special_ops_recheck_limited_supply` 复位到 `Pending` 时，任务栏和 planner
+                // 同时重新放行 -> 任务回到任务栏且立刻可执行。
+                let is_high_value_unacknowledged =
+                    outcome == limited_supply::LimitedSupplyOutcome::HighValue
+                        && !account.limited_supply.acknowledged;
+                if outcome != limited_supply::LimitedSupplyOutcome::Pending
+                    && !is_high_value_unacknowledged
+                {
                     continue;
                 }
+                let limited_outcome = is_high_value_unacknowledged.then_some(outcome);
                 let id = format!("limited:{}:{}", cycle.id, account.id);
                 let task = TimelineTask {
                     id: id.clone(),
@@ -11277,6 +11305,7 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: None,
                     limited_cycle_id: Some(cycle.id),
+                    limited_outcome,
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11343,6 +11372,7 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: None,
                     limited_cycle_id: None,
+                    limited_outcome: None,
                     market_completed_count: Some(completed_count),
                     market_target_count: Some(business.market.purchase_count),
                     market_status: Some(status),
@@ -18357,10 +18387,27 @@ mod tests {
                     .outcome = outcome;
             };
 
-        // 检查完就出栏：三种终态都不再是待执行任务。两个 gate 必须同源，任务栏出栏时
-        // planner 也不得判到期，否则「任务栏没任务却在轮次里重登重查」。
+        // `HighValue + !acknowledged`：留在任务栏（显示确认按钮），但 planner 不重跑。
+        set_outcome(&mut settings, limited_supply::LimitedSupplyOutcome::HighValue);
+        // acknowledged 已在 account 初始化时设为 false（L18337），此处无需额外赋值。
+        let high_value_task = current_task(&settings);
+        assert!(
+            high_value_task.is_some(),
+            "HighValue + !acknowledged 必须留在任务栏"
+        );
+        assert_eq!(
+            high_value_task.unwrap().limited_outcome,
+            Some(limited_supply::LimitedSupplyOutcome::HighValue),
+            "任务应携带 HighValue outcome 供前端渲染确认按钮"
+        );
+        // planner 不把它判为 due（已检查，不需重跑）。
+        assert!(!build_schedule(&settings, now_ms)
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.limited_supply_due));
+
+        // `Failed` / `NoHighValue`：检查完立刻出栏，planner 不重跑。
         for outcome in [
-            limited_supply::LimitedSupplyOutcome::HighValue,
             limited_supply::LimitedSupplyOutcome::Failed,
             limited_supply::LimitedSupplyOutcome::NoHighValue,
         ] {
@@ -18375,7 +18422,7 @@ mod tests {
                 .any(|due| due.account_id == "selected" && due.limited_supply_due));
         }
 
-        // 高价值已确认同样出栏：确认与否都不影响「已检查」这个事实。
+        // `HighValue + acknowledged`：确认后出栏。
         let account = settings
             .accounts
             .iter_mut()
@@ -18383,7 +18430,10 @@ mod tests {
             .unwrap();
         account.limited_supply.outcome = limited_supply::LimitedSupplyOutcome::HighValue;
         account.limited_supply.acknowledged = true;
-        assert!(current_task(&settings).is_none());
+        assert!(
+            current_task(&settings).is_none(),
+            "HighValue + acknowledged 必须从任务栏出栏"
+        );
 
         // 人工重新检查 = 复位到 Pending，两个 gate 同时重新放行 -> 任务回到任务栏且到期。
         let account = settings

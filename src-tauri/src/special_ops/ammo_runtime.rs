@@ -304,12 +304,13 @@ async fn run_ammo_trial<D: AmmoDriver + ?Sized>(
     cancelled: Arc<AtomicBool>,
 ) -> AmmoRunResult {
     let _ = (entry_delays.supply_ms, entry_delays.tactical_ms);
-    run_ammo_targets(driver, targets, cancelled).await
+    run_ammo_targets(driver, targets, 0, cancelled).await
 }
 
 pub(crate) async fn run_ammo_targets<D: AmmoDriver + ?Sized>(
     driver: &D,
     targets: &[AmmoRunTarget],
+    seasonal_entry_delay_ms: u32,
     cancelled: Arc<AtomicBool>,
 ) -> AmmoRunResult {
     let runnable = targets
@@ -342,6 +343,19 @@ pub(crate) async fn run_ammo_targets<D: AmmoDriver + ?Sized>(
                 return AmmoRunResult {
                     stop: stopped(error, "ammo.seasonal"),
                 };
+            }
+            if seasonal_entry_delay_ms > 0 {
+                if let Err(error) = driver
+                    .delay(
+                        Duration::from_millis(seasonal_entry_delay_ms.into()),
+                        Arc::clone(&cancelled),
+                    )
+                    .await
+                {
+                    return AmmoRunResult {
+                        stop: stopped(error, "ammo.seasonal 等待"),
+                    };
+                }
             }
         }
 
@@ -562,6 +576,7 @@ mod tests {
         let result = run_ammo_targets(
             &driver,
             &[target("normal", false, 11)],
+            0,
             Arc::new(AtomicBool::new(false)),
         )
         .await;
