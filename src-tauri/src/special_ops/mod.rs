@@ -559,9 +559,7 @@ pub struct SpecialOpsSettings {
     #[serde(default = "default_navigation_delay_ms")]
     pub ammo_tactical_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
-    pub ammo_tactical_department_delay_ms: u32,
-    #[serde(default = "default_navigation_delay_ms")]
-    pub ammo_seasonal_entry_delay_ms: u32,
+    pub ammo_exchange_entry_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
     pub craft_space_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
@@ -601,8 +599,7 @@ impl Default for SpecialOpsSettings {
             navigation_special_ops_delay_ms: default_navigation_delay_ms(),
             ammo_supply_delay_ms: default_navigation_delay_ms(),
             ammo_tactical_delay_ms: default_navigation_delay_ms(),
-            ammo_tactical_department_delay_ms: default_navigation_delay_ms(),
-            ammo_seasonal_entry_delay_ms: default_navigation_delay_ms(),
+            ammo_exchange_entry_delay_ms: default_navigation_delay_ms(),
             craft_space_delay_ms: default_navigation_delay_ms(),
             craft_reopen_delay_ms: default_navigation_delay_ms(),
             craft_confirm_pinned_delay_ms: default_navigation_delay_ms(),
@@ -3521,10 +3518,8 @@ struct FrozenAmmoRun {
     targets: std::collections::HashMap<String, template_observer::RuntimeTarget>,
     ammo_targets: Vec<ammo_runtime::AmmoRunTarget>,
     day: String,
-    /// 点击战术部门后、开始任何子弹兑换前的等待（UI 稳定）
-    tactical_department_delay_ms: u32,
-    /// 点击赛季限定入口后、开始赛季子弹兑换前的等待（UI 稳定）
-    seasonal_entry_delay_ms: u32,
+    /// 点击战术部门后与点击赛季入口后均使用同一等待值（UI 稳定）
+    exchange_entry_delay_ms: u32,
 }
 
 fn freeze_ammo_run(
@@ -3664,8 +3659,7 @@ fn freeze_ammo_run(
         targets,
         ammo_targets,
         day,
-        tactical_department_delay_ms: settings.ammo_tactical_department_delay_ms,
-        seasonal_entry_delay_ms: settings.ammo_seasonal_entry_delay_ms,
+        exchange_entry_delay_ms: settings.ammo_exchange_entry_delay_ms,
     })
 }
 
@@ -7165,10 +7159,10 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             )
             .await
             .map_err(|error| map_round_ammo_driver_error(error, "ammo.tacticalDepartment"))?;
-            if frozen.tactical_department_delay_ms > 0 {
+            if frozen.exchange_entry_delay_ms > 0 {
                 <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(
                     &driver,
-                    std::time::Duration::from_millis(frozen.tactical_department_delay_ms.into()),
+                    std::time::Duration::from_millis(frozen.exchange_entry_delay_ms.into()),
                     Arc::clone(&cancelled),
                 )
                 .await
@@ -7177,7 +7171,7 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             let result = ammo_runtime::run_ammo_targets(
                 &driver,
                 &frozen.ammo_targets,
-                frozen.seasonal_entry_delay_ms,
+                frozen.exchange_entry_delay_ms,
                 Arc::clone(&cancelled),
             )
             .await;
@@ -7678,11 +7672,11 @@ async fn run_ammo_worker(
         .await
         {
             Ok(()) => {
-                let delay_stop = if frozen.tactical_department_delay_ms > 0 {
+                let delay_stop = if frozen.exchange_entry_delay_ms > 0 {
                     <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(
                         &driver,
                         std::time::Duration::from_millis(
-                            frozen.tactical_department_delay_ms.into(),
+                            frozen.exchange_entry_delay_ms.into(),
                         ),
                         Arc::clone(&cancelled),
                     )
@@ -7698,7 +7692,7 @@ async fn run_ammo_worker(
                     ammo_runtime::run_ammo_targets(
                         &driver,
                         &frozen.ammo_targets,
-                        frozen.seasonal_entry_delay_ms,
+                        frozen.exchange_entry_delay_ms,
                         cancelled,
                     )
                     .await

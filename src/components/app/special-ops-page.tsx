@@ -595,8 +595,7 @@ type AutomationDelayField =
     | "navigationSpecialOpsDelayMs"
     | "ammoSupplyDelayMs"
     | "ammoTacticalDelayMs"
-    | "ammoTacticalDepartmentDelayMs"
-    | "ammoSeasonalEntryDelayMs"
+    | "ammoExchangeEntryDelayMs"
     | "craftSpaceDelayMs"
     | "craftReopenDelayMs"
     | "craftConfirmPinnedDelayMs";
@@ -1662,13 +1661,10 @@ export function SpecialOpsPage() {
                             <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoTacticalDelayMs)} onCommit={(value) => updateAutomationDelay("ammoTacticalDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                         </tr>}
                         {target.key === "ammo.tacticalDepartment" && <tr className="bg-base-200/50">
-                            <td><div className="font-medium">点击战术部门后等待</div><div className="text-xs text-base-content/60">开始子弹兑换前等待界面稳定</div></td>
-                            <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoTacticalDepartmentDelayMs)} onCommit={(value) => updateAutomationDelay("ammoTacticalDepartmentDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
+                            <td><div className="font-medium">兑换子弹前等待</div><div className="text-xs text-base-content/60">战术部门点击后及赛季入口点击后均使用此值</div></td>
+                            <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoExchangeEntryDelayMs)} onCommit={(value) => updateAutomationDelay("ammoExchangeEntryDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                         </tr>}
-                        {target.key === "ammo.seasonal" && <tr className="bg-base-200/50">
-                            <td><div className="font-medium">点击赛季限定入口后等待</div><div className="text-xs text-base-content/60">开始子弹兑换前等待界面稳定</div></td>
-                            <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.ammoSeasonalEntryDelayMs)} onCommit={(value) => updateAutomationDelay("ammoSeasonalEntryDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
-                        </tr>}
+
                         {target.key === "craft.confirmPinned" && <>
                             <tr className="bg-base-200/50">
                                 <td><div className="font-medium">收取点击后按 Space 等待</div></td>
