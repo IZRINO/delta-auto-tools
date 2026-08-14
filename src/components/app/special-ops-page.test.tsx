@@ -96,11 +96,13 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("if (!settingsDirtyRef.current) return bootstrapRef.current;");
     });
 
-    it("提供四制作台与当天子弹原子校正并经二次确认提交", () => {
+    it("提供四制作台与当天子弹校正并经二次确认提交，支持部分选中", () => {
         expect(pageSource).toContain("人工校正制作与子弹状态");
         expect(pageSource).toContain("立即到期");
         expect(pageSource).toContain("正在制作");
         expect(pageSource).toContain("空闲");
+        // 每个制作台与子弹都有"不修改"选项
+        expect(pageSource).toContain("不修改");
         expect(pageSource).toContain("special_ops_confirm_account_station_states");
         expect(pageSource).toContain("当天已成功兑换");
         expect(pageSource).toContain("当天未成功兑换");
@@ -108,6 +110,11 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("确认制作台与子弹状态并保存");
         expect(pageSource).toContain("人工校正提交失败");
         expect(pageSource).toContain("正在保存");
+        // 新文案：选中项提交，未选中项保持不变
+        expect(pageSource).toContain("选中项提交后原子恢复调度，未选中项保持不变");
+        expect(pageSource).toContain("确认后将覆盖所选项的制作计时与子弹状态，并清除对应失败记录");
+        // submit gate：至少一项选中即可提交（允许 correctionPayload 为空数组且 correctionAmmoPayload 非空，反之亦然）
+        expect(pageSource).toContain("correctionPayload.length === 0 && correctionAmmoPayload.length === 0");
     });
 
     it("独立设置提供四制作台账号级制作物品选择点击点", () => {
@@ -268,18 +275,27 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("当前账号没有需要恢复的异常状态");
     });
 
-    it("限时商品任务栏展示检查结果并只保留高价值确认入口", () => {
-        // 已检查过的周期仍留在任务栏；不渲染结果会被误读成「没执行」。
-        expect(pageSource).toContain("limitedOutcomeLabels");
-        expect(pageSource).toContain("已发现高价值，等待人工确认");
+    it("限时商品检查完出栏，确认与重新检查入口都在账号人工校正面板", () => {
+        // 检查完就出栏（任何终态），任务栏不再展示结果文案与确认按钮。
+        // 结果与两个人工动作都在 CorrectionLimitedSupply（账号人工校正面板）。
+        expect(pageSource).not.toContain("limitedOutcomeLabels");
+        expect(pageSource).not.toContain("onAcknowledgeLimited");
+        // 确认已移入面板，仍通过 special_ops_acknowledge_limited_supply 提交。
         expect(pageSource).toContain("special_ops_acknowledge_limited_supply");
         expect(pageSource).toContain("已查看高价值商品");
-        expect(pageSource).toContain("onAcknowledgeLimited={acknowledgeLimitedSupply}");
-        // 任务栏结果文案要指向重新检查的真实位置（账号人工校正），否则用户在任务栏找不到入口。
-        expect(pageSource).toContain("本周期已检查：未发现高价值，可在账号人工校正里重新检查");
-        expect(pageSource).toContain("本周期检查失败，可在账号人工校正里重新检查");
-        // 重新检查已移出任务栏，任务栏不再有该 prop。
+        // 确认只在高价值且未确认时出现；重新检查是通用入口。
+        expect(pageSource).toContain("needsAcknowledge");
+        expect(pageSource).toContain('outcome === "highValue" && !limited.acknowledged');
+        // 重新检查在面板里直接可见，不再经任务栏中转。
+        expect(pageSource).toContain("onAcknowledge={acknowledgeLimitedSupply}");
+        // 任务栏不再有 onRecheckLimited / onAcknowledgeLimited prop。
         expect(pageSource).not.toContain("onRecheckLimited");
+    });
+
+    it("交易行任务栏展示购买进度与状态", () => {
+        // 不渲染进度 -> 改了购买次数任务栏毫无变化，用户以为配置没生效。
+        expect(pageSource).toContain("marketStatusLabels");
+        expect(pageSource).toContain("已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0}");
     });
 
     it("限时商品重新检查入口在账号人工校正面板内", () => {
@@ -291,9 +307,10 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("account.limitedSupply");
         expect(pageSource).toContain("onRecheck(account.id, cycleId)");
         expect(pageSource).toContain("onRecheck={recheckLimitedSupply}");
+        expect(pageSource).toContain("onAcknowledge={acknowledgeLimitedSupply}");
         expect(pageSource).toContain("correctionLimitedOutcomeLabels");
-        // 未检查的周期不给复位入口：本来就等着自动执行。
-        expect(pageSource).toContain("disabled={disabled || submitting || !checked || !cycleId}");
+        // 未检查的周期不给复位入口；已检查且 cycleId 有效才启用。
+        expect(pageSource).toContain("disabled={disabled || submitting !== null || !checked || !cycleId}");
     });
 
     it("账号级动作失败在按钮旁展示原因", () => {

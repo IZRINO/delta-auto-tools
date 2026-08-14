@@ -1018,10 +1018,10 @@ pub struct TimelineTask {
     pub may_execute_earlier: bool,
     #[serde(default)]
     pub manual_failure: Option<AccountFailure>,
+    /// 限时商品周期 ID。只有仍待检查（`Pending`）的当前/未来周期才会出现在任务栏，
+    /// 所以这里不再携带判定结果：结果与人工入口都在账号人工校正面板。
     #[serde(default)]
     pub limited_cycle_id: Option<String>,
-    #[serde(default)]
-    pub limited_outcome: Option<limited_supply::LimitedSupplyOutcome>,
     #[serde(default)]
     pub market_completed_count: Option<u32>,
     #[serde(default)]
@@ -1715,9 +1715,8 @@ fn apply_manual_station_corrections(
     corrections: &[StationCorrectionInput],
     confirmed_at_ms: i64,
 ) -> Result<(), String> {
-    if corrections.len() != StationKind::all().len() {
-        return Err("必须一次确认四个制作台的实际状态".to_string());
-    }
+    // 允许部分选中：只更新提交的制作台，未提交的原样保留。
+    // 只拒绝重复：同一制作台在一次提交里出现两次是提交本身的错误。
     // 先只读取存量完成时间，供未填剩余时间的「正在制作」继承；随后才取可变账号引用。
     let stored_finishes = settings
         .accounts
@@ -1751,13 +1750,6 @@ fn apply_manual_station_corrections(
             status,
         ));
     }
-    if StationKind::all()
-        .into_iter()
-        .any(|kind| !kinds.contains(&kind))
-    {
-        return Err("必须一次确认四个制作台的实际状态".to_string());
-    }
-
     let account = settings
         .accounts
         .iter_mut()
@@ -2096,8 +2088,8 @@ fn apply_manual_account_corrections(
         .filter(|target| target.enabled)
         .map(|target| target.id.clone())
         .collect::<Vec<_>>();
-    if ammo_targets.len() != enabled_ids.len() {
-        return Err("必须一次确认全部启用子弹目标的当天状态".to_string());
+    if ammo_targets.is_empty() && stations.is_empty() {
+        return Err("制作台与子弹校正均为空，至少选中一项才能提交".to_string());
     }
     let mut correction_ids = std::collections::HashSet::new();
     for correction in ammo_targets {
@@ -2133,8 +2125,21 @@ fn apply_manual_account_corrections(
         target.retry_day = Some(current_day.to_string());
         target.retry_count = 0;
     }
+    // 只清已选子弹目标的 last_failure，加上 account.last_failure 指名的那一个（
+    // 即使它不在本次提交里）：账号的 Isolated / ManualCheckRequired 是由那个目标失败
+    // 升级而来，不清它会让账号回到 Ready 却永远少跑那一种子弹。
+    let named_ammo_id = account
+        .last_failure
+        .as_ref()
+        .and_then(|f| f.ammo_target_id.clone());
+    let selected_ids: std::collections::HashSet<&str> =
+        ammo_targets.iter().map(|c| c.target_id.as_str()).collect();
     for target in &mut account.ammo_targets {
-        target.last_failure = None;
+        if selected_ids.contains(target.id.as_str())
+            || named_ammo_id.as_deref() == Some(target.id.as_str())
+        {
+            target.last_failure = None;
+        }
     }
     account.initialized = true;
     account.status = AccountStatus::Ready;
@@ -10253,10 +10258,11 @@ pub fn special_ops_acknowledge_limited_supply(
 
 /// 重新检查当前周期的限时商品：把账号的判定结果复位到 `Pending`。
 ///
-/// 任务栏出栏条件与 planner 的 `limited_supply_due` 是 AND 关系，两个门都只认
-/// `Pending`（或换周期）。所以复位一次即可让本周期任务重新变成可执行，
-/// 而自动调度「每周期只跑一次」的语义不变——重跑只由人工触发。
+/// 四种判定（含 `HighValue` 已确认）都能重新查询——当前周期任务常驻任务栏，planner 的
+/// `limited_supply_due` 只认换周期或 `Pending`，所以复位一次即可让本周期重新变成可执行，
+/// 自动调度「每周期只跑一次」的语义不变（重跑只由人工触发）。
 /// `cycle_id` 保留：任务栏的 `state_matches` 靠它认领当前周期任务。
+/// 已经是 `Pending` 时报错而不是空转：它本来就会自动执行，复位只会白烧一次 revision。
 #[tauri::command]
 pub fn special_ops_recheck_limited_supply(
     app: AppHandle,
@@ -11067,7 +11073,6 @@ fn build_timeline_tasks(
                 may_execute_earlier: false,
                 manual_failure,
                 limited_cycle_id: None,
-                limited_outcome: None,
                 market_completed_count: None,
                 market_target_count: None,
                 market_status: None,
@@ -11103,7 +11108,6 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: Some(manual_failure),
                     limited_cycle_id: None,
-                    limited_outcome: None,
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11221,7 +11225,6 @@ fn build_timeline_tasks(
                     may_execute_earlier,
                     manual_failure: None,
                     limited_cycle_id: None,
-                    limited_outcome: None,
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11246,14 +11249,16 @@ fn build_timeline_tasks(
                 } else {
                     limited_supply::LimitedSupplyOutcome::Pending
                 };
-                let acknowledged =
-                    is_current && state_matches && account.limited_supply.acknowledged;
-                // 只有判定通过（HighValue）且**已**确认才出栏——提醒已经被人看过。
-                // NoHighValue / Failed 留在任务栏并展示结果：当前周期已检查过的任务需要一个
-                // 重新检查入口（`special_ops_recheck_limited_supply` 把状态复位到 Pending）。
-                // 出栏会让 planner 的 `is_due` 永远匹配不到任务 -> 本周期彻底不可重跑，
-                // 用户看到的就是「已检查过的限时商品既没结果行也没有可执行任务」。
-                if outcome == limited_supply::LimitedSupplyOutcome::HighValue && acknowledged {
+                // 检查完就出栏：本周期任何终态（NoHighValue / HighValue / Failed）都不再
+                // 是待执行任务，留在任务栏只是噪音。结果与人工入口都在账号人工校正面板的
+                // 限时商品分区（`CorrectionLimitedSupply`），不依赖任务栏任务。
+                //
+                // 出栏安全的前提是这里的条件与 planner 的 `limited_supply_due` **同源**：
+                // 两侧都只认「换周期」或「`Pending`」。`special_ops_recheck_limited_supply`
+                // 把判定复位成 `Pending`（保留 `cycle_id`）时，两个 gate 同时重新放行 ->
+                // 任务回到任务栏且立刻到期。禁止只放宽一侧：任务栏更宽 -> 任务栏有任务点
+                // 继续却不执行；planner 更宽 -> 每周期无限重登重查。
+                if outcome != limited_supply::LimitedSupplyOutcome::Pending {
                     continue;
                 }
                 let id = format!("limited:{}:{}", cycle.id, account.id);
@@ -11272,7 +11277,6 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: None,
                     limited_cycle_id: Some(cycle.id),
-                    limited_outcome: Some(outcome),
                     market_completed_count: None,
                     market_target_count: None,
                     market_status: None,
@@ -11301,13 +11305,21 @@ fn build_timeline_tasks(
                 } else {
                     0
                 };
-                if status == market_purchase::MarketTaskStatus::WindowClosed {
-                    continue;
-                }
-                // Completed 且已达到当前配置次数才出栏；若配置次数上调（completed_count <
-                // purchase_count），则重新显示任务，允许继续购买剩余次数。
-                if status == market_purchase::MarketTaskStatus::Completed
-                    && completed_count >= business.market.purchase_count
+                // 当天两个终态（Completed / WindowClosed）都只在「已买满当前配置次数」时出栏。
+                // 上调购买次数后 completed_count < purchase_count -> 任务立刻回到任务栏，
+                // 允许继续买剩下的次数；否则用户改完次数看不到任何变化，只能靠一键恢复。
+                //
+                // WindowClosed 只在 `minute >= window_end_minute` 时写入，而 `is_current`
+                // 蕴含窗口开着（`market_start_projections` 在 minute >= end 时只投影明天），
+                // 所以这里能看见当天的 WindowClosed 只有一种情形：窗口结束时间被人为延后。
+                // 那正是应该继续买的场景，`completed_count < purchase_count` 兜住重复购买。
+                // 必须与 planner 的 `market_purchase_due` 状态白名单保持互补，否则会出现
+                // 「任务栏有任务、点继续却不执行」。
+                if matches!(
+                    status,
+                    market_purchase::MarketTaskStatus::Completed
+                        | market_purchase::MarketTaskStatus::WindowClosed
+                ) && completed_count >= business.market.purchase_count
                 {
                     continue;
                 }
@@ -11331,7 +11343,6 @@ fn build_timeline_tasks(
                     may_execute_earlier: false,
                     manual_failure: None,
                     limited_cycle_id: None,
-                    limited_outcome: None,
                     market_completed_count: Some(completed_count),
                     market_target_count: Some(business.market.purchase_count),
                     market_status: Some(status),
@@ -11521,18 +11532,12 @@ pub(crate) fn build_schedule_with_profit_runtime(
                 settings.market_purchase.window_end_minute,
             )
             && (account.market.day.as_deref() != Some(current_day.as_str())
-                || (account.market.completed_count < business_config.market.purchase_count
-                    // 必须与任务栏投影（build_timeline_tasks）的出栏条件保持互补：
-                    // 任务栏只在 WindowClosed 或 Completed 且已达配置次数时移除任务，
-                    // PriceRecognitionFailed / Completed 但次数未达标时仍显示。
-                    // planner 这里漏掉会出现「任务栏有任务、点继续却不执行」。
-                    && matches!(
-                        account.market.status,
-                        market_purchase::MarketTaskStatus::Pending
-                            | market_purchase::MarketTaskStatus::Running
-                            | market_purchase::MarketTaskStatus::PriceRecognitionFailed
-                            | market_purchase::MarketTaskStatus::Completed
-                    )));
+                // 必须与任务栏投影（build_timeline_tasks）的出栏条件保持互补：任务栏只在
+                // 「当天终态且已买满配置次数」时移除任务，其余状态一律显示。planner 这里更严
+                // 会出现「任务栏有任务、点继续却不执行」。次数未达标即到期，状态不再筛：
+                // WindowClosed 能走到这里说明窗口结束时间被延后（`market_window_open` 已在
+                // 前面把真正关闭的窗口挡掉），那正是应该继续买的场景。
+                || account.market.completed_count < business_config.market.purchase_count);
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
             if let Some(exchange_at) = exchange_at_ms.filter(|exchange_at| *exchange_at > now_ms) {
@@ -17839,7 +17844,8 @@ mod tests {
         assert_eq!(account.ammo_targets[1].retry_count, 0);
 
         let before = settings.clone();
-        assert!(apply_manual_account_corrections(
+        // 部分选中现在合法：只更新"normal"子弹，"seasonal"保持原样。
+        apply_manual_account_corrections(
             &mut settings,
             "selected",
             &stations,
@@ -17847,8 +17853,196 @@ mod tests {
             2_000,
             "1970-01-01",
         )
-        .is_err());
-        assert_eq!(settings, before);
+        .unwrap();
+        // "normal" 以 2_000 时间再次校正，last_success_day 仍是当天。
+        assert_eq!(
+            settings.accounts[0].ammo_targets[0]
+                .last_success_day
+                .as_deref(),
+            Some("1970-01-01")
+        );
+        // "seasonal" 未提交，保持原样：last_success_day 仍为 None（第一次已清掉）。
+        assert_eq!(settings.accounts[0].ammo_targets[1].last_success_day, None);
+        // 先前状态未被覆盖，retry_count 仍为 0。
+        assert_eq!(settings.accounts[0].ammo_targets[1].retry_count, 0);
+        let _ = before; // 防止 unused 警告；不再做整体相等断言。
+    }
+
+    #[test]
+    fn partial_station_correction_leaves_unselected_stations_unchanged() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "selected",
+            AccountStatus::Uncertain,
+            StationKind::all()
+                .into_iter()
+                .map(|kind| station(kind, 10_000))
+                .collect(),
+        ));
+        let original_stations = settings.accounts[0].stations.clone();
+
+        // 只提交 TechnicalCenter 一台
+        apply_manual_station_corrections(
+            &mut settings,
+            "selected",
+            &[StationCorrectionInput {
+                kind: StationKind::TechnicalCenter,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            }],
+            1_000,
+        )
+        .unwrap();
+
+        let account = &settings.accounts[0];
+        assert_eq!(account.status, AccountStatus::Ready);
+        // TechnicalCenter 已更新
+        let tc = account
+            .stations
+            .iter()
+            .find(|s| s.kind == StationKind::TechnicalCenter)
+            .unwrap();
+        assert_eq!(tc.status, StationStatus::Ready);
+        assert_eq!(tc.finishes_at_ms, Some(1_000));
+        // 其余三台原样保留
+        for original in &original_stations {
+            if original.kind != StationKind::TechnicalCenter {
+                let current = account
+                    .stations
+                    .iter()
+                    .find(|s| s.kind == original.kind)
+                    .unwrap();
+                assert_eq!(current.status, original.status);
+                assert_eq!(current.finishes_at_ms, original.finishes_at_ms);
+            }
+        }
+    }
+
+    #[test]
+    fn partial_ammo_correction_leaves_unselected_targets_unchanged() {
+        // account.last_failure 指向制作台而非子弹，ammo-b 既未被选中也非 named target，
+        // 所以 ammo-b 的 last_failure 必须原样保留。
+        let mut settings = settings_with_two_failed_ammo_targets();
+        settings.accounts[0].last_failure = Some(AccountFailure {
+            step: "craft.WaitReady".to_string(),
+            message: "制作台超时".to_string(),
+            at_ms: 50,
+            station_kind: Some(StationKind::Workbench),
+            ammo_target_id: None,
+        });
+        settings.accounts[0].status = AccountStatus::Uncertain;
+        settings.accounts[0].stations = StationKind::all()
+            .into_iter()
+            .map(|kind| station(kind, 1))
+            .collect();
+        settings.default_business_config = business_config_from_account(&settings.accounts[0]);
+        let stations = StationKind::all()
+            .into_iter()
+            .map(|kind| StationCorrectionInput {
+                kind,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            })
+            .collect::<Vec<_>>();
+        // 只提交 ammo-a，ammo-b 不提交且不被 named target 逻辑覆盖
+        let original_b_failure = settings.accounts[0].ammo_targets[1].last_failure.clone();
+
+        apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &stations,
+            &[AmmoCorrectionInput {
+                target_id: "ammo-a".to_string(),
+                succeeded_today: false,
+            }],
+            1_000,
+            "2026-08-05",
+        )
+        .unwrap();
+
+        // ammo-a 被清
+        assert!(settings.accounts[0].ammo_targets[0].last_failure.is_none());
+        // ammo-b 未选中且 account.last_failure 不指向它 -> 原样保留
+        assert_eq!(
+            settings.accounts[0].ammo_targets[1].last_failure,
+            original_b_failure
+        );
+    }
+
+    #[test]
+    fn partial_ammo_correction_clears_named_account_failure_target_even_if_not_selected() {
+        // 账号的 last_failure 指向 ammo-b（Isolated 状态由此升级而来）。
+        // 只提交 ammo-a，但 ammo-b 也必须被清——否则账号回到 Ready 却永远少跑 ammo-b。
+        let mut settings = settings_with_two_failed_ammo_targets();
+        settings.accounts[0].status = AccountStatus::Isolated;
+        // last_failure 已指向 ammo-b（见 settings_with_two_failed_ammo_targets）
+        assert_eq!(
+            settings.accounts[0]
+                .last_failure
+                .as_ref()
+                .and_then(|f| f.ammo_target_id.as_deref()),
+            Some("ammo-b")
+        );
+        settings.accounts[0].stations = StationKind::all()
+            .into_iter()
+            .map(|kind| station(kind, 1))
+            .collect();
+        settings.default_business_config = business_config_from_account(&settings.accounts[0]);
+        let stations = StationKind::all()
+            .into_iter()
+            .map(|kind| StationCorrectionInput {
+                kind,
+                state: ManualStationState::ImmediateDue,
+                remaining_minutes: None,
+            })
+            .collect::<Vec<_>>();
+
+        apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &stations,
+            &[AmmoCorrectionInput {
+                target_id: "ammo-a".to_string(),
+                succeeded_today: false,
+            }],
+            1_000,
+            "2026-08-05",
+        )
+        .unwrap();
+
+        // ammo-a 选中 -> 清
+        assert!(settings.accounts[0].ammo_targets[0].last_failure.is_none());
+        // ammo-b 未选但 account.last_failure 指名它 -> 也必须清
+        assert!(settings.accounts[0].ammo_targets[1].last_failure.is_none());
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+    }
+
+    #[test]
+    fn empty_station_and_ammo_correction_is_rejected() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.accounts.push(account(
+            "selected",
+            AccountStatus::Uncertain, // Uncertain 通过「非 ready 账号可校正」gate
+            StationKind::all()
+                .into_iter()
+                .map(|kind| station(kind, 1))
+                .collect(),
+        ));
+        let before = settings.clone();
+        let err = apply_manual_account_corrections(
+            &mut settings,
+            "selected",
+            &[],
+            &[],
+            1_000,
+            "2026-08-05",
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("至少选中一项"),
+            "错误应提示至少选中一项，实际：{err}"
+        );
+        assert_eq!(settings, before, "拒绝时 settings 不得被修改");
     }
 
     #[test]
@@ -18128,7 +18322,7 @@ mod tests {
     }
 
     #[test]
-    fn checked_limited_cycle_stays_in_timeline_until_high_value_acknowledged() {
+    fn checked_limited_cycle_exits_timeline_until_manual_recheck() {
         let mut settings = LoginFixture::complete().settings;
         settings.paused = false;
         settings.limited_supply.enabled = true;
@@ -18163,39 +18357,25 @@ mod tests {
                     .outcome = outcome;
             };
 
-        // 判定通过且未确认：任务留在栏里等人工确认。
-        set_outcome(
-            &mut settings,
-            limited_supply::LimitedSupplyOutcome::HighValue,
-        );
-        assert!(current_task(&settings).is_some());
-
-        // 已检查过（未通过 / 失败）仍留在任务栏：结果要看得见，且需要重新检查入口。
-        // 出栏会让 planner 的 `is_due` 永远匹配不到任务 -> 本周期不可重跑。
+        // 检查完就出栏：三种终态都不再是待执行任务。两个 gate 必须同源，任务栏出栏时
+        // planner 也不得判到期，否则「任务栏没任务却在轮次里重登重查」。
         for outcome in [
+            limited_supply::LimitedSupplyOutcome::HighValue,
             limited_supply::LimitedSupplyOutcome::Failed,
             limited_supply::LimitedSupplyOutcome::NoHighValue,
         ] {
             set_outcome(&mut settings, outcome.clone());
-            let task = current_task(&settings)
-                .unwrap_or_else(|| panic!("{outcome:?} 必须留在任务栏以提供重新检查入口"));
-            assert_eq!(task.limited_outcome, Some(outcome));
-            // 复位到 Pending 前不得自动重跑。
+            assert!(
+                current_task(&settings).is_none(),
+                "{outcome:?} 检查完必须从任务栏出栏"
+            );
             assert!(!build_schedule(&settings, now_ms)
                 .due_accounts
                 .iter()
                 .any(|due| due.account_id == "selected" && due.limited_supply_due));
         }
 
-        // 人工重新检查 = 复位到 Pending，两个门同时打开。
-        set_outcome(&mut settings, limited_supply::LimitedSupplyOutcome::Pending);
-        assert!(current_task(&settings).is_some());
-        assert!(build_schedule(&settings, now_ms)
-            .due_accounts
-            .iter()
-            .any(|due| due.account_id == "selected" && due.limited_supply_due));
-
-        // 高价值已确认才出栏——提醒已经被人看过。
+        // 高价值已确认同样出栏：确认与否都不影响「已检查」这个事实。
         let account = settings
             .accounts
             .iter_mut()
@@ -18204,6 +18384,25 @@ mod tests {
         account.limited_supply.outcome = limited_supply::LimitedSupplyOutcome::HighValue;
         account.limited_supply.acknowledged = true;
         assert!(current_task(&settings).is_none());
+
+        // 人工重新检查 = 复位到 Pending，两个 gate 同时重新放行 -> 任务回到任务栏且到期。
+        let account = settings
+            .accounts
+            .iter_mut()
+            .find(|account| account.id == "selected")
+            .unwrap();
+        account.limited_supply = limited_supply::LimitedSupplyAccountState {
+            cycle_id: Some(cycle_id.clone()),
+            ..Default::default()
+        };
+        assert!(
+            current_task(&settings).is_some(),
+            "复位到 Pending 后任务必须回到任务栏"
+        );
+        assert!(build_schedule(&settings, now_ms)
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.limited_supply_due));
     }
 
     #[test]
@@ -18229,6 +18428,70 @@ mod tests {
         assert!(snapshot.due_accounts.iter().any(|due| {
             due.account_id == "selected" && due.limited_supply_due && due.market_purchase_due
         }));
+    }
+
+    /// 上调购买次数必须立刻让当天已完成的交易行任务回到任务栏与 due 集合。
+    #[test]
+    fn raising_market_purchase_count_reopens_completed_task() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.default_business_config.market.enabled = true;
+        settings.default_business_config.market.purchase_count = 1;
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+        settings.accounts[0].market = market_purchase::MarketAccountState {
+            day: Some("2026-08-08".to_string()),
+            completed_count: 1,
+            status: market_purchase::MarketTaskStatus::Completed,
+            last_error: None,
+        };
+
+        let current = |settings: &SpecialOpsSettings| {
+            let snapshot = build_schedule(settings, now_ms);
+            let task = snapshot
+                .timeline_tasks
+                .iter()
+                .find(|task| {
+                    task.kind == TimelineTaskKind::MarketPurchase
+                        && task.scheduled_at_ms == shanghai_test_ms("2026-08-08 02:00")
+                })
+                .cloned();
+            let due = snapshot
+                .due_accounts
+                .iter()
+                .any(|due| due.account_id == "selected" && due.market_purchase_due);
+            (task, due)
+        };
+
+        // 已买满配置次数：出栏且不再到期。
+        let (task, due) = current(&settings);
+        assert!(task.is_none());
+        assert!(!due);
+
+        settings.default_business_config.market.purchase_count = 3;
+        let (task, due) = current(&settings);
+        let task = task.expect("上调购买次数后当天交易行任务必须回到任务栏");
+        assert_eq!(task.market_completed_count, Some(1));
+        assert_eq!(task.market_target_count, Some(3));
+        assert!(due);
+
+        // WindowClosed 走同一条路：能看见当天的 WindowClosed 说明窗口结束时间被延后，
+        // 次数没买满就该继续买。两个门必须同时打开，否则「任务栏有任务、点继续不执行」。
+        settings.accounts[0].market.status = market_purchase::MarketTaskStatus::WindowClosed;
+        let (task, due) = current(&settings);
+        assert!(task.is_some());
+        assert!(due);
+
+        // 买满后两个终态都出栏，且不再到期。
+        settings.default_business_config.market.purchase_count = 1;
+        for status in [
+            market_purchase::MarketTaskStatus::Completed,
+            market_purchase::MarketTaskStatus::WindowClosed,
+        ] {
+            settings.accounts[0].market.status = status;
+            let (task, due) = current(&settings);
+            assert!(task.is_none());
+            assert!(!due);
+        }
     }
 
     #[test]

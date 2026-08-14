@@ -34,6 +34,7 @@ import {
     type CalibrationTarget,
      type LoginRunSnapshot,
      type LimitedSupplyColorTestResult,
+     type LimitedSupplyOutcome,
      type LimitedSupplySettings,
      type MarketBusinessConfig,
      type MarketPurchaseSettings,
@@ -206,7 +207,7 @@ function buildCorrectionPayload(
     const payload: StationCorrectionInput[] = [];
     for (const kind of stationKinds) {
         const item = draft[kind];
-        if (!item.state) return null;
+        if (!item.state) continue;
         const correction = buildInlineStationCorrection(item.state, item.hours, item.minutes);
         if (!correction) return null;
         payload.push({kind, ...correction});
@@ -224,11 +225,11 @@ function enabledAmmoTargets(settings: SpecialOpsSettings, account: AccountPlan):
 function buildAmmoCorrectionPayload(
     targets: AmmoBusinessTarget[],
     draft: Record<string, boolean | null>,
-): AmmoCorrectionInput[] | null {
+): AmmoCorrectionInput[] {
     const payload: AmmoCorrectionInput[] = [];
     for (const target of targets) {
         const succeededToday = draft[target.id];
-        if (succeededToday === null || succeededToday === undefined) return null;
+        if (succeededToday === null || succeededToday === undefined) continue;
         payload.push({targetId: target.id, succeededToday});
     }
     return payload;
@@ -307,22 +308,25 @@ const timelineProfitLabels: Record<NonNullable<TimelineTask["profitState"]>, str
     cutoffBypass: "已到截止时间，忽略利润",
 };
 
-/// 限时商品检查结果在任务栏的文案。
-/// 已检查过的周期仍留在任务栏（结果要看得见），必须显式说明本周期已经跑过，否则看起来
-/// 像还没执行。只有 `highValue` 已确认才出栏。重新检查入口在账号的人工校正面板里。
-const limitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
-    pending: "尚未检查",
-    noHighValue: "本周期已检查：未发现高价值，可在账号人工校正里重新检查",
-    highValue: "已发现高价值，等待人工确认",
-    failed: "本周期检查失败，可在账号人工校正里重新检查",
-};
-
-/// 人工校正面板里的同一组结果文案。重新检查按钮就在旁边，不需要再指路。
-const correctionLimitedOutcomeLabels: Record<NonNullable<TimelineTask["limitedOutcome"]>, string> = {
+/// 人工校正面板里的限时商品结果文案。
+/// 任务栏没有这组文案：当前周期一旦检查完（任何终态）就出栏，结果与人工入口都只在这里。
+/// 重新检查按钮就在旁边，不需要再指路。
+const correctionLimitedOutcomeLabels: Record<LimitedSupplyOutcome, string> = {
     pending: "尚未检查，等待自动执行",
     noHighValue: "本周期已检查：未发现高价值",
-    highValue: "已发现高价值，等待任务栏确认",
+    highValue: "已发现高价值",
     failed: "本周期检查失败",
+};
+
+/// 交易行任务在任务栏的状态文案。
+/// 购买进度必须显示：改了购买次数后任务栏要能立刻看出目标次数变了，否则用户看到的就是
+/// 「改了次数任务栏毫无变化」。
+const marketStatusLabels: Record<NonNullable<TimelineTask["marketStatus"]>, string> = {
+    pending: "尚未开始",
+    running: "进行中",
+    completed: "已完成本次配置",
+    priceRecognitionFailed: "价格识别失败",
+    windowClosed: "窗口已关闭",
 };
 
 const shanghaiTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -415,80 +419,58 @@ function TimelineManualCorrection({
     </div>;
 }
 
-/// 限时商品任务在任务栏的唯一人工入口：确认已看过高价值商品，确认后任务出栏。
-/// 重新检查不在这里——它在账号的人工校正面板（`CorrectionLimitedSupply`），因为
-/// `noHighValue` / `failed` 周期同样要能重跑，而那两种结果没有任务栏动作可挂。
-function TimelineLimitedActions({
-    task,
-    disabled,
-    onAcknowledge,
-}: {
-    task: TimelineTask;
-    disabled: boolean;
-    onAcknowledge: (task: TimelineTask) => Promise<SpecialOpsBootstrap>;
-}) {
-    const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    if (task.kind !== "limitedSupplyCheck" || !task.limitedCycleId) return null;
-    if (task.limitedOutcome !== "highValue") return null;
-    const submit = async () => {
-        setSubmitting(true);
-        setError(null);
-        try {
-            await onAcknowledge(task);
-        } catch (cause) {
-            setError(String(cause));
-        } finally {
-            setSubmitting(false);
-        }
-    };
-    return <div className="mt-1 space-y-1">
-        <Button size="xs" variant="outline" disabled={disabled || submitting} onClick={() => void submit()}>
-            {submitting ? "正在确认" : "已查看高价值商品"}
-        </Button>
-        {error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs"><span>{error}</span></div>}
-    </div>;
-}
-
-/// 人工校正面板里的限时商品分区：展示本周期判定结果 + 重新检查入口。
-/// 与制作台/子弹校正各自独立提交——重新检查只复位限时商品状态，不参与那份原子覆盖，
+/// 人工校正面板里的限时商品分区：展示本周期判定结果 + 确认高价值 + 重新检查入口。
+/// 任务栏在检查完成（任何终态）后就出栏，所以这里是本周期结果与人工动作的**唯一**位置。
+/// 与制作台/子弹校正各自独立提交——两个动作都只碰限时商品状态，不参与那份原子覆盖，
 /// 所以放在核对流程之外，点了立刻生效。
 function CorrectionLimitedSupply({
     account,
     disabled,
     onRecheck,
+    onAcknowledge,
 }: {
     account: AccountPlan;
     disabled: boolean;
     onRecheck: (accountId: string, cycleId: string) => Promise<SpecialOpsBootstrap>;
+    onAcknowledge: (accountId: string, cycleId: string) => Promise<SpecialOpsBootstrap>;
 }) {
-    const [submitting, setSubmitting] = useState(false);
+    const [submitting, setSubmitting] = useState<"recheck" | "acknowledge" | null>(null);
     const [error, setError] = useState<string | null>(null);
     const limited = account.limitedSupply;
     const cycleId = limited?.cycleId ?? null;
     const checked = limited !== undefined && limited.outcome !== "pending";
-    const submit = async () => {
+    // 高价值提醒只在这里确认：任务栏检查完就出栏，没有别的入口。
+    const needsAcknowledge = limited?.outcome === "highValue" && !limited.acknowledged;
+    const submit = async (kind: "recheck" | "acknowledge") => {
         if (!cycleId) return;
-        setSubmitting(true);
+        setSubmitting(kind);
         setError(null);
         try {
-            await onRecheck(account.id, cycleId);
+            await (kind === "recheck" ? onRecheck(account.id, cycleId) : onAcknowledge(account.id, cycleId));
         } catch (cause) {
             setError(String(cause));
         } finally {
-            setSubmitting(false);
+            setSubmitting(null);
         }
     };
     return <div className="mt-4 rounded-box border border-base-300 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="font-medium">本周期限时商品</h4>
-            <Button
-                size="sm"
-                variant="outline"
-                disabled={disabled || submitting || !checked || !cycleId}
-                title={checked && cycleId ? "把本周期判定复位到未检查，任务重新变为可执行" : "本周期尚未检查，无需重新检查"}
-                onClick={() => void submit()}
-            ><RiRefreshLine data-icon="inline-start"/>{submitting ? "正在复位" : "重新检查"}</Button>
+            <div className="flex flex-wrap items-center gap-2">
+                {needsAcknowledge && <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled || submitting !== null || !cycleId}
+                    onClick={() => void submit("acknowledge")}
+                >{submitting === "acknowledge" ? "正在确认" : "已查看高价值商品"}</Button>}
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled || submitting !== null || !checked || !cycleId}
+                    title={checked && cycleId ? "把本周期判定复位到未检查，任务重新回到任务栏并立刻可执行" : "本周期尚未检查，无需重新检查"}
+                    onClick={() => void submit("recheck")}
+                ><RiRefreshLine data-icon="inline-start"/>{submitting === "recheck" ? "正在复位" : "重新检查"}</Button>
+            </div>
         </div>
         <p className="mt-2 text-sm text-base-content/70">
             {limited === undefined
@@ -507,14 +489,12 @@ function SpecialOpsTimeline({
     disabled,
     onConfirmStation,
     onConfirmAmmo,
-    onAcknowledgeLimited,
 }: {
     bootstrap: SpecialOpsBootstrap;
     nowMs: number;
     disabled: boolean;
     onConfirmStation: (task: TimelineTask, correction: StationCorrectionInput) => Promise<SpecialOpsBootstrap>;
     onConfirmAmmo: (task: TimelineTask, succeededToday: boolean) => Promise<SpecialOpsBootstrap>;
-    onAcknowledgeLimited: (task: TimelineTask) => Promise<SpecialOpsBootstrap>;
 }) {
     const slots = buildTimelineHourSlots(nowMs);
     const groups = groupTimelineTasks(bootstrap.schedule.timelineTasks);
@@ -550,10 +530,9 @@ function SpecialOpsTimeline({
                                                 <div className="text-xs text-base-content/60">计划 {shanghaiTimeFormatter.format(task.scheduledAtMs)} · {timelineDelayMinutes(task, nowMs)} 分钟后</div>
                                                 {task.profitState && <div className="text-xs text-base-content/60">{timelineProfitLabels[task.profitState]}{task.mayExecuteEarlier ? "；最晚执行，利润达标后可能提前" : ""}</div>}
                                                 {task.manualFailure && <div className="text-xs text-error">{task.manualFailure.step}：{task.manualFailure.message}</div>}
-                                                {task.kind === "limitedSupplyCheck" && task.limitedOutcome
-                                                    && <div className={`text-xs ${task.limitedOutcome === "failed" ? "text-error" : "text-base-content/60"}`}>{limitedOutcomeLabels[task.limitedOutcome]}</div>}
+                                                {task.kind === "marketPurchase" && task.marketStatus
+                                                    && <div className={`text-xs ${task.marketStatus === "priceRecognitionFailed" ? "text-error" : "text-base-content/60"}`}>已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
-                                                <TimelineLimitedActions task={task} disabled={disabled} onAcknowledge={onAcknowledgeLimited}/>
                                                 {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -884,7 +863,7 @@ export function SpecialOpsPage() {
             setCorrectionError("人工校正提交失败：浏览器预览不能写入配置，请使用桌面开发版");
             return;
         }
-        if (!correctionAccountId || !correctionPayload || !correctionAmmoPayload || controlsLocked) {
+        if (!correctionAccountId || !correctionPayload || (correctionPayload.length === 0 && correctionAmmoPayload.length === 0) || controlsLocked) {
             setCorrectionError("人工校正提交失败：页面状态已变化，请返回修改后重新核对");
             return;
         }
@@ -1060,22 +1039,23 @@ export function SpecialOpsPage() {
             setError(`一键恢复失败：${String(cause)}`);
         }
     };
-    /// 确认限时商品高价值提醒：确认后任务从任务栏移除，当期不再重复提示。
-    const acknowledgeLimitedSupply = async (task: TimelineTask) => {
+    /// 确认限时商品高价值提醒：确认后不再提示，但不影响「本周期已检查」这个事实。
+    /// 入口与重新检查同处账号人工校正面板——任务栏在检查完成后就出栏，没有别处可挂。
+    const acknowledgeLimitedSupply = async (accountId: string, cycleId: string) => {
         if (!isNativeShell) throw new Error("浏览器预览不能写入配置，请使用桌面开发版");
-        if (!task.limitedCycleId) throw new Error("限时商品任务缺少周期 ID");
         try {
             const saved = await flushSettings();
             return await requestBootstrap(() => invoke<SpecialOpsBootstrap>(
                 "special_ops_acknowledge_limited_supply",
-                {accountId: task.accountId, cycleId: task.limitedCycleId, settingsRevision: saved.settingsRevision},
+                {accountId, cycleId, settingsRevision: saved.settingsRevision},
             ));
         } catch (cause) {
             if (String(cause).includes("配置保存已陈旧")) reload();
             throw cause;
         }
     };
-    /// 重新检查本周期限时商品：后端把状态复位到 `pending`，任务重新变成可执行。
+    /// 重新检查本周期限时商品：后端把状态复位到 `pending`，任务回到任务栏并立刻可执行
+    /// （任务栏出栏条件与 planner 的 `limited_supply_due` 同源，两个 gate 一起重新放行）。
     /// 自动调度「每周期一次」的语义不变，重跑只由这里触发。
     /// 入口在账号人工校正面板，所以取账号自己的 `limitedSupply.cycleId`，不依赖任务栏任务。
     const recheckLimitedSupply = async (accountId: string, cycleId: string) => {
@@ -1377,7 +1357,6 @@ export function SpecialOpsPage() {
             disabled={controlsLocked}
             onConfirmStation={confirmTimelineStation}
             onConfirmAmmo={confirmTimelineAmmo}
-            onAcknowledgeLimited={acknowledgeLimitedSupply}
         />
 
         <SpecialOpsProfitFilter
@@ -1614,7 +1593,7 @@ export function SpecialOpsPage() {
                     <table className="table table-sm">
                         <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th>参考图</th><th className="text-right">操作</th></tr></thead>
                         <tbody>{activeEnvironment.targets.map((target) => <Fragment key={target.key}><tr>
-                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-[11px] text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-[11px] text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
+                            <td><div className="font-medium">{target.label}</div><div className="font-mono text-xs text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-xs text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
                             <td>{target.kind === "clickPoint" ? "点击点" : target.kind === "inputRegion" ? "输入区域" : target.recognitionMethod === "ocr" ? "OCR 区域" : "模板识别区域"}</td>
                             <td className="font-mono text-xs">{target.rect ? `${target.rect.x}, ${target.rect.y}, ${target.rect.width}×${target.rect.height}` : "未配置"}</td>
                             <td className="max-w-40 truncate text-xs" title={target.referenceImagePath ?? undefined}>
@@ -1657,15 +1636,15 @@ export function SpecialOpsPage() {
                         </>}
                         {target.key === "game.beaconMode" && <>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">点击烽火地带前等待</div><div className="text-[11px] text-base-content/60">模式选择识别成功后</div></td>
+                                <td><div className="font-medium">点击烽火地带前等待</div><div className="text-xs text-base-content/60">模式选择识别成功后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationBeaconDelayMs)} onCommit={(value) => updateAutomationDelay("navigationBeaconDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">Space 前等待</div><div className="text-[11px] text-base-content/60">点击烽火地带后</div></td>
+                                <td><div className="font-medium">Space 前等待</div><div className="text-xs text-base-content/60">点击烽火地带后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationSpaceDelayMs)} onCommit={(value) => updateAutomationDelay("navigationSpaceDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                             <tr className="bg-base-200/50">
-                                <td><div className="font-medium">Tab 前等待</div><div className="text-[11px] text-base-content/60">按 Space 后</div></td>
+                                <td><div className="font-medium">Tab 前等待</div><div className="text-xs text-base-content/60">按 Space 后</div></td>
                                 <td colSpan={4}><label className="flex items-center gap-2 text-xs"><span>等待时间（ms）</span><DraftInput className="w-28" inputMode="numeric" value={String(bootstrap.settings.navigationTabDelayMs)} onCommit={(value) => updateAutomationDelay("navigationTabDelayMs", value)}/><span className="text-base-content/60">0–60000</span></label></td>
                             </tr>
                         </>}
@@ -1678,11 +1657,11 @@ export function SpecialOpsPage() {
         {correctionAccount && <dialog open className="modal modal-middle">
             <div className="modal-box max-w-3xl">
                 <h3 className="text-lg font-semibold">人工校正制作与子弹状态</h3>
-                <p className="mt-1 text-sm text-base-content/60">账号 {correctionAccount.qqAccount || correctionAccount.id}。四台与全部启用子弹必须逐项确认，成功后原子恢复调度。</p>
+                <p className="mt-1 text-sm text-base-content/60">账号 {correctionAccount.qqAccount || correctionAccount.id}。选中项提交后原子恢复调度，未选中项保持不变。</p>
                 {correctionError && <div role="alert" className="alert alert-error mt-3"><span>{correctionError}</span></div>}
-                {correctionConfirming && correctionPayload && correctionAmmoPayload ? (
+                {correctionConfirming && correctionPayload ? (
                     <div className="mt-4">
-                        <div role="alert" className="alert alert-warning"><span>确认后将一次覆盖四台计时与当天子弹状态，并清除原失败记录。</span></div>
+                        <div role="alert" className="alert alert-warning"><span>确认后将覆盖所选项的制作计时与子弹状态，并清除对应失败记录。</span></div>
                         <ul className="list mt-3">
                             {correctionPayload.map((item) => <li key={item.kind} className="list-row border-t border-base-300 px-0">
                                 <span className="font-medium">{STATION_LABELS[item.kind]}</span>
@@ -1718,6 +1697,10 @@ export function SpecialOpsPage() {
                                     <input className="radio radio-sm" type="radio" name={`correction-${kind}`} checked={item.state === "idle"} onChange={() => updateCorrection(kind, {state: "idle"})}/>
                                     空闲
                                 </label>
+                                <label className="label cursor-pointer justify-start gap-2">
+                                    <input className="radio radio-sm" type="radio" name={`correction-${kind}`} checked={item.state === null} onChange={() => updateCorrection(kind, {state: null})}/>
+                                    不修改
+                                </label>
                             </fieldset>;
                         })}
                     </div>
@@ -1728,6 +1711,7 @@ export function SpecialOpsPage() {
                                 <span className="list-col-grow text-sm font-medium">{target.note || target.id}</span>
                                 <label className="label cursor-pointer gap-2"><input className="radio radio-sm" type="radio" name={`ammo-correction-${target.id}`} checked={correctionAmmoDraft[target.id] === true} onChange={() => { setCorrectionAmmoDraft((current) => ({...current, [target.id]: true})); setCorrectionConfirming(false); }}/>当天已成功兑换</label>
                                 <label className="label cursor-pointer gap-2"><input className="radio radio-sm" type="radio" name={`ammo-correction-${target.id}`} checked={correctionAmmoDraft[target.id] === false} onChange={() => { setCorrectionAmmoDraft((current) => ({...current, [target.id]: false})); setCorrectionConfirming(false); }}/>当天未成功兑换</label>
+                                <label className="label cursor-pointer gap-2"><input className="radio radio-sm" type="radio" name={`ammo-correction-${target.id}`} checked={correctionAmmoDraft[target.id] === null || correctionAmmoDraft[target.id] === undefined} onChange={() => { setCorrectionAmmoDraft((current) => ({...current, [target.id]: null})); setCorrectionConfirming(false); }}/>不修改</label>
                             </li>)}
                         </ul>}
                     </div>
@@ -1735,6 +1719,7 @@ export function SpecialOpsPage() {
                         account={correctionAccount}
                         disabled={controlsLocked || !isNativeShell || correctionSubmitting}
                         onRecheck={recheckLimitedSupply}
+                        onAcknowledge={acknowledgeLimitedSupply}
                     /></>
                 )}
                 <div className="modal-action">
@@ -1742,7 +1727,7 @@ export function SpecialOpsPage() {
                     {correctionConfirming ? <>
                         <Button disabled={correctionSubmitting} variant="outline" onClick={() => setCorrectionConfirming(false)}>返回修改</Button>
                         <Button disabled={correctionSubmitting} onClick={() => void submitCorrection()}>{correctionSubmitting ? "正在保存" : "确认制作台与子弹状态并保存"}</Button>
-                    </> : <Button disabled={!correctionPayload || !correctionAmmoPayload} onClick={() => setCorrectionConfirming(true)}>核对制作台与子弹状态</Button>}
+                    </> : <Button disabled={!correctionPayload || (correctionPayload.length === 0 && correctionAmmoPayload.length === 0)} onClick={() => setCorrectionConfirming(true)}>核对制作台与子弹状态</Button>}
                 </div>
             </div>
         </dialog>}

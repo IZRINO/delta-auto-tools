@@ -4,7 +4,7 @@
 
 `defaultBusinessConfig` 保存四制作台启用状态、时长、制作物品备注及有序子弹业务目标；子弹目标包含稳定 ID、备注、普通/赛季类型、指定点击点、A/D 重置后向下滚动次数和顺序。兼容字段 `scrollDirection` 在 normalize 时固定为 `down`，不参与 UI 或 runtime。账号默认继承；开启 `independentSettingsEnabled` 时复制当时默认配置并改用账号独立业务配置，关闭时二次确认并永久删除独立配置。`startedAtMs`、`finishesAtMs`、制作台状态、账号失败记录及当天子弹状态仍按账号保存，切换继承模式不得重算或删除这些运行态。旧 JSON 的制作台缺失备注时补空字符串，旧子弹 `name` 迁入 `note`、点击点补空；迁移幂等且保留运行态。
 
-账号卡片继续提供完整“四制作台与全部启用子弹人工校正”入口。四台必须一次逐项选择“立即到期”“正在制作”或“空闲”；正在制作需填写 1 分钟至 168 小时的剩余时间。提交前显示第二次确认摘要，后端在 `SettingsCoordinator` revision 临界区内完成全量校验、账号初始化、一次磁盘写入和内存替换。初始化后的 `Ready` 账号允许主动覆盖实际制作与当天子弹状态；`NeedsManualLogin` / `LoginFailed` 不得通过业务状态校正恢复。提交期间按钮显示“正在保存”并禁止重复点击；浏览器预览、页面状态变化或后端拒绝均在 modal 内显示错误，禁止静默返回。
+账号卡片继续提供”制作台与子弹人工校正”入口，支持**部分选中**：每个制作台和子弹目标各自有”不修改”选项，只有选中的项才会被提交，未选中项保持原状不变。至少选中一项才能点”核对制作台与子弹状态”进入二次确认；选中的制作台从”立即到期””正在制作””空闲”中选一，正在制作需填写 1 分钟至 168 小时的剩余时间。提交前显示第二次确认摘要（仅列出选中项），后端在 `SettingsCoordinator` revision 临界区内完成全量校验、账号初始化、一次磁盘写入和内存替换。初始化后的 `Ready` 账号允许主动覆盖实际制作与当天子弹状态；`NeedsManualLogin` / `LoginFailed` 不得通过业务状态校正恢复。提交期间按钮显示”正在保存”并禁止重复点击；浏览器预览、页面状态变化或后端拒绝均在 modal 内显示错误，禁止静默返回。
 
 24 小时任务时间轴不再打开完整 modal。`AccountFailure.stationKind` 与 `AccountFailure.ammoTargetId` 互斥定位失败业务，`AmmoTarget.lastFailure` 保存目标级子弹人工失败，`TimelineTask.manualFailure` 把失败带到对应任务行。制作行提供“立即到期”“正在制作”“空闲中”，子弹行提供“已兑换”“未兑换”；每行独立保存和显示错误。`special_ops_confirm_station_state` 只校正失败制作台并恢复账号 `Ready`，`special_ops_confirm_ammo_state` 只清除对应目标失败；未处理子弹继续单独冻结。
 
@@ -18,7 +18,7 @@
 
 账号卡片与账号区标题额外提供“一键恢复状态”。`special_ops_restore_account_state` 接收 `Option<String>`：传账号 ID 只恢复该账号，传 `null` 恢复全部异常账号。恢复内容为账号状态回 `Ready`、清 `lastFailure`、按存量计时还原 `Uncertain` 制作台、清子弹目标 `lastFailure` 与当天 retry 预算、清当天 `lastSuccessDay`、限时商品 `Failed` 回 `Pending`、当天交易行封锁状态回 `Pending`。当天成功标记一起清 -> 目标回未兑换、可再次调度；重复兑换由流程内资格与库存检查分支兜底。没有任何可恢复项时返回错误，不产生空转 revision。两个按钮常驻显示：无可恢复项时按钮 disabled 并在 title 说明原因，不再整块隐藏。
 
-交易行只放回**当天**的 `Running` / `PriceRecognitionFailed` / `WindowClosed`，`Completed` 与其他日期一律不动——购买次数已经花掉，放回会让同一天重复买满。必须放回的原因是任务栏对 `Completed | WindowClosed` 直接 `continue` 出栏，而 `build_round_plan_with_profit` 依赖这条任务栏任务，一次 `WindowClosed` 写入会让交易行当天永久消失 -> 一键恢复后点「继续」不再上线跑交易行。前端 `accountRestorable` 必须与后端 `changed` 判定完全一致（含这条交易行分支），否则按钮亮着点下去只拿到「没有需要恢复的异常状态」。
+交易行只放回**当天**的 `Running` / `PriceRecognitionFailed` / `WindowClosed`，`Completed` 与其他日期一律不动——购买次数已经花掉，放回会让同一天重复买满。必须放回的原因是任务栏对当天已买满次数的 `Completed | WindowClosed` 直接 `continue` 出栏，而 `build_round_plan_with_profit` 依赖这条任务栏任务，一次 `WindowClosed` 写入会让交易行当天永久消失 -> 一键恢复后点「继续」不再上线跑交易行。前端 `accountRestorable` 必须与后端 `changed` 判定完全一致（含这条交易行分支），否则按钮亮着点下去只拿到「没有需要恢复的异常状态」。
 
 ## 子弹兑换配置
 
@@ -208,17 +208,19 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 
 研发部门点击后必须先等 `researchDelayMs` 才识别页面（`LimitedRunConfig.enter_delay`）。点完立刻采样时 `limited.ready` 有机会在**上一页**连续命中两次直接放行，后续识色跑在错误页面上、两次采样同样“稳定”，约 800ms 内就写下高价值 -> 表现为只点到研发部门就关游戏并标记发现高价值，实际没有检查。
 
-任务只在判定**通过**（`highValue`）且**已**确认后出栏——提醒已经被人看过。未确认的 `highValue` 附“已查看高价值商品”按钮，调用 `special_ops_acknowledge_limited_supply` 只清除当前 `cycleId` 的提醒，后端也只接受 `highValue` 状态。已检查过的 `noHighValue` / `failed` 继续留在任务栏并渲染 `limitedOutcome`，`limitedOutcomeLabels` 显式写明「本周期已检查」并指路到账号人工校正。失败原因仍只写入 `limitedSupply.lastError`。
-
-“重新检查”入口在账号人工校正面板（`CorrectionLimitedSupply`），不在任务栏：`noHighValue` / `failed` 两种周期同样要能重跑，而它们没有任务栏动作可挂。该分区取账号自己的 `limitedSupply.cycleId`，不依赖任务栏任务；`outcome != pending` 才可点，`pending` 时 disabled 并在 title 说明原因。它与四制作台/子弹校正各自独立提交——重新检查只复位限时商品状态，不参与那份原子覆盖，点了立刻生效，因此放在二次确认流程之外。面板内用 `correctionLimitedOutcomeLabels` 展示结果，按钮就在旁边，不再重复指路。
+当前周期的任务**检查完即出栏**：`build_timeline_tasks` 中只有 `outcome == Pending` 的限时商品任务才进入任务栏，`noHighValue` / `highValue` / `failed` 任意终态都立即出栏。任务消失后不会自动重跑——「每周期只跑一次」由 `limited_supply_due`（只认换周期或 `pending`）单独保证，重跑只由人工触发。任务栏不再渲染 `limitedOutcome` 结果行或”已查看高价值商品”按钮；确认与重新检查两个入口均移至账号人工校正面板（`CorrectionLimitedSupply`）。未确认 `highValue` 时”已查看高价值商品”按钮才显示，调用 `special_ops_acknowledge_limited_supply`；重新检查按钮四种终态全可点，调用 `special_ops_recheck_limited_supply` 把状态复位到 `pending`，同时重开任务栏的出栏 gate 和 `limited_supply_due` gate。失败原因仍只写入 `limitedSupply.lastError`。
 
 `special_ops_recheck_limited_supply` 把账号的 `LimitedSupplyAccountState` 复位到 `pending`，但**保留** `cycleId`——任务栏用 `state_matches`（`account.limited_supply.cycle_id == cycle.id`）把结果认领到当前周期任务上，清掉 `cycleId` 会断开这个关联。命令拒绝周期已变化和状态仍为 `pending` 两种请求。
 
-已检查过的周期不能出栏，这是两个门的 AND 关系决定的：任务必须同时出现在 `schedule.timeline_tasks`（`build_timeline_tasks` 产出）且 `DueAccount.limited_supply_due` 为真（`build_schedule_with_profit_runtime` 产出），`build_round_plan_with_profit` 的 `is_due` 拿时间轴任务去匹配 `due_accounts`。出栏后 `is_due` 永远匹配不到 -> 本周期彻底不可重跑，用户看到的是「12 点已检查的限时商品既没有结果行也没有可执行任务」。反方向的修法同样禁止：放宽 `limited_supply_due` 去接受终态会让任务永久到期 -> 每周期无限重登重查。重跑只由人工触发，自动调度「每周期一次」的语义不变。留在栏里的当前周期任务也不会扰动 scheduler，`next_wake_at_ms` 只看 `task.scheduled_at_ms > now_ms`。
+已检查过的周期出栏后不可再被 planner 调度——两个门的 AND 关系：任务必须同时出现在 `schedule.timeline_tasks`（`build_timeline_tasks` 产出，只接受 `pending`）且 `DueAccount.limited_supply_due` 为真（`build_schedule_with_profit_runtime` 产出，同样只认换周期或 `pending`），`build_round_plan_with_profit` 的 `is_due` 拿时间轴任务去匹配 `due_accounts`。出栏后 `is_due` 永远匹配不到 -> 本周期彻底不可重跑。放宽任一侧 gate 接受终态都会复现无限重查的 bug，因此严格同源。重跑只由 `special_ops_recheck_limited_supply` 人工触发（复位到 `pending` 同时重开两侧 gate），常驻状态不会导致自动重跑。
 
 `compare_samples` 判定 `highValue` 的条件是两次采样的命中区域集合**完全相等**（哪怕只有 1 个区域命中），且该区域两次命中的目标颜色相同——9 个区域里任意一个稳定命中即可判高价值。取交集非空就判定会把命中抖动（第一次命中 1、3，第二次只命中 3）算成一致；只读第二次采样的颜色会把跨色命中（第一次颜色 1、第二次颜色 2）算成稳定结果。两者都会误报高价值，因此都必须继续采样，直到超时写入 `failed`。两次均无命中仍直接判 `noHighValue`。
 
 交易行任务固定在每日 02:00–04:00。同账号桶里有子弹或限时商品任务时，先点一次 `market.backToEntry`（校准名「返回大厅列表点击点」）把界面从部门页退回大厅列表，再识别点击 `market.entry`；没有部门任务时界面本来就在大厅，跳过这一步——提前点会把界面带进别的面板。判定条件是 `!task.ammo_target_ids.is_empty() || task.limited_supply_cycle_id.is_some()`，不是「进入交易行流程就点」。随后按账号或全局配置点击商品入口，OCR `market.price`；价格小于等于设定值点击 `market.buy`，再点击独立的 `market.confirm` 最终确认购买点，否则点击 `market.return` 返回并继续，按购买次数计数，不判定购买成功。04:00 后任务标记关闭且不补做次日。交易行配置包含启用状态、购买次数、商品备注、最高价与商品入口点击点；账号关闭独立设置时继承默认配置。
+
+任务栏渲染 `已购买 N/M · <状态>`（`marketCompletedCount` / `marketTargetCount` / `marketStatus`）。后端一直在下发这三个字段，前端不渲染的话上调购买次数后任务栏毫无变化 -> 用户以为配置没生效。
+
+当天的两个终态（`Completed` / `WindowClosed`）都只在 `completedCount >= purchaseCount` 时出栏，出栏条件对购买次数敏感：把次数从 1 调到 3，任务立刻回到任务栏继续买剩下 2 次，不需要一键恢复。planner 的 `market_purchase_due` 因此不再筛状态白名单，只看 `completedCount < purchaseCount`，与任务栏严格互补——planner 比任务栏严会出现「任务栏有任务、点继续却不执行」。`WindowClosed` 只在 `minute >= windowEndMinute` 时写入，而 `is_current` 蕴含窗口开着（`market_start_projections` 在 `minute >= end` 时只投影明天），所以能看见当天 `WindowClosed` 只有一种情形：窗口结束时间被人为延后，那正是应该继续买的场景。
 
 当前账号必须跑满配置购买次数才切换下一账号。每个原子流程结束后只让位给**新**到期的制作：`MarketDriver::latest_due_craft_at_ms()` 在已到期制作里取最晚计划时间，与入口点击、固定等待之后取的基线比较，仅当出现比基线更晚的到期制作时返回 `YieldedForCraft`。取 `max` 而非 `min` 是因为让位要回答「有没有新制作到期」，新完成的制作台计划时间必然晚于开跑前就已逾期的那些，`min` 会被陈旧任务永久钉住。开跑前就已逾期的制作属于本轮队列自身业务——交易行排在同账号制作之后，其他账号的到期制作还排在交易行后面——拿它当让位理由会让账号每买一件就退出换号，购买次数永远停在 1，且每次重排队都要重新登录，窗口耗尽后 `market_window_open` 会静默丢弃剩余交易行任务。让位后仍按 `market_retry_task` 排在最后一个已到期制作之后，按已保存次数续跑。
 
