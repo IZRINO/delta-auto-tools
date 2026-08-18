@@ -9,6 +9,7 @@ mod key_suppressor;
 mod logging;
 mod morse;
 mod overlay_utils;
+mod privacy_screen;
 mod profile;
 mod rapidfire;
 mod recognition;
@@ -140,6 +141,12 @@ pub fn run() {
                 &["special_ops_settings.json"],
                 || special_ops::initialize(app.handle()),
             )?;
+            let privacy_screen_state = initialize_with_settings_recovery(
+                app.handle(),
+                "privacy_screen",
+                &["privacy_screen_settings.json"],
+                || privacy_screen::initialize(app.handle()),
+            )?;
             let mut lifecycle_registry = sync_tool::ToolLifecycleRegistry::default();
             lifecycle_registry.register(
                 "timer",
@@ -168,6 +175,13 @@ pub fn run() {
                 "special_ops",
                 Box::new(|app: &tauri::AppHandle| crate::special_ops::stop_registered(app)),
             );
+            lifecycle_registry.register(
+                "privacy_screen",
+                Box::new(|app: &tauri::AppHandle| {
+                    crate::privacy_screen::hide_if_visible(app);
+                    Ok(())
+                }),
+            );
             app.manage(hotkey_manager);
             app.manage(state);
             app.manage(timer_state);
@@ -175,6 +189,7 @@ pub fn run() {
             app.manage(rapidfire_state);
             app.manage(recognition_state);
             app.manage(special_ops_state);
+            app.manage(privacy_screen_state);
             app.manage(lifecycle_registry);
             recognition::start_runtime(app.handle())?;
             special_ops::start_runtime(app.handle())?;
@@ -208,6 +223,7 @@ pub fn run() {
                     };
                     hotkey_manager.clear_all_suppressions();
                     recognition::shutdown(app, &hotkey_manager);
+                    privacy_screen::hide_if_visible(app);
                     if let Err(error) = special_ops::shutdown(app) {
                         crate::log_error!(
                             "special_ops::login",
@@ -298,6 +314,11 @@ pub fn run() {
             special_ops::special_ops_start_due_round,
             special_ops::special_ops_cancel_login_trial,
             special_ops::special_ops_emergency_stop,
+            // ── 息屏 ──
+            privacy_screen::privacy_screen_get_bootstrap,
+            privacy_screen::privacy_screen_save_settings,
+            privacy_screen::privacy_screen_show,
+            privacy_screen::privacy_screen_hide,
             // ── global state ──
             global_state::global_get_enabled,
             global_state::global_set_enabled,

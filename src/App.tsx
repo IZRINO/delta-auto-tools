@@ -10,6 +10,7 @@ import {
     RiStarFill,
     RiTimerLine,
     RiVolumeUpLine,
+    RiEyeOffLine,
     RiShieldLine,
 } from "@remixicon/react";
 
@@ -64,6 +65,9 @@ const RecognitionPage = lazy(() =>
 const SpecialOpsPage = lazy(() =>
     import("@/components/app/special-ops-page").then((module) => ({default: module.SpecialOpsPage})),
 );
+const PrivacyScreenPage = lazy(() =>
+    import("@/components/app/privacy-screen-page").then((module) => ({default: module.PrivacyScreenPage})),
+);
 const SpecialOpsCalibrationOverlay = lazy(() =>
     import("@/components/app/special-ops-calibration-overlay").then((module) => ({default: module.SpecialOpsCalibrationOverlay})),
 );
@@ -85,6 +89,7 @@ const tools = [
     {id: "rapidfire" as const, icon: RiGamepadLine, label: "连发器", short: "Rapidfire"},
     {id: "strategy" as const, icon: RiCompassDiscoverLine, label: "攻略网站", short: "Strategy"},
     {id: "recognition" as const, icon: RiVolumeUpLine, label: "识别触发", short: "Recognition"},
+    {id: "privacyScreen" as const, icon: RiEyeOffLine, label: "息屏", short: "Privacy"},
 ];
 
 const deltaTools = [
@@ -147,6 +152,8 @@ function renderToolPage(
             return <MorsePage/>;
         case "specialOps":
             return <SpecialOpsPage/>;
+        case "privacyScreen":
+            return <PrivacyScreenPage/>;
     }
 }
 
@@ -465,7 +472,7 @@ function AppShell() {
                 </div>
                 <div className="navbar-center hidden min-w-0 items-center gap-3 lg:flex">
                     <span className="badge badge-primary badge-sm">
-                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "recognition" ? "05" : "D1"}
+                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "recognition" ? "05" : activeTool === "privacyScreen" ? "06" : "D1"}
                     </span>
                         <div className="min-w-0">
                             <p className="truncate text-sm font-medium">

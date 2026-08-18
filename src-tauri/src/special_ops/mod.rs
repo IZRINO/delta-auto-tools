@@ -6463,6 +6463,7 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
                     checked_at_ms: Some(now_ms()),
                     matched_region: result.matched_region,
                     matched_color: result.matched_color,
+                    matched_color_indexes: result.matched_color_indexes,
                     acknowledged: false,
                     last_error: result.error,
                 };
@@ -7166,7 +7167,9 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
                     Arc::clone(&cancelled),
                 )
                 .await
-                .map_err(|error| map_round_ammo_driver_error(error, "ammo.tacticalDepartment 等待"))?;
+                .map_err(|error| {
+                    map_round_ammo_driver_error(error, "ammo.tacticalDepartment 等待")
+                })?;
             }
             let result = ammo_runtime::run_ammo_targets(
                 &driver,
@@ -7516,6 +7519,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
                 checked_at_ms: Some(now_ms()),
                 matched_region: None,
                 matched_color: None,
+                matched_color_indexes: Vec::new(),
                 acknowledged: false,
                 last_error: Some(message),
             };
@@ -7675,9 +7679,7 @@ async fn run_ammo_worker(
                 let delay_stop = if frozen.exchange_entry_delay_ms > 0 {
                     <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(
                         &driver,
-                        std::time::Duration::from_millis(
-                            frozen.exchange_entry_delay_ms.into(),
-                        ),
+                        std::time::Duration::from_millis(frozen.exchange_entry_delay_ms.into()),
                         Arc::clone(&cancelled),
                     )
                     .await
@@ -11308,9 +11310,9 @@ fn build_timeline_tasks(
                 //
                 // `special_ops_recheck_limited_supply` 复位到 `Pending` 时，任务栏和 planner
                 // 同时重新放行 -> 任务回到任务栏且立刻可执行。
-                let is_high_value_unacknowledged =
-                    outcome == limited_supply::LimitedSupplyOutcome::HighValue
-                        && !account.limited_supply.acknowledged;
+                let is_high_value_unacknowledged = outcome
+                    == limited_supply::LimitedSupplyOutcome::HighValue
+                    && !account.limited_supply.acknowledged;
                 if outcome != limited_supply::LimitedSupplyOutcome::Pending
                     && !is_high_value_unacknowledged
                 {
@@ -18416,7 +18418,10 @@ mod tests {
             };
 
         // `HighValue + !acknowledged`：留在任务栏（显示确认按钮），但 planner 不重跑。
-        set_outcome(&mut settings, limited_supply::LimitedSupplyOutcome::HighValue);
+        set_outcome(
+            &mut settings,
+            limited_supply::LimitedSupplyOutcome::HighValue,
+        );
         // acknowledged 已在 account 初始化时设为 false（L18337），此处无需额外赋值。
         let high_value_task = current_task(&settings);
         assert!(
@@ -18611,6 +18616,7 @@ mod tests {
             checked_at_ms: Some(shanghai_test_ms("2026-08-08 12:01")),
             matched_region: Some(3),
             matched_color: Some([1, 2, 3]),
+            matched_color_indexes: vec![1],
             acknowledged: false,
             last_error: None,
         };

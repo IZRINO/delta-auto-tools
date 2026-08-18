@@ -13,8 +13,7 @@ pub(crate) mod matching;
 pub(crate) use capture::{capture_region, load_reference_image, read_reference_image_as_data_url};
 pub(crate) use manager::{restart_watchers, start_activation_session, stop_all_watchers};
 pub(crate) use matching::{
-    aggregate_probe_hits_pub, best_reference_match, match_color_probes, probe_hit,
-    probe_hit_targets,
+    aggregate_probe_hits_pub, best_reference_match, probe_hit, probe_hit_targets,
 };
 
 #[cfg(test)]

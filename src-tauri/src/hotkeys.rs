@@ -663,7 +663,7 @@ fn run_listener(
         // 1. 处理 willhook 正常事件
         match hook.try_recv() {
             Ok(InputEvent::Keyboard(event)) => {
-                // 全局总开关关闭时，忽略所有热键事件（不触发任何回调）。
+                // 全局总开关关闭时跳过普通/hold 热键；safety scope 仍要分发。
                 let global_enabled = app
                     .try_state::<GlobalState>()
                     .map(|state| state.enabled())
@@ -687,14 +687,14 @@ fn run_listener(
                         for (action, hold_action) in hold_actions {
                             action(app.clone(), hold_action);
                         }
-                        if let Some(key_state) = key_state {
-                            for action in actions_for_key_state_with_global_gate(
-                                &registrations,
-                                &key_state,
-                                global_enabled,
-                            ) {
-                                action(app.clone());
-                            }
+                    }
+                    if let Some(key_state) = key_state {
+                        for action in actions_for_key_state_with_global_gate(
+                            &registrations,
+                            &key_state,
+                            global_enabled,
+                        ) {
+                            action(app.clone());
                         }
                     }
                 }
@@ -728,14 +728,14 @@ fn run_listener(
                     for (action, hold_action) in hold_actions {
                         action(app.clone(), hold_action);
                     }
-                    if let Some(key_state) = key_state {
-                        for action in actions_for_key_state_with_global_gate(
-                            &registrations,
-                            &key_state,
-                            global_enabled,
-                        ) {
-                            action(app.clone());
-                        }
+                }
+                if let Some(key_state) = key_state {
+                    for action in actions_for_key_state_with_global_gate(
+                        &registrations,
+                        &key_state,
+                        global_enabled,
+                    ) {
+                        action(app.clone());
                     }
                 }
             }
@@ -1882,5 +1882,44 @@ mod tests {
         let actions = actions_for_key_state(&registrations, &key_state);
 
         assert_eq!(actions.len(), 2);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn safety_hotkey_still_matches_when_global_disabled() {
+        let registrations = Arc::new(Mutex::new(vec![
+            HotkeyRegistration {
+                scope: "timer".to_string(),
+                binding: HotkeyBinding::parse("F2").expect("should parse"),
+                enabled: true,
+                display_name: "计时器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
+                action: Arc::new(|_| {}),
+            },
+            HotkeyRegistration {
+                scope: "privacy-screen".to_string(),
+                binding: HotkeyBinding::parse("F8").expect("should parse"),
+                enabled: true,
+                display_name: "息屏关闭".to_string(),
+                conflict_policy: ConflictPolicy::Strict,
+                allow_when_global_disabled: true,
+                action: Arc::new(|_| {}),
+            },
+        ]));
+        let close = KeyState {
+            modifiers: HashSet::new(),
+            primary: PrimaryKey::Function(8),
+        };
+        let timer = KeyState {
+            modifiers: HashSet::new(),
+            primary: PrimaryKey::Function(2),
+        };
+
+        assert_eq!(
+            actions_for_key_state_with_global_gate(&registrations, &close, false).len(),
+            1
+        );
+        assert!(actions_for_key_state_with_global_gate(&registrations, &timer, false).is_empty());
     }
 }

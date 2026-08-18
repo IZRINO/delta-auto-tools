@@ -14,6 +14,7 @@
 | `rapidfire-position` | 连发器 | 位置校准窗口 |
 | `morse-overlay` | Morse | 全屏透明区域选择叠加窗 |
 | `recognition-overlay` | 识别触发 | 监听区域、识色探针、自定义点击区域选择叠加窗 |
+| 息屏（无 WebView） | 息屏 | 原生 Win32 视觉遮罩，不进 `?mode=`；只挡画面，键鼠/Alt+Tab 照常，排除截图 |
 
 ## 显示窗口
 

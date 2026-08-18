@@ -43,7 +43,7 @@ web
 
 ## Capabilities and Constraints
 
-**已实现工具页**（`src/App.tsx:80-91`）：计时器、计数器、连发器、攻略网站、识别触发（通用工具）；特勤处、摩斯密码解析（三角洲工具）；外加收藏夹与统一设置 Dialog（主题 / 配置 / 关于）。
+**已实现工具页**（`src/App.tsx`）：计时器、计数器、连发器、攻略网站、识别触发、息屏（通用工具）；特勤处、摩斯密码解析（三角洲工具）；外加收藏夹与统一设置 Dialog（主题 / 配置 / 关于）。
 
 **原生能力栈**：截图 `xcap`、输入模拟 `enigo`、全局键盘钩子 `willhook`、音频 `rodio`、OCR `Windows.Media.Ocr`（`windows` crate）、HTTP `reqwest`（rustls）。
 

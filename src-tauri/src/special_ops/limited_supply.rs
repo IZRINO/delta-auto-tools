@@ -117,6 +117,9 @@ pub struct LimitedSupplyAccountState {
     pub checked_at_ms: Option<i64>,
     pub matched_region: Option<u8>,
     pub matched_color: Option<[u8; 3]>,
+    /// 命中的配置颜色编号，1 / 2，可同时命中。
+    #[serde(default)]
+    pub matched_color_indexes: Vec<u8>,
     pub acknowledged: bool,
     pub last_error: Option<String>,
 }

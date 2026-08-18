@@ -62,6 +62,7 @@ import {
      createStationRemainingTimeDraft,
      eligibleLoginTrialAccounts,
      formatCalibrationTemplateTestResult,
+     formatLimitedMatchedColors,
      groupTimelineTasks,
      hasActiveSpecialOpsRun,
      insertNormalAmmoTarget,
@@ -512,6 +513,9 @@ function CorrectionLimitedSupply({
             {limited === undefined
                 ? "当前账号没有限时商品记录"
                 : correctionLimitedOutcomeLabels[limited.outcome]}
+            {limited?.outcome === "highValue" && formatLimitedMatchedColors(limited.matchedColorIndexes)
+                ? ` · ${formatLimitedMatchedColors(limited.matchedColorIndexes)}`
+                : ""}
             {limited?.checkedAtMs ? ` · 检查于 ${shanghaiTimeFormatter.format(limited.checkedAtMs)}` : ""}
         </p>
         {limited?.lastError && <p className="mt-1 text-xs text-error">{limited.lastError}</p>}
@@ -571,6 +575,10 @@ function SpecialOpsTimeline({
                                                 {task.kind === "marketPurchase" && task.marketStatus
                                                     && <div className={`text-xs ${task.marketStatus === "priceRecognitionFailed" ? "text-error" : "text-base-content/60"}`}>已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
+                                                {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && (() => {
+                                                    const colorHits = formatLimitedMatchedColors(bootstrap.settings.accounts.find(({id}) => id === task.accountId)?.limitedSupply?.matchedColorIndexes);
+                                                    return colorHits ? <div className="text-xs text-base-content/60">{colorHits}</div> : null;
+                                                })()}
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && task.limitedCycleId && <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledge}/>}
                                                 {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
                                             </div>

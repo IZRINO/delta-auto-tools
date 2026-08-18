@@ -26,32 +26,35 @@ pub(crate) fn match_limited_color_sample(
             legacy_tolerance: None,
         })
         .collect::<Vec<_>>();
-    let aggregate = crate::recognition::watcher::match_color_probes(
-        screenshots,
-        &probes,
-        crate::recognition::ColorMatchMode::Any,
-        crate::recognition::ColorMatchMethod::AnyPixel,
-    );
-    let matched = aggregate
-        .matched_probes
-        .into_iter()
-        .map(|item| item.index)
-        .collect::<std::collections::HashSet<_>>();
     let regions = screenshots
         .iter()
         .zip(&probes)
         .enumerate()
         .map(|(index, (screenshot, probe))| {
-            let hit = crate::recognition::watcher::probe_hit(
+            let hits = crate::recognition::watcher::probe_hit_targets(
                 screenshot,
                 probe,
                 crate::recognition::ColorMatchMethod::AnyPixel,
                 true,
             );
+            let matched_indexes = hits
+                .iter()
+                .enumerate()
+                .filter(|(_, hit)| hit.matched)
+                .map(|(target_index, _)| (target_index + 1) as u8)
+                .collect::<Vec<_>>();
+            let matched_color = matched_indexes
+                .first()
+                .and_then(|&color_index| colors.get((color_index as usize) - 1).copied());
+            let nearest_distance = hits
+                .iter()
+                .map(|hit| hit.distance)
+                .fold(f32::INFINITY, f32::min);
             LimitedRegionMatch {
                 region: (index + 1) as u8,
-                matched_color: matched.contains(&index).then_some(hit.target_color),
-                nearest_distance: hit.distance,
+                matched_color,
+                matched_indexes,
+                nearest_distance,
             }
         })
         .collect();
@@ -69,6 +72,7 @@ pub(crate) enum LimitedRunError {
 pub(crate) struct LimitedRegionMatch {
     pub(crate) region: u8,
     pub(crate) matched_color: Option<[u8; 3]>,
+    pub(crate) matched_indexes: Vec<u8>,
     pub(crate) nearest_distance: f32,
 }
 
@@ -82,6 +86,7 @@ pub(crate) struct LimitedSupplyCheckResult {
     pub(crate) outcome: LimitedSupplyOutcome,
     pub(crate) matched_region: Option<u8>,
     pub(crate) matched_color: Option<[u8; 3]>,
+    pub(crate) matched_color_indexes: Vec<u8>,
     pub(crate) error: Option<String>,
 }
 
@@ -162,6 +167,7 @@ fn compare_samples(
             outcome: LimitedSupplyOutcome::NoHighValue,
             matched_region: None,
             matched_color: None,
+            matched_color_indexes: Vec::new(),
             error: None,
         });
     }
@@ -171,23 +177,44 @@ fn compare_samples(
         return None;
     }
     let region = first_hits.iter().next().copied()?;
-    let color_of = |sample: &LimitedColorSample| {
+    let color_of = |sample: &LimitedColorSample, region: u8| {
         sample
             .regions
             .iter()
             .find(|candidate| candidate.region == region)
             .and_then(|candidate| candidate.matched_color)
     };
-    let first_color = color_of(first);
-    // 同一区域两次命中的目标颜色也必须相同：只读第二次的颜色会让「第一次命中颜色 1、
-    // 第二次命中颜色 2」被当成稳定结果，同样是误报。
-    if first_color.is_none() || first_color != color_of(second) {
-        return None;
+    let indexes_of = |sample: &LimitedColorSample, region: u8| {
+        sample
+            .regions
+            .iter()
+            .find(|candidate| candidate.region == region)
+            .map(|candidate| candidate.matched_indexes.clone())
+            .unwrap_or_default()
+    };
+    for hit_region in &first_hits {
+        let first_color = color_of(first, *hit_region);
+        // 同一区域两次命中的目标颜色也必须相同：只读第二次的颜色会让「第一次命中颜色 1、
+        // 第二次命中颜色 2」被当成稳定结果，同样是误报。
+        if first_color.is_none()
+            || first_color != color_of(second, *hit_region)
+            || indexes_of(first, *hit_region) != indexes_of(second, *hit_region)
+        {
+            return None;
+        }
     }
+    let first_color = color_of(first, region);
+    let matched_color_indexes = first_hits
+        .iter()
+        .flat_map(|hit_region| indexes_of(first, *hit_region))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
     Some(LimitedSupplyCheckResult {
         outcome: LimitedSupplyOutcome::HighValue,
         matched_region: Some(region),
         matched_color: first_color,
+        matched_color_indexes,
         error: None,
     })
 }
@@ -257,6 +284,7 @@ pub(crate) async fn run_limited_supply_branch<D: LimitedSupplyDriver + ?Sized>(
             outcome: LimitedSupplyOutcome::Failed,
             matched_region: None,
             matched_color: None,
+            matched_color_indexes: Vec::new(),
             error: Some("限时商品识色未形成连续一致结果".to_string()),
         },
     )
@@ -363,11 +391,13 @@ mod tests {
                             LimitedRegionMatch {
                                 region: index,
                                 matched_color: None,
+                                matched_indexes: Vec::new(),
                                 nearest_distance: 100.0,
                             },
                             |(_, color)| LimitedRegionMatch {
                                 region: index,
                                 matched_color: Some(*color),
+                                matched_indexes: vec![1],
                                 nearest_distance: 0.0,
                             },
                         )
@@ -433,6 +463,7 @@ mod tests {
         assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
         assert_eq!(result.matched_region, Some(1));
         assert_eq!(result.matched_color, Some([1, 1, 1]));
+        assert_eq!(result.matched_color_indexes, vec![1]);
     }
 
     #[tokio::test]
@@ -450,6 +481,7 @@ mod tests {
         assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
         assert_eq!(result.matched_region, Some(2));
         assert_eq!(result.matched_color, Some([1, 2, 3]));
+        assert_eq!(result.matched_color_indexes, vec![1]);
     }
 
     #[tokio::test]
@@ -613,9 +645,71 @@ mod tests {
         assert_eq!(sample.regions.len(), 9);
         assert_eq!(sample.regions[1].region, 2);
         assert_eq!(sample.regions[1].matched_color, Some([100, 110, 120]));
+        assert_eq!(sample.regions[1].matched_indexes, vec![1]);
         assert_eq!(sample.regions[6].region, 7);
         assert_eq!(sample.regions[6].matched_color, Some([200, 210, 220]));
+        assert_eq!(sample.regions[6].matched_indexes, vec![2]);
         assert!(sample.regions[0].matched_color.is_none());
+        assert!(sample.regions[0].matched_indexes.is_empty());
         assert!(sample.regions[0].nearest_distance.is_finite());
+    }
+
+    fn sample_indexed(hits: &[(u8, [u8; 3], &[u8])]) -> Option<LimitedColorSample> {
+        Some(LimitedColorSample {
+            regions: (1..=9)
+                .map(|index| {
+                    hits.iter()
+                        .find(|(candidate, _, _)| *candidate == index)
+                        .map_or(
+                            LimitedRegionMatch {
+                                region: index,
+                                matched_color: None,
+                                matched_indexes: Vec::new(),
+                                nearest_distance: 100.0,
+                            },
+                            |(_, color, indexes)| LimitedRegionMatch {
+                                region: index,
+                                matched_color: Some(*color),
+                                matched_indexes: indexes.to_vec(),
+                                nearest_distance: 0.0,
+                            },
+                        )
+                })
+                .collect(),
+        })
+    }
+
+    #[tokio::test]
+    async fn high_value_reports_both_color_indexes_when_regions_hit_different_targets() {
+        let driver = FakeDriver::with_samples([
+            sample_indexed(&[(2, [1, 2, 3], &[1]), (5, [4, 5, 6], &[2])]),
+            sample_indexed(&[(2, [1, 2, 3], &[1]), (5, [4, 5, 6], &[2])]),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
+        assert_eq!(result.matched_color_indexes, vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn high_value_reports_single_region_hitting_both_targets() {
+        let driver = FakeDriver::with_samples([
+            sample_indexed(&[(3, [1, 2, 3], &[1, 2])]),
+            sample_indexed(&[(3, [1, 2, 3], &[1, 2])]),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
+        assert_eq!(result.matched_color_indexes, vec![1, 2]);
     }
 }

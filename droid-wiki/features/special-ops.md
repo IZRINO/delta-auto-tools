@@ -204,7 +204,7 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 
 ### 限时商品与交易行
 
-限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待 `limitedSupply.researchDelayMs` 再识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。
+限时商品任务固定在 Asia/Shanghai 每日 12:00、20:00 创建。运行步骤为 Tab、识别点击部门、固定等待点击军需处、固定等待点击进入军需处、识别点击研发部门，随后等待 `limitedSupply.researchDelayMs` 再识别 `limited.ready` 与 9 个 `limited.color.1`–`limited.color.9` 区域。与子弹同时到期时复用前三个军需处入口动作。任意区域命中配置颜色即记录高价值提醒；不执行购买。高价值结果保存 `matchedColorIndexes`（配置颜色 1 / 2，可同时命中），账号校正面板和任务栏展示「命中颜色 1」「命中颜色 2」或「命中颜色 1 和 2」。
 
 研发部门点击后必须先等 `researchDelayMs` 才识别页面（`LimitedRunConfig.enter_delay`）。点完立刻采样时 `limited.ready` 有机会在**上一页**连续命中两次直接放行，后续识色跑在错误页面上、两次采样同样“稳定”，约 800ms 内就写下高价值 -> 表现为只点到研发部门就关游戏并标记发现高价值，实际没有检查。
 

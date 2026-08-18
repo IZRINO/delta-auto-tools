@@ -63,6 +63,10 @@ export const PROFILE_EVENTS = {
     changed: "profile://changed",
 } as const;
 
+export const PRIVACY_SCREEN_EVENTS = {
+    stateChanged: "privacy-screen://state-changed",
+} as const;
+
 export const SPECIAL_OPS_EVENTS = {
     stateChanged: "special-ops://state-changed",
     runChanged: "special-ops://run-changed",

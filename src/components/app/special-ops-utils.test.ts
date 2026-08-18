@@ -17,6 +17,7 @@ import {
     moveAmmoTargetWithinGroup,
     parseNavigationDelayMs,
     insertNormalAmmoTarget,
+    formatLimitedMatchedColors,
     limitedColorToHex,
     parseLimitedColorHex,
     shanghaiDay,
@@ -49,6 +50,14 @@ describe("限时商品颜色转换", () => {
         expect(parseLimitedColorHex("00ff80")).toEqual([0, 255, 128]);
         expect(parseLimitedColorHex("#fff")).toBeNull();
         expect(parseLimitedColorHex("#gg0000")).toBeNull();
+    });
+
+    it("把命中颜色编号格式化成 1 / 2 / 都有", () => {
+        expect(formatLimitedMatchedColors([])).toBe("");
+        expect(formatLimitedMatchedColors([1])).toBe("命中颜色 1");
+        expect(formatLimitedMatchedColors([2])).toBe("命中颜色 2");
+        expect(formatLimitedMatchedColors([2, 1, 1])).toBe("命中颜色 1 和 2");
+        expect(formatLimitedMatchedColors([3, 0])).toBe("");
     });
 });
 

@@ -12,6 +12,13 @@ import type {
 } from "@/components/app/special-ops-types";
 import {STATION_LABELS} from "@/components/app/special-ops-types";
 
+export function formatLimitedMatchedColors(indexes: number[] | null | undefined): string {
+    const unique = [...new Set((indexes ?? []).filter((index) => index === 1 || index === 2))].sort();
+    if (unique.length === 0) return "";
+    if (unique.length === 2) return "命中颜色 1 和 2";
+    return `命中颜色 ${unique[0]}`;
+}
+
 export function limitedColorToHex(color: [number, number, number]): string {
     return `#${color
         .map((channel) => Math.max(0, Math.min(255, Math.trunc(channel))).toString(16).padStart(2, "0"))

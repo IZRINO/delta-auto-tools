@@ -149,7 +149,7 @@ round 启动时通过 `build_schedule()` 冻结所有启用且账号状态为 `R
 
 达标必须立刻兑换，不等截止时间：`build_round_plan_with_profit` 必须调用带快照的 `build_schedule_with_profit_runtime(settings, createdAtMs, gate, profitSnapshot)`，`profit_gate_for_round` 取到的 `ProfitRuntimeSnapshot` 要经 `freeze_round_run` 透传进去。任务栏投影只在拿到 `qualifiedRuleIds` 时才把达标子弹的计划时间提到「现在」；无快照会退到 `WaitingQuery` 分支排到 `cutoffAtMs` -> planner 的 `is_due` 恒 false -> 空计划 -> `EMPTY_ROUND_PLAN_ERROR`，而该错误在 `is_transient_round_launch_error` 里只 warn 并 `RetryAfter(30s)` -> 表现为静默：poll 带快照说「该启动」，freeze 不带快照算出空计划，每 30 秒对拆一次直到截止时间才兑换。
 
-**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、攻略网站工作台。
+**Delta Auto Tools** — Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 桌面工具，面向《三角洲行动》玩家。原生能力模块：Morse 摩斯识别、计时器、计数器、连发器、识别触发、息屏、攻略网站工作台。
 
 开发环境：Windows，仓库路径 `D:/code/ai/sjz/delta-auto-tools`，所有命令在 Windows + Bun 下测试通过。
 
@@ -360,4 +360,6 @@ set HTTP_PROXY=http://127.0.0.1:7897&& set HTTPS_PROXY=http://127.0.0.1:7897&& g
 
 ### 特勤处限时商品与交易行
 
-`limitedSupply` 为全局配置，固定投影 12:00、20:00 限时商品检查；`LimitedSupplyAccountState` 保存当前周期结果与人工已检查标记。`marketPurchase` 为全局周期配置，固定投影 02:00–04:00 交易行购买；账号 `BusinessConfig.market` 保存启用状态、购买次数、商品备注、最高价与商品入口点击点，关闭独立设置时继承默认配置。交易行 `market.price` 只作为 OCR 区域，`market.confirm` 保存独立最终确认购买点击点。限时商品和交易行试运行正常结束后停放鼠标到 `runtime.mouseParking`，紧急停止不追加鼠标动作。新增 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`、`special_ops_acknowledge_limited_supply`、`special_ops_recheck_limited_supply`、`special_ops_test_limited_supply_colors`，均通过 `generate_handler![]` 注册，不单独创建 ACL。
+`limitedSupply` 为全局配置，固定投影 12:00、20:00 限时商品检查；`LimitedSupplyAccountState` 保存当前周期结果与人工已检查标记。`marketPurchase` 为全局周期配置，固定投影 02:00–04:00 交易行购买；账号 `BusinessConfig.market` 保存启用状态、购买次数、商品备注、最高价与商品入口点击点，关闭独立设置时继承默认配置。交易行 `market.price` 只作为 OCR 区域，`market.confirm` 保存独立最终确认购买点击点。限时商品和交易行试运行正常结束后停放鼠标到 `runtime.mouseParking`，紧急停止不追加鼠标动作。新增 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`、`special_ops_acknowledge_limited_supply`、`special_ops_recheck_limited_supply`、`special_ops_test_limited_supply_colors`，均通过 `generate_handler![]` 注册，不单独创建 ACL。高价值结果额外保存 `matchedColorIndexes`（1 / 2 / 两者），人工校正与任务栏展示命中颜色 1、颜色 2 或都有。
+
+息屏是通用工具独立模块，配置写 `privacy_screen_settings.json`（关闭快捷键、可选图片路径），不进 Profile。command：`privacy_screen_get_bootstrap`、`privacy_screen_save_settings`、`privacy_screen_show`、`privacy_screen_hide`。按钮打开、快捷键关闭。原生 Win32 视觉遮罩（仿 UU 私密屏保，不是 WebView）：`WS_EX_LAYERED`+alpha 255 不透明，`WS_EX_TRANSPARENT`+`WS_EX_NOACTIVATE` 让键鼠/Alt+Tab 落到下面窗口且不抢焦点；`WS_EX_TOOLWINDOW`+定时钉 `HWND_TOPMOST` 只挡画面；`WDA_EXCLUDEFROMCAPTURE` 让识别截图看不到遮罩。默认全黑，可换本地图片。
