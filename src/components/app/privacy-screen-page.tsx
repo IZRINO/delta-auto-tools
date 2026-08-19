@@ -113,21 +113,39 @@ export function PrivacyScreenPage() {
         }
     };
 
+    const hideCover = async () => {
+        setBusy(true);
+        setMessage(null);
+        try {
+            applyBootstrap(await invoke<PrivacyScreenBootstrap>("privacy_screen_hide"));
+        } catch (cause) {
+            setMessage(String(cause));
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const closeHotkey = bootstrap.settings.closeHotkey;
     const canOpen = isNative && closeHotkey.trim().length > 0 && !busy;
+    const headerActions = bootstrap.visible ? (
+        <Button disabled={busy} onClick={() => void hideCover()} type="button" variant="outline">
+            <RiEyeOffLine data-icon="inline-start"/>
+            {busy ? "正在关闭" : "关闭息屏"}
+        </Button>
+    ) : (
+        <Button disabled={!canOpen} onClick={() => void showCover()} type="button">
+            <RiEyeOffLine data-icon="inline-start"/>
+            {busy ? "正在打开" : "打开息屏"}
+        </Button>
+    );
 
     return (
         <AppPage>
             <MacroHeader
-                actions={
-                    <Button disabled={!canOpen} onClick={() => void showCover()} type="button">
-                        <RiEyeOffLine data-icon="inline-start"/>
-                        {busy ? "正在打开" : bootstrap.visible ? "重新打开息屏" : "打开息屏"}
-                    </Button>
-                }
+                actions={headerActions}
                 badges={bootstrap.visible ? <span className="badge badge-warning badge-sm">已打开</span> : null}
                 code="06"
-                subtitle="按钮打开，快捷键关闭。只挡画面，键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。"
+                subtitle="按钮打开，快捷键只在打开后关闭。只挡画面，键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。"
                 title="息屏"
                 verticalLabel="通用"
             />
@@ -138,7 +156,7 @@ export function PrivacyScreenPage() {
                     </div>}
                     <HotkeyField
                         controlsDisabled={!isNative}
-                        helperText="打开后按此键关闭。全局开关关闭时仍然有效。"
+                        helperText="仅在息屏打开后按此键关闭。本程序聚焦时同样有效。"
                         hotkey={closeHotkey}
                         id="privacy-screen-close-hotkey"
                         isRecording={recorder.isRecording}

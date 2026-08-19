@@ -1,28 +1,34 @@
 //! 息屏：原生 Win32 视觉遮罩，仿 UU 私密屏保。
 //! 只挡画面，键鼠 / Alt+Tab 照常落到下面窗口；排除截图。不是 WebView。
+//! 遮罩与 RegisterHotKey 必须跑在独立线程：放进 WebView2/winit GUI 线程会把主界面打成乱码崩溃。
 
 use std::sync::{
     atomic::{AtomicBool, AtomicIsize, Ordering},
     mpsc, Mutex,
 };
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::hotkey_types::{ConflictPolicy, HotkeyAction};
-use crate::hotkeys::HotkeyManager;
+use crate::hotkey_types::{HotkeyBinding, ModifierKey};
 use crate::settings;
 
 const SETTINGS_FILE_NAME: &str = "privacy_screen_settings.json";
-const HOTKEY_SCOPE: &str = "privacy-screen";
 const STATE_CHANGED_EVENT: &str = "privacy-screen://state-changed";
 const CLASS_NAME: &str = "DeltaAutoToolsPrivacyCover";
 const TOPMOST_TIMER_ID: usize = 1;
 const TOPMOST_TIMER_MS: u32 = 250;
+const CLOSE_HOTKEY_ID: i32 = 1;
+const COVER_THREAD_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const COVER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(3);
 
 static COVER_HWND: AtomicIsize = AtomicIsize::new(0);
 static COVER_BITMAP: AtomicIsize = AtomicIsize::new(0);
 static COVER_HINT: Mutex<String> = Mutex::new(String::new());
+static CLOSE_APP: Mutex<Option<AppHandle>> = Mutex::new(None);
+static COVER_THREAD: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -113,6 +119,27 @@ fn close_hint_label(hotkey: &str) -> String {
     format!("关闭：{hotkey}")
 }
 
+/// RegisterHotKey 用：修饰键位图 + VK。本程序聚焦时 willhook 会被 WebView2 钩子吞掉。
+fn close_hotkey_register_params(raw: &str) -> Result<(u32, u32), String> {
+    let binding = HotkeyBinding::parse(raw)?;
+    let vk = crate::key_suppressor::primary_key_to_vk(binding.primary)
+        .ok_or_else(|| format!("无法识别快捷键: {raw}"))?;
+    let mut modifiers = 0x4000; // MOD_NOREPEAT
+    if binding.modifiers.contains(&ModifierKey::Alt) {
+        modifiers |= 0x0001;
+    }
+    if binding.modifiers.contains(&ModifierKey::Ctrl) {
+        modifiers |= 0x0002;
+    }
+    if binding.modifiers.contains(&ModifierKey::Shift) {
+        modifiers |= 0x0004;
+    }
+    if binding.modifiers.contains(&ModifierKey::Super) {
+        modifiers |= 0x0008;
+    }
+    Ok((modifiers, vk))
+}
+
 /// 主显示器工作区右下角内收，避开任务栏，不贴虚拟屏最外沿。
 fn hint_plate_origin(
     virtual_x: i32,
@@ -129,69 +156,91 @@ fn hint_plate_origin(
     )
 }
 
-fn is_main_gui_thread(app: &AppHandle) -> bool {
-    #[cfg(windows)]
-    {
-        let Some(main) = app.get_webview_window("main") else {
-            return false;
-        };
-        let Ok(hwnd) = main.hwnd() else {
-            return false;
-        };
-        let mut process_id = 0u32;
-        // SAFETY: hwnd 来自现存 main 窗口。
-        let window_tid = unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
-                hwnd.0 as _,
-                &mut process_id,
-            )
-        };
-        let current = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
-        window_tid == current
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = app;
-        true
+fn take_cover_thread() -> Option<JoinHandle<()>> {
+    COVER_THREAD.lock().ok().and_then(|mut slot| slot.take())
+}
+
+fn store_cover_thread(handle: JoinHandle<()>) {
+    if let Ok(mut slot) = COVER_THREAD.lock() {
+        *slot = Some(handle);
     }
 }
 
-fn on_gui_thread<T: Send + 'static>(
-    app: &AppHandle,
-    work: impl FnOnce() -> T + Send + 'static,
-) -> Result<T, String> {
-    if is_main_gui_thread(app) {
-        return Ok(work());
-    }
+fn join_cover_thread(handle: JoinHandle<()>) {
     let (sender, receiver) = mpsc::sync_channel(1);
-    app.run_on_main_thread(move || {
-        let _ = sender.send(work());
-    })
-    .map_err(|error| format!("主线程调度失败: {error}"))?;
-    receiver
-        .recv()
-        .map_err(|_| "主线程未返回息屏结果".to_string())
-}
-
-fn clear_close_hotkey(app: &AppHandle) {
-    if let Some(manager) = app.try_state::<HotkeyManager>() {
-        let _ = manager.replace_scope(
-            HOTKEY_SCOPE,
-            Vec::new(),
-            "息屏关闭".to_string(),
-            ConflictPolicy::Strict,
-        );
+    std::thread::spawn(move || {
+        let _ = handle.join();
+        let _ = sender.send(());
+    });
+    if receiver.recv_timeout(COVER_THREAD_JOIN_TIMEOUT).is_err() {
+        crate::log_warn!("privacy_screen", "息屏线程退出超时");
     }
 }
 
-fn hide_internal(app: &AppHandle) -> Result<(), String> {
-    on_gui_thread(app, destroy_cover)?;
-    clear_close_hotkey(app);
+fn stop_cover_thread() {
+    native::request_stop();
+    if let Some(handle) = take_cover_thread() {
+        join_cover_thread(handle);
+    }
+}
+
+fn start_cover_thread(image_path: Option<String>, close_hotkey: String) -> Result<(), String> {
+    stop_cover_thread();
+    let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
+    let handle = std::thread::Builder::new()
+        .name("privacy-cover".into())
+        .spawn(move || {
+            let ready = ready_sender;
+            let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                native::run_cover_thread(image_path, close_hotkey, ready)
+            }))
+            .is_err();
+            if panicked {
+                crate::log_warn!("privacy_screen", "息屏线程发生 panic");
+            }
+        })
+        .map_err(|error| format!("启动息屏线程失败: {error}"))?;
+    store_cover_thread(handle);
+    match ready_receiver.recv_timeout(COVER_THREAD_READY_TIMEOUT) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => {
+            stop_cover_thread();
+            Err(error)
+        }
+        Err(_) => {
+            stop_cover_thread();
+            Err("息屏窗口创建超时".to_string())
+        }
+    }
+}
+
+fn mark_hidden(app: &AppHandle) {
+    if let Ok(mut slot) = CLOSE_APP.lock() {
+        *slot = None;
+    }
     if let Some(state) = app.try_state::<PrivacyScreenState>() {
         state.visible.store(false, Ordering::SeqCst);
     }
     emit_changed(app, false);
+}
+
+fn hide_internal(app: &AppHandle) -> Result<(), String> {
+    stop_cover_thread();
+    mark_hidden(app);
     Ok(())
+}
+
+fn request_hide_from_os_hotkey() {
+    let app = CLOSE_APP.lock().ok().and_then(|slot| slot.clone());
+    if let Some(app) = app {
+        if let Err(error) = hide_internal(&app) {
+            crate::log_warn!(
+                "privacy_screen",
+                "系统热键关闭息屏失败",
+                "error" => error
+            );
+        }
+    }
 }
 
 fn show_internal(app: &AppHandle, state: &PrivacyScreenState) -> Result<(), String> {
@@ -201,30 +250,14 @@ fn show_internal(app: &AppHandle, state: &PrivacyScreenState) -> Result<(), Stri
         .map_err(|_| "息屏状态已损坏".to_string())?
         .clone();
     let close_hotkey = require_close_hotkey(&settings.close_hotkey)?;
-    let image_path = settings.image_path.clone();
-    let hint = close_hotkey.clone();
-    on_gui_thread(app, move || {
-        destroy_cover();
-        create_cover(image_path.as_deref(), &hint)
-    })??;
-
-    let manager = app.state::<HotkeyManager>();
-    let action: HotkeyAction = std::sync::Arc::new(|app| {
-        if let Err(error) = hide_internal(&app) {
-            crate::log_warn!(
-                "privacy_screen",
-                "关闭息屏失败",
-                "error" => error
-            );
+    let _ = close_hotkey_register_params(&close_hotkey)?;
+    if let Ok(mut slot) = CLOSE_APP.lock() {
+        *slot = Some(app.clone());
+    }
+    if let Err(error) = start_cover_thread(settings.image_path.clone(), close_hotkey) {
+        if let Ok(mut slot) = CLOSE_APP.lock() {
+            *slot = None;
         }
-    });
-    if let Err(error) = manager.replace_safety_scope(
-        HOTKEY_SCOPE,
-        vec![(close_hotkey, action)],
-        "息屏关闭".to_string(),
-        ConflictPolicy::Strict,
-    ) {
-        let _ = on_gui_thread(app, destroy_cover);
         *state
             .hotkey_error
             .lock()
@@ -281,34 +314,38 @@ pub fn privacy_screen_hide(app: AppHandle) -> Result<PrivacyScreenBootstrap, Str
 #[cfg(windows)]
 mod native {
     use super::{
-        CLASS_NAME, COVER_BITMAP, COVER_HINT, COVER_HWND, TOPMOST_TIMER_ID, TOPMOST_TIMER_MS,
+        CLASS_NAME, CLOSE_HOTKEY_ID, COVER_BITMAP, COVER_HINT, COVER_HWND, TOPMOST_TIMER_ID,
+        TOPMOST_TIMER_MS,
     };
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use std::ptr;
     use std::sync::atomic::Ordering;
-    use std::sync::OnceLock;
+    use std::sync::{mpsc, OnceLock};
 
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, SIZE, WPARAM};
+    use windows_sys::Win32::Foundation::{
+        GetLastError, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+    };
     use windows_sys::Win32::Graphics::Gdi::{
-        BeginPaint, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreateSolidBrush, DeleteDC,
-        DeleteObject, EndPaint, FillRect, GetDC, GetObjectW, GetStockObject, GetTextExtentPoint32W,
-        CreatePen, InvalidateRect, ReleaseDC, RoundRect, SelectObject, SetBkMode,
-        SetStretchBltMode, SetTextColor, StretchBlt, TextOutW, UpdateWindow, BITMAP, BITMAPINFO,
+        BeginPaint, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreatePen, CreateSolidBrush,
+        DeleteDC, DeleteObject, EndPaint, FillRect, GetObjectW, GetStockObject,
+        GetTextExtentPoint32W, InvalidateRect, RoundRect, SelectObject, SetBkMode,
+        SetStretchBltMode, SetTextColor, StretchBlt, TextOutW, BITMAP, BITMAPINFO,
         BITMAPINFOHEADER, BI_RGB, BLACK_BRUSH, DIB_RGB_COLORS, HALFTONE, HBITMAP, HDC, PAINTSTRUCT,
         PS_SOLID, SRCCOPY,
     };
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetSystemMetrics,
-        KillTimer, RegisterClassExW, SetTimer, SetWindowDisplayAffinity, SetWindowPos, ShowWindow,
-        CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN,
-        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SPI_GETWORKAREA,
-        SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, SystemParametersInfoW,
-        WDA_EXCLUDEFROMCAPTURE, WM_CLOSE,
-        WM_DESTROY, WM_DISPLAYCHANGE, WM_ERASEBKGND, WM_PAINT, WM_SYSCOMMAND, WM_TIMER,
-        WM_WINDOWPOSCHANGING, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-        WS_EX_TRANSPARENT, WS_POPUP, WS_VISIBLE,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+        GetMessageW, GetSystemMetrics, KillTimer, PostMessageW, PostQuitMessage, RegisterClassExW,
+        SetTimer, SetWindowDisplayAffinity, SetWindowPos, ShowWindow, SystemParametersInfoW,
+        TranslateMessage, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, MSG, SM_CXSCREEN,
+        SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        SPI_GETWORKAREA, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, WDA_EXCLUDEFROMCAPTURE,
+        WM_CLOSE, WM_DESTROY, WM_DISPLAYCHANGE, WM_ERASEBKGND, WM_HOTKEY, WM_PAINT, WM_SYSCOMMAND,
+        WM_TIMER, WM_WINDOWPOSCHANGING, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
     };
 
     const SC_MINIMIZE: usize = 0xF020;
@@ -316,6 +353,8 @@ mod native {
     const SC_RESTORE: usize = 0xF120;
     const SC_MAXIMIZE: usize = 0xF030;
     const SWP_NOZORDER: u32 = 0x0004;
+    const ERROR_CLASS_ALREADY_EXISTS: u32 = 1410;
+    const WM_PRIVACY_STOP: u32 = 0x8000; // WM_APP
 
     #[repr(C)]
     struct Windowpos {
@@ -333,6 +372,10 @@ mod native {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect()
+    }
+
+    fn last_error() -> u32 {
+        unsafe { GetLastError() }
     }
 
     pub(super) fn virtual_screen_bounds() -> (i32, i32, i32, i32) {
@@ -436,6 +479,15 @@ mod native {
         if hdc.is_null() {
             return;
         }
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            paint_cover_body(hdc, hwnd);
+        }));
+        unsafe {
+            EndPaint(hwnd, &paint);
+        }
+    }
+
+    fn paint_cover_body(hdc: HDC, hwnd: HWND) {
         let mut rect = RECT {
             left: 0,
             top: 0,
@@ -457,9 +509,6 @@ mod native {
             }
         }
         paint_close_hint(hdc, rect);
-        unsafe {
-            EndPaint(hwnd, &paint);
-        }
     }
 
     fn paint_close_hint(hdc: HDC, rect: RECT) {
@@ -474,6 +523,9 @@ mod native {
         let text = wide(&hint);
         let font_name = wide("Microsoft YaHei UI");
         let chars = text.len() as i32 - 1;
+        if chars <= 0 {
+            return;
+        }
         // SAFETY: 仅用于本窗口绘制，字体用完即删。
         unsafe {
             let font = CreateFontW(
@@ -526,13 +578,7 @@ mod native {
             DeleteObject(pen);
             DeleteObject(brush);
             SetTextColor(hdc, 0x0014_1414);
-            TextOutW(
-                hdc,
-                x + pad_x,
-                y + pad_y,
-                text.as_ptr(),
-                chars,
-            );
+            TextOutW(hdc, x + pad_x, y + pad_y, text.as_ptr(), chars);
             if !font.is_null() {
                 SelectObject(hdc, previous);
                 DeleteObject(font);
@@ -607,12 +653,31 @@ mod native {
         }
     }
 
+    fn delete_cover_bitmap() {
+        let bitmap = COVER_BITMAP.swap(0, Ordering::SeqCst) as HBITMAP;
+        if !bitmap.is_null() {
+            unsafe {
+                DeleteObject(bitmap);
+            }
+        }
+    }
+
     unsafe extern "system" fn wnd_proc(
         hwnd: HWND,
         message: u32,
         w_param: WPARAM,
         l_param: LPARAM,
     ) -> LRESULT {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            wnd_proc_inner(hwnd, message, w_param, l_param)
+        }));
+        match result {
+            Ok(value) => value,
+            Err(_) => unsafe { DefWindowProcW(hwnd, message, w_param, l_param) },
+        }
+    }
+
+    fn wnd_proc_inner(hwnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
         match message {
             WM_PAINT => {
                 paint_cover(hwnd);
@@ -646,16 +711,29 @@ mod native {
                     unsafe { DefWindowProcW(hwnd, message, w_param, l_param) }
                 }
             }
-            WM_CLOSE => {
+            WM_HOTKEY => {
+                // 不在 WndProc 里关窗/emit。独立线程只负责把关闭请求抛回 Rust。
+                std::thread::spawn(super::request_hide_from_os_hotkey);
+                0
+            }
+            WM_PRIVACY_STOP | WM_CLOSE => {
                 unsafe {
                     DestroyWindow(hwnd);
                 }
                 0
             }
             WM_DESTROY => {
+                unsafe {
+                    UnregisterHotKey(hwnd, CLOSE_HOTKEY_ID);
+                    KillTimer(hwnd, TOPMOST_TIMER_ID);
+                }
                 COVER_HWND.store(0, Ordering::SeqCst);
+                delete_cover_bitmap();
                 if let Ok(mut hint) = COVER_HINT.lock() {
                     hint.clear();
+                }
+                unsafe {
+                    PostQuitMessage(0);
                 }
                 0
             }
@@ -685,7 +763,12 @@ mod native {
                 // SAFETY: class 在调用期间有效，类名带 NUL。
                 let atom = unsafe { RegisterClassExW(&class) };
                 if atom == 0 {
-                    Err("注册息屏窗口类失败".to_string())
+                    let error = last_error();
+                    if error == ERROR_CLASS_ALREADY_EXISTS {
+                        Ok(())
+                    } else {
+                        Err(format!("注册息屏窗口类失败 ({error})"))
+                    }
                 } else {
                     Ok(())
                 }
@@ -693,7 +776,7 @@ mod native {
             .clone()
     }
 
-    pub(super) fn create_cover(image_path: Option<&str>, close_hotkey: &str) -> Result<(), String> {
+    fn create_cover(image_path: Option<&str>, close_hotkey: &str) -> Result<(), String> {
         register_class()?;
         if let Ok(mut hint) = COVER_HINT.lock() {
             *hint = super::close_hint_label(close_hotkey);
@@ -706,13 +789,13 @@ mod native {
         let (x, y, width, height) = virtual_screen_bounds();
         let class_name = wide(CLASS_NAME);
         let title = wide("息屏");
-        // SAFETY: 类已注册；弹出层覆盖虚拟屏。
+        // SAFETY: 类已注册；弹出层覆盖虚拟屏。不在 CreateWindow 时带 WS_VISIBLE，避免嵌套绘制。
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
                 class_name.as_ptr(),
                 title.as_ptr(),
-                WS_POPUP | WS_VISIBLE,
+                WS_POPUP,
                 x,
                 y,
                 width,
@@ -724,16 +807,27 @@ mod native {
             )
         };
         if hwnd.is_null() {
-            destroy_cover();
-            return Err("创建息屏窗口失败".to_string());
+            destroy_on_create_thread();
+            return Err(format!("创建息屏窗口失败 ({})", last_error()));
         }
         COVER_HWND.store(hwnd as isize, Ordering::SeqCst);
 
+        let (modifiers, vk) = super::close_hotkey_register_params(close_hotkey)?;
         unsafe {
             let affinity = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
             if affinity == 0 {
-                destroy_cover();
-                return Err("息屏窗口无法排除截图，已取消打开".to_string());
+                destroy_on_create_thread();
+                return Err(format!(
+                    "息屏窗口无法排除截图，已取消打开 ({})",
+                    last_error()
+                ));
+            }
+            if RegisterHotKey(hwnd, CLOSE_HOTKEY_ID, modifiers, vk) == 0 {
+                destroy_on_create_thread();
+                return Err(format!(
+                    "注册关闭快捷键失败，该组合可能已被其他程序占用 ({})",
+                    last_error()
+                ));
             }
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             SetWindowPos(
@@ -746,54 +840,129 @@ mod native {
                 SWP_SHOWWINDOW | SWP_NOACTIVATE,
             );
             InvalidateRect(hwnd, ptr::null(), 1);
-            UpdateWindow(hwnd);
-            let hdc = GetDC(hwnd);
-            if !hdc.is_null() {
-                let mut rect = RECT {
-                    left: 0,
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                };
-                GetClientRect(hwnd, &mut rect);
-                paint_close_hint(hdc, rect);
-                ReleaseDC(hwnd, hdc);
-            }
             SetTimer(hwnd, TOPMOST_TIMER_ID, TOPMOST_TIMER_MS, None);
         }
         Ok(())
     }
 
-    pub(super) fn destroy_cover() {
+    fn destroy_on_create_thread() {
         let hwnd = COVER_HWND.swap(0, Ordering::SeqCst) as HWND;
         if !hwnd.is_null() {
             unsafe {
+                UnregisterHotKey(hwnd, CLOSE_HOTKEY_ID);
                 KillTimer(hwnd, TOPMOST_TIMER_ID);
                 DestroyWindow(hwnd);
             }
         }
-        let bitmap = COVER_BITMAP.swap(0, Ordering::SeqCst) as HBITMAP;
-        if !bitmap.is_null() {
-            unsafe {
-                DeleteObject(bitmap);
+        delete_cover_bitmap();
+        if let Ok(mut hint) = COVER_HINT.lock() {
+            hint.clear();
+        }
+    }
+
+    pub(super) fn request_stop() {
+        let hwnd = COVER_HWND.load(Ordering::SeqCst) as HWND;
+        if hwnd.is_null() {
+            return;
+        }
+        unsafe {
+            PostMessageW(hwnd, WM_PRIVACY_STOP, 0, 0);
+        }
+    }
+
+    pub(super) fn run_cover_thread(
+        image_path: Option<String>,
+        close_hotkey: String,
+        ready: mpsc::SyncSender<Result<(), String>>,
+    ) {
+        match create_cover(image_path.as_deref(), &close_hotkey) {
+            Ok(()) => {
+                if ready.send(Ok(())).is_err() {
+                    destroy_on_create_thread();
+                    return;
+                }
+            }
+            Err(error) => {
+                let _ = ready.send(Err(error));
+                return;
             }
         }
+
+        let mut message = MSG {
+            hwnd: ptr::null_mut(),
+            message: 0,
+            wParam: 0,
+            lParam: 0,
+            time: 0,
+            pt: POINT { x: 0, y: 0 },
+        };
+        loop {
+            // SAFETY: 本线程自建窗口，独立消息泵，不进 winit/WebView2。
+            let status = unsafe { GetMessageW(&mut message, ptr::null_mut(), 0, 0) };
+            if status == 0 || status == -1 {
+                break;
+            }
+            unsafe {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+        }
+        destroy_on_create_thread();
+    }
+
+    #[cfg(test)]
+    pub(super) fn smoke_register_close_hotkey(close_hotkey: &str) -> Result<(), String> {
+        register_class()?;
+        let class_name = wide(CLASS_NAME);
+        let hwnd = unsafe {
+            CreateWindowExW(
+                0,
+                class_name.as_ptr(),
+                ptr::null(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                GetModuleHandleW(ptr::null()),
+                ptr::null(),
+            )
+        };
+        if hwnd.is_null() {
+            return Err(format!("smoke 创建窗口失败 ({})", last_error()));
+        }
+        let (modifiers, vk) = super::close_hotkey_register_params(close_hotkey)?;
+        let registered = unsafe { RegisterHotKey(hwnd, CLOSE_HOTKEY_ID, modifiers, vk) };
+        let error = last_error();
+        unsafe {
+            if registered != 0 {
+                UnregisterHotKey(hwnd, CLOSE_HOTKEY_ID);
+            }
+            DestroyWindow(hwnd);
+        }
+        if registered == 0 {
+            return Err(format!("smoke 注册热键失败 ({error})"));
+        }
+        Ok(())
     }
 }
 
 #[cfg(not(windows))]
 mod native {
-    pub(super) fn create_cover(
-        _image_path: Option<&str>,
-        _close_hotkey: &str,
-    ) -> Result<(), String> {
-        Err("息屏仅支持 Windows".to_string())
+    use std::sync::mpsc;
+
+    pub(super) fn request_stop() {}
+
+    pub(super) fn run_cover_thread(
+        _image_path: Option<String>,
+        _close_hotkey: String,
+        ready: mpsc::SyncSender<Result<(), String>>,
+    ) {
+        let _ = ready.send(Err("息屏仅支持 Windows".to_string()));
     }
-
-    pub(super) fn destroy_cover() {}
 }
-
-use native::{create_cover, destroy_cover};
 
 #[cfg(test)]
 mod tests {
@@ -833,6 +1002,19 @@ mod tests {
     }
 
     #[test]
+    fn close_hotkey_maps_to_register_hot_key_params() {
+        let (modifiers, vk) = close_hotkey_register_params("F8").unwrap();
+        assert_eq!(vk, 0x77);
+        assert_eq!(modifiers & 0x4000, 0x4000);
+        assert_eq!(modifiers & 0x0007, 0);
+        let (modifiers, vk) = close_hotkey_register_params("Ctrl+Shift+F12").unwrap();
+        assert_eq!(vk, 0x7B);
+        assert_eq!(modifiers & 0x0002, 0x0002);
+        assert_eq!(modifiers & 0x0004, 0x0004);
+        assert_eq!(modifiers & 0x0001, 0);
+    }
+
+    #[test]
     fn hint_sits_on_primary_work_area_bottom_right() {
         let (x, y) = hint_plate_origin(0, 0, 1920, 1040, 160, 36);
         assert_eq!(x, 1920 - 160 - 28);
@@ -840,5 +1022,20 @@ mod tests {
         let (x, y) = hint_plate_origin(-1920, 0, 1920, 1080, 160, 36);
         assert_eq!(x, 1920 + 1920 - 160 - 28);
         assert_eq!(y, 1080 - 36 - 28);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dedicated_thread_can_register_and_release_hotkey() {
+        let result = std::thread::spawn(|| native::smoke_register_close_hotkey("F23"))
+            .join()
+            .expect("息屏热键探测线程 panic");
+        if let Err(error) = result {
+            // 组合被占用不算崩；panic 才会让上面 join 失败。
+            assert!(
+                error.contains("注册热键失败") || error.contains("创建窗口失败"),
+                "{error}"
+            );
+        }
     }
 }
