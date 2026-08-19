@@ -136,27 +136,26 @@ pub(crate) async fn run_craft_batch<D: CraftBatchDriver + ?Sized>(
             failure,
             entered_input: attempt.entered_input,
         })?;
-        if let CraftStationOutcome::Started { started_at_ms } = outcome {
-            driver
-                .persist_started(task, started_at_ms)
-                .map_err(|message| CraftBatchFailure {
-                    station: task.station.clone(),
-                    failure: CraftTrialFailure {
-                        step: "craft.persistStarted".to_string(),
-                        message,
-                        requires_uncertain: true,
-                    },
-                    entered_input: true,
-                })?;
-            driver
-                .return_started(task, Arc::clone(&cancelled))
-                .await
-                .map_err(|failure| CraftBatchFailure {
-                    station: task.station.clone(),
-                    failure,
-                    entered_input: true,
-                })?;
-        }
+        let CraftStationOutcome::Started { started_at_ms } = outcome;
+        driver
+            .persist_started(task, started_at_ms)
+            .map_err(|message| CraftBatchFailure {
+                station: task.station.clone(),
+                failure: CraftTrialFailure {
+                    step: "craft.persistStarted".to_string(),
+                    message,
+                    requires_uncertain: true,
+                },
+                entered_input: true,
+            })?;
+        driver
+            .return_started(task, Arc::clone(&cancelled))
+            .await
+            .map_err(|failure| CraftBatchFailure {
+                station: task.station.clone(),
+                failure,
+                entered_input: true,
+            })?;
     }
 
     Ok(CraftBatchSuccess {
@@ -432,7 +431,7 @@ mod tests {
     async fn started_persists_before_return_and_next_station() {
         let driver = FakeBatchDriver::with_attempts([
             success(CraftStationOutcome::Started { started_at_ms: 10 }),
-            success(CraftStationOutcome::StillInProgress),
+            success(CraftStationOutcome::Started { started_at_ms: 20 }),
         ]);
 
         let result = run_craft_batch(&driver, &tasks(), Arc::new(AtomicBool::new(false)))
@@ -450,6 +449,8 @@ mod tests {
                 "return:technicalCenter",
                 "progress:2/2:workbench",
                 "run:workbench",
+                "persist:workbench:20:120",
+                "return:workbench",
             ]
         );
     }

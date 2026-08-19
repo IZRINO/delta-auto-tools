@@ -83,7 +83,7 @@
 | 切换大厅视角 | 等待 `navigationTabDelayMs` 并重新聚焦游戏窗口 | 按一次 Tab；不执行中间模板识别 |
 | 进入特勤处 | 等待 `navigationSpecialOpsDelayMs` 并重新聚焦游戏窗口 | 点击 `game.specialOps` 点击点，再等待 `game.stationGrid` 双采样命中 |
 | 制作台固定探测 | 当前游戏窗口可聚焦 | run 首个键鼠块显示 5→4→3→2→1；点击 `craft.station.<station>` → 等待 `craftSpaceDelayMs` → 按 Space → 等待 `craftReopenDelayMs` → 再次点击制作台 → 等待 `craftConfirmPinnedDelayMs` → 点击 `craft.confirmPinned`；后续原本不提示的固定输入继续不提示 |
-| 判断正在制作 | 固定探测输入已完成 | `craft.abort` 单次双采样；连续命中时点击 `craft.returnToStationGrid`，并等待 `game.stationGrid` 双采样后结束当前台，不发送 Esc |
+| 判断正在制作 | 固定探测输入已完成 | `craft.abort` 单次双采样；连续命中按新制作落盘（`startedAtMs = now`，`finishesAtMs = now + 配置时长`），与生产后命中中止相同；批次再点 `craft.returnToStationGrid` 并等待 `game.stationGrid` |
 | 进入制作列表 | `craft.abort` 两个有效低分样本 | 按 run 级规则显示倒计时，点击当前台 `craft.recipe.<station>` 制作物品选择点 |
 | 判断生产路径 | 制作物品选择点已点击 | 等待 `craft.fill` 或 `craft.produce` |
 | 点击制作一键补齐 | `craft.fill` 自身模板 | `craft.purchase` |
@@ -147,7 +147,7 @@
 
 ## 单账号制作试运行
 
-新增 `special_ops_start_craft_trial`，支持选择一个账号和一个制作台执行收取并重做。流程按三段全局等待执行固定动作：点击制作台、等待后按 Space、等待后再次点击制作台、等待后点击共享确认置顶点；三段范围 `0–60000ms`，默认均为 `3000ms`。随后只对 `craft.abort` 执行一次双采样：连续命中表示正在制作，点击共享 `craft.returnToStationGrid` 后必须等待 `game.stationGrid` 双采样才正常结束，不发送 Esc；两个有效低分样本视为已进入制作列表，恢复普通倒计时并点击当前台 `craft.recipe.<station>` 制作物品选择点，再按 `craft.fill` / `craft.produce` 进入原生产流程。一高一低、截图或参考图错误、返回点击失败、返回页面确认失败均不得降级为低分分支；输入开始后的失败会暂停自动化，将账号和当前台标记为 `Uncertain` 并保存实际失败步骤。生产后 `craft.abort` 命中时以确认时间记录 `startedAtMs`，按配置时长计算 `finishesAtMs`；正在制作分支不改完成时间或 revision。购买按钮连续三次稳定出现时返回 `craft.isolated`，账号保存为 `Isolated`，不把当前制作台覆盖为 `Uncertain`。
+新增 `special_ops_start_craft_trial`，支持选择一个账号和一个制作台执行收取并重做。流程按三段全局等待执行固定动作：点击制作台、等待后按 Space、等待后再次点击制作台、等待后点击共享确认置顶点；三段范围 `0–60000ms`，默认均为 `3000ms`。随后只对 `craft.abort` 执行一次双采样：连续命中按新制作落盘（`startedAtMs = now`，`finishesAtMs = now + 配置时长`），与生产后命中中止相同，不发送 Esc；两个有效低分样本视为已进入制作列表，恢复普通倒计时并点击当前台 `craft.recipe.<station>` 制作物品选择点，再按 `craft.fill` / `craft.produce` 进入原生产流程。一高一低、截图或参考图错误、返回点击失败、返回页面确认失败均不得降级为低分分支；输入开始后的失败会暂停自动化，将账号和当前台标记为 `Uncertain` 并保存实际失败步骤。生产后 `craft.abort` 命中时以确认时间记录 `startedAtMs`，按配置时长计算 `finishesAtMs`。购买按钮连续三次稳定出现时返回 `craft.isolated`，账号保存为 `Isolated`，不把当前制作台覆盖为 `Uncertain`。
 
 制作试运行与登录、导航共用窗口仲裁：隐藏其他功能窗口，主工具窗口保持原状态。仍沿用 operation window 与紧急停止。run 首个键鼠块显示 5→4→3→2→1，后续原本需要提示的动作倒计时为 0 秒即不提示不等待直接执行，固定探测中原本不提示的后续输入继续不提示；每次输入仍检查取消、重新聚焦游戏窗口并在输入后停放鼠标；制作物品选择、补齐、购买和生产继续使用同一 run 级倒计时，其中补齐、购买和生产执行正向双采样。preflight 冻结当前台制作台点击点、共享确认置顶点、当前台制作物品选择点、`game.stationGrid`、`craft.fill/purchase/produce/abort` 及三段等待。
 
@@ -155,7 +155,7 @@
 
 `special_ops_start_craft_batch_trial` 在创建 runtime、operation window 或发送键鼠输入前，以一次 `nowMs` 冻结当前账号任务集合。账号必须为 `Ready`；只选择启用、非 `Uncertain` 且 `finishesAtMs <= frozenNowMs` 的制作台，按技术中心 → 工作台 → 制药台 → 防具台执行。空任务直接返回“当前账号没有到期制作台”，不创建运行态或占用键鼠。
 
-批次开始先双采样确认 `game.stationGrid`，每台复用单制作台状态机。`StillInProgress` 不改持久化状态，直接进入下一台；`Started` 先通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和新完成时间，再点击 `craft.returnToStationGrid` 并确认 `game.stationGrid`，随后进入下一台。最后一台 `Started` 也必须返回四制作台页面。运行中新增到期台不插入当前批次。任一单台失败、持久化失败、返回失败或取消立即截断后续台；此前已成功写入的台不回滚，当前失败台按实际输入状态和失败类型决定是否标记 `Uncertain`。
+批次开始先双采样确认 `game.stationGrid`，每台复用单制作台状态机。到期台探测先命中中止、未进入购买/生产时按新制作处理：`startedAtMs = now`，`finishesAtMs = now + 配置时长`（例如 8 小时物品即使游戏还剩 4 小时也记满 8 小时），与生产后命中中止同一条 `Started` 落盘路径，再返回四制作台页进入下一台。`Started` 先通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和新完成时间，再点击 `craft.returnToStationGrid` 并确认 `game.stationGrid`，随后进入下一台。最后一台 `Started` 也必须返回四制作台页面。运行中新增到期台不插入当前批次。任一单台失败、持久化失败、返回失败或取消立即截断后续台；此前已成功写入的台不回滚，当前失败台按实际输入状态和失败类型决定是否标记 `Uncertain`。
 
 ## 多账号自动轮次
 
@@ -169,7 +169,7 @@
 
 冻结缓存键 `FrozenRoundAccountKey = (String, i64, bool)`，第三位是「是否交易行桶」。交易行独立成桶后，同账号可以同时存在非交易行桶与交易行桶，而两者的 `scheduledAtMs` 都是分钟对齐的（子弹取每日兑换时间、交易行取窗口起点）；配成同一分钟时 `(accountId, scheduledAtMs)` 二元组完全相同 -> `collect()` 只留下后插入的交易行桶 -> 非交易行桶拿到 `craft: []` / `ammo: None` 的冻结配置，制作与子弹被静默跳过。
 
-每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段：首次 `TimedOut` 不持久化失败并把账号移到当前轮次队尾（同时记录 `log_info!` 日志「导航超时，账号任务已挪到队尾重试」，可在运行日志中区分「已挪队尾待重试」与「二次超时已持久化失败」），重试从登录流程重新开始；第二次仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
+每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段：首次 `TimedOut` 落 `lastFailure` 保持 `Ready` 并把账号移到当前轮次队尾（同时记录 `log_info!` 日志「导航超时，账号任务已挪到队尾重试」，可在运行日志中区分「已挪队尾待重试」与「二次超时已持久化失败」），重试从登录流程重新开始；第二次同一问题仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。跨轮次靠 `lastFailure` 识别同一问题，单账号不会无限重试。成功进入正常流程后清掉这次 `lastFailure`。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
 
 轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame，预算 `ROUND_CLOSE_GAME_TIMEOUT = 45s`：UE4 客户端带内核反作弊，退出常慢于登录流程给同一个 exe 的 15 秒，旧的 10 秒比登录 `StopGame` 还紧 -> 正常慢退出被判成故障。导航超时后、账号失败后和会话结束这三处切换关闭失败只记 warn 并继续本轮，不再全局暂停：登录流程头两步 `StopGame` / `StopWeGame` 会用各自预算无条件重杀游戏与 WeGame -> 残留进程下轮自愈，为一次慢退出停摆到人工点继续代价远高于收益。`PauseRequested` 先持久化暂停（原因固定为“用户请求暂停”），再关闭游戏；该路径关闭失败仍返回 `SystemFailure { step: "round.closeGame" }`，但暂停原因已落盘，进程错误文本不会写进 `pausedReason`。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
 

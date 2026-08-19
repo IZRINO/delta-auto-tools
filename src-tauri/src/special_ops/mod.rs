@@ -2410,12 +2410,23 @@ fn apply_login_flow_result(
     Ok(())
 }
 
+fn same_account_problem(
+    previous: Option<&AccountFailure>,
+    error: &round_runner::AccountRunError,
+) -> bool {
+    previous.is_some_and(|previous| {
+        previous.step == error.step
+            && previous.station_kind == error.station
+            && previous.ammo_target_id == error.ammo_target_id
+    })
+}
+
 fn apply_round_account_failure(
     settings: &mut SpecialOpsSettings,
     account_id: &str,
     error: &round_runner::AccountRunError,
     failed_at_ms: i64,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let account = settings
         .accounts
         .iter_mut()
@@ -2439,7 +2450,17 @@ fn apply_round_account_failure(
                 ammo_target_id: Some(target_id.to_string()),
             });
         }
-        return Ok(());
+        return Ok(false);
+    }
+    if error.is_retryable() && !same_account_problem(account.last_failure.as_ref(), error) {
+        account.last_failure = Some(AccountFailure {
+            step: error.step.clone(),
+            message: error.message.clone(),
+            at_ms: failed_at_ms,
+            station_kind: error.station.clone(),
+            ammo_target_id: error.ammo_target_id.clone(),
+        });
+        return Ok(true);
     }
     let account_isolated = matches!(error.step.as_str(), "ammo.isolated" | "craft.isolated");
     account.status = if error.kind == round_runner::AccountRunErrorKind::NavigationTimedOut {
@@ -2470,7 +2491,7 @@ fn apply_round_account_failure(
         station_kind: error.station.clone(),
         ammo_target_id: error.ammo_target_id.clone(),
     });
-    Ok(())
+    Ok(false)
 }
 
 fn mark_craft_cancel_uncertain(
@@ -5236,6 +5257,11 @@ where
         station_plan.finishes_at_ms =
             Some(started_at_ms.saturating_add(i64::from(duration_minutes) * 60_000));
         station_plan.status = StationStatus::Crafting;
+        if account.last_failure.as_ref().is_some_and(|failure| {
+            failure.station_kind.as_ref() == Some(station) || failure.station_kind.is_none()
+        }) {
+            account.last_failure = None;
+        }
         persist(&next)?;
         *settings
             .lock()
@@ -5588,7 +5614,6 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CraftPersistenceDecision {
-    NoChange,
     SaveStarted { started_at_ms: i64 },
     MarkUncertain { step: String, message: String },
     MarkIsolated { step: String, message: String },
@@ -5599,9 +5624,6 @@ fn decide_craft_persistence(
     result: Result<craft_runtime::CraftStationOutcome, craft_trial::CraftTrialFailure>,
 ) -> CraftPersistenceDecision {
     match result {
-        Ok(craft_runtime::CraftStationOutcome::StillInProgress) => {
-            CraftPersistenceDecision::NoChange
-        }
         Ok(craft_runtime::CraftStationOutcome::Started { started_at_ms }) => {
             CraftPersistenceDecision::SaveStarted { started_at_ms }
         }
@@ -6913,18 +6935,36 @@ impl ProductionRoundDriver {
         }
     }
 
-    fn persist_account_error(
-        &self,
-        account_id: &str,
-        error: &round_runner::AccountRunError,
-    ) -> Result<(), String> {
+    fn clear_retry_observation(&self, account_id: &str) -> Result<(), String> {
+        let needs_clear = {
+            let settings = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?;
+            settings.accounts.iter().any(|account| {
+                account.id == account_id
+                    && account.status == AccountStatus::Ready
+                    && account.last_failure.is_some()
+            })
+        };
+        if !needs_clear {
+            return Ok(());
+        }
         let (_settings, revision) = self.coordinator.with_runtime_change(|| {
             let mut next = self
                 .settings
                 .lock()
                 .map_err(|_| "特勤处状态已损坏".to_string())?
                 .clone();
-            apply_round_account_failure(&mut next, account_id, error, now_ms())?;
+            if let Some(account) = next
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == account_id)
+            {
+                if account.status == AccountStatus::Ready {
+                    account.last_failure = None;
+                }
+            }
             save_settings(&self.app, &next)?;
             *self
                 .settings
@@ -6934,6 +6974,29 @@ impl ProductionRoundDriver {
         })?;
         emit_state(&self.app, revision, now_ms());
         Ok(())
+    }
+
+    fn persist_account_error(
+        &self,
+        account_id: &str,
+        error: &round_runner::AccountRunError,
+    ) -> Result<bool, String> {
+        let ((_, retry), revision) = self.coordinator.with_runtime_change(|| {
+            let mut next = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let retry = apply_round_account_failure(&mut next, account_id, error, now_ms())?;
+            save_settings(&self.app, &next)?;
+            *self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            Ok::<_, String>((next, retry))
+        })?;
+        emit_state(&self.app, revision, now_ms());
+        Ok(retry)
     }
 
     fn persist_global_pause(&self, reason: &str) -> Result<(), String> {
@@ -7391,7 +7454,11 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
                 round_runner::AccountRunError::system("round.progress", "多账号轮次运行状态已变化")
             })?;
         emit_run(&self.app, &snapshot);
-        round_account::run_account_session(self, task, cancelled).await
+        let result = round_account::run_account_session(self, task, cancelled).await;
+        if result.is_ok() {
+            let _ = self.clear_retry_observation(&task.account_id);
+        }
+        result
     }
 
     async fn continue_account(
@@ -7419,7 +7486,11 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
                 round_runner::AccountRunError::system("round.progress", "多账号轮次运行状态已变化")
             })?;
         emit_run(&self.app, &snapshot);
-        round_account::run_task_in_session(self, task, cancelled).await
+        let result = round_account::run_task_in_session(self, task, cancelled).await;
+        if result.is_ok() {
+            let _ = self.clear_retry_observation(&task.account_id);
+        }
+        result
     }
 
     async fn wait_until(
@@ -7487,7 +7558,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
         &self,
         task: &round_planner::AccountRoundTask,
         error: &round_runner::AccountRunError,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.persist_account_error(&task.account_id, error)
     }
 
@@ -8352,13 +8423,9 @@ async fn run_craft_worker(
                 .ok_or_else(|| "制作运行状态已丢失".to_string())
         })
     };
-    let mut success_message = "制作试运行成功，已保存下一次完成时间".to_string();
+    let success_message = "制作试运行成功，已保存下一次完成时间".to_string();
     let persist_result = match stop_reason {
         None => match decide_craft_persistence(result) {
-            CraftPersistenceDecision::NoChange => {
-                success_message = "当前制作尚未完成，本次未执行点击".to_string();
-                Ok(())
-            }
             CraftPersistenceDecision::SaveStarted { started_at_ms } => active_account_id()
                 .and_then(|account_id| {
                     persist_craft_success_with(
@@ -12073,10 +12140,6 @@ mod tests {
 
     #[test]
     fn craft_outcome_maps_to_persistence_decision() {
-        assert_eq!(
-            decide_craft_persistence(Ok(craft_runtime::CraftStationOutcome::StillInProgress)),
-            CraftPersistenceDecision::NoChange,
-        );
         assert_eq!(
             decide_craft_persistence(Ok(craft_runtime::CraftStationOutcome::Started {
                 started_at_ms: 42,
@@ -17685,12 +17748,58 @@ mod tests {
 
         let mut settings = LoginFixture::complete().settings;
         let before = settings.accounts[0].stations.clone();
-        apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert!(retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(settings.accounts[0].stations, before);
+        assert_eq!(
+            settings.accounts[0]
+                .last_failure
+                .as_ref()
+                .map(|failure| failure.step.as_str()),
+            Some("navigation.WaitStationGrid")
+        );
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 2_000).unwrap();
+        assert!(!retry);
         assert_eq!(
             settings.accounts[0].status,
             AccountStatus::ManualCheckRequired
         );
         assert_eq!(settings.accounts[0].stations, before);
+    }
+
+    #[test]
+    fn retryable_station_second_strike_marks_station_uncertain() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.accounts[0].stations = vec![station(StationKind::TechnicalCenter, 100)];
+        let error = round_runner::AccountRunError {
+            scope: round_runner::ErrorScope::Account,
+            kind: round_runner::AccountRunErrorKind::NavigationTimedOut,
+            station: Some(StationKind::TechnicalCenter),
+            ammo_target_id: None,
+            step: "navigation.WaitStationGrid".to_string(),
+            message: "步骤超时".to_string(),
+        };
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert!(retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(
+            settings.accounts[0].stations[0].status,
+            StationStatus::Crafting
+        );
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 2_000).unwrap();
+        assert!(!retry);
+        assert_eq!(
+            settings.accounts[0].status,
+            AccountStatus::ManualCheckRequired
+        );
+        assert_eq!(
+            settings.accounts[0].stations[0].status,
+            StationStatus::Uncertain
+        );
     }
 
     #[test]

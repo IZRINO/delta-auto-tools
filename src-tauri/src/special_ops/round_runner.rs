@@ -101,6 +101,10 @@ impl AccountRunError {
             message: message.into(),
         }
     }
+
+    pub(crate) fn is_retryable(&self) -> bool {
+        self.kind == AccountRunErrorKind::NavigationTimedOut
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -161,11 +165,13 @@ pub(crate) trait RoundDriver: Send + Sync {
         cancelled: Arc<AtomicBool>,
     ) -> Result<(), AccountRunError>;
     fn now_ms(&self) -> i64;
+    /// 返回 `true` 表示同一问题首次出现，账号保持 Ready，调用方应把任务挪到队尾。
+    /// `false` 表示第二次仍未进入正常流程，已落需人工状态，调用方应出队。
     fn persist_account_failure(
         &self,
         task: &AccountRoundTask,
         error: &AccountRunError,
-    ) -> Result<(), String>;
+    ) -> Result<bool, String>;
     fn persist_limited_failure(&self, task: &AccountRoundTask, message: &str)
         -> Result<(), String>;
     fn market_window_open(&self) -> bool;
@@ -371,44 +377,50 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 session_account_id = Some(task.account_id.clone());
                 success = Some(result);
             }
-            Err(error)
-                if error.scope == ErrorScope::Account
-                    && error.kind == AccountRunErrorKind::NavigationTimedOut
-                    && queued.navigation_retries == 0 =>
-            {
-                close_game_for_transition(driver, "导航超时后关闭游戏失败").await;
-                session_account_id = None;
-                let mut retained = VecDeque::new();
-                queued.navigation_retries = 1;
-                let account_id = queued.task.account_id.clone();
-                let mut deferred = VecDeque::from([queued.clone()]);
-                while let Some(mut candidate) = queue.pop_front() {
-                    if candidate.task.account_id == account_id {
-                        candidate.navigation_retries = 1;
-                        deferred.push_back(candidate);
-                    } else {
-                        retained.push_back(candidate);
-                    }
-                }
-                driver.report_navigation_retry_deferred(&queued.task, deferred.len());
-                retained.extend(deferred);
-                queue = retained;
-            }
             Err(error) if error.scope == ErrorScope::Account => {
-                if let Err(message) = driver.persist_account_failure(task, &error) {
-                    let _ = driver.persist_paused("账号失败状态保存失败");
-                    return RoundRunResult {
-                        completed_accounts: completed_account_ids.len(),
-                        stop: RoundStop::SystemFailure {
-                            step: "round.persistAccountFailure".to_string(),
-                            message,
-                        },
-                    };
-                }
-                let failed_account_id = task.account_id.clone();
-                queue.retain(|queued| queued.task.account_id != failed_account_id);
-                close_game_for_transition(driver, "账号失败后关闭游戏失败").await;
+                let retry = match driver.persist_account_failure(task, &error) {
+                    Ok(retry) => retry && error.is_retryable() && queued.navigation_retries == 0,
+                    Err(message) => {
+                        let _ = driver.persist_paused("账号失败状态保存失败");
+                        return RoundRunResult {
+                            completed_accounts: completed_account_ids.len(),
+                            stop: RoundStop::SystemFailure {
+                                step: "round.persistAccountFailure".to_string(),
+                                message,
+                            },
+                        };
+                    }
+                };
+                close_game_for_transition(
+                    driver,
+                    if retry {
+                        "导航超时后关闭游戏失败"
+                    } else {
+                        "账号失败后关闭游戏失败"
+                    },
+                )
+                .await;
                 session_account_id = None;
+                if retry {
+                    let mut retained = VecDeque::new();
+                    queued.navigation_retries = 1;
+                    let account_id = queued.task.account_id.clone();
+                    let mut deferred = VecDeque::from([queued.clone()]);
+                    while let Some(mut candidate) = queue.pop_front() {
+                        if candidate.task.account_id == account_id {
+                            candidate.navigation_retries = 1;
+                            deferred.push_back(candidate);
+                        } else {
+                            retained.push_back(candidate);
+                        }
+                    }
+                    driver.report_navigation_retry_deferred(&queued.task, deferred.len());
+                    retained.extend(deferred);
+                    queue = retained;
+                } else {
+                    let failed_account_id = task.account_id.clone();
+                    queue.retain(|queued| queued.task.account_id != failed_account_id);
+                }
             }
             Err(error) => {
                 return RoundRunResult {
@@ -656,13 +668,15 @@ mod tests {
         fn persist_account_failure(
             &self,
             task: &AccountRoundTask,
-            _error: &AccountRunError,
-        ) -> Result<(), String> {
-            self.actions
-                .lock()
-                .unwrap()
-                .push(format!("persist-account:{}", task.account_id));
-            Ok(())
+            error: &AccountRunError,
+        ) -> Result<bool, String> {
+            let mut actions = self.actions.lock().unwrap();
+            actions.push(format!("persist-account:{}", task.account_id));
+            let persist_count = actions
+                .iter()
+                .filter(|action| *action == &format!("persist-account:{}", task.account_id))
+                .count();
+            Ok(error.is_retryable() && persist_count == 1)
         }
 
         fn persist_limited_failure(
@@ -851,6 +865,7 @@ mod tests {
             driver.actions(),
             [
                 "run:a",
+                "persist-account:a",
                 "close-game",
                 "defer-navigation:a:2",
                 "wait:2000",
@@ -891,6 +906,7 @@ mod tests {
             driver.actions(),
             [
                 "run:a",
+                "persist-account:a",
                 "close-game",
                 "report-close-failure:WeGame 仍在运行",
                 "defer-navigation:a:2",
@@ -1163,6 +1179,7 @@ mod tests {
             driver.actions(),
             [
                 "run:a",
+                "persist-account:a",
                 "close-game",
                 "defer-navigation:a:1",
                 "run:b",
@@ -1195,6 +1212,7 @@ mod tests {
             driver.actions(),
             [
                 "run:a",
+                "persist-account:a",
                 "close-game",
                 "defer-navigation:a:1",
                 "run:b",
@@ -1203,6 +1221,50 @@ mod tests {
                 "persist-account:a",
                 "close-game"
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn single_account_same_retryable_problem_stops_after_second_persist() {
+        let driver = FakeDriver::new(
+            vec![
+                Err(AccountRunError::navigation_timeout(
+                    "navigation.WaitStationGrid",
+                )),
+                Err(AccountRunError::navigation_timeout(
+                    "navigation.WaitStationGrid",
+                )),
+            ],
+            false,
+        );
+
+        let result = run_round(
+            &driver,
+            &plan_tasks(&[("a", 1_000)]),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "persist-account:a",
+                "close-game",
+                "defer-navigation:a:1",
+                "run:a",
+                "persist-account:a",
+                "close-game"
+            ]
+        );
+        assert_eq!(
+            driver
+                .actions()
+                .iter()
+                .filter(|action| action.starts_with("run:"))
+                .count(),
+            2
         );
     }
 

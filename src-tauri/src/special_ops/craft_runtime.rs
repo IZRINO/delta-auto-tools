@@ -29,7 +29,6 @@ pub(crate) enum CraftButton {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CraftStationOutcome {
-    StillInProgress,
     Started { started_at_ms: i64 },
 }
 
@@ -479,8 +478,11 @@ pub(crate) async fn run_craft_station<D: CraftTrialDriver + ?Sized>(
         .map_err(|message| failure_after_input("craft.abort", &message))?
     {
         SingleConsistency::Matched { .. } => {
-            return_to_station_grid(driver, cancelled).await?;
-            return Ok(CraftStationOutcome::StillInProgress);
+            // 到期台仍显示中止 = 游戏还在做。按新制作落完整时长，
+            // 与生产后 wait_abort 命中同一条 Started 落盘路径。
+            return Ok(CraftStationOutcome::Started {
+                started_at_ms: crate::special_ops::now_ms(),
+            });
         }
         SingleConsistency::NotMatched { .. } => driver
             .click_unverified(&recipe_key, true, Arc::clone(&cancelled))
@@ -790,7 +792,7 @@ mod fixed_probe_tests {
     }
 
     #[tokio::test]
-    async fn matched_abort_returns_to_station_grid_without_recipe_click() {
+    async fn matched_abort_is_new_craft_start_without_recipe_or_return() {
         let driver = FixedProbeDriver::new(Ok(SingleConsistency::Matched {
             samples: [0.9, 0.91],
         }));
@@ -804,7 +806,10 @@ mod fixed_probe_tests {
         .await
         .unwrap();
 
-        assert_eq!(result, CraftStationOutcome::StillInProgress);
+        assert!(matches!(
+            result,
+            CraftStationOutcome::Started { started_at_ms } if started_at_ms > 0
+        ));
         assert_eq!(
             driver.actions(),
             [
@@ -816,10 +821,12 @@ mod fixed_probe_tests {
                 "delay:300",
                 "unchecked:craft.confirmPinned:false",
                 "inspect:craft.abort",
-                "unchecked:craft.returnToStationGrid:false",
-                "wait:game.stationGrid",
             ]
         );
+        assert!(!driver
+            .actions()
+            .iter()
+            .any(|action| { action.contains("recipe") || action.contains("returnToStationGrid") }));
         assert!(!driver.actions().iter().any(|action| action == "escape"));
     }
 
