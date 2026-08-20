@@ -66,7 +66,7 @@ fn valentine() -> Vec<ThemeTokenOverride> {
         t("--color-base-200", "oklch(18.8% 0 264.665)"),
         t("--color-base-300", "oklch(42% 0.06 48)"),
         t("--color-base-content", "oklch(96% 0.003 264.542)"),
-        t("--color-primary", "oklch(54% 0.21 25)"),
+        t("--color-primary", "oklch(48% 0.21 25)"),
         t("--color-primary-content", "oklch(100% 0 281.288)"),
         t("--color-secondary", "oklch(82% 0.189 84.429)"),
         t("--color-secondary-content", "oklch(27% 0.077 45.635)"),
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(find("--color-base-200"), "oklch(18.8% 0 264.665)");
         assert_eq!(find("--color-base-300"), "oklch(42% 0.06 48)");
         assert_eq!(find("--color-base-content"), "oklch(96% 0.003 264.542)");
-        assert_eq!(find("--color-primary"), "oklch(54% 0.21 25)");
+        assert_eq!(find("--color-primary"), "oklch(48% 0.21 25)");
         assert_eq!(find("--color-secondary"), "oklch(82% 0.189 84.429)");
         assert_eq!(find("--noise"), "0");
     }

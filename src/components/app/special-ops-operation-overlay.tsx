@@ -47,7 +47,7 @@ export function operationOverlayText(
         title: countdownSeconds === null ? RUN_TITLES[snapshot.runKind] : "即将占用键盘鼠标",
         detail: countdownSeconds === null
             ? snapshot.runKind === "round" ? roundDetail(snapshot) : snapshot.message
-            : `${countdownSeconds} 秒后执行当前步骤`,
+            : snapshot.message || `${countdownSeconds} 秒后执行当前步骤`,
         countdownSeconds,
         hotkey,
     };
@@ -71,21 +71,23 @@ export function OperationHud({
             <header className="px-4 pt-3">
                 <h1 className="font-mono text-xs font-semibold tracking-[0.14em] text-white/70">{title}</h1>
             </header>
-            <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4">
                 {countdownSeconds !== null ? (
-                    <p
-                        key={countdownSeconds}
-                        className="ops-digit font-mono text-7xl font-semibold tabular-nums leading-none"
-                    >
-                        {countdownSeconds}
-                    </p>
+                    <>
+                        <p
+                            key={countdownSeconds}
+                            className="ops-digit font-mono text-7xl font-semibold tabular-nums leading-none"
+                        >
+                            {countdownSeconds}
+                        </p>
+                        <p className="max-w-[36ch] text-center text-xs leading-relaxed text-white/80">{detail}</p>
+                    </>
                 ) : (
                     <p className="max-w-[36ch] text-center text-sm leading-relaxed text-white/85">{detail}</p>
                 )}
             </div>
-            <p className="sr-only">{detail}</p>
-            <footer className="border-t border-primary px-4 py-2">
-                <p className="font-mono text-xs font-semibold text-primary">紧急停止：{hotkey}</p>
+            <footer className="border-t border-white/15 px-4 py-2">
+                <p className="font-mono text-xs font-semibold text-white">紧急停止：{hotkey}</p>
             </footer>
         </main>
     );

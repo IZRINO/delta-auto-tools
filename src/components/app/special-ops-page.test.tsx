@@ -57,6 +57,8 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(html).toContain("游戏可执行文件");
         expect(html).toContain("录制紧急停止热键");
         expect(html).toContain("游戏内导航试运行");
+        expect(html).toContain("开始值班");
+        expect(html).not.toContain("未来 24 小时暂无任务");
         expect(html).not.toContain("开始当前到期轮次");
         expect(html).toContain('class="card card-border');
         expect(html).toContain('class="select');
@@ -215,6 +217,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     it("时间轴按失败任务提供单项人工判定", () => {
         expect(pageSource).toContain("task.manualFailure");
         expect(pageSource).toContain("请在账号页处理");
+        expect(pageSource).toContain("special-ops-account-${task.accountId}");
         expect(pageSource).toContain("submitting");
         expect(pageSource).toContain("error");
         expect(pageSource).toContain("立即到期");

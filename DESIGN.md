@@ -2,7 +2,7 @@
 name: 三角洲行动工具
 description: 暗底红边的战地控制台，为无人值守自动化与局内实时读数而生
 colors:
-  tracer-red: "oklch(54% 0.21 25)"
+  tracer-red: "oklch(48% 0.21 25)"
   tracer-red-content: "oklch(100% 0 281.288)"
   shell-copper: "oklch(42% 0.06 48)"
   tracer-yellow: "oklch(82% 0.189 84.429)"
@@ -144,7 +144,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 ### Primary
 
-- **曳光红 Tracer Red**（`oklch(54% 0.21 25)`）：唯一强调色。用于主按钮、失败/紧急、占用键鼠、favorite 高亮描边。配白色文字 `oklch(100% 0 281.288)`，对比 ≥4.5:1。不铺边框、不铺导航图标。
+- **曳光红 Tracer Red**（`oklch(48% 0.21 25)`）：唯一强调色。用于主按钮、失败/紧急、占用键鼠、favorite 高亮描边。配白色文字 `oklch(100% 0 281.288)`，对比 ≥4.5:1。不铺边框、不铺导航图标。
 
 ### Secondary
 
@@ -293,7 +293,7 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Surface:** 满幅 `bg-black/80` + `border-white/15` + `backdrop-blur-[1px]`。禁止 daisyUI card、禁止投影。
 - **Countdown:** JetBrains Mono 巨数 `text-7xl` tabular-nums；每秒换数带 180ms 轻缩放，顶缘 1px 曳光红导火索 1s 抽尽。
 - **Idle:** 当前步骤/账号进度用一行白字，不放大。
-- **Emergency:** 底边 1px 曳光红切口 + 等宽「紧急停止：热键」。无按钮。
+- **Emergency:** 底边白 15% 切口 + 粉笔白等宽「紧急停止：热键」。红只留顶缘导火索。无按钮。
 - **铁律:** 点击穿透、无边框、置顶。窗口不抢焦点。
 
 ### Region Selection Overlay（Morse / 识别框选）

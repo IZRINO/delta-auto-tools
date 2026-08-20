@@ -30,7 +30,7 @@ describe("operationOverlayText", () => {
     it("倒计时时提示即将占用键盘鼠标", () => {
         expect(operationOverlayText(snapshot({countdownSeconds: 2}))).toEqual({
             title: "即将占用键盘鼠标",
-            detail: "2 秒后执行当前步骤",
+            detail: "正在识别登录入口",
             countdownSeconds: 2,
             hotkey: "Ctrl+Shift+F12",
         });
@@ -111,6 +111,7 @@ describe("SpecialOpsOperationOverlay", () => {
         expect(html).toContain("即将占用键盘鼠标");
         expect(html).toContain(">3<");
         expect(html).toContain("3 秒后执行当前步骤");
+        expect(html).not.toContain("border-primary");
         expect(html).toContain("紧急停止：Ctrl+Shift+F12");
         expect(html).toContain("ops-digit");
         expect(html).toContain("ops-fuse");

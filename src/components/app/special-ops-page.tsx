@@ -268,7 +268,7 @@ function AmmoTargetEditor({
     };
     return <div className="mt-3 border-t border-base-300 pt-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2"><RiShieldCheckLine/><h4 className="text-sm font-medium">{title}</h4>{pendingCount !== undefined && <span className="text-xs text-base-content/60">{pendingCount} 个待处理</span>}</div>
+            <div className="flex items-center gap-2"><RiShieldCheckLine/><h3 className="text-sm font-medium">{title}</h3>{pendingCount !== undefined && <span className="text-xs text-base-content/60">{pendingCount} 个待处理</span>}</div>
             <Button size="sm" variant="outline" onClick={() => onChange(insertNormalAmmoTarget(targets, createAmmoTarget(targets.length)))}><RiAddLine data-icon="inline-start"/>添加子弹</Button>
         </div>
         {targets.length === 0 ? <p className="mt-2 text-xs text-base-content/60">未配置兑换目标</p> : (
@@ -558,7 +558,7 @@ function SpecialOpsTimeline({
                 {bootstrap.schedule.dueAccounts.length > 0 ? <span className="badge badge-primary badge-sm">{bootstrap.schedule.dueAccounts.length} 到期</span> : null}
                 <HelpHint content="10 分钟内任务合并显示，计划时间不变；暂停期间到期任务显示 0 分钟后。"/>
             </div>
-            {groups.length === 0 ? <div className="rounded-box border border-dashed border-base-300 p-6 text-center text-sm text-base-content/60">未来 24 小时暂无任务</div> : <div className="max-h-[38rem] overflow-y-auto rounded-box border border-base-300">
+            {groups.length === 0 ? <div className="rounded-box border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/60">未来 24 小时暂无任务。点继续后，到期项会出现在这里。</div> : <div className="max-h-[38rem] overflow-y-auto rounded-box border border-base-300">
                 {slots.map((slot, index) => <div key={slot} className="grid grid-cols-[5rem_minmax(0,1fr)] border-b border-base-300 last:border-b-0">
                     <time className="border-r border-base-300 bg-base-200 px-3 py-3 text-xs font-medium">{shanghaiTimeFormatter.format(slot).replace(" ", "\n")}</time>
                     <div className="min-h-16 space-y-2 p-2">
@@ -585,7 +585,11 @@ function SpecialOpsTimeline({
                                                     return colorHits ? <div className="text-xs text-base-content/60">{colorHits}</div> : null;
                                                 })()}
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && task.limitedCycleId && <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledge}/>}
-                                                {needsManualCorrection && !inlineCorrectable && <div className="text-xs text-error">请在账号页处理</div>}
+                                                {needsManualCorrection && !inlineCorrectable && <button
+                                                    type="button"
+                                                    className="btn btn-link btn-xs h-auto min-h-0 p-0 text-error"
+                                                    onClick={() => document.getElementById(`special-ops-account-${task.accountId}`)?.scrollIntoView({behavior: "smooth", block: "start"})}
+                                                >请在账号页处理</button>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
                                                 <span className={`badge badge-sm ${task.accountStatus === "ready" ? "badge-success badge-soft" : needsManualCorrection ? "badge-error badge-soft" : "badge-warning badge-soft"}`}>{accountStatusLabels[task.accountStatus]}</span>
@@ -1308,6 +1312,32 @@ export function SpecialOpsPage() {
             <span>{bootstrap.settings.pausedReason}</span>
         </div>}
 
+        {bootstrap.settings.accounts.length === 0 ? <section className="card card-border bg-base-200">
+            <div className="card-body gap-3">
+                <h2 className="card-title text-lg">开始值班</h2>
+                <p className="max-w-[48ch] text-sm text-base-content/70">加一个 QQ 账号，选好 WeGame 和游戏，再框选点击点。配好后任务会出现在这里。</p>
+                <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button>
+                    <Button size="sm" variant="outline" onClick={() => document.getElementById("special-ops-calibration")?.scrollIntoView({behavior: "smooth", block: "start"})}><RiCrosshair2Line data-icon="inline-start"/>去校准</Button>
+                </div>
+                {(!bootstrap.settings.wegameExecutablePath || !bootstrap.settings.gameExecutablePath) && <div className="grid gap-3 md:grid-cols-2">
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">WeGame 可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.wegameExecutablePath} placeholder="请选择 WeGame.exe"/>
+                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("wegameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">游戏可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.gameExecutablePath} placeholder="请选择游戏 .exe"/>
+                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("gameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                </div>}
+            </div>
+        </section> : <>
         <SpecialOpsTimeline
             bootstrap={bootstrap}
             nowMs={timelineNowMs}
@@ -1322,11 +1352,12 @@ export function SpecialOpsPage() {
             isNativeShell={isNativeShell}
             onSave={saveProfitSettings}
         />
+        </>}
 
         <fieldset disabled={controlsLocked} className="contents">
-        <details className="collapse collapse-arrow card card-border bg-base-100">
-            <summary className="collapse-title font-semibold">全局配置</summary>
-            <div className="collapse-content grid gap-3 md:grid-cols-2">
+        <details className="rounded-box border border-base-300 bg-base-100">
+            <summary className="cursor-pointer px-4 py-3 font-semibold">全局配置</summary>
+            <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2">
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">WeGame 可执行文件</legend>
                         <div className="flex gap-2">
@@ -1362,9 +1393,9 @@ export function SpecialOpsPage() {
         </details>
         </fieldset>
 
-        <details className="collapse collapse-arrow card card-border bg-base-100">
-            <summary className="collapse-title font-semibold">试运行{bootstrap.schedule.dueAccounts.length > 0 ? ` · ${bootstrap.schedule.dueAccounts.length} 到期` : ""}</summary>
-            <div className="collapse-content grid gap-3 md:grid-cols-2 md:items-end">
+        <details className="rounded-box border border-base-300 bg-base-100">
+            <summary className="cursor-pointer px-4 py-3 font-semibold">试运行</summary>
+            <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2 md:items-end">
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">试运行账号</legend>
                         <select
@@ -1534,12 +1565,11 @@ export function SpecialOpsPage() {
                     onClick={() => void restoreAccountState(null)}
                 ><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>
             </div>
-            {bootstrap.settings.accounts.length === 0 && <div className="rounded-box border border-dashed border-base-300 p-8 text-center text-sm text-base-content/60">暂无账号，点击“添加账号”开始配置</div>}
             {bootstrap.settings.accounts.map((account, index) => {
                 const due = bootstrap.schedule.dueAccounts.find((item) => item.accountId === account.id);
                 const business = account.independentBusinessConfig;
                 const manualCheckRequired = account.status === "needsManualLogin" || account.status === "loginFailed" || account.status === "manualCheckRequired" || account.status === "uncertain" || account.status === "isolated";
-                return <article key={account.id} className="rounded-box border border-base-300 bg-base-100 p-4">
+                return <article id={`special-ops-account-${account.id}`} key={account.id} className="scroll-mt-4 rounded-box border border-base-300 bg-base-100 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{accountStatusLabels[account.status]}</p></div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1630,7 +1660,7 @@ export function SpecialOpsPage() {
         </section>
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
+        <section id="special-ops-calibration" className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">校准</h2><HelpHint content="坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。"/></div>
             </div>

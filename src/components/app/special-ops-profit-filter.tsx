@@ -228,9 +228,9 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
             </div>}
             {validation && <div role="alert" className="alert alert-success alert-soft"><span>Moligod 已验证“{validation.exactName}”，当前总利润 {formatProfit(validation.profit)}。</span></div>}
 
-            <details className="collapse collapse-arrow">
-                <summary className="collapse-title">利润规则</summary>
-                <div className="collapse-content space-y-3">
+            <details className="rounded-box border border-base-300">
+                <summary className="cursor-pointer px-4 py-3 font-medium">利润规则</summary>
+                <div className="space-y-3 border-t border-base-300 p-4">
                     <div className="overflow-x-auto">
                         <table className="table table-sm">
                             <thead><tr><th>规则</th><th>KKRB 精确名称</th><th>Moligod 精确名称</th><th>最低总利润</th><th>最近结果</th><th>操作</th></tr></thead>
@@ -259,9 +259,9 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                 </div>
             </details>
 
-            <details className="collapse collapse-arrow">
-                <summary className="collapse-title">业务目标</summary>
-                <div className="collapse-content">
+            <details className="rounded-box border border-base-300">
+                <summary className="cursor-pointer px-4 py-3 font-medium">业务目标</summary>
+                <div className="border-t border-base-300 p-4">
                     <div className="overflow-x-auto">
                         <table className="table table-sm">
                             <thead><tr><th>业务目标</th><th>状态</th><th>利润规则</th></tr></thead>
