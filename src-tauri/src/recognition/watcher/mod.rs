@@ -225,6 +225,27 @@ mod tests {
     }
 
     #[test]
+    fn constant_screenshot_versus_textured_reference_is_half() {
+        // NCC=0（纯色截图 vs 有纹理模板）映射成 0.5。息屏遮罩被 GDI 拍进去就是这个分数。
+        let screenshot = DynamicImage::ImageRgb8(RgbImage::from_pixel(16, 16, Rgb([0, 0, 0])));
+        let mut reference = RgbImage::new(16, 16);
+        for y in 0..16 {
+            for x in 0..16 {
+                reference.put_pixel(
+                    x,
+                    y,
+                    Rgb([((x * 13) % 256) as u8, ((y * 17) % 256) as u8, 80]),
+                );
+            }
+        }
+        let similarity = score(&screenshot, &DynamicImage::ImageRgb8(reference));
+        assert!(
+            (similarity - 0.5).abs() < 0.02,
+            "纯色对纹理应约 50%，实际 {similarity}"
+        );
+    }
+
+    #[test]
     fn same_size_rgb_ncc_high() {
         let img = RgbImage::from_pixel(10, 10, Rgb([128, 64, 200]));
         let a = DynamicImage::ImageRgb8(img.clone());

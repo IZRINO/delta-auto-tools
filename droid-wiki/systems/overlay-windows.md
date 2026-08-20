@@ -14,7 +14,7 @@
 | `rapidfire-position` | 连发器 | 位置校准窗口 |
 | `morse-overlay` | Morse | 全屏透明区域选择叠加窗 |
 | `recognition-overlay` | 识别触发 | 监听区域、识色探针、自定义点击区域选择叠加窗 |
-| 息屏（无 WebView） | 息屏 | 独立线程原生 Win32 视觉遮罩，不进 `?mode=`；只挡画面，键鼠/Alt+Tab 照常，排除截图。禁止在 WebView2 GUI 线程建窗 |
+| 息屏（无 WebView） | 息屏 | 独立线程原生 Win32 视觉遮罩，不进 `?mode=`；只挡画面。息屏打开时识别改走 WGC + `WDA_EXCLUDEFROMCAPTURE` 透视遮罩；关闭时仍走 GDI。禁止在 WebView2 GUI 线程建窗 |
 
 ## 显示窗口
 

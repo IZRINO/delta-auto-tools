@@ -1,5 +1,8 @@
 //! 息屏：原生 Win32 视觉遮罩，仿 UU 私密屏保。
-//! 只挡画面，键鼠 / Alt+Tab 照常落到下面窗口；排除截图。不是 WebView。
+//! 只挡画面，键鼠 / Alt+Tab 照常落到下面窗口。不是 WebView。
+//! 识别默认走 xcap GDI；息屏打开时改走 WGC。遮罩必须 `WDA_EXCLUDEFROMCAPTURE`，
+//! WGC 才会把窗口从构图里抠掉并透视到下方画面。GDI BitBlt 在现代 DWM 下仍会拍到
+//! 不透明/分层遮罩，NCC 对纯色图映射成约 50% 相似度。
 //! 遮罩与 RegisterHotKey 必须跑在独立线程：放进 WebView2/winit GUI 线程会把主界面打成乱码崩溃。
 
 use std::sync::{
@@ -26,6 +29,10 @@ const COVER_THREAD_JOIN_TIMEOUT: Duration = Duration::from_secs(3);
 
 static COVER_HWND: AtomicIsize = AtomicIsize::new(0);
 static COVER_BITMAP: AtomicIsize = AtomicIsize::new(0);
+
+pub fn is_cover_visible() -> bool {
+    COVER_HWND.load(Ordering::SeqCst) != 0
+}
 static COVER_HINT: Mutex<String> = Mutex::new(String::new());
 static CLOSE_APP: Mutex<Option<AppHandle>> = Mutex::new(None);
 static COVER_THREAD: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
@@ -339,13 +346,13 @@ mod native {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
         GetMessageW, GetSystemMetrics, KillTimer, PostMessageW, PostQuitMessage, RegisterClassExW,
-        SetTimer, SetWindowDisplayAffinity, SetWindowPos, ShowWindow, SystemParametersInfoW,
-        TranslateMessage, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, MSG, SM_CXSCREEN,
-        SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-        SPI_GETWORKAREA, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE, WDA_EXCLUDEFROMCAPTURE,
-        WM_CLOSE, WM_DESTROY, WM_DISPLAYCHANGE, WM_ERASEBKGND, WM_HOTKEY, WM_PAINT, WM_SYSCOMMAND,
-        WM_TIMER, WM_WINDOWPOSCHANGING, WNDCLASSEXW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+        SetLayeredWindowAttributes, SetTimer, SetWindowDisplayAffinity, SetWindowPos, ShowWindow,
+        SystemParametersInfoW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, HWND_TOPMOST, LWA_ALPHA,
+        MSG, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SPI_GETWORKAREA, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_SHOWNOACTIVATE,
+        WDA_EXCLUDEFROMCAPTURE, WM_CLOSE, WM_DESTROY, WM_DISPLAYCHANGE, WM_ERASEBKGND, WM_HOTKEY,
+        WM_PAINT, WM_SYSCOMMAND, WM_TIMER, WM_WINDOWPOSCHANGING, WNDCLASSEXW, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
     };
 
     const SC_MINIMIZE: usize = 0xF020;
@@ -355,6 +362,14 @@ mod native {
     const SWP_NOZORDER: u32 = 0x0004;
     const ERROR_CLASS_ALREADY_EXISTS: u32 = 1410;
     const WM_PRIVACY_STOP: u32 = 0x8000; // WM_APP
+    /// 分层减轻游戏遮挡；WDA 只对 WGC 生效，GDI 仍会拍到遮罩。
+    const COVER_EX_STYLE: u32 =
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_LAYERED;
+
+    #[cfg(test)]
+    pub(super) fn cover_ex_style() -> u32 {
+        COVER_EX_STYLE
+    }
 
     #[repr(C)]
     struct Windowpos {
@@ -792,7 +807,7 @@ mod native {
         // SAFETY: 类已注册；弹出层覆盖虚拟屏。不在 CreateWindow 时带 WS_VISIBLE，避免嵌套绘制。
         let hwnd = unsafe {
             CreateWindowExW(
-                WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+                COVER_EX_STYLE,
                 class_name.as_ptr(),
                 title.as_ptr(),
                 WS_POPUP,
@@ -814,11 +829,15 @@ mod native {
 
         let (modifiers, vk) = super::close_hotkey_register_params(close_hotkey)?;
         unsafe {
-            let affinity = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-            if affinity == 0 {
+            // alpha=255：人眼全不透明。无此调用则 layered 窗口不绘制。
+            if SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA) == 0 {
+                destroy_on_create_thread();
+                return Err(format!("息屏窗口无法设为分层窗口 ({})", last_error()));
+            }
+            if SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) == 0 {
                 destroy_on_create_thread();
                 return Err(format!(
-                    "息屏窗口无法排除截图，已取消打开 ({})",
+                    "息屏窗口无法从识别截图中排除，已取消打开 ({})",
                     last_error()
                 ));
             }
@@ -969,6 +988,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cover_hidden_until_show() {
+        assert!(!is_cover_visible());
+    }
+
+    #[test]
     fn close_hotkey_is_required() {
         assert!(require_close_hotkey("").is_err());
         assert!(require_close_hotkey("   ").is_err());
@@ -999,6 +1023,13 @@ mod tests {
     fn close_hint_includes_hotkey() {
         assert_eq!(close_hint_label("F8"), "关闭：F8");
         assert_eq!(close_hint_label("Ctrl+Shift+Q"), "关闭：Ctrl+Shift+Q");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cover_is_layered() {
+        const WS_EX_LAYERED: u32 = 0x0008_0000;
+        assert_ne!(native::cover_ex_style() & WS_EX_LAYERED, 0);
     }
 
     #[test]

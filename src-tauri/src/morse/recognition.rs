@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use image::{DynamicImage, GrayImage, Luma, RgbaImage};
-use xcap::Monitor;
 
 use super::{
     decoder,
@@ -171,65 +170,14 @@ fn capture_region(region: &RegionRect) -> Result<RgbaImage, DetectionFailure> {
         });
     }
 
-    let monitors = Monitor::all().map_err(|error| DetectionFailure {
-        threshold_mode: "not-run",
-        contour_count: 0,
-        morse: None,
-        message: format!("读取显示器信息失败: {error}"),
-    })?;
-
-    for monitor in monitors {
-        let monitor_left = monitor.x().map_err(|error| DetectionFailure {
+    crate::recognition::watcher::capture_region(region)
+        .map(|image| image.to_rgba8())
+        .ok_or_else(|| DetectionFailure {
             threshold_mode: "not-run",
             contour_count: 0,
             morse: None,
-            message: format!("读取显示器坐标失败: {error}"),
-        })?;
-        let monitor_top = monitor.y().map_err(|error| DetectionFailure {
-            threshold_mode: "not-run",
-            contour_count: 0,
-            morse: None,
-            message: format!("读取显示器坐标失败: {error}"),
-        })?;
-        let monitor_width = monitor.width().map_err(|error| DetectionFailure {
-            threshold_mode: "not-run",
-            contour_count: 0,
-            morse: None,
-            message: format!("读取显示器宽度失败: {error}"),
-        })?;
-        let monitor_height = monitor.height().map_err(|error| DetectionFailure {
-            threshold_mode: "not-run",
-            contour_count: 0,
-            morse: None,
-            message: format!("读取显示器高度失败: {error}"),
-        })?;
-        let scale_factor = monitor.scale_factor().unwrap_or(1.0);
-
-        if let Some((local_x, local_y, width, height)) = region_to_capture_bounds(
-            region,
-            monitor_left,
-            monitor_top,
-            monitor_width,
-            monitor_height,
-            scale_factor,
-        ) {
-            return monitor
-                .capture_region(local_x, local_y, width, height)
-                .map_err(|error| DetectionFailure {
-                    threshold_mode: "not-run",
-                    contour_count: 0,
-                    morse: None,
-                    message: format!("截图失败: {error}"),
-                });
-        }
-    }
-
-    Err(DetectionFailure {
-        threshold_mode: "not-run",
-        contour_count: 0,
-        morse: None,
-        message: "所选区域未完全落在单个显示器内，请重新框选".to_string(),
-    })
+            message: "截图失败".to_string(),
+        })
 }
 
 pub fn region_to_capture_bounds(

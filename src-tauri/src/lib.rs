@@ -19,6 +19,8 @@ mod sync_tool;
 mod theme;
 mod timer;
 mod tool_base;
+#[cfg(windows)]
+mod wgc_capture;
 
 // 让 lib 单元测试也带上 Tauri 生成的 Windows manifest，避免旧版 comctl32 缺少 TaskDialogIndirect。
 #[cfg(all(test, target_os = "windows"))]

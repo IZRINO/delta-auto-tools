@@ -7,7 +7,7 @@ Delta Auto Tools 中可能对新读者不直观的术语。
 | Bootstrap | Rust 通过 `xxx_get_bootstrap` 返回给前端的初始状态。包含 settings 和运行态数据（runs、history、errors）。前端将其视为不可变规范态。 |
 | Form | 前端本地可编辑草稿状态，从 bootstrap 派生。通过 `JSON.stringify` 比较做脏检测。 |
 | Autosave | 表单与 bootstrap 分歧时触发的 400ms 防抖保存。通过 `autosaveVersionRef` 防止陈旧覆盖。 |
-| 透明叠加窗（Overlay window） | 透明、无边框、置顶、点击穿透的 Tauri 窗口，用于游戏内显示。计时器、计数器、连发器各有自己的叠加窗。息屏是原生 Win32 视觉遮罩：只挡画面，键鼠/Alt+Tab 照常，排除截图。 |
+| 透明叠加窗（Overlay window） | 透明、无边框、置顶、点击穿透的 Tauri 窗口，用于游戏内显示。计时器、计数器、连发器各有自己的叠加窗。息屏是原生 Win32 视觉遮罩：只挡画面，识别截图/键鼠/Alt+Tab 照常。 |
 | 位置窗口（Position window） | 拖拽校准叠加窗位置的窗口。通过 `?mode=*-position` 进入。 |
 | 显示窗口（Display window） | 实际显示计时器/计数器/连发器数据的透明叠加窗。通过 `?mode=*-display` 进入。 |
 | Scope | 命名的热键注册组（如 `"morse"`、`"timer"`、`"counter"`、`"rapidfire"`）。`HotkeyManager` 检测跨 scope 冲突。 |

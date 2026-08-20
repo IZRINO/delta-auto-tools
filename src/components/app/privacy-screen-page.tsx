@@ -145,7 +145,7 @@ export function PrivacyScreenPage() {
                 actions={headerActions}
                 badges={bootstrap.visible ? <span className="badge badge-warning badge-sm">已打开</span> : null}
                 code="06"
-                subtitle="按钮打开，快捷键只在打开后关闭。只挡画面，键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。"
+                subtitle="按钮打开，快捷键只在打开后关闭。只挡画面；识别截图、键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。"
                 title="息屏"
                 verticalLabel="通用"
             />

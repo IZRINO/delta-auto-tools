@@ -3,7 +3,7 @@
 use std::io::Cursor;
 use std::path::Path;
 
-/// 截取屏幕区域（使用 xcap）
+/// 截取屏幕区域。默认 xcap GDI；息屏打开时改 WGC，避开遮罩。
 pub(crate) fn capture_region(
     region: &crate::morse::types::RegionRect,
 ) -> Option<image::DynamicImage> {
@@ -32,13 +32,22 @@ pub(crate) fn capture_region(
                 continue;
             };
 
-            let Ok(capture) = monitor.capture_region(x, y, width, height) else {
-                continue;
-            };
-
-            let Some(rgba) =
+            let rgba = if crate::privacy_screen::is_cover_visible() {
+                crate::wgc_capture::capture_monitor_region(
+                    monitor_left,
+                    monitor_top,
+                    x,
+                    y,
+                    width,
+                    height,
+                )
+            } else {
+                let Ok(capture) = monitor.capture_region(x, y, width, height) else {
+                    continue;
+                };
                 image::RgbaImage::from_raw(capture.width(), capture.height(), capture.into_raw())
-            else {
+            };
+            let Some(rgba) = rgba else {
                 continue;
             };
 
