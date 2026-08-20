@@ -286,6 +286,16 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Progress:** 整行底部铺 `white/20` 轨道，填充用信号橙/曳光弹黄系（`bg-warning`），不用曳光红——进度是「消耗」，不是「激活」。
 - **铁律:** 无边框、置顶、点击穿透、背景透明。游戏画面永远是底，overlay 不得遮挡准星或抢焦点。
 
+### Operation Warning Overlay（特勤处占用键鼠）
+
+独立小窗（480×220），不是读数仪表。游戏画面仍是底，但这块必须被一眼读完：
+
+- **Surface:** 满幅 `bg-black/80` + `border-white/15` + `backdrop-blur-[1px]`。禁止 daisyUI card、禁止投影。
+- **Countdown:** JetBrains Mono 巨数 `text-7xl` tabular-nums；每秒换数带 180ms 轻缩放，顶缘 1px 曳光红导火索 1s 抽尽。
+- **Idle:** 当前步骤/账号进度用一行白字，不放大。
+- **Emergency:** 底边 1px 曳光红切口 + 等宽「紧急停止：热键」。无按钮。
+- **铁律:** 点击穿透、无边框、置顶。窗口不抢焦点。
+
 ### Region Selection Overlay（Morse / 识别框选）
 
 全屏透明拖拽框选。已确认步骤 `border border-white/85 bg-white/10`，当前步骤 `border-2 border-primary bg-primary/12`——曳光红只标记「正在操作」的那一步，其余步骤保持白描边。指示面板用 `bg-background/88` 半透明 + 白边，不遮挡下方游戏画面。

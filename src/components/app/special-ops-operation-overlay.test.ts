@@ -4,6 +4,7 @@ import {describe, expect, it, vi} from "vitest";
 
 import {
     loadOperationRunSnapshot,
+    OperationHud,
     SpecialOpsOperationOverlay,
     operationOverlayText,
 } from "@/components/app/special-ops-operation-overlay";
@@ -30,6 +31,7 @@ describe("operationOverlayText", () => {
         expect(operationOverlayText(snapshot({countdownSeconds: 2}))).toEqual({
             title: "即将占用键盘鼠标",
             detail: "2 秒后执行当前步骤",
+            countdownSeconds: 2,
             hotkey: "Ctrl+Shift+F12",
         });
     });
@@ -95,5 +97,22 @@ describe("SpecialOpsOperationOverlay", () => {
         expect(html).toContain("制作试运行中");
         expect(html).toContain("正在准备制作试运行");
         expect(html).toContain("紧急停止：Ctrl+Alt+X");
+        expect(html).not.toContain("card-title");
+        expect(html).not.toContain("shadow-lg");
+    });
+
+    it("倒计时 HUD 放大秒数并保留紧急停止", () => {
+        const html = renderToStaticMarkup(createElement(OperationHud, {
+            title: "即将占用键盘鼠标",
+            detail: "3 秒后执行当前步骤",
+            countdownSeconds: 3,
+            hotkey: "Ctrl+Shift+F12",
+        }));
+        expect(html).toContain("即将占用键盘鼠标");
+        expect(html).toContain(">3<");
+        expect(html).toContain("3 秒后执行当前步骤");
+        expect(html).toContain("紧急停止：Ctrl+Shift+F12");
+        expect(html).toContain("ops-digit");
+        expect(html).toContain("ops-fuse");
     });
 });

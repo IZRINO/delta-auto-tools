@@ -4364,7 +4364,7 @@ fn create_operation_window(
     .focused(false)
     .visible(false)
     .resizable(false)
-    .inner_size(420.0, 180.0)
+    .inner_size(480.0, 220.0)
     .on_page_load(move |_, payload| {
         if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
             let _ = ready_tx.try_send(());

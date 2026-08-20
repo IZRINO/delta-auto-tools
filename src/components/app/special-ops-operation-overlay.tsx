@@ -42,13 +42,53 @@ export function operationOverlayText(
     snapshot: LoginRunSnapshot,
     hotkey = DEFAULT_EMERGENCY_HOTKEY,
 ) {
+    const countdownSeconds = snapshot.countdownSeconds;
     return {
-        title: snapshot.countdownSeconds === null ? RUN_TITLES[snapshot.runKind] : "即将占用键盘鼠标",
-        detail: snapshot.countdownSeconds === null
+        title: countdownSeconds === null ? RUN_TITLES[snapshot.runKind] : "即将占用键盘鼠标",
+        detail: countdownSeconds === null
             ? snapshot.runKind === "round" ? roundDetail(snapshot) : snapshot.message
-            : `${snapshot.countdownSeconds} 秒后执行当前步骤`,
+            : `${countdownSeconds} 秒后执行当前步骤`,
+        countdownSeconds,
         hotkey,
     };
+}
+
+export function OperationHud({
+    title,
+    detail,
+    countdownSeconds,
+    hotkey,
+}: ReturnType<typeof operationOverlayText>) {
+    return (
+        <main className="relative flex h-dvh w-full flex-col overflow-hidden border border-white/15 bg-black/80 text-white backdrop-blur-[1px]">
+            {countdownSeconds !== null ? (
+                <div
+                    key={countdownSeconds}
+                    aria-hidden="true"
+                    className="ops-fuse pointer-events-none absolute inset-x-0 top-0 h-0.5 origin-left bg-primary"
+                />
+            ) : null}
+            <header className="px-4 pt-3">
+                <h1 className="font-mono text-xs font-semibold tracking-[0.14em] text-white/70">{title}</h1>
+            </header>
+            <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+                {countdownSeconds !== null ? (
+                    <p
+                        key={countdownSeconds}
+                        className="ops-digit font-mono text-7xl font-semibold tabular-nums leading-none"
+                    >
+                        {countdownSeconds}
+                    </p>
+                ) : (
+                    <p className="max-w-[36ch] text-center text-sm leading-relaxed text-white/85">{detail}</p>
+                )}
+            </div>
+            <p className="sr-only">{detail}</p>
+            <footer className="border-t border-primary px-4 py-2">
+                <p className="font-mono text-xs font-semibold text-primary">紧急停止：{hotkey}</p>
+            </footer>
+        </main>
+    );
 }
 
 export async function loadOperationRunSnapshot(
@@ -86,14 +126,6 @@ export function SpecialOpsOperationOverlay() {
         : "login";
     const text = snapshot
         ? operationOverlayText(snapshot, hotkey)
-        : {title: RUN_TITLES[runKind], detail: RUN_PREPARING_DETAILS[runKind], hotkey};
-    return (
-        <main className="card card-border h-dvh w-full bg-base-200 text-base-content shadow-lg">
-            <div className="card-body gap-2 p-4">
-                <h1 className="card-title text-base">{text.title}</h1>
-                <p className="text-sm text-base-content/70">{text.detail}</p>
-                <span className="badge badge-warning badge-sm">紧急停止：{text.hotkey}</span>
-            </div>
-        </main>
-    );
+        : {title: RUN_TITLES[runKind], detail: RUN_PREPARING_DETAILS[runKind], countdownSeconds: null, hotkey};
+    return <OperationHud {...text}/>;
 }
