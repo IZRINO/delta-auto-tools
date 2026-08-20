@@ -238,15 +238,15 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                                 {draft.rules.map((rule) => {
                                     const audit = latestAudit(bootstrap.settings.profitFilter.audits, rule.id);
                                     return <tr key={rule.id}>
-                                        <td><Input className="min-w-28" value={rule.displayName} placeholder="显示名称" onChange={(event) => updateRule(rule.id, {displayName: event.target.value})}/><div className="mt-1 text-xs text-base-content/60">引用 {referenceCounts.get(rule.id) ?? 0}</div></td>
-                                        <td><Input className="min-w-40" list="special-ops-kkrb-catalog" value={rule.kkrbMatchName} placeholder="精确名称" onChange={(event) => updateRule(rule.id, {kkrbMatchName: event.target.value})}/></td>
-                                        <td><div className="flex min-w-52 gap-1"><Input value={rule.moligodMatchName ?? ""} placeholder="可选备用名称" onChange={(event) => updateRule(rule.id, {moligodMatchName: event.target.value || null})}/><Button disabled={!rule.moligodMatchName?.trim() || activeRound || validatingRuleId === rule.id || !isNativeShell} size="icon-sm" title="验证 Moligod 精确名称" variant="outline" onClick={() => void validateMoligod(rule)}><RiSearchLine/></Button></div></td>
-                                        <td><Input className="min-w-28" inputMode="numeric" value={String(rule.minimumProfit)} onChange={(event) => {
+                                        <td><Input className="min-w-28" value={rule.displayName} placeholder="显示名称" aria-label="规则显示名称" onChange={(event) => updateRule(rule.id, {displayName: event.target.value})}/><div className="mt-1 text-xs text-base-content/60">引用 {referenceCounts.get(rule.id) ?? 0}</div></td>
+                                        <td><Input className="min-w-40" list="special-ops-kkrb-catalog" value={rule.kkrbMatchName} placeholder="精确名称" aria-label="KKRB 精确名称" onChange={(event) => updateRule(rule.id, {kkrbMatchName: event.target.value})}/></td>
+                                        <td><div className="flex min-w-52 gap-1"><Input value={rule.moligodMatchName ?? ""} placeholder="可选备用名称" aria-label="Moligod 精确名称" onChange={(event) => updateRule(rule.id, {moligodMatchName: event.target.value || null})}/><Button disabled={!rule.moligodMatchName?.trim() || activeRound || validatingRuleId === rule.id || !isNativeShell} size="icon-sm" title="验证 Moligod 精确名称" aria-label="验证 Moligod 精确名称" variant="outline" onClick={() => void validateMoligod(rule)}><RiSearchLine/></Button></div></td>
+                                        <td><Input className="min-w-28" inputMode="numeric" value={String(rule.minimumProfit)} aria-label="最低总利润" onChange={(event) => {
                                             const minimumProfit = parseMinimumProfit(event.target.value);
                                             if (minimumProfit !== null) updateRule(rule.id, {minimumProfit});
                                         }}/></td>
                                         <td>{audit ? <><span className={`badge badge-sm ${auditBadgeClass(audit)}`}>{auditOutcomeLabels[audit.outcome]}</span><div className="mt-1 text-xs text-base-content/60">{formatProfit(audit.profit)} · {audit.source ?? "-"}</div></> : <span className="text-xs text-base-content/60">尚无查询</span>}</td>
-                                        <td><Button size="icon-sm" title="删除规则" variant="ghost" onClick={() => requestDelete(rule.id)}><RiDeleteBinLine/></Button></td>
+                                        <td><Button size="icon-sm" title="删除规则" aria-label="删除规则" variant="ghost" onClick={() => requestDelete(rule.id)}><RiDeleteBinLine/></Button></td>
                                     </tr>;
                                 })}
                                 {draft.rules.length === 0 && <tr><td colSpan={6} className="text-center text-sm text-base-content/60">尚未添加利润规则</td></tr>}

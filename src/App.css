@@ -222,6 +222,10 @@
         transform: none;
         opacity: 1;
     }
+
+    html {
+        scroll-behavior: auto;
+    }
 }
 
 [data-slot="tooltip-content"] {

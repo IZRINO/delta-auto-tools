@@ -288,7 +288,7 @@ export function ThemePanel() {
                                         </span>
                                         {isActive ? (
                                             <RiCheckLine
-                                                className="size-3.5 shrink-0 text-primary"
+                                                className="size-3.5 shrink-0 text-base-content"
                                                 aria-hidden="true"
                                             />
                                         ) : null}

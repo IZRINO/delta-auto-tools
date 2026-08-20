@@ -5,7 +5,7 @@ type SpinnerProps = Omit<React.ComponentProps<"svg">, "children">;
 
 function Spinner({className, ...props}: SpinnerProps) {
     return (
-        <RiLoaderLine role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
+        <RiLoaderLine role="status" aria-label="加载中" className={cn("size-4 animate-spin", className)} {...props} />
     )
 }
 

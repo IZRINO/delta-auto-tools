@@ -388,7 +388,7 @@ function FavoriteCard({
                 <CardBody className="space-y-3 bg-base-200">
                     <div className="flex items-center justify-between gap-3 border-b-2 border-base-content pb-3">
                         <div className="flex items-center gap-2">
-                            <RiStarLine className="text-primary"/>
+                            <RiStarLine className="text-base-content"/>
                             <span className="text-sm font-semibold text-base-content">已失效的收藏</span>
                             <Badge variant="outline">{kindLabel(item.kind)}</Badge>
                         </div>
@@ -463,7 +463,7 @@ function FavoriteCard({
                     <Badge variant="secondary">已收藏</Badge>
                     <span
                         className="flex items-center gap-1 font-mono text-caption font-semibold text-base-content/60">
-            <RiStarFill className="size-3.5 text-primary"/>
+            <RiStarFill className="size-3.5 text-base-content"/>
             点击跳转
           </span>
                 </div>

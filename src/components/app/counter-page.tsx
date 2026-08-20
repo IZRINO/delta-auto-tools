@@ -440,6 +440,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                 <CardBody>
                     <ControlTile className="flex items-center gap-3 bg-base-100">
                         <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
+                                aria-label="计数器总开关"
                                 onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
                         <p className="font-medium text-sm">{form?.counterEnabled ? "开" : "关"}</p>
                     </ControlTile>
@@ -593,7 +594,7 @@ function CounterCard({
                         <Button
                             aria-label={isFavorite ? "取消收藏" : "加入收藏"}
                             aria-pressed={isFavorite}
-                            className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
+                            className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
                             data-icon="inline-start"
                             disabled={controlsDisabled}
                             onClick={onToggleFavorite}

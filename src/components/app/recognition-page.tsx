@@ -639,9 +639,8 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
             <MacroHeader title="识别触发"/>
 
             {pageError && (
-                <div
-                    className="col-span-12 mb-3 border border-error bg-error/10 px-3 py-2 text-xs font-semibold text-error">
-                    {pageError}
+                <div role="alert" className="alert alert-error alert-soft col-span-12 mb-3 py-2 text-xs">
+                    <span>{pageError}</span>
                 </div>
             )}
 

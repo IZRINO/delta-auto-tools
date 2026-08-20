@@ -47,6 +47,7 @@ export function SyncGroupSection({
                         <Switch
                             checked={group.enabled}
                             disabled={controlsDisabled}
+                            aria-label={`${targetLabel}分组启用`}
                             onCheckedChange={(checked) => onGroupUpdate(group.id, {enabled: checked})}
                         />
                         <p className="font-mono text-xs font-medium text-base-content">
@@ -66,6 +67,7 @@ export function SyncGroupSection({
                             variant="ghost"
                             className="shrink-0"
                             size="icon-sm"
+                            aria-label="删除分组"
                         >
                             <RiDeleteBinLine/>
                         </Button>

@@ -438,6 +438,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     state={form?.autoInputDelay ? "valid" : "idle"}
                                 />
                                 <div className="flex items-center gap-2 border-b border-base-300 px-3 py-2">
+                                    <label className="flex items-center gap-2">
                                     <Switch
                                         checked={form?.autoClickEnabled ?? false}
                                         disabled={isBusy}
@@ -445,6 +446,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     />
                                     <span
                                         className="font-mono text-xs font-semibold">自动点击链路</span>
+                                    </label>
                                     <HelpHint content="识别成功后按设定顺序执行点击。"/>
                                 </div>
                                 {form?.autoClickEnabled && (
@@ -585,10 +587,9 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                         {latestRun?.autoTyped ? <Badge variant="outline">已自动输入</Badge> : null}
                                     </div>
                                     <p className="font-mono text-xs font-semibold text-base-content/60">最新三码输出</p>
-                                    <p className="mt-2 font-mono text-4xl font-semibold text-primary">
+                                    <p className="mt-2 font-mono text-4xl font-semibold text-base-content">
                                         {latestRun?.value ?? "---"}
                                     </p>
-                                    <div className="mt-2 h-0.5 w-full bg-primary"/>
                                     <p className="mt-2 text-xs text-base-content/60">{latestRun?.error ?? "执行识别后会在这里显示最新三码输出。"}</p>
                                 </div>
                                 <div className="space-y-2">

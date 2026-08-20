@@ -1,5 +1,7 @@
 import {useEffect} from "react";
 
+import {scrollElementIntoView} from "@/lib/utils";
+
 /**
  * 收藏页高亮跳转：滚动到目标卡片并添加 1.5s 高亮动画。
  *
@@ -24,7 +26,7 @@ export function useHighlightScroll(
             // 强制 reflow 重新触发动画
             void element.offsetWidth;
             element.classList.add("favorite-highlight");
-            element.scrollIntoView({behavior: "smooth", block: "center"});
+            scrollElementIntoView(element, "center");
         }, 80);
         return () => {
             window.clearTimeout(handle);

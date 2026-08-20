@@ -3,7 +3,6 @@ import {
     RiAddLine,
     RiArrowDownSLine,
     RiDeleteBinLine,
-    RiErrorWarningLine,
     RiInformationLine,
     RiMapPinLine,
 } from "@remixicon/react";
@@ -11,7 +10,7 @@ import {
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {Card, CardContent, CardDescription, CardHeader, CardTitle} from "@/components/ui/card";
+import {Card, CardContent, CardDescription, CardHeader} from "@/components/ui/card";
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from "@/components/ui/empty";
 import {Field, FieldContent, FieldLabel} from "@/components/ui/field";
@@ -52,46 +51,6 @@ export function MacroHeader({actions, className, title}: MacroHeaderProps) {
             </h1>
             {actions ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
         </header>
-    );
-}
-
-/* ────────── Page Hero (legacy alias, maps to MacroHeader) ────────── */
-
-type PageHeroProps = {
-    eyebrow: string;
-    title: string;
-    description: string;
-    badges?: ReactNode;
-    actions?: ReactNode;
-    stats?: ReactNode;
-    className?: string;
-};
-
-export function PageHero({actions, badges, className, description, eyebrow, stats, title}: PageHeroProps) {
-    const descriptionTitle = typeof description === "string" ? description : undefined;
-
-    return (
-        <section
-            className={cn(
-                "card card-border col-span-12 bg-base-200 text-base-content shadow-none",
-                className,
-            )}
-        >
-            <div className="card-body gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="badge badge-primary badge-sm">{eyebrow}</span>
-                    {badges}
-                </div>
-                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-                    <div className="min-w-64 flex-1">
-                        <h1 className="truncate text-4xl font-semibold leading-tight text-base-content" title={title}>{title}</h1>
-                        <p className="mt-2 max-w-[64ch] truncate text-sm leading-relaxed text-base-content/70" title={descriptionTitle}>{description}</p>
-                    </div>
-                    {actions ? <div className="card-actions min-w-0 flex-wrap justify-end">{actions}</div> : null}
-                </div>
-                {stats ? <div className="stats stats-vertical border border-base-300 bg-base-100 lg:stats-horizontal">{stats}</div> : null}
-            </div>
-        </section>
     );
 }
 
@@ -147,7 +106,7 @@ export function SignalTile({className, detail, icon, label, value}: SignalTilePr
 
     return (
         <div className={cn("stat min-h-12 min-w-0 bg-base-100 px-3 py-2 text-base-content", className)}>
-            {icon ? <div className="stat-figure text-primary">{icon}</div> : null}
+            {icon ? <div className="stat-figure text-base-content">{icon}</div> : null}
             <div className="stat-title truncate text-xs" title={label}>{label}</div>
             <div className="stat-value flex items-center gap-2 text-lg">
                 {value}
@@ -211,7 +170,9 @@ export function SectionHeader({actions, badge, className, description, title}: S
         <CardHeader className={cn("border-b border-base-300 pb-3", className)}>
             <div className="flex min-w-0 items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                    <CardTitle className="truncate">{title}</CardTitle>
+                    {typeof title === "string"
+                        ? <h2 className="truncate text-base font-semibold">{title}</h2>
+                        : <div className="truncate text-base font-semibold">{title}</div>}
                     {description ? (
                         <CardDescription className="mt-1 truncate" title={descriptionTitle}>
                             {description}
@@ -337,7 +298,7 @@ export function HelpHint({content, className}: HelpHintProps) {
             <TooltipTrigger asChild>
                 <button
                     className={cn(
-                        "btn btn-circle btn-ghost btn-xs text-base-content/60 hover:text-primary",
+                        "btn btn-circle btn-ghost btn-xs text-base-content/60 hover:text-base-content",
                         className,
                     )}
                     type="button"
@@ -347,34 +308,6 @@ export function HelpHint({content, className}: HelpHintProps) {
                 </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-                {content}
-            </TooltipContent>
-        </Tooltip>
-    );
-}
-
-/* Error Hint (square !) */
-
-type ErrorHintProps = {
-    content: ReactNode;
-    className?: string;
-};
-
-export function ErrorHint({content, className}: ErrorHintProps) {
-    return (
-        <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-                <button
-                    className={cn(
-                        "btn btn-circle btn-ghost btn-xs text-error",
-                        className,
-                    )}
-                    type="button"
-                >
-                    <RiErrorWarningLine className="size-3"/>
-                </button>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-xs tooltip-error">
                 {content}
             </TooltipContent>
         </Tooltip>
@@ -431,7 +364,7 @@ export function EmptyState({action, className, description, icon, title}: EmptyS
     return (
         <div
             className={cn("flex flex-col items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 px-6 py-12 text-center", className)}>
-            {icon ? <div className="mb-4 flex size-12 items-center justify-center rounded-field bg-base-100 text-primary">{icon}</div> : null}
+            {icon ? <div className="mb-4 flex size-12 items-center justify-center rounded-field bg-base-100 text-base-content">{icon}</div> : null}
             <h3 className="text-lg font-semibold text-base-content">{title}</h3>
             <p className="mt-2 max-w-[48ch] text-sm text-base-content/60">{description}</p>
             {action ? <div className="mt-6">{action}</div> : null}
@@ -557,6 +490,7 @@ export function DisplaySettingsInline({
         <ControlTile className="flex flex-col gap-3 bg-base-100">
             <div className="flex flex-wrap items-center gap-3">
                 <Switch checked={group.enabled} disabled={controlsDisabled}
+                        aria-label={`${targetLabel}分组启用`}
                         onCheckedChange={(checked) => onGroupUpdate({enabled: checked})}/>
                 <p className="text-sm font-medium text-base-content">
                     {targetLabel}分组 · {group.name}
@@ -569,7 +503,7 @@ export function DisplaySettingsInline({
                     aria-label="分组名称"
                 />
                 <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0"
-                        size="icon-sm">
+                        size="icon-sm" aria-label="删除分组">
                     <RiDeleteBinLine/>
                 </Button>
                 <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button"
@@ -596,6 +530,7 @@ export function DisplaySettingsInline({
                                 <FieldContent>
                                     <div className="flex items-center gap-3">
                                         <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05}
+                                                aria-label="字体透明度"
                                                 value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
                                                 onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}/>
                                         <span className="w-10 text-right text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>

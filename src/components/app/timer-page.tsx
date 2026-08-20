@@ -406,6 +406,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                 <CardBody>
                     <ControlTile className="flex items-center gap-3 bg-base-200">
                         <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
+                                aria-label="计时器总开关"
                                 onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
                         <p className="font-medium text-sm">{form?.timerEnabled ? "开" : "关"}</p>
                     </ControlTile>
@@ -537,7 +538,7 @@ function TimerCard({
                         </Select>
                         <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
                         <Button aria-label={isFavorite ? "取消收藏" : "加入收藏"} aria-pressed={isFavorite}
-                                className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
+                                className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
                                 disabled={controlsDisabled} onClick={onToggleFavorite} size="icon-sm" type="button"
                                 variant="outline">
                             {isFavorite ? <RiStarFill/> : <RiStarLine/>}
@@ -611,6 +612,7 @@ function TimerCard({
                         <Switch
                             checked={timer.ignoreRunning}
                             disabled={controlsDisabled}
+                            aria-label="运行中忽略触发"
                             onCheckedChange={(checked) => onUpdate({ignoreRunning: checked})}
                         />
                         <div className="min-w-0">

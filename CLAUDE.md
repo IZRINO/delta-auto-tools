@@ -200,7 +200,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 
 ### 组件层
 
-- **共享工业组件**（`src/components/app/app-ui.tsx`）：`AppPage`（12 列 Work Grid）、`PageHero`、`SignalTile`、`TacticalCard`、
+- **共享工业组件**（`src/components/app/app-ui.tsx`）：`AppPage`（12 列 Work Grid）、`MacroHeader`、`SignalTile`、`TacticalCard`、
   `SectionHeader`、`ControlTile`、`InlineControl`、`CardBody` 等。三个以上页面需要同一种结构时应先扩展共享组件。
 - **基础组件**（`src/components/ui/`）：保留 Radix headless 行为能力，class 优先映射 daisyUI 组件语义，图标库使用 remixicon。Button 内图标必须
   `data-icon="inline-start"` / `"inline-end"`。

@@ -313,7 +313,8 @@ export function AboutPanel({active}: AboutPanelProps) {
                                             href={dep.url}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="btn btn-ghost btn-square btn-xs text-primary"
+                                            className="btn btn-ghost btn-square btn-xs"
+                                            aria-label={`打开 ${dep.name} 主页`}
                                             onClick={(e) => {
                                                 if (isNativeShell) {
                                                     e.preventDefault();

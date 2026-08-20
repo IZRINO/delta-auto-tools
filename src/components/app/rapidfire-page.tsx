@@ -81,6 +81,7 @@ import {useNativeShell} from "@/hooks/use-native-shell";
 import {useBootstrapForm} from "@/hooks/use-bootstrap-form";
 import {useAutosave} from "@/hooks/use-autosave";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
+import {useHighlightScroll} from "@/hooks/use-highlight-scroll";
 import {cn} from "@/lib/utils";
 
 const RAPIDFIRE_BOOTSTRAP_SPEC = {
@@ -133,22 +134,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
     const draggingCardIdRef = useRef<string | null>(null);
     const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
     const favorites = useFavorites();
-
-    useEffect(() => {
-        if (!highlightCardId) return;
-        if (highlightCardId.kind !== "rapidfire") return;
-        const cardId = highlightCardId.cardId;
-        const timer = window.setTimeout(() => {
-            const element = document.querySelector(`[data-favorite-card="rapidfire:${cardId}"]`);
-            if (element instanceof HTMLElement) {
-                element.classList.remove("favorite-highlight");
-                void element.offsetWidth;
-                element.classList.add("favorite-highlight");
-                element.scrollIntoView({behavior: "smooth", block: "center"});
-            }
-        }, 80);
-        return () => window.clearTimeout(timer);
-    }, [highlightCardId]);
+    useHighlightScroll(highlightCardId ?? null, "rapidfire");
 
     useEffect(() => {
         if (!isNativeShell) return;
@@ -610,7 +596,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                                 <div
                                     className="flex items-start justify-between gap-3 border-b border-base-300 pb-3">
                                     <div className="min-w-0">
-                                        <p className="text-xs text-primary">
+                                        <p className="text-xs text-base-content/60">
                                             第 {String(index + 1).padStart(2, "0")} 组
                                         </p>
                                         <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
@@ -619,6 +605,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                                         </p>
                                     </div>
                                     <Switch checked={group.enabled} disabled={controlsDisabled}
+                                            aria-label={`${group.name} 分组启用`}
                                             onCheckedChange={(checked) => updateGroup(group.id, {enabled: checked})}/>
                                 </div>
                                 <FieldGroup className="grid gap-3 md:grid-cols-2">
@@ -643,6 +630,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                                 <div className="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">
                                     <ControlTile className="flex items-center gap-2 bg-base-200 px-3 py-2">
                                         <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled}
+                                                aria-label={`${group.name} 透明窗口`}
                                                 onCheckedChange={(checked) => updateGroup(group.id, {showOverlay: checked})}/>
                                         <span className="text-xs text-muted-foreground">透明窗口</span>
                                     </ControlTile>
@@ -903,7 +891,7 @@ function RapidfireCardEditor({
                         <Button
                             aria-label={isFavorite ? "取消收藏" : "加入收藏"}
                             aria-pressed={isFavorite}
-                            className={cn(isFavorite ? "text-primary" : "text-muted-foreground")}
+                            className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
                             data-icon="inline-start"
                             disabled={disabled}
                             onClick={onToggleFavorite}

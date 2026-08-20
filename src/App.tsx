@@ -178,6 +178,7 @@ function TopTabItem({
                     ? "border-primary bg-base-200 text-base-content"
                     : "text-base-content/60 hover:bg-base-200 hover:text-base-content",
             )}
+            aria-current={active ? "page" : undefined}
             onClick={onClick}
             type="button"
         >
@@ -189,7 +190,7 @@ function TopTabItem({
 
 function TopTabBar({activeTool, onToolClick}: { activeTool: ToolId; onToolClick: (id: ToolId) => void }) {
     return (
-        <nav className="flex items-center overflow-x-auto border-b border-base-300 bg-base-100 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav aria-label="工具导航" className="flex items-center overflow-x-auto border-b border-base-300 bg-base-100 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <TopTabItem
                 active={activeTool === "favorites"}
                 icon={RiStarFill}
@@ -237,6 +238,7 @@ function IndexRailItem({
                 "btn btn-ghost h-10 min-h-10 w-full justify-start rounded-box px-3",
                 active && "btn-active",
             )}
+            aria-current={active ? "page" : undefined}
             data-active={active}
             onClick={onClick}
             type="button"
@@ -290,7 +292,6 @@ function GlobalSwitch() {
         <div
             className={cn(
                 "join join-horizontal items-center rounded-field border border-base-300 bg-base-100 px-2 py-1 text-xs",
-                !globalEnabled && "text-error",
             )}
         >
             <RiShutDownLine className="size-3.5" aria-hidden="true"/>
@@ -437,7 +438,7 @@ function AppShell() {
     }
 
     return (
-        <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-base-100">
+        <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-base-100 max-lg:grid-rows-[48px_auto_1fr]">
             <a
                 className="sr-only fixed left-4 top-4 z-50 rounded-field bg-base-200 px-3 py-2 text-sm text-base-content focus:not-sr-only focus:outline-2 focus:outline-primary"
                 href="#app-content"
@@ -465,7 +466,7 @@ function AppShell() {
 
             <div className="grid min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
                 {/* Left Index Rail (desktop >=1024px) */}
-                <aside className="hidden min-h-0 flex-col border-r border-base-300 bg-base-200 lg:flex">
+                <aside aria-label="工具导航" className="hidden min-h-0 flex-col border-r border-base-300 bg-base-200 lg:flex">
                     <div
                         className="menu min-h-0 flex-1 flex-nowrap overflow-y-auto p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         <FavoritesIndexRailItem active={activeTool === "favorites"} count={favorites.items.length}

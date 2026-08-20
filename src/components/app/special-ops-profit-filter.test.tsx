@@ -5,13 +5,12 @@ import profitFilterSource from "./special-ops-profit-filter.tsx?raw";
 
 describe("SpecialOpsProfitFilter", () => {
     it("默认折叠利润规则编辑表", () => {
-        expect(profitFilterSource).toContain('<summary className="collapse-title">利润规则</summary>');
+        expect(profitFilterSource).toContain('<summary className="cursor-pointer px-4 py-3 font-medium">利润规则</summary>');
     });
 
     it("默认折叠业务目标绑定表", () => {
-        expect(profitFilterSource).toContain('<details className="collapse collapse-arrow">');
-        expect(profitFilterSource).toContain('<summary className="collapse-title">业务目标</summary>');
-        expect(profitFilterSource).toContain('<div className="collapse-content">');
+        expect(profitFilterSource).toContain('<details className="rounded-box border border-base-300">');
+        expect(profitFilterSource).toContain('<summary className="cursor-pointer px-4 py-3 font-medium">业务目标</summary>');
     });
 
     it("KKRB -101 提示可手工填写精确名称", () => {

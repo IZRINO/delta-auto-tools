@@ -485,7 +485,7 @@ export function StrategyPage() {
                                         <TabsTrigger key={site.id} value={site.id}
                                                      className="h-8 max-w-32 flex-none gap-1.5 px-2 py-0 font-mono text-caption font-semibold">
                                             <span
-                                                className="text-caption text-base-content/60 data-[state=active]:text-primary">{String(siteIndex + 1).padStart(2, "0")}</span>
+                                                className="text-caption text-base-content/60 data-[state=active]:text-base-content data-[state=active]:font-semibold">{String(siteIndex + 1).padStart(2, "0")}</span>
                                             <img alt="" aria-hidden
                                                  className="size-3.5 border border-base-content bg-base-100 object-contain"
                                                  src={site.favicon}/>

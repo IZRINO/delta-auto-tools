@@ -71,7 +71,7 @@ export function OperationHud({
             <header className="px-4 pt-3">
                 <h1 className="font-mono text-xs font-semibold tracking-[0.14em] text-white/70">{title}</h1>
             </header>
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4">
+            <div aria-live="polite" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4">
                 {countdownSeconds !== null ? (
                     <>
                         <p

@@ -52,7 +52,7 @@ function FieldGroup({className, ...props}: React.ComponentProps<"div">) {
 }
 
 const fieldVariants = cva(
-    "group/field flex w-full gap-2 data-[invalid=true]:text-error",
+    "group/field flex w-full gap-2",
     {
         variants: {
             orientation: {
@@ -138,7 +138,7 @@ function FieldDescription({children, className, title, ...props}: React.Componen
             className={cn(
                 "label min-w-0 max-w-full truncate text-start text-xs/relaxed leading-normal text-base-content/60 group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5",
                 "last:mt-0 nth-last-2:-mt-1",
-                "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+                "[&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-base-content",
                 className
             )}
             {...props}
@@ -222,7 +222,7 @@ function FieldError({
             role="alert"
             data-slot="field-error"
             className={cn(
-                "label text-xs/relaxed font-medium text-error",
+                "label text-xs/relaxed font-medium text-base-content",
                 className
             )}
             {...props}

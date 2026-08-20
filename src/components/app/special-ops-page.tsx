@@ -22,6 +22,7 @@ import {LatestSaveQueue} from "@/hooks/autosave-queue";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {invokeLogged as invoke} from "@/lib/logging";
+import {scrollElementIntoView} from "@/lib/utils";
 import {SPECIAL_OPS_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
@@ -283,9 +284,9 @@ function AmmoTargetEditor({
                         <label className="flex h-9 items-center gap-2 text-xs"><Switch checked={target.enabled} onCheckedChange={(enabled) => update(target, {enabled})}/>启用</label>
                     </div>
                     <div className="join">
-                        <Button className="join-item" disabled={targetIndex === 0 || targets[targetIndex - 1].seasonal !== target.seasonal} size="icon-sm" title="上移" variant="ghost" onClick={() => onChange(moveAmmoTargetWithinGroup(targets, target.id, -1))}><RiArrowUpLine data-icon="inline-start"/></Button>
-                        <Button className="join-item" disabled={targetIndex === targets.length - 1 || targets[targetIndex + 1].seasonal !== target.seasonal} size="icon-sm" title="下移" variant="ghost" onClick={() => onChange(moveAmmoTargetWithinGroup(targets, target.id, 1))}><RiArrowDownLine data-icon="inline-start"/></Button>
-                        <Button className="join-item" size="icon-sm" title="删除子弹" variant="ghost" onClick={() => remove(target)}><RiDeleteBinLine data-icon="inline-start"/></Button>
+                        <Button className="join-item" disabled={targetIndex === 0 || targets[targetIndex - 1].seasonal !== target.seasonal} size="icon-sm" title="上移" aria-label="上移" variant="ghost" onClick={() => onChange(moveAmmoTargetWithinGroup(targets, target.id, -1))}><RiArrowUpLine data-icon="inline-start"/></Button>
+                        <Button className="join-item" disabled={targetIndex === targets.length - 1 || targets[targetIndex + 1].seasonal !== target.seasonal} size="icon-sm" title="下移" aria-label="下移" variant="ghost" onClick={() => onChange(moveAmmoTargetWithinGroup(targets, target.id, 1))}><RiArrowDownLine data-icon="inline-start"/></Button>
+                        <Button className="join-item" size="icon-sm" title="删除子弹" aria-label="删除子弹" variant="ghost" onClick={() => remove(target)}><RiDeleteBinLine data-icon="inline-start"/></Button>
                     </div>
                 </li>)}
             </ul>
@@ -519,7 +520,7 @@ function CorrectionLimitedSupply({
                 : ""}
             {limited?.checkedAtMs ? ` · 检查于 ${shanghaiTimeFormatter.format(limited.checkedAtMs)}` : ""}
         </p>
-        {limited?.lastError && <p className="mt-1 text-xs text-error">{limited.lastError}</p>}
+        {limited?.lastError && <div role="alert" className="alert alert-error alert-soft mt-1 py-1 text-xs"><span>{limited.lastError}</span></div>}
         {error && <div role="alert" className="alert alert-error alert-soft mt-2 py-2 text-xs"><span>{error}</span></div>}
     </div>;
 }
@@ -559,9 +560,9 @@ function SpecialOpsTimeline({
                 <HelpHint content="10 分钟内任务合并显示，计划时间不变；暂停期间到期任务显示 0 分钟后。"/>
             </div>
             {groups.length === 0 ? <div className="rounded-box border border-dashed border-base-300 px-4 py-3 text-sm text-base-content/60">未来 24 小时暂无任务。点继续后，到期项会出现在这里。</div> : <div className="max-h-[38rem] overflow-y-auto rounded-box border border-base-300">
-                {slots.map((slot, index) => <div key={slot} className="grid grid-cols-[5rem_minmax(0,1fr)] border-b border-base-300 last:border-b-0">
+                {slots.map((slot, index) => groupsBySlot[index].length === 0 ? null : <div key={slot} className="grid grid-cols-[5rem_minmax(0,1fr)] border-b border-base-300 last:border-b-0">
                     <time className="border-r border-base-300 bg-base-200 px-3 py-3 text-xs font-medium">{shanghaiTimeFormatter.format(slot).replace(" ", "\n")}</time>
-                    <div className="min-h-16 space-y-2 p-2">
+                    <div className="space-y-2 p-2">
                         {groupsBySlot[index].map((group) => <div key={`${group.anchorAtMs}-${group.tasks[0].id}`} className="card card-xs bg-base-200">
                             <div className="card-body py-2">
                                 <ul className="list">
@@ -576,9 +577,9 @@ function SpecialOpsTimeline({
                                                 <div className="truncate text-sm font-medium">账号 {accountNumbers.get(task.accountId) ?? "--"} {task.qqAccount || task.accountId} · {task.kind === "craft" && task.stationKind ? STATION_LABELS[task.stationKind] : task.kind === "limitedSupplyCheck" ? "限时商品检查" : task.kind === "marketPurchase" ? "交易行购买" : "子弹兑换"}{task.note ? ` · ${task.note}` : ""}</div>
                                                 <div className="text-xs text-base-content/60">计划 {shanghaiTimeFormatter.format(task.scheduledAtMs)} · {timelineDelayMinutes(task, nowMs)} 分钟后</div>
                                                 {task.profitState && <div className="text-xs text-base-content/60">{timelineProfitLabels[task.profitState]}{task.mayExecuteEarlier ? "；最晚执行，利润达标后可能提前" : ""}</div>}
-                                                {task.manualFailure && <div className="text-xs text-error">{task.manualFailure.step}：{task.manualFailure.message}</div>}
+                                                {task.manualFailure && <div className="text-xs text-base-content">{task.manualFailure.step}：{task.manualFailure.message}</div>}
                                                 {task.kind === "marketPurchase" && task.marketStatus
-                                                    && <div className={`text-xs ${task.marketStatus === "priceRecognitionFailed" ? "text-error" : "text-base-content/60"}`}>已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
+                                                    && <div className="text-xs text-base-content/60">已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && (() => {
                                                     const colorHits = formatLimitedMatchedColors(bootstrap.settings.accounts.find(({id}) => id === task.accountId)?.limitedSupply?.matchedColorIndexes);
@@ -587,8 +588,8 @@ function SpecialOpsTimeline({
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && task.limitedCycleId && <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledge}/>}
                                                 {needsManualCorrection && !inlineCorrectable && <button
                                                     type="button"
-                                                    className="btn btn-link btn-xs h-auto min-h-0 p-0 text-error"
-                                                    onClick={() => document.getElementById(`special-ops-account-${task.accountId}`)?.scrollIntoView({behavior: "smooth", block: "start"})}
+                                                    className="btn btn-link btn-xs h-auto min-h-0 p-0"
+                                                    onClick={() => scrollElementIntoView(document.getElementById(`special-ops-account-${task.accountId}`))}
                                                 >请在账号页处理</button>}
                                             </div>
                                             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -1292,12 +1293,13 @@ export function SpecialOpsPage() {
         }
     };
 
-    return <main className="space-y-4">
+    return <div className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-xl font-semibold">特勤处</h1>
             <div className="flex items-center gap-2">
-                <span className="text-sm">总开关</span>
+                <label className="flex items-center gap-2 text-sm">总开关
                 <Switch disabled={controlsLocked} checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, enabled})}/>
+                </label>
                 <Button disabled={pauseTransition || (hasActiveRun && !isActiveRound)} size="sm" onClick={() => setPaused(!bootstrap.settings.paused)}>
                     {bootstrap.settings.paused ? <RiPlayLine data-icon="inline-start"/> : <RiPauseLine data-icon="inline-start"/>}
                     {bootstrap.settings.paused && pauseTransition ? "正在继续" : pauseTransition ? "正在暂停" : isActiveRound && !bootstrap.settings.paused ? "当前账号结束后暂停" : bootstrap.settings.paused ? "继续" : "暂停"}
@@ -1318,7 +1320,7 @@ export function SpecialOpsPage() {
                 <p className="max-w-[48ch] text-sm text-base-content/70">加一个 QQ 账号，选好 WeGame 和游戏，再框选点击点。配好后任务会出现在这里。</p>
                 <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={addAccount}><RiAddLine data-icon="inline-start"/>添加账号</Button>
-                    <Button size="sm" variant="outline" onClick={() => document.getElementById("special-ops-calibration")?.scrollIntoView({behavior: "smooth", block: "start"})}><RiCrosshair2Line data-icon="inline-start"/>去校准</Button>
+                    <Button size="sm" variant="outline" onClick={() => scrollElementIntoView(document.getElementById("special-ops-calibration"))}><RiCrosshair2Line data-icon="inline-start"/>去校准</Button>
                 </div>
                 {(!bootstrap.settings.wegameExecutablePath || !bootstrap.settings.gameExecutablePath) && <div className="grid gap-3 md:grid-cols-2">
                     <fieldset className="fieldset">
@@ -1503,7 +1505,7 @@ export function SpecialOpsPage() {
                 {bootstrap.settings.defaultBusinessConfig.stations.map((station) => {
                     const recipeTarget = activeEnvironment?.targets.find((target) => target.key === `craft.recipe.${station.kind}`);
                     return <div key={station.kind} className="rounded-box bg-base-200 p-3">
-                        <div className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateDefaultStation(station, {enabled})}/></div>
+                        <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateDefaultStation(station, {enabled})}/></label>
                         <div className="mt-2 grid grid-cols-2 gap-2">
                             <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateDefaultStation(station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
                             <label className="text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateDefaultStation(station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
@@ -1588,8 +1590,8 @@ export function SpecialOpsPage() {
                             ><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>
                             <fieldset disabled={controlsLocked} className="contents">
                                 <span>启用</span>
-                                <Switch checked={account.enabled} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
-                                <Button variant="ghost" size="icon-sm" title="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
+                                <Switch checked={account.enabled} aria-label={`启用账号 ${index + 1}`} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
+                                <Button variant="ghost" size="icon-sm" title="删除账号" aria-label="删除账号" onClick={() => removeAccount(account)}><RiDeleteBinLine/></Button>
                             </fieldset>
                         </div>
                     </div>
@@ -1609,7 +1611,7 @@ export function SpecialOpsPage() {
                             const runtime = account.stations.find((item) => item.kind === station.kind);
                             const recipePoint = business.recipePoints.find((item) => item.kind === station.kind);
                             return <div key={station.kind} className="rounded-box bg-base-200 p-3">
-                                <div className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateIndependentStation(account, station, {enabled})}/></div>
+                                <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateIndependentStation(account, station, {enabled})}/></label>
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                     <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateIndependentStation(account, station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
                                     <label className="text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateIndependentStation(account, station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
@@ -1813,5 +1815,5 @@ export function SpecialOpsPage() {
                 </div>
             </div>
         </dialog>}
-    </main>;
+    </div>;
 }

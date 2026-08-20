@@ -165,7 +165,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 ### Named Rules
 
-**The One Voice Rule.** 曳光红是唯一主色，任何一屏的曳光红面积不超过约 10%。它的稀缺性就是它的意义——主按钮、当前激活项、状态灯心跳。大面积铺红即降级为噪音。
+**The One Voice Rule.** 曳光红是唯一主色，任何一屏的曳光红面积不超过约 10%。它的稀缺性就是它的意义——主按钮、当前激活项、状态灯心跳。大面积铺红即降级为噪音。禁止把 `primary` / `error` 当 base 表面上的正文字色（小字对比不够）；读数用 `base-content`，失败用 `alert-error` 或 error 底 + `error-content`。
 
 **The Copper Seam Rule.** 默认边框色就是弹壳铜（`base-300`）。不要另发明灰边框，也不要把边框做成曳光红；一道 1px 铜缝就是全部边界语言。
 
@@ -182,7 +182,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 ### Hierarchy
 
 - **Display**（600, 3rem, lh 1, tabular-nums）：MacroNumber 巨数，单页最多一处，用于真正需要「一眼读数」的量（如剩余时间、总计数）。
-- **Headline**（600, 2.25rem, lh 1.25）：PageHero / MacroHeader 的页面标题 `text-4xl`，每页一个。
+- **Headline**（600, 1.25rem, lh 1.25）：MacroHeader 页面标题 `text-xl`，每页一个。
 - **Title**（600, 1rem, lh 1.5）：CardTitle / SectionHeader / DialogTitle `text-base`。
 - **Body**（400, 0.875rem, lh 1.625）：正文 `text-sm`，行宽限 `max-w-[64ch]`，长文本一律 truncate 防溢出。桌面密集工具正当例外，不要「修正」到 1rem。
 - **Label**（400, 0.75rem, lh 1.5）：标签、元信息、按钮文字 `text-xs`，次级内容用 `text-base-content/60`。
@@ -197,7 +197,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 ## Layout
 
-应用壳是固定网格：顶栏 48px（`grid-rows-[48px_1fr]`），≥1024px 时左侧 240px Index Rail，内容区独立滚动；<1024px 时 Rail 收起为顶部横向 Tab Bar。窗口最小 1280×800。页面内容在 12 列 Work Grid（`AppPage`，gap-3）上排布，常规工具页限宽 `max-w-7xl`，攻略页 `max-w-none` 铺满。
+应用壳是固定网格：顶栏 48px。≥1024px 用 `grid-rows-[48px_1fr]` + 左侧 240px Index Rail；<1024px 用 `grid-rows-[48px_auto_1fr]`，Rail 收起为顶部横向 Tab Bar，避免 Tab Bar 吃掉 `1fr` 把主区裁掉。窗口最小 1280×800。页面内容在 12 列 Work Grid（`AppPage`，gap-3）上排布，常规工具页限宽 `max-w-7xl`，攻略页 `max-w-none` 铺满。
 
 间距三档按职责用，禁止单值复读到所有层级：
 
@@ -316,6 +316,7 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Don't** 加任何阴影、渐变、柔光、发光边框——零阴影是硬约束。
 - **Don't** 发明第二强调色；曳光弹黄不是主色，信号橙是状态色不是装饰色。
 - **Don't** 用曳光红铺大面积背景或整行填充；它只做切口、激活、心跳。
+- **Don't** 用 `text-primary` / `text-error` 写正文或读数；红只做底、边、心跳。
 - **Don't** 新增旧桌面/战术风自定义 CSS 类，不得回流 shadcn 默认视觉或 SaaS 圆角卡片+插画风格，不得用赛博朋克霓虹描边/扫描线套路。
 - **Don't** 让 overlay 继承应用内铜红边框或 0.5rem 圆角；overlay 是白边玻璃片，遵守点击穿透与背景透明铁律。
 - **Don't** 在正文用等宽字体、在读数用比例字体——两者各归各位。

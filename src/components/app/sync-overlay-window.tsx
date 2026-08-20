@@ -126,14 +126,14 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
                   {isActive ? <span aria-hidden="true"
                                     className={cn("h-1.5 w-1.5 shrink-0 rounded-full bg-primary", overlayVisible && "animate-pulse motion-reduce:animate-none")}/> : null}
                     <span
-                        className={cn("min-w-0 truncate", finished && !isMultiSegment ? "text-primary-foreground italic" : "text-white")}>{timer.name}</span>
+                        className={cn("min-w-0 truncate", finished && !isMultiSegment ? "italic text-white" : "text-white")}>{timer.name}</span>
                   <span
-                      className={cn("shrink-0 font-mono text-xs", isActive ? "text-primary" : finished ? "text-primary" : "text-white/60")}>
+                      className={cn("shrink-0 font-mono text-xs", isActive || finished ? "text-white" : "text-white/60")}>
                     {isActive ? "RUNNING" : finished ? "FINISHED" : "IDLE"}
                   </span>
                 </span>
                                 <span
-                                    className={finished && !isMultiSegment ? "shrink-0 text-primary-foreground italic" : "shrink-0 text-white"}>{displayValue}</span>
+                                    className={finished && !isMultiSegment ? "shrink-0 italic text-white" : "shrink-0 text-white"}>{displayValue}</span>
                             </div>
                         </div>
                     );

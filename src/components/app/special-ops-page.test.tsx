@@ -208,6 +208,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("10 分钟内任务合并显示");
         expect(pageSource).toContain("groupTimelineTasks");
         expect(pageSource).toContain("buildTimelineHourSlots");
+        expect(pageSource).toContain("groupsBySlot[index].length === 0 ? null");
         expect(pageSource).toContain("0 分钟后");
         expect(pageSource).toContain("setTimelineNowMs(Date.now())");
         expect(pageSource).toContain("60_000");

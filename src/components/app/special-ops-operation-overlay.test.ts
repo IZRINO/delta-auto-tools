@@ -115,5 +115,6 @@ describe("SpecialOpsOperationOverlay", () => {
         expect(html).toContain("紧急停止：Ctrl+Shift+F12");
         expect(html).toContain("ops-digit");
         expect(html).toContain("ops-fuse");
+        expect(html).toContain("aria-live=\"polite\"");
     });
 });

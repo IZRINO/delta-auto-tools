@@ -238,7 +238,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                 className="flex items-center justify-between border-b-2 border-base-content bg-base-100 px-3 py-2">
                 <div className="flex items-center gap-2">
                     <span
-                        className="font-mono text-xs font-semibold text-primary">A-{String(index + 1).padStart(2, "0")}</span>
+                        className="font-mono text-xs font-semibold text-base-content">A-{String(index + 1).padStart(2, "0")}</span>
                     <span className="max-w-48 truncate font-mono text-xs font-bold text-base-content">
                         {card.name || "未命名卡片"}
                     </span>
@@ -589,7 +589,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                         {card.colorProbes.map((probe, probeIndex) => (
                             <div key={probeIndex} className="border border-base-300 p-2 space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="font-mono text-xs font-bold text-primary">
+                                    <span className="font-mono text-xs font-bold text-base-content">
                                         探针 #{probeIndex + 1}
                                     </span>
                                     <Button
