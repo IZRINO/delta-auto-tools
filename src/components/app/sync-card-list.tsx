@@ -6,7 +6,7 @@ type SyncCardListProps<T> = {
     items: T[];
     renderCard: (item: T, index: number) => ReactNode;
     addButtonTitle: string;
-    addButtonDescription: string;
+    addButtonDescription?: string;
     onAdd: () => void;
     disabled: boolean;
     className?: string;

@@ -14,6 +14,7 @@ import {
     RiStopCircleLine,
 } from "@remixicon/react";
 
+import {HelpHint} from "@/components/app/app-ui";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
@@ -552,7 +553,11 @@ function SpecialOpsTimeline({
     }
     return <section className="card card-border bg-base-100">
         <div className="card-body gap-3">
-            <div><h2 className="card-title text-lg">未来 24 小时任务</h2><p className="text-xs text-base-content/60">10 分钟内任务合并显示，计划时间不变；暂停期间到期任务显示 0 分钟后。</p></div>
+            <div className="flex items-center gap-2">
+                <h2 className="card-title text-lg">任务</h2>
+                {bootstrap.schedule.dueAccounts.length > 0 ? <span className="badge badge-primary badge-sm">{bootstrap.schedule.dueAccounts.length} 到期</span> : null}
+                <HelpHint content="10 分钟内任务合并显示，计划时间不变；暂停期间到期任务显示 0 分钟后。"/>
+            </div>
             {groups.length === 0 ? <div className="rounded-box border border-dashed border-base-300 p-6 text-center text-sm text-base-content/60">未来 24 小时暂无任务</div> : <div className="max-h-[38rem] overflow-y-auto rounded-box border border-base-300">
                 {slots.map((slot, index) => <div key={slot} className="grid grid-cols-[5rem_minmax(0,1fr)] border-b border-base-300 last:border-b-0">
                     <time className="border-r border-base-300 bg-base-200 px-3 py-3 text-xs font-medium">{shanghaiTimeFormatter.format(slot).replace(" ", "\n")}</time>
@@ -619,6 +624,7 @@ export function SpecialOpsPage() {
     const [limitedColorFeedback, setLimitedColorFeedback] = useState<string | null>(null);
     const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
     const [selectedCraftStation, setSelectedCraftStation] = useState<StationKind>("technicalCenter");
+    const [trialKind, setTrialKind] = useState<"login" | "navigation" | "craft" | "craftBatch" | "ammo" | "limitedSupply" | "market">("login");
     const [hotkeyStatus, setHotkeyStatus] = useState<string | null>(null);
     const [correctionAccountId, setCorrectionAccountId] = useState<string | null>(null);
     const [correctionDraft, setCorrectionDraft] = useState(createCorrectionDraft);
@@ -1139,6 +1145,15 @@ export function SpecialOpsPage() {
             setError(String(cause));
         }
     };
+    const startSelectedTrial = async () => {
+        if (trialKind === "login") return startLoginTrial();
+        if (trialKind === "navigation") return startNavigationTrial();
+        if (trialKind === "craft") return startCraftTrial();
+        if (trialKind === "craftBatch") return startCraftBatchTrial();
+        if (trialKind === "ammo") return startAmmoTrial();
+        if (trialKind === "limitedSupply") return startLimitedSupplyTrial();
+        return startMarketTrial();
+    };
     const cancelLoginTrial = async () => {
         if (!isNativeShell || !hasActiveRun || runSnapshot?.status === "stopping") return;
         try {
@@ -1275,7 +1290,7 @@ export function SpecialOpsPage() {
 
     return <main className="space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
-            <div><h1 className="text-2xl font-semibold">特勤处自动化</h1><p className="text-sm text-base-content/60">账号、制作台与兑换调度配置</p></div>
+            <h1 className="text-xl font-semibold">特勤处</h1>
             <div className="flex items-center gap-2">
                 <span className="text-sm">总开关</span>
                 <Switch disabled={controlsLocked} checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, enabled})}/>
@@ -1290,114 +1305,8 @@ export function SpecialOpsPage() {
         {error && <div role="alert" className="alert alert-error"><span>{error}</span></div>}
 
         {bootstrap.settings.paused && bootstrap.settings.pausedReason && <div role="alert" className="alert alert-warning alert-soft">
-            <span>自动化已暂停：{bootstrap.settings.pausedReason}。排查后点击「继续」恢复。</span>
+            <span>{bootstrap.settings.pausedReason}</span>
         </div>}
-
-        <fieldset disabled={controlsLocked} className="contents">
-        <section className="card card-border bg-base-100">
-            <div className="card-body gap-4">
-                <h2 className="card-title">全局配置</h2>
-                <div className="grid gap-3 md:grid-cols-2">
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">WeGame 可执行文件</legend>
-                        <div className="flex gap-2">
-                            <Input readOnly value={bootstrap.settings.wegameExecutablePath} placeholder="请选择 WeGame.exe"/>
-                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("wegameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
-                        </div>
-                    </fieldset>
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">游戏可执行文件</legend>
-                        <div className="flex gap-2">
-                            <Input readOnly value={bootstrap.settings.gameExecutablePath} placeholder="请选择游戏 .exe"/>
-                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("gameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
-                        </div>
-                    </fieldset>
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">每日兑换时间（Asia/Shanghai）</legend>
-                        <DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...settingsDraftRef.current, dailyExchangeTime})}/>
-                    </fieldset>
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">紧急停止热键</legend>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onBlur={recorder.handleBlur}
-                            onClick={() => recorder.beginRecording(bootstrap.settings.emergencyHotkey)}
-                            onKeyDown={recorder.handleKeyDown}
-                        >
-                            {recorder.isRecording ? "请按组合键" : `录制紧急停止热键（${bootstrap.settings.emergencyHotkey}）`}
-                        </Button>
-                        {hotkeyStatus && <p className="label">{hotkeyStatus}</p>}
-                    </fieldset>
-                </div>
-            </div>
-        </section>
-        </fieldset>
-
-        <section className="card card-border bg-base-100">
-            <div className="card-body gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div><h2 className="card-title">单账号试运行</h2><p className="text-sm text-base-content/60">可单独测试登录或从当前游戏进入四制作台页面</p></div>
-                    <div className="stat w-auto p-0"><div className="stat-title">待处理账号</div><div className="stat-value text-2xl">{bootstrap.schedule.dueAccounts.length}</div></div>
-                </div>
-                <div role="alert" className="alert alert-warning alert-soft">
-                    <span>先点击“继续”解除暂停。轮次按账号合并到期制作与当天子弹，所有必需模板必须先测试通过。</span>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 md:items-end xl:grid-cols-[minmax(0,1fr)_minmax(10rem,auto)_auto_auto_auto_auto_auto]">
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">试运行账号</legend>
-                        <select
-                            className="select select-sm w-full"
-                            disabled={eligibleAccounts.length === 0 || controlsLocked}
-                            value={selectedAccountId ?? ""}
-                            onChange={(event) => setSelectedAccountId(event.target.value || null)}
-                        >
-                            {eligibleAccounts.length === 0 && <option value="">无启用且 QQ 为纯数字的账号</option>}
-                            {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.qqAccount}</option>)}
-                        </select>
-                    </fieldset>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} onClick={() => void startLoginTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>运行所选账号一次
-                    </Button>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startNavigationTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>游戏内导航试运行
-                    </Button>
-                    <fieldset className="fieldset">
-                        <legend className="fieldset-legend">制作试运行目标</legend>
-                        <select className="select select-sm w-full" disabled={!selectedAccountId || controlsLocked} value={selectedCraftStation} onChange={(event) => setSelectedCraftStation(event.target.value as StationKind)}>
-                            {stationKinds.map((kind) => <option key={kind} value={kind}>{STATION_LABELS[kind]}</option>)}
-                        </select>
-                    </fieldset>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startCraftTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>制作试运行
-                    </Button>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startCraftBatchTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>当前账号四制作台批处理试运行
-                    </Button>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startAmmoTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>子弹兑换试运行
-                    </Button>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startLimitedSupplyTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>限时商品试运行
-                    </Button>
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} variant="outline" onClick={() => void startMarketTrial()}>
-                        <RiPlayLine data-icon="inline-start"/>交易行试运行
-                    </Button>
-                    {!isActiveRound && <Button disabled={!hasActiveRun || runSnapshot?.status === "stopping"} variant="outline" onClick={() => void cancelLoginTrial()}>
-                        <RiStopCircleLine data-icon="inline-start"/>取消本次试运行
-                    </Button>}
-                </div>
-                {runSnapshot && <div className="grid gap-2 rounded-box bg-base-200 p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                    <div><span className="text-base-content/60">步骤</span><p className="font-medium">{runSnapshot.currentStep ?? "准备"}</p></div>
-                    <div><span className="text-base-content/60">消息</span><p className="font-medium">{runSnapshot.message}</p></div>
-                    <div><span className="text-base-content/60">倒计时</span><p className="font-medium">{runSnapshot.countdownSeconds === null ? "-" : `${runSnapshot.countdownSeconds} 秒`}</p></div>
-                    <div><span className="text-base-content/60">状态</span><p className="font-medium">{runSnapshot.status}</p></div>
-                </div>}
-                {selectedAccount?.lastFailure && <div role="alert" className="alert alert-error alert-soft">
-                    <span>{selectedAccount.lastFailure.step}：{selectedAccount.lastFailure.message}（{new Date(selectedAccount.lastFailure.atMs).toLocaleString("zh-CN")}）</span>
-                </div>}
-            </div>
-        </section>
 
         <SpecialOpsTimeline
             bootstrap={bootstrap}
@@ -1415,14 +1324,104 @@ export function SpecialOpsPage() {
         />
 
         <fieldset disabled={controlsLocked} className="contents">
+        <details className="collapse collapse-arrow card card-border bg-base-100">
+            <summary className="collapse-title font-semibold">全局配置</summary>
+            <div className="collapse-content grid gap-3 md:grid-cols-2">
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">WeGame 可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.wegameExecutablePath} placeholder="请选择 WeGame.exe"/>
+                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("wegameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">游戏可执行文件</legend>
+                        <div className="flex gap-2">
+                            <Input readOnly value={bootstrap.settings.gameExecutablePath} placeholder="请选择游戏 .exe"/>
+                            <Button size="sm" variant="outline" onClick={() => void pickExecutable("gameExecutablePath")}><RiFolderOpenLine data-icon="inline-start"/>选择</Button>
+                        </div>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">每日兑换</legend>
+                        <DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...settingsDraftRef.current, dailyExchangeTime})}/>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">紧急停止热键</legend>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onBlur={recorder.handleBlur}
+                            onClick={() => recorder.beginRecording(bootstrap.settings.emergencyHotkey)}
+                            onKeyDown={recorder.handleKeyDown}
+                        >
+                            {recorder.isRecording ? "请按组合键" : `录制紧急停止热键（${bootstrap.settings.emergencyHotkey}）`}
+                        </Button>
+                        {hotkeyStatus && <p className="label">{hotkeyStatus}</p>}
+                    </fieldset>
+            </div>
+        </details>
+        </fieldset>
+
+        <details className="collapse collapse-arrow card card-border bg-base-100">
+            <summary className="collapse-title font-semibold">试运行{bootstrap.schedule.dueAccounts.length > 0 ? ` · ${bootstrap.schedule.dueAccounts.length} 到期` : ""}</summary>
+            <div className="collapse-content grid gap-3 md:grid-cols-2 md:items-end">
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">试运行账号</legend>
+                        <select
+                            className="select select-sm w-full"
+                            disabled={eligibleAccounts.length === 0 || controlsLocked}
+                            value={selectedAccountId ?? ""}
+                            onChange={(event) => setSelectedAccountId(event.target.value || null)}
+                        >
+                            {eligibleAccounts.length === 0 && <option value="">无启用且 QQ 为纯数字的账号</option>}
+                            {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.qqAccount}</option>)}
+                        </select>
+                    </fieldset>
+                    <fieldset className="fieldset">
+                        <legend className="fieldset-legend">类型</legend>
+                        <select className="select select-sm w-full" disabled={controlsLocked} value={trialKind} onChange={(event) => setTrialKind(event.target.value as typeof trialKind)}>
+                            <option value="login">运行所选账号一次</option>
+                            <option value="navigation">游戏内导航试运行</option>
+                            <option value="craft">制作试运行</option>
+                            <option value="craftBatch">当前账号四制作台批处理试运行</option>
+                            <option value="ammo">子弹兑换试运行</option>
+                            <option value="limitedSupply">限时商品试运行</option>
+                            <option value="market">交易行试运行</option>
+                        </select>
+                    </fieldset>
+                    {trialKind === "craft" && <fieldset className="fieldset md:col-span-2">
+                        <legend className="fieldset-legend">制作试运行目标</legend>
+                        <select className="select select-sm w-full" disabled={!selectedAccountId || controlsLocked} value={selectedCraftStation} onChange={(event) => setSelectedCraftStation(event.target.value as StationKind)}>
+                            {stationKinds.map((kind) => <option key={kind} value={kind}>{STATION_LABELS[kind]}</option>)}
+                        </select>
+                    </fieldset>}
+                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} onClick={() => void startSelectedTrial()}>
+                        <RiPlayLine data-icon="inline-start"/>开始
+                    </Button>
+                    {!isActiveRound && <Button disabled={!hasActiveRun || runSnapshot?.status === "stopping"} variant="outline" onClick={() => void cancelLoginTrial()}>
+                        <RiStopCircleLine data-icon="inline-start"/>取消本次试运行
+                    </Button>}
+                {runSnapshot && <div className="grid gap-2 rounded-box bg-base-200 p-3 text-sm sm:col-span-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div><span className="text-base-content/60">步骤</span><p className="font-medium">{runSnapshot.currentStep ?? "准备"}</p></div>
+                    <div><span className="text-base-content/60">消息</span><p className="font-medium">{runSnapshot.message}</p></div>
+                    <div><span className="text-base-content/60">倒计时</span><p className="font-medium">{runSnapshot.countdownSeconds === null ? "-" : `${runSnapshot.countdownSeconds} 秒`}</p></div>
+                    <div><span className="text-base-content/60">状态</span><p className="font-medium">{runSnapshot.status}</p></div>
+                </div>}
+                {selectedAccount?.lastFailure && <div role="alert" className="alert alert-error alert-soft sm:col-span-2">
+                    <span>{selectedAccount.lastFailure.step}：{selectedAccount.lastFailure.message}（{new Date(selectedAccount.lastFailure.atMs).toLocaleString("zh-CN")}）</span>
+                </div>}
+            </div>
+        </details>
+
+        <fieldset disabled={controlsLocked} className="contents">
         <section className="card card-border bg-base-100">
             <div className="card-body gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div><h2 className="card-title">限时商品通用设置</h2><p className="text-xs text-base-content/60">12:00、20:00 固定检查；颜色 1/2 共用全局配置。</p></div>
+                    <div className="flex items-center gap-1"><h2 className="card-title">限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 共用全局配置。"/></div>
                     <label className="flex items-center gap-2 text-sm"><Switch checked={limitedSupply.enabled} onCheckedChange={(enabled) => updateLimitedSupply({enabled})}/>启用</label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="form-control gap-1"><span className="label-text text-xs">研发部门页面等待（ms）</span><DraftInput type="number" min={0} max={60000} value={String(limitedSupply.researchDelayMs)} onCommit={(value) => updateLimitedSupply({researchDelayMs: Math.max(0, Math.min(60000, Math.trunc(Number(value) || 0)))})}/><span className="text-xs text-base-content/60">点完研发部门后先等这段时间再识别页面，太短会在上一页误判</span></label>
+                    <label className="form-control gap-1"><span className="label-text text-xs inline-flex items-center gap-1">研发部门页面等待（ms）<HelpHint content="点完研发部门后先等这段时间再识别页面，太短会在上一页误判"/></span><DraftInput type="number" min={0} max={60000} value={String(limitedSupply.researchDelayMs)} onCommit={(value) => updateLimitedSupply({researchDelayMs: Math.max(0, Math.min(60000, Math.trunc(Number(value) || 0)))})}/></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">页面就绪超时（ms）</span><DraftInput type="number" min={1000} max={60000} value={String(limitedSupply.readyTimeoutMs)} onCommit={(value) => updateLimitedSupply({readyTimeoutMs: Math.max(1000, Math.min(60000, Math.trunc(Number(value) || 0)))})}/></label>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -1468,7 +1467,7 @@ export function SpecialOpsPage() {
 
         <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
-            <div><h2 className="text-lg font-semibold">默认账号配置</h2><p className="text-xs text-base-content/60">独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。</p></div>
+            <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">默认账号配置</h2><HelpHint content="独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。"/></div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {bootstrap.settings.defaultBusinessConfig.stations.map((station) => {
                     const recipeTarget = activeEnvironment?.targets.find((target) => target.key === `craft.recipe.${station.kind}`);
@@ -1572,7 +1571,6 @@ export function SpecialOpsPage() {
                     </div>
                     {!account.independentSettingsEnabled ? <div className="mt-3 rounded-box bg-base-200 p-3 text-sm">
                         <span className="font-medium">继承默认配置</span>
-                        <span className="ml-2 text-base-content/60">关闭独立设置时隐藏制作时长、配方点击点与子弹目标编辑器。</span>
                     </div> : business ? <details className="collapse collapse-arrow mt-3">
                     <summary className="collapse-title">独立设置</summary>
                     <div className="collapse-content">
@@ -1634,7 +1632,7 @@ export function SpecialOpsPage() {
         <fieldset disabled={controlsLocked} className="contents">
         <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><h2 className="text-lg font-semibold">点击区域校准</h2><p className="text-xs text-base-content/60">坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。</p></div>
+                <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">校准</h2><HelpHint content="坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。"/></div>
             </div>
             {calibrationTestResult && <div role="alert" className="alert alert-info"><span>{calibrationTestResult}</span></div>}
             {activeEnvironment && <>

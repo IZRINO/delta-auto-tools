@@ -6,6 +6,11 @@ import pageSource from "./special-ops-page.tsx?raw";
 import calibrationOverlaySource from "./special-ops-calibration-overlay.tsx?raw";
 import utilsSource from "./special-ops-utils.ts?raw";
 import {SpecialOpsPage} from "@/components/app/special-ops-page";
+import {TooltipProvider} from "@/components/ui/tooltip";
+
+function renderPage() {
+    return renderToStaticMarkup(createElement(TooltipProvider, null, createElement(SpecialOpsPage)));
+}
 
 describe("SpecialOpsPage 登录试运行配置", () => {
     it("制作台只保留时长配置", () => {
@@ -46,18 +51,15 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     });
 
     it("显示可执行文件、紧急热键与单账号试运行边界", () => {
-        const html = renderToStaticMarkup(createElement(SpecialOpsPage));
+        const html = renderPage();
 
         expect(html).toContain("WeGame 可执行文件");
         expect(html).toContain("游戏可执行文件");
         expect(html).toContain("录制紧急停止热键");
-        expect(html).toContain("可单独测试登录或从当前游戏进入四制作台页面");
-        expect(html).toContain("先点击“继续”解除暂停");
+        expect(html).toContain("游戏内导航试运行");
         expect(html).not.toContain("开始当前到期轮次");
-        expect(html).toContain("所有必需模板必须先测试通过");
         expect(html).toContain('class="card card-border');
         expect(html).toContain('class="select');
-        expect(html).toContain('role="alert"');
     });
 
     it("active run 清理完成前锁定设置、校准与新试运行", () => {
@@ -134,7 +136,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     });
 
     it("限时商品使用原生颜色面板且不再绑定取色区域", () => {
-        const html = renderToStaticMarkup(createElement(SpecialOpsPage));
+        const html = renderPage();
         expect((html.match(/type="color"/g) ?? []).length).toBe(2);
         expect(pageSource).toContain("limitedColorToHex");
         expect(pageSource).toContain("parseLimitedColorHex");
@@ -201,7 +203,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     });
 
     it("展示滚动未来二十四小时时间轴且不提供拖动改期", () => {
-        expect(pageSource).toContain("未来 24 小时任务");
+        expect(pageSource).toContain("10 分钟内任务合并显示");
         expect(pageSource).toContain("groupTimelineTasks");
         expect(pageSource).toContain("buildTimelineHourSlots");
         expect(pageSource).toContain("0 分钟后");
@@ -322,7 +324,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
 
     it("自动暂停原因在页头显式展示", () => {
         expect(pageSource).toContain("bootstrap.settings.pausedReason");
-        expect(pageSource).toContain("自动化已暂停：");
+        expect(pageSource).toContain("alert-warning");
     });
 
     it("人工判定选正在制作时预填异常前剩余时间", () => {

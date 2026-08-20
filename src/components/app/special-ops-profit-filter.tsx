@@ -7,6 +7,7 @@ import {
     RiSearchLine,
 } from "@remixicon/react";
 
+import {HelpHint} from "@/components/app/app-ui";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
@@ -209,14 +210,13 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
         <div className="card-body gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="card-title text-lg">联网利润筛选</h2>
-                    <p className="text-xs text-base-content/60">KKRB 主源；仅 KKRB 整体失败时使用 Moligod 备用。</p>
+                    <h2 className="card-title text-lg inline-flex items-center gap-1">联网利润筛选<HelpHint content="KKRB 主源；仅 KKRB 整体失败时使用 Moligod 备用。"/></h2>
                 </div>
                 <label className="flex items-center gap-2 text-sm"><Switch checked={draft.enabled} onCheckedChange={(enabled) => updateDraft({...draft, enabled})}/>启用</label>
             </div>
 
             <div className="grid gap-3 md:grid-cols-[12rem_minmax(0,1fr)_auto_auto] md:items-end">
-                <label className="form-control gap-1"><span className="label-text text-xs">利润截止时间（Asia/Shanghai）</span><Input type="time" value={draft.cutoffTime} onChange={(event) => updateDraft({...draft, cutoffTime: event.target.value})}/></label>
+                <label className="form-control gap-1"><span className="label-text text-xs">利润截止时间</span><Input type="time" value={draft.cutoffTime} onChange={(event) => updateDraft({...draft, cutoffTime: event.target.value})}/></label>
                 <div className="text-sm text-base-content/70">{runtimePhaseLabels[bootstrap.profitRuntime.phase]}{bootstrap.profitRuntime.nextQueryAtMs ? ` · 下次 ${new Date(bootstrap.profitRuntime.nextQueryAtMs).toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit", hour12: false})}` : ""}</div>
                 <Button disabled={!isNativeShell || catalogLoading} size="sm" variant="outline" onClick={() => void refreshCatalog()}><RiRefreshLine data-icon="inline-start"/>{catalogLoading ? "读取中" : "刷新 KKRB 名称"}</Button>
                 <Button disabled={!isNativeShell || saving || conflict || !dirty} size="sm" onClick={() => void save()}><RiSaveLine data-icon="inline-start"/>{saving ? "保存中" : "保存利润配置"}</Button>

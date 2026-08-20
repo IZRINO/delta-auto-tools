@@ -2,7 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 import {TIMER_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
-import {RiAddLine, RiDeleteBinLine, RiStarFill, RiStarLine, RiTimerLine,} from "@remixicon/react";
+import {RiAddLine, RiDeleteBinLine, RiStarFill, RiStarLine} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
@@ -18,13 +18,9 @@ import {
   ControlTile,
   DragButton,
   HotkeyField,
-  InlineControl,
   MacroHeader,
   runStateClass,
-  SaveStateBadge,
   SectionHeader,
-  SignalTile,
-  StatusMatrix,
   SurfaceToggleGroup,
   TacticalCard,
 } from "@/components/app/app-ui";
@@ -120,10 +116,8 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
         saveSettings,
         syncBootstrap,
         loading,
-        saving,
         pageError,
         setPageError,
-        statusMessage,
         setStatusMessage,
         autosaveVersionRef
     } = bf;
@@ -397,32 +391,8 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
     return (
         <AppPage className="auto-rows-max">
             <MacroHeader
-                code="01"
-                title="TIMER BOARD"
-                verticalLabel="计时"
-                subtitle="计时器负责阶段节奏。透明窗口、定位窗口与快捷键独立控制。"
-                badges={
-                    <>
-                        <Badge
-                            variant={form?.timerEnabled ? "default" : "secondary"}>计时通道{form?.timerEnabled ? "开启" : "关闭"}</Badge>
-                        <SaveStateBadge dirty={isDirty} saving={saving}/>
-                        {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
-                    </>
-                }
-                actions={
-                    <>
-                        <SignalTile
-                            label="计时矩阵"
-                            value={form?.timers.length ?? 0}
-                            detail={`${runs.filter((run) => run.status === "running").length} 个运行中`}
-                        />
-                        <SignalTile
-                            label="保存信号"
-                            value={saving ? "保存中" : isDirty ? "待保存" : "已保存"}
-                            detail={statusMessage}
-                        />
-                    </>
-                }
+                title="计时器"
+                actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
             />
 
             {pageError ? (
@@ -431,65 +401,24 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                 </div>
             ) : null}
 
-            <div className="col-span-12">
-                <StatusMatrix items={[
-                    {id: "timer", state: form?.timerEnabled ? "active" : "idle", label: "计时通道"},
-                    {
-                        id: "running",
-                        state: runs.some((run) => run.status === "running") ? "active" : "idle",
-                        label: "计时运行"
-                    },
-                    {
-                        id: "hotkey",
-                        state: bootstrap?.hotkeyError ? "error" : (form?.timerEnabled) ? "valid" : "idle",
-                        label: "热键状态"
-                    },
-                    {id: "save", state: isDirty ? "warning" : "valid", label: "保存状态"},
-                    {id: "ready", state: form?.timerEnabled ? "valid" : "idle", label: "就绪状态"},
-                ]}/>
-            </div>
-
             <TacticalCard className="col-span-12">
-                <SectionHeader
-                    eyebrow="总控字段"
-                    icon={<RiTimerLine/>}
-                    title="计时总控"
-                    description="总开关控制计时器透明窗口与快捷键是否生效。"
-                />
-                <CardBody className="grid gap-3">
-                    <div className="grid gap-px overflow-hidden rounded-box border border-base-300 bg-base-content xl:grid-cols-1">
-                        <ControlTile className="flex items-center gap-3 rounded-none border-0 bg-base-200">
-                            <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
-                                    onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
-                            <div className="min-w-0">
-                                <p className="font-mono text-xs font-medium text-base-content">计时总开关</p>
-                                <p className="mt-1 text-xs text-muted-foreground">控制计时器快捷键与透明窗口输出。</p>
-                            </div>
-                        </ControlTile>
-                    </div>
-                    <InlineControl
-                        className="font-mono text-xs font-medium text-base-content/60">
-                        {statusMessage}
-                    </InlineControl>
+                <SectionHeader title="总开关"/>
+                <CardBody>
+                    <ControlTile className="flex items-center gap-3 bg-base-200">
+                        <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
+                                onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
+                        <p className="font-medium text-sm">{form?.timerEnabled ? "开" : "关"}</p>
+                    </ControlTile>
                 </CardBody>
             </TacticalCard>
 
-            <div className="col-span-12 h-0.5 bg-base-content"/>
-
-            <SectionHeader
-                className="col-span-12"
-                eyebrow="CHANNEL 01"
-                icon={<RiTimerLine/>}
-                title="计时器系统"
-                description="计时器负责阶段节奏。每张卡片配置独立计时方向、触发模式与快捷键。"
-                actions={
-                    <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
-                            onClick={addTimerGroup}>
-                        <RiAddLine data-icon="inline-start"/>
-                        新增分组
-                    </Button>
-                }
-            />
+            <div className="col-span-12 flex justify-end">
+                <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
+                        onClick={addTimerGroup}>
+                    <RiAddLine data-icon="inline-start"/>
+                    新增分组
+                </Button>
+            </div>
 
             <SyncGroupSection
                 groups={form?.timerGroups ?? []}
@@ -529,7 +458,6 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                     />
                 )}
                 addButtonTitle="添加计时器"
-                addButtonDescription="名称、秒数、计时方向、快捷键均可自定义。"
                 onAdd={addTimer}
                 disabled={controlsDisabled || !form}
             />
@@ -583,8 +511,6 @@ function TimerCard({
                       className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", runStateClass(run?.status))}
                       data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
             <SectionHeader
-                eyebrow="计时器"
-                icon={<RiTimerLine/>}
                 title={(
                     <Input
                         className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"

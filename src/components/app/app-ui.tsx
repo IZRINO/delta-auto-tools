@@ -39,42 +39,19 @@ export function AppPage({children, className}: AppPageProps) {
 /* ────────── Macro Header ────────── */
 
 type MacroHeaderProps = {
-    code: string;
     title: string;
-    subtitle: string;
-    verticalLabel?: string;
-    badges?: ReactNode;
     actions?: ReactNode;
     className?: string;
 };
 
-export function MacroHeader({actions, badges, className, code, subtitle, title, verticalLabel}: MacroHeaderProps) {
+export function MacroHeader({actions, className, title}: MacroHeaderProps) {
     return (
-        <section
-            className={cn(
-                "card card-border col-span-12 bg-base-200 text-base-content shadow-none",
-                className,
-            )}
-        >
-            <div className="card-body gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="badge badge-primary badge-sm">{code}</span>
-                    {verticalLabel ? <span className="badge badge-ghost badge-sm">{verticalLabel}</span> : null}
-                    {badges}
-                </div>
-                <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-                    <div className="min-w-64 flex-1">
-                        <h1 className="truncate text-4xl font-semibold leading-tight text-base-content" title={title}>
-                            {title}
-                        </h1>
-                        <p className="mt-2 max-w-[64ch] truncate text-sm leading-relaxed text-base-content/70" title={subtitle}>
-                            {subtitle}
-                        </p>
-                    </div>
-                    {actions ? <div className="card-actions min-w-0 flex-wrap justify-end">{actions}</div> : null}
-                </div>
-            </div>
-        </section>
+        <header className={cn("col-span-12 flex min-h-10 flex-wrap items-center justify-between gap-3", className)}>
+            <h1 className="truncate text-xl font-semibold leading-tight" title={title}>
+                {title}
+            </h1>
+            {actions ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+        </header>
     );
 }
 
@@ -227,26 +204,19 @@ type SectionHeaderProps = {
     className?: string;
 };
 
-export function SectionHeader({actions, badge, className, description, eyebrow, icon, title}: SectionHeaderProps) {
+export function SectionHeader({actions, badge, className, description, title}: SectionHeaderProps) {
     const descriptionTitle = typeof description === "string" ? description : undefined;
 
     return (
-        <CardHeader
-            className={cn("border-b border-base-300 pb-3", className)}>
+        <CardHeader className={cn("border-b border-base-300 pb-3", className)}>
             <div className="flex min-w-0 items-start justify-between gap-4">
-                <div className="flex min-w-0 flex-1 items-start gap-3">
-                    {icon ? (
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-field bg-primary text-primary-content">
-                            {icon}
-                        </div>
+                <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate">{title}</CardTitle>
+                    {description ? (
+                        <CardDescription className="mt-1 truncate" title={descriptionTitle}>
+                            {description}
+                        </CardDescription>
                     ) : null}
-                    <div className="min-w-0">
-                        {eyebrow ?
-                            <p className="mb-1 text-xs text-base-content/60">{eyebrow}</p> : null}
-                        <CardTitle className="mt-0.5 truncate">{title}</CardTitle>
-                        {description ? <CardDescription
-                            className="mt-1 truncate" title={descriptionTitle}>{description}</CardDescription> : null}
-                    </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {actions}
@@ -371,6 +341,7 @@ export function HelpHint({content, className}: HelpHintProps) {
                         className,
                     )}
                     type="button"
+                    aria-label="说明"
                 >
                     <RiInformationLine className="size-3"/>
                 </button>
@@ -693,7 +664,7 @@ export function TacticalEmptyState({children, className, description, icon, titl
 type AddCardButtonProps = {
     disabled?: boolean;
     title: string;
-    description: ReactNode;
+    description?: ReactNode;
     className?: string;
     onClick: () => void;
 };
@@ -702,18 +673,18 @@ export function AddCardButton({className, description, disabled, onClick, title}
     return (
         <button
             className={cn(
-                "group flex min-h-32 flex-col items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 p-4 text-center transition-colors hover:bg-base-100 focus:outline-none focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50",
+                "group flex min-h-24 flex-col items-center justify-center rounded-box border border-dashed border-base-300 bg-base-200 p-4 text-center transition-colors hover:bg-base-100 focus:outline-none focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50",
                 className,
             )}
             disabled={disabled}
             onClick={onClick}
             type="button"
         >
-      <span className="mb-4 flex size-11 items-center justify-center rounded-field bg-primary text-primary-content">
-        <RiAddLine/>
-      </span>
-            <span className="text-sm font-semibold text-base-content">{title}</span>
-            <span className="mt-1 max-w-56 text-sm leading-relaxed text-base-content/60">{description}</span>
+            <RiAddLine className="size-6 text-base-content/60"/>
+            <span className="mt-2 text-sm font-semibold text-base-content">{title}</span>
+            {description ? (
+                <span className="mt-1 max-w-56 text-sm leading-relaxed text-base-content/60">{description}</span>
+            ) : null}
         </button>
     );
 }

@@ -17,9 +17,9 @@
 
     --color-base-100: oklch(21.5% 0 261.692);
     --color-base-200: oklch(18.8% 0 264.665);
-    --color-base-300: oklch(50% 0.213 27.518);
+    --color-base-300: oklch(42% 0.06 48);
     --color-base-content: oklch(96% 0.003 264.542);
-    --color-primary: oklch(70% 0.234 24.700);
+    --color-primary: oklch(54% 0.21 25);
     --color-primary-content: oklch(100% 0 281.288);
     --color-secondary: oklch(82% 0.189 84.429);
     --color-secondary-content: oklch(27% 0.077 45.635);
@@ -42,7 +42,7 @@
     --size-field: 0.25rem;
     --border: 1px;
     --depth: 0;
-    --noise: 1;
+    --noise: 0;
     --radius: var(--radius-box);
 }
 

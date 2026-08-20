@@ -143,17 +143,14 @@ export function PrivacyScreenPage() {
         <AppPage>
             <MacroHeader
                 actions={headerActions}
-                badges={bootstrap.visible ? <span className="badge badge-warning badge-sm">已打开</span> : null}
-                code="06"
-                subtitle="按钮打开，快捷键只在打开后关闭。只挡画面；识别截图、键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。"
                 title="息屏"
-                verticalLabel="通用"
             />
             <section className="card card-border col-span-12 bg-base-100">
                 <div className="card-body gap-4">
                     {!isNative && <div role="alert" className="alert alert-warning alert-soft">
                         <span>息屏只在桌面端可用</span>
                     </div>}
+                    <p className="text-sm text-base-content/70">只挡画面；识别截图、键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。</p>
                     <HotkeyField
                         controlsDisabled={!isNative}
                         helperText="仅在息屏打开后按此键关闭。本程序聚焦时同样有效。"

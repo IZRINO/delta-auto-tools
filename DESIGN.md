@@ -2,9 +2,9 @@
 name: 三角洲行动工具
 description: 暗底红边的战地控制台，为无人值守自动化与局内实时读数而生
 colors:
-  tracer-red: "oklch(70% 0.234 24.700)"
+  tracer-red: "oklch(54% 0.21 25)"
   tracer-red-content: "oklch(100% 0 281.288)"
-  shell-copper: "oklch(50% 0.213 27.518)"
+  shell-copper: "oklch(42% 0.06 48)"
   tracer-yellow: "oklch(82% 0.189 84.429)"
   tracer-yellow-content: "oklch(27% 0.077 45.635)"
   barrel-grey: "oklch(21.5% 0 261.692)"
@@ -144,7 +144,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 ### Primary
 
-- **曳光红 Tracer Red**（`oklch(70% 0.234 24.700)`）：唯一强调色。用于主按钮、激活态边框、导航激活项、状态脉冲点、favorite 高亮描边。配白色文字 `oklch(100% 0 281.288)`。
+- **曳光红 Tracer Red**（`oklch(54% 0.21 25)`）：唯一强调色。用于主按钮、失败/紧急、占用键鼠、favorite 高亮描边。配白色文字 `oklch(100% 0 281.288)`，对比 ≥4.5:1。不铺边框、不铺导航图标。
 
 ### Secondary
 
@@ -155,7 +155,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 - **枪管灰 Barrel Grey**（`oklch(21.5% 0 261.692)`）：`base-100`，页面底色。整个界面的「表盘面板」。
 - **膛底灰 Breech Grey**（`oklch(18.8% 0 264.665)`）：`base-200`，比底色更暗。卡片、Rail、Header、Dialog 都用它——容器是开凿进表盘的凹槽，不是浮起的台面。
 - **粉笔白 Chalk**（`oklch(96% 0.003 264.542)`）：`base-content`，正文与前景文字。
-- **弹壳铜红 Shell Copper**（`oklch(50% 0.213 27.518)`）：`base-300`，全局 1px 边框与分隔线色。`* { border-base-300 }`，所以任何默认边框都是红的——这是 valentine 最强的签名。
+- **弹壳铜 Shell Copper**（`oklch(42% 0.06 48)`）：`base-300`，全局 1px 边框与分隔线。低饱和铜缝，不是警报红。
 - **炮膛黑 Gunmetal Void**（`oklch(26% 0 0)`）：`accent` 槽位，作深色底腔（tooltip、JsonPreBlock 等 mockup 容器）。
 - **灰烬中性 Ash Neutral**（`oklch(44% 0.017 285.786)`）：`neutral`，tooltip 背景、stat 描述等次级表面。
 - **信号青 Signal Cyan**（`oklch(60% 0.126 221.723)`）：`info`，信息态。
@@ -167,7 +167,7 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 **The One Voice Rule.** 曳光红是唯一主色，任何一屏的曳光红面积不超过约 10%。它的稀缺性就是它的意义——主按钮、当前激活项、状态灯心跳。大面积铺红即降级为噪音。
 
-**The Copper Seam Rule.** 默认边框色就是弹壳铜红（`base-300`）。不要另发明中性灰边框，也不要给容器加第二道装饰边；一道 1px 切口就是全部边界语言。
+**The Copper Seam Rule.** 默认边框色就是弹壳铜（`base-300`）。不要另发明灰边框，也不要把边框做成曳光红；一道 1px 铜缝就是全部边界语言。
 
 **The Yellow Is Not A Second Accent Rule.** 曳光弹黄只出现在 overlay 进度条、次级 badge 和「已保存」提示。不得用它做主按钮、链接或大面积背景；它和曳光红同框时，红永远压黄。
 

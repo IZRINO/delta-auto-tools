@@ -64,9 +64,9 @@ fn valentine() -> Vec<ThemeTokenOverride> {
     vec![
         t("--color-base-100", "oklch(21.5% 0 261.692)"),
         t("--color-base-200", "oklch(18.8% 0 264.665)"),
-        t("--color-base-300", "oklch(50% 0.213 27.518)"),
+        t("--color-base-300", "oklch(42% 0.06 48)"),
         t("--color-base-content", "oklch(96% 0.003 264.542)"),
-        t("--color-primary", "oklch(70% 0.234 24.700)"),
+        t("--color-primary", "oklch(54% 0.21 25)"),
         t("--color-primary-content", "oklch(100% 0 281.288)"),
         t("--color-secondary", "oklch(82% 0.189 84.429)"),
         t("--color-secondary-content", "oklch(27% 0.077 45.635)"),
@@ -89,7 +89,7 @@ fn valentine() -> Vec<ThemeTokenOverride> {
         t("--size-field", "0.25rem"),
         t("--border", "1px"),
         t("--depth", "0"),
-        t("--noise", "1"),
+        t("--noise", "0"),
     ]
 }
 
@@ -230,11 +230,11 @@ mod tests {
         };
         assert_eq!(find("--color-base-100"), "oklch(21.5% 0 261.692)");
         assert_eq!(find("--color-base-200"), "oklch(18.8% 0 264.665)");
-        assert_eq!(find("--color-base-300"), "oklch(50% 0.213 27.518)");
+        assert_eq!(find("--color-base-300"), "oklch(42% 0.06 48)");
         assert_eq!(find("--color-base-content"), "oklch(96% 0.003 264.542)");
-        assert_eq!(find("--color-primary"), "oklch(70% 0.234 24.700)");
+        assert_eq!(find("--color-primary"), "oklch(54% 0.21 25)");
         assert_eq!(find("--color-secondary"), "oklch(82% 0.189 84.429)");
-        assert_eq!(find("--noise"), "1");
+        assert_eq!(find("--noise"), "0");
     }
 
     #[test]

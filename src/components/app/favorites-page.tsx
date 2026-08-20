@@ -21,11 +21,8 @@ import {Switch} from "@/components/ui/switch";
 import {
     AppPage,
     CardBody,
-    ChannelTabs,
     ControlTile,
     MacroHeader,
-    SignalTile,
-    StatusMatrix,
     TacticalCard,
     TacticalEmptyState,
 } from "@/components/app/app-ui";
@@ -87,7 +84,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
     const [rapidfireBootstrap, setRapidfireBootstrap] = useState<RapidfireBootstrap | null>(null);
     const [timerRuntimeRuns, setTimerRuntimeRuns] = useState<TimerRunState[] | null>(null);
     const [counterRuntimeRuns, setCounterRuntimeRuns] = useState<CounterRunState[] | null>(null);
-    const [loading, setLoading] = useState(isNativeShell);
+    const [, setLoading] = useState(isNativeShell);
 
     useEffect(() => {
         if (!isNativeShell) {
@@ -299,32 +296,10 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
         onNavigate(kind, cardId);
     }, [onNavigate]);
 
-    const summary = useMemo(() => {
-        let timerCount = 0;
-        let counterCount = 0;
-        let rapidfireCount = 0;
-        for (const item of items) {
-            if (item.kind === "timer") timerCount += 1;
-            else if (item.kind === "counter") counterCount += 1;
-            else rapidfireCount += 1;
-        }
-        return {timerCount, counterCount, rapidfireCount, total: items.length};
-    }, [items]);
-
     if (details.length === 0) {
         return (
             <AppPage>
-                <MacroHeader
-                    code="PIN"
-                    title="FAVORITES / PINNED"
-                    subtitle="在计时器、计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
-                    badges={
-                        <>
-                            <Badge variant="secondary">跨工具</Badge>
-                            <Badge variant="outline">{summary.total} 项</Badge>
-                        </>
-                    }
-                />
+                <MacroHeader title="收藏夹"/>
                 <TacticalEmptyState className="col-span-12" icon={<RiStarLine/>} title="还没有收藏"
                                     description="去计时器、计数器或连发器工具里，点击卡片头部的星标即可加入收藏。"/>
             </AppPage>
@@ -333,46 +308,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
 
     return (
         <AppPage>
-            <MacroHeader
-                code="PIN"
-                title="FAVORITES / PINNED"
-                subtitle="在计时器、计数器与连发器工具里点击卡片头部的星标即可加入收藏；这里汇总所有收藏、可以跳转和排序。"
-                badges={
-                    <>
-                        <Badge variant="secondary">跨工具</Badge>
-                        <Badge variant="outline">{summary.total} 项</Badge>
-                        {loading ? <Badge variant="outline">同步中…</Badge> : null}
-                    </>
-                }
-                actions={
-                    <>
-                        <SignalTile label="计时器" value={summary.timerCount} detail="已收藏的计时器数量"/>
-                        <SignalTile label="计数器" value={summary.counterCount} detail="已收藏的计数器数量"/>
-                        <SignalTile label="连发器" value={summary.rapidfireCount} detail="已收藏的连发器数量"/>
-                    </>
-                }
-            />
-
-            <div className="col-span-12">
-                <StatusMatrix items={[
-                    {id: "timer", state: summary.timerCount > 0 ? "valid" : "idle", label: "计时器"},
-                    {id: "counter", state: summary.counterCount > 0 ? "valid" : "idle", label: "计数器"},
-                    {id: "rapidfire", state: summary.rapidfireCount > 0 ? "valid" : "idle", label: "连发器"},
-                    {id: "total", state: summary.total > 0 ? "valid" : "warning", label: "总计"},
-                    {id: "sync", state: loading ? "active" : "valid", label: "同步状态"},
-                    {id: "ready", state: "valid", label: "就绪"},
-                ]}/>
-            </div>
-
-            <div className="col-span-12">
-                <ChannelTabs
-                    tabs={[
-                        {id: "all", label: "全部", active: true},
-                    ]}
-                    onTabChange={() => {
-                    }}
-                />
-            </div>
+            <MacroHeader title="收藏夹"/>
 
             <ControlTile className="col-span-12 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2">
                 <Field orientation="horizontal" className="w-auto gap-2">

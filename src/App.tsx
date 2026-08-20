@@ -222,36 +222,27 @@ function TopTabBar({activeTool, onToolClick}: { activeTool: ToolId; onToolClick:
 
 function IndexRailItem({
                            active,
-                           code,
                            icon: Icon,
                            label,
-                           meta,
                            onClick,
                        }: {
     active: boolean;
-    code: string;
     icon: typeof RiStarFill;
     label: string;
-    meta: string;
     onClick: () => void;
 }) {
     return (
         <button
             className={cn(
-                "btn btn-ghost h-auto min-h-14 w-full justify-start rounded-box px-3 py-2 text-left",
+                "btn btn-ghost h-10 min-h-10 w-full justify-start rounded-box px-3",
                 active && "btn-active",
             )}
             data-active={active}
             onClick={onClick}
             type="button"
         >
-            <Icon className="size-4 shrink-0 text-primary" aria-hidden="true"/>
-            <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">{label}</span>
-                <span className="mt-0.5 block truncate text-xs font-normal text-base-content/60">
-                    {code} / {meta}
-                </span>
-            </span>
+            <Icon className="size-4 shrink-0" aria-hidden="true"/>
+            <span className="truncate text-sm font-semibold">{label}</span>
         </button>
     );
 }
@@ -269,10 +260,8 @@ function FavoritesIndexRailItem({active, count, onClick}: { active: boolean; cou
     return (
         <IndexRailItem
             active={active}
-            code="PIN"
             icon={RiStarFill}
-            label="收藏夹"
-            meta={`PINNED / ${count}`}
+            label={count > 0 ? `收藏夹 ${count}` : "收藏夹"}
             onClick={onClick}
         />
     );
@@ -284,7 +273,7 @@ function GlobalDisabledBanner() {
     return (
         <div role="alert" className="alert alert-error alert-soft mb-3">
             <RiShutDownLine className="size-4" aria-hidden="true"/>
-            <span>全局总开关已关闭。所有自动化功能与热键均已暂停，请在顶部工具栏重新开启。</span>
+            <span>全局已关闭</span>
         </div>
     );
 }
@@ -301,9 +290,7 @@ function GlobalSwitch() {
         <div
             className={cn(
                 "join join-horizontal items-center rounded-field border border-base-300 bg-base-100 px-2 py-1 text-xs",
-                globalEnabled
-                    ? "text-success"
-                    : "text-error",
+                !globalEnabled && "text-error",
             )}
         >
             <RiShutDownLine className="size-3.5" aria-hidden="true"/>
@@ -449,8 +436,6 @@ function AppShell() {
         return <ToolPageSuspense fallback={null}><SpecialOpsOperationOverlay/></ToolPageSuspense>;
     }
 
-    const activeMeta = [...tools, ...deltaTools].find((tool) => tool.id === activeTool);
-
     return (
         <div className="grid h-dvh min-h-0 grid-rows-[48px_1fr] overflow-hidden bg-base-100">
             <a
@@ -465,28 +450,11 @@ function AppShell() {
                     <div className="flex size-9 items-center justify-center rounded-field bg-primary text-primary-content">
                         <RiCrosshair2Line className="size-5" aria-hidden="true"/>
                     </div>
-                    <div className="min-w-0 leading-none">
-                        <p className="truncate text-sm font-semibold">三角洲行动工具</p>
-                        <p className="mt-0.5 truncate text-xs text-base-content/60">Delta Auto Tools</p>
-                    </div>
-                </div>
-                <div className="navbar-center hidden min-w-0 items-center gap-3 lg:flex">
-                    <span className="badge badge-primary badge-sm">
-                        {activeTool === "favorites" ? "PIN" : activeTool === "timer" ? "01" : activeTool === "counter" ? "02" : activeTool === "rapidfire" ? "03" : activeTool === "strategy" ? "04" : activeTool === "recognition" ? "05" : activeTool === "privacyScreen" ? "06" : "D1"}
-                    </span>
-                        <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
-                                {activeMeta?.label ?? "收藏夹"}
-                            </p>
-                            <p className="mt-0.5 truncate text-xs text-base-content/60">
-                                {activeMeta?.short ?? "Pinned"} / ACTIVE
-                            </p>
-                        </div>
+                    <p className="truncate text-sm font-semibold">三角洲行动工具</p>
                 </div>
                 <div className="navbar-end gap-2">
                         <ProfileSwitcher/>
                         <GlobalSwitch/>
-                        <span className="badge badge-neutral hidden sm:inline-flex">Tauri</span>
                 </div>
             </header>
 
@@ -500,36 +468,28 @@ function AppShell() {
                 <aside className="hidden min-h-0 flex-col border-r border-base-300 bg-base-200 lg:flex">
                     <div
                         className="menu min-h-0 flex-1 flex-nowrap overflow-y-auto p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <div className="menu-title px-3 pb-1 text-xs text-base-content/60">
-                            工具索引 / 收藏 {favorites.items.length}
-                        </div>
-
                         <FavoritesIndexRailItem active={activeTool === "favorites"} count={favorites.items.length}
                                                 onClick={() => setActiveTool("favorites")}/>
 
                         <IndexRailSection title="通用工具">
-                            {tools.map((tool, index) => (
+                            {tools.map((tool) => (
                                 <IndexRailItem
                                     active={activeTool === tool.id}
-                                    code={`0${index + 1}`}
                                     icon={tool.icon}
                                     key={tool.id}
                                     label={tool.label}
-                                    meta={tool.short}
                                     onClick={() => setActiveTool(tool.id)}
                                 />
                             ))}
                         </IndexRailSection>
 
                         <IndexRailSection title="三角洲工具">
-                            {deltaTools.map((tool, index) => (
+                            {deltaTools.map((tool) => (
                                 <IndexRailItem
                                     active={activeTool === tool.id}
-                                    code={`D${index + 1}`}
                                     icon={tool.icon}
                                     key={tool.id}
                                     label={tool.label}
-                                    meta={tool.short}
                                     onClick={() => setActiveTool(tool.id)}
                                 />
                             ))}
@@ -539,17 +499,12 @@ function AppShell() {
                     {/* 设置 — 固定在 Rail 底部（含主题/配置/关于） */}
                     <div className="border-t border-base-300 bg-base-200 p-2">
                         <button
-                            className="btn btn-ghost h-auto min-h-14 w-full justify-start rounded-box px-3 py-2 text-left"
+                            className="btn btn-ghost h-10 min-h-10 w-full justify-start rounded-box px-3"
                             onClick={() => handleSettingsOpenChange(true)}
                             type="button"
                         >
-                            <RiSettings3Line className="size-4 shrink-0 text-primary" aria-hidden="true"/>
-                            <span className="min-w-0">
-                                <span className="block truncate text-sm font-semibold">设置</span>
-                                <span className="mt-0.5 block truncate text-xs font-normal text-base-content/60">
-                                    SYS / SETTINGS
-                                </span>
-                            </span>
+                            <RiSettings3Line className="size-4 shrink-0" aria-hidden="true"/>
+                            <span className="truncate text-sm font-semibold">设置</span>
                         </button>
                     </div>
                 </aside>

@@ -6,7 +6,6 @@ import {getCurrentWindow} from "@tauri-apps/api/window";
 import {openUrl} from "@tauri-apps/plugin-opener";
 import {toast} from "sonner";
 
-import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Field, FieldDescription, FieldLabel,} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
@@ -473,12 +472,8 @@ export function StrategyPage() {
                 className="col-span-12 grid shrink-0 gap-px overflow-hidden border border-base-300 bg-base-content lg:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="min-w-0 bg-base-100 px-2 py-2">
                     <div className="flex min-w-0 items-center gap-2">
-                        <div
-                            className="hidden shrink-0 items-center gap-1.5 border-r-2 border-base-content pr-2 sm:flex">
-                            <span
-                                className="border border-base-300 bg-base-content px-1.5 py-0.5 font-heading text-sm font-semibold text-primary">04</span>
-                            <Badge variant="secondary" className="h-6 px-2">攻略</Badge>
-                            <p className="font-mono text-caption font-semibold text-base-content/60">INTEL</p>
+                        <div className="hidden shrink-0 items-center border-r border-base-300 pr-2 sm:flex">
+                            <span className="text-sm font-semibold">攻略</span>
                         </div>
 
                         <Tabs value={activeSite?.id ?? activeId} onValueChange={setActiveId}
@@ -623,13 +618,7 @@ export function StrategyPage() {
                 <div
                     className="pointer-events-none absolute inset-0 grid place-items-center bg-base-100 px-6 text-center">
                     <div className="max-w-xl border border-base-300 bg-base-200 px-5 py-4">
-                        <p className="font-mono text-caption font-semibold text-primary">当前内容窗口宿主区</p>
-                        <p className="mt-3 text-sm font-semibold text-base-content">{isNativeShell ? statusMessage : "该工具需要在桌面端使用"}</p>
-                        <p className="mt-2 font-mono text-caption font-bold leading-relaxed text-base-content/60">
-                            {isNativeShell
-                                ? "网页内容会贴合此定位宿主区域；切换工具页时会自动关闭 strategy-content。"
-                                : "浏览器预览模式无法创建 Tauri 内容窗口，请在桌面端使用。"}
-                        </p>
+                        <p className="text-sm font-semibold">{isNativeShell ? statusMessage : "请在桌面端打开攻略"}</p>
                     </div>
                 </div>
             </div>

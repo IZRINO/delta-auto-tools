@@ -33,8 +33,8 @@ export function SettingsDialog({open, onOpenChange, initialTab = "theme"}: Setti
             <DialogContent className="flex flex-col sm:max-w-3xl w-[min(96vw,900px)] max-h-[80vh] overflow-hidden">
                 <DialogHeader>
                     <DialogTitle>设置</DialogTitle>
-                    <DialogDescription>
-                        主题外观与软件信息
+                    <DialogDescription className="sr-only">
+                        主题与关于
                     </DialogDescription>
                 </DialogHeader>
 

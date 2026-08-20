@@ -21,9 +21,7 @@ import {
     CardBody,
     ControlTile,
     MacroHeader,
-    SaveStateBadge,
     SectionHeader,
-    SignalTile,
     TacticalCard,
 } from "@/components/app/app-ui";
 import {
@@ -188,10 +186,8 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
         updateForm,
         saveSettings,
         loading,
-        saving,
         pageError,
         setPageError,
-        statusMessage,
         setStatusMessage,
         autosaveVersionRef,
     } = useBootstrapForm<RecognitionBootstrap, RecognitionSettings, RecognitionSettingsForm>({
@@ -635,49 +631,29 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     ]);
 
     const enabled = form?.recognitionEnabled ?? form?.audioEnabled ?? false;
-    const cardCount = form?.cards.length ?? 0;
-    const activeCards = form?.cards.filter((c) => c.enabled).length ?? 0;
+
     const cardGroups = form?.cardGroups ?? [];
 
     return (
         <AppPage className="auto-rows-max">
-            <MacroHeader
-                className="col-span-12"
-                code="A-04"
-                title="RECOGNITION / 识别触发"
-                verticalLabel="识别"
-                subtitle="快捷键、图像匹配或识色触发音频、按键与点击效果。"
-                badges={
-                    <>
-                        <Badge variant={enabled ? "default" : "outline"}>{enabled ? "已启用" : "已禁用"}</Badge>
-                        <Badge variant="secondary">{activeCards} 卡片激活</Badge>
-                        <SaveStateBadge dirty={isDirty} saving={saving}/>
-                    </>
-                }
-                actions={
-                    <>
-                        <SignalTile label="总开关" value={enabled ? "ON" : "OFF"} detail={globalStatusMessage ?? statusMessage}/>
-                        <SignalTile label="卡片数" value={cardCount} detail="已配置"/>
-                    </>
-                }
-            />
+            <MacroHeader title="识别触发"/>
 
             {pageError && (
                 <div
-                    className="col-span-12 mb-3 border border-error bg-error/10 px-3 py-2 font-mono text-xs font-semibold text-error">
-                    [ 错误 ] {pageError}
+                    className="col-span-12 mb-3 border border-error bg-error/10 px-3 py-2 text-xs font-semibold text-error">
+                    {pageError}
                 </div>
             )}
 
             {globalStatusMessage && (
                 <div
-                    className="col-span-12 mb-3 border border-warning bg-warning/10 px-3 py-2 font-mono text-xs font-semibold text-warning">
-                    [ 全局 ] {globalStatusMessage}
+                    className="col-span-12 mb-3 border border-warning bg-warning/10 px-3 py-2 text-xs font-semibold text-warning">
+                    {globalStatusMessage}
                 </div>
             )}
 
             <TacticalCard className="col-span-12 mt-3">
-                <SectionHeader eyebrow="全局设置" title="全局设置"/>
+                <SectionHeader title="总开关"/>
                 <CardBody>
                     <ControlTile>
                         <div className="flex items-center gap-3">
@@ -700,7 +676,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
 
             <TacticalCard className="col-span-12 mt-3">
                 <div className="flex items-center justify-between gap-3 px-3 pt-3">
-                    <SectionHeader eyebrow="识别卡片" title="识别触发卡片" />
+                    <SectionHeader title="卡片"/>
                     <Button
                         variant="outline"
                         size="sm"

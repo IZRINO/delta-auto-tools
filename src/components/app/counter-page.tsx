@@ -6,7 +6,6 @@ import {
   RiAddLine,
   RiDeleteBinLine,
   RiResetLeftLine,
-  RiSpeedUpLine,
   RiStarFill,
   RiStarLine,
   RiSubtractLine,
@@ -26,13 +25,9 @@ import {
   ControlTile,
   DragButton,
   HotkeyField,
-  InlineControl,
   MacroHeader,
-  SaveStateBadge,
   SectionHeader,
-  SignalTile,
-  StatusMatrix,
-  TacticalCard
+  TacticalCard,
 } from "@/components/app/app-ui";
 import {SyncCardList} from "@/components/app/sync-card-list";
 import {SyncGroupSection} from "@/components/app/sync-group-section";
@@ -128,10 +123,8 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
         saveSettings,
         syncBootstrap,
         loading,
-        saving,
         pageError,
         setPageError,
-        statusMessage,
         setStatusMessage,
         autosaveVersionRef
     } = bf;
@@ -432,32 +425,8 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
     return (
         <AppPage className="auto-rows-max">
             <MacroHeader
-                code="02"
-                title="COUNTER BOARD"
-                verticalLabel="计数"
-                subtitle="计数器负责战局累加。每张卡片有独立计数状态与快捷键。"
-                badges={
-                    <>
-                        <Badge
-                            variant={form?.counterEnabled ? "default" : "secondary"}>计数通道{form?.counterEnabled ? "开启" : "关闭"}</Badge>
-                        <SaveStateBadge dirty={isDirty} saving={saving}/>
-                        {bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : null}
-                    </>
-                }
-                actions={
-                    <>
-                        <SignalTile
-                            label="计数矩阵"
-                            value={form?.counters.length ?? 0}
-                            detail={`${runs.length} 个计数状态`}
-                        />
-                        <SignalTile
-                            label="保存信号"
-                            value={saving ? "保存中" : isDirty ? "待保存" : "已保存"}
-                            detail={statusMessage}
-                        />
-                    </>
-                }
+                title="计数器"
+                actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
             />
 
             {pageError ? (
@@ -466,66 +435,24 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                 </div>
             ) : null}
 
-            <div className="col-span-12">
-                <StatusMatrix items={[
-                    {id: "counter", state: form?.counterEnabled ? "active" : "idle", label: "计数通道"},
-                    {
-                        id: "counted",
-                        state: runs.some((run) => run.value > 0) ? "active" : "idle",
-                        label: "已计数"
-                    },
-                    {
-                        id: "hotkey",
-                        state: bootstrap?.hotkeyError ? "error" : form?.counterEnabled ? "valid" : "idle",
-                        label: "热键状态"
-                    },
-                    {id: "save", state: isDirty ? "warning" : "valid", label: "保存状态"},
-                    {id: "ready", state: form?.counterEnabled ? "valid" : "idle", label: "就绪状态"},
-                ]}/>
-            </div>
-
             <TacticalCard className="col-span-12">
-                <SectionHeader
-                    eyebrow="总控字段"
-                    icon={<RiSpeedUpLine/>}
-                    title="计数总控"
-                    description="总开关控制计数器的透明窗口与快捷键是否生效。"
-                />
-                <CardBody className="grid gap-3">
-                    <div className="grid gap-px overflow-hidden rounded-box border border-base-300 bg-base-content">
-                        <ControlTile className="flex items-center gap-3 rounded-none border-0 bg-base-100">
-                            <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
-                                    onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
-                            <div className="min-w-0">
-                                <p className="font-mono text-xs font-medium text-base-content">计数总开关</p>
-                                <p className="mt-1 text-xs text-muted-foreground">控制计数器快捷键、透明窗口与现场累加。</p>
-                            </div>
-                        </ControlTile>
-                    </div>
-                    <InlineControl
-                        className="font-mono text-xs font-medium text-base-content/60">
-                        {statusMessage}
-                    </InlineControl>
+                <SectionHeader title="总开关"/>
+                <CardBody>
+                    <ControlTile className="flex items-center gap-3 bg-base-100">
+                        <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
+                                onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
+                        <p className="font-medium text-sm">{form?.counterEnabled ? "开" : "关"}</p>
+                    </ControlTile>
                 </CardBody>
             </TacticalCard>
 
-            <div className="col-span-12 h-0.5 bg-base-content"/>
-
-            {/* ── 计数器系统 ── */}
-            <SectionHeader
-                className="col-span-12"
-                eyebrow="CHANNEL 02"
-                icon={<RiSpeedUpLine/>}
-                title="计数器系统"
-                description="计数器负责战局累加。每张卡片有独立计数状态与快捷键。"
-                actions={
-                    <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
-                            onClick={addCounterGroup}>
-                        <RiAddLine data-icon="inline-start"/>
-                        新增分组
-                    </Button>
-                }
-            />
+            <div className="col-span-12 flex justify-end">
+                <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
+                        onClick={addCounterGroup}>
+                    <RiAddLine data-icon="inline-start"/>
+                    新增分组
+                </Button>
+            </div>
 
             <SyncGroupSection
                 groups={form?.counterGroups ?? []}
@@ -568,7 +495,6 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                     />
                 )}
                 addButtonTitle="添加计数器"
-                addButtonDescription="名称、起始数、快捷键均可自定义。"
                 onAdd={addCounter}
                 disabled={controlsDisabled || !form}
             />
@@ -627,8 +553,6 @@ function CounterCard({
                       data-counter-card={counter.id} data-favorite-card={`counter:${counter.id}`}
                       onPointerEnter={onDragOver}>
             <SectionHeader
-                eyebrow="计数器"
-                icon={<RiSpeedUpLine/>}
                 title={(
                     <Input
                         className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"

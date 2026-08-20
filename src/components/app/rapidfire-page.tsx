@@ -10,7 +10,6 @@ import {
   RiDeleteBinLine,
   RiKeyboardLine,
   RiMapPinLine,
-  RiPulseLine,
   RiStarFill,
   RiStarLine,
   RiStopLine,
@@ -36,10 +35,7 @@ import {
   InlineNotice,
   MacroHeader,
   runStateClass,
-  SaveStateBadge,
   SectionHeader,
-  SignalTile,
-  StatusMatrix,
   TacticalCard,
 } from "@/components/app/app-ui";
 import type {
@@ -74,7 +70,7 @@ import {
   rapidfireCardError,
   rapidfireCardStatus,
   rapidfireEffectiveCardsByGroup,
-  rapidfireEnabledCards,
+
   rapidfireRunsById,
   rapidfireSettingsToForm,
   rapidfireStatusLabel,
@@ -192,7 +188,6 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
         saveSettings,
         syncBootstrap,
         loading,
-        saving,
         pageError,
         setPageError,
         statusMessage,
@@ -271,15 +266,6 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
     const runs = runtimeRuns ?? bootstrap?.runs ?? [];
     const runsById = useMemo(() => rapidfireRunsById(runs), [runs]);
     const controlsDisabled = loading || !isNativeShell;
-    const activeRunCount = useMemo(
-        () => runs.filter((run) => run.status !== "idle").length,
-        [runs],
-    );
-    const enabledCount = rapidfireEnabledCards(form);
-    const totalFireCount = useMemo(
-        () => runs.reduce((total, run) => total + run.count, 0),
-        [runs],
-    );
 
     const updateCard = useCallback((id: string, value: Partial<RapidfireCardForm>) => {
         clearStaleConfigError();
@@ -494,12 +480,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
     if (!form) {
         return (
             <AppPage className="auto-rows-max">
-                <MacroHeader
-                    code="R-03"
-                    title="RAPIDFIRE / CONTROL"
-                    verticalLabel="连发器"
-                    subtitle="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
-                />
+                <MacroHeader title="连发器"/>
                 {pageError ? (
                     <div className="col-span-12">
                         <InlineNotice title="连发器加载失败">{pageError}</InlineNotice>
@@ -521,23 +502,9 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             )}
 
             <MacroHeader
-                code="R-03"
-                title="RAPIDFIRE / CONTROL"
-                verticalLabel="连发"
-                subtitle="按住触发键即可持续压发目标键；松开后默认执行奇数补齐，也可在单通道切断补齐链路。"
-                badges={
-                    <>
-                        <Badge
-                            variant={form.rapidfireEnabled ? "default" : "outline"}>{form.rapidfireEnabled ? "总线接通" : "总线断开"}</Badge>
-                        <Badge variant="secondary">{enabledCount} 条通道待命</Badge>
-                        <SaveStateBadge dirty={isDirty} saving={saving}/>
-                    </>
-                }
+                title="连发器"
                 actions={
                     <>
-                        <SignalTile label="活跃通道" value={activeRunCount} detail="非空闲卡片数量"/>
-                        <SignalTile label="待命通道" value={enabledCount} detail="已挂接触发键监听"/>
-                        <SignalTile label="累计发射" value={totalFireCount} detail={statusMessage}/>
                         <Button variant="outline" size="sm" disabled={controlsDisabled}
                                 onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
                             <RiMapPinLine data-icon="inline-start"/>
@@ -552,21 +519,6 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             />
 
             <div className="col-span-12">
-                <StatusMatrix items={[
-                    {id: "rapidfire", state: form.rapidfireEnabled ? "active" : "idle", label: "总线状态"},
-                    {id: "active", state: activeRunCount > 0 ? "active" : "idle", label: "活跃通道"},
-                    {id: "enabled", state: enabledCount > 0 ? "valid" : "warning", label: "待命通道"},
-                    {id: "save", state: isDirty ? "warning" : "valid", label: "保存状态"},
-                    {
-                        id: "hotkey",
-                        state: bootstrap?.hotkeyError ? "error" : form.rapidfireEnabled ? "valid" : "idle",
-                        label: "热键状态"
-                    },
-                    {id: "ready", state: form.rapidfireEnabled ? "valid" : "idle", label: "就绪状态"},
-                ]}/>
-            </div>
-
-            <div className="col-span-12">
                 <ChannelTabs
                     tabs={[
                         {id: "cards", label: "通道", active: activeTab === "cards"},
@@ -579,12 +531,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
 
             {activeTab === "global" && (
                 <TacticalCard className="col-span-12 xl:col-span-7">
-                    <SectionHeader
-                        eyebrow="主控排程"
-                        icon={<RiPulseLine/>}
-                        title="全局发射设定"
-                        description="总开关与补齐延时写入同一主控档；单卡片节奏参数在各通道单元中独立校准。"
-                    />
+                    <SectionHeader title="全局"/>
                     <CardBody className="grid gap-3">
                         <FieldGroup className="grid gap-3 md:grid-cols-2">
                             <ControlTile className="bg-base-100">
@@ -595,12 +542,8 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                                         disabled={controlsDisabled}
                                         onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
                                     />
-                                    <span className={cn("badge badge-sm", form.rapidfireEnabled ? "badge-primary" : "badge-ghost")}>
-                                        {form.rapidfireEnabled ? "ARMED" : "DISARMED"}
-                                    </span>
                                     <FieldContent>
-                                        <FieldLabel htmlFor="rapidfireEnabled">连发器总开关</FieldLabel>
-                                        <FieldDescription>断开后立即解绑触发键，并同步关闭透明窗口。</FieldDescription>
+                                        <FieldLabel htmlFor="rapidfireEnabled">{form.rapidfireEnabled ? "开" : "关"}</FieldLabel>
                                     </FieldContent>
                                 </Field>
                             </ControlTile>
@@ -652,10 +595,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             {activeTab === "global" && (
                 <TacticalCard className="col-span-12 xl:col-span-5">
                     <SectionHeader
-                        eyebrow="分组母线"
-                        icon={<RiPulseLine/>}
-                        title="通道分组矩阵"
-                        description="每个分组维护独立透明窗口；总开关、分组开关与卡片开关同时接通时才响应触发键。"
+                        title="分组"
                         actions={
                             <Button type="button" variant="outline" size="sm" disabled={controlsDisabled}
                                     onClick={addGroup}>
@@ -731,12 +671,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
 
             {activeTab === "display" && (
                 <TacticalCard className="col-span-12">
-                    <SectionHeader
-                        eyebrow="显示配置"
-                        icon={<RiPulseLine/>}
-                        title="透明窗口与显示设定"
-                        description="控制连发器透明窗口的开关、宽度与位置校准；游戏内仅投送启用通道与当前发射计数。"
-                    />
+                    <SectionHeader title="显示"/>
                     <CardBody className="grid gap-3">
                         <FieldGroup className="grid gap-3 md:grid-cols-3">
                             <ControlTile className="bg-base-100">
@@ -894,7 +829,6 @@ function RapidfireCardEditor({
             )}
         >
             <SectionHeader
-                eyebrow="连发器"
                 title={(
                     <Input
                         className="h-auto w-full border-0 bg-transparent p-0 text-lg font-semibold placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -905,7 +839,7 @@ function RapidfireCardEditor({
                         aria-label="通道名称"
                     />
                 )}
-                description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / 间隔 ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "补齐断开" : "补齐接通"}`}
+                description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "不补齐" : "补齐"}`}
                 badge={
                     <Badge variant={status.variant}>{status.label}</Badge>
                 }
@@ -915,7 +849,7 @@ function RapidfireCardEditor({
                 <div
                     className="flex items-center gap-2 border-b border-base-300 bg-primary px-3 py-2 text-sm text-primary-content">
                     <span className="status status-sm status-success"/>
-                    {isRunning ? "FIRING" : "ARMED"}
+                    {isRunning ? "连发中" : "就绪"}
                 </div>
             ) : null}
             <CardHeader className="border-b border-base-300 bg-base-200 pt-4">

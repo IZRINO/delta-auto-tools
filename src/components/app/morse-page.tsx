@@ -23,8 +23,6 @@ import {
     FieldUnit,
     HelpHint,
     MacroHeader,
-    SaveStateBadge,
-    StatusMatrix,
 } from "@/components/app/app-ui";
 import {RegionSelectionOverlay} from "@/components/app/morse-overlay";
 import {
@@ -313,34 +311,16 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
         return <RegionSelectionOverlay slots={overlaySlots}/>;
     }
 
-    const statusItems: { id: string; state: "idle" | "active" | "valid" | "warning" | "error"; label: string }[] = [
-        {id: "hotkey", state: form?.hotkey ? "valid" : "idle", label: "热键绑定"},
-        {id: "ready", state: canRun ? "valid" : "warning", label: "就绪状态"},
-    ];
-
     return (
         <AppPage className="auto-rows-max gap-3">
             <MacroHeader
-                code="MX-01"
-                title="MORSE / DECODER"
-                subtitle="把采样窗位、阈值校准、单次验证与识别回溯串成一条硬线路。"
-                badges={
-                    <>
-                        <Badge variant={canRun ? "default" : "secondary"}>{canRun ? "三区就绪" : "等待窗位标定"}</Badge>
-                        <SaveStateBadge dirty={isDirty} saving={saving}/>
-                    </>
-                }
+                title="摩斯"
                 actions={
-                    <div className="flex items-center gap-2">
-                        <Badge variant={isBusy ? "outline" : "secondary"}>{isBusy ? "链路占用" : "链路待命"}</Badge>
-                    </div>
+                    <Badge variant={isBusy ? "outline" : canRun ? "default" : "ghost"}>
+                        {isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
+                    </Badge>
                 }
             />
-
-            {/* Status Matrix */}
-            <div className="col-span-12">
-                <StatusMatrix items={statusItems}/>
-            </div>
 
             {/* Channel Tabs */}
             <div className="col-span-12">
@@ -349,7 +329,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                         {id: "selection", label: "窗位", active: activeTab === "selection"},
                         {id: "workbench", label: "校准", active: activeTab === "workbench"},
                         {id: "result", label: "报码", active: activeTab === "result"},
-                        {id: "history", label: "档案", active: activeTab === "history"},
+                        {id: "history", label: "历史", active: activeTab === "history"},
                     ]}
                     onTabChange={setActiveTab}
                 />
@@ -358,7 +338,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             {/* Tab Content */}
             <div className="col-span-12">
                 {activeTab === "selection" && (
-                    <FieldUnit header="[ UNIT 01 ] 采样阵列 — 锁定三段信号窗位">
+                    <FieldUnit header="窗位">
                         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                             {REGION_LABELS.map((label, index) => {
                                 const region = form?.regions[index] ?? null;
@@ -384,7 +364,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                             disabled={isBusy}
                                             onClick={() => void performSelectionSession([index])}
                                             type="button"
-                                            variant={isConfigured ? "outline" : "default"}
+                                            variant="outline"
                                             size="sm"
                                         >
                                             {isConfigured ? "重选" : "框选"}
@@ -408,7 +388,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                 )}
 
                 {activeTab === "workbench" && (
-                    <FieldUnit header="[ UNIT 02 ] 参数机架 — 校准识别链路">
+                    <FieldUnit header="校准">
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-3">
                                 <ConfigRow
@@ -569,7 +549,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                         className="border border-base-300 font-mono text-sm"
                                         onChange={(e) => setVerificationValue(e.currentTarget.value)}
                                         onFocus={() => void handleVerificationRun()}
-                                        placeholder="聚焦此处执行测试验证"
+                                        placeholder="点这里测试"
                                         value={verificationValue}
                                     />
                                     <p className="mt-2 font-mono text-xs text-base-content/60">{verificationMessage}</p>
@@ -591,7 +571,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                 )}
 
                 {activeTab === "result" && (
-                    <FieldUnit header="[ UNIT 03 ] 报码输出 — 审阅三码结果">
+                    <FieldUnit header="报码">
                         {hasLatestResult ? (
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="border border-base-300 bg-base-200 p-4">
@@ -635,19 +615,19 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                             <EmptyState
                                 icon={<RiCheckboxCircleLine/>}
                                 title="等待报码"
-                                description="完成前两单元后，三码结果会写入这里。"
+                                description="标定窗位并校准后，报码会出现在这里。"
                             />
                         )}
                     </FieldUnit>
                 )}
 
                 {activeTab === "history" && (
-                    <FieldUnit header="[ UNIT 04 ] 运行档案 — 回看识别历史">
+                    <FieldUnit header="历史">
                         {history.length === 0 ? (
                             <EmptyState
                                 icon={<RiHistoryLine/>}
                                 title="暂无档案"
-                                description="执行一次识别后会在这里生成运行回执。"
+                                description="识别后会出现在这里。"
                             />
                         ) : (
                             <ScrollArea className="h-72">
