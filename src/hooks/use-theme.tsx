@@ -30,7 +30,6 @@ import {
     previewThemeTokens,
     readUiScheme,
     readUiWorld,
-    restorePersistedThemeTokens,
     type ThemeTokenSession,
     writeUiScheme,
     writeUiWorld,
@@ -346,6 +345,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         tokens: readonly ThemeTokenOverride[],
         options?: {persistOnClose?: boolean},
     ) => {
+        if (worldRef.current === "blackmark") return;
         tokenSessionRef.current = previewThemeTokens(
             document.documentElement,
             tokens,
@@ -355,9 +355,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
     }, []);
 
     const restorePersistedTokens = useCallback(() => {
-        tokenSessionRef.current = restorePersistedThemeTokens(
+        tokenSessionRef.current = presentThemeSession(
             document.documentElement,
             tokenSessionRef.current,
+            worldRef.current,
         );
     }, []);
 

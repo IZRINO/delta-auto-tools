@@ -12,6 +12,7 @@ import {
     type ThemeSettings,
     type ThemeTokenOverride,
     TOKEN_LABELS,
+    type UiWorld,
 } from "@/components/app/theme-types";
 import {
     buildCustomOverrideSettings,
@@ -42,6 +43,8 @@ export function ThemePanel() {
         addCustomTheme,
         previewTokens,
         restorePersistedTokens,
+        uiWorld,
+        setUiWorld,
     } = useTheme();
 
     // 本地编辑态：当前激活主题 + overrides 的合并结果，用于颜色选择器实时预览
@@ -225,8 +228,11 @@ export function ThemePanel() {
 
     if (!bootstrap) {
         return (
-            <div className="alert text-sm text-base-content/70">
-                浏览器预览模式不支持主题切换，请在桌面应用内使用。
+            <div className="flex flex-col gap-4">
+                <UiWorldPicker uiWorld={uiWorld} onChange={setUiWorld}/>
+                <div className="alert text-sm text-base-content/70">
+                    浏览器预览模式不支持配色切换，请在桌面应用内使用。
+                </div>
             </div>
         );
     }
@@ -238,6 +244,7 @@ export function ThemePanel() {
     return (
         <ScrollArea className="max-h-[60vh]">
             <div className="flex flex-col gap-4 pr-3">
+                <UiWorldPicker uiWorld={uiWorld} onChange={setUiWorld}/>
                 {/* 预设区 */}
                 <FieldUnit header="预设主题">
                     {/* 当存在自定义 overrides 时显示「已自定义」状态条，预设均不选中 */}
@@ -388,5 +395,37 @@ export function ThemePanel() {
                 </FieldUnit>
             </div>
         </ScrollArea>
+    );
+}
+
+function UiWorldPicker({onChange, uiWorld}: {onChange: (world: UiWorld) => void; uiWorld: UiWorld}) {
+    return (
+        <FieldUnit header="界面世界">
+            <p className="mb-2 text-xs text-base-content/60">
+                与配色正交。三套配色只服务战地。overlay 窗不跟随。
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+                <button
+                    className={cn(
+                        "btn btn-outline h-12 min-h-12 justify-start rounded-field",
+                        uiWorld === "console" && "btn-active border-primary",
+                    )}
+                    onClick={() => onChange("console")}
+                    type="button"
+                >
+                    战地控制台
+                </button>
+                <button
+                    className={cn(
+                        "btn btn-outline h-12 min-h-12 justify-start rounded-field",
+                        uiWorld === "blackmark" && "btn-active border-primary",
+                    )}
+                    onClick={() => onChange("blackmark")}
+                    type="button"
+                >
+                    夜航黑标
+                </button>
+            </div>
+        </FieldUnit>
     );
 }
