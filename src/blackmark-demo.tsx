@@ -1,4 +1,4 @@
-import {type ReactNode, StrictMode, useEffect, useState} from "react";
+import {Fragment, type ReactNode, StrictMode, useEffect, useState} from "react";
 import {createRoot} from "react-dom/client";
 import {
     RiPauseLine,
@@ -133,22 +133,29 @@ function BlackmarkDemo() {
                 </main>
 
                 <nav aria-label="工具" className="dock bm-dock">
-                    {tools.map((item) => {
-                        const active = item.id === pane;
-                        return (
-                            <button
-                                aria-current={active ? "page" : undefined}
-                                aria-label={item.label}
-                                className={active ? "dock-active" : undefined}
-                                key={item.id}
-                                onClick={() => setPane(item.id)}
-                                type="button"
-                            >
-                                <ToolGlyph id={item.id}/>
-                                <span className="dock-label">{item.label}</span>
-                            </button>
-                        );
-                    })}
+                    {([["favorites"], ["timer", "counter", "rapidfire"], ["strategy", "recognition", "privacy"], ["specialOps", "morse"]] as const).map((group, index) => (
+                        <Fragment key={group[0]}>
+                            {index > 0 ? <span className="bm-dock-rule" aria-hidden="true"/> : null}
+                            {group.map((id) => {
+                                const item = tools.find((tool) => tool.id === id);
+                                if (!item) return null;
+                                const active = item.id === pane;
+                                return (
+                                    <button
+                                        aria-current={active ? "page" : undefined}
+                                        aria-label={item.label}
+                                        className={active ? "dock-active" : undefined}
+                                        key={item.id}
+                                        onClick={() => setPane(item.id)}
+                                        type="button"
+                                    >
+                                        <ToolGlyph id={item.id}/>
+                                        <span className="dock-label">{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </Fragment>
+                    ))}
                     <span className="bm-dock-rule" aria-hidden="true"/>
                     <button
                         aria-current={pane === "settings" ? "page" : undefined}

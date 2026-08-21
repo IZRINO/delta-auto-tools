@@ -1,9 +1,10 @@
-import type {ReactNode} from "react";
+import {Fragment, type ReactNode} from "react";
 import {RiShutDownLine} from "@remixicon/react";
 
 import {BlackmarkGlyph} from "@/components/app/blackmark-glyphs";
 import {ProfileSwitcher} from "@/components/app/profile-switcher";
-import {BLACKMARK_DOCK_TOOLS, type BlackmarkPaneId, type ToolId} from "@/components/app/tool-nav";
+import {BLACKMARK_DOCK_GROUPS, type BlackmarkPaneId, type ToolId} from "@/components/app/tool-nav";
+import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {useGlobalEnabled} from "@/hooks/use-global-enabled";
 import {useTheme} from "@/hooks/use-theme";
 
@@ -61,36 +62,62 @@ export function BlackmarkShell({activePane, children, onPaneChange}: BlackmarkSh
                 </main>
 
                 <nav aria-label="工具" className="dock bm-dock">
-                    {BLACKMARK_DOCK_TOOLS.map((item) => {
-                        const active = item.id === activePane;
-                        return (
-                            <button
-                                aria-current={active ? "page" : undefined}
-                                aria-label={item.label}
-                                className={active ? "dock-active" : undefined}
-                                key={item.id}
-                                onClick={() => onPaneChange(item.id)}
-                                type="button"
-                            >
-                                <BlackmarkGlyph id={item.id}/>
-                                <span className="dock-label">{item.label}</span>
-                            </button>
-                        );
-                    })}
+                    {BLACKMARK_DOCK_GROUPS.map((group, index) => (
+                        <Fragment key={group[0].id}>
+                            {index > 0 ? <span className="bm-dock-rule" aria-hidden="true"/> : null}
+                            {group.map((item) => (
+                                <DockItem
+                                    active={item.id === activePane}
+                                    id={item.id}
+                                    key={item.id}
+                                    label={item.label}
+                                    onSelect={() => onPaneChange(item.id)}
+                                />
+                            ))}
+                        </Fragment>
+                    ))}
                     <span className="bm-dock-rule" aria-hidden="true"/>
-                    <button
-                        aria-current={activePane === "settings" ? "page" : undefined}
-                        aria-label="设置"
-                        className={activePane === "settings" ? "dock-active" : undefined}
-                        onClick={() => onPaneChange("settings")}
-                        type="button"
-                    >
-                        <BlackmarkGlyph id="settings"/>
-                        <span className="dock-label">设置</span>
-                    </button>
+                    <DockItem
+                        active={activePane === "settings"}
+                        id="settings"
+                        label="设置"
+                        onSelect={() => onPaneChange("settings")}
+                    />
                 </nav>
             </div>
         </div>
+    );
+}
+
+function DockItem({
+    active,
+    id,
+    label,
+    onSelect,
+}: {
+    active: boolean;
+    id: BlackmarkPaneId;
+    label: string;
+    onSelect: () => void;
+}) {
+    return (
+        <Tooltip delayDuration={180} disableHoverableContent open={active ? false : undefined}>
+            <TooltipTrigger asChild>
+                <button
+                    aria-current={active ? "page" : undefined}
+                    aria-label={label}
+                    className={active ? "dock-active" : undefined}
+                    onClick={onSelect}
+                    type="button"
+                >
+                    <BlackmarkGlyph id={id}/>
+                    <span className="dock-label">{label}</span>
+                </button>
+            </TooltipTrigger>
+            <TooltipContent className="bm-dock-tip" side="top" sideOffset={10}>
+                {label}
+            </TooltipContent>
+        </Tooltip>
     );
 }
 

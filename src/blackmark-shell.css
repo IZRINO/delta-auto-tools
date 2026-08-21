@@ -233,6 +233,38 @@ html[data-ui-world="blackmark"][data-scheme="day"] {
     opacity: 1;
 }
 
+/* Portal 到 body，吃 html[data-ui-world] 而不是 .bm-stage 变量。 */
+html[data-ui-world="blackmark"] .bm-dock-tip {
+    border-radius: 0;
+    border: 1px solid #3c3c3c;
+    background: #1a1a1a;
+    color: #ffffff;
+    box-shadow: none;
+    padding: 8px 12px;
+    font-family: "Noto Sans SC", "Inter Variable", "Segoe UI", sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+html[data-ui-world="blackmark"][data-scheme="day"] .bm-dock-tip {
+    border-color: #c8c8c8;
+    background: #e8e8e8;
+    color: #111111;
+}
+
+html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-ui-world="blackmark"] .bm-dock-tip {
+        animation: none;
+    }
+}
+
 .bm-btn {
     height: 48px;
     padding: 0 32px;
