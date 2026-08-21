@@ -11,7 +11,10 @@ import type {
     ThemeDefinition,
     ThemeSettings,
     ThemeTokenOverride,
+    UiScheme,
+    UiWorld,
 } from "@/components/app/theme-types";
+import {UI_SCHEME_STORAGE_KEY, UI_WORLD_STORAGE_KEY} from "@/components/app/theme-types";
 
 /**
  * 把合并后的 token 列表写入目标元素的 inline style。
@@ -106,6 +109,74 @@ export function restorePersistedThemeTokens(
     return {
         appliedTokens,
         persistedTokens: session.persistedTokens,
+    };
+}
+
+export function parseUiWorld(value: string | null | undefined): UiWorld {
+    return value === "blackmark" ? "blackmark" : "console";
+}
+
+export function readUiWorld(storage: Pick<Storage, "getItem"> | null | undefined): UiWorld {
+    if (!storage) return "console";
+    try {
+        return parseUiWorld(storage.getItem(UI_WORLD_STORAGE_KEY));
+    } catch {
+        return "console";
+    }
+}
+
+export function writeUiWorld(
+    storage: Pick<Storage, "setItem"> | null | undefined,
+    world: UiWorld,
+): void {
+    try {
+        storage?.setItem(UI_WORLD_STORAGE_KEY, world);
+    } catch {
+        // 隐私模式 / 配额：静默
+    }
+}
+
+export function parseUiScheme(value: string | null | undefined): UiScheme {
+    return value === "day" ? "day" : "night";
+}
+
+export function readUiScheme(storage: Pick<Storage, "getItem"> | null | undefined): UiScheme {
+    if (!storage) return "night";
+    try {
+        return parseUiScheme(storage.getItem(UI_SCHEME_STORAGE_KEY));
+    } catch {
+        return "night";
+    }
+}
+
+export function writeUiScheme(
+    storage: Pick<Storage, "setItem"> | null | undefined,
+    scheme: UiScheme,
+): void {
+    try {
+        storage?.setItem(UI_SCHEME_STORAGE_KEY, scheme);
+    } catch {
+        // 隐私模式 / 配额：静默
+    }
+}
+
+/**
+ * 战地：把落盘 daisyUI token 打到根节点。
+ * 黑标：清掉根节点 inline token，壳用 --bm-*，不劫持 28 key。
+ */
+export function presentThemeSession(
+    target: HTMLElement | SVGElement | null,
+    session: ThemeTokenSession,
+    world: UiWorld,
+    nextPersisted: readonly ThemeTokenOverride[] = session.persistedTokens,
+): ThemeTokenSession {
+    if (world === "blackmark") {
+        clearThemeTokens(target, session.appliedTokens);
+        return {appliedTokens: [], persistedTokens: nextPersisted};
+    }
+    return {
+        appliedTokens: applyThemeTokens(target, nextPersisted, session.appliedTokens),
+        persistedTokens: nextPersisted,
     };
 }
 

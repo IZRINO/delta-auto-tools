@@ -11,6 +11,7 @@
 - Rust 侧合并主题 tokens + overrides 为扁平 `merged_tokens` 列表，通过 `theme://changed` emit，前端逐条写入 `document.documentElement.style.setProperty(key, value)`
 - 主题独立于配置系统（主题不打包进快照）
 - **配色主题 ≠ 界面世界。** `olive-amber` / `valentine` / `arctic-blue` 只给战地控制台换 28 个 daisyUI token。黑标是另一条主窗口线路（壳、字、导航、组件全部不同），权威在 `DESIGN.md` 的 World B，视觉收口在 `blackmark-demo.html`。禁止用换色冒充黑标。overlay 窗口不吃黑标 token。
+- **界面世界持久化。** `UiWorld`（`console` | `blackmark`）写 `localStorage` 键 `delta-auto-tools:ui-world`；黑标色相 `UiScheme`（`night` | `day`）写 `delta-auto-tools:ui-scheme`。两者都不进 `theme_settings.json`，也不进 Profile。默认战地、夜航。overlay（`src/lib/overlay-windows.ts` 名单）强制当战地：不写 `data-ui-world` / `data-scheme`，根节点继续打落盘 daisyUI token。黑标切进来时 `presentThemeSession` **清掉**根节点 inline token，壳用 `--bm-*`，禁止把黑标映射进 28 个 daisyUI key。
 
 ## 目录结构
 
@@ -90,8 +91,9 @@ sequenceDiagram
 - `src-tauri/src/lib.rs`：`theme::initialize()` 在 `setup` 中调用，4 个命令注册到 `generate_handler![]`
 - `src/App.css`：`:root` 和 `@theme inline` 定义回退 token 值，运行时内联样式覆盖
 - `src/main.tsx`：`ThemeProvider` 包裹应用
-- `src/components/app/settings-page.tsx`：`SettingsDialog` 在主题 Tab 挂载 `ThemePanel`
-- [配置系统](profile-system.md)：主题显式不参与 profile 快照，切换 profile 不影响主题
+- `src/components/app/settings-page.tsx`：`SettingsDialog` 在主题 Tab 挂载 `ThemePanel`（战地）；黑标设置是 dock 整页
+- `src/lib/overlay-windows.ts`：`?mode=` overlay 名单，供 `App.tsx` 与 `ThemeProvider` 共用
+- [配置系统](profile-system.md)：主题与界面世界显式不参与 profile 快照
 
 ## 修改入口
 

@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest";
 
+import {UI_SCHEME_STORAGE_KEY, UI_WORLD_STORAGE_KEY} from "@/components/app/theme-types";
 import type {ThemeDefinition, ThemeTokenOverride} from "@/components/app/theme-types";
 import {
     applyThemeTokens,
@@ -12,9 +13,16 @@ import {
     normalizeColorInput,
     normalizeHex,
     parseImportedTheme,
+    parseUiScheme,
+    parseUiWorld,
+    presentThemeSession,
     previewThemeTokens,
+    readUiScheme,
+    readUiWorld,
     restorePersistedThemeTokens,
     serializeThemeForExport,
+    writeUiScheme,
+    writeUiWorld,
 } from "@/components/app/theme-utils";
 
 function makeTheme(id: string, tokens: Array<[string, string]>): ThemeDefinition {
@@ -348,5 +356,81 @@ describe("colorToHex", () => {
 
     it("非法输入回退 #000000", () => {
         expect(colorToHex("not-a-color")).toBe("#000000");
+    });
+});
+
+describe("ui world", () => {
+    it("只认 blackmark，其余回 console", () => {
+        expect(parseUiWorld("blackmark")).toBe("blackmark");
+        expect(parseUiWorld("console")).toBe("console");
+        expect(parseUiWorld("valentine")).toBe("console");
+        expect(parseUiWorld(null)).toBe("console");
+    });
+
+    it("读写 localStorage 键", () => {
+        const store = new Map<string, string>();
+        const storage = {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => {
+                store.set(key, value);
+            },
+        };
+        expect(readUiWorld(storage)).toBe("console");
+        writeUiWorld(storage, "blackmark");
+        expect(store.get(UI_WORLD_STORAGE_KEY)).toBe("blackmark");
+        expect(readUiWorld(storage)).toBe("blackmark");
+    });
+
+    it("黑标清掉根节点 token，不改落盘 session", () => {
+        const el = {
+            style: new Map<string, string>(),
+        } as unknown as HTMLElement;
+        (el.style as unknown as {
+            setProperty: (k: string, v: string) => void;
+            removeProperty: (k: string) => void;
+        }).setProperty = (k, v) => {
+            (el.style as unknown as Map<string, string>).set(k, v);
+        };
+        (el.style as unknown as {removeProperty: (k: string) => void}).removeProperty = (k) => {
+            (el.style as unknown as Map<string, string>).delete(k);
+        };
+
+        const persisted: ThemeTokenOverride[] = [{key: "--color-primary", value: "red"}];
+        let session = presentThemeSession(
+            el,
+            {appliedTokens: [], persistedTokens: []},
+            "console",
+            persisted,
+        );
+        expect((el.style as unknown as Map<string, string>).get("--color-primary")).toBe("red");
+        expect(session.appliedTokens).toEqual(persisted);
+
+        session = presentThemeSession(el, session, "blackmark");
+        expect((el.style as unknown as Map<string, string>).has("--color-primary")).toBe(false);
+        expect(session.appliedTokens).toEqual([]);
+        expect(session.persistedTokens).toEqual(persisted);
+    });
+});
+
+describe("ui scheme", () => {
+    it("只认 day，其余回 night", () => {
+        expect(parseUiScheme("day")).toBe("day");
+        expect(parseUiScheme("night")).toBe("night");
+        expect(parseUiScheme("console")).toBe("night");
+        expect(parseUiScheme(null)).toBe("night");
+    });
+
+    it("读写 localStorage 键", () => {
+        const store = new Map<string, string>();
+        const storage = {
+            getItem: (key: string) => store.get(key) ?? null,
+            setItem: (key: string, value: string) => {
+                store.set(key, value);
+            },
+        };
+        expect(readUiScheme(storage)).toBe("night");
+        writeUiScheme(storage, "day");
+        expect(store.get(UI_SCHEME_STORAGE_KEY)).toBe("day");
+        expect(readUiScheme(storage)).toBe("day");
     });
 });

@@ -46,6 +46,16 @@ export interface ThemeBootstrap {
 /** localStorage 持久化 key（浏览器预览模式 fallback 用）。 */
 export const THEME_STORAGE_KEY = "delta-auto-tools:theme:v1";
 
+/** 界面世界：战地控制台（现行壳）或黑标。与配色主题正交。 */
+export type UiWorld = "console" | "blackmark";
+
+export const UI_WORLD_STORAGE_KEY = "delta-auto-tools:ui-world";
+
+/** 黑标色相。只在黑标世界生效，不进 theme_settings。 */
+export type UiScheme = "night" | "day";
+
+export const UI_SCHEME_STORAGE_KEY = "delta-auto-tools:ui-scheme";
+
 /** 3 套内置主题 id 常量，与 Rust `builtins.rs` 保持同步。 */
 export const BUILTIN_THEME_IDS = {
     oliveAmber: "olive-amber",

@@ -23,23 +23,11 @@ import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
 import {useNativeShell} from "@/hooks/use-native-shell";
+import {isOverlayWindowMode} from "@/lib/overlay-windows";
 import {Switch} from "@/components/ui/switch";
 import {cn} from "@/lib/utils";
 
 import "./App.css";
-
-const overlayWindowModes = new Set([
-    "overlay",
-    "timer-display",
-    "counter-display",
-    "timer-position",
-    "counter-position",
-    "rapidfire-display",
-    "rapidfire-position",
-    "recognition-overlay",
-    "special-ops-calibration",
-    "special-ops-operation",
-]);
 
 const MorsePage = lazy(() =>
     import("@/components/app/morse-page").then((module) => ({default: module.MorsePage})),
@@ -333,7 +321,7 @@ function AppShell() {
     const favorites = useFavorites();
     const {reloadNonce} = useProfile();
     const isNativeShell = useNativeShell();
-    const isOverlayWindowMode = overlayMode !== null && overlayWindowModes.has(overlayMode);
+    const overlayWindow = isOverlayWindowMode(overlayMode);
 
     const handleFavoritesNavigate = useCallback((kind: FavoriteCardKind, cardId: string) => {
         highlightNonceRef.current += 1;
@@ -355,7 +343,7 @@ function AppShell() {
     }, []);
 
     useEffect(() => {
-        if (!isOverlayWindowMode) return;
+        if (!overlayWindow) return;
         // ponytail: daisyUI 把背景写在 :root，overlay 必须同时标记 html/body。
         document.documentElement.dataset.overlayMode = "true";
         document.body.dataset.overlayMode = "true";
@@ -363,7 +351,7 @@ function AppShell() {
             delete document.documentElement.dataset.overlayMode;
             delete document.body.dataset.overlayMode;
         };
-    }, [isOverlayWindowMode]);
+    }, [overlayWindow]);
 
     if (overlayMode === "overlay") {
         return (

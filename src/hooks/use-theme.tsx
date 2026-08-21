@@ -4,6 +4,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -13,19 +14,26 @@ import {invokeLogged as invoke} from "@/lib/logging";
 import {THEME_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {useNativeShell} from "@/hooks/use-native-shell";
+import {isOverlayWindowMode} from "@/lib/overlay-windows";
 import {
     type ThemeBootstrap,
     type ThemeDefinition,
     type ThemeSettings,
     type ThemeTokenOverride,
+    type UiScheme,
+    type UiWorld,
     THEME_STORAGE_KEY,
 } from "@/components/app/theme-types";
 import {
-    applyPersistedThemeTokens,
     buildCustomOverrideSettings,
+    presentThemeSession,
     previewThemeTokens,
+    readUiScheme,
+    readUiWorld,
     restorePersistedThemeTokens,
     type ThemeTokenSession,
+    writeUiScheme,
+    writeUiWorld,
 } from "@/components/app/theme-utils";
 
 /** 主题 Context 对外暴露的接口。 */
@@ -55,6 +63,12 @@ type ThemeContextValue = {
     previewTokens: (tokens: readonly ThemeTokenOverride[], options?: {persistOnClose?: boolean}) => void;
     /** 恢复到最近一次已持久化的 token 列表。 */
     restorePersistedTokens: () => void;
+    /** 界面世界：console = 战地控制台，blackmark = 黑标。overlay 窗强制 console。 */
+    uiWorld: UiWorld;
+    setUiWorld: (world: UiWorld) => void;
+    /** 黑标色相。overlay / 战地不写 dataset。 */
+    uiScheme: UiScheme;
+    setUiScheme: (scheme: UiScheme) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -76,6 +90,11 @@ function isThemeBootstrapStateError(err: unknown): boolean {
     return message.includes("state not managed") && message.includes("theme_get_bootstrap");
 }
 
+function isOverlayWindow(): boolean {
+    const mode = new URLSearchParams(window.location.search).get("mode");
+    return isOverlayWindowMode(mode);
+}
+
 /**
  * 主题 Provider。
  *
@@ -89,9 +108,19 @@ function isThemeBootstrapStateError(err: unknown): boolean {
  */
 export function ThemeProvider({children}: ThemeProviderProps) {
     const isNativeShell = useNativeShell();
+    const overlayLocked = isOverlayWindow();
     const [bootstrap, setBootstrap] = useState<ThemeBootstrap | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [uiWorld, setUiWorldState] = useState<UiWorld>(() =>
+        overlayLocked ? "console" : readUiWorld(window.localStorage),
+    );
+    const [uiScheme, setUiSchemeState] = useState<UiScheme>(() =>
+        overlayLocked ? "night" : readUiScheme(window.localStorage),
+    );
+    const effectiveWorld: UiWorld = overlayLocked ? "console" : uiWorld;
+    const worldRef = useRef(effectiveWorld);
+    worldRef.current = effectiveWorld;
 
     // 记录上一次应用和持久化的 token 列表，用于预览/恢复
     const tokenSessionRef = useRef<ThemeTokenSession>({
@@ -99,14 +128,56 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         persistedTokens: [],
     });
 
-    // 把 mergedTokens 写入 documentElement 的 inline style
-    const applyTokens = useCallback((tokens: readonly ThemeTokenOverride[]) => {
-        tokenSessionRef.current = applyPersistedThemeTokens(
+    const persistTokens = useCallback((tokens: readonly ThemeTokenOverride[]) => {
+        tokenSessionRef.current = presentThemeSession(
             document.documentElement,
-            tokens,
             tokenSessionRef.current,
+            worldRef.current,
+            tokens,
         );
     }, []);
+
+    const presentCurrentWorld = useCallback(() => {
+        tokenSessionRef.current = presentThemeSession(
+            document.documentElement,
+            tokenSessionRef.current,
+            worldRef.current,
+        );
+    }, []);
+
+    useLayoutEffect(() => {
+        const root = document.documentElement;
+        const body = document.body;
+        if (overlayLocked) {
+            delete root.dataset.uiWorld;
+            delete body.dataset.uiWorld;
+            delete root.dataset.scheme;
+            delete body.dataset.scheme;
+            return;
+        }
+        root.dataset.uiWorld = uiWorld;
+        body.dataset.uiWorld = uiWorld;
+        if (uiWorld === "blackmark") {
+            root.dataset.scheme = uiScheme;
+            body.dataset.scheme = uiScheme;
+        } else {
+            delete root.dataset.scheme;
+            delete body.dataset.scheme;
+        }
+        presentCurrentWorld();
+    }, [overlayLocked, uiWorld, uiScheme, presentCurrentWorld]);
+
+    const setUiWorld = useCallback((world: UiWorld) => {
+        if (overlayLocked) return;
+        writeUiWorld(window.localStorage, world);
+        setUiWorldState(world);
+    }, [overlayLocked]);
+
+    const setUiScheme = useCallback((scheme: UiScheme) => {
+        if (overlayLocked) return;
+        writeUiScheme(window.localStorage, scheme);
+        setUiSchemeState(scheme);
+    }, [overlayLocked]);
 
     // 初始化：拉取 bootstrap
     useEffect(() => {
@@ -121,7 +192,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             .then((boot) => {
                 if (disposed) return;
                 setBootstrap(boot);
-                applyTokens(boot.mergedTokens);
+                persistTokens(boot.mergedTokens);
                 // 同步一份到 localStorage 供浏览器预览/下次启动快速恢复
                 try {
                     window.localStorage.setItem(
@@ -147,7 +218,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
         return () => {
             disposed = true;
         };
-    }, [isNativeShell, applyTokens]);
+    }, [isNativeShell, persistTokens]);
 
     // 监听 theme://changed 事件：Rust 端 save_settings 后推送合并后的 token 列表
     useEffect(() => {
@@ -157,7 +228,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
 
         const unlisten = subscribeTauriEvent<ThemeTokenOverride[]>(THEME_EVENTS.changed, (event) => {
             if (disposed) return;
-            applyTokens(event.payload);
+            persistTokens(event.payload);
         });
 
         // 同时刷新 bootstrap 以拿到最新的 customThemes 列表
@@ -179,7 +250,7 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             disposed = true;
             unlisten();
         };
-    }, [isNativeShell, applyTokens]);
+    }, [isNativeShell, persistTokens]);
 
     /** 内部：根据当前 bootstrap 构造下一次要保存的 settings，调 save_settings。 */
     const persistSettings = useCallback(
@@ -197,13 +268,13 @@ export function ThemeProvider({children}: ThemeProviderProps) {
                 // 不会用过时的主题色覆盖已保存的自定义颜色。
                 const returned = await invoke<ThemeBootstrap>("theme_save_settings", {settingsValue: next});
                 setBootstrap(returned);
-                applyTokens(returned.mergedTokens);
+                persistTokens(returned.mergedTokens);
             } catch (err: unknown) {
                 setError(String(err));
                 throw err;
             }
         },
-        [isNativeShell, bootstrap, applyTokens],
+        [isNativeShell, bootstrap, persistTokens],
     );
 
     const saveSettings = useCallback(
@@ -303,6 +374,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             renameCustomTheme,
             previewTokens,
             restorePersistedTokens,
+            uiWorld: effectiveWorld,
+            setUiWorld,
+            uiScheme,
+            setUiScheme,
         }),
         [
             bootstrap,
@@ -316,6 +391,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
             renameCustomTheme,
             previewTokens,
             restorePersistedTokens,
+            effectiveWorld,
+            setUiWorld,
+            uiScheme,
+            setUiScheme,
         ],
     );
 
