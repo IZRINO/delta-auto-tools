@@ -55,6 +55,8 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 - 主题 token 以 daisyUI 语义 token 为主：`--color-base-*`、`--color-primary`、`--color-error`、`--radius-*`、`--border` 等。禁止新增旧组件生成器/工业桥接 token
 - `--border` 在 daisyUI 中表示边框宽度；边框颜色使用 `base-300`、`primary`、`error` 等 daisyUI 语义色
 - 图标使用 `@remixicon/react`。Button 内图标必须设置 `data-icon="inline-start"` 或 `"inline-end"`
+- 工具工作台优先 `FieldUnit` + `ConfigRow` 规格格。折页触发器用 `StampFold`（原生 `button`，禁止 `btn` / `btn-ghost`）。不要给新页面再铺 `TacticalCard` / `ControlTile`
+- 主窗口当前工具页存在 `delta-auto-tools:active-tool:v1`（`src/components/app/active-tool.ts`）。`?mode=` 仍专供 overlay，不要把工具页写进 URL
 
 ## 新工具页骨架
 

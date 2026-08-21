@@ -10,6 +10,7 @@ import {BlackmarkSettingsPage} from "@/components/app/blackmark-settings-page";
 import {BlackmarkShell, isToolId} from "@/components/app/blackmark-shell";
 import {ConsoleShell} from "@/components/app/console-shell";
 import {readUiWorld} from "@/components/app/theme-utils";
+import {readStoredActiveTool, writeStoredActiveTool} from "@/components/app/active-tool";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
 import type {ToolId} from "@/components/app/tool-nav";
@@ -155,11 +156,17 @@ function AppShell() {
         const params = new URLSearchParams(window.location.search);
         return params.get("mode");
     }, []);
-    const [activeTool, setActiveTool] = useState<ToolId>(() => (
-        readUiWorld(typeof window === "undefined" ? null : window.localStorage) === "console"
+    const [activeTool, setActiveToolState] = useState<ToolId>(() => {
+        const stored = readStoredActiveTool();
+        if (stored) return stored;
+        return readUiWorld(typeof window === "undefined" ? null : window.localStorage) === "console"
             ? "morse"
-            : "specialOps"
-    ));
+            : "specialOps";
+    });
+    const selectTool = useCallback((id: ToolId) => {
+        setActiveToolState(id);
+        writeStoredActiveTool(id);
+    }, []);
     const [highlightCardId, setHighlightCardId] = useState<ToolHighlight>(null);
     const highlightNonceRef = useRef(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -171,17 +178,17 @@ function AppShell() {
     const handleFavoritesNavigate = useCallback((kind: FavoriteCardKind, cardId: string) => {
         highlightNonceRef.current += 1;
         if (kind === "rapidfire") {
-            setActiveTool("rapidfire");
+            selectTool("rapidfire");
             setHighlightCardId({kind: "rapidfire", cardId, nonce: highlightNonceRef.current});
         } else if (kind === "counter") {
-            setActiveTool("counter");
+            selectTool("counter");
             setHighlightCardId({kind: "counter", cardId, nonce: highlightNonceRef.current});
         } else {
-            setActiveTool("timer");
+            selectTool("timer");
             setHighlightCardId({kind: "timer", cardId, nonce: highlightNonceRef.current});
         }
         setSettingsPane(false);
-    }, []);
+    }, [selectTool]);
 
     const handleSettingsOpenChange = useCallback((open: boolean) => {
         publishSettingsDialogState(open);
@@ -296,7 +303,7 @@ function AppShell() {
                 onPaneChange={(pane) => {
                     if (isToolId(pane)) {
                         setSettingsPane(false);
-                        setActiveTool(pane);
+                        selectTool(pane);
                         return;
                     }
                     setSettingsPane(true);
@@ -311,7 +318,7 @@ function AppShell() {
         <ConsoleShell
             activeTool={activeTool}
             onSettingsOpenChange={handleSettingsOpenChange}
-            onToolClick={setActiveTool}
+            onToolClick={selectTool}
             settingsOpen={settingsOpen}
         >
             {toolPage}

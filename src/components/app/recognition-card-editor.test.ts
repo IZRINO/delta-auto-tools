@@ -96,9 +96,9 @@ describe("RecognitionCardEditor 快捷键持续触发设置", () => {
             adapter,
         }));
 
-        expect(markup).toContain("快捷键触发方式");
-        expect(markup).toContain("按下触发一次");
-        expect(markup).toContain("按住持续触发");
+        expect(markup).toContain("触发方式");
+        expect(markup).toContain("按下一次");
+        expect(markup).toContain("按住持续");
         expect(markup).toContain('data-state="on" role="radio" aria-checked="true"');
     });
 
@@ -108,7 +108,7 @@ describe("RecognitionCardEditor 快捷键持续触发设置", () => {
             adapter,
         }));
 
-        expect(markup).not.toContain("快捷键触发方式");
-        expect(markup).not.toContain("按住持续触发");
+        expect(markup).not.toContain("按下一次");
+        expect(markup).not.toContain("按住持续");
     });
 });

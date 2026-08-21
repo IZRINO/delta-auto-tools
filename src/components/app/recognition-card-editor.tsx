@@ -8,7 +8,7 @@ import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
-import {HotkeyField, SurfaceToggleGroup} from "@/components/app/app-ui";
+import {ConfigRow, FieldUnit, HotkeyField, SurfaceToggleGroup} from "@/components/app/app-ui";
 import type {RecognitionCardAction} from "@/components/app/recognition-card-reducer";
 import type {ColorProbeForm, RecognitionCard, RecognitionGroup, RecognitionSettingsForm} from "@/components/app/recognition-types";
 
@@ -233,28 +233,29 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
         ?? (card.watchReferenceImagePath ? [card.watchReferenceImagePath] : []);
 
     return (
-        <div className="border border-base-300 bg-base-200">
-            <div
-                className="flex items-center justify-between border-b-2 border-base-content bg-base-100 px-3 py-2">
-                <div className="flex items-center gap-2">
-                    <span
-                        className="font-mono text-xs font-semibold text-base-content">A-{String(index + 1).padStart(2, "0")}</span>
-                    <span className="max-w-48 truncate font-mono text-xs font-bold text-base-content">
-                        {card.name || "未命名卡片"}
-                    </span>
+        <FieldUnit
+            padBody={false}
+            className={!card.enabled ? "opacity-80" : undefined}
+            header={(
+                <Input
+                    className="h-auto w-full border-0 bg-transparent p-0 font-mono text-xs font-semibold placeholder:text-base-content/40 focus-visible:ring-0"
+                    value={card.name}
+                    onChange={(e) => onUpdate({name: e.target.value})}
+                    placeholder="输入卡片名称"
+                    aria-label="卡片名称"
+                />
+            )}
+            description={`A-${String(index + 1).padStart(2, "0")}`}
+            headerActions={(
+                <>
                     <Switch
                         checked={card.enabled}
                         onCheckedChange={(v) => onUpdate({enabled: v})}
                         aria-label={`卡片 ${index + 1} 启用开关`}
                     />
-                    <span className="font-mono text-xs font-bold text-base-content">
-            {card.enabled ? "启用" : "禁用"}
-          </span>
-                </div>
-                <div className="flex items-center gap-1">
                     <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="outline"
+                        size="icon-sm"
                         disabled={position === 0}
                         onClick={onMoveUp}
                         title="上移卡片"
@@ -263,8 +264,8 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                         <RiArrowUpLine className="size-4" aria-hidden="true"/>
                     </Button>
                     <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="outline"
+                        size="icon-sm"
                         disabled={position === groupSize - 1}
                         onClick={onMoveDown}
                         title="下移卡片"
@@ -272,84 +273,76 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                     >
                         <RiArrowDownLine className="size-4" aria-hidden="true"/>
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={onTestPlay} title="测试播放" data-icon="inline-start">
+                    <Button variant="outline" size="sm" onClick={onTestPlay} title="测试播放" data-icon="inline-start">
                         <RiPlayLine className="size-4" aria-hidden="true"/>
                         测试
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={onRemove} title="删除卡片" data-icon="inline-start">
+                    <Button variant="outline" size="icon-sm" onClick={onRemove} title="删除卡片" aria-label="删除卡片">
                         <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
                     </Button>
-                </div>
-            </div>
-
-            {!collapsed && <div className="space-y-3 p-3">
-                <FieldGroup>
-                    <Field>
-                        <FieldLabel>卡片名称</FieldLabel>
-                        <FieldContent>
-                            <Input
-                                value={card.name}
-                                onChange={(e) => onUpdate({name: e.target.value})}
-                                placeholder="输入卡片名称..."
-                            />
-                        </FieldContent>
-                    </Field>
-
-                    <Field>
-                        <FieldLabel>分组</FieldLabel>
-                        <FieldContent>
-                            <Select
-                                value={normalizedGroupId(card.groupId)}
-                                onValueChange={(value) => onMoveToGroup(value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {cardGroups.map((group) => (
-                                        <SelectItem key={group.id} value={group.id}>
-                                            {group.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </FieldContent>
-                    </Field>
-
-                    <Field>
-                        <FieldLabel>识别来源</FieldLabel>
-                        <FieldContent>
-                            <Select value={card.triggerMode}
-                                    onValueChange={(v) => onUpdate({triggerMode: v as "hotkey" | "regionWatch" | "colorWatch"})}>
-                                <SelectTrigger>
-                                    <SelectValue/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="hotkey">快捷键触发</SelectItem>
-                                    <SelectItem value="regionWatch">区域监听+图像匹配</SelectItem>
-                                    <SelectItem value="colorWatch">多区域识色</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </FieldContent>
-                    </Field>
-                </FieldGroup>
+                </>
+            )}
+        >
+            {!collapsed && <>
+                <ConfigRow
+                    label="分组"
+                    value={(
+                        <Select
+                            value={normalizedGroupId(card.groupId)}
+                            onValueChange={(value) => onMoveToGroup(value)}
+                        >
+                            <SelectTrigger className="w-40">
+                                <SelectValue/>
+                            </SelectTrigger>
+                            <SelectContent>
+                                {cardGroups.map((group) => (
+                                    <SelectItem key={group.id} value={group.id}>
+                                        {group.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+                <ConfigRow
+                    label="识别来源"
+                    value={(
+                        <Select value={card.triggerMode}
+                                onValueChange={(v) => onUpdate({triggerMode: v as "hotkey" | "regionWatch" | "colorWatch"})}>
+                            <SelectTrigger className="w-48">
+                                <SelectValue/>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="hotkey">快捷键触发</SelectItem>
+                                <SelectItem value="regionWatch">区域监听+图像匹配</SelectItem>
+                                <SelectItem value="colorWatch">多区域识色</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
 
                 {isHotkey && (
-                    <FieldGroup>
-                        <HotkeyField
-                            controlsDisabled={!isNativeShell}
-                            helperText={RECOGNITION_HOTKEY_HELPER_TEXT}
-                            hotkey={card.hotkey}
-                            id={`${card.id}-trigger-hotkey`}
-                            isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "triggerHotkey"}
-                            onBeginHotkeyRecording={() => onBeginHotkeyRecording("triggerHotkey")}
-                            onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", undefined, event)}
-                            onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                    <>
+                        <ConfigRow
+                            label="快捷键"
+                            value={(
+                                <HotkeyField
+                                    labeled={false}
+                                    controlsDisabled={!isNativeShell}
+                                    helperText={RECOGNITION_HOTKEY_HELPER_TEXT}
+                                    hotkey={card.hotkey}
+                                    id={`${card.id}-trigger-hotkey`}
+                                    isRecording={recordingTarget?.cardId === card.id && recordingTarget.field === "triggerHotkey"}
+                                    onBeginHotkeyRecording={() => onBeginHotkeyRecording("triggerHotkey")}
+                                    onHotkeyKeyDown={(event) => onHotkeyKeyDown("triggerHotkey", undefined, event)}
+                                    onHotkeyRecorderBlur={onHotkeyRecorderBlur}
+                                />
+                            )}
                         />
-                        <Field>
-                            <FieldLabel>快捷键触发方式</FieldLabel>
-                            <FieldContent>
-                                <SurfaceToggleGroup>
+                        <ConfigRow
+                            label="触发方式"
+                            value={(
+                                <SurfaceToggleGroup className="w-full max-w-md">
                                     <ToggleGroup
                                         className="w-full"
                                         type="single"
@@ -363,23 +356,23 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                                             className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                             value="once"
                                         >
-                                            按下触发一次
+                                            按下一次
                                         </ToggleGroupItem>
                                         <ToggleGroupItem
                                             className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
                                             value="whileHeld"
                                         >
-                                            按住持续触发
+                                            按住持续
                                         </ToggleGroupItem>
                                     </ToggleGroup>
                                 </SurfaceToggleGroup>
-                            </FieldContent>
-                        </Field>
-                    </FieldGroup>
+                            )}
+                        />
+                    </>
                 )}
 
                 {!isHotkey && (
-                    <FieldGroup>
+                    <FieldGroup className="p-3">
                         <Field>
                             <FieldLabel>激活方式</FieldLabel>
                             <FieldContent>
@@ -458,7 +451,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                 )}
 
                 {isRegion && (
-                    <FieldGroup>
+                    <FieldGroup className="p-3">
                         <Field>
                             <FieldLabel>监听区域</FieldLabel>
                             <FieldContent>
@@ -550,7 +543,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                 )}
 
                 {isColor && (
-                    <FieldGroup>
+                    <FieldGroup className="p-3">
                         <Field>
                             <FieldLabel>匹配方式</FieldLabel>
                             <FieldContent>
@@ -752,7 +745,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                     </FieldGroup>
                 )}
 
-                <FieldGroup>
+                <FieldGroup className="p-3">
                     <Field>
                         <FieldLabel>触发效果</FieldLabel>
                         <FieldContent>
@@ -909,7 +902,7 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                 </FieldGroup>
 
                 {audioEffectEnabled && (
-                    <FieldGroup>
+                    <FieldGroup className="p-3">
                         <Field>
                             <FieldLabel>播放方式</FieldLabel>
                             <FieldContent>
@@ -1055,24 +1048,24 @@ export const RecognitionCardEditor = memo(function RecognitionCardEditor({
                     </FieldGroup>
                 )}
 
-                <FieldGroup>
-                    <Field>
-                        <FieldLabel>触发冷却 (ms)</FieldLabel>
-                        <FieldContent>
-                            <Input
-                                type="number"
-                                min={isHotkey && (card.hotkeyRepeatMode ?? "once") === "whileHeld" ? 10 : 0}
-                                max={60000}
-                                step={100}
-                                value={card.cooldownMs}
-                                onChange={(e) => onUpdate({cooldownMs: e.target.value})}
-                                title="匹配成功后多久内不重复触发"
-                            />
-                        </FieldContent>
-                    </Field>
-                </FieldGroup>
-            </div>}
-        </div>
+                <ConfigRow
+                    label="触发冷却"
+                    value={(
+                        <Input
+                            className="w-28"
+                            type="number"
+                            min={isHotkey && (card.hotkeyRepeatMode ?? "once") === "whileHeld" ? 10 : 0}
+                            max={60000}
+                            step={100}
+                            value={card.cooldownMs}
+                            onChange={(e) => onUpdate({cooldownMs: e.target.value})}
+                            title="匹配成功后多久内不重复触发"
+                        />
+                    )}
+                    unit="ms"
+                />
+            </>}
+        </FieldUnit>
     );
 }, (previous, next) =>
     previous.card === next.card

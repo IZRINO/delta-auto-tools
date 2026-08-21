@@ -473,7 +473,7 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Do** 黑标视觉以 `blackmark-demo.html` 为准，接到生产壳时对照演示，不要发明第三套。
 - **Do** 读数、坐标、快捷键、JSON 一律 JetBrains Mono + tabular-nums（两条线路 + overlay）。
 - **Do** 状态同时用颜色与文字/图标表达。
-- **Do** 战地新页面复用 `app-ui.tsx`。标准骨架：`ToolPageFrame` → `MasterSwitchCard?` → `SyncGroupSection?` → `SyncCardList`。
+- **Do** 战地新页面复用 `app-ui.tsx`。标准骨架：`ToolPageFrame` → `MasterSwitchCard?` → `SyncGroupSection?` → `SyncCardList`。卡片内部用 `FieldUnit` 黑标条 + 单列 `ConfigRow`；折页用 `StampFold`，禁止 daisyUI `btn`。
 - **Do** 改战地主题 token 时三套内置主题同改同测，28 key 不变。
 
 ### Don't:

@@ -10,6 +10,7 @@ import {Button} from "@/components/ui/button";
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog";
 import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {DataWell, FieldUnit, StatusMatrix} from "@/components/app/app-ui";
+import {BETA_UPDATE_NOTICE, isPrereleaseVersion, notAvailableLabel} from "@/components/app/about-update";
 import {DEPENDENCIES} from "@/components/app/about-deps";
 import type {AboutBootstrap, UpdateInfo, UpdateProgress} from "@/components/app/about-types";
 import {ABOUT_EVENTS} from "@/lib/tauri-events";
@@ -129,7 +130,13 @@ export function AboutPanel({active}: AboutPanelProps) {
         if (!progress) return [];
         const phase = progress.phase;
         if (phase === "checking") return [{id: "update", state: "warning" as const, label: "检查中..."}];
-        if (phase === "notAvailable") return [{id: "update", state: "valid" as const, label: "已是最新"}];
+        if (phase === "notAvailable") {
+            return [{
+                id: "update",
+                state: "valid" as const,
+                label: notAvailableLabel(isPrereleaseVersion(bootstrap?.version)),
+            }];
+        }
         if (phase === "available") return [{
             id: "update",
             state: "active" as const,
@@ -178,6 +185,9 @@ export function AboutPanel({active}: AboutPanelProps) {
 
                 {/* 更新状态 */}
                 <FieldUnit header="更新状态">
+                    {isPrereleaseVersion(bootstrap?.version) ? (
+                        <p className="mb-3 text-sm text-base-content/60">{BETA_UPDATE_NOTICE}</p>
+                    ) : null}
                     {!isNativeShell && (
                         <p className="text-sm text-base-content/60">
                             更新功能仅在桌面端可用

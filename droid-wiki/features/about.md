@@ -61,7 +61,7 @@ src/components/app/
 
 ### Beta 与正式版端点
 
-Beta 版本不建立独立更新通道，查询与正式版相同的 stable 端点（`/releases/latest/download/latest.json`）。因 GitHub `/releases/latest` 仅解析非 prerelease Release，beta 用户在更高正式版发布前看到「已是最新」，正式版发布后 `should_offer_update` 返回 true 并下载签名安装包。
+Beta 版本不建立独立更新通道，查询与正式版相同的 stable 端点（`/releases/latest/download/latest.json`）。因 GitHub `/releases/latest` 仅解析非 prerelease Release，测试版之间不会互推。关于页在当前版本含 `-` 时展示手装说明；检查更新无更高正式版时文案为「暂无正式版可升」，不写「已是最新」。正式版发布后 `should_offer_update` 返回 true 并下载签名安装包。
 
 ### 错误分类
 

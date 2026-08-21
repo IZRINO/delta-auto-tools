@@ -7,24 +7,22 @@ import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {Field, FieldContent, FieldGroup, FieldLabel} from "@/components/ui/field";
+
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
 import {
-  CardBody,
   CardNameInput,
-  ControlTile,
+  ConfigRow,
   DragButton,
   FavoriteButton,
+  FieldUnit,
   HotkeyField,
   MasterSwitchCard,
   runStateClass,
-  SectionHeader,
   SoftAlert,
   SurfaceToggleGroup,
-  TacticalCard,
   ToolPageFrame,
 } from "@/components/app/app-ui";
 import {SyncCardList} from "@/components/app/sync-card-list";
@@ -500,121 +498,119 @@ function TimerCard({
     const isMultiSegment = timer.segmentCount !== "" && Number.parseInt(timer.segmentCount, 10) >= 2;
 
     return (
-        <TacticalCard active={isDragging}
-                      className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", runStateClass(run?.status))}
-                      data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
-            <SectionHeader
-                title={(
-                    <CardNameInput
-                        ariaLabel="计时器名称"
+        <FieldUnit
+            padBody={false}
+            className={cn(timer.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", runStateClass(run?.status), isDragging && "ring-2 ring-primary")}
+            data-timer-card={timer.id}
+            data-favorite-card={`timer:${timer.id}`}
+            onPointerEnter={onDragOver}
+            header={(
+                <CardNameInput
+                    ariaLabel="计时器名称"
+                    disabled={controlsDisabled}
+                    fallback="计时器"
+                    onChange={(name) => onUpdate({name})}
+                    value={timer.name}
+                />
+            )}
+            description={run ? `${timerSignalChar(timer, run)} ${Math.floor(run.currentSeconds)}s` : (timer.enabled ? "▢ 等待触发" : "○ 已禁用")}
+            headerActions={(
+                <>
+                    <Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge>
+                    <Select disabled={controlsDisabled} value={timer.groupId}
+                            onValueChange={(value) => onUpdate({groupId: value})}>
+                        <SelectTrigger className="w-32 bg-base-100">
+                            <SelectValue placeholder="分组"/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {groupOptions.map((group) => (
+                                <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
+                    <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
+                    <Switch checked={timer.enabled} disabled={controlsDisabled} aria-label="启用计时器"
+                            onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
+                    <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"
+                            variant="outline" aria-label="删除计时器">
+                        <RiDeleteBinLine/>
+                    </Button>
+                </>
+            )}
+        >
+            <ConfigRow
+                label="每段秒数"
+                value={(
+                    <Input id={`${timer.id}-duration`} className="w-28" disabled={controlsDisabled} inputMode="numeric"
+                           min="1" value={timer.durationSeconds}
+                           onChange={(event) => onUpdate({durationSeconds: event.currentTarget.value})}/>
+                )}
+                unit="s"
+            />
+            <ConfigRow
+                label="计时方向"
+                value={(
+                    <SurfaceToggleGroup className="w-full max-w-xs">
+                        <ToggleGroup className="w-full" disabled={controlsDisabled} type="single"
+                                     value={timer.direction} variant="outline"
+                                     onValueChange={(value) => value ? onUpdate({direction: value as TimerItemForm["direction"]}) : undefined}>
+                            <ToggleGroupItem
+                                className="min-w-16 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                value="countup">正</ToggleGroupItem>
+                            <ToggleGroupItem
+                                className="min-w-16 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                value="countdown">反</ToggleGroupItem>
+                        </ToggleGroup>
+                    </SurfaceToggleGroup>
+                )}
+            />
+            <ConfigRow
+                label="触发模式"
+                value={(
+                    <SurfaceToggleGroup className="w-full max-w-xs">
+                        <ToggleGroup className="w-full" disabled={controlsDisabled} type="single"
+                                     value={timer.triggerMode} variant="outline"
+                                     onValueChange={(value) => value ? onUpdate({triggerMode: value as TimerItemForm["triggerMode"]}) : undefined}>
+                            <ToggleGroupItem
+                                className="min-w-16 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                value="press">按下</ToggleGroupItem>
+                            <ToggleGroupItem
+                                className="min-w-16 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
+                                value="release">释放</ToggleGroupItem>
+                        </ToggleGroup>
+                    </SurfaceToggleGroup>
+                )}
+            />
+            <ConfigRow
+                label="多段数"
+                value={(
+                    <Input id={`${timer.id}-segment-count`} className="w-28" disabled={controlsDisabled}
+                           inputMode="numeric" min="2" max="99" placeholder="留空=单段" value={timer.segmentCount}
+                           onChange={(event) => onUpdate({segmentCount: event.currentTarget.value})}/>
+                )}
+                unit={isMultiSegment ? `总 ${Number.parseInt(timer.durationSeconds, 10) * Number.parseInt(timer.segmentCount, 10)}s` : undefined}
+            />
+            <ConfigRow
+                label="运行中忽略"
+                value={(
+                    <Switch
+                        checked={timer.ignoreRunning}
                         disabled={controlsDisabled}
-                        fallback="计时器"
-                        onChange={(name) => onUpdate({name})}
-                        value={timer.name}
+                        aria-label="运行中忽略触发"
+                        onCheckedChange={(checked) => onUpdate({ignoreRunning: checked})}
                     />
                 )}
-                description={run ? `${timerSignalChar(timer, run)} ${Math.floor(run.currentSeconds)}s` : (timer.enabled ? "▢ 等待触发" : "○ 已禁用")}
-                actions={(
-                    <div className="flex items-center gap-1.5">
-                        <Select disabled={controlsDisabled} value={timer.groupId}
-                                onValueChange={(value) => onUpdate({groupId: value})}>
-                            <SelectTrigger className="w-32 bg-base-100">
-                                <SelectValue placeholder="分组"/>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {groupOptions.map((group) => (
-                                    <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
-                        <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
-                        <Switch checked={timer.enabled} disabled={controlsDisabled} aria-label="启用计时器"
-                                onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
-                        <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"
-                                variant="outline" aria-label="删除计时器">
-                            <RiDeleteBinLine/>
-                        </Button>
-                    </div>
-                )}
-                badge={<Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge>}
             />
-            <CardBody>
-                <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                    <Field>
-                        <FieldLabel htmlFor={`${timer.id}-duration`}>每段秒数</FieldLabel>
-                        <FieldContent>
-                            <Input id={`${timer.id}-duration`} disabled={controlsDisabled} inputMode="numeric" min="1"
-                                   value={timer.durationSeconds}
-                                   onChange={(event) => onUpdate({durationSeconds: event.currentTarget.value})}/>
-                        </FieldContent>
-                    </Field>
-                    <Field>
-                        <FieldLabel>计时方向</FieldLabel>
-                        <FieldContent>
-                            <SurfaceToggleGroup>
-                                <ToggleGroup className="w-full" disabled={controlsDisabled} type="single"
-                                             value={timer.direction} variant="outline"
-                                             onValueChange={(value) => value ? onUpdate({direction: value as TimerItemForm["direction"]}) : undefined}>
-                                    <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
-                                        value="countup">正</ToggleGroupItem>
-                                    <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
-                                        value="countdown">反</ToggleGroupItem>
-                                </ToggleGroup>
-                            </SurfaceToggleGroup>
-                        </FieldContent>
-                    </Field>
-                    <Field>
-                        <FieldLabel>触发模式</FieldLabel>
-                        <FieldContent>
-                            <SurfaceToggleGroup>
-                                <ToggleGroup className="w-full" disabled={controlsDisabled} type="single"
-                                             value={timer.triggerMode} variant="outline"
-                                             onValueChange={(value) => value ? onUpdate({triggerMode: value as TimerItemForm["triggerMode"]}) : undefined}>
-                                    <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
-                                        value="press">按下</ToggleGroupItem>
-                                    <ToggleGroupItem
-                                        className="min-w-24 flex-1 border-base-content font-mono text-sm font-semibold data-[state=on]:bg-base-content data-[state=on]:text-base-100"
-                                        value="release">释放</ToggleGroupItem>
-                                </ToggleGroup>
-                            </SurfaceToggleGroup>
-                        </FieldContent>
-                    </Field>
-                    <Field>
-                        <FieldLabel htmlFor={`${timer.id}-segment-count`}>多段数（留空=单段）</FieldLabel>
-                        <FieldContent>
-                            <Input id={`${timer.id}-segment-count`} disabled={controlsDisabled} inputMode="numeric"
-                                   min="2" max="99" placeholder="留空为普通单段计时器" value={timer.segmentCount}
-                                   onChange={(event) => onUpdate({segmentCount: event.currentTarget.value})}/>
-                        </FieldContent>
-                        {isMultiSegment ? (
-                            <p className="text-xs text-muted-foreground">总时长 {Number.parseInt(timer.durationSeconds, 10) * Number.parseInt(timer.segmentCount, 10)} 秒，每次触发减少 {timer.durationSeconds} 秒</p>
-                        ) : null}
-                    </Field>
-                    <ControlTile className="flex items-center gap-3 sm:col-span-2">
-                        <Switch
-                            checked={timer.ignoreRunning}
-                            disabled={controlsDisabled}
-                            aria-label="运行中忽略触发"
-                            onCheckedChange={(checked) => onUpdate({ignoreRunning: checked})}
-                        />
-                        <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground">运行中忽略触发</p>
-                            <p className="mt-1 text-xs text-muted-foreground">开启后运行时快捷键无效；关闭后运行时触发会重置计时器。</p>
-                        </div>
-                    </ControlTile>
-                    <div className="sm:col-span-2">
-                        <HotkeyField controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`}
-                                     isRecording={isRecording} hotkey={timer.hotkey}
-                                     onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown}
-                                     onHotkeyRecorderBlur={onHotkeyRecorderBlur}/>
-                    </div>
-
-                </FieldGroup>
-            </CardBody>
-        </TacticalCard>
+            <ConfigRow
+                label="快捷键"
+                value={(
+                    <HotkeyField labeled={false} controlsDisabled={controlsDisabled} id={`${timer.id}-hotkey`}
+                                 isRecording={isRecording} hotkey={timer.hotkey}
+                                 onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown}
+                                 onHotkeyRecorderBlur={onHotkeyRecorderBlur}/>
+                )}
+            />
+        </FieldUnit>
     );
 }

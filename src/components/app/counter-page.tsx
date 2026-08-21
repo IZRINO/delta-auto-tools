@@ -12,21 +12,18 @@ import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {CardHeader} from "@/components/ui/card";
-import {Field, FieldContent, FieldGroup, FieldLabel} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
 import {
-  CardBody,
   CardNameInput,
+  ConfigRow,
   DragButton,
   FavoriteButton,
+  FieldUnit,
   HotkeyField,
   MasterSwitchCard,
-  SectionHeader,
   SoftAlert,
-  TacticalCard,
   ToolPageFrame,
 } from "@/components/app/app-ui";
 import {SyncCardList} from "@/components/app/sync-card-list";
@@ -538,101 +535,93 @@ function CounterCard({
                          run
                      }: CounterCardProps) {
     return (
-        <TacticalCard active={isDragging}
-                      className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "")}
-                      data-counter-card={counter.id} data-favorite-card={`counter:${counter.id}`}
-                      onPointerEnter={onDragOver}>
-            <SectionHeader
-                title={(
-                    <CardNameInput
-                        ariaLabel="计数器名称"
-                        disabled={controlsDisabled}
-                        fallback="计数器"
-                        onChange={(name) => onUpdate({name})}
-                        value={counter.name}
-                    />
-                )}
-                description={`当前计数 · ${run?.value ?? counter.startValue}`}
-                badge={<><Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge><Badge
-                    variant={counter.enabled ? "default" : "outline"}>{counter.enabled ? "启用" : "禁用"}</Badge></>}
-            />
-            <CardHeader className="border-b-2 border-base-content bg-base-200 pt-0">
-                <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
-                    <div className="grid gap-3">
-                        <div>
-                            <p className="font-mono text-xs font-medium text-base-content/60">所属分组</p>
-                            <Select disabled={controlsDisabled} value={counter.groupId}
-                                    onValueChange={(value) => onUpdate({groupId: value})}>
-                                <SelectTrigger className="mt-2 w-full max-w-full bg-base-100">
-                                    <SelectValue placeholder="选择分组"/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {groupOptions.map((group) => (
-                                        <SelectItem key={group.id} value={group.id}>
-                                            {group.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    <div
-                        className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-base-content pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
-                        <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
-                        <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
-                        <Switch checked={counter.enabled} disabled={controlsDisabled} aria-label="启用计数器"
-                                onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
-                        <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"
-                                variant="outline" aria-label="删除计数器">
-                            <RiDeleteBinLine/>
-                        </Button>
-                    </div>
+        <FieldUnit
+            padBody={false}
+            className={cn(counter.enabled ? "" : "opacity-80", isHighlighted ? "outline-4 outline-primary" : "", isDragging && "ring-2 ring-primary")}
+            data-counter-card={counter.id}
+            data-favorite-card={`counter:${counter.id}`}
+            onPointerEnter={onDragOver}
+            header={(
+                <CardNameInput
+                    ariaLabel="计数器名称"
+                    disabled={controlsDisabled}
+                    fallback="计数器"
+                    onChange={(name) => onUpdate({name})}
+                    value={counter.name}
+                />
+            )}
+            description={`当前计数 · ${run?.value ?? counter.startValue}`}
+            headerActions={(
+                <>
+                    <Badge variant="outline">{String(index + 1).padStart(2, "0")}</Badge>
+                    <Select disabled={controlsDisabled} value={counter.groupId}
+                            onValueChange={(value) => onUpdate({groupId: value})}>
+                        <SelectTrigger className="w-32 bg-base-100">
+                            <SelectValue placeholder="分组"/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {groupOptions.map((group) => (
+                                <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
+                    <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
+                    <Switch checked={counter.enabled} disabled={controlsDisabled} aria-label="启用计数器"
+                            onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
+                    <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"
+                            variant="outline" aria-label="删除计数器">
+                        <RiDeleteBinLine/>
+                    </Button>
+                </>
+            )}
+            footer={(
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        className="flex-1"
+                        disabled={resetDisabled}
+                        onClick={() => onAdjust(-1)}
+                        type="button"
+                        variant="outline"
+                    >
+                        <RiSubtractLine data-icon="inline-start"/>
+                        -1
+                    </Button>
+                    <Button
+                        className="flex-1"
+                        disabled={resetDisabled}
+                        onClick={() => onAdjust(1)}
+                        type="button"
+                        variant="outline"
+                    >
+                        <RiAddLine data-icon="inline-start"/>
+                        +1
+                    </Button>
+                    <Button className="flex-1" disabled={resetDisabled} onClick={onReset} type="button"
+                            variant="outline">
+                        <RiResetLeftLine data-icon="inline-start"/>
+                        重置为起始数
+                    </Button>
                 </div>
-            </CardHeader>
-            <CardBody>
-                <FieldGroup className="grid gap-4 sm:grid-cols-2">
-                    <Field>
-                        <FieldLabel htmlFor={`${counter.id}-start`}>起始数</FieldLabel>
-                        <FieldContent>
-                            <Input id={`${counter.id}-start`} disabled={controlsDisabled} inputMode="numeric"
-                                   value={counter.startValue}
-                                   onChange={(event) => onUpdate({startValue: event.currentTarget.value})}/>
-                        </FieldContent>
-                    </Field>
-                    <HotkeyField controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`}
+            )}
+        >
+            <ConfigRow
+                label="起始数"
+                value={(
+                    <Input id={`${counter.id}-start`} className="w-28" disabled={controlsDisabled} inputMode="numeric"
+                           value={counter.startValue}
+                           onChange={(event) => onUpdate({startValue: event.currentTarget.value})}/>
+                )}
+            />
+            <ConfigRow
+                label="快捷键"
+                value={(
+                    <HotkeyField labeled={false} controlsDisabled={controlsDisabled} id={`${counter.id}-hotkey`}
                                  isRecording={isRecording} hotkey={counter.hotkey}
                                  onBeginHotkeyRecording={onBeginHotkeyRecording} onHotkeyKeyDown={onHotkeyKeyDown}
                                  onHotkeyRecorderBlur={onHotkeyRecorderBlur}/>
-                    <div className="flex flex-wrap gap-2 sm:col-span-2">
-                        <Button
-                            className="flex-1"
-                            disabled={resetDisabled}
-                            onClick={() => onAdjust(-1)}
-                            type="button"
-                            variant="outline"
-                        >
-                            <RiSubtractLine data-icon="inline-start"/>
-                            -1
-                        </Button>
-                        <Button
-                            className="flex-1"
-                            disabled={resetDisabled}
-                            onClick={() => onAdjust(1)}
-                            type="button"
-                            variant="outline"
-                        >
-                            <RiAddLine data-icon="inline-start"/>
-                            +1
-                        </Button>
-                        <Button className="flex-1" disabled={resetDisabled} onClick={onReset} type="button"
-                                variant="outline">
-                            <RiResetLeftLine data-icon="inline-start"/>
-                            重置为起始数
-                        </Button>
-                    </div>
-
-                </FieldGroup>
-            </CardBody>
-        </TacticalCard>
+                )}
+            />
+        </FieldUnit>
     );
 }

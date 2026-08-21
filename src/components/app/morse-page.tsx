@@ -21,6 +21,7 @@ import {
     EmptyState,
     FieldUnit,
     HelpHint,
+    StampFold,
     ToolPageFrame,
 } from "@/components/app/app-ui";
 import {RegionSelectionOverlay} from "@/components/app/morse-overlay";
@@ -336,44 +337,12 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
             {/* Tab Content */}
             <div className="col-span-12">
                 {activeTab === "selection" && (
-                    <FieldUnit header="窗位">
-                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                            {REGION_LABELS.map((label, index) => {
-                                const region = form?.regions[index] ?? null;
-                                const isConfigured = Boolean(region);
-                                return (
-                                    <div key={label} className="border border-base-300 p-3">
-                                        <div
-                                            className="flex items-center justify-between gap-2 border-b border-base-300 pb-2 mb-2">
-                                            <span
-                                                className="font-mono text-xs font-semibold">{label}</span>
-                                            <Badge variant={isConfigured ? "default" : "outline"}>
-                                                {isConfigured ? "已锁定" : "待锁定"}
-                                            </Badge>
-                                        </div>
-                                        {isConfigured ? (
-                                            <div
-                                                className="font-mono text-xs text-base-content/60">{formatRegion(region)}</div>
-                                        ) : (
-                                            <div className="font-mono text-xs text-base-content/40">未配置</div>
-                                        )}
-                                        <Button
-                                            className="mt-2 w-full"
-                                            disabled={isBusy}
-                                            onClick={() => void performSelectionSession([index])}
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                        >
-                                            {isConfigured ? "重选" : "框选"}
-                                        </Button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <div className="mt-3 flex gap-2">
+                    <FieldUnit
+                        padBody={false}
+                        header="窗位"
+                        footer={(
                             <Button
-                                className="flex-1"
+                                className="w-full"
                                 disabled={isBusy}
                                 onClick={() => void performSelectionSession([0, 1, 2])}
                                 type="button"
@@ -381,7 +350,35 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                 <RiRefreshLine data-icon="inline-start"/>
                                 一次框选三段窗位
                             </Button>
-                        </div>
+                        )}
+                    >
+                        {REGION_LABELS.map((label, index) => {
+                            const region = form?.regions[index] ?? null;
+                            const isConfigured = Boolean(region);
+                            return (
+                                <ConfigRow
+                                    key={label}
+                                    label={label}
+                                    value={(
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono text-xs text-base-content/60">
+                                                {isConfigured ? formatRegion(region) : "未配置"}
+                                            </span>
+                                            <Button
+                                                disabled={isBusy}
+                                                onClick={() => void performSelectionSession([index])}
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                            >
+                                                {isConfigured ? "重选" : "框选"}
+                                            </Button>
+                                        </div>
+                                    )}
+                                    state={isConfigured ? "valid" : "idle"}
+                                />
+                            );
+                        })}
                     </FieldUnit>
                 )}
 
@@ -461,14 +458,14 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                             }
                                             state={form?.afterClickHotkey ? "valid" : "idle"}
                                         />
-                                        <Collapsible className="border border-base-300 bg-base-100">
+                                        <Collapsible>
                                             <CollapsibleTrigger asChild>
-                                                <Button
-                                                    className="h-auto w-full justify-between px-3 py-2 font-mono text-xs font-semibold"
-                                                    type="button" variant="ghost">
-                                                    点击区域配置
-                                                    <Badge variant="outline">{(form?.clickRegions ?? []).filter((r) => r.rect).length}/7</Badge>
-                                                </Button>
+                                                <StampFold
+                                                    label="点击区域配置"
+                                                    trailing={(
+                                                        <Badge variant="outline">{(form?.clickRegions ?? []).filter((r) => r.rect).length}/7</Badge>
+                                                    )}
+                                                />
                                             </CollapsibleTrigger>
                                             <CollapsibleContent className="border-t-2 border-base-content px-3 py-3">
                                                 <div className="flex flex-col gap-2">

@@ -2,9 +2,7 @@ import type {ComponentProps, ReactNode} from "react";
 import {
     RiAddLine,
     RiArrowDownSLine,
-    RiDeleteBinLine,
     RiInformationLine,
-    RiMapPinLine,
     RiStarFill,
     RiStarLine,
 } from "@remixicon/react";
@@ -13,11 +11,9 @@ import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Card, CardContent, CardDescription, CardHeader} from "@/components/ui/card";
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from "@/components/ui/empty";
 import {Field, FieldContent, FieldLabel} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
-import {Slider} from "@/components/ui/slider";
 import {Switch} from "@/components/ui/switch";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {BlackmarkPage} from "@/components/app/blackmark-page";
@@ -355,16 +351,40 @@ export function ConfigRow({label, value, unit, state = "idle", className}: Confi
         <div
             data-state={state}
             className={cn(
-                "grid grid-cols-[max-content_1fr_max-content_max-content] items-center gap-x-3 border-b border-base-300 px-3 py-2 text-sm text-base-content",
+                "grid grid-cols-[max-content_minmax(0,1fr)_max-content_max-content] items-center gap-x-3 border-b border-base-300 px-3 py-2 text-sm text-base-content",
                 className,
             )}
         >
-            <span className="text-base-content/60">{label}</span>
-            <span className="min-w-0 truncate text-right font-medium tabular-nums">{value}</span>
+            <span className="text-xs text-base-content/60">{label}</span>
+            <span className="flex min-w-0 justify-end font-medium tabular-nums">{value}</span>
             {unit ? <span className="text-xs text-base-content/60">{unit}</span> :
                 <span/>}
             <span className={cn("status status-sm", stateColor[state])}/>
         </div>
+    );
+}
+
+type StampFoldProps = ComponentProps<"button"> & {
+    label: string;
+    trailing?: ReactNode;
+};
+
+export function StampFold({className, label, trailing, type = "button", ...props}: StampFoldProps) {
+    return (
+        <button
+            className={cn(
+                "flex w-full items-center justify-between gap-2 border border-base-content bg-transparent px-3 py-2 text-left font-mono text-xs font-semibold text-base-content data-[state=open]:[&_svg]:rotate-180",
+                className,
+            )}
+            type={type}
+            {...props}
+        >
+            <span>{label}</span>
+            <span className="flex items-center gap-2">
+                {trailing}
+                <RiArrowDownSLine className="size-3.5 shrink-0"/>
+            </span>
+        </button>
     );
 }
 
@@ -416,19 +436,41 @@ export function DataWell({children, className, maxHeight = "max-h-64"}: DataWell
 
 /* Field Unit */
 
-type FieldUnitProps = {
-    children: ReactNode;
-    className?: string;
+type FieldUnitProps = ComponentProps<"div"> & {
     header?: ReactNode;
+    headerActions?: ReactNode;
+    description?: ReactNode;
     footer?: ReactNode;
+    padBody?: boolean;
 };
 
-export function FieldUnit({children, className, header, footer}: FieldUnitProps) {
+export function FieldUnit({
+                              children,
+                              className,
+                              header,
+                              headerActions,
+                              description,
+                              footer,
+                              padBody = true,
+                              ...props
+                          }: FieldUnitProps) {
     return (
-        <div className={cn("card card-border bg-base-200 shadow-none", className)}>
-            {header ? <div className="border-b border-base-300 px-4 py-3 text-sm font-semibold">{header}</div> : null}
-            <div className="p-3">{children}</div>
-            {footer ? <div className="border-t border-base-300 px-4 py-3">{footer}</div> : null}
+        <div className={cn("card card-border bg-base-200 shadow-none", className)} {...props}>
+            {header != null ? (
+                <div className="flex items-center justify-between gap-2 border-b-2 border-base-content bg-base-200 px-3 py-2">
+                    <div className="min-w-0">
+                        <div className="font-mono text-xs font-semibold text-base-content">{header}</div>
+                        {description ? (
+                            <div className="truncate text-caption text-base-content/60">{description}</div>
+                        ) : null}
+                    </div>
+                    {headerActions ? (
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">{headerActions}</div>
+                    ) : null}
+                </div>
+            ) : null}
+            <div className={cn(padBody ? "p-3" : "p-0")}>{children}</div>
+            {footer ? <div className="border-t-2 border-base-content px-3 py-2">{footer}</div> : null}
         </div>
     );
 }
@@ -554,6 +596,7 @@ type HotkeyFieldProps = {
     id: string;
     isRecording: boolean;
     helperText?: string;
+    labeled?: boolean;
     onBeginHotkeyRecording: () => void;
     onHotkeyKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
     onHotkeyRecorderBlur: () => void;
@@ -565,135 +608,28 @@ export function HotkeyField({
                                 id,
                                 isRecording,
                                 helperText,
+                                labeled = true,
                                 onBeginHotkeyRecording,
                                 onHotkeyKeyDown,
                                 onHotkeyRecorderBlur
                             }: HotkeyFieldProps) {
+    const button = (
+        <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id}
+                onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown}
+                title={helperText} type="button" variant="outline">
+            <span>{isRecording ? "录制中..." : hotkey || "未设置"}</span>
+            <span
+                className="text-caption text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
+        </Button>
+    );
+    if (!labeled) return button;
     return (
         <Field>
             <FieldLabel htmlFor={id}>快捷键</FieldLabel>
             <FieldContent>
-                <Button className="h-9 w-full justify-between gap-4 px-3 font-mono" disabled={controlsDisabled} id={id}
-                        onBlur={onHotkeyRecorderBlur} onClick={onBeginHotkeyRecording} onKeyDown={onHotkeyKeyDown}
-                        title={helperText} type="button" variant="outline">
-                    <span>{isRecording ? "录制中..." : hotkey || "未设置"}</span>
-                    <span
-                        className="text-caption text-muted-foreground">{isRecording ? "失焦取消" : "点击录制"}</span>
-                </Button>
+                {button}
             </FieldContent>
         </Field>
-    );
-}
-
-/* Display Settings Inline (legacy) */
-
-type DisplaySettingsInlineProps = {
-    canDelete: boolean;
-    controlsDisabled: boolean;
-    display: { fontOpacity?: string; rect?: { width?: number } } | undefined;
-    group: { enabled: boolean; name: string };
-    statusMessage: string;
-    targetLabel: string;
-    onGroupDelete: () => void;
-    onGroupUpdate: (value: Partial<{ enabled: boolean; name: string }>) => void;
-    onPositionSelection: () => void;
-    onUpdate: (value: Partial<{ fontOpacity?: string }>) => void;
-    onUpdateRect: (value: Partial<{ width?: number }>) => void;
-};
-
-export function DisplaySettingsInline({
-                                          canDelete,
-                                          controlsDisabled,
-                                          display,
-                                          group,
-                                          statusMessage,
-                                          targetLabel,
-                                          onGroupDelete,
-                                          onGroupUpdate,
-                                          onPositionSelection,
-                                          onUpdate,
-                                          onUpdateRect,
-                                      }: DisplaySettingsInlineProps) {
-    return (
-        <ControlTile className="flex flex-col gap-3 bg-base-100">
-            <div className="flex flex-wrap items-center gap-3">
-                <Switch checked={group.enabled} disabled={controlsDisabled}
-                        aria-label={`${targetLabel}分组启用`}
-                        onCheckedChange={(checked) => onGroupUpdate({enabled: checked})}/>
-                <p className="font-mono text-xs font-medium text-base-content">
-                    {targetLabel}分组 · {group.name}
-                </p>
-                <Input
-                    aria-label="分组名称"
-                    className="w-28 font-mono text-sm"
-                    disabled={controlsDisabled}
-                    onChange={(event) => onGroupUpdate({name: event.currentTarget.value})}
-                    value={group.name}
-                />
-                <Button aria-label="删除分组" className="shrink-0" disabled={!canDelete} onClick={onGroupDelete}
-                        size="icon-sm" type="button" variant="ghost">
-                    <RiDeleteBinLine/>
-                </Button>
-                <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} size="sm"
-                        type="button" variant="outline">
-                    <RiMapPinLine data-icon="inline-start"/>
-                    位置
-                </Button>
-            </div>
-
-            <Collapsible defaultOpen={false}>
-                <InlineControl className="p-0">
-                    <CollapsibleTrigger asChild>
-                        <Button
-                            className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium"
-                            type="button"
-                            variant="ghost"
-                        >
-                            显示参数
-                            <RiArrowDownSLine className="size-3.5"/>
-                        </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="border-t border-base-content px-2 py-2">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <Field className="min-w-0 flex-1">
-                                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
-                                <FieldContent>
-                                    <div className="flex items-center gap-3">
-                                        <Slider
-                                            aria-label="字体透明度"
-                                            disabled={controlsDisabled || !display}
-                                            max={1}
-                                            min={0.1}
-                                            onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}
-                                            step={0.05}
-                                            value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
-                                        />
-                                        <span className="w-10 text-right font-mono text-xs text-base-content/60">
-                                            {display?.fontOpacity ?? "--"}
-                                        </span>
-                                    </div>
-                                </FieldContent>
-                            </Field>
-                            <Field className="w-36 shrink-0">
-                                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
-                                <FieldContent>
-                                    <Input
-                                        className="h-7 font-mono text-xs"
-                                        disabled={controlsDisabled || !display}
-                                        inputMode="numeric"
-                                        min="320"
-                                        onChange={(event) => onUpdateRect({width: Number.parseInt(event.currentTarget.value, 10) || 320})}
-                                        value={display?.rect?.width ?? 320}
-                                    />
-                                </FieldContent>
-                            </Field>
-                        </div>
-                    </CollapsibleContent>
-                </InlineControl>
-            </Collapsible>
-
-            <p className="font-mono text-xs font-medium text-base-content/60">{statusMessage}</p>
-        </ControlTile>
     );
 }
 

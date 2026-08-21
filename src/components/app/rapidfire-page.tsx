@@ -16,9 +16,7 @@ import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {CardHeader} from "@/components/ui/card";
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
-import {Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
 import {Kbd} from "@/components/ui/kbd";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
@@ -26,17 +24,16 @@ import {Switch} from "@/components/ui/switch";
 import {PositionOverlay} from "@/components/ui/position-overlay";
 import {
   AddCardButton,
-  CardBody,
   CardNameInput,
   ChannelTabs,
-  ControlTile,
+  ConfigRow,
   DragButton,
   FavoriteButton,
+  FieldUnit,
   InlineNotice,
   OverlayReadoutShell,
   runStateClass,
-  SectionHeader,
-  TacticalCard,
+  StampFold,
   ToolPageFrame,
 } from "@/components/app/app-ui";
 import type {
@@ -509,192 +506,172 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
             </div>
 
             {activeTab === "global" && (
-                <TacticalCard className="col-span-12 xl:col-span-7">
-                    <SectionHeader title="全局"/>
-                    <CardBody className="grid gap-3">
-                        <FieldGroup className="grid gap-3 md:grid-cols-2">
-                            <ControlTile className="bg-base-100">
-                                <Field orientation="horizontal">
-                                    <Switch
-                                        id="rapidfireEnabled"
-                                        checked={form.rapidfireEnabled}
-                                        disabled={controlsDisabled}
-                                        onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
-                                    />
-                                    <FieldContent>
-                                        <FieldLabel htmlFor="rapidfireEnabled">{form.rapidfireEnabled ? "开" : "关"}</FieldLabel>
-                                    </FieldContent>
-                                </Field>
-                            </ControlTile>
-                            <ControlTile className="bg-base-100">
-                                <Field>
-                                    <FieldLabel htmlFor="compensationDelayMinMs">补齐延迟下限</FieldLabel>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="compensationDelayMinMs"
-                                            className="w-28"
-                                            type="number"
-                                            min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                                            max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                                            value={form.compensationDelayMinMs}
-                                            disabled={controlsDisabled}
-                                            onChange={(event) => updateForm("compensationDelayMinMs", event.target.value)}
-                                        />
-                                        <FieldTitle>ms</FieldTitle>
-                                    </div>
-                                    <FieldDescription>执行奇数补齐前的随机等待下限。</FieldDescription>
-                                </Field>
-                            </ControlTile>
-                        </FieldGroup>
-                        <FieldGroup className="grid gap-3 md:grid-cols-2">
-                            <ControlTile className="bg-base-100">
-                                <Field>
-                                    <FieldLabel htmlFor="compensationDelayMaxMs">补齐延迟上限</FieldLabel>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id="compensationDelayMaxMs"
-                                            className="w-28"
-                                            type="number"
-                                            min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                                            max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                                            value={form.compensationDelayMaxMs}
-                                            disabled={controlsDisabled}
-                                            onChange={(event) => updateForm("compensationDelayMaxMs", event.target.value)}
-                                        />
-                                        <FieldTitle>ms</FieldTitle>
-                                    </div>
-                                    <FieldDescription>下限不得大于上限。</FieldDescription>
-                                </Field>
-                            </ControlTile>
-                        </FieldGroup>
-                    </CardBody>
-                </TacticalCard>
+                <FieldUnit className="col-span-12 xl:col-span-7" padBody={false} header="全局">
+                    <ConfigRow
+                        label="启用"
+                        value={(
+                            <Switch
+                                id="rapidfireEnabled"
+                                checked={form.rapidfireEnabled}
+                                disabled={controlsDisabled}
+                                aria-label="连发器总开关"
+                                onCheckedChange={(checked) => updateForm("rapidfireEnabled", checked)}
+                            />
+                        )}
+                        state={form.rapidfireEnabled ? "valid" : "idle"}
+                    />
+                    <ConfigRow
+                        label="补齐延迟下限"
+                        value={(
+                            <Input
+                                id="compensationDelayMinMs"
+                                className="w-28"
+                                type="number"
+                                min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                                max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                                value={form.compensationDelayMinMs}
+                                disabled={controlsDisabled}
+                                onChange={(event) => updateForm("compensationDelayMinMs", event.target.value)}
+                            />
+                        )}
+                        unit="ms"
+                    />
+                    <ConfigRow
+                        label="补齐延迟上限"
+                        value={(
+                            <Input
+                                id="compensationDelayMaxMs"
+                                className="w-28"
+                                type="number"
+                                min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                                max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                                value={form.compensationDelayMaxMs}
+                                disabled={controlsDisabled}
+                                onChange={(event) => updateForm("compensationDelayMaxMs", event.target.value)}
+                            />
+                        )}
+                        unit="ms"
+                    />
+                </FieldUnit>
             )}
 
             {activeTab === "global" && (
-                <TacticalCard className="col-span-12 xl:col-span-5">
-                    <SectionHeader
-                        title="分组"
-                        actions={
-                            <Button type="button" variant="outline" size="sm" disabled={controlsDisabled}
-                                    onClick={addGroup}>
-                                <RiAddLine data-icon="inline-start"/>
-                                新增分组
-                            </Button>
-                        }
-                    />
-                    <CardBody className="grid gap-3">
-                        {form.groups.map((group, index) => (
-                            <ControlTile key={group.id} className="flex flex-col gap-4 bg-base-100">
-                                <div
-                                    className="flex items-start justify-between gap-3 border-b border-base-300 pb-3">
-                                    <div className="min-w-0">
-                                        <p className="text-xs text-base-content/60">
-                                            第 {String(index + 1).padStart(2, "0")} 组
-                                        </p>
-                                        <p className="mt-2 text-sm font-semibold text-foreground">{group.name}</p>
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            {rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片
-                                        </p>
-                                    </div>
+                <div className="col-span-12 flex flex-col gap-2 xl:col-span-5">
+                    <div className="flex justify-end">
+                        <Button type="button" variant="outline" size="sm" disabled={controlsDisabled}
+                                onClick={addGroup}>
+                            <RiAddLine data-icon="inline-start"/>
+                            新增分组
+                        </Button>
+                    </div>
+                    {form.groups.map((group, index) => (
+                        <FieldUnit
+                            key={group.id}
+                            padBody={false}
+                            header={(
+                                <Input
+                                    className="h-auto w-full border-0 bg-transparent p-0 font-mono text-xs font-semibold"
+                                    disabled={controlsDisabled}
+                                    value={group.name}
+                                    onChange={(event) => updateGroup(group.id, {name: event.currentTarget.value})}
+                                    aria-label="分组名称"
+                                />
+                            )}
+                            description={`第 ${String(index + 1).padStart(2, "0")} 组 · ${rapidfireEffectiveCardsByGroup(form, group.id).length} 张有效卡片`}
+                            headerActions={(
+                                <>
                                     <Switch checked={group.enabled} disabled={controlsDisabled}
                                             aria-label={`${group.name} 分组启用`}
                                             onCheckedChange={(checked) => updateGroup(group.id, {enabled: checked})}/>
-                                </div>
-                                <FieldGroup className="grid gap-3 md:grid-cols-2">
-                                    <Field>
-                                        <FieldLabel>分组名称</FieldLabel>
-                                        <Input className="bg-base-100" disabled={controlsDisabled} value={group.name}
-                                               onChange={(event) => updateGroup(group.id, {name: event.currentTarget.value})}/>
-                                    </Field>
-                                    <Field>
-                                        <FieldLabel>透明窗口宽度</FieldLabel>
-                                        <Input
-                                            className=""
-                                            disabled={controlsDisabled || !group.enabled}
-                                            max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
-                                            min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
-                                            onChange={(event) => updateGroup(group.id, {overlayWidth: event.currentTarget.value})}
-                                            type="number"
-                                            value={group.overlayWidth}
-                                        />
-                                    </Field>
-                                </FieldGroup>
-                                <div className="flex flex-wrap items-center gap-2 border-t border-base-300 pt-3">
-                                    <ControlTile className="flex items-center gap-2 bg-base-200 px-3 py-2">
-                                        <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled}
-                                                aria-label={`${group.name} 透明窗口`}
-                                                onCheckedChange={(checked) => updateGroup(group.id, {showOverlay: checked})}/>
-                                        <span className="text-xs text-muted-foreground">透明窗口</span>
-                                    </ControlTile>
                                     <Button type="button" variant="outline" size="sm"
                                             disabled={controlsDisabled || !group.enabled}
                                             onClick={() => void beginPositionSelection(group.id)}>
                                         <RiMapPinLine data-icon="inline-start"/>
-                                        校准位置
+                                        位置
                                     </Button>
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        size="sm"
+                                        size="icon-sm"
                                         disabled={controlsDisabled || form.groups.length <= 1 || form.cards.some((card) => card.groupId === group.id)}
                                         onClick={() => removeGroup(group.id)}
+                                        aria-label="删除空分组"
                                     >
-                                        <RiDeleteBinLine data-icon="inline-start"/>
-                                        删除空分组
+                                        <RiDeleteBinLine/>
                                     </Button>
-                                </div>
-                            </ControlTile>
-                        ))}
-                    </CardBody>
-                </TacticalCard>
+                                </>
+                            )}
+                        >
+                            <ConfigRow
+                                label="透明窗口"
+                                value={(
+                                    <Switch checked={group.showOverlay} disabled={controlsDisabled || !group.enabled}
+                                            aria-label={`${group.name} 透明窗口`}
+                                            onCheckedChange={(checked) => updateGroup(group.id, {showOverlay: checked})}/>
+                                )}
+                            />
+                            <ConfigRow
+                                label="窗口宽度"
+                                value={(
+                                    <Input
+                                        className="w-28"
+                                        disabled={controlsDisabled || !group.enabled}
+                                        max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
+                                        min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
+                                        onChange={(event) => updateGroup(group.id, {overlayWidth: event.currentTarget.value})}
+                                        type="number"
+                                        value={group.overlayWidth}
+                                    />
+                                )}
+                                unit="px"
+                            />
+                        </FieldUnit>
+                    ))}
+                </div>
             )}
 
             {activeTab === "display" && (
-                <TacticalCard className="col-span-12">
-                    <SectionHeader title="显示"/>
-                    <CardBody className="grid gap-3">
-                        <FieldGroup className="grid gap-3 md:grid-cols-3">
-                            <ControlTile className="bg-base-100">
-                                <Field orientation="horizontal">
-                                    <Switch
-                                        id="showOverlay"
-                                        checked={form.showOverlay}
-                                        disabled={controlsDisabled}
-                                        onCheckedChange={(checked) => updateForm("showOverlay", checked)}
-                                    />
-                                    <FieldContent>
-                                        <FieldLabel htmlFor="showOverlay">透明窗口</FieldLabel>
-                                        <FieldDescription>游戏内仅投送启用通道与当前发射计数。</FieldDescription>
-                                    </FieldContent>
-                                </Field>
-                            </ControlTile>
-                            <ControlTile className="bg-base-100">
-                                <Field>
-                                    <FieldLabel htmlFor="overlayWidth">透明窗口宽度</FieldLabel>
-                                    <Input
-                                        id="overlayWidth"
-                                        className="max-w-32"
-                                        type="number"
-                                        min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
-                                        max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
-                                        value={form.overlayWidth}
-                                        disabled={controlsDisabled}
-                                        onChange={(event) => updateForm("overlayWidth", event.target.value)}
-                                    />
-                                    <FieldDescription>{RAPIDFIRE_DISPLAY_MIN_WIDTH}-{RAPIDFIRE_DISPLAY_MAX_WIDTH}px。</FieldDescription>
-                                </Field>
-                            </ControlTile>
-                            <ControlTile className="bg-base-100">
-                                <Button variant="outline" size="sm" disabled={controlsDisabled}
-                                        onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
-                                    <RiMapPinLine data-icon="inline-start"/>
-                                    校准位置
-                                </Button>
-                            </ControlTile>
-                        </FieldGroup>
-                    </CardBody>
-                </TacticalCard>
+                <FieldUnit
+                    className="col-span-12"
+                    padBody={false}
+                    header="显示"
+                    headerActions={(
+                        <Button variant="outline" size="sm" disabled={controlsDisabled}
+                                onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
+                            <RiMapPinLine data-icon="inline-start"/>
+                            校准位置
+                        </Button>
+                    )}
+                >
+                    <ConfigRow
+                        label="透明窗口"
+                        value={(
+                            <Switch
+                                id="showOverlay"
+                                checked={form.showOverlay}
+                                disabled={controlsDisabled}
+                                aria-label="透明窗口"
+                                onCheckedChange={(checked) => updateForm("showOverlay", checked)}
+                            />
+                        )}
+                    />
+                    <ConfigRow
+                        label="窗口宽度"
+                        value={(
+                            <Input
+                                id="overlayWidth"
+                                className="w-28"
+                                type="number"
+                                min={RAPIDFIRE_DISPLAY_MIN_WIDTH}
+                                max={RAPIDFIRE_DISPLAY_MAX_WIDTH}
+                                value={form.overlayWidth}
+                                disabled={controlsDisabled}
+                                onChange={(event) => updateForm("overlayWidth", event.target.value)}
+                            />
+                        )}
+                        unit="px"
+                    />
+                </FieldUnit>
             )}
 
             {activeTab === "cards" && (
@@ -796,287 +773,235 @@ function RapidfireCardEditor({
     const status = rapidfireCardStatus(card, run, cardError);
 
     return (
-        <TacticalCard
-            active={status.active || isRunning || isPending || isDragging}
+        <FieldUnit
+            padBody={false}
             data-favorite-card={`rapidfire:${card.id}`}
             onPointerEnter={onDragOver}
             className={cn(
-                "bg-base-100",
                 !card.enabled && !status.error && "opacity-80",
-                status.error && "border-primary bg-base-200 outline-2 outline-primary",
-                isDragging && "outline-4 outline-primary",
+                status.error && "border-primary outline-2 outline-primary",
+                (isDragging || status.active || isRunning || isPending) && "ring-2 ring-primary",
                 isHighlighted && "outline-4 outline-primary",
                 runStateClass(run?.status),
             )}
-        >
-            <SectionHeader
-                title={(
-                    <CardNameInput
-                        ariaLabel="通道名称"
-                        disabled={disabled}
-                        fallback="连发器"
-                        onChange={(name) => onUpdate(card.id, {name})}
-                        value={card.name}
-                    />
-                )}
-                description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "不补齐" : "补齐"}`}
-                badge={
+            header={(
+                <CardNameInput
+                    ariaLabel="通道名称"
+                    disabled={disabled}
+                    fallback="连发器"
+                    onChange={(name) => onUpdate(card.id, {name})}
+                    value={card.name}
+                />
+            )}
+            description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "不补齐" : "补齐"}`}
+            headerActions={(
+                <>
                     <Badge variant={status.variant}>{status.label}</Badge>
-                }
-                className={cn(status.error && "bg-primary")}
-            />
+                    <Select disabled={disabled} value={card.groupId}
+                            onValueChange={(value) => onUpdate(card.id, {groupId: value})}>
+                        <SelectTrigger className="w-32 bg-base-100">
+                            <SelectValue placeholder="分组"/>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {groupOptions.map((group) => (
+                                <SelectItem key={group.id} value={group.id}>
+                                    {group.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <DragButton controlsDisabled={disabled} onDragStart={onDragStart}/>
+                    <Button
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={disabled || index === 0}
+                        aria-label="上移卡片"
+                        onClick={() => previousId && onMove(card.id, previousId)}
+                    >
+                        <RiArrowUpLine/>
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={disabled || index >= total - 1}
+                        aria-label="下移卡片"
+                        onClick={() => nextId && onMove(card.id, nextId)}
+                    >
+                        <RiArrowDownSLine/>
+                    </Button>
+                    <Switch
+                        checked={card.enabled}
+                        disabled={disabled}
+                        aria-label="启用卡片"
+                        onCheckedChange={(checked) => onUpdate(card.id, {enabled: checked})}
+                    />
+                    <FavoriteButton disabled={disabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
+                    <Button variant="outline" size="icon-sm" disabled={disabled} onClick={onDelete}
+                            aria-label="删除卡片">
+                        <RiDeleteBinLine/>
+                    </Button>
+                </>
+            )}
+        >
             {isRunning || isPending ? (
-                <div
-                    className="flex items-center gap-2 border-b border-base-300 bg-primary px-3 py-2 text-sm text-primary-content">
+                <div className="flex items-center gap-2 bg-primary px-3 py-2 text-sm text-primary-content">
                     <span className="status status-sm status-success"/>
                     {isRunning ? "连发中" : "就绪"}
                 </div>
             ) : null}
-            <CardHeader className="border-b border-base-300 bg-base-200 pt-4">
-                <div className="grid gap-3 xl:grid-cols-[1fr_auto]">
-                    <div className="grid gap-3">
-                        <div>
-                            <p className="text-xs text-base-content/60">所属分组</p>
-                            <Select disabled={disabled} value={card.groupId}
-                                    onValueChange={(value) => onUpdate(card.id, {groupId: value})}>
-                                <SelectTrigger className="mt-2 w-full max-w-full bg-base-100">
-                                    <SelectValue placeholder="选择分组"/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {groupOptions.map((group) => (
-                                        <SelectItem key={group.id} value={group.id}>
-                                            {group.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    <div
-                        className="flex flex-wrap items-center justify-end gap-1.5 border-t border-base-300 pt-3 xl:border-t-0 xl:border-l xl:pl-3 xl:pt-0">
-                        <DragButton controlsDisabled={disabled} onDragStart={onDragStart}/>
-
-                        <Button
-                            variant="outline"
-                            size="icon-sm"
-                            disabled={disabled || index === 0}
-                            aria-label="上移卡片"
-                            onClick={() => previousId && onMove(card.id, previousId)}
-                        >
-                            <RiArrowUpLine/>
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="icon-sm"
-                            disabled={disabled || index >= total - 1}
-                            aria-label="下移卡片"
-                            onClick={() => nextId && onMove(card.id, nextId)}
-                        >
-                            <RiArrowDownSLine/>
-                        </Button>
-                        <Switch
-                            checked={card.enabled}
-                            disabled={disabled}
-                            aria-label="启用卡片"
-                            onCheckedChange={(checked) => onUpdate(card.id, {enabled: checked})}
-                        />
-                        <FavoriteButton disabled={disabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
-                        <Button variant="outline" size="icon-sm" disabled={disabled} onClick={onDelete}
-                                aria-label="删除卡片">
-                            <RiDeleteBinLine/>
-                        </Button>
-                    </div>
-                </div>
-            </CardHeader>
-            <CardBody>
-                {cardError ? (
-                    <InlineNotice className="mb-3" title="这张卡片的配置未生效">
-                        {cardError}
-                    </InlineNotice>
-                ) : null}
-                <FieldGroup className="grid gap-3 md:grid-cols-2">
-                    <ControlTile className="bg-base-100">
-                        <Field>
-                            <FieldLabel>触发键</FieldLabel>
-                            <KeyRecorderButton
-                                value={card.triggerKey}
-                                active={isRecording && recordingField === "triggerKey"}
-                                disabled={disabled}
-                                onClick={() => onRecord(card, "triggerKey")}
-                                onKeyDown={onRecorderKeyDown}
-                                onBlur={onRecorderBlur}
-                            />
-                            <FieldDescription>按住此键即启动连续发射；支持 Shift+- 这类组合热键。</FieldDescription>
-                        </Field>
-                    </ControlTile>
-                    <ControlTile className="bg-base-100">
-                        <Field>
-                            <FieldLabel>目标键</FieldLabel>
-                            <KeyRecorderButton
-                                value={card.targetKey}
-                                active={isRecording && recordingField === "targetKey"}
-                                disabled={disabled}
-                                onClick={() => onRecord(card, "targetKey")}
-                                onKeyDown={onRecorderKeyDown}
-                                onBlur={onRecorderBlur}
-                            />
-                            <FieldDescription>矩阵运行时将重复压发此键。</FieldDescription>
-                        </Field>
-                    </ControlTile>
-                    <ControlTile className="bg-base-100">
-                        <Field orientation="horizontal">
-                            <Switch
-                                id={`${card.id}-skip-compensation`}
-                                checked={card.skipCompensation}
-                                disabled={disabled}
-                                onCheckedChange={(checked) => onUpdate(card.id, {skipCompensation: checked})}
-                            />
-                            <FieldContent>
-                                <FieldLabel htmlFor={`${card.id}-skip-compensation`}>不追加补齐</FieldLabel>
-                                <FieldDescription>断开后不补发尾次，保持原始奇偶结果。</FieldDescription>
-                            </FieldContent>
-                        </Field>
-                    </ControlTile>
-                    <ControlTile className="bg-base-100">
-                        <Field orientation="horizontal">
-                            <Switch
-                                id={`${card.id}-ignore-trigger-key`}
-                                checked={card.ignoreTriggerKey}
-                                disabled={disabled}
-                                onCheckedChange={(checked) => onUpdate(card.id, {ignoreTriggerKey: checked})}
-                            />
-                            <FieldContent>
-                                <FieldLabel htmlFor={`${card.id}-ignore-trigger-key`}>忽略触发键</FieldLabel>
-                                <FieldDescription>连发时阻止触发键本身同步输入；同触发键的其他卡片仍可触发。</FieldDescription>
-                            </FieldContent>
-                        </Field>
-                    </ControlTile>
-                    <ControlTile className="bg-base-100">
-                        <Field>
-                            <FieldLabel htmlFor={`${card.id}-interval`}>连发间隔</FieldLabel>
+            {cardError ? (
+                <InlineNotice className="m-3" title="这张卡片的配置未生效">
+                    {cardError}
+                </InlineNotice>
+            ) : null}
+            <ConfigRow
+                label="触发键"
+                value={(
+                    <KeyRecorderButton
+                        value={card.triggerKey}
+                        active={isRecording && recordingField === "triggerKey"}
+                        disabled={disabled}
+                        onClick={() => onRecord(card, "triggerKey")}
+                        onKeyDown={onRecorderKeyDown}
+                        onBlur={onRecorderBlur}
+                    />
+                )}
+            />
+            <ConfigRow
+                label="目标键"
+                value={(
+                    <KeyRecorderButton
+                        value={card.targetKey}
+                        active={isRecording && recordingField === "targetKey"}
+                        disabled={disabled}
+                        onClick={() => onRecord(card, "targetKey")}
+                        onKeyDown={onRecorderKeyDown}
+                        onBlur={onRecorderBlur}
+                    />
+                )}
+            />
+            <ConfigRow
+                label="连发间隔"
+                value={(
+                    <Input
+                        id={`${card.id}-interval`}
+                        className="w-28"
+                        type="number"
+                        min={RAPIDFIRE_MIN_INTERVAL_MS}
+                        value={card.intervalMs}
+                        disabled={disabled}
+                        onChange={(event) => onUpdate(card.id, {intervalMs: event.target.value})}
+                    />
+                )}
+                unit="ms"
+            />
+            <ConfigRow
+                label="不追加补齐"
+                value={(
+                    <Switch
+                        id={`${card.id}-skip-compensation`}
+                        checked={card.skipCompensation}
+                        disabled={disabled}
+                        aria-label="不追加补齐"
+                        onCheckedChange={(checked) => onUpdate(card.id, {skipCompensation: checked})}
+                    />
+                )}
+            />
+            <ConfigRow
+                label="忽略触发键"
+                value={(
+                    <Switch
+                        id={`${card.id}-ignore-trigger-key`}
+                        checked={card.ignoreTriggerKey}
+                        disabled={disabled}
+                        aria-label="忽略触发键"
+                        onCheckedChange={(checked) => onUpdate(card.id, {ignoreTriggerKey: checked})}
+                    />
+                )}
+            />
+            <Collapsible defaultOpen={Boolean(cardError)}>
+                <CollapsibleTrigger asChild>
+                    <StampFold label="高级校准"/>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                    <ConfigRow
+                        label="触发抖动"
+                        value={(
                             <div className="flex items-center gap-2">
                                 <Input
-                                    id={`${card.id}-interval`}
-                                    className="w-28"
+                                    id={`${card.id}-jitter-min`}
+                                    className="w-20"
                                     type="number"
-                                    min={RAPIDFIRE_MIN_INTERVAL_MS}
-                                    value={card.intervalMs}
+                                    min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                                    max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                                    value={card.pressJitterMinMs}
                                     disabled={disabled}
-                                    onChange={(event) => onUpdate(card.id, {intervalMs: event.target.value})}
+                                    aria-label="触发抖动最小值"
+                                    onChange={(event) => onUpdate(card.id, {pressJitterMinMs: event.target.value})}
                                 />
-                                <FieldTitle>ms</FieldTitle>
+                                <span className="text-xs text-base-content/60">至</span>
+                                <Input
+                                    id={`${card.id}-jitter-max`}
+                                    className="w-20"
+                                    type="number"
+                                    min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
+                                    max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
+                                    value={card.pressJitterMaxMs}
+                                    disabled={disabled}
+                                    aria-label="触发抖动最大值"
+                                    onChange={(event) => onUpdate(card.id, {pressJitterMaxMs: event.target.value})}
+                                />
                             </div>
-                            <FieldDescription>最小 {RAPIDFIRE_MIN_INTERVAL_MS}ms。</FieldDescription>
-                        </Field>
-                    </ControlTile>
-                    <Collapsible defaultOpen={Boolean(cardError)} className="md:col-span-2">
-                        <ControlTile className="overflow-hidden bg-base-100 p-0">
-                            <CollapsibleTrigger asChild>
-                                <Button
-                                    className="w-full justify-between bg-base-200 px-3 py-3 text-sm font-medium"
-                                    type="button" variant="ghost">
-                                    高级校准面板
-                                    <RiArrowDownSLine className="size-4"/>
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent
-                                className="border-t border-base-300 bg-base-100 px-3 py-3">
-                                <FieldGroup className="grid gap-3 md:grid-cols-2">
-                                    <ControlTile className="bg-base-200">
-                                        <Field>
-                                            <FieldLabel>触发抖动</FieldLabel>
-                                            <div
-                                                className="grid grid-cols-[minmax(4.75rem,1fr)_auto_minmax(4.75rem,1fr)_auto] items-center gap-2">
-                                                <Input
-                                                    id={`${card.id}-jitter-min`}
-                                                    className="min-w-0"
-                                                    type="number"
-                                                    min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
-                                                    max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
-                                                    value={card.pressJitterMinMs}
-                                                    disabled={disabled}
-                                                    aria-label="触发抖动最小值"
-                                                    onChange={(event) => onUpdate(card.id, {pressJitterMinMs: event.target.value})}
-                                                />
-                                                <span className="text-xs text-muted-foreground">至</span>
-                                                <Input
-                                                    id={`${card.id}-jitter-max`}
-                                                    className="min-w-0"
-                                                    type="number"
-                                                    min={RAPIDFIRE_PRESS_JITTER_MIN_MS}
-                                                    max={RAPIDFIRE_PRESS_JITTER_MAX_MS}
-                                                    value={card.pressJitterMaxMs}
-                                                    disabled={disabled}
-                                                    aria-label="触发抖动最大值"
-                                                    onChange={(event) => onUpdate(card.id, {pressJitterMaxMs: event.target.value})}
-                                                />
-                                                <FieldTitle>ms</FieldTitle>
-                                            </div>
-                                            <FieldDescription>目标键按下保持时间范围。</FieldDescription>
-                                        </Field>
-                                    </ControlTile>
-                                    <ControlTile className="bg-base-200">
-                                        <Field>
-                                            <FieldLabel
-                                                htmlFor={`${card.id}-min-spacing`}>当前卡片按键最小间距</FieldLabel>
-                                            <div className="flex items-center gap-2">
-                                                <Input
-                                                    id={`${card.id}-min-spacing`}
-                                                    className="w-28"
-                                                    type="number"
-                                                    min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
-                                                    max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
-                                                    value={card.minPressSpacingMs}
-                                                    disabled={disabled}
-                                                    onChange={(event) => onUpdate(card.id, {minPressSpacingMs: event.target.value})}
-                                                />
-                                                <FieldTitle>ms</FieldTitle>
-                                            </div>
-                                            <FieldDescription>仅限制本通道目标键的触发间距，不拖慢其他通道。</FieldDescription>
-                                        </Field>
-                                    </ControlTile>
-                                    <ControlTile className="bg-base-200">
-                                        <Field>
-                                            <FieldLabel
-                                                htmlFor={`${card.id}-trigger-jitter`}>当前卡片启动抖动上限</FieldLabel>
-                                            <div className="flex items-center gap-2">
-                                                <Input
-                                                    id={`${card.id}-trigger-jitter`}
-                                                    className="w-28"
-                                                    type="number"
-                                                    min={0}
-                                                    max={RAPIDFIRE_TRIGGER_JITTER_MAX_MS}
-                                                    value={card.triggerJitterMaxMs}
-                                                    disabled={disabled}
-                                                    onChange={(event) => onUpdate(card.id, {triggerJitterMaxMs: event.target.value})}
-                                                />
-                                                <FieldTitle>ms（0=关闭）</FieldTitle>
-                                            </div>
-                                            <FieldDescription>按下触发键后，最久等待此时长再开始连发。</FieldDescription>
-                                        </Field>
-                                    </ControlTile>
-                                    <ControlTile className="bg-base-200">
-                                        <Field orientation="horizontal">
-                                            <Switch
-                                                id={`${card.id}-cancel-jitter`}
-                                                checked={card.cancelJitterOnRelease}
-                                                disabled={disabled}
-                                                onCheckedChange={(checked) => onUpdate(card.id, {cancelJitterOnRelease: checked})}
-                                            />
-                                            <FieldContent>
-                                                <FieldLabel
-                                                    htmlFor={`${card.id}-cancel-jitter`}>抖动期间松手立即触发</FieldLabel>
-                                                <FieldDescription>仅作用于本通道；松手后立即执行一次并进入奇数补齐判断。</FieldDescription>
-                                            </FieldContent>
-                                        </Field>
-                                    </ControlTile>
-                                </FieldGroup>
-                            </CollapsibleContent>
-                        </ControlTile>
-                    </Collapsible>
-                </FieldGroup>
-            </CardBody>
-        </TacticalCard>
+                        )}
+                        unit="ms"
+                    />
+                    <ConfigRow
+                        label="按键最小间距"
+                        value={(
+                            <Input
+                                id={`${card.id}-min-spacing`}
+                                className="w-28"
+                                type="number"
+                                min={RAPIDFIRE_GLOBAL_DELAY_MIN_MS}
+                                max={RAPIDFIRE_GLOBAL_DELAY_MAX_MS}
+                                value={card.minPressSpacingMs}
+                                disabled={disabled}
+                                onChange={(event) => onUpdate(card.id, {minPressSpacingMs: event.target.value})}
+                            />
+                        )}
+                        unit="ms"
+                    />
+                    <ConfigRow
+                        label="启动抖动上限"
+                        value={(
+                            <Input
+                                id={`${card.id}-trigger-jitter`}
+                                className="w-28"
+                                type="number"
+                                min={0}
+                                max={RAPIDFIRE_TRIGGER_JITTER_MAX_MS}
+                                value={card.triggerJitterMaxMs}
+                                disabled={disabled}
+                                onChange={(event) => onUpdate(card.id, {triggerJitterMaxMs: event.target.value})}
+                            />
+                        )}
+                        unit="ms"
+                    />
+                    <ConfigRow
+                        label="抖动松手即触发"
+                        value={(
+                            <Switch
+                                id={`${card.id}-cancel-jitter`}
+                                checked={card.cancelJitterOnRelease}
+                                disabled={disabled}
+                                aria-label="抖动期间松手立即触发"
+                                onCheckedChange={(checked) => onUpdate(card.id, {cancelJitterOnRelease: checked})}
+                            />
+                        )}
+                    />
+                </CollapsibleContent>
+            </Collapsible>
+        </FieldUnit>
     );
 }
 

@@ -11,16 +11,14 @@ import {
 } from "@remixicon/react";
 import {toast} from "sonner";
 
-import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
 import {
     AddCardButton,
+    FieldUnit,
     MasterSwitchCard,
-    SectionHeader,
     SoftAlert,
-    TacticalCard,
     ToolPageFrame,
 } from "@/components/app/app-ui";
 import {
@@ -659,95 +657,92 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                 }}
             />
 
-            <TacticalCard className="col-span-12">
-                <div className="flex items-center justify-between gap-3 px-3 pt-3">
-                    <SectionHeader title="卡片"/>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={!isNativeShell || loading}
-                        onClick={addRecognitionGroup}
-                        data-icon="inline-start"
-                    >
-                        <RiAddLine className="size-4" aria-hidden="true"/>
-                        新分组
-                    </Button>
-                </div>
-                <section className="@container grid min-h-0 gap-3 p-3 @xl:grid-cols-2">
-                    {form && cardGroups.map((group) => {
-                        const groupCards = cardsForGroup(form, group.id);
-                        return (
-                            <div key={group.id} className="contents">
-                                <div className="@xl:col-span-2 border border-base-300 bg-base-100 px-3 py-2">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="col-span-12 mt-3 flex justify-end">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!isNativeShell || loading}
+                    onClick={addRecognitionGroup}
+                    data-icon="inline-start"
+                >
+                    <RiAddLine className="size-4" aria-hidden="true"/>
+                    新分组
+                </Button>
+            </div>
+
+            <section className="@container col-span-12 grid min-h-0 gap-3 @xl:grid-cols-2">
+                {form && cardGroups.map((group) => {
+                    const groupCards = cardsForGroup(form, group.id);
+                    return (
+                        <div key={group.id} className="contents">
+                            <FieldUnit
+                                className="@xl:col-span-2"
+                                padBody={false}
+                                header={(
+                                    <Input
+                                        className="h-auto w-40 border-0 bg-transparent p-0 font-mono text-xs font-semibold"
+                                        value={group.name}
+                                        onChange={(event) => updateGroupById(group.id, {name: event.target.value})}
+                                        aria-label="分组名称"
+                                    />
+                                )}
+                                description={`${groupCards.length} 卡片`}
+                                headerActions={(
+                                    <>
                                         <Button
-                                            variant="ghost"
-                                            size="sm"
+                                            variant="outline"
+                                            size="icon-sm"
                                             onClick={() => updateGroupById(group.id, {collapsed: !group.collapsed})}
-                                            data-icon="inline-start"
                                             aria-label={`${group.collapsed ? "展开" : "折叠"}分组 ${group.name}`}
                                         >
                                             {group.collapsed
                                                 ? <RiArrowRightSLine className="size-4" aria-hidden="true"/>
                                                 : <RiArrowDownSLine className="size-4" aria-hidden="true"/>}
-                                            {group.name}
                                         </Button>
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                className="h-8 w-40"
-                                                value={group.name}
-                                                onChange={(event) => updateGroupById(group.id, {name: event.target.value})}
-                                                aria-label="分组名称"
-                                            />
-                                            <Switch
-                                                checked={group.enabled ?? true}
-                                                onCheckedChange={(checked) => updateGroupById(group.id, {enabled: checked})}
-                                                aria-label={`${group.name} 分组开关`}
-                                            />
-                                            <Badge variant={group.enabled ?? true ? "secondary" : "outline"}>
-                                                {group.enabled ?? true ? "启用" : "禁用"}
-                                            </Badge>
-                                            <Badge variant="secondary">{groupCards.length} 卡片</Badge>
-                                            {group.id !== DEFAULT_RECOGNITION_GROUP_ID && groupCards.length === 0 && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => removeEmptyRecognitionGroup(group.id)}
-                                                    aria-label="删除空分组"
-                                                >
-                                                    <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                {groupCards.map(({card, index}, position) => (
-                                    <RecognitionCardEditor
-                                        key={card.id}
-                                        card={card}
-                                        index={index}
-                                        position={position}
-                                        groupSize={groupCards.length}
-                                        cardGroups={cardGroups}
-                                        collapsed={group.collapsed}
-                                        isNativeShell={isNativeShell}
-                                        dispatch={dispatchCardAction}
-                                        adapter={cardEditorAdapter}
-                                        recordingTarget={recordingTarget}
-                                    />
-                                ))}
-                            </div>
-                        );
-                    })}
-                    <AddCardButton
-                        className="min-h-36"
-                        disabled={!isNativeShell || loading}
-                        title="新增识别卡片"
-                        description="添加新的快捷键、区域监听或识色触发卡片。"
-                        onClick={handleAddCard}
-                    />
-                </section>
-            </TacticalCard>
+                                        <Switch
+                                            checked={group.enabled ?? true}
+                                            onCheckedChange={(checked) => updateGroupById(group.id, {enabled: checked})}
+                                            aria-label={`${group.name} 分组开关`}
+                                        />
+                                        {group.id !== DEFAULT_RECOGNITION_GROUP_ID && groupCards.length === 0 && (
+                                            <Button
+                                                variant="outline"
+                                                size="icon-sm"
+                                                onClick={() => removeEmptyRecognitionGroup(group.id)}
+                                                aria-label="删除空分组"
+                                            >
+                                                <RiDeleteBinLine className="size-4 text-error" aria-hidden="true"/>
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
+                            />
+                            {groupCards.map(({card, index}, position) => (
+                                <RecognitionCardEditor
+                                    key={card.id}
+                                    card={card}
+                                    index={index}
+                                    position={position}
+                                    groupSize={groupCards.length}
+                                    cardGroups={cardGroups}
+                                    collapsed={group.collapsed}
+                                    isNativeShell={isNativeShell}
+                                    dispatch={dispatchCardAction}
+                                    adapter={cardEditorAdapter}
+                                    recordingTarget={recordingTarget}
+                                />
+                            ))}
+                        </div>
+                    );
+                })}
+                <AddCardButton
+                    className="min-h-36"
+                    disabled={!isNativeShell || loading}
+                    title="新增识别卡片"
+                    description="添加新的快捷键、区域监听或识色触发卡片。"
+                    onClick={handleAddCard}
+                />
+            </section>
         </ToolPageFrame>
     );
 }
