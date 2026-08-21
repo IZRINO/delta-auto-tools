@@ -1,6 +1,6 @@
 ---
 name: 三角洲行动工具
-description: 暗底红边的战地控制台，为无人值守自动化与局内实时读数而生
+description: 两套制式并行。战地控制台是默认生产壳；夜航黑标是第二条主窗口线路。overlay 不换皮。
 colors:
   tracer-red: "oklch(48% 0.21 25)"
   tracer-red-content: "oklch(100% 0 281.288)"
@@ -16,6 +16,24 @@ colors:
   signal-green: "oklch(64% 0.2 131.684)"
   signal-orange: "oklch(66% 0.179 58.318)"
   signal-crimson: "oklch(58% 0.253 17.585)"
+  m-blue-light: "#0066b1"
+  m-blue-dark: "#1c69d4"
+  m-red: "#e22718"
+  blackmark-canvas-night: "#000000"
+  blackmark-surface-night: "#0d0d0d"
+  blackmark-elevated-night: "#1a1a1a"
+  blackmark-hair-night: "#3c3c3c"
+  blackmark-ink-night: "#ffffff"
+  blackmark-body-night: "#bbbbbb"
+  blackmark-muted-night: "#7e7e7e"
+  blackmark-canvas-day: "#f1f1f1"
+  blackmark-surface-day: "#ffffff"
+  blackmark-hair-day: "#c8c8c8"
+  blackmark-ink-day: "#111111"
+  blackmark-body-day: "#4a4a4a"
+  blackmark-success: "#0fa336"
+  blackmark-warning: "#f4b400"
+  blackmark-electric: "#0653b6"
 typography:
   display:
     fontFamily: "Segoe UI Variable Display, Segoe UI, system-ui, sans-serif"
@@ -54,17 +72,44 @@ typography:
     fontWeight: 600
     letterSpacing: "0.025em"
     fontVariation: "tabular-nums"
+  blackmark-display:
+    fontFamily: "Noto Sans SC, Inter Variable, Segoe UI, sans-serif"
+    fontSize: "3.5rem"
+    fontWeight: 700
+    lineHeight: 1
+    letterSpacing: "-0.02em"
+  blackmark-body:
+    fontFamily: "Noto Sans SC, Inter Variable, Segoe UI, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 300
+    lineHeight: 1.625
+  blackmark-label:
+    fontFamily: "Noto Sans SC, Inter Variable, Segoe UI, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 700
+    letterSpacing: "0.14em"
+  blackmark-readout:
+    fontFamily: "JetBrains Mono Variable, Cascadia Mono, Consolas, monospace"
+    fontSize: "2rem"
+    fontWeight: 600
+    letterSpacing: "0.025em"
+    fontVariation: "tabular-nums"
 rounded:
   none: "0rem"
   field: "0.5rem"
   box: "0.5rem"
   selector: "2rem"
+  blackmark-none: "0rem"
+  blackmark-full: "9999px"
 spacing:
   hair: "0.125rem"
   tight: "0.5rem"
   base: "0.75rem"
   card: "1rem"
   roomy: "1.25rem"
+  blackmark-spec: "1.5rem"
+  blackmark-dock: "0.375rem"
+  blackmark-hero: "2.5rem"
 components:
   button-primary:
     backgroundColor: "{colors.tracer-red}"
@@ -116,29 +161,58 @@ components:
     rounded: "0.375rem"
     typography: "{typography.readout}"
     padding: "0.5rem 0.75rem"
+  blackmark-button-primary:
+    backgroundColor: "transparent"
+    textColor: "{colors.blackmark-ink-night}"
+    rounded: "{rounded.blackmark-none}"
+    height: "3rem"
+    padding: "0 2rem"
+    typography: "{typography.blackmark-label}"
+  blackmark-button-primary-hover:
+    backgroundColor: "{colors.blackmark-ink-night}"
+    textColor: "{colors.blackmark-canvas-night}"
+  blackmark-spec:
+    backgroundColor: "{colors.blackmark-surface-night}"
+    textColor: "{colors.blackmark-ink-night}"
+    rounded: "{rounded.blackmark-none}"
+    padding: "{spacing.blackmark-spec}"
+  blackmark-dock-active:
+    backgroundColor: "{colors.blackmark-ink-night}"
+    textColor: "{colors.blackmark-canvas-night}"
+    rounded: "{rounded.blackmark-none}"
+    height: "3rem"
+    padding: "0 1rem 0 0.75rem"
 ---
 <!-- IMPECCABLE_BODY_HEAD -->
 # Design System: 三角洲行动工具
 
-<!-- 本文档面向生成新页面的 AI agent，覆盖「应用内界面」与「overlay 窗口」两类表面。 -->
+<!-- 本文档面向生成新页面的 AI agent。主窗口有两条视觉线路；overlay 是第三条表面，不跟随主窗口换世界。 -->
 
 ## Overview
 
-**Creative North Star: "The Field Console（战地控制台）"**
+**Creative North Star: "两套制式（Two Issued Kits）"**
 
-应用内界面是一整块制式装备面板：深色枪管金属底，内容开凿成比背景更暗的凹槽，用一道 1px 弹壳铜红切口勾出边界。语气冷静、紧密、可信——数字和状态自己说话，界面不表演紧张感。这不是 SaaS 仪表盘，没有圆角柔光卡片，也没有插画装饰；一切信息以扫读为先，红色只出现在真正需要注意力的地方。
+同一产品发两套主窗口视觉世界，设置里切换，禁止混用。
 
-overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上方一层单声道仪表板：黑纱玻璃、JetBrains Mono 等宽读数、白字，RUNNING / IDLE 状态词直接印在数字旁。它不追求与应用内的红边面板同文同形，追求被一眼读完且不遮挡准星。
+**World A — 战地控制台 The Field Console** 是默认生产壳（`src/App.tsx`）。深色枪管金属底，内容开凿成比背景更暗的凹槽，一道 1px 弹壳铜切口勾边。语气冷静、紧密、可信。数字和状态自己说话。这不是 SaaS 仪表盘，没有圆角柔光卡片。红色只出现在真正需要注意力的地方。配色主题 `olive-amber` / `valentine` / `arctic-blue` 只给这一世界换 28 个 token，不发明新世界。
+
+**World B — 夜航黑标 Night-ops Black Mark** 是第二条主窗口线路。视觉权威是 `blackmark-demo.html` + `src/blackmark-demo.tsx`（尚未接到生产壳）。BMW M 的语法翻成 Operate：纯黑夜航或浅灰日间、直角、Noto Sans SC 700 对 300、4px 三色条只做身份、白描边主按钮、底部居中悬浮图标 dock。背景是碳纤加一道细展厅扫光，不是铺满蓝红。接到设置之前，任何「把黑标做进 App」的实现必须以该演示为像素级参考，不得用换 valentine 色冒充。
+
+**Overlay — 游戏读数仪表** 是第三条表面，不属任何主窗口世界。游戏画面才是底。黑纱玻璃、JetBrains Mono、白字。无论主窗口走 A 还是 B，overlay 的 `?mode=` 窗保持现有玻璃读数：点击穿透、不抢焦点、不遮准星。禁止把黑标碳纤、三色条、巨型标题带进 overlay。
 
 **Key Characteristics:**
 
-- 双表面制式分离：应用内 = 红边制式面板；overlay = 游戏上的单色读数仪表。
-- 凹槽式深度，零阴影；深度由明暗差与 1px 切口边框表达。
-- 强调色单一——曳光红；黄色只留给 overlay 进度条与次级功能，不做第二个主色。
-- 读数用 JetBrains Mono + tabular-nums；界面字用 Segoe UI Variable。
-- 三套运行时主题（olive-amber / valentine / arctic-blue）全部覆盖同一份 28-token 集合，改动 token 必须整套改。
+- 双主窗口线路并行：战地控制台（默认生产）与夜航黑标（演示收口）。设置切换，同一屏禁止混语法。
+- Overlay 独立：白边玻璃读数，不跟随黑标，不跟随配色主题的圆角/铜边。
+- 两条线路都零投影。战地用凹槽深度；黑标用发丝线 + 色阶反转（选中项夜航白底/日间黑底）。
+- 读数一律 JetBrains Mono + tabular-nums，两条线路共用。
+- 战地配色主题三套共享 28 token；黑标有自己的夜航/日间变量，不进那 28 个 key。
 
 ## Colors
+
+**The Dual Line Rule.** 主窗口一次只渲染一个世界。战地 token 不得画黑标；黑标变量不得画战地。配色主题三套只服务战地。Overlay 不吃黑标色。
+
+### World A — 战地控制台
 
 默认主题为 `valentine`（黑红）。下面的描述与值均以 valentine 为准；三套主题在同一 token key 下换值，不新增 key。
 
@@ -171,13 +245,47 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 **The Yellow Is Not A Second Accent Rule.** 曳光弹黄只出现在 overlay 进度条、次级 badge 和「已保存」提示。不得用它做主按钮、链接或大面积背景；它和曳光红同框时，红永远压黄。
 
+### World B — 夜航黑标
+
+主色不是一块填色，是白（夜航）或黑（日间）的字与描边。三色条 `{colors.m-blue-light}` `{colors.m-blue-dark}` `{colors.m-red}` 只做 4px 身份标记（顶栏下、标题下、选中 dock 顶缘），永不做按钮填充或页面底。
+
+#### Primary
+
+- **夜航墨 / 日间纸**（`{colors.blackmark-ink-night}` / `{colors.blackmark-ink-day}`）：正文、描边按钮、选中反转底。CTA 是「墨色描边的空心矩形」，hover 才填满反转。
+
+#### Identity (not CTA)
+
+- **M 蓝浅** `{colors.m-blue-light}` `#0066b1`、**M 蓝深** `{colors.m-blue-dark}` `#1c69d4`、**M 红** `{colors.m-red}` `#e22718`：只出现在三色条与扫光刃口。
+
+#### Neutral
+
+- **夜航画布** `{colors.blackmark-canvas-night}` `#000`：页面底。
+- **夜航表面** `{colors.blackmark-surface-night}` `#0d0d0d`：规格格。
+- **夜航发丝** `{colors.blackmark-hair-night}` `#3c3c3c`：1px 边。
+- **夜航正文辅** `{colors.blackmark-body-night}` `#bbbbbb`：说明文字。
+- **日间画布** `{colors.blackmark-canvas-day}` `#f1f1f1`；**日间表面** `#fff`；**日间墨** `#111`。日间是结构反转，不是另一套色相。
+
+#### Semantic
+
+- **警告** `{colors.blackmark-warning}` `#f4b400`：需人工检查。
+- **成功** `{colors.blackmark-success}` `#0fa336`。
+- **错误** `{colors.m-red}` 仅用于失败切口（表格左 2px inset），不是大面积底。
+
+**The Stripe Is Identity Rule.** 三色条不是主按钮、不是进度条、不是卡片左边线装饰。出现位置：顶栏下 4px 通栏、标题下 4px 短条（约 7rem）、选中 dock 顶 3px。
+
+**The No Flood Wash Rule.** 背景禁止铺满蓝红线性渐变。允许碳纤织纹 + 一道细展厅扫光（刃口透明度约 8–10%）。扫光变宽或颜色变饱和即跑偏。
+
 ## Typography
+
+两条线路字族不同，读数共用。
+
+### World A — 战地控制台
 
 **Display Font:** Segoe UI Variable Display（回退 Segoe UI → system-ui）
 **Body Font:** Segoe UI Variable Text（回退 Segoe UI → system-ui）
 **Readout/Mono Font:** JetBrains Mono Variable（回退 Cascadia Mono → Consolas）
 
-**Character:** 界面用 Windows 原生可变字体，冷静、合规、不抢戏；一切「读数」——倒计时数字、计数、坐标、快捷键名、JSON、token——切到 JetBrains Mono 且开 tabular-nums，保证逐帧刷新时位宽不跳。正文字重固定在 400 / 600 两档，标题 600，不做 300/700/800 的花样。
+**Character:** 界面用 Windows 原生可变字体，冷静、合规、不抢戏；一切「读数」切到 JetBrains Mono 且开 tabular-nums。正文字重固定在 400 / 600 两档，标题 600，不做 300/700/800 的花样。
 
 ### Hierarchy
 
@@ -191,13 +299,31 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 
 ### Named Rules
 
-**The Two Weight Rule.** 全系统只用 400 与 600。标题与正文靠字号和色阶（`/60`、`/70`）分层，不靠字重堆叠。
+**The Two Weight Rule.** 战地控制台只用 400 与 600。标题与正文靠字号和色阶（`/60`、`/70`）分层，不靠字重堆叠。此条不约束黑标。
 
-**The Readout Is Mono Rule.** 凡是用户要「读数」的地方——时间、计数、坐标、快捷键、状态词——必须是等宽字体并开 tabular-nums。比例字体的数字逐帧跳动即视为 bug。
+**The Readout Is Mono Rule.** 凡是用户要「读数」的地方——时间、计数、坐标、快捷键、状态词——必须是等宽字体并开 tabular-nums。比例字体的数字逐帧跳动即视为 bug。两条线路都遵守。
+
+### World B — 夜航黑标
+
+**Display / Body Font:** Noto Sans SC（简体 300 与 700，自托管子集 `src/fonts/blackmark/`）。拉丁回退 Inter Variable。禁止用系统雅黑冒充标题。
+**Readout:** JetBrains Mono Variable 600 + tabular-nums + tracking 0.025em。
+
+**Character:** 中文标题与正文同一家族，靠 700 / 300 的落差当编辑签名。按钮与 dock 标签 700、字距 0.12–0.14em、大写（中文无大小写，字距仍在）。禁止引入第三档字重 400/500 去「调和」。
+
+- **Display**（700, 3.5rem, lh 1）：当前工具名，每页一个。右侧可有同文水印约 6% 不透明度。
+- **Body**（300, 1rem, lh 1.625）：说明句，max 约 46–60ch。
+- **Label**（700, 0.75rem, tracking 0.14em）：规格格标签、表头、dock 展开字。
+- **Readout**（600, 2rem 规格格 / 1rem 表格时间列）：只给数字与 IDLE 这类状态词。
+
+**The CJK Is The Display Rule.** 黑标的设计感在中文 700，不在再换一个英文展示体。不要把标题改成 Space Grotesk / Syne / Outfit。
 
 ## Layout
 
-应用壳是固定网格：顶栏 48px。≥1024px 用 `grid-rows-[48px_1fr]` + 左侧 240px Index Rail；<1024px 用 `grid-rows-[48px_auto_1fr]`，Rail 收起为顶部横向 Tab Bar，避免 Tab Bar 吃掉 `1fr` 把主区裁掉。窗口最小 1280×800。页面内容在 12 列 Work Grid（`AppPage`，gap-3）上排布，常规工具页限宽 `max-w-7xl`，攻略页 `max-w-none` 铺满。
+窗口最小 1280×800。Overlay 无布局网格。
+
+### World A — 战地控制台
+
+应用壳是固定网格：顶栏 48px。≥1024px 用 `grid-rows-[48px_1fr]` + 左侧 240px Index Rail；<1024px 用 `grid-rows-[48px_auto_1fr]`，Rail 收起为顶部横向 Tab Bar，避免 Tab Bar 吃掉 `1fr` 把主区裁掉。页面内容在 12 列 Work Grid（`AppPage`，gap-3）上排布，常规工具页限宽 `max-w-7xl`，攻略页 `max-w-none` 铺满。
 
 间距三档按职责用，禁止单值复读到所有层级：
 
@@ -208,6 +334,12 @@ overlay 是另一块战场。游戏画面才是底，面板退为游戏画面上
 行内控件（ControlTile/InlineControl）`p-4`/`p-3`。Rail 导航项 `px-3 py-2`，宏观区（MacroHeader）`gap-4`。
 
 overlay 窗口无布局网格——它们是按 `?mode=` 进入的独立表面，跟随游戏画面，不服从应用壳。
+
+### World B — 夜航黑标
+
+无左侧 240px 轨。顶栏 64px 只放产品名、档案、全局开关。工具导航是底部居中悬浮 dock（图标 48×48；选中展开出字）。主区：巨型工具名 → 短三色条 → 规格格通栏 → 发丝线表。主区底部留约 7rem 以免被 dock 挡住。
+
+禁止把黑标做成「旧侧栏 + 新配色」。拓扑必须是顶栏 + 底 dock，不是 Index Rail。
 
 ## Elevation & Depth
 
@@ -221,7 +353,11 @@ overlay 窗口无布局网格——它们是按 `?mode=` 进入的独立表面�
 
 **The Zero Shadow Rule.** 阴影恒为 0。需要「浮起」感时，加深背景色阶（base-100 → accent 槽）而不是加投影。
 
-**The Recess, Not Raise Rule.** 容器向下沉（更暗），不向上抬（更亮或投影）。base-200 的 L 值（18.8%）必须小于 base-100（21.5%），这个方向不能反。
+**The Recess, Not Raise Rule.** 战地控制台容器向下沉（更暗），不向上抬。base-200 的 L 值必须小于 base-100。此条不约束黑标选中反转。
+
+### World B — 夜航黑标
+
+同样零投影。深度靠 1px 发丝线与表面色阶（画布 / 表面 / 抬升）。选中 dock 项反转（夜航白底黑字，日间黑底白字），这是唯一允许的「抬起」。背景惊喜是碳纤织纹上的细扫光，用 transform 缓慢平移，不是铺色。`prefers-reduced-motion` 必须关掉扫光与切开动画。
 
 ## Shapes
 
@@ -231,9 +367,13 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 
 描边与高亮：激活卡片 `ring-2 ring-primary`，favorite 跳转用 1.5s 曳光红描边脉冲，Morse 框选当前步 `border-2 border-primary`。焦点环统一 `outline-primary/50`。
 
+### World B — 夜航黑标
+
+几乎全是 0 圆角。唯一例外：toggle / 圆形图标用满圆 `{rounded.blackmark-full}`。按钮、规格格、dock、表、输入一律直角。dock 图标为自制 SVG（方线帽、1.75 描边），不是 remixicon。
+
 ## Components
 
-组件分两套词汇：**应用内**走 daisyUI class + Radix headless 行为；**overlay** 是独立的单色读数系统，不复用应用内组件样式。
+组件分三套词汇：**战地控制台**走 daisyUI class + Radix headless；**夜航黑标**走演示页 `bm-*` 类（接到生产时保持直角描边语法，不得把 `btn-primary` 红块带进去）；**overlay** 是独立单色读数，不复用前两套。
 
 ### Buttons
 
@@ -300,24 +440,50 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 
 全屏透明拖拽框选。已确认步骤 `border border-white/85 bg-white/10`，当前步骤 `border-2 border-primary bg-primary/12`——曳光红只标记「正在操作」的那一步，其余步骤保持白描边。指示面板用 `bg-background/88` 半透明 + 白边，不遮挡下方游戏画面。
 
+### World B components
+
+### Buttons（黑标）
+
+- **Shape:** 直角，高 48px，水平 32px，1px 墨色描边，透明底。
+- **Primary:** hover / focus 填满墨色、字反转到画布色。字距 0.12em，700。
+- **Ghost:** 发丝边，hover 边与字升到墨色。
+- **Don't** 把战地的曳光红实心块当黑标主按钮。
+
+### Spec cell（黑标）
+
+- 直角，1px 发丝，表面色，内边距 24px。数字 2rem 700（读数改 mono 600）。标签 0.75rem 700 字距 0.14em。
+
+### Dock（黑标签名）
+
+- 底部居中悬浮，发丝边，表面半透明。未选中只出 22px 自制 SVG。选中反转底 + 展开标签 + 顶缘 3px 三色条。设置项用 1px 竖线与工具分开。
+
+### Navigation（黑标）
+
+- 无 Index Rail。顶栏 64px 无工具名列表。
+
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** 容器一律比页面底更暗（base-200 < base-100），凹槽方向不可反。
-- **Do** 默认边框就用弹壳铜（base-300），一道 1px 就是全部边界。
-- **Do** 读数、坐标、快捷键、JSON 一律 JetBrains Mono + tabular-nums。
-- **Do** 状态同时用颜色与文字/图标表达（令牌状态 = 色点 + 剩余天数，不是只有色点）。
-- **Do** 新页面复用 `app-ui.tsx` 共享件。标准工具页骨架：`ToolPageFrame` → `MasterSwitchCard?` → `SyncGroupSection?` → `SyncCardList`。卡片头用 `CardNameInput` + `FavoriteButton` + `DragButton`。页级错误用 `SoftAlert`。overlay 读数窗用 `OverlayReadoutShell`。三个以上页面同构时先扩共享件。
-- **Do** 改主题 token 时三套内置主题同改同测，token key 集合保持 28 个一致。
+- **Do** 先判断当前是战地、黑标还是 overlay，再选用对应 token 与组件，禁止混用。
+- **Do** 战地：容器比页面底更暗（base-200 < base-100），凹槽方向不可反。
+- **Do** 战地：默认边框用弹壳铜（base-300），一道 1px。
+- **Do** 黑标：直角、发丝线、三色条只做身份、主按钮空心描边。
+- **Do** 黑标视觉以 `blackmark-demo.html` 为准，接到生产壳时对照演示，不要发明第三套。
+- **Do** 读数、坐标、快捷键、JSON 一律 JetBrains Mono + tabular-nums（两条线路 + overlay）。
+- **Do** 状态同时用颜色与文字/图标表达。
+- **Do** 战地新页面复用 `app-ui.tsx`。标准骨架：`ToolPageFrame` → `MasterSwitchCard?` → `SyncGroupSection?` → `SyncCardList`。
+- **Do** 改战地主题 token 时三套内置主题同改同测，28 key 不变。
 
 ### Don't:
 
-- **Don't** 加任何阴影、渐变、柔光、发光边框——零阴影是硬约束。
-- **Don't** 发明第二强调色；曳光弹黄不是主色，信号橙是状态色不是装饰色。
-- **Don't** 用曳光红铺大面积背景或整行填充；它只做切口、激活、心跳。
-- **Don't** 用 `text-primary` / `text-error` 写正文或读数；红只做底、边、心跳。
-- **Don't** 新增旧桌面/战术风自定义 CSS 类，不得回流 shadcn 默认视觉或 SaaS 圆角卡片+插画风格，不得用赛博朋克霓虹描边/扫描线套路。
-- **Don't** 让 overlay 继承应用内铜红边框或 0.5rem 圆角；overlay 是白边玻璃片，遵守点击穿透与背景透明铁律。
-- **Don't** 在正文用等宽字体、在读数用比例字体——两者各归各位。
+- **Don't** 用换 `valentine` 颜色冒充黑标，或把黑标碳纤/dock/巨型标题贴到战地壳上。
+- **Don't** 把黑标三色条当按钮填充、进度条或卡片左边装饰。
+- **Don't** 把黑标背景做成铺满蓝红渐变或赛博扫描线。扫光必须是细刃。
+- **Don't** 给战地加阴影、大面积渐变、柔光、发光边框。
+- **Don't** 给 overlay 套黑标或战地铜边；overlay 保持白边玻璃、点击穿透、不抢焦点。
+- **Don't** 在正文用等宽字体、在读数用比例字体。
+- **Don't** 用 remixicon 替换黑标 dock 的自制 SVG。
+- **Don't** 把黑标标题换成 Inter / Space Grotesk 等拉丁展示体而丢掉 Noto Sans SC 700。
+- **Don't** 让游戏 overlay 窗口吃黑标 CSS 变量。
 

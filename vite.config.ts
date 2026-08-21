@@ -20,6 +20,7 @@ export default defineConfig({
             provider: "v8",
             reporter: ["text", "json-summary"],
             include: ["src/**/*.{ts,tsx}"],
+            exclude: [...configDefaults.exclude, "src/blackmark-demo.tsx"],
             thresholds: {
                 lines: 25.49,
                 statements: 25.67,
@@ -32,6 +33,14 @@ export default defineConfig({
         },
     },
     clearScreen: false,
+    build: {
+        rollupOptions: {
+            input: {
+                main: fileURLToPath(new URL("./index.html", import.meta.url)),
+                "blackmark-demo": fileURLToPath(new URL("./blackmark-demo.html", import.meta.url)),
+            },
+        },
+    },
     server: {
         port: 1420,
         strictPort: true,

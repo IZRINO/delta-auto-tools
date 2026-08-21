@@ -1,0 +1,530 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "./fonts/blackmark/noto-sans-sc.css";
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+    name: "blackmark-demo";
+    default: true;
+    prefersdark: true;
+    color-scheme: dark;
+    --color-base-100: #000000;
+    --color-base-200: #0d0d0d;
+    --color-base-300: #3c3c3c;
+    --color-base-content: #ffffff;
+    --color-primary: #ffffff;
+    --color-primary-content: #000000;
+    --color-secondary: #1c69d4;
+    --color-secondary-content: #ffffff;
+    --color-accent: #1a1a1a;
+    --color-accent-content: #ffffff;
+    --color-neutral: #262626;
+    --color-neutral-content: #ffffff;
+    --color-info: #0653b6;
+    --color-info-content: #ffffff;
+    --color-success: #0fa336;
+    --color-success-content: #ffffff;
+    --color-warning: #f4b400;
+    --color-warning-content: #000000;
+    --color-error: #e22718;
+    --color-error-content: #ffffff;
+    --radius-selector: 9999px;
+    --radius-field: 0rem;
+    --radius-box: 0rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+}
+
+@theme inline {
+    --font-sans: "Noto Sans SC", "Inter Variable", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono Variable", "Cascadia Mono", "Consolas", monospace;
+}
+
+:root {
+    font-family: var(--font-sans);
+    font-weight: 300;
+    color-scheme: dark;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body,
+#blackmark-demo-root {
+    min-height: 100dvh;
+    height: 100dvh;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bm-canvas, #000);
+    color: var(--bm-ink, #fff);
+    transition: background-color 280ms var(--ease-out), color 280ms var(--ease-out);
+}
+
+html[data-scheme="day"] {
+    color-scheme: light;
+    --bm-canvas: #f1f1f1;
+    --bm-ink: #111111;
+}
+
+html[data-scheme="night"] {
+    color-scheme: dark;
+    --bm-canvas: #000000;
+    --bm-ink: #ffffff;
+}
+
+::selection {
+    background: #1c69d4;
+    color: #fff;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bm-hair, #3c3c3c) transparent;
+}
+
+.bm-stripe {
+    background: linear-gradient(90deg, #0066b1 0 33.334%, #1c69d4 33.334% 66.667%, #e22718 66.667% 100%);
+}
+
+.bm-stripe-v {
+    background: linear-gradient(180deg, #0066b1 0 33.334%, #1c69d4 33.334% 66.667%, #e22718 66.667% 100%);
+}
+
+.bm-stage {
+    --bm-canvas: #000000;
+    --bm-surface: #0d0d0d;
+    --bm-elevated: #1a1a1a;
+    --bm-hair: #3c3c3c;
+    --bm-ink: #ffffff;
+    --bm-body: #bbbbbb;
+    --bm-muted: #7e7e7e;
+    --bm-dock: rgb(13 13 13 / 0.94);
+    --bm-active-fg: #000000;
+    --bm-active-bg: #ffffff;
+    --bm-carbon-a: #161616;
+    --bm-carbon-b: #0a0a0a;
+    --bm-hatch: rgb(255 255 255 / 0.035);
+    --bm-wash-a: rgb(0 102 177 / 0.09);
+    --bm-wash-b: rgb(226 39 24 / 0.07);
+    --bm-glint-a: rgb(0 102 177 / 0.09);
+    --bm-glint-b: rgb(255 255 255 / 0.08);
+    --bm-glint-c: rgb(226 39 24 / 0.08);
+    --bm-mark: rgb(255 255 255 / 0.06);
+    position: relative;
+    isolation: isolate;
+    background: var(--bm-canvas);
+    color: var(--bm-ink);
+}
+
+.bm-stage[data-scheme="day"] {
+    --bm-canvas: #f1f1f1;
+    --bm-surface: #ffffff;
+    --bm-elevated: #e8e8e8;
+    --bm-hair: #c8c8c8;
+    --bm-ink: #111111;
+    --bm-body: #4a4a4a;
+    --bm-muted: #7a7a7a;
+    --bm-dock: rgb(255 255 255 / 0.92);
+    --bm-active-fg: #ffffff;
+    --bm-active-bg: #111111;
+    --bm-carbon-a: #e4e4e4;
+    --bm-carbon-b: #f7f7f7;
+    --bm-hatch: rgb(0 0 0 / 0.045);
+    --bm-wash-a: rgb(0 102 177 / 0.07);
+    --bm-wash-b: rgb(226 39 24 / 0.06);
+    --bm-glint-a: rgb(0 102 177 / 0.08);
+    --bm-glint-b: rgb(255 255 255 / 0.28);
+    --bm-glint-c: rgb(226 39 24 / 0.07);
+    --bm-mark: rgb(17 17 17 / 0.06);
+}
+
+.bm-stage::before,
+.bm-stage::after {
+    content: "";
+    position: absolute;
+    inset: -12%;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.bm-stage::before {
+    opacity: 0.62;
+    background:
+        repeating-conic-gradient(var(--bm-carbon-a) 0% 25%, var(--bm-carbon-b) 0% 50%) 0 0 / 10px 10px,
+        repeating-linear-gradient(135deg, var(--bm-hatch) 0 1px, transparent 1px 9px);
+    transform: translate3d(0, 0, 0);
+    animation: bm-carbon 36s ease-in-out infinite alternate;
+}
+
+.bm-stage::after {
+    inset: -35%;
+    opacity: 1;
+    background:
+        linear-gradient(
+            118deg,
+            transparent 0%,
+            transparent 48.6%,
+            var(--bm-glint-a) 49.65%,
+            var(--bm-glint-b) 50%,
+            var(--bm-glint-c) 50.35%,
+            transparent 51.4%,
+            transparent 100%
+        ),
+        radial-gradient(58% 42% at 10% -4%, var(--bm-wash-a), transparent 62%),
+        radial-gradient(52% 38% at 96% 104%, var(--bm-wash-b), transparent 64%);
+    animation: bm-glint 22s ease-in-out infinite alternate;
+}
+
+@keyframes bm-carbon {
+    to {
+        transform: translate3d(-2.4%, -1.8%, 0) scale(1.05);
+    }
+}
+
+@keyframes bm-glint {
+    from {
+        transform: translate3d(-7%, -5%, 0) rotate(0.4deg);
+    }
+    to {
+        transform: translate3d(7%, 5%, 0) rotate(-0.4deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bm-stage::before,
+    .bm-stage::after,
+    .bm-title,
+    .bm-stripe-draw,
+    .bm-spec,
+    .bm-watermark {
+        animation: none;
+    }
+}
+
+.bm-content {
+    position: relative;
+    z-index: 1;
+}
+
+.bm-dock.dock {
+    left: 50%;
+    right: auto;
+    bottom: 1.5rem;
+    width: max-content;
+    height: auto;
+    transform: translateX(-50%);
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--bm-hair);
+    background: var(--bm-dock);
+    z-index: 20;
+}
+
+.bm-dock.dock > * {
+    flex-basis: auto;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    max-width: none;
+    margin-bottom: 0;
+    flex-direction: row;
+    gap: 8px;
+    overflow: hidden;
+    color: var(--bm-muted);
+    border-radius: 0;
+    transition:
+        color 180ms var(--ease-out),
+        background-color 180ms var(--ease-out),
+        width 220ms var(--ease-out),
+        padding 220ms var(--ease-out);
+}
+
+.bm-dock.dock > *::after {
+    display: none;
+}
+
+.bm-dock.dock > *:hover {
+    color: var(--bm-ink);
+    opacity: 1;
+}
+
+.bm-dock.dock > .bm-dock-rule {
+    width: 1px;
+    height: 28px;
+    padding: 0;
+    flex: 0 0 1px;
+    align-self: center;
+    pointer-events: none;
+    background: var(--bm-hair);
+}
+
+.bm-dock.dock > .bm-dock-rule::after {
+    display: none;
+}
+
+.bm-dock.dock .dock-label {
+    display: inline-block;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1;
+    transition: max-width 220ms var(--ease-out), opacity 160ms var(--ease-out);
+}
+
+.bm-dock.dock .dock-active {
+    width: auto;
+    padding: 0 16px 0 12px;
+    color: var(--bm-active-fg);
+    background:
+        linear-gradient(90deg, #0066b1 0 33.334%, #1c69d4 33.334% 66.667%, #e22718 66.667% 100%) top / 100% 3px no-repeat,
+        var(--bm-active-bg);
+}
+
+.bm-dock.dock .dock-active .dock-label {
+    max-width: 5.5rem;
+    opacity: 1;
+}
+
+.bm-dock.dock .dock-active:hover {
+    color: var(--bm-active-fg);
+    opacity: 1;
+}
+
+.bm-btn {
+    height: 48px;
+    padding: 0 32px;
+    border: 1px solid var(--bm-ink);
+    background: transparent;
+    color: var(--bm-ink);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+.bm-btn:hover,
+.bm-btn:focus-visible {
+    background: var(--bm-ink);
+    color: var(--bm-canvas);
+    outline: none;
+}
+
+.bm-btn:focus-visible {
+    outline: 2px solid var(--bm-ink);
+    outline-offset: 3px;
+}
+
+.bm-btn-ghost {
+    height: 48px;
+    padding: 0 20px;
+    border: 1px solid var(--bm-hair);
+    background: transparent;
+    color: var(--bm-body);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+
+.bm-btn-ghost:hover {
+    border-color: var(--bm-ink);
+    color: var(--bm-ink);
+}
+
+.bm-spec-grid {
+    background: var(--bm-hair);
+}
+
+.bm-spec {
+    border: 1px solid var(--bm-hair);
+    background: var(--bm-surface);
+    padding: 24px;
+    animation: bm-rise 380ms var(--ease-out) both;
+}
+
+.bm-spec:nth-child(1) { animation-delay: 0ms; }
+.bm-spec:nth-child(2) { animation-delay: 40ms; }
+.bm-spec:nth-child(3) { animation-delay: 80ms; }
+.bm-spec:nth-child(4) { animation-delay: 120ms; }
+
+.bm-spec .value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.bm-readout {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.025em;
+}
+
+.bm-spec .label {
+    margin-top: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bm-muted);
+}
+
+.bm-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.bm-table th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bm-muted);
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bm-hair);
+    font-weight: 700;
+}
+
+.bm-table td {
+    padding: 16px;
+    border-bottom: 1px solid var(--bm-elevated);
+    font-weight: 300;
+    color: var(--bm-body);
+    font-size: 0.875rem;
+}
+
+.bm-table td.strong {
+    color: var(--bm-ink);
+    font-weight: 700;
+}
+
+.bm-table .font-mono {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.025em;
+}
+
+.bm-table tr[data-state="fail"] td:first-child {
+    box-shadow: inset 2px 0 0 #e22718;
+}
+
+.bm-watermark {
+    pointer-events: none;
+    user-select: none;
+    position: absolute;
+    right: -1rem;
+    top: -1.5rem;
+    font-size: clamp(4.5rem, 14vw, 7.5rem);
+    font-weight: 700;
+    line-height: 0.85;
+    letter-spacing: -0.02em;
+    color: var(--bm-mark);
+    text-transform: uppercase;
+    animation: bm-mark 500ms var(--ease-out);
+}
+
+.bm-title {
+    animation: bm-title-in 420ms var(--ease-out);
+}
+
+.bm-stripe-draw {
+    transform-origin: left center;
+    animation: bm-draw 480ms var(--ease-out);
+}
+
+.bm-copy {
+    color: var(--bm-body);
+}
+
+.bm-muted {
+    color: var(--bm-muted);
+}
+
+.bm-header {
+    background: var(--bm-canvas);
+    border-color: transparent;
+}
+
+.bm-table-shell {
+    border: 1px solid var(--bm-hair);
+}
+
+.bm-scheme-card {
+    border: 1px solid var(--bm-hair);
+    background: var(--bm-surface);
+    padding: 28px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 180ms var(--ease-out), background-color 180ms var(--ease-out);
+}
+
+.bm-scheme-card[data-active="true"] {
+    border-color: var(--bm-ink);
+    background:
+        linear-gradient(90deg, #0066b1 0 33.334%, #1c69d4 33.334% 66.667%, #e22718 66.667% 100%) top / 100% 3px no-repeat,
+        var(--bm-surface);
+}
+
+@keyframes bm-title-in {
+    from {
+        clip-path: inset(0 72% 0 0);
+        opacity: 0.35;
+    }
+    to {
+        clip-path: inset(0 0 0 0);
+        opacity: 1;
+    }
+}
+
+@keyframes bm-draw {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+@keyframes bm-rise {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes bm-mark {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+body {
+    font-weight: 300;
+}
+
+h1,
+h2,
+.bm-btn,
+.bm-btn-ghost,
+.bm-spec .label,
+.bm-table th,
+.bm-dock .dock-label {
+    font-weight: 700;
+}

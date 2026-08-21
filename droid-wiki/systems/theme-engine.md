@@ -10,6 +10,7 @@
 - 支持临时 `overrides`：在激活主题之上按 token 打补丁，用于实时预览，独立于主题定义持久化
 - Rust 侧合并主题 tokens + overrides 为扁平 `merged_tokens` 列表，通过 `theme://changed` emit，前端逐条写入 `document.documentElement.style.setProperty(key, value)`
 - 主题独立于配置系统（主题不打包进快照）
+- **配色主题 ≠ 界面世界。** `olive-amber` / `valentine` / `arctic-blue` 只给战地控制台换 28 个 daisyUI token。黑标是另一条主窗口线路（壳、字、导航、组件全部不同），权威在 `DESIGN.md` 的 World B，视觉收口在 `blackmark-demo.html`。禁止用换色冒充黑标。overlay 窗口不吃黑标 token。
 
 ## 目录结构
 

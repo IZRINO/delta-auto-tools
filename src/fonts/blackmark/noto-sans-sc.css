@@ -1,0 +1,18 @@
+/* Noto Sans SC 简体子集，仅 300 / 700。unicode-range 把拉丁让给 Inter。 */
+@font-face {
+    font-family: "Noto Sans SC";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 300;
+    src: url("./noto-sans-sc-chinese-simplified-300-normal.woff2") format("woff2");
+    unicode-range: U+2E80-2EFF, U+2F00-2FDF, U+3000-303F, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF;
+}
+
+@font-face {
+    font-family: "Noto Sans SC";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 700;
+    src: url("./noto-sans-sc-chinese-simplified-700-normal.woff2") format("woff2");
+    unicode-range: U+2E80-2EFF, U+2F00-2FDF, U+3000-303F, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE10-FE1F, U+FE30-FE4F, U+FF00-FFEF;
+}

@@ -248,9 +248,10 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### UI 约束
 
-- UI 迁移方向：保留 Radix headless 交互能力，视觉层使用 daisyUI + Tailwind CSS + `src/App.css` daisyUI token；禁止新增旧桌面/战术风格自定义 CSS 类
-- 基础组件位于 `src/components/ui/`，保留 Radix headless 行为能力，class 必须优先映射到 daisyUI 组件语义
-- 图标使用 `@remixicon/react`，Button 内图标必须设置 `data-icon="inline-start"` / `"inline-end"`
+- 主窗口两条视觉线路并行，权威在 `DESIGN.md`：战地控制台（默认生产壳 `src/App.tsx`）与夜航黑标（收口 `blackmark-demo.html`）。设置切换，禁止同一屏混语法。配色主题三套只服务战地，不得用换色冒充黑标。游戏 overlay 不跟随黑标。
+- UI 迁移方向：保留 Radix headless 交互能力。战地视觉层使用 daisyUI + Tailwind CSS + `src/App.css` token；禁止新增旧桌面/战术风格自定义 CSS 类。黑标以演示页 `bm-*` 语法为准，接到生产时对照演示。
+- 基础组件位于 `src/components/ui/`，保留 Radix headless 行为能力，战地 class 必须优先映射到 daisyUI 组件语义
+- 图标：战地与按钮内图标使用 `@remixicon/react`，Button 内必须设置 `data-icon="inline-start"` / `"inline-end"`。黑标 dock 图标必须自制 SVG，禁止用 remixicon 替换
 - 本 mission 的 worker 编码前必须调用 `ponytail`
 - 攻略网站页使用主窗口内嵌 `strategy-content` 子 WebView，不创建独立浏览器窗口，不使用 iframe/srcDoc，不得隐藏 Left Index Rail
 - `TooltipProvider` 已在 `src/main.tsx` 根部提供
@@ -271,7 +272,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget
 - `recognition/` — 快捷键/多参考图区域监听/识色三种识别来源 + 音频/按键/点击效果；Hotkey 卡片支持 `once` / `whileHeld`，持续模式使用 per-card session 串行执行；截图/NCC 使用全局 `Semaphore(2)` 的 `spawn_blocking` 调度，watcher restart/stop 必须使旧 generation 失效；前端卡片更新、编辑器、框选分别位于 `recognition-card-reducer.ts`、`recognition-card-editor.tsx`、`recognition-overlay.tsx`
 - `strategy/` — 前端管理主窗口 `strategy-content` WebView2 嵌入，无专用 Rust command
-- `theme/` — 3 套 daisyUI 内置主题（默认 `valentine`）+ 自定义 + token override
+- `theme/` — 3 套 daisyUI 内置配色（默认 `valentine`）+ 自定义 + token override。只服务战地控制台，与黑标界面世界正交
 - `profile/` — 多配置快照切换、复制、删除、单配置导入/导出
 - `logging/` — 混合格式日志 + 按天轮转 + 链路追踪
 

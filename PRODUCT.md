@@ -65,8 +65,9 @@ web
 - 标识符 `org.izrino.delta-auto-tools`，仓库 `IZRINO/delta-auto-tools`。
 - 界面文案、错误信息、UI 文本一律中文，技术术语保留英文原名。
 - 图标语义为准星（`RiCrosshair2Line`）；图标库统一 `@remixicon/react`。
-- 内置主题 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`；等宽字体 JetBrains Mono Variable。
-- 视觉层已迁移至 daisyUI 5 + Tailwind v4 token，全局 `--radius: 0`；Radix/Base UI 仅保留 headless 行为层。
+- 内置配色主题 `olive-amber`、`valentine`、`arctic-blue`，默认 `valentine`；等宽字体 JetBrains Mono Variable。配色主题只服务战地控制台，不改黑标。
+- 主窗口两条视觉线路并行：战地控制台（默认、生产壳）与黑标（夜航/日间，演示收口于 `blackmark-demo.html`）。设置里切换，禁止同一屏混用两套语法。游戏 overlay 不跟随黑标。
+- 视觉层已迁移至 daisyUI 5 + Tailwind v4 token；Radix/Base UI 仅保留 headless 行为层。
 
 ## Evidence on Hand
 

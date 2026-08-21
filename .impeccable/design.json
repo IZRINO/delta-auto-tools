@@ -1,35 +1,44 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-10T00:00:00.000Z",
+  "generatedAt": "2026-08-21T00:00:00.000Z",
   "title": "Design System: 三角洲行动工具",
   "extensions": {
     "colorMeta": {
-      "tracer-red": { "role": "primary", "displayName": "曳光红 Tracer Red", "canonical": "oklch(70% 0.234 24.700)", "tonalRamp": ["oklch(15% 0.05 24.7)","oklch(28% 0.094 24.7)","oklch(41% 0.137 24.7)","oklch(54% 0.181 24.7)","oklch(66% 0.221 24.7)","oklch(76% 0.187 24.7)","oklch(86% 0.109 24.7)","oklch(95% 0.039 24.7)"] },
-      "shell-copper": { "role": "neutral", "displayName": "弹壳铜红 Shell Copper", "canonical": "oklch(50% 0.213 27.518)", "tonalRamp": ["oklch(15% 0.064 27.518)","oklch(28% 0.119 27.518)","oklch(41% 0.175 27.518)","oklch(54% 0.196 27.518)","oklch(66% 0.145 27.518)","oklch(76% 0.102 27.518)","oklch(86% 0.06 27.518)","oklch(95% 0.021 27.518)"] },
-      "tracer-yellow": { "role": "secondary", "displayName": "曳光弹黄 Tracer Yellow", "canonical": "oklch(82% 0.189 84.429)", "tonalRamp": ["oklch(15% 0.035 84.429)","oklch(28% 0.065 84.429)","oklch(41% 0.095 84.429)","oklch(54% 0.124 84.429)","oklch(66% 0.152 84.429)","oklch(76% 0.175 84.429)","oklch(86% 0.147 84.429)","oklch(95% 0.053 84.429)"] },
-      "barrel-grey": { "role": "neutral", "displayName": "枪管灰 Barrel Grey", "canonical": "oklch(21.5% 0 261.692)", "tonalRamp": ["oklch(15% 0 261.692)","oklch(28% 0 261.692)","oklch(41% 0 261.692)","oklch(54% 0 261.692)","oklch(66% 0 261.692)","oklch(76% 0 261.692)","oklch(86% 0 261.692)","oklch(95% 0 261.692)"] },
-      "breech-grey": { "role": "neutral", "displayName": "膛底灰 Breech Grey", "canonical": "oklch(18.8% 0 264.665)", "tonalRamp": ["oklch(15% 0 264.665)","oklch(28% 0 264.665)","oklch(41% 0 264.665)","oklch(54% 0 264.665)","oklch(66% 0 264.665)","oklch(76% 0 264.665)","oklch(86% 0 264.665)","oklch(95% 0 264.665)"] },
-      "chalk": { "role": "neutral", "displayName": "粉笔白 Chalk", "canonical": "oklch(96% 0.003 264.542)", "tonalRamp": ["oklch(15% 0 264.542)","oklch(28% 0.001 264.542)","oklch(41% 0.001 264.542)","oklch(54% 0.002 264.542)","oklch(66% 0.002 264.542)","oklch(76% 0.002 264.542)","oklch(86% 0.003 264.542)","oklch(95% 0.003 264.542)"] },
-      "gunmetal-void": { "role": "neutral", "displayName": "炮膛黑 Gunmetal Void", "canonical": "oklch(26% 0 0)", "tonalRamp": ["oklch(15% 0 0)","oklch(28% 0 0)","oklch(41% 0 0)","oklch(54% 0 0)","oklch(66% 0 0)","oklch(76% 0 0)","oklch(86% 0 0)","oklch(95% 0 0)"] },
-      "ash-neutral": { "role": "neutral", "displayName": "灰烬中性 Ash Neutral", "canonical": "oklch(44% 0.017 285.786)", "tonalRamp": ["oklch(15% 0.006 285.786)","oklch(28% 0.011 285.786)","oklch(41% 0.016 285.786)","oklch(54% 0.014 285.786)","oklch(66% 0.01 285.786)","oklch(76% 0.007 285.786)","oklch(86% 0.004 285.786)","oklch(95% 0.002 285.786)"] },
-      "signal-cyan": { "role": "tertiary", "displayName": "信号青 Signal Cyan", "canonical": "oklch(60% 0.126 221.723)", "tonalRamp": ["oklch(15% 0.032 221.723)","oklch(28% 0.059 221.723)","oklch(41% 0.086 221.723)","oklch(54% 0.113 221.723)","oklch(66% 0.107 221.723)","oklch(76% 0.076 221.723)","oklch(86% 0.044 221.723)","oklch(95% 0.016 221.723)"] },
-      "signal-green": { "role": "tertiary", "displayName": "信号绿 Signal Green", "canonical": "oklch(64% 0.2 131.684)", "tonalRamp": ["oklch(15% 0.047 131.684)","oklch(28% 0.088 131.684)","oklch(41% 0.128 131.684)","oklch(54% 0.169 131.684)","oklch(66% 0.189 131.684)","oklch(76% 0.133 131.684)","oklch(86% 0.078 131.684)","oklch(95% 0.028 131.684)"] },
-      "signal-orange": { "role": "tertiary", "displayName": "信号橙 Signal Orange", "canonical": "oklch(66% 0.179 58.318)", "tonalRamp": ["oklch(15% 0.041 58.318)","oklch(28% 0.076 58.318)","oklch(41% 0.111 58.318)","oklch(54% 0.146 58.318)","oklch(66% 0.179 58.318)","oklch(76% 0.126 58.318)","oklch(86% 0.074 58.318)","oklch(95% 0.026 58.318)"] },
-      "signal-crimson": { "role": "tertiary", "displayName": "信号绯 Signal Crimson", "canonical": "oklch(58% 0.253 17.585)", "tonalRamp": ["oklch(15% 0.065 17.585)","oklch(28% 0.122 17.585)","oklch(41% 0.179 17.585)","oklch(54% 0.236 17.585)","oklch(66% 0.205 17.585)","oklch(76% 0.145 17.585)","oklch(86% 0.084 17.585)","oklch(95% 0.03 17.585)"] }
+      "tracer-red": { "role": "primary", "displayName": "曳光红 Tracer Red", "canonical": "oklch(48% 0.21 25)", "tonalRamp": ["oklch(15% 0.05 25)","oklch(28% 0.094 25)","oklch(41% 0.137 25)","oklch(48% 0.21 25)","oklch(66% 0.221 25)","oklch(76% 0.187 25)","oklch(86% 0.109 25)","oklch(95% 0.039 25)"] },
+      "shell-copper": { "role": "neutral", "displayName": "弹壳铜 Shell Copper", "canonical": "oklch(42% 0.06 48)", "tonalRamp": ["oklch(15% 0.03 48)","oklch(28% 0.045 48)","oklch(42% 0.06 48)","oklch(54% 0.05 48)","oklch(66% 0.04 48)","oklch(76% 0.03 48)","oklch(86% 0.02 48)","oklch(95% 0.01 48)"] },
+      "tracer-yellow": { "role": "secondary", "displayName": "曳光弹黄 Tracer Yellow", "canonical": "oklch(82% 0.189 84.429)", "tonalRamp": ["oklch(15% 0.035 84.429)","oklch(28% 0.065 84.429)","oklch(41% 0.095 84.429)","oklch(54% 0.124 84.429)","oklch(66% 0.152 84.429)","oklch(76% 0.175 84.429)","oklch(82% 0.189 84.429)","oklch(95% 0.053 84.429)"] },
+      "barrel-grey": { "role": "neutral", "displayName": "枪管灰 Barrel Grey", "canonical": "oklch(21.5% 0 261.692)", "tonalRamp": ["oklch(15% 0 261.692)","oklch(21.5% 0 261.692)","oklch(35% 0 261.692)","oklch(48% 0 261.692)","oklch(62% 0 261.692)","oklch(76% 0 261.692)","oklch(86% 0 261.692)","oklch(95% 0 261.692)"] },
+      "breech-grey": { "role": "neutral", "displayName": "膛底灰 Breech Grey", "canonical": "oklch(18.8% 0 264.665)", "tonalRamp": ["oklch(15% 0 264.665)","oklch(18.8% 0 264.665)","oklch(32% 0 264.665)","oklch(46% 0 264.665)","oklch(60% 0 264.665)","oklch(74% 0 264.665)","oklch(86% 0 264.665)","oklch(95% 0 264.665)"] },
+      "chalk": { "role": "neutral", "displayName": "粉笔白 Chalk", "canonical": "oklch(96% 0.003 264.542)", "tonalRamp": ["oklch(15% 0 264.542)","oklch(28% 0.001 264.542)","oklch(41% 0.001 264.542)","oklch(54% 0.002 264.542)","oklch(66% 0.002 264.542)","oklch(76% 0.002 264.542)","oklch(86% 0.003 264.542)","oklch(96% 0.003 264.542)"] },
+      "m-blue-light": { "role": "primary", "displayName": "M 蓝浅", "canonical": "#0066b1", "tonalRamp": ["#001a2e","#003356","#004c7e","#0066b1","#3385c1","#66a3d0","#99c2e0","#cce0ef"] },
+      "m-blue-dark": { "role": "primary", "displayName": "M 蓝深", "canonical": "#1c69d4", "tonalRamp": ["#071b36","#0e356c","#154fa2","#1c69d4","#4987dd","#77a5e5","#a4c3ee","#d2e1f6"] },
+      "m-red": { "role": "primary", "displayName": "M 红", "canonical": "#e22718", "tonalRamp": ["#390a06","#73140c","#ac1d12","#e22718","#e85246","#ee7d74","#f3a9a2","#f9d4d1"] },
+      "blackmark-canvas-night": { "role": "neutral", "displayName": "夜航画布", "canonical": "#000000", "tonalRamp": ["#000000","#0d0d0d","#1a1a1a","#3c3c3c","#7e7e7e","#bbbbbb","#e6e6e6","#ffffff"] },
+      "blackmark-ink-night": { "role": "neutral", "displayName": "夜航墨", "canonical": "#ffffff", "tonalRamp": ["#000000","#111111","#4a4a4a","#7e7e7e","#bbbbbb","#e6e6e6","#f1f1f1","#ffffff"] },
+      "blackmark-canvas-day": { "role": "neutral", "displayName": "日间画布", "canonical": "#f1f1f1", "tonalRamp": ["#111111","#4a4a4a","#7a7a7a","#c8c8c8","#e8e8e8","#f1f1f1","#f7f7f7","#ffffff"] }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display / MacroNumber", "purpose": "巨数读数，单页最多一处" },
-      "headline": { "displayName": "Headline / PageHero", "purpose": "页面标题，每页一个" },
-      "title": { "displayName": "Title / CardTitle", "purpose": "卡片与分区标题" },
-      "body": { "displayName": "Body", "purpose": "正文，行宽 max-w-[64ch]" },
-      "label": { "displayName": "Label / Meta", "purpose": "标签、元信息、按钮文字" },
-      "readout": { "displayName": "Readout / Mono", "purpose": "倒计时、计数、坐标、快捷键、JSON；必须 tabular-nums" }
+      "display": { "displayName": "Display / MacroNumber", "purpose": "战地巨数读数，单页最多一处" },
+      "headline": { "displayName": "Headline / PageHero", "purpose": "战地页面标题" },
+      "title": { "displayName": "Title / CardTitle", "purpose": "战地卡片与分区标题" },
+      "body": { "displayName": "Body", "purpose": "战地正文" },
+      "label": { "displayName": "Label / Meta", "purpose": "战地标签与按钮字" },
+      "caption": { "displayName": "Caption", "purpose": "战地密集元信息" },
+      "readout": { "displayName": "Readout / Mono", "purpose": "两条线路共用的等宽读数" },
+      "blackmark-display": { "displayName": "Blackmark Display", "purpose": "黑标当前工具名 3.5rem 700 Noto Sans SC" },
+      "blackmark-body": { "displayName": "Blackmark Body", "purpose": "黑标说明句 300" },
+      "blackmark-label": { "displayName": "Blackmark Label", "purpose": "黑标规格格标签与 dock 展开字 700 字距 0.14em" },
+      "blackmark-readout": { "displayName": "Blackmark Readout", "purpose": "黑标规格格数字 JetBrains Mono 600" }
     },
     "shadows": [],
     "motion": [
-      { "name": "dialog-enter", "value": "zoom-in-95 + fade-in-0, duration-100", "purpose": "Dialog/Tooltip 进场" },
-      { "name": "favorite-pulse", "value": "favorite-highlight-pulse 1.5s ease-out 1", "purpose": "收藏跳转后曳光红描边脉冲定位" },
-      { "name": "heartbeat", "value": "animate-pulse", "purpose": "overlay 运行中行的曳光红心跳点" }
+      { "name": "dialog-enter", "value": "zoom-in-95 + fade-in-0, duration-100", "purpose": "战地 Dialog/Tooltip 进场" },
+      { "name": "favorite-pulse", "value": "favorite-highlight-pulse 1.5s ease-out 1", "purpose": "收藏跳转曳光红描边脉冲" },
+      { "name": "heartbeat", "value": "animate-pulse", "purpose": "overlay 运行中行心跳点" },
+      { "name": "blackmark-ease", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "黑标默认减速" },
+      { "name": "blackmark-title-in", "value": "clip-path inset 0 72%→0, 420ms", "purpose": "切工具时标题切开" },
+      { "name": "blackmark-stripe-draw", "value": "scaleX 0→1, 480ms", "purpose": "标题下三色条拉出" },
+      { "name": "blackmark-glint", "value": "translate3d ±7% 22s alternate", "purpose": "碳纤上细展厅扫光；reduce-motion 关闭" }
     ],
     "breakpoints": [
       { "name": "rail-collapse", "value": "1024px" },
@@ -42,117 +51,118 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "主操作，曳光红实心块；触感强、反馈重。",
+      "description": "战地主操作，曳光红实心块。",
       "html": "<button class=\"ds-btn-primary\">继续轮次</button>",
-      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;height:2.5rem;padding:0 1rem;border-radius:.5rem;border:1px solid transparent;background:oklch(70% 0.234 24.700);color:oklch(100% 0 281.288);font-size:.75rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-primary:hover{background:oklch(63% 0.234 24.700)}.ds-btn-primary:focus-visible{outline:2px solid oklch(70% 0.234 24.700 / .5);outline-offset:2px}"
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;height:2.5rem;padding:0 1rem;border-radius:.5rem;border:1px solid transparent;background:oklch(48% 0.21 25);color:oklch(100% 0 281.288);font-size:.75rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:oklch(63% 0.234 24.700)}.ds-btn-primary:focus-visible{outline:2px solid oklch(48% 0.21 25 / .5);outline-offset:2px}"
+    },
+    {
+      "name": "Blackmark Primary Button",
+      "kind": "button",
+      "refersTo": "blackmark-button-primary",
+      "description": "黑标主操作：直角空心描边，hover 填满反转。",
+      "html": "<button class=\"ds-bm-btn\">继续</button>",
+      "css": ".ds-bm-btn{height:48px;padding:0 32px;border:1px solid #fff;background:transparent;color:#fff;font-family:\"Noto Sans SC\",\"Inter Variable\",sans-serif;font-size:.875rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;border-radius:0;transition:background-color .16s cubic-bezier(.16,1,.3,1),color .16s cubic-bezier(.16,1,.3,1)}.ds-bm-btn:hover,.ds-bm-btn:focus-visible{background:#fff;color:#000;outline:none}.ds-bm-btn:focus-visible{outline:2px solid #fff;outline-offset:3px}"
     },
     {
       "name": "Outline Button",
       "kind": "button",
       "refersTo": "button-outline",
-      "description": "次级操作，透明底 + 铜边框，hover 回落到凹槽色。",
+      "description": "战地次级操作，透明底 + 铜边。",
       "html": "<button class=\"ds-btn-outline\">位置</button>",
-      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;height:2.5rem;padding:0 1rem;border-radius:.5rem;border:1px solid oklch(50% 0.213 27.518);background:transparent;color:oklch(96% 0.003 264.542);font-size:.75rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;cursor:pointer;transition:background .15s,border-color .15s}.ds-btn-outline:hover{background:oklch(18.8% 0 264.665);border-color:oklch(70% 0.234 24.700)}.ds-btn-outline:focus-visible{outline:2px solid oklch(70% 0.234 24.700 / .5);outline-offset:2px}"
-    },
-    {
-      "name": "Ghost Button",
-      "kind": "button",
-      "refersTo": "button-ghost",
-      "description": "弱操作，无边框，hover 才显凹槽底。",
-      "html": "<button class=\"ds-btn-ghost\">取消</button>",
-      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;height:2.5rem;padding:0 1rem;border-radius:.5rem;border:1px solid transparent;background:transparent;color:oklch(96% 0.003 264.542);font-size:.75rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:oklch(18.8% 0 264.665)}.ds-btn-ghost:focus-visible{outline:2px solid oklch(70% 0.234 24.700 / .5);outline-offset:2px}"
-    },
-    {
-      "name": "Field Input",
-      "kind": "input",
-      "refersTo": "input-field",
-      "description": "采集口，base-100 底 + 铜边，focus 转曳光红边。",
-      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"分组名称\" />",
-      "css": ".ds-input{width:100%;height:2rem;padding:0 .75rem;border-radius:.5rem;border:1px solid oklch(50% 0.213 27.518);background:oklch(21.5% 0 261.692);color:oklch(96% 0.003 264.542);font-size:.875rem;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;transition:border-color .15s}.ds-input::placeholder{color:oklch(96% 0.003 264.542 / .4)}.ds-input:focus{border-color:oklch(70% 0.234 24.700);outline:2px solid oklch(70% 0.234 24.700 / .5);outline-offset:0}"
-    },
-    {
-      "name": "Code Badge",
-      "kind": "chip",
-      "refersTo": "badge-code",
-      "description": "页面编号/状态印章，胶囊形曳光红。",
-      "html": "<span class=\"ds-badge\">01</span> <span class=\"ds-badge ds-badge--ghost\">IDLE</span>",
-      "css": ".ds-badge{display:inline-flex;align-items:center;gap:.375rem;height:1.25rem;padding:0 .625rem;border-radius:2rem;border:1px solid transparent;background:oklch(70% 0.234 24.700);color:oklch(100% 0 281.288);font-size:.6875rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif}.ds-badge--ghost{background:transparent;border-color:oklch(50% 0.213 27.518);color:oklch(96% 0.003 264.542 / .6)}"
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;height:2.5rem;padding:0 1rem;border-radius:.5rem;border:1px solid oklch(42% 0.06 48);background:transparent;color:oklch(96% 0.003 264.542);font-size:.75rem;font-weight:600;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif;cursor:pointer}.ds-btn-outline:hover{background:oklch(18.8% 0 264.665)}.ds-btn-outline:focus-visible{outline:2px solid oklch(48% 0.21 25 / .5);outline-offset:2px}"
     },
     {
       "name": "Recessed Card",
       "kind": "card",
       "refersTo": "card-surface",
-      "description": "凹槽卡片：膛底灰 + 铜边 + 零阴影，比页面底更暗。",
-      "html": "<div class=\"ds-card\"><p class=\"ds-card-title\">特勤处轮次</p><p class=\"ds-card-desc\">四制作台批处理 · 子弹兑换</p></div>",
-      "css": ".ds-card{border-radius:.5rem;border:1px solid oklch(50% 0.213 27.518);background:oklch(18.8% 0 264.665);padding:1.25rem;color:oklch(96% 0.003 264.542);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif}.ds-card-title{margin:0;font-size:1rem;font-weight:600}.ds-card-desc{margin:.25rem 0 0;font-size:.875rem;color:oklch(96% 0.003 264.542 / .6)}"
+      "description": "战地凹槽卡片：膛底灰 + 铜边 + 零阴影。",
+      "html": "<div class=\"ds-card\"><p class=\"ds-card-title\">特勤处轮次</p><p class=\"ds-card-desc\">四制作台批处理</p></div>",
+      "css": ".ds-card{border-radius:.5rem;border:1px solid oklch(42% 0.06 48);background:oklch(18.8% 0 264.665);padding:1.25rem;color:oklch(96% 0.003 264.542);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif}.ds-card-title{margin:0;font-size:1rem;font-weight:600}.ds-card-desc{margin:.25rem 0 0;font-size:.875rem;color:oklch(96% 0.003 264.542 / .6)}"
+    },
+    {
+      "name": "Blackmark Spec Cell",
+      "kind": "card",
+      "refersTo": "blackmark-spec",
+      "description": "黑标规格格：直角发丝表面，数字与标签分离。",
+      "html": "<article class=\"ds-bm-spec\"><div class=\"ds-bm-spec-value\">00:08:12</div><div class=\"ds-bm-spec-label\">制作台 2 剩余</div></article>",
+      "css": ".ds-bm-spec{border:1px solid #3c3c3c;background:#0d0d0d;padding:24px;border-radius:0;color:#fff;font-family:\"Noto Sans SC\",\"Inter Variable\",sans-serif}.ds-bm-spec-value{font-family:\"JetBrains Mono Variable\",\"Consolas\",monospace;font-size:2rem;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:.025em}.ds-bm-spec-label{margin-top:8px;font-size:.75rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#7e7e7e}"
     },
     {
       "name": "Index Rail Nav",
       "kind": "nav",
       "refersTo": "card-surface",
-      "description": "左侧 240px 索引轨，激活项曳光红图标 + 编号元信息。",
-      "html": "<nav class=\"ds-rail\"><button class=\"ds-rail-item ds-rail-item--active\"><span class=\"ds-rail-ico\">⊕</span><span class=\"ds-rail-text\"><span class=\"ds-rail-label\">计时器</span><span class=\"ds-rail-meta\">01 / TIMER</span></span></button><button class=\"ds-rail-item\"><span class=\"ds-rail-ico\">⊕</span><span class=\"ds-rail-text\"><span class=\"ds-rail-label\">连发器</span><span class=\"ds-rail-meta\">03 / RAPIDFIRE</span></span></button></nav>",
-      "css": ".ds-rail{display:flex;flex-direction:column;gap:2px;width:240px;padding:.5rem;background:oklch(18.8% 0 264.665);border-right:1px solid oklch(50% 0.213 27.518);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif}.ds-rail-item{display:flex;align-items:center;gap:.75rem;width:100%;padding:.5rem .75rem;border-radius:.5rem;border:1px solid transparent;background:transparent;color:oklch(96% 0.003 264.542);text-align:left;cursor:pointer;transition:background .15s}.ds-rail-item:hover{background:oklch(21.5% 0 261.692)}.ds-rail-item--active{background:oklch(21.5% 0 261.692);border-color:oklch(50% 0.213 27.518)}.ds-rail-ico{color:oklch(70% 0.234 24.700);font-size:1rem;line-height:1}.ds-rail-text{display:flex;flex-direction:column;min-width:0}.ds-rail-label{font-size:.875rem;font-weight:600}.ds-rail-meta{font-size:.75rem;color:oklch(96% 0.003 264.542 / .6)}"
+      "description": "战地左侧 240px 索引轨。黑标禁止使用此结构。",
+      "html": "<nav class=\"ds-rail\"><button class=\"ds-rail-item ds-rail-item--active\"><span class=\"ds-rail-label\">计时器</span></button></nav>",
+      "css": ".ds-rail{display:flex;flex-direction:column;width:240px;padding:.5rem;background:oklch(18.8% 0 264.665);border-right:1px solid oklch(42% 0.06 48)}.ds-rail-item{width:100%;padding:.5rem .75rem;border-radius:.5rem;border:0;background:transparent;color:oklch(96% 0.003 264.542);text-align:left;cursor:pointer}.ds-rail-item--active{background:oklch(21.5% 0 261.692)}.ds-rail-label{font-size:.875rem;font-weight:600}"
     },
     {
-      "name": "Toggle Switch",
-      "kind": "custom",
-      "refersTo": "toggle-on",
-      "description": "daisyUI toggle，开态曳光红，胶囊机制件。",
-      "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked /><span class=\"ds-switch-track\"><span class=\"ds-switch-thumb\"></span></span></label>",
-      "css": ".ds-switch{display:inline-flex;cursor:pointer}.ds-switch input{position:absolute;opacity:0;width:0;height:0}.ds-switch-track{display:inline-flex;align-items:center;width:2.5rem;height:1.25rem;padding:2px;border-radius:2rem;background:oklch(44% 0.017 285.786);transition:background .15s}.ds-switch-thumb{width:1rem;height:1rem;border-radius:50%;background:oklch(96% 0.003 264.542);transform:translateX(0);transition:transform .15s}.ds-switch input:checked + .ds-switch-track{background:oklch(70% 0.234 24.700)}.ds-switch input:checked + .ds-switch-track .ds-switch-thumb{transform:translateX(1.25rem)}.ds-switch input:focus-visible + .ds-switch-track{outline:2px solid oklch(70% 0.234 24.700 / .5);outline-offset:2px}"
+      "name": "Blackmark Dock",
+      "kind": "nav",
+      "refersTo": "blackmark-dock-active",
+      "description": "黑标底部居中悬浮图标栏。未选中只出图标，选中反转并出字。",
+      "html": "<nav class=\"ds-bm-dock\"><button class=\"ds-bm-dock-item\" aria-label=\"计时器\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\"><path d=\"M8 4.5h8M12 4.5v2.2M12 8.2v4.3l3.2 2.1M19.2 12a7.2 7.2 0 1 1-2.1-5.1\"/></svg></button><button class=\"ds-bm-dock-item ds-bm-dock-item--active\" aria-current=\"page\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\"><path d=\"M5 7.2 12 4.2 19 7.2v6.2c0 3.4-2.8 5.7-7 7.4-4.2-1.7-7-4-7-7.4zM12 9.4v5M9.5 11.9h5\"/></svg><span>特勤处</span></button></nav>",
+      "css": ".ds-bm-dock{display:flex;align-items:center;gap:4px;padding:6px;border:1px solid #3c3c3c;background:rgb(13 13 13 / .94)}.ds-bm-dock-item{display:flex;align-items:center;justify-content:center;gap:8px;width:48px;height:48px;border:0;background:transparent;color:#7e7e7e;cursor:pointer;border-radius:0}.ds-bm-dock-item--active{width:auto;padding:0 16px 0 12px;color:#000;background:linear-gradient(90deg,#0066b1 0 33.334%,#1c69d4 33.334% 66.667%,#e22718 66.667% 100%) top / 100% 3px no-repeat,#fff;font-family:\"Noto Sans SC\",sans-serif;font-size:.75rem;font-weight:700;letter-spacing:.14em}"
     },
     {
       "name": "Transparent Readout Overlay",
       "kind": "custom",
       "refersTo": "overlay-readout",
-      "description": "签名组件：游戏画面上的单色仪表板，黑纱玻璃 + JetBrains Mono 读数 + 曳光弹黄进度。",
-      "html": "<div class=\"ds-overlay\"><div class=\"ds-overlay-row ds-overlay-row--active\"><span class=\"ds-overlay-name\"><span class=\"ds-overlay-dot\"></span>破片手雷 <span class=\"ds-overlay-state\">RUNNING</span></span><span class=\"ds-overlay-val\">47</span><span class=\"ds-overlay-progress\"><span class=\"ds-overlay-progress-fill\" style=\"width:62%\"></span></span></div><div class=\"ds-overlay-row\"><span class=\"ds-overlay-name\">烟雾弹 <span class=\"ds-overlay-state ds-overlay-state--idle\">IDLE</span></span><span class=\"ds-overlay-val\">90</span></div></div>",
-      "css": ".ds-overlay{width:280px;padding:.5rem .75rem;border-radius:.375rem;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.2);backdrop-filter:blur(1px);font-family:\"JetBrains Mono Variable\",\"Cascadia Mono\",\"Consolas\",monospace;font-variant-numeric:tabular-nums;color:#fff}.ds-overlay-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin:.125rem 0;padding:.125rem .5rem;border-radius:.375rem;font-size:1rem;font-weight:600;letter-spacing:.025em;overflow:hidden}.ds-overlay-row--active{background:oklch(70% 0.234 24.700 / .2);box-shadow:inset 0 0 0 1px oklch(70% 0.234 24.700 / .7)}.ds-overlay-name{display:flex;align-items:center;gap:.375rem;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-overlay-dot{width:.375rem;height:.375rem;border-radius:50%;background:oklch(70% 0.234 24.700);animation:ds-pulse 1.2s ease-in-out infinite}.ds-overlay-state{font-size:.75rem;color:oklch(70% 0.234 24.700)}.ds-overlay-state--idle{color:rgba(255,255,255,.6)}.ds-overlay-progress{position:absolute;inset:0;background:rgba(255,255,255,.2);z-index:-1;border-radius:.375rem}.ds-overlay-progress-fill{position:absolute;left:0;top:0;bottom:0;background:oklch(66% 0.179 58.318)}@keyframes ds-pulse{0%,100%{opacity:1}50%{opacity:.4}}"
+      "description": "游戏画面上的单色仪表。不跟随黑标。",
+      "html": "<div class=\"ds-overlay\"><div class=\"ds-overlay-row ds-overlay-row--active\"><span>破片手雷 RUNNING</span><span>47</span></div></div>",
+      "css": ".ds-overlay{width:280px;padding:.5rem .75rem;border-radius:.375rem;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.2);backdrop-filter:blur(1px);font-family:\"JetBrains Mono Variable\",\"Consolas\",monospace;font-variant-numeric:tabular-nums;color:#fff}.ds-overlay-row{padding:.125rem .5rem}.ds-overlay-row--active{background:oklch(48% 0.21 25 / .2)}"
     },
     {
-      "name": "Position Calibration Frame",
-      "kind": "custom",
-      "refersTo": "overlay-readout",
-      "description": "位置校准 overlay：曳光红 2px 校准框 + 半透明面板 + 等宽坐标读数。",
-      "html": "<div class=\"ds-pos\"><span class=\"ds-pos-badge\">计时器透明窗口位置</span><p class=\"ds-pos-status\">拖动到目标位置，Enter 保存，Esc 退出</p><p class=\"ds-pos-coord\">X 128 · Y 64 · W 320</p></div>",
-      "css": ".ds-pos{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;width:320px;padding:1rem;border-radius:.375rem;border:2px solid oklch(70% 0.234 24.700);background:oklch(21.5% 0 261.692 / .82);backdrop-filter:blur(8px);color:oklch(96% 0.003 264.542);text-align:center;cursor:move;user-select:none;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,sans-serif}.ds-pos-badge{font-size:.75rem;font-weight:600;padding:.125rem .625rem;border-radius:2rem;background:oklch(82% 0.189 84.429);color:oklch(27% 0.077 45.635)}.ds-pos-status{margin:0;font-size:.875rem;font-weight:500}.ds-pos-coord{margin:0;font-family:\"JetBrains Mono Variable\",\"Cascadia Mono\",\"Consolas\",monospace;font-size:.75rem;color:oklch(96% 0.003 264.542 / .6);font-variant-numeric:tabular-nums}"
+      "name": "Field Input",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "战地采集口，铜边，focus 转曳光红。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"分组名称\" />",
+      "css": ".ds-input{width:100%;height:2rem;padding:0 .75rem;border-radius:.5rem;border:1px solid oklch(42% 0.06 48);background:oklch(21.5% 0 261.692);color:oklch(96% 0.003 264.542);font-size:.875rem}.ds-input:focus{border-color:oklch(48% 0.21 25);outline:2px solid oklch(48% 0.21 25 / .5)}"
     }
   ],
   "narrative": {
-    "northStar": "The Field Console（战地控制台）",
-    "overview": "应用内界面是一整块制式装备面板：深色枪管金属底，内容开凿成比背景更暗的凹槽，用一道 1px 弹壳铜红切口勾出边界。语气冷静、紧密、可信——数字和状态自己说话，界面不表演紧张感。overlay 是另一块战场：游戏画面才是底，面板退为一层单声道仪表板，黑纱玻璃、JetBrains Mono 读数、白字，被一眼读完且不遮挡准星。",
+    "northStar": "两套制式（Two Issued Kits）",
+    "overview": "同一产品发两套主窗口视觉世界，设置里切换，禁止混用。World A 战地控制台是默认生产壳：枪管金属底、凹槽、弹壳铜切口。World B 夜航黑标是第二条线路：BMW M 语法翻成 Operate，视觉权威是 blackmark-demo.html。Overlay 是第三条表面，白边玻璃读数，不跟随黑标。",
     "keyCharacteristics": [
-      "双表面制式分离：应用内 = 红边制式面板；overlay = 游戏上的单色读数仪表",
-      "凹槽式深度，零阴影",
-      "强调色单一——曳光红；黄色只留给 overlay 进度与次级功能",
-      "读数 JetBrains Mono + tabular-nums；界面 Segoe UI Variable",
-      "三套运行时主题共享同一份 28-token 集合"
+      "双主窗口线路并行：战地控制台（默认生产）与夜航黑标（演示收口）",
+      "Overlay 独立，不跟随黑标",
+      "两条线路都零投影",
+      "读数一律 JetBrains Mono + tabular-nums",
+      "战地 28 token 配色主题不服务黑标"
     ],
     "rules": [
-      { "name": "The One Voice Rule", "body": "曳光红是唯一主色，任何一屏面积不超过约 10%；稀缺性即意义。", "section": "colors" },
-      { "name": "The Copper Seam Rule", "body": "默认边框就是弹壳铜红 base-300，一道 1px 切口是全部边界语言。", "section": "colors" },
-      { "name": "The Yellow Is Not A Second Accent Rule", "body": "曳光弹黄只做 overlay 进度、次级 badge、已保存提示，不做主按钮或大面积背景。", "section": "colors" },
-      { "name": "The Two Weight Rule", "body": "全系统只用 400 与 600 字重，层级靠字号与色阶。", "section": "typography" },
-      { "name": "The Readout Is Mono Rule", "body": "凡需读数处必须等宽 + tabular-nums；比例字体数字逐帧跳动即 bug。", "section": "typography" },
-      { "name": "The Zero Shadow Rule", "body": "阴影恒为 0；浮起感靠更深底色而非投影。", "section": "elevation" },
-      { "name": "The Recess, Not Raise Rule", "body": "容器向下沉（base-200 更暗），不向上抬；明暗方向不可反。", "section": "elevation" }
+      { "name": "The Dual Line Rule", "body": "主窗口一次只渲染一个世界。战地 token 不得画黑标；黑标变量不得画战地。配色主题三套只服务战地。Overlay 不吃黑标色。", "section": "colors" },
+      { "name": "The One Voice Rule", "body": "战地：曳光红是唯一主色，任何一屏面积不超过约 10%。", "section": "colors" },
+      { "name": "The Copper Seam Rule", "body": "战地：默认边框就是弹壳铜 base-300，一道 1px。", "section": "colors" },
+      { "name": "The Stripe Is Identity Rule", "body": "黑标三色条不是主按钮、进度条或卡片左边装饰。", "section": "colors" },
+      { "name": "The No Flood Wash Rule", "body": "黑标背景禁止铺满蓝红。允许碳纤 + 细展厅扫光。", "section": "colors" },
+      { "name": "The Two Weight Rule", "body": "战地只用 400 与 600。不约束黑标的 300/700。", "section": "typography" },
+      { "name": "The Readout Is Mono Rule", "body": "读数必须等宽 + tabular-nums。两条线路与 overlay 都遵守。", "section": "typography" },
+      { "name": "The CJK Is The Display Rule", "body": "黑标设计感在中文 700，不在再换英文展示体。", "section": "typography" },
+      { "name": "The Zero Shadow Rule", "body": "阴影恒为 0。", "section": "elevation" },
+      { "name": "The Recess, Not Raise Rule", "body": "战地容器向下沉。不约束黑标选中反转。", "section": "elevation" }
     ],
     "dos": [
-      "Do 容器一律比页面底更暗（base-200 < base-100）",
-      "Do 默认边框就用弹壳铜 base-300，一道 1px",
-      "Do 读数/坐标/快捷键/JSON 一律 JetBrains Mono + tabular-nums",
-      "Do 状态同时用颜色与文字/图标表达",
-      "Do 复用 app-ui.tsx 共享件，三处同构先扩共享件",
-      "Do 改主题 token 时三套内置主题同改同测"
+      "Do 先判断当前是战地、黑标还是 overlay，再选用对应 token 与组件，禁止混用。",
+      "Do 战地：容器比页面底更暗（base-200 < base-100），凹槽方向不可反。",
+      "Do 战地：默认边框用弹壳铜（base-300），一道 1px。",
+      "Do 黑标：直角、发丝线、三色条只做身份、主按钮空心描边。",
+      "Do 黑标视觉以 blackmark-demo.html 为准，接到生产壳时对照演示，不要发明第三套。",
+      "Do 读数、坐标、快捷键、JSON 一律 JetBrains Mono + tabular-nums（两条线路 + overlay）。",
+      "Do 状态同时用颜色与文字/图标表达。",
+      "Do 战地新页面复用 app-ui.tsx。标准骨架：ToolPageFrame → MasterSwitchCard? → SyncGroupSection? → SyncCardList。",
+      "Do 改战地主题 token 时三套内置主题同改同测，28 key 不变。"
     ],
     "donts": [
-      "Don't 加任何阴影、渐变、柔光、发光边框",
-      "Don't 发明第二强调色；曳光弹黄不是主色，信号橙是状态色",
-      "Don't 用曳光红铺大面积背景或整行填充",
-      "Don't 回流旧桌面/战术自定义 CSS、shadcn 默认视觉、SaaS 圆角卡片+插画、赛博朋克霓虹描边",
-      "Don't 让 overlay 继承应用内铜红边框或 0.5rem 圆角",
-      "Don't 在正文用等宽字体、在读数用比例字体"
+      "Don't 用换 valentine 颜色冒充黑标，或把黑标碳纤/dock/巨型标题贴到战地壳上。",
+      "Don't 把黑标三色条当按钮填充、进度条或卡片左边装饰。",
+      "Don't 把黑标背景做成铺满蓝红渐变或赛博扫描线。扫光必须是细刃。",
+      "Don't 给战地加阴影、大面积渐变、柔光、发光边框。",
+      "Don't 给 overlay 套黑标或战地铜边；overlay 保持白边玻璃、点击穿透、不抢焦点。",
+      "Don't 在正文用等宽字体、在读数用比例字体。",
+      "Don't 用 remixicon 替换黑标 dock 的自制 SVG。",
+      "Don't 把黑标标题换成 Inter / Space Grotesk 等拉丁展示体而丢掉 Noto Sans SC 700。",
+      "Don't 让游戏 overlay 窗口吃黑标 CSS 变量。"
     ]
   }
 }
