@@ -12,6 +12,8 @@ import {Input} from "@/components/ui/input";
 import {Tabs, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {Textarea} from "@/components/ui/textarea";
 import {AppPage} from "@/components/app/app-ui";
+import {BlackmarkPage} from "@/components/app/blackmark-page";
+import {useTheme} from "@/hooks/use-theme";
 import {
     isSettingsDialogOpen,
     SETTINGS_DIALOG_CLOSE_EVENT,
@@ -37,6 +39,7 @@ import {
 } from "@/components/app/strategy-utils";
 import {getErrorMessage} from "@/lib/error-utils";
 import {useNativeShell} from "@/hooks/use-native-shell";
+import {cn} from "@/lib/utils";
 
 const CONTENT_WEBVIEW_LABEL = "strategy-content";
 const STABLE_BOUNDS_ATTEMPTS = 30;
@@ -65,6 +68,7 @@ async function closeContentWindow(candidate: WebviewWindow | null): Promise<void
 
 export function StrategyPage() {
     const isNativeShell = useNativeShell();
+    const {uiWorld} = useTheme();
     const contentHostRef = useRef<HTMLDivElement | null>(null);
     const contentWindowRef = useRef<WebviewWindow | null>(null);
     const contentWindowReadyRef = useRef(false);
@@ -466,8 +470,11 @@ export function StrategyPage() {
     const activeRefreshOption = STRATEGY_REFRESH_OPTIONS.find((option) => option.seconds === refreshSeconds) ?? STRATEGY_REFRESH_OPTIONS[0];
     const refreshLabel = refreshSeconds > 0 ? `${activeRefreshOption.label} · ${remainingSeconds || refreshSeconds}s` : activeRefreshOption.label;
 
-    return (
-        <AppPage className="min-h-[calc(100dvh-4rem)] flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 overflow-hidden">
+    const page = (
+        <AppPage className={cn(
+            "flex-1 grid-rows-[auto_minmax(0,1fr)] gap-2 overflow-hidden",
+            uiWorld === "blackmark" ? "min-h-[calc(100dvh-18rem)]" : "min-h-[calc(100dvh-4rem)]",
+        )}>
             <div
                 className="col-span-12 grid shrink-0 gap-px overflow-hidden border border-base-300 bg-base-content lg:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="min-w-0 bg-base-100 px-2 py-2">
@@ -624,4 +631,17 @@ export function StrategyPage() {
             </div>
         </AppPage>
     );
+
+    if (uiWorld === "blackmark") {
+        return (
+            <BlackmarkPage
+                copy="内嵌攻略站。左侧站点索引保留。显示窗级 overlay 不走这条线路。"
+                title="攻略"
+            >
+                <div className="px-8 pb-8">{page}</div>
+            </BlackmarkPage>
+        );
+    }
+
+    return page;
 }

@@ -20,6 +20,8 @@ import {Input} from "@/components/ui/input";
 import {Slider} from "@/components/ui/slider";
 import {Switch} from "@/components/ui/switch";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
+import {BlackmarkPage} from "@/components/app/blackmark-page";
+import {useTheme} from "@/hooks/use-theme";
 import {cn} from "@/lib/utils";
 
 /* ────────── App Page Grid ────────── */
@@ -61,12 +63,40 @@ export function MacroHeader({actions, className, title}: MacroHeaderProps) {
 type ToolPageFrameProps = {
     title: string;
     actions?: ReactNode;
+    copy?: string;
     error?: ReactNode;
+    specs?: ReactNode;
     children: ReactNode;
     className?: string;
 };
 
-export function ToolPageFrame({actions, children, className, error, title}: ToolPageFrameProps) {
+const BLACKMARK_COPY: Record<string, string> = {
+    计时器: "局内倒计时。显示窗叠在游戏画面上，不跟主窗口换皮。",
+    计数器: "局内计数。显示窗叠在游戏画面上，不跟主窗口换皮。",
+    连发器: "按住连发。显示窗叠在游戏画面上，不跟主窗口换皮。",
+    识别触发: "区域匹配、识色或热键触发效果。",
+    息屏: "只挡画面。识别截图、键鼠和 Alt+Tab 照常。",
+    摩斯: "截屏解码摩斯并自动输入。",
+    收藏夹: "从计时器、计数器、连发器星标收进来的卡片。",
+};
+
+export function ToolPageFrame({actions, children, className, copy, error, specs, title}: ToolPageFrameProps) {
+    const {uiWorld} = useTheme();
+    if (uiWorld === "blackmark") {
+        return (
+            <BlackmarkPage
+                actions={actions}
+                copy={copy ?? BLACKMARK_COPY[title]}
+                specs={specs}
+                title={title === "收藏夹" ? "收藏" : title}
+            >
+                {error ? <div className="px-8">{error}</div> : null}
+                <div className={cn("grid grid-cols-12 gap-3 px-8 pb-16", className)}>
+                    {children}
+                </div>
+            </BlackmarkPage>
+        );
+    }
     return (
         <AppPage className={cn("auto-rows-max", className)}>
             <MacroHeader actions={actions} title={title}/>
