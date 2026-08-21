@@ -1,6 +1,6 @@
 ---
 name: 三角洲行动工具
-description: 两套制式并行。战地控制台是默认生产壳；夜航黑标是第二条主窗口线路。overlay 不换皮。
+description: 两套制式并行。夜航黑标是默认生产壳；战地控制台仍可切换。overlay 不换皮。
 colors:
   tracer-red: "oklch(48% 0.21 25)"
   tracer-red-content: "oklch(100% 0 281.288)"
@@ -194,15 +194,15 @@ components:
 
 同一产品发两套主窗口视觉世界，设置里切换，禁止混用。
 
-**World A — 战地控制台 The Field Console** 是默认生产壳（`src/App.tsx`）。深色枪管金属底，内容开凿成比背景更暗的凹槽，一道 1px 弹壳铜切口勾边。语气冷静、紧密、可信。数字和状态自己说话。这不是 SaaS 仪表盘，没有圆角柔光卡片。红色只出现在真正需要注意力的地方。配色主题 `olive-amber` / `valentine` / `arctic-blue` 只给这一世界换 28 个 token，不发明新世界。
+**World A — 战地控制台 The Field Console** 是可切换的第一条视觉世界。深色枪管金属底，内容开凿成比背景更暗的凹槽，一道 1px 弹壳铜切口勾边。语气冷静、紧密、可信。数字和状态自己说话。这不是 SaaS 仪表盘，没有圆角柔光卡片。红色只出现在真正需要注意力的地方。配色主题 `olive-amber` / `valentine` / `arctic-blue` 只给这一世界换 28 个 token，不发明新世界。
 
-**World B — 夜航黑标 Night-ops Black Mark** 是第二条主窗口线路。视觉权威是 `blackmark-demo.html` + `src/blackmark-demo.tsx`（尚未接到生产壳）。BMW M 的语法翻成 Operate：纯黑夜航或浅灰日间、直角、Noto Sans SC 700 对 300、4px 三色条只做身份、白描边主按钮、底部居中悬浮图标 dock。背景是碳纤加一道细展厅扫光，不是铺满蓝红。接到设置之前，任何「把黑标做进 App」的实现必须以该演示为像素级参考，不得用换 valentine 色冒充。
+**World B — 夜航黑标 Night-ops Black Mark** 是默认生产壳。视觉权威是 `blackmark-demo.html` + `src/blackmark-demo.tsx`。BMW M 的语法翻成 Operate：纯黑夜航或浅灰日间、直角、Noto Sans SC 700 对 300、4px 三色条只做身份、白描边主按钮、底部居中悬浮图标 dock。背景是碳纤加一道细展厅扫光，不是铺满蓝红。不得用换 valentine 色冒充。
 
 **Overlay — 游戏读数仪表** 是第三条表面，不属任何主窗口世界。游戏画面才是底。黑纱玻璃、JetBrains Mono、白字。无论主窗口走 A 还是 B，overlay 的 `?mode=` 窗保持现有玻璃读数：点击穿透、不抢焦点、不遮准星。禁止把黑标碳纤、三色条、巨型标题带进 overlay。
 
 **Key Characteristics:**
 
-- 双主窗口线路并行：战地控制台（默认生产）与夜航黑标（演示收口）。设置切换，同一屏禁止混语法。
+- 双主窗口线路并行：夜航黑标（默认生产）与战地控制台。设置切换，同一屏禁止混语法。
 - Overlay 独立：白边玻璃读数，不跟随黑标，不跟随配色主题的圆角/铜边。
 - 两条线路都零投影。战地用凹槽深度；黑标用发丝线 + 色阶反转（选中项夜航白底/日间黑底）。
 - 读数一律 JetBrains Mono + tabular-nums，两条线路共用。

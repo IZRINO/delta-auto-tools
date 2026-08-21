@@ -408,22 +408,22 @@ function UiWorldPicker({onChange, uiWorld}: {onChange: (world: UiWorld) => void;
                 <button
                     className={cn(
                         "btn btn-outline h-12 min-h-12 justify-start rounded-field",
-                        uiWorld === "console" && "btn-active border-primary",
-                    )}
-                    onClick={() => onChange("console")}
-                    type="button"
-                >
-                    战地控制台
-                </button>
-                <button
-                    className={cn(
-                        "btn btn-outline h-12 min-h-12 justify-start rounded-field",
                         uiWorld === "blackmark" && "btn-active border-primary",
                     )}
                     onClick={() => onChange("blackmark")}
                     type="button"
                 >
                     夜航黑标
+                </button>
+                <button
+                    className={cn(
+                        "btn btn-outline h-12 min-h-12 justify-start rounded-field",
+                        uiWorld === "console" && "btn-active border-primary",
+                    )}
+                    onClick={() => onChange("console")}
+                    type="button"
+                >
+                    战地控制台
                 </button>
             </div>
         </FieldUnit>

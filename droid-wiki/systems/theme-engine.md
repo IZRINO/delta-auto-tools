@@ -11,7 +11,7 @@
 - Rust 侧合并主题 tokens + overrides 为扁平 `merged_tokens` 列表，通过 `theme://changed` emit，前端逐条写入 `document.documentElement.style.setProperty(key, value)`
 - 主题独立于配置系统（主题不打包进快照）
 - **配色主题 ≠ 界面世界。** `olive-amber` / `valentine` / `arctic-blue` 只给战地控制台换 28 个 daisyUI token。黑标是另一条主窗口线路（壳、字、导航、组件全部不同），权威在 `DESIGN.md` 的 World B，视觉收口在 `blackmark-demo.html`。禁止用换色冒充黑标。overlay 窗口不吃黑标 token。
-- **界面世界持久化。** `UiWorld`（`console` | `blackmark`）写 `localStorage` 键 `delta-auto-tools:ui-world`；黑标色相 `UiScheme`（`night` | `day`）写 `delta-auto-tools:ui-scheme`。两者都不进 `theme_settings.json`，也不进 Profile。默认战地、夜航。overlay（`src/lib/overlay-windows.ts` 名单）强制当战地：不写 `data-ui-world` / `data-scheme`，根节点继续打落盘 daisyUI token。黑标切进来时 `presentThemeSession` **清掉**根节点 inline token，壳用 `--bm-*`，禁止把黑标映射进 28 个 daisyUI key。
+- **界面世界持久化。** `UiWorld`（`console` | `blackmark`）写 `localStorage` 键 `delta-auto-tools:ui-world`；黑标色相 `UiScheme`（`night` | `day`）写 `delta-auto-tools:ui-scheme`。两者都不进 `theme_settings.json`，也不进 Profile。默认黑标、夜航。显式选过战地的人继续战地。overlay（`src/lib/overlay-windows.ts` 名单）强制当战地：不写 `data-ui-world` / `data-scheme`，根节点继续打落盘 daisyUI token。黑标切进来时 `presentThemeSession` **清掉**根节点 inline token，壳用 `--bm-*`，禁止把黑标映射进 28 个 daisyUI key。
 
 ## 目录结构
 

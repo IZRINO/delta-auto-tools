@@ -14,7 +14,7 @@ import type {
     UiScheme,
     UiWorld,
 } from "@/components/app/theme-types";
-import {UI_SCHEME_STORAGE_KEY, UI_WORLD_STORAGE_KEY} from "@/components/app/theme-types";
+import {DEFAULT_UI_WORLD, UI_SCHEME_STORAGE_KEY, UI_WORLD_STORAGE_KEY} from "@/components/app/theme-types";
 
 /**
  * 把合并后的 token 列表写入目标元素的 inline style。
@@ -113,15 +113,15 @@ export function restorePersistedThemeTokens(
 }
 
 export function parseUiWorld(value: string | null | undefined): UiWorld {
-    return value === "blackmark" ? "blackmark" : "console";
+    return value === "console" ? "console" : "blackmark";
 }
 
 export function readUiWorld(storage: Pick<Storage, "getItem"> | null | undefined): UiWorld {
-    if (!storage) return "console";
+    if (!storage) return DEFAULT_UI_WORLD;
     try {
         return parseUiWorld(storage.getItem(UI_WORLD_STORAGE_KEY));
     } catch {
-        return "console";
+        return DEFAULT_UI_WORLD;
     }
 }
 

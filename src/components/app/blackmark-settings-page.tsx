@@ -17,16 +17,16 @@ export function BlackmarkSettingsPage() {
                 </p>
                 <div className="mt-8 grid gap-px md:grid-cols-2">
                     <WorldCard
-                        active={uiWorld === "console"}
-                        copy="默认生产壳。左侧轨、铜缝凹槽、三套配色。"
-                        onSelect={() => setUiWorld("console")}
-                        title="战地控制台"
-                    />
-                    <WorldCard
                         active={uiWorld === "blackmark"}
-                        copy="顶栏加底 dock。直角、发丝线、碳纤细扫光。"
+                        copy="默认。顶栏加底 dock。直角、发丝线、碳纤细扫光。"
                         onSelect={() => setUiWorld("blackmark")}
                         title="夜航黑标"
+                    />
+                    <WorldCard
+                        active={uiWorld === "console"}
+                        copy="左侧轨、铜缝凹槽、三套配色。"
+                        onSelect={() => setUiWorld("console")}
+                        title="战地控制台"
                     />
                 </div>
 

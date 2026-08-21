@@ -58,7 +58,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(html).toContain("游戏可执行文件");
         expect(html).toContain("录制紧急停止热键");
         expect(html).toContain("游戏内导航试运行");
-        expect(html).toContain("开始值班");
+        expect(html).toContain("添加账号");
         expect(html).not.toContain("未来 24 小时暂无任务");
         expect(html).not.toContain("开始当前到期轮次");
         expect(html).toContain('class="card card-border');

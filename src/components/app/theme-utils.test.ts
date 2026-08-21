@@ -360,11 +360,11 @@ describe("colorToHex", () => {
 });
 
 describe("ui world", () => {
-    it("只认 blackmark，其余回 console", () => {
-        expect(parseUiWorld("blackmark")).toBe("blackmark");
+    it("只认 console，其余回 blackmark", () => {
         expect(parseUiWorld("console")).toBe("console");
-        expect(parseUiWorld("valentine")).toBe("console");
-        expect(parseUiWorld(null)).toBe("console");
+        expect(parseUiWorld("blackmark")).toBe("blackmark");
+        expect(parseUiWorld("valentine")).toBe("blackmark");
+        expect(parseUiWorld(null)).toBe("blackmark");
     });
 
     it("读写 localStorage 键", () => {
@@ -375,9 +375,11 @@ describe("ui world", () => {
                 store.set(key, value);
             },
         };
+        expect(readUiWorld(storage)).toBe("blackmark");
+        writeUiWorld(storage, "console");
+        expect(store.get(UI_WORLD_STORAGE_KEY)).toBe("console");
         expect(readUiWorld(storage)).toBe("console");
         writeUiWorld(storage, "blackmark");
-        expect(store.get(UI_WORLD_STORAGE_KEY)).toBe("blackmark");
         expect(readUiWorld(storage)).toBe("blackmark");
     });
 

@@ -46,8 +46,10 @@ export interface ThemeBootstrap {
 /** localStorage 持久化 key（浏览器预览模式 fallback 用）。 */
 export const THEME_STORAGE_KEY = "delta-auto-tools:theme:v1";
 
-/** 界面世界：战地控制台（现行壳）或黑标。与配色主题正交。 */
+/** 界面世界：战地控制台或黑标。与配色主题正交。默认黑标。 */
 export type UiWorld = "console" | "blackmark";
+
+export const DEFAULT_UI_WORLD: UiWorld = "blackmark";
 
 export const UI_WORLD_STORAGE_KEY = "delta-auto-tools:ui-world";
 

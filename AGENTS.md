@@ -248,7 +248,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### UI 约束
 
-- 主窗口两条视觉线路并行，权威在 `DESIGN.md`：战地控制台（默认生产壳 `src/App.tsx`）与夜航黑标（收口 `blackmark-demo.html`）。设置切换，禁止同一屏混语法。配色主题三套只服务战地，不得用换色冒充黑标。游戏 overlay 不跟随黑标。
+- 主窗口两条视觉线路并行，权威在 `DESIGN.md`：夜航黑标（默认生产壳）与战地控制台。设置切换，禁止同一屏混语法。配色主题三套只服务战地，不得用换色冒充黑标。游戏 overlay 不跟随黑标。
 - UI 迁移方向：保留 Radix headless 交互能力。战地视觉层使用 daisyUI + Tailwind CSS + `src/App.css` token；禁止新增旧桌面/战术风格自定义 CSS 类。黑标以演示页 `bm-*` 语法为准，接到生产时对照演示。
 - 基础组件位于 `src/components/ui/`，保留 Radix headless 行为能力，战地 class 必须优先映射到 daisyUI 组件语义
 - 图标：战地与按钮内图标使用 `@remixicon/react`，Button 内必须设置 `data-icon="inline-start"` / `"inline-end"`。黑标 dock 图标必须自制 SVG，禁止用 remixicon 替换
