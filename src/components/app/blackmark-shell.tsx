@@ -2,6 +2,7 @@ import {Fragment, type ReactNode} from "react";
 import {RiShutDownLine} from "@remixicon/react";
 
 import {BlackmarkGlyph} from "@/components/app/blackmark-glyphs";
+import {BlackmarkSchemeToggle} from "@/components/app/blackmark-scheme-toggle";
 import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import {BLACKMARK_DOCK_GROUPS, type BlackmarkPaneId, type ToolId} from "@/components/app/tool-nav";
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
@@ -38,6 +39,7 @@ export function BlackmarkShell({activePane, children, onPaneChange}: BlackmarkSh
                     </div>
                     <div className="navbar-end gap-4">
                         <ProfileSwitcher/>
+                        <BlackmarkSchemeToggle/>
                         <label className="flex items-center gap-2 text-xs font-bold tracking-[0.12em] uppercase">
                             <RiShutDownLine className="size-3.5" aria-hidden="true"/>
                             {globalEnabled ? "全局开" : "全局关"}
