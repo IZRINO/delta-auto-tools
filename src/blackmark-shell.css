@@ -35,6 +35,8 @@ html[data-ui-world="blackmark"][data-scheme="day"] {
     --color-primary: var(--bm-ink);
     --color-primary-content: var(--bm-canvas);
     --radius-selector: 9999px;
+    --radius-field: 0rem;
+    --radius-box: 0rem;
     --font-sans: "Noto Sans SC", "Inter Variable", "Segoe UI", sans-serif;
     position: relative;
     isolation: isolate;

@@ -6,10 +6,11 @@ import pageSource from "./special-ops-page.tsx?raw";
 import calibrationOverlaySource from "./special-ops-calibration-overlay.tsx?raw";
 import utilsSource from "./special-ops-utils.ts?raw";
 import {SpecialOpsPage} from "@/components/app/special-ops-page";
+import {ThemeProvider} from "@/hooks/use-theme";
 import {TooltipProvider} from "@/components/ui/tooltip";
 
 function renderPage() {
-    return renderToStaticMarkup(createElement(TooltipProvider, null, createElement(SpecialOpsPage)));
+    return renderToStaticMarkup(createElement(ThemeProvider, null, createElement(TooltipProvider, null, createElement(SpecialOpsPage))));
 }
 
 describe("SpecialOpsPage 登录试运行配置", () => {

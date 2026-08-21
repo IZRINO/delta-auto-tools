@@ -90,6 +90,7 @@ function isThemeBootstrapStateError(err: unknown): boolean {
 }
 
 function isOverlayWindow(): boolean {
+    if (typeof window === "undefined") return false;
     const mode = new URLSearchParams(window.location.search).get("mode");
     return isOverlayWindowMode(mode);
 }
@@ -112,10 +113,10 @@ export function ThemeProvider({children}: ThemeProviderProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [uiWorld, setUiWorldState] = useState<UiWorld>(() =>
-        overlayLocked ? "console" : readUiWorld(window.localStorage),
+        overlayLocked ? "console" : readUiWorld(typeof window === "undefined" ? null : window.localStorage),
     );
     const [uiScheme, setUiSchemeState] = useState<UiScheme>(() =>
-        overlayLocked ? "night" : readUiScheme(window.localStorage),
+        overlayLocked ? "night" : readUiScheme(typeof window === "undefined" ? null : window.localStorage),
     );
     const effectiveWorld: UiWorld = overlayLocked ? "console" : uiWorld;
     const worldRef = useRef(effectiveWorld);

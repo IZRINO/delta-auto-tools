@@ -15,12 +15,14 @@ import {
 } from "@remixicon/react";
 
 import {HelpHint, SoftAlert} from "@/components/app/app-ui";
+import {SpecialOpsBlackmarkView} from "@/components/app/special-ops-blackmark-view";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
 import {LatestSaveQueue} from "@/hooks/autosave-queue";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {useNativeShell} from "@/hooks/use-native-shell";
+import {useTheme} from "@/hooks/use-theme";
 import {invokeLogged as invoke} from "@/lib/logging";
 import {scrollElementIntoView} from "@/lib/utils";
 import {SPECIAL_OPS_EVENTS} from "@/lib/tauri-events";
@@ -621,6 +623,7 @@ type AutomationDelayField =
 
 export function SpecialOpsPage() {
     const isNativeShell = useNativeShell();
+    const {uiWorld} = useTheme();
     const [bootstrap, setBootstrap] = useState(emptyBootstrap);
     const [timelineNowMs, setTimelineNowMs] = useState(Date.now());
     const [error, setError] = useState<string | null>(null);
@@ -1294,6 +1297,35 @@ export function SpecialOpsPage() {
     };
 
     return <div className="space-y-4">
+        {uiWorld === "blackmark" ? (
+            <SpecialOpsBlackmarkView
+                accountActionError={accountActionError}
+                bootstrap={bootstrap}
+                controlsLocked={controlsLocked}
+                currentDay={currentDay}
+                error={error}
+                hasActiveRun={hasActiveRun}
+                isActiveRound={isActiveRound}
+                isNativeShell={isNativeShell}
+                nowMs={timelineNowMs}
+                onAddAccount={addAccount}
+                onConfirmAmmo={confirmTimelineAmmo}
+                onConfirmManualCheck={(accountId) => void confirmAccountManualCheck(accountId)}
+                onConfirmStation={confirmTimelineStation}
+                onPause={() => setPaused(!bootstrap.settings.paused)}
+                onReload={reload}
+                onRestore={(accountId) => void restoreAccountState(accountId)}
+                pauseTransition={pauseTransition}
+            >
+                {bootstrap.settings.accounts.length === 0 ? null : (
+                    <SpecialOpsProfitFilter
+                        bootstrap={bootstrap}
+                        isNativeShell={isNativeShell}
+                        onSave={saveProfitSettings}
+                    />
+                )}
+            </SpecialOpsBlackmarkView>
+        ) : <>
         <header className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-xl font-semibold">特勤处</h1>
             <div className="flex items-center gap-2">
@@ -1354,6 +1386,7 @@ export function SpecialOpsPage() {
             isNativeShell={isNativeShell}
             onSave={saveProfitSettings}
         />
+        </>}
         </>}
 
         <fieldset disabled={controlsLocked} className="contents">
