@@ -78,7 +78,8 @@ export function SpecialOpsBlackmarkView({
     const paused = bootstrap.settings.paused;
     const tasks = bootstrap.schedule.timelineTasks;
     const next = tasks[0] ?? null;
-    const spec = buildSpecs(bootstrap, next, nowMs);
+    const checkAccount = bootstrap.settings.accounts.find((account) => account.status !== "ready") ?? null;
+    const spec = buildSpecs(bootstrap, next, nowMs, checkAccount);
     const pauseLabel = paused && pauseTransition
         ? "正在继续"
         : pauseTransition
@@ -111,6 +112,16 @@ export function SpecialOpsBlackmarkView({
                             : <RiPauseLine className="size-4" aria-hidden="true"/>}
                         {pauseLabel}
                     </button>
+                    {checkAccount ? (
+                        <button
+                            className="bm-btn-ghost"
+                            disabled={!isNativeShell}
+                            onClick={() => onConfirmManualCheck(checkAccount.id)}
+                            type="button"
+                        >
+                            已人工检查
+                        </button>
+                    ) : null}
                     <button className="bm-btn-ghost inline-flex items-center gap-2" onClick={onReload} type="button">
                         <RiRefreshLine className="size-4" aria-hidden="true"/>
                         刷新
@@ -288,9 +299,14 @@ export function SpecialOpsBlackmarkView({
     );
 }
 
-function buildSpecs(bootstrap: SpecialOpsBootstrap, next: TimelineTask | null, nowMs: number) {
+function buildSpecs(
+    bootstrap: SpecialOpsBootstrap,
+    next: TimelineTask | null,
+    nowMs: number,
+    checkAccount: AccountPlan | null,
+) {
     const enabled = bootstrap.settings.accounts.filter((account) => account.enabled).length;
-    const checkAccount = bootstrap.settings.accounts.find((account) => account.status !== "ready");
+    const hasAccounts = bootstrap.settings.accounts.length > 0;
     let remaining = "--";
     let remainingLabel = "制作剩余";
     const crafting = bootstrap.settings.accounts
@@ -307,7 +323,11 @@ function buildSpecs(bootstrap: SpecialOpsBootstrap, next: TimelineTask | null, n
         next: next ? timelineTaskLabel(next) : "无",
         nextLabel: next ? `下一任务 · ${timelineDelayMinutes(next, nowMs)} 分钟` : "下一任务",
         enabled,
-        check: checkAccount ? accountStatusLabels[checkAccount.status] : "就绪",
+        check: checkAccount
+            ? accountStatusLabels[checkAccount.status]
+            : hasAccounts
+                ? "就绪"
+                : "无账号",
         checkLabel: checkAccount
             ? `账号 ${checkAccount.qqAccount || checkAccount.id} 需检查`
             : "人工检查",

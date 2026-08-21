@@ -9,6 +9,7 @@ import {PagePreviewBanner, SoftAlert} from "@/components/app/app-ui";
 import {BlackmarkSettingsPage} from "@/components/app/blackmark-settings-page";
 import {BlackmarkShell, isToolId} from "@/components/app/blackmark-shell";
 import {ConsoleShell} from "@/components/app/console-shell";
+import {readUiWorld} from "@/components/app/theme-utils";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
 import type {ToolId} from "@/components/app/tool-nav";
@@ -154,7 +155,11 @@ function AppShell() {
         const params = new URLSearchParams(window.location.search);
         return params.get("mode");
     }, []);
-    const [activeTool, setActiveTool] = useState<ToolId>("morse");
+    const [activeTool, setActiveTool] = useState<ToolId>(() => (
+        readUiWorld(typeof window === "undefined" ? null : window.localStorage) === "console"
+            ? "morse"
+            : "specialOps"
+    ));
     const [highlightCardId, setHighlightCardId] = useState<ToolHighlight>(null);
     const highlightNonceRef = useRef(0);
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -272,7 +277,13 @@ function AppShell() {
 
     const toolPage = (
         <>
-            {isNativeShell ? null : <div className="mb-2"><PagePreviewBanner/></div>}
+            {isNativeShell ? null : uiWorld === "blackmark"
+                ? (
+                    <div className="bm-alert mt-6" data-tone="warning">
+                        浏览器预览。原生命令已关。桌面端才跑特勤处与局内工具。
+                    </div>
+                )
+                : <div className="mb-2"><PagePreviewBanner/></div>}
             <GlobalEnabledConsumer activeTool={activeTool}/>
             <ToolPageSuspense>{renderToolPage(activeTool, highlightCardId, handleFavoritesNavigate)}</ToolPageSuspense>
         </>

@@ -1,5 +1,4 @@
-import {Fragment, type ReactNode} from "react";
-import {RiShutDownLine} from "@remixicon/react";
+import {Fragment, type ReactNode, useState} from "react";
 
 import {BlackmarkGlyph} from "@/components/app/blackmark-glyphs";
 import {BlackmarkSchemeToggle} from "@/components/app/blackmark-scheme-toggle";
@@ -40,23 +39,25 @@ export function BlackmarkShell({activePane, children, onPaneChange}: BlackmarkSh
                     <div className="navbar-end gap-4">
                         <ProfileSwitcher/>
                         <BlackmarkSchemeToggle/>
-                        <label className="flex items-center gap-2 text-xs font-bold tracking-[0.12em] uppercase">
-                            <RiShutDownLine className="size-3.5" aria-hidden="true"/>
+                        <div className="flex items-center gap-2 text-xs font-bold tracking-[0.12em] uppercase">
                             {globalEnabled ? "全局开" : "全局关"}
-                            <input
+                            <button
+                                aria-checked={globalEnabled}
                                 aria-label="全局总开关"
-                                checked={globalEnabled}
-                                className="toggle toggle-sm"
-                                onChange={(event) => setGlobalEnabled(event.target.checked)}
-                                type="checkbox"
-                            />
-                        </label>
+                                className="bm-switch"
+                                onClick={() => setGlobalEnabled(!globalEnabled)}
+                                role="switch"
+                                type="button"
+                            >
+                                <span aria-hidden="true" className="bm-switch-knob"/>
+                            </button>
+                        </div>
                     </div>
                 </header>
                 <div className="bm-stripe h-1 w-full" aria-hidden="true"/>
 
                 <main
-                    className="min-h-0 flex-1 overflow-y-auto pb-28 focus:outline-none"
+                    className="min-h-0 flex-1 overflow-y-auto pb-36 scroll-pb-36 focus:outline-none"
                     id="app-content"
                     tabIndex={-1}
                 >
@@ -102,8 +103,14 @@ function DockItem({
     label: string;
     onSelect: () => void;
 }) {
+    const [tipOpen, setTipOpen] = useState(false);
     return (
-        <Tooltip delayDuration={180} disableHoverableContent open={active ? false : undefined}>
+        <Tooltip
+            delayDuration={180}
+            disableHoverableContent
+            onOpenChange={(open) => setTipOpen(active ? false : open)}
+            open={!active && tipOpen}
+        >
             <TooltipTrigger asChild>
                 <button
                     aria-current={active ? "page" : undefined}

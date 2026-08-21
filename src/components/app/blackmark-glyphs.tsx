@@ -87,10 +87,10 @@ export function BlackmarkGlyph({id}: {id: BlackmarkPaneId}) {
         case "morse":
             return glyph(
                 <>
-                    <rect fill="currentColor" height="3.2" width="3.2" x="3.2" y="10.4"/>
-                    <rect fill="currentColor" height="3.2" width="3.2" x="8.2" y="10.4"/>
-                    <rect fill="currentColor" height="3.2" width="3.2" x="13.2" y="10.4"/>
-                    <rect fill="currentColor" height="3.2" width="4.4" x="18.2" y="10.4"/>
+                    <rect fill="currentColor" height="3" width="3" x="2.5" y="10.5"/>
+                    <rect fill="currentColor" height="3" width="3" x="7.5" y="10.5"/>
+                    <rect fill="currentColor" height="3" width="3" x="12.5" y="10.5"/>
+                    <rect fill="currentColor" height="3" width="6.5" x="17" y="10.5"/>
                 </>,
             );
         case "settings":

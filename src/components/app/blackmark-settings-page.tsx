@@ -7,13 +7,13 @@ export function BlackmarkSettingsPage() {
 
     return (
         <BlackmarkPage
-            copy="界面世界与配色正交。黑标用夜航或日间；战地三套配色只在战地里改。"
+            copy="主窗口外观。黑标分夜航和日间；战地三套配色只在战地里改。游戏 overlay 不跟换。"
             title="设置"
         >
             <section className="px-8 pb-16">
-                <h2 className="text-2xl font-bold tracking-tight uppercase">界面世界</h2>
+                <h2 className="text-2xl font-bold tracking-tight uppercase">主窗口外观</h2>
                 <p className="bm-muted mt-2 max-w-[60ch] text-sm font-light">
-                    切换立即换壳。overlay 窗不跟随。
+                    切换立即换壳。游戏 overlay 不跟随。
                 </p>
                 <div className="mt-8 grid gap-px md:grid-cols-2">
                     <WorldCard
@@ -32,9 +32,9 @@ export function BlackmarkSettingsPage() {
 
                 {uiWorld === "blackmark" ? (
                     <>
-                        <h2 className="mt-16 text-2xl font-bold tracking-tight uppercase">色相</h2>
+                        <h2 className="mt-16 text-2xl font-bold tracking-tight uppercase">夜航与日间</h2>
                         <p className="bm-muted mt-2 max-w-[60ch] text-sm font-light">
-                            结构不变，只反转底与字。
+                            结构不变，只反转底与字。也可点顶栏日月按钮。
                         </p>
                         <div className="mt-8 grid gap-px md:grid-cols-2">
                             <WorldCard

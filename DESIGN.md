@@ -31,6 +31,7 @@ colors:
   blackmark-hair-day: "#c8c8c8"
   blackmark-ink-day: "#111111"
   blackmark-body-day: "#4a4a4a"
+  blackmark-muted-day: "#575757"
   blackmark-success: "#0fa336"
   blackmark-warning: "#f4b400"
   blackmark-electric: "#0653b6"

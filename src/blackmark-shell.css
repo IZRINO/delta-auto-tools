@@ -51,7 +51,7 @@ html[data-ui-world="blackmark"][data-scheme="day"] {
     --bm-hair: #c8c8c8;
     --bm-ink: #111111;
     --bm-body: #4a4a4a;
-    --bm-muted: #7a7a7a;
+    --bm-muted: #575757;
     --color-warning-content: #111111;
     color-scheme: light;
 }
@@ -107,7 +107,7 @@ html[data-ui-world="blackmark"][data-scheme="day"] {
     --bm-hair: #c8c8c8;
     --bm-ink: #111111;
     --bm-body: #4a4a4a;
-    --bm-muted: #7a7a7a;
+    --bm-muted: #575757;
     --bm-dock: rgb(255 255 255 / 0.92);
     --bm-active-fg: #ffffff;
     --bm-active-bg: #111111;
@@ -290,9 +290,9 @@ html[data-ui-world="blackmark"][data-scheme="day"] {
 /* Portal 到 body，吃 html[data-ui-world] 而不是 .bm-stage 变量。 */
 html[data-ui-world="blackmark"] .bm-dock-tip {
     border-radius: 0;
-    border: 1px solid #3c3c3c;
-    background: #1a1a1a;
-    color: #ffffff;
+    border: 1px solid var(--bm-hair);
+    background: var(--bm-elevated);
+    color: var(--bm-ink);
     box-shadow: none;
     padding: 8px 12px;
     font-family: "Noto Sans SC", "Inter Variable", "Segoe UI", sans-serif;
@@ -301,12 +301,6 @@ html[data-ui-world="blackmark"] .bm-dock-tip {
     letter-spacing: 0.14em;
     line-height: 1;
     text-transform: uppercase;
-}
-
-html[data-ui-world="blackmark"][data-scheme="day"] .bm-dock-tip {
-    border-color: #c8c8c8;
-    background: #e8e8e8;
-    color: #111111;
 }
 
 html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
@@ -322,8 +316,8 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
 .bm-scheme-toggle {
     display: grid;
     place-items: center;
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -398,10 +392,47 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     transform: rotate(0deg);
 }
 
+.bm-switch {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--bm-ink);
+    background: transparent;
+    border-radius: 9999px;
+    cursor: pointer;
+}
+
+.bm-switch:focus-visible {
+    outline: 2px solid var(--bm-ink);
+    outline-offset: 3px;
+}
+
+.bm-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: var(--bm-ink);
+    transition: transform 180ms var(--ease-out);
+}
+
+.bm-switch[aria-checked="true"] {
+    background: var(--bm-ink);
+}
+
+.bm-switch[aria-checked="true"] .bm-switch-knob {
+    transform: translateX(18px);
+    background: var(--bm-canvas);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .bm-scheme-rays,
     .bm-scheme-cut,
     .bm-scheme-core,
+    .bm-switch-knob,
     .bm-stage,
     html[data-ui-world="blackmark"] {
         transition: none;
@@ -492,6 +523,10 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.025em;
+}
+
+.bm-spec .value.bm-readout {
+    font-weight: 600;
 }
 
 .bm-spec .label {
@@ -605,6 +640,7 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
 
 .bm-alert[data-tone="warning"] {
     border-color: #f4b400;
+    color: var(--bm-ink);
 }
 
 .bm-alert[data-tone="error"] {
@@ -656,4 +692,99 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
 .bm-stage ::selection {
     background: #1c69d4;
     color: #fff;
+}
+
+.bm-ops-fold {
+    color: var(--bm-body);
+}
+
+.bm-ops-fold h2,
+.bm-ops-fold h3,
+.bm-ops-fold .card-title {
+    color: var(--bm-ink);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.bm-ops-fold .btn {
+    height: 40px;
+    min-height: 40px;
+    border-radius: 0;
+    border: 1px solid var(--bm-hair);
+    background: transparent;
+    color: var(--bm-body);
+    box-shadow: none;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.bm-ops-fold .btn:hover:not(:disabled),
+.bm-ops-fold .btn-primary:hover:not(:disabled) {
+    border-color: var(--bm-ink);
+    background: var(--bm-ink);
+    color: var(--bm-canvas);
+}
+
+.bm-ops-fold .btn-primary {
+    border-color: var(--bm-ink);
+    color: var(--bm-ink);
+    background: transparent;
+}
+
+.bm-ops-fold .input,
+.bm-ops-fold .select,
+.bm-ops-fold textarea {
+    border-radius: 0;
+    background: var(--bm-canvas);
+    border-color: var(--bm-hair);
+    color: var(--bm-ink);
+    box-shadow: none;
+}
+
+.bm-ops-fold .toggle:checked {
+    background: var(--bm-ink);
+    border-color: var(--bm-ink);
+}
+
+.bm-ops-fold .label-text,
+.bm-ops-fold .text-base-content\/60,
+.bm-ops-fold .text-base-content\/70,
+.bm-ops-fold .text-base-content\/50 {
+    color: var(--bm-muted);
+}
+
+.bm-ops-fold .table {
+    border-radius: 0;
+}
+
+.bm-ops-fold .table :where(th, td) {
+    background: transparent;
+    border-color: var(--bm-hair);
+    color: var(--bm-body);
+}
+
+.bm-ops-fold .table th {
+    color: var(--bm-muted);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.bm-ops-fold .join,
+.bm-ops-fold .join-item {
+    border-radius: 0;
+}
+
+.bm-ops-fold .badge {
+    border-radius: 0;
+}
+
+html[data-ui-world="blackmark"] .modal-box {
+    border-radius: 0;
+    background: var(--bm-surface);
+    color: var(--bm-ink);
+    border: 1px solid var(--bm-hair);
+    box-shadow: none;
 }

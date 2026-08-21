@@ -1050,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "delta-auto-tools"
-version = "0.20.1"
+version = "1.0.0-beta.1"
 dependencies = [
  "chrono",
  "crossbeam-channel",

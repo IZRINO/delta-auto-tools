@@ -61,7 +61,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(html).toContain("添加账号");
         expect(html).not.toContain("未来 24 小时暂无任务");
         expect(html).not.toContain("开始当前到期轮次");
-        expect(html).toContain('class="card card-border');
+        expect(html).toContain("bm-ops-fold");
         expect(html).toContain('class="select');
     });
 
@@ -134,8 +134,8 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("默认子弹兑换顺序");
         expect(pageSource).toContain("defaultBusinessConfig.ammoTargets");
         expect(pageSource).toContain("AmmoTargetEditor");
-        expect(pageSource).toContain('<details className="collapse collapse-arrow">');
-        expect(pageSource).toContain('<summary className="collapse-title">默认子弹兑换顺序</summary>');
+        expect(pageSource).toContain('bm ? foldBox : "collapse collapse-arrow"');
+        expect(pageSource).toContain("默认子弹兑换顺序");
     });
 
     it("限时商品使用原生颜色面板且不再绑定取色区域", () => {
@@ -173,8 +173,9 @@ describe("SpecialOpsPage 登录试运行配置", () => {
     });
 
     it("账号独立设置默认折叠", () => {
-        expect(pageSource).toContain('<summary className="collapse-title">独立设置</summary>');
-        expect(pageSource).toContain('<div className="collapse-content">');
+        expect(pageSource).toContain("独立设置");
+        expect(pageSource).toContain('bm ? foldSummary : "collapse-title"');
+        expect(pageSource).toContain("collapse-content");
     });
 
     it("子弹入口显示两段固定等待并按普通与赛季稳定分组", () => {

@@ -24,7 +24,7 @@ import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
 import {useNativeShell} from "@/hooks/use-native-shell";
 import {useTheme} from "@/hooks/use-theme";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {scrollElementIntoView} from "@/lib/utils";
+import {cn, scrollElementIntoView} from "@/lib/utils";
 import {SPECIAL_OPS_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
 import {
@@ -624,6 +624,16 @@ type AutomationDelayField =
 export function SpecialOpsPage() {
     const isNativeShell = useNativeShell();
     const {uiWorld} = useTheme();
+    const bm = uiWorld === "blackmark";
+    const foldBox = bm
+        ? "border border-[var(--bm-hair)] bg-[var(--bm-surface)]"
+        : "rounded-box border border-base-300 bg-base-100";
+    const foldWell = bm
+        ? "border border-[var(--bm-hair)] bg-[var(--bm-elevated)] p-3"
+        : "rounded-box bg-base-200 p-3";
+    const foldSummary = bm
+        ? "cursor-pointer px-4 py-3 text-sm font-bold tracking-[0.12em] uppercase"
+        : "cursor-pointer px-4 py-3 font-semibold";
     const [bootstrap, setBootstrap] = useState(emptyBootstrap);
     const [timelineNowMs, setTimelineNowMs] = useState(Date.now());
     const [error, setError] = useState<string | null>(null);
@@ -1318,11 +1328,13 @@ export function SpecialOpsPage() {
                 pauseTransition={pauseTransition}
             >
                 {bootstrap.settings.accounts.length === 0 ? null : (
-                    <SpecialOpsProfitFilter
-                        bootstrap={bootstrap}
-                        isNativeShell={isNativeShell}
-                        onSave={saveProfitSettings}
-                    />
+                    <div className="bm-ops-fold">
+                        <SpecialOpsProfitFilter
+                            bootstrap={bootstrap}
+                            isNativeShell={isNativeShell}
+                            onSave={saveProfitSettings}
+                        />
+                    </div>
                 )}
             </SpecialOpsBlackmarkView>
         ) : <>
@@ -1389,9 +1401,10 @@ export function SpecialOpsPage() {
         </>}
         </>}
 
+        <div className={bm ? "bm-ops-fold space-y-px px-8 pb-16" : undefined}>
         <fieldset disabled={controlsLocked} className="contents">
-        <details className="rounded-box border border-base-300 bg-base-100">
-            <summary className="cursor-pointer px-4 py-3 font-semibold">全局配置</summary>
+        <details className={foldBox}>
+            <summary className={foldSummary}>全局配置</summary>
             <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2">
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">WeGame 可执行文件</legend>
@@ -1428,8 +1441,8 @@ export function SpecialOpsPage() {
         </details>
         </fieldset>
 
-        <details className="rounded-box border border-base-300 bg-base-100">
-            <summary className="cursor-pointer px-4 py-3 font-semibold">试运行</summary>
+        <details className={foldBox}>
+            <summary className={foldSummary}>试运行</summary>
             <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2 md:items-end">
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">试运行账号</legend>
@@ -1467,7 +1480,7 @@ export function SpecialOpsPage() {
                     {!isActiveRound && <Button disabled={!hasActiveRun || runSnapshot?.status === "stopping"} variant="outline" onClick={() => void cancelLoginTrial()}>
                         <RiStopCircleLine data-icon="inline-start"/>取消本次试运行
                     </Button>}
-                {runSnapshot && <div className="grid gap-2 rounded-box bg-base-200 p-3 text-sm sm:col-span-2 sm:grid-cols-2 lg:grid-cols-4">
+                {runSnapshot && <div className={cn("grid gap-2 text-sm sm:col-span-2 sm:grid-cols-2 lg:grid-cols-4", foldWell)}>
                     <div><span className="text-base-content/60">步骤</span><p className="font-medium">{runSnapshot.currentStep ?? "准备"}</p></div>
                     <div><span className="text-base-content/60">消息</span><p className="font-medium">{runSnapshot.message}</p></div>
                     <div><span className="text-base-content/60">倒计时</span><p className="font-medium">{runSnapshot.countdownSeconds === null ? "-" : `${runSnapshot.countdownSeconds} 秒`}</p></div>
@@ -1482,10 +1495,10 @@ export function SpecialOpsPage() {
         </details>
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section className="card card-border bg-base-100">
-            <div className="card-body gap-3">
+        <section className={cn(foldBox, bm ? "p-4" : "card card-border bg-base-100")}>
+            <div className={bm ? "flex flex-col gap-3" : "card-body gap-3"}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1"><h2 className="card-title">限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 共用全局配置。"/></div>
+                    <div className="flex items-center gap-1"><h2 className={bm ? "text-lg" : "card-title"}>限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 共用全局配置。"/></div>
                     <label className="flex items-center gap-2 text-sm"><Switch checked={limitedSupply.enabled} onCheckedChange={(enabled) => updateLimitedSupply({enabled})}/>启用</label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1495,7 +1508,7 @@ export function SpecialOpsPage() {
                 <div className="grid gap-3 lg:grid-cols-2">
                     {[0, 1].map((colorIndex) => {
                         const color = limitedSupply.colors[colorIndex] ?? [0, 0, 0];
-                        return <div key={colorIndex} className="rounded-box border border-base-300 p-3">
+                        return <div key={colorIndex} className={foldWell}>
                             <h3 className="font-medium">颜色 {colorIndex + 1}</h3>
                             <div className="mt-2 flex items-end gap-2">
                                 <label className="form-control gap-1">
@@ -1534,12 +1547,12 @@ export function SpecialOpsPage() {
 
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
+        <section className={cn("space-y-3 p-4", foldBox)}>
             <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">默认账号配置</h2><HelpHint content="独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。"/></div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {bootstrap.settings.defaultBusinessConfig.stations.map((station) => {
                     const recipeTarget = activeEnvironment?.targets.find((target) => target.key === `craft.recipe.${station.kind}`);
-                    return <div key={station.kind} className="rounded-box bg-base-200 p-3">
+                    return <div key={station.kind} className={foldWell}>
                         <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateDefaultStation(station, {enabled})}/></label>
                         <div className="mt-2 grid grid-cols-2 gap-2">
                             <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateDefaultStation(station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
@@ -1553,9 +1566,9 @@ export function SpecialOpsPage() {
                     </div>;
                 })}
             </div>
-            <details className="collapse collapse-arrow">
-                <summary className="collapse-title">默认交易行购买</summary>
-                <div className="collapse-content grid gap-3 sm:grid-cols-2">
+            <details className={bm ? foldBox : "collapse collapse-arrow"}>
+                <summary className={bm ? foldSummary : "collapse-title"}>默认交易行购买</summary>
+                <div className={bm ? "grid gap-3 border-t border-[var(--bm-hair)] p-4 sm:grid-cols-2" : "collapse-content grid gap-3 sm:grid-cols-2"}>
                     <p className="text-xs text-base-content/60 sm:col-span-2">时间窗口适用于所有账号</p>
                     <label className="form-control gap-1"><span className="label-text text-xs">开放开始时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowStartMinute)} onCommit={(value) => updateMarketPurchase({windowStartMinute: timeToMinutes(value)})}/></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">开放结束时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowEndMinute)} onCommit={(value) => updateMarketPurchase({windowEndMinute: timeToMinutes(value)})}/></label>
@@ -1571,9 +1584,9 @@ export function SpecialOpsPage() {
                     </div>
                 </div>
             </details>
-            <details className="collapse collapse-arrow">
-                <summary className="collapse-title">默认子弹兑换顺序</summary>
-                <div className="collapse-content">
+            <details className={bm ? foldBox : "collapse collapse-arrow"}>
+                <summary className={bm ? foldSummary : "collapse-title"}>默认子弹兑换顺序</summary>
+                <div className={bm ? "border-t border-[var(--bm-hair)] p-4" : "collapse-content"}>
                     <AmmoTargetEditor
                         title="子弹兑换顺序"
                         targets={bootstrap.settings.defaultBusinessConfig.ammoTargets}
@@ -1606,15 +1619,17 @@ export function SpecialOpsPage() {
                 const due = bootstrap.schedule.dueAccounts.find((item) => item.accountId === account.id);
                 const business = account.independentBusinessConfig;
                 const manualCheckRequired = account.status === "needsManualLogin" || account.status === "loginFailed" || account.status === "manualCheckRequired" || account.status === "uncertain" || account.status === "isolated";
-                return <article id={`special-ops-account-${account.id}`} key={account.id} className="scroll-mt-4 rounded-box border border-base-300 bg-base-100 p-4">
+                return <article id={`special-ops-account-${account.id}`} key={account.id} className={cn("scroll-mt-4 p-4", foldBox)}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{accountStatusLabels[account.status]}</p></div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                             <fieldset disabled={controlsLocked} className="contents">
                                 <Button size="sm" variant="outline" onClick={() => openCorrection(account.id)}>人工校正制作与子弹状态</Button>
                             </fieldset>
-                            {manualCheckRequired && <Button size="sm" variant="outline" disabled={!isNativeShell} onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
-                            <Button
+                            {uiWorld === "blackmark" || !manualCheckRequired
+                                ? null
+                                : <Button size="sm" variant="outline" disabled={!isNativeShell} onClick={() => void confirmAccountManualCheck(account.id)}>已人工检查</Button>}
+                            {uiWorld === "blackmark" ? null : <Button
                                 size="sm"
                                 variant="outline"
                                 disabled={!accountRestorable(account, currentDay) || !isNativeShell}
@@ -1622,7 +1637,7 @@ export function SpecialOpsPage() {
                                     ? "清除异常状态：制作台按异常前剩余时间恢复，失败与当天已兑换子弹回未兑换"
                                     : "当前账号没有需要恢复的异常状态"}
                                 onClick={() => void restoreAccountState(account.id)}
-                            ><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>
+                            ><RiRefreshLine data-icon="inline-start"/>一键恢复状态</Button>}
                             <fieldset disabled={controlsLocked} className="contents">
                                 <span>启用</span>
                                 <Switch checked={account.enabled} aria-label={`启用账号 ${index + 1}`} onCheckedChange={(enabled) => updateAccount(account, {enabled})}/>
@@ -1638,16 +1653,16 @@ export function SpecialOpsPage() {
                         <label className="form-control gap-1"><span className="label-text">QQ 账号（纯数字）</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/><span className="text-xs text-base-content/60">需提前在 WeGame 登录并勾选“记住密码”</span></label>
                         <label className="flex items-center gap-2 self-end text-sm"><Switch checked={account.independentSettingsEnabled} onCheckedChange={(enabled) => setIndependentSettings(account, enabled)}/>独立设置</label>
                     </div>
-                    {!account.independentSettingsEnabled ? <div className="mt-3 rounded-box bg-base-200 p-3 text-sm">
+                    {!account.independentSettingsEnabled ? <div className={cn("mt-3 text-sm", foldWell)}>
                         <span className="font-medium">继承默认配置</span>
-                    </div> : business ? <details className="collapse collapse-arrow mt-3">
-                    <summary className="collapse-title">独立设置</summary>
-                    <div className="collapse-content">
+                    </div> : business ? <details className={cn("mt-3", bm ? foldBox : "collapse collapse-arrow")}>
+                    <summary className={bm ? foldSummary : "collapse-title"}>独立设置</summary>
+                    <div className={bm ? "border-t border-[var(--bm-hair)] p-4" : "collapse-content"}>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {business.stations.map((station) => {
                             const runtime = account.stations.find((item) => item.kind === station.kind);
                             const recipePoint = business.recipePoints.find((item) => item.kind === station.kind);
-                            return <div key={station.kind} className="rounded-box bg-base-200 p-3">
+                            return <div key={station.kind} className={foldWell}>
                                 <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateIndependentStation(account, station, {enabled})}/></label>
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                     <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateIndependentStation(account, station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
@@ -1674,9 +1689,9 @@ export function SpecialOpsPage() {
                         onChange={(ammoTargets) => updateIndependentBusiness(account, {ammoTargets})}
                         onSelectPoint={(target) => activeEnvironment && void beginCalibration(activeEnvironment, `business.ammo.${target.id}`, account.id)}
                     />
-                    {business.market && <details className="collapse collapse-arrow mt-3 border border-base-300">
-                        <summary className="collapse-title">独立交易行配置</summary>
-                        <div className="collapse-content grid gap-3 sm:grid-cols-2">
+                    {business.market && <details className={cn("mt-3", bm ? foldBox : "collapse collapse-arrow border border-base-300")}>
+                        <summary className={bm ? foldSummary : "collapse-title"}>独立交易行配置</summary>
+                        <div className={bm ? "grid gap-3 border-t border-[var(--bm-hair)] p-4 sm:grid-cols-2" : "collapse-content grid gap-3 sm:grid-cols-2"}>
                             <label className="flex items-center gap-2 text-sm"><Switch checked={business.market?.enabled ?? false} onCheckedChange={(enabled) => updateIndependentBusiness(account, {market: {...business.market!, enabled}})}/>启用独立交易行购买</label>
                             <label className="form-control gap-1"><span className="label-text text-xs">购买次数</span><DraftInput type="number" min={1} value={String(business.market?.purchaseCount ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, purchaseCount: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
                             <label className="form-control gap-1"><span className="label-text text-xs">最高价</span><DraftInput type="number" min={1} value={String(business.market?.maxPrice ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, maxPrice: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
@@ -1699,14 +1714,14 @@ export function SpecialOpsPage() {
         </section>
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section id="special-ops-calibration" className="space-y-3 rounded-box border border-base-300 bg-base-100 p-4">
+        <section id="special-ops-calibration" className={cn("space-y-3 p-4", foldBox)}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">校准</h2><HelpHint content="坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。"/></div>
             </div>
             {calibrationTestResult && <SoftAlert tone="info">{calibrationTestResult}</SoftAlert>}
             {activeEnvironment && <>
-                <div className="overflow-x-auto rounded-box border border-base-300">
-                    <table className="table table-sm">
+                <div className={cn("overflow-x-auto", bm ? "border border-[var(--bm-hair)]" : "rounded-box border border-base-300")}>
+                    <table className={bm ? "bm-table" : "table table-sm"}>
                         <thead><tr><th>步骤</th><th>类型</th><th>坐标</th><th>参考图</th><th className="text-right">操作</th></tr></thead>
                         <tbody>{activeEnvironment.targets.map((target) => <Fragment key={target.key}><tr>
                             <td><div className="font-medium">{target.label}</div><div className="font-mono text-caption text-base-content/50">{target.key}</div>{target.guardAnyOf.length > 0 && <div className="mt-1 text-caption text-base-content/60">前置：{target.guardAnyOf.join(" / ")}</div>}</td>
@@ -1775,6 +1790,7 @@ export function SpecialOpsPage() {
             </>}
         </section>
         </fieldset>
+        </div>
         {correctionAccount && <dialog open className="modal modal-middle">
             <div className="modal-box max-w-3xl">
                 <h3 className="text-lg font-semibold">人工校正制作与子弹状态</h3>
