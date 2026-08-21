@@ -8,6 +8,7 @@ import {
     useTimerOverlayBootstrap
 } from "@/components/app/timer-utils";
 import {counterRunsById, useCounterOverlayBootstrap} from "@/components/app/counter-utils";
+import {OverlayReadoutShell} from "@/components/app/app-ui";
 import {PositionOverlay} from "@/components/ui/position-overlay";
 import {Progress} from "@/components/ui/progress";
 import {cn} from "@/lib/utils";
@@ -91,11 +92,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
     }
 
     return (
-        <div
-            className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white"
-            style={{opacity}}>
-            <div
-                className="h-full w-full overflow-hidden rounded-md border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
+        <OverlayReadoutShell opacity={opacity}>
                 {bootstrap?.settings.timers.filter((t) => t.enabled && t.groupId === groupId && (group?.enabled ?? true)).map((timer) => {
                     const run = runsById.get(timer.id);
                     const finished = run?.status === "finished";
@@ -138,8 +135,7 @@ export function TimerDisplayOverlay({groupId, isNativeShell}: { groupId: string;
                         </div>
                     );
                 })}
-            </div>
-        </div>
+        </OverlayReadoutShell>
     );
 }
 
@@ -157,11 +153,7 @@ export function CounterDisplayOverlay({groupId, isNativeShell}: { groupId: strin
     const opacity = group?.display.fontOpacity ?? bootstrap?.settings.display.fontOpacity ?? 0.92;
 
     return (
-        <div
-            className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white"
-            style={{opacity}}>
-            <div
-                className="h-full w-full overflow-hidden rounded-md border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]">
+        <OverlayReadoutShell opacity={opacity}>
                 {bootstrap?.settings.counters.filter((c) => c.enabled && c.groupId === groupId && (group?.enabled ?? true)).map((counter) => {
                     const run = counterRunsByIdMap.get(counter.id);
                     return (
@@ -172,8 +164,7 @@ export function CounterDisplayOverlay({groupId, isNativeShell}: { groupId: strin
                         </div>
                     );
                 })}
-            </div>
-        </div>
+        </OverlayReadoutShell>
     );
 }
 

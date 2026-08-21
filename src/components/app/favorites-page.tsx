@@ -19,12 +19,11 @@ import {CardHeader} from "@/components/ui/card";
 import {Field, FieldLabel} from "@/components/ui/field";
 import {Switch} from "@/components/ui/switch";
 import {
-    AppPage,
     CardBody,
     ControlTile,
-    MacroHeader,
     TacticalCard,
     TacticalEmptyState,
+    ToolPageFrame,
 } from "@/components/app/app-ui";
 import type {RapidfireBootstrap, RapidfireCardForm} from "@/components/app/rapidfire-types";
 import {rapidfireSettingsToForm} from "@/components/app/rapidfire-types";
@@ -298,17 +297,15 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
 
     if (details.length === 0) {
         return (
-            <AppPage>
-                <MacroHeader title="收藏夹"/>
+            <ToolPageFrame title="收藏夹">
                 <TacticalEmptyState className="col-span-12" icon={<RiStarLine/>} title="还没有收藏"
                                     description="去计时器、计数器或连发器工具里，点击卡片头部的星标即可加入收藏。"/>
-            </AppPage>
+            </ToolPageFrame>
         );
     }
 
     return (
-        <AppPage>
-            <MacroHeader title="收藏夹"/>
+        <ToolPageFrame title="收藏夹">
 
             <ControlTile className="col-span-12 flex flex-wrap items-center gap-x-5 gap-y-2 px-3 py-2">
                 <Field orientation="horizontal" className="w-auto gap-2">
@@ -353,7 +350,7 @@ export function FavoritesPage({onNavigate}: FavoritesPageProps) {
                     />
                 ))}
             </section>
-        </AppPage>
+        </ToolPageFrame>
     );
 }
 

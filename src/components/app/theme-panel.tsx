@@ -3,7 +3,7 @@ import {RiDownloadLine, RiUploadLine, RiCheckLine, RiPaletteLine} from "@remixic
 
 import {Button} from "@/components/ui/button";
 import {ScrollArea} from "@/components/ui/scroll-area";
-import {FieldUnit} from "@/components/app/app-ui";
+import {FieldUnit, SoftAlert} from "@/components/app/app-ui";
 import {cn} from "@/lib/utils";
 
 import {
@@ -217,9 +217,9 @@ export function ThemePanel() {
 
     if (error) {
         return (
-            <div className="alert alert-error alert-soft text-sm">
+            <SoftAlert className="text-sm">
                 主题加载失败：{error}
-            </div>
+            </SoftAlert>
         );
     }
 
@@ -242,10 +242,10 @@ export function ThemePanel() {
                 <FieldUnit header="预设主题">
                     {/* 当存在自定义 overrides 时显示「已自定义」状态条，预设均不选中 */}
                     {bootstrap.overrides.length > 0 && (
-                        <div className="alert alert-info alert-soft mb-3 py-2 text-sm">
+                        <SoftAlert className="mb-3 py-2 text-sm" tone="info">
                             <RiPaletteLine className="size-3" aria-hidden="true"/>
                             已自定义配色，点击预设可恢复原主题配色
-                        </div>
+                        </SoftAlert>
                     )}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {allThemes.map((theme) => {

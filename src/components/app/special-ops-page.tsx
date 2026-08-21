@@ -14,7 +14,7 @@ import {
     RiStopCircleLine,
 } from "@remixicon/react";
 
-import {HelpHint} from "@/components/app/app-ui";
+import {HelpHint, SoftAlert} from "@/components/app/app-ui";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
@@ -419,7 +419,7 @@ function TimelineManualCorrection({
             <Button className="join-item" disabled={locked} size="xs" variant="outline" onClick={() => void submitAmmo(true)}>已兑换</Button>
             <Button className="join-item" disabled={locked} size="xs" variant="outline" onClick={() => void submitAmmo(false)}>未兑换</Button>
         </div>}
-        {state.error && <div role="alert" className="alert alert-error alert-soft py-2 text-xs"><span>{state.error}</span></div>}
+        {state.error && <SoftAlert className="py-2 text-xs">{state.error}</SoftAlert>}
     </div>;
 }
 
@@ -453,7 +453,7 @@ function TimelineLimitedAcknowledge({
         <Button size="xs" variant="outline" disabled={disabled || submitting || !cycleId} onClick={() => void submit()}>
             {submitting ? "正在确认" : "已查看高价值商品"}
         </Button>
-        {error && <div role="alert" className="alert alert-error alert-soft mt-1 py-1 text-xs"><span>{error}</span></div>}
+        {error && <SoftAlert className="mt-1 py-1 text-xs">{error}</SoftAlert>}
     </div>;
 }
 
@@ -520,8 +520,8 @@ function CorrectionLimitedSupply({
                 : ""}
             {limited?.checkedAtMs ? ` · 检查于 ${shanghaiTimeFormatter.format(limited.checkedAtMs)}` : ""}
         </p>
-        {limited?.lastError && <div role="alert" className="alert alert-error alert-soft mt-1 py-1 text-xs"><span>{limited.lastError}</span></div>}
-        {error && <div role="alert" className="alert alert-error alert-soft mt-2 py-2 text-xs"><span>{error}</span></div>}
+        {limited?.lastError && <SoftAlert className="mt-1 py-1 text-xs">{limited.lastError}</SoftAlert>}
+        {error && <SoftAlert className="mt-2 py-2 text-xs">{error}</SoftAlert>}
     </div>;
 }
 
@@ -1308,11 +1308,11 @@ export function SpecialOpsPage() {
             </div>
         </header>
 
-        {error && <div role="alert" className="alert alert-error"><span>{error}</span></div>}
+        {error && <SoftAlert>{error}</SoftAlert>}
 
-        {bootstrap.settings.paused && bootstrap.settings.pausedReason && <div role="alert" className="alert alert-warning alert-soft">
-            <span>{bootstrap.settings.pausedReason}</span>
-        </div>}
+        {bootstrap.settings.paused && bootstrap.settings.pausedReason && (
+            <SoftAlert tone="warning">{bootstrap.settings.pausedReason}</SoftAlert>
+        )}
 
         {bootstrap.settings.accounts.length === 0 ? <section className="card card-border bg-base-200">
             <div className="card-body gap-3">
@@ -1440,9 +1440,11 @@ export function SpecialOpsPage() {
                     <div><span className="text-base-content/60">倒计时</span><p className="font-medium">{runSnapshot.countdownSeconds === null ? "-" : `${runSnapshot.countdownSeconds} 秒`}</p></div>
                     <div><span className="text-base-content/60">状态</span><p className="font-medium">{runSnapshot.status}</p></div>
                 </div>}
-                {selectedAccount?.lastFailure && <div role="alert" className="alert alert-error alert-soft sm:col-span-2">
-                    <span>{selectedAccount.lastFailure.step}：{selectedAccount.lastFailure.message}（{new Date(selectedAccount.lastFailure.atMs).toLocaleString("zh-CN")}）</span>
-                </div>}
+                {selectedAccount?.lastFailure && (
+                    <SoftAlert className="sm:col-span-2">
+                        {selectedAccount.lastFailure.step}：{selectedAccount.lastFailure.message}（{new Date(selectedAccount.lastFailure.atMs).toLocaleString("zh-CN")}）
+                    </SoftAlert>
+                )}
             </div>
         </details>
 
@@ -1595,7 +1597,9 @@ export function SpecialOpsPage() {
                             </fieldset>
                         </div>
                     </div>
-                    {accountActionError?.accountId === account.id && <div role="alert" className="alert alert-error alert-soft mt-2 py-2 text-xs"><span>{accountActionError.message}</span></div>}
+                    {accountActionError?.accountId === account.id && (
+                        <SoftAlert className="mt-2 py-2 text-xs">{accountActionError.message}</SoftAlert>
+                    )}
                     <fieldset disabled={controlsLocked} className="contents">
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <label className="form-control gap-1"><span className="label-text">QQ 账号（纯数字）</span><DraftInput value={account.qqAccount} onCommit={(qqAccount) => updateAccount(account, {qqAccount})}/><span className="text-xs text-base-content/60">需提前在 WeGame 登录并勾选“记住密码”</span></label>
@@ -1652,7 +1656,7 @@ export function SpecialOpsPage() {
                         </div>
                     </details>}
                     </div>
-                    </details> : <div role="alert" className="alert alert-error mt-3"><span>独立设置已开启，但独立业务配置缺失。请关闭后重新开启。</span></div>}
+                    </details> : <SoftAlert className="mt-3">独立设置已开启，但独立业务配置缺失。请关闭后重新开启。</SoftAlert>}
                     </fieldset>
                 </article>;
             })}
@@ -1666,7 +1670,7 @@ export function SpecialOpsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">校准</h2><HelpHint content="坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。"/></div>
             </div>
-            {calibrationTestResult && <div role="alert" className="alert alert-info"><span>{calibrationTestResult}</span></div>}
+            {calibrationTestResult && <SoftAlert tone="info">{calibrationTestResult}</SoftAlert>}
             {activeEnvironment && <>
                 <div className="overflow-x-auto rounded-box border border-base-300">
                     <table className="table table-sm">
@@ -1742,10 +1746,10 @@ export function SpecialOpsPage() {
             <div className="modal-box max-w-3xl">
                 <h3 className="text-lg font-semibold">人工校正制作与子弹状态</h3>
                 <p className="mt-1 text-sm text-base-content/60">账号 {correctionAccount.qqAccount || correctionAccount.id}。选中项提交后原子恢复调度，未选中项保持不变。</p>
-                {correctionError && <div role="alert" className="alert alert-error mt-3"><span>{correctionError}</span></div>}
+                {correctionError && <SoftAlert className="mt-3">{correctionError}</SoftAlert>}
                 {correctionConfirming && correctionPayload ? (
                     <div className="mt-4">
-                        <div role="alert" className="alert alert-warning"><span>确认后将覆盖所选项的制作计时与子弹状态，并清除对应失败记录。</span></div>
+                        <SoftAlert tone="warning">确认后将覆盖所选项的制作计时与子弹状态，并清除对应失败记录。</SoftAlert>
                         <ul className="list mt-3">
                             {correctionPayload.map((item) => <li key={item.kind} className="list-row border-t border-base-300 px-0">
                                 <span className="font-medium">{STATION_LABELS[item.kind]}</span>

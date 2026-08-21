@@ -7,7 +7,7 @@ import {
     RiSearchLine,
 } from "@remixicon/react";
 
-import {HelpHint} from "@/components/app/app-ui";
+import {HelpHint, SoftAlert} from "@/components/app/app-ui";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
@@ -222,11 +222,13 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                 <Button disabled={!isNativeShell || saving || conflict || !dirty} size="sm" onClick={() => void save()}><RiSaveLine data-icon="inline-start"/>{saving ? "保存中" : "保存利润配置"}</Button>
             </div>
 
-            {(error || conflict || bootstrap.profitRuntime.configurationError || bootstrap.profitRuntime.lastSummary) && <div role="alert" className={`alert alert-soft ${error || conflict || bootstrap.profitRuntime.configurationError ? "alert-warning" : "alert-info"}`}>
-                <span>{error ?? (conflict ? "权威利润配置已更新，当前草稿未丢失；请重新载入后再编辑。" : bootstrap.profitRuntime.configurationError ?? bootstrap.profitRuntime.lastSummary)}</span>
-                {conflict && <Button size="xs" variant="outline" onClick={reloadDraft}>重新载入</Button>}
-            </div>}
-            {validation && <div role="alert" className="alert alert-success alert-soft"><span>Moligod 已验证“{validation.exactName}”，当前总利润 {formatProfit(validation.profit)}。</span></div>}
+            {(error || conflict || bootstrap.profitRuntime.configurationError || bootstrap.profitRuntime.lastSummary) && (
+                <SoftAlert tone={error || conflict || bootstrap.profitRuntime.configurationError ? "warning" : "info"}>
+                    <span>{error ?? (conflict ? "权威利润配置已更新，当前草稿未丢失；请重新载入后再编辑。" : bootstrap.profitRuntime.configurationError ?? bootstrap.profitRuntime.lastSummary)}</span>
+                    {conflict && <Button size="xs" variant="outline" onClick={reloadDraft}>重新载入</Button>}
+                </SoftAlert>
+            )}
+            {validation && <SoftAlert tone="success">Moligod 已验证“{validation.exactName}”，当前总利润 {formatProfit(validation.profit)}。</SoftAlert>}
 
             <details className="rounded-box border border-base-300">
                 <summary className="cursor-pointer px-4 py-3 font-medium">利润规则</summary>

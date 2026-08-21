@@ -16,13 +16,12 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/
 import {ScrollArea} from "@/components/ui/scroll-area";
 import {Switch} from "@/components/ui/switch";
 import {
-    AppPage,
     ChannelTabs,
     ConfigRow,
     EmptyState,
     FieldUnit,
     HelpHint,
-    MacroHeader,
+    ToolPageFrame,
 } from "@/components/app/app-ui";
 import {RegionSelectionOverlay} from "@/components/app/morse-overlay";
 import {
@@ -312,15 +311,14 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
     }
 
     return (
-        <AppPage className="auto-rows-max gap-3">
-            <MacroHeader
-                title="摩斯"
-                actions={
-                    <Badge variant={isBusy ? "outline" : canRun ? "default" : "ghost"}>
-                        {isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
-                    </Badge>
-                }
-            />
+        <ToolPageFrame
+            actions={
+                <Badge variant={isBusy ? "outline" : canRun ? "default" : "ghost"}>
+                    {isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
+                </Badge>
+            }
+            title="摩斯"
+        >
 
             {/* Channel Tabs */}
             <div className="col-span-12">
@@ -659,6 +657,6 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                     </FieldUnit>
                 )}
             </div>
-        </AppPage>
+        </ToolPageFrame>
     );
 }

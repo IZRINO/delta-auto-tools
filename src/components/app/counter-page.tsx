@@ -6,8 +6,6 @@ import {
   RiAddLine,
   RiDeleteBinLine,
   RiResetLeftLine,
-  RiStarFill,
-  RiStarLine,
   RiSubtractLine,
 } from "@remixicon/react";
 import {toast} from "sonner";
@@ -15,19 +13,21 @@ import {toast} from "sonner";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {CardHeader} from "@/components/ui/card";
-import {Field, FieldContent, FieldError, FieldGroup, FieldLabel} from "@/components/ui/field";
+import {Field, FieldContent, FieldGroup, FieldLabel} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
 import {
-  AppPage,
   CardBody,
-  ControlTile,
+  CardNameInput,
   DragButton,
+  FavoriteButton,
   HotkeyField,
-  MacroHeader,
+  MasterSwitchCard,
   SectionHeader,
+  SoftAlert,
   TacticalCard,
+  ToolPageFrame,
 } from "@/components/app/app-ui";
 import {SyncCardList} from "@/components/app/sync-card-list";
 import {SyncGroupSection} from "@/components/app/sync-group-section";
@@ -423,29 +423,18 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
     }, [isNativeShell]);
 
     return (
-        <AppPage className="auto-rows-max">
-            <MacroHeader
-                title="计数器"
-                actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
+        <ToolPageFrame
+            actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
+            error={pageError ? <SoftAlert>{pageError}</SoftAlert> : undefined}
+            title="计数器"
+        >
+            <MasterSwitchCard
+                ariaLabel="计数器总开关"
+                checked={Boolean(form?.counterEnabled)}
+                disabled={controlsDisabled || !form}
+                label={form?.counterEnabled ? "开" : "关"}
+                onCheckedChange={(checked) => updateForm("counterEnabled", checked)}
             />
-
-            {pageError ? (
-                <div className="col-span-12">
-                    <FieldError>{pageError}</FieldError>
-                </div>
-            ) : null}
-
-            <TacticalCard className="col-span-12">
-                <SectionHeader title="总开关"/>
-                <CardBody>
-                    <ControlTile className="flex items-center gap-3 bg-base-100">
-                        <Switch checked={Boolean(form?.counterEnabled)} disabled={controlsDisabled || !form}
-                                aria-label="计数器总开关"
-                                onCheckedChange={(checked) => updateForm("counterEnabled", checked)}/>
-                        <p className="font-medium text-sm">{form?.counterEnabled ? "开" : "关"}</p>
-                    </ControlTile>
-                </CardBody>
-            </TacticalCard>
 
             <div className="col-span-12 flex justify-end">
                 <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
@@ -499,7 +488,7 @@ function CounterWorkbench({highlightCardId, isNativeShell}: {
                 onAdd={addCounter}
                 disabled={controlsDisabled || !form}
             />
-        </AppPage>
+        </ToolPageFrame>
     );
 }
 
@@ -555,13 +544,12 @@ function CounterCard({
                       onPointerEnter={onDragOver}>
             <SectionHeader
                 title={(
-                    <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
-                        placeholder="输入卡片名称"
-                        value={counter.name || "计数器"}
+                    <CardNameInput
+                        ariaLabel="计数器名称"
                         disabled={controlsDisabled}
-                        onChange={(event) => onUpdate({name: event.currentTarget.value})}
-                        aria-label="计数器名称"
+                        fallback="计数器"
+                        onChange={(name) => onUpdate({name})}
+                        value={counter.name}
                     />
                 )}
                 description={`当前计数 · ${run?.value ?? counter.startValue}`}
@@ -591,19 +579,7 @@ function CounterCard({
                     <div
                         className="flex flex-wrap items-center justify-end gap-1.5 border-t-2 border-base-content pt-3 xl:border-t-0 xl:border-l-2 xl:pl-3 xl:pt-0">
                         <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
-                        <Button
-                            aria-label={isFavorite ? "取消收藏" : "加入收藏"}
-                            aria-pressed={isFavorite}
-                            className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
-                            data-icon="inline-start"
-                            disabled={controlsDisabled}
-                            onClick={onToggleFavorite}
-                            size="icon-sm"
-                            type="button"
-                            variant="outline"
-                        >
-                            {isFavorite ? <RiStarFill/> : <RiStarLine/>}
-                        </Button>
+                        <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
                         <Switch checked={counter.enabled} disabled={controlsDisabled} aria-label="启用计数器"
                                 onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
                         <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"

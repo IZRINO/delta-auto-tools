@@ -308,7 +308,7 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Do** 默认边框就用弹壳铜（base-300），一道 1px 就是全部边界。
 - **Do** 读数、坐标、快捷键、JSON 一律 JetBrains Mono + tabular-nums。
 - **Do** 状态同时用颜色与文字/图标表达（令牌状态 = 色点 + 剩余天数，不是只有色点）。
-- **Do** 新页面复用 `app-ui.tsx` 共享件（AppPage/MacroHeader/ConfigRow/DataWell/EmptyState/MacroNumber），三个以上页面同构时先扩共享件。
+- **Do** 新页面复用 `app-ui.tsx` 共享件。标准工具页骨架：`ToolPageFrame` → `MasterSwitchCard?` → `SyncGroupSection?` → `SyncCardList`。卡片头用 `CardNameInput` + `FavoriteButton` + `DragButton`。页级错误用 `SoftAlert`。overlay 读数窗用 `OverlayReadoutShell`。三个以上页面同构时先扩共享件。
 - **Do** 改主题 token 时三套内置主题同改同测，token key 集合保持 28 个一致。
 
 ### Don't:

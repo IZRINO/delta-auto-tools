@@ -2,27 +2,30 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
 import {TIMER_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
-import {RiAddLine, RiDeleteBinLine, RiStarFill, RiStarLine} from "@remixicon/react";
+import {RiAddLine, RiDeleteBinLine} from "@remixicon/react";
 import {toast} from "sonner";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
-import {Field, FieldContent, FieldError, FieldGroup, FieldLabel} from "@/components/ui/field";
+import {Field, FieldContent, FieldGroup, FieldLabel} from "@/components/ui/field";
 import {Input} from "@/components/ui/input";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Switch} from "@/components/ui/switch";
 import {ToggleGroup, ToggleGroupItem} from "@/components/ui/toggle-group";
 import {
-  AppPage,
   CardBody,
+  CardNameInput,
   ControlTile,
   DragButton,
+  FavoriteButton,
   HotkeyField,
-  MacroHeader,
+  MasterSwitchCard,
   runStateClass,
   SectionHeader,
+  SoftAlert,
   SurfaceToggleGroup,
   TacticalCard,
+  ToolPageFrame,
 } from "@/components/app/app-ui";
 import {SyncCardList} from "@/components/app/sync-card-list";
 import {SyncGroupSection} from "@/components/app/sync-group-section";
@@ -389,29 +392,18 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
     }, [isNativeShell, syncBootstrap]);
 
     return (
-        <AppPage className="auto-rows-max">
-            <MacroHeader
-                title="计时器"
-                actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
+        <ToolPageFrame
+            actions={bootstrap?.hotkeyError ? <Badge variant="outline">快捷键异常</Badge> : undefined}
+            error={pageError ? <SoftAlert>{pageError}</SoftAlert> : undefined}
+            title="计时器"
+        >
+            <MasterSwitchCard
+                ariaLabel="计时器总开关"
+                checked={Boolean(form?.timerEnabled)}
+                disabled={controlsDisabled || !form}
+                label={form?.timerEnabled ? "开" : "关"}
+                onCheckedChange={(checked) => updateForm("timerEnabled", checked)}
             />
-
-            {pageError ? (
-                <div className="col-span-12">
-                    <FieldError>{pageError}</FieldError>
-                </div>
-            ) : null}
-
-            <TacticalCard className="col-span-12">
-                <SectionHeader title="总开关"/>
-                <CardBody>
-                    <ControlTile className="flex items-center gap-3 bg-base-200">
-                        <Switch checked={Boolean(form?.timerEnabled)} disabled={controlsDisabled || !form}
-                                aria-label="计时器总开关"
-                                onCheckedChange={(checked) => updateForm("timerEnabled", checked)}/>
-                        <p className="font-medium text-sm">{form?.timerEnabled ? "开" : "关"}</p>
-                    </ControlTile>
-                </CardBody>
-            </TacticalCard>
 
             <div className="col-span-12 flex justify-end">
                 <Button type="button" variant="outline" size="sm" disabled={controlsDisabled || !form}
@@ -462,7 +454,7 @@ function TimerWorkbench({highlightCardId, isNativeShell}: {
                 onAdd={addTimer}
                 disabled={controlsDisabled || !form}
             />
-        </AppPage>
+        </ToolPageFrame>
     );
 }
 
@@ -513,13 +505,12 @@ function TimerCard({
                       data-timer-card={timer.id} data-favorite-card={`timer:${timer.id}`} onPointerEnter={onDragOver}>
             <SectionHeader
                 title={(
-                    <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
-                        placeholder="输入卡片名称"
-                        value={timer.name || "计时器"}
+                    <CardNameInput
+                        ariaLabel="计时器名称"
                         disabled={controlsDisabled}
-                        onChange={(event) => onUpdate({name: event.currentTarget.value})}
-                        aria-label="计时器名称"
+                        fallback="计时器"
+                        onChange={(name) => onUpdate({name})}
+                        value={timer.name}
                     />
                 )}
                 description={run ? `${timerSignalChar(timer, run)} ${Math.floor(run.currentSeconds)}s` : (timer.enabled ? "▢ 等待触发" : "○ 已禁用")}
@@ -537,12 +528,7 @@ function TimerCard({
                             </SelectContent>
                         </Select>
                         <DragButton controlsDisabled={controlsDisabled} onDragStart={onDragStart}/>
-                        <Button aria-label={isFavorite ? "取消收藏" : "加入收藏"} aria-pressed={isFavorite}
-                                className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
-                                disabled={controlsDisabled} onClick={onToggleFavorite} size="icon-sm" type="button"
-                                variant="outline">
-                            {isFavorite ? <RiStarFill/> : <RiStarLine/>}
-                        </Button>
+                        <FavoriteButton disabled={controlsDisabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
                         <Switch checked={timer.enabled} disabled={controlsDisabled} aria-label="启用计时器"
                                 onCheckedChange={(checked) => onUpdate({enabled: checked})}/>
                         <Button disabled={controlsDisabled} onClick={onRemove} size="icon-sm" type="button"

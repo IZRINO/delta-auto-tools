@@ -56,6 +56,38 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 - `--border` 在 daisyUI 中表示边框宽度；边框颜色使用 `base-300`、`primary`、`error` 等 daisyUI 语义色
 - 图标使用 `@remixicon/react`。Button 内图标必须设置 `data-icon="inline-start"` 或 `"inline-end"`
 
+## 新工具页骨架
+
+共享件在 `src/components/app/app-ui.tsx`。新工具页按此组装，不要再复制计时器/计数器页的壳层：
+
+```tsx
+<ToolPageFrame title="工具名" error={pageError ? <SoftAlert>{pageError}</SoftAlert> : undefined}>
+    <MasterSwitchCard
+        ariaLabel="工具总开关"
+        checked={enabled}
+        label={enabled ? "开" : "关"}
+        onCheckedChange={setEnabled}
+    />
+    <SyncGroupSection ... />
+    <SyncCardList
+        items={items}
+        renderCard={(item) => (
+            <TacticalCard>
+                <SectionHeader
+                    title={<CardNameInput ariaLabel="名称" fallback="卡片" value={item.name} onChange={...} />}
+                    actions={<><DragButton ... /><FavoriteButton ... /></>}
+                />
+            </TacticalCard>
+        )}
+        addButtonTitle="添加"
+        onAdd={add}
+        disabled={!enabled}
+    />
+</ToolPageFrame>
+```
+
+overlay 透明显示窗用 `OverlayReadoutShell`，不要再手写黑纱玻璃外壳。页级/行内提示用 `SoftAlert`（`tone`: error / warning / info / success），带标题的用 `InlineNotice`。攻略页布局特殊，继续直接用 `AppPage`。
+
 ## 文档中的文件引用
 
 提及源文件时，始终使用从仓库根开始的完整路径（如 `src-tauri/src/morse/mod.rs`，而非 `mod.rs`）。短文件名在渲染文档中会产生断链。

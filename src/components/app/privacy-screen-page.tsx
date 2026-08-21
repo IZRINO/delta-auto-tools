@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {open as openDialog} from "@tauri-apps/plugin-dialog";
 import {RiEyeOffLine, RiFolderOpenLine, RiImageLine} from "@remixicon/react";
 
-import {AppPage, HotkeyField, MacroHeader} from "@/components/app/app-ui";
+import {HotkeyField, SoftAlert, ToolPageFrame} from "@/components/app/app-ui";
 import {formatRecordedHotkey} from "@/components/app/morse-utils";
 import {Button} from "@/components/ui/button";
 import {useHotkeyRecorder} from "@/hooks/use-hotkey-recorder";
@@ -140,16 +140,13 @@ export function PrivacyScreenPage() {
     );
 
     return (
-        <AppPage>
-            <MacroHeader
-                actions={headerActions}
-                title="息屏"
-            />
+        <ToolPageFrame
+            actions={headerActions}
+            title="息屏"
+        >
             <section className="card card-border col-span-12 bg-base-100">
                 <div className="card-body gap-4">
-                    {!isNative && <div role="alert" className="alert alert-warning alert-soft">
-                        <span>息屏只在桌面端可用</span>
-                    </div>}
+                    {!isNative && <SoftAlert tone="warning">息屏只在桌面端可用</SoftAlert>}
                     <p className="text-sm text-base-content/70">只挡画面；识别截图、键鼠和 Alt+Tab 照常。关闭键画在主屏右下角。</p>
                     <HotkeyField
                         controlsDisabled={!isNative}
@@ -183,6 +180,6 @@ export function PrivacyScreenPage() {
                     {message && <p className="text-sm text-base-content/70">{message}</p>}
                 </div>
             </section>
-        </AppPage>
+        </ToolPageFrame>
     );
 }

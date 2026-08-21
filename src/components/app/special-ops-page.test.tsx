@@ -328,7 +328,8 @@ describe("SpecialOpsPage 登录试运行配置", () => {
 
     it("自动暂停原因在页头显式展示", () => {
         expect(pageSource).toContain("bootstrap.settings.pausedReason");
-        expect(pageSource).toContain("alert-warning");
+        expect(pageSource).toContain("SoftAlert");
+        expect(pageSource).toContain('tone="warning"');
     });
 
     it("人工判定选正在制作时预填异常前剩余时间", () => {

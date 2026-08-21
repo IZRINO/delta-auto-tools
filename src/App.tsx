@@ -18,7 +18,7 @@ import {FavoritesProvider, useFavorites} from "@/hooks/use-favorites";
 import {GlobalEnabledProvider, useGlobalEnabled} from "@/hooks/use-global-enabled";
 import {ThemeProvider} from "@/hooks/use-theme";
 import {ProfileProvider, useProfile} from "@/hooks/use-profile";
-import {PagePreviewBanner} from "@/components/app/app-ui";
+import {PagePreviewBanner, SoftAlert} from "@/components/app/app-ui";
 import {ProfileSwitcher} from "@/components/app/profile-switcher";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
 import {publishSettingsDialogState} from "@/components/app/settings-dialog-events";
@@ -273,10 +273,10 @@ function FavoritesIndexRailItem({active, count, onClick}: { active: boolean; cou
 
 function GlobalDisabledBanner() {
     return (
-        <div role="alert" className="alert alert-error alert-soft mb-3">
+        <SoftAlert className="mb-3">
             <RiShutDownLine className="size-4" aria-hidden="true"/>
             <span>全局已关闭</span>
-        </div>
+        </SoftAlert>
     );
 }
 

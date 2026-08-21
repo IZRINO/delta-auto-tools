@@ -5,6 +5,8 @@ import {
     RiDeleteBinLine,
     RiInformationLine,
     RiMapPinLine,
+    RiStarFill,
+    RiStarLine,
 } from "@remixicon/react";
 
 import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert";
@@ -51,6 +53,26 @@ export function MacroHeader({actions, className, title}: MacroHeaderProps) {
             </h1>
             {actions ? <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
         </header>
+    );
+}
+
+/* 新工具页骨架：ToolPageFrame → MasterSwitchCard? → SyncGroupSection? → SyncCardList */
+
+type ToolPageFrameProps = {
+    title: string;
+    actions?: ReactNode;
+    error?: ReactNode;
+    children: ReactNode;
+    className?: string;
+};
+
+export function ToolPageFrame({actions, children, className, error, title}: ToolPageFrameProps) {
+    return (
+        <AppPage className={cn("auto-rows-max", className)}>
+            <MacroHeader actions={actions} title={title}/>
+            {error ? <div className="col-span-12">{error}</div> : null}
+            {children}
+        </AppPage>
     );
 }
 
@@ -211,6 +233,37 @@ export function SaveStateBadge({dirty, saving}: { dirty: boolean; saving: boolea
 
 export function CardBody({children, className}: { children: ReactNode; className?: string }) {
     return <CardContent className={cn("pt-4", className)}>{children}</CardContent>;
+}
+
+type MasterSwitchCardProps = {
+    checked: boolean;
+    disabled?: boolean;
+    ariaLabel: string;
+    label: ReactNode;
+    onCheckedChange: (checked: boolean) => void;
+    className?: string;
+};
+
+export function MasterSwitchCard({
+                                     ariaLabel,
+                                     checked,
+                                     className,
+                                     disabled,
+                                     label,
+                                     onCheckedChange,
+                                 }: MasterSwitchCardProps) {
+    return (
+        <TacticalCard className={cn("col-span-12", className)}>
+            <SectionHeader title="总开关"/>
+            <CardBody>
+                <ControlTile className="flex items-center gap-3">
+                    <Switch aria-label={ariaLabel} checked={checked} disabled={disabled}
+                            onCheckedChange={onCheckedChange}/>
+                    {typeof label === "string" ? <p className="text-sm font-medium">{label}</p> : label}
+                </ControlTile>
+            </CardBody>
+        </TacticalCard>
+    );
 }
 
 /* ────────── New Industrial Components ────────── */
@@ -418,6 +471,51 @@ export function DragButton({controlsDisabled, onDragStart}: DragButtonProps) {
     );
 }
 
+type FavoriteButtonProps = {
+    isFavorite: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+};
+
+export function FavoriteButton({disabled, isFavorite, onClick}: FavoriteButtonProps) {
+    return (
+        <Button
+            aria-label={isFavorite ? "取消收藏" : "加入收藏"}
+            aria-pressed={isFavorite}
+            className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
+            data-icon="inline-start"
+            disabled={disabled}
+            onClick={onClick}
+            size="icon-sm"
+            type="button"
+            variant="outline"
+        >
+            {isFavorite ? <RiStarFill aria-hidden="true"/> : <RiStarLine aria-hidden="true"/>}
+        </Button>
+    );
+}
+
+type CardNameInputProps = {
+    value: string;
+    fallback: string;
+    disabled?: boolean;
+    ariaLabel: string;
+    onChange: (value: string) => void;
+};
+
+export function CardNameInput({ariaLabel, disabled, fallback, onChange, value}: CardNameInputProps) {
+    return (
+        <Input
+            aria-label={ariaLabel}
+            className="h-auto w-full border-0 bg-transparent p-0 font-heading text-lg font-medium text-base-content placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
+            disabled={disabled}
+            onChange={(event) => onChange(event.currentTarget.value)}
+            placeholder="输入卡片名称"
+            value={value || fallback}
+        />
+    );
+}
+
 /* Hotkey Field */
 
 type HotkeyFieldProps = {
@@ -492,22 +590,22 @@ export function DisplaySettingsInline({
                 <Switch checked={group.enabled} disabled={controlsDisabled}
                         aria-label={`${targetLabel}分组启用`}
                         onCheckedChange={(checked) => onGroupUpdate({enabled: checked})}/>
-                <p className="text-sm font-medium text-base-content">
+                <p className="font-mono text-xs font-medium text-base-content">
                     {targetLabel}分组 · {group.name}
                 </p>
                 <Input
-                    className="w-28"
-                    disabled={controlsDisabled}
-                    value={group.name}
-                    onChange={(event) => onGroupUpdate({name: event.currentTarget.value})}
                     aria-label="分组名称"
+                    className="w-28 font-mono text-sm"
+                    disabled={controlsDisabled}
+                    onChange={(event) => onGroupUpdate({name: event.currentTarget.value})}
+                    value={group.name}
                 />
-                <Button disabled={!canDelete} onClick={onGroupDelete} type="button" variant="ghost" className="shrink-0"
-                        size="icon-sm" aria-label="删除分组">
+                <Button aria-label="删除分组" className="shrink-0" disabled={!canDelete} onClick={onGroupDelete}
+                        size="icon-sm" type="button" variant="ghost">
                     <RiDeleteBinLine/>
                 </Button>
-                <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} type="button"
-                        variant="outline" size="sm">
+                <Button className="shrink-0" disabled={controlsDisabled} onClick={onPositionSelection} size="sm"
+                        type="button" variant="outline">
                     <RiMapPinLine data-icon="inline-start"/>
                     位置
                 </Button>
@@ -517,32 +615,46 @@ export function DisplaySettingsInline({
                 <InlineControl className="p-0">
                     <CollapsibleTrigger asChild>
                         <Button
-                            className="w-full justify-between px-3"
-                            type="button" variant="ghost">
+                            className="w-full justify-between px-2 py-1.5 font-mono text-xs font-medium"
+                            type="button"
+                            variant="ghost"
+                        >
                             显示参数
                             <RiArrowDownSLine className="size-3.5"/>
                         </Button>
                     </CollapsibleTrigger>
-                    <CollapsibleContent className="border-t border-base-300 px-3 py-3">
+                    <CollapsibleContent className="border-t border-base-content px-2 py-2">
                         <div className="flex flex-wrap items-center gap-4">
                             <Field className="min-w-0 flex-1">
-                                <FieldLabel>字体透明度</FieldLabel>
+                                <FieldLabel className="font-mono text-xs">字体透明度</FieldLabel>
                                 <FieldContent>
                                     <div className="flex items-center gap-3">
-                                        <Slider disabled={controlsDisabled || !display} min={0.1} max={1} step={0.05}
-                                                aria-label="字体透明度"
-                                                value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
-                                                onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}/>
-                                        <span className="w-10 text-right text-xs text-muted-foreground">{display?.fontOpacity ?? "--"}</span>
+                                        <Slider
+                                            aria-label="字体透明度"
+                                            disabled={controlsDisabled || !display}
+                                            max={1}
+                                            min={0.1}
+                                            onValueChange={([value]) => onUpdate({fontOpacity: value.toFixed(2)})}
+                                            step={0.05}
+                                            value={[Number.parseFloat(display?.fontOpacity ?? "0.9")]}
+                                        />
+                                        <span className="w-10 text-right font-mono text-xs text-base-content/60">
+                                            {display?.fontOpacity ?? "--"}
+                                        </span>
                                     </div>
                                 </FieldContent>
                             </Field>
                             <Field className="w-36 shrink-0">
-                                <FieldLabel>窗口宽度</FieldLabel>
+                                <FieldLabel className="font-mono text-xs">窗口宽度</FieldLabel>
                                 <FieldContent>
-                                    <Input disabled={controlsDisabled || !display} inputMode="numeric" min="320"
-                                           className="h-7 text-xs" value={display?.rect?.width ?? 320}
-                                           onChange={(event) => onUpdateRect({width: Number.parseInt(event.currentTarget.value, 10) || 320})}/>
+                                    <Input
+                                        className="h-7 font-mono text-xs"
+                                        disabled={controlsDisabled || !display}
+                                        inputMode="numeric"
+                                        min="320"
+                                        onChange={(event) => onUpdateRect({width: Number.parseInt(event.currentTarget.value, 10) || 320})}
+                                        value={display?.rect?.width ?? 320}
+                                    />
                                 </FieldContent>
                             </Field>
                         </div>
@@ -550,7 +662,7 @@ export function DisplaySettingsInline({
                 </InlineControl>
             </Collapsible>
 
-            <p className="text-xs text-muted-foreground">{statusMessage}</p>
+            <p className="font-mono text-xs font-medium text-base-content/60">{statusMessage}</p>
         </ControlTile>
     );
 }
@@ -646,21 +758,74 @@ export function JsonPreBlock({className, data, maxHeightClassName = "max-h-64"}:
     );
 }
 
+/* Soft Alert */
+
+type SoftAlertTone = "error" | "warning" | "info" | "success";
+
+type SoftAlertProps = {
+    children: ReactNode;
+    className?: string;
+    tone?: SoftAlertTone;
+};
+
+const SOFT_ALERT_TONE: Record<Exclude<SoftAlertTone, "error">, string> = {
+    info: "alert-info",
+    success: "alert-success",
+    warning: "alert-warning",
+};
+
+export function SoftAlert({children, className, tone = "error"}: SoftAlertProps) {
+    return (
+        <Alert
+            className={cn(tone !== "error" && SOFT_ALERT_TONE[tone], className)}
+            variant={tone === "error" ? "destructive" : "default"}
+        >
+            {children}
+        </Alert>
+    );
+}
+
+/* Overlay Readout Shell */
+
+type OverlayReadoutShellProps = {
+    children: ReactNode;
+    className?: string;
+    opacity?: number;
+};
+
+export function OverlayReadoutShell({children, className, opacity}: OverlayReadoutShellProps) {
+    return (
+        <div
+            className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-2 font-mono text-white"
+            style={opacity === undefined ? undefined : {opacity}}
+        >
+            <div
+                className={cn(
+                    "h-full w-full overflow-hidden rounded-md border border-white/20 bg-black/20 px-3 py-2 backdrop-blur-[1px]",
+                    className,
+                )}
+            >
+                {children}
+            </div>
+        </div>
+    );
+}
+
 /* Inline Notice (legacy) */
 
 type InlineNoticeProps = {
     title?: string;
     children: ReactNode;
     className?: string;
+    tone?: SoftAlertTone;
 };
 
-export function InlineNotice({children, className, title}: InlineNoticeProps) {
+export function InlineNotice({children, className, title, tone = "error"}: InlineNoticeProps) {
     return (
-        <Alert variant="destructive"
-               className={className}>
+        <SoftAlert className={className} tone={tone}>
             {title ? <AlertTitle>{title}</AlertTitle> : null}
             <AlertDescription>{children}</AlertDescription>
-        </Alert>
+        </SoftAlert>
     );
 }
 

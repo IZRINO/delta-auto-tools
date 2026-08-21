@@ -10,8 +10,6 @@ import {
   RiDeleteBinLine,
   RiKeyboardLine,
   RiMapPinLine,
-  RiStarFill,
-  RiStarLine,
   RiStopLine,
 } from "@remixicon/react";
 import {toast} from "sonner";
@@ -28,15 +26,18 @@ import {Switch} from "@/components/ui/switch";
 import {PositionOverlay} from "@/components/ui/position-overlay";
 import {
   AddCardButton,
-  AppPage,
   CardBody,
+  CardNameInput,
   ChannelTabs,
   ControlTile,
+  DragButton,
+  FavoriteButton,
   InlineNotice,
-  MacroHeader,
+  OverlayReadoutShell,
   runStateClass,
   SectionHeader,
   TacticalCard,
+  ToolPageFrame,
 } from "@/components/app/app-ui";
 import type {
   RapidfireBootstrap,
@@ -465,44 +466,36 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
 
     if (!form) {
         return (
-            <AppPage className="auto-rows-max">
-                <MacroHeader title="连发器"/>
-                {pageError ? (
-                    <div className="col-span-12">
-                        <InlineNotice title="连发器加载失败">{pageError}</InlineNotice>
-                    </div>
-                ) : (
+            <ToolPageFrame
+                error={pageError ? <InlineNotice title="连发器加载失败">{pageError}</InlineNotice> : undefined}
+                title="连发器"
+            >
+                {pageError ? null : (
                     <AddCardButton className="col-span-12 min-h-36" disabled title="连发器准备中"
                                    description={statusMessage} onClick={() => undefined}/>
                 )}
-            </AppPage>
+            </ToolPageFrame>
         );
     }
 
     return (
-        <AppPage className="auto-rows-max">
-            {pageError && (
-                <InlineNotice title="连发器配置未生效">
-                    {pageError}
-                </InlineNotice>
-            )}
-
-            <MacroHeader
-                title="连发器"
-                actions={
-                    <>
-                        <Button variant="outline" size="sm" disabled={controlsDisabled}
-                                onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
-                            <RiMapPinLine data-icon="inline-start"/>
-                            校准位置
-                        </Button>
-                        <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={stopAll}>
-                            <RiStopLine data-icon="inline-start"/>
-                            全部停止
-                        </Button>
-                    </>
-                }
-            />
+        <ToolPageFrame
+            actions={
+                <>
+                    <Button variant="outline" size="sm" disabled={controlsDisabled}
+                            onClick={() => void beginPositionSelection(DEFAULT_RAPIDFIRE_GROUP_ID)}>
+                        <RiMapPinLine data-icon="inline-start"/>
+                        校准位置
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={controlsDisabled} onClick={stopAll}>
+                        <RiStopLine data-icon="inline-start"/>
+                        全部停止
+                    </Button>
+                </>
+            }
+            error={pageError ? <InlineNotice title="连发器配置未生效">{pageError}</InlineNotice> : undefined}
+            title="连发器"
+        >
 
             <div className="col-span-12">
                 <ChannelTabs
@@ -743,7 +736,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                                description="建立新的触发键、目标键与节奏配置。" onClick={addCard}/>
             </section>
             )}
-        </AppPage>
+        </ToolPageFrame>
     );
 }
 
@@ -818,13 +811,12 @@ function RapidfireCardEditor({
         >
             <SectionHeader
                 title={(
-                    <Input
-                        className="h-auto w-full border-0 bg-transparent p-0 text-lg font-semibold placeholder:text-base-content/40 focus-visible:ring-0 focus-visible:ring-offset-0"
-                        placeholder="输入卡片名称"
-                        value={card.name || "连发器"}
+                    <CardNameInput
+                        ariaLabel="通道名称"
                         disabled={disabled}
-                        onChange={(event) => onUpdate(card.id, {name: event.target.value})}
-                        aria-label="通道名称"
+                        fallback="连发器"
+                        onChange={(name) => onUpdate(card.id, {name})}
+                        value={card.name}
                     />
                 )}
                 description={`触发 ${card.triggerKey || "--"} / 目标 ${card.targetKey || "--"} / ${card.intervalMs || "--"}ms / ${card.skipCompensation ? "不补齐" : "补齐"}`}
@@ -862,7 +854,7 @@ function RapidfireCardEditor({
                     </div>
                     <div
                         className="flex flex-wrap items-center justify-end gap-1.5 border-t border-base-300 pt-3 xl:border-t-0 xl:border-l xl:pl-3 xl:pt-0">
-                        <RapidfireCardDragHandle disabled={disabled} onDragStart={onDragStart}/>
+                        <DragButton controlsDisabled={disabled} onDragStart={onDragStart}/>
 
                         <Button
                             variant="outline"
@@ -888,19 +880,7 @@ function RapidfireCardEditor({
                             aria-label="启用卡片"
                             onCheckedChange={(checked) => onUpdate(card.id, {enabled: checked})}
                         />
-                        <Button
-                            aria-label={isFavorite ? "取消收藏" : "加入收藏"}
-                            aria-pressed={isFavorite}
-                            className={cn(isFavorite ? "text-base-content" : "text-base-content/60")}
-                            data-icon="inline-start"
-                            disabled={disabled}
-                            onClick={onToggleFavorite}
-                            size="icon-sm"
-                            type="button"
-                            variant="outline"
-                        >
-                            {isFavorite ? <RiStarFill/> : <RiStarLine/>}
-                        </Button>
+                        <FavoriteButton disabled={disabled} isFavorite={isFavorite} onClick={onToggleFavorite}/>
                         <Button variant="outline" size="icon-sm" disabled={disabled} onClick={onDelete}
                                 aria-label="删除卡片">
                             <RiDeleteBinLine/>
@@ -1148,44 +1128,40 @@ function RapidfireDisplayOverlay({groupId, isNativeShell}: { groupId: string; is
     const enabledCards = bootstrap?.settings.cards.filter((card) => card.enabled && card.groupId === groupId && (group?.enabled ?? true)) ?? [];
 
     return (
-        <div
-            className="flex h-screen w-screen items-start justify-start overflow-hidden bg-transparent p-1 font-mono text-white">
-            <div
-                className="h-full w-full overflow-hidden rounded-md border border-white/15 bg-black/20 px-2.5 py-1.5 backdrop-blur-[1px]">
-                {enabledCards.length === 0 ? (
-                    <div
-                        className="flex h-full items-center justify-center text-xs font-semibold text-white/60">连发器未启用</div>
-                ) : (
-                    enabledCards.map((card) => {
-                        const run = runsById.get(card.id);
-                        const statusText = run ? rapidfireStatusLabel(run.status) : "空闲";
-                        const countText = run && run.status !== "idle" ? ` ×${run.count}` : "";
+        <OverlayReadoutShell>
+            {enabledCards.length === 0 ? (
+                <div
+                    className="flex h-full items-center justify-center text-xs font-semibold text-white/60">连发器未启用</div>
+            ) : (
+                enabledCards.map((card) => {
+                    const run = runsById.get(card.id);
+                    const statusText = run ? rapidfireStatusLabel(run.status) : "空闲";
+                    const countText = run && run.status !== "idle" ? ` ×${run.count}` : "";
 
-                        return (
-                            <div key={card.id}
-                                 className="flex min-w-0 items-center justify-between gap-2 py-0.5 text-sm font-semibold tracking-wide">
-                <span className="flex min-w-0 items-center gap-1 truncate text-white/90">
-                  <Kbd>{card.triggerKey}</Kbd>
-                  <span className="text-white/50">→</span>
-                  <Kbd>{card.targetKey}</Kbd>
-                  <span className="truncate text-white/70">{card.name}</span>
-                </span>
-                                <span
-                                    className={cn(
-                                        "shrink-0",
-                                        run?.status === "firing" && "text-green-300",
-                                        run?.status === "pendingCompensation" && "text-yellow-300",
-                                        (!run || run.status === "idle") && "text-white/55",
-                                    )}
-                                >
-                  {statusText}{countText}
-                </span>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-        </div>
+                    return (
+                        <div key={card.id}
+                             className="flex min-w-0 items-center justify-between gap-2 py-0.5 text-sm font-semibold tracking-wide">
+            <span className="flex min-w-0 items-center gap-1 truncate text-white/90">
+              <Kbd>{card.triggerKey}</Kbd>
+              <span className="text-white/50">→</span>
+              <Kbd>{card.targetKey}</Kbd>
+              <span className="truncate text-white/70">{card.name}</span>
+            </span>
+                            <span
+                                className={cn(
+                                    "shrink-0",
+                                    run?.status === "firing" && "text-green-300",
+                                    run?.status === "pendingCompensation" && "text-yellow-300",
+                                    (!run || run.status === "idle") && "text-white/55",
+                                )}
+                            >
+              {statusText}{countText}
+            </span>
+                        </div>
+                    );
+                })
+            )}
+        </OverlayReadoutShell>
     );
 }
 
@@ -1249,21 +1225,4 @@ function useRapidfireOverlayBootstrap(
     }, [isNativeShell, setBootstrap, setRuntimeRuns]);
 }
 
-function RapidfireCardDragHandle({disabled, onDragStart}: { disabled: boolean; onDragStart: () => void }) {
-    return (
-        <Button
-            aria-label="拖动排序"
-            className="cursor-grab active:cursor-grabbing"
-            disabled={disabled}
-            onPointerDown={(event) => {
-                event.preventDefault();
-                onDragStart();
-            }}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-        >
-            <span aria-hidden className="text-sm leading-none">≡</span>
-        </Button>
-    );
-}
+

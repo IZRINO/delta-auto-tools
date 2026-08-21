@@ -16,13 +16,12 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
 import {
-    AppPage,
     AddCardButton,
-    CardBody,
-    ControlTile,
-    MacroHeader,
+    MasterSwitchCard,
     SectionHeader,
+    SoftAlert,
     TacticalCard,
+    ToolPageFrame,
 } from "@/components/app/app-ui";
 import {
     RecognitionCardEditor,
@@ -635,45 +634,32 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
     const cardGroups = form?.cardGroups ?? [];
 
     return (
-        <AppPage className="auto-rows-max">
-            <MacroHeader title="识别触发"/>
-
-            {pageError && (
-                <div role="alert" className="alert alert-error alert-soft col-span-12 mb-3 py-2 text-xs">
-                    <span>{pageError}</span>
-                </div>
-            )}
-
+        <ToolPageFrame
+            error={pageError ? <SoftAlert className="py-2 text-xs">{pageError}</SoftAlert> : undefined}
+            title="识别触发"
+        >
             {globalStatusMessage && (
                 <div
-                    className="col-span-12 mb-3 border border-warning bg-warning/10 px-3 py-2 text-xs font-semibold text-warning">
+                    className="col-span-12 border border-warning bg-warning/10 px-3 py-2 text-xs font-semibold text-warning">
                     {globalStatusMessage}
                 </div>
             )}
 
-            <TacticalCard className="col-span-12 mt-3">
-                <SectionHeader title="总开关"/>
-                <CardBody>
-                    <ControlTile>
-                        <div className="flex items-center gap-3">
-                            <Switch
-                                checked={enabled}
-                                onCheckedChange={(v) => {
-                                    updateForm("recognitionEnabled", v);
-                                    updateForm("audioEnabled", v);
-                                }}
-                                aria-label="识别触发总开关"
-                            />
-                            <span
-                                className="font-mono text-xs font-semibold text-base-content">
-                {enabled ? "已启用" : "已禁用"}
-              </span>
-                        </div>
-                    </ControlTile>
-                </CardBody>
-            </TacticalCard>
+            <MasterSwitchCard
+                ariaLabel="识别触发总开关"
+                checked={enabled}
+                label={
+                    <span className="font-mono text-xs font-semibold text-base-content">
+                        {enabled ? "已启用" : "已禁用"}
+                    </span>
+                }
+                onCheckedChange={(checked) => {
+                    updateForm("recognitionEnabled", checked);
+                    updateForm("audioEnabled", checked);
+                }}
+            />
 
-            <TacticalCard className="col-span-12 mt-3">
+            <TacticalCard className="col-span-12">
                 <div className="flex items-center justify-between gap-3 px-3 pt-3">
                     <SectionHeader title="卡片"/>
                     <Button
@@ -762,7 +748,7 @@ function RecognitionWorkbench({isNativeShell}: { isNativeShell: boolean }) {
                     />
                 </section>
             </TacticalCard>
-        </AppPage>
+        </ToolPageFrame>
     );
 }
 
