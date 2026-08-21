@@ -28,7 +28,7 @@
 - 可调宽度（计时器/计数器最小 320px，连发器 320-800px）
 - 高度按启用的卡片数计算
 
-前端通过 `src/App.tsx` 中的 `?mode=*-display` 查询参数渲染这些窗口，提前返回 overlay 内容而非主壳层。
+前端通过 `src/App.tsx` 中的 `?mode=` 查询参数渲染这些窗口，提前返回 overlay 内容而非主壳层。mode 名单在 `src/lib/overlay-windows.ts`，与 `ThemeProvider` 共用：overlay 强制当战地，不写 `data-ui-world`，不加载黑标碳纤。
 
 ## 位置窗口
 

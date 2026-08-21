@@ -37,7 +37,7 @@ graph TD
 
 `index.html` -> `src/main.tsx` -> `src/App.tsx`
 
-App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。透明窗口和区域选择通过 `?mode=` 查询参数分支进入以下模式：
+App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。主窗口两条壳互斥：`ConsoleShell`（默认战地，左侧 Index Rail）与 `BlackmarkShell`（夜航黑标，底栏 dock）。界面世界 `UiWorld` 写 `localStorage`，与配色主题正交。透明窗口和区域选择通过 `?mode=` 查询参数分支进入以下模式，名单在 `src/lib/overlay-windows.ts`，不吃黑标：
 
 | 模式 | 用途 |
 |------|------|
