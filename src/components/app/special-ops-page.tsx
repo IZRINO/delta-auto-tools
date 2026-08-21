@@ -1592,7 +1592,7 @@ export function SpecialOpsPage() {
         </fieldset>
 
         <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            {uiWorld === "blackmark" ? null : <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">账号</h2>
                 <Button
                     size="sm"
@@ -1601,7 +1601,7 @@ export function SpecialOpsPage() {
                     title={anyAccountRestorable ? "清除全部账号的异常状态" : "当前没有需要恢复的异常状态"}
                     onClick={() => void restoreAccountState(null)}
                 ><RiRefreshLine data-icon="inline-start"/>全部一键恢复</Button>
-            </div>
+            </div>}
             {bootstrap.settings.accounts.map((account, index) => {
                 const due = bootstrap.schedule.dueAccounts.find((item) => item.accountId === account.id);
                 const business = account.independentBusinessConfig;
