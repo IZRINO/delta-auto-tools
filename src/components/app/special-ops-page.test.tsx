@@ -3,6 +3,7 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {describe, expect, it} from "vitest";
 
 import pageSource from "./special-ops-page.tsx?raw";
+import blackmarkViewSource from "./special-ops-blackmark-view.tsx?raw";
 import calibrationOverlaySource from "./special-ops-calibration-overlay.tsx?raw";
 import utilsSource from "./special-ops-utils.ts?raw";
 import {SpecialOpsPage} from "@/components/app/special-ops-page";
@@ -347,5 +348,12 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("timelineTaskAllowsInlineCorrection(task, station)");
         expect(pageSource).toContain("needsManualCorrection && !inlineCorrectable");
         expect(pageSource).not.toContain("if (!task.manualFailure) return null;");
+    });
+
+    it("黑标时间轴内部滚动且配置区不再套两层底部留白", () => {
+        expect(blackmarkViewSource).toContain("max-h-[min(36rem,70vh)]");
+        expect(blackmarkViewSource).toContain("bm-table-compact");
+        expect(pageSource).toContain("bm-ops-fold space-y-px px-8 pb-8");
+        expect(pageSource).not.toContain("bm-ops-fold space-y-px px-8 pb-16");
     });
 });

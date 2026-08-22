@@ -338,7 +338,7 @@ overlay 窗口无布局网格——它们是按 `?mode=` 进入的独立表面�
 
 ### World B — 夜航黑标
 
-无左侧 240px 轨。顶栏 64px 放产品名、档案、日月切换、全局开关。工具导航是底部居中悬浮 dock（图标 48×48；选中展开出字）。主区：巨型工具名 → 短三色条 → 规格格通栏 → 发丝线表。主区底部留约 7rem 以免被 dock 挡住。
+无左侧 240px 轨。顶栏 64px 放产品名、档案、日月切换、全局开关。工具导航是底部居中悬浮 dock（图标 48×48；选中展开出字）。主区：巨型工具名 → 短三色条 → 规格格通栏 → 发丝线表。主区底部留约 7rem 以免被 dock 挡住。攻略页例外：不套巨型标题；工具条加内嵌 WebView 铺到 dock 上沿（约 5.75rem），外层不滚动。子 WebView 不得盖住 dock。
 
 禁止把黑标做成「旧侧栏 + 新配色」。拓扑必须是顶栏 + 底 dock，不是 Index Rail。
 
@@ -403,7 +403,7 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Style:** `input input-sm`，`base-100` 底，1px 铜边框，0.5rem 圆角，高 2rem。
 - **Focus:** 边框转曳光红 + `outline-primary/50`，不发光、不加厚。
 - **HotkeyField:** 快捷键录制是一个 `outline` 按钮，等宽字体显示键名，录制中显「录制中.../失焦取消」。
-- **Switch:** daisyUI toggle，开态曳光红，胶囊形（2rem）。
+- **Switch:** daisyUI toggle，开态曳光红，胶囊形（2rem）。黑标开态对齐 `.bm-switch`：轨为墨色、钮为画布色。只改轨底、不改 `color` / `--input-color` 会在夜航下白钮叠白轨。
 - **Error / Disabled:** 表单错误用信号绯文本 + ErrorHint（圆 ! 按钮，0 delay tooltip）；disabled 统一 `disabled:opacity-50`。
 
 ### Navigation
@@ -458,6 +458,11 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 
 - 底部居中悬浮，发丝边，表面半透明。未选中只出 22px 自制 SVG。选中反转底 + 展开标签 + 顶缘 3px 三色条。竖线分组：收藏 | 计时/计数/连发 | 攻略/识别/息屏 | 特勤/摩斯 | 设置。未选中 hover 出直角发丝提示（Portal，Noto 700 字距 0.14em），选中已出字则不再叠提示。
 
+### Switch（黑标）
+
+- 开态：轨 `{colors.blackmark-ink-night}`（日间 ink-day），钮 `{colors.blackmark-canvas-night}`（日间 canvas-day）。与顶栏 `.bm-switch` 同构。
+- daisyUI `.toggle:checked` 必须同时设 `color` 与 `--input-color` 为画布色；钮是 `currentColor`。
+
 ### Navigation（黑标）
 
 - 无 Index Rail。顶栏 64px 无工具名列表。
@@ -487,4 +492,5 @@ overlay 是独立形状语言：应用内边框是铜红，overlay 边框是 `wh
 - **Don't** 用 remixicon 替换黑标 dock 的自制 SVG。
 - **Don't** 把黑标标题换成 Inter / Space Grotesk 等拉丁展示体而丢掉 Noto Sans SC 700。
 - **Don't** 让游戏 overlay 窗口吃黑标 CSS 变量。
+- **Don't** 黑标开态开关钮与轨同色。夜航下轨是墨色（白），钮必须是画布色（黑）。
 

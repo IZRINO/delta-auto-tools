@@ -428,6 +428,14 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     background: var(--bm-canvas);
 }
 
+html[data-ui-world="blackmark"] .toggle:checked,
+html[data-ui-world="blackmark"] .toggle[aria-checked="true"] {
+    background-color: var(--bm-ink);
+    border-color: var(--bm-ink);
+    color: var(--bm-canvas);
+    --input-color: var(--bm-canvas);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .bm-scheme-rays,
     .bm-scheme-cut,
@@ -560,6 +568,14 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     font-weight: 300;
     color: var(--bm-body);
     font-size: 0.875rem;
+}
+
+.bm-table-compact th {
+    padding: 8px 12px;
+}
+
+.bm-table-compact td {
+    padding: 8px 12px;
 }
 
 .bm-table td.strong {
@@ -720,6 +736,14 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     text-transform: uppercase;
 }
 
+.bm-ops-fold .btn-sm,
+.bm-ops-fold .btn-xs,
+.bm-ops-fold .btn-square {
+    height: 2rem;
+    min-height: 2rem;
+    letter-spacing: 0.08em;
+}
+
 .bm-ops-fold .btn:hover:not(:disabled),
 .bm-ops-fold .btn-primary:hover:not(:disabled) {
     border-color: var(--bm-ink);
@@ -741,11 +765,6 @@ html[data-ui-world="blackmark"] .bm-dock-tip > span:has(> svg) {
     border-color: var(--bm-hair);
     color: var(--bm-ink);
     box-shadow: none;
-}
-
-.bm-ops-fold .toggle:checked {
-    background: var(--bm-ink);
-    border-color: var(--bm-ink);
 }
 
 .bm-ops-fold .label-text,

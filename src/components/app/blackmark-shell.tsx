@@ -7,6 +7,7 @@ import {BLACKMARK_DOCK_GROUPS, type BlackmarkPaneId, type ToolId} from "@/compon
 import {Tooltip, TooltipContent, TooltipTrigger} from "@/components/ui/tooltip";
 import {useGlobalEnabled} from "@/hooks/use-global-enabled";
 import {useTheme} from "@/hooks/use-theme";
+import {cn} from "@/lib/utils";
 
 import "@/blackmark-shell.css";
 
@@ -56,8 +57,14 @@ export function BlackmarkShell({activePane, children, onPaneChange}: BlackmarkSh
                 </header>
                 <div className="bm-stripe h-1 w-full" aria-hidden="true"/>
 
+                {/* 攻略子 WebView 是原生窗口，铺到窗口底会盖住 dock */}
                 <main
-                    className="min-h-0 flex-1 overflow-y-auto pb-36 scroll-pb-36 focus:outline-none"
+                    className={cn(
+                        "flex min-h-0 flex-1 flex-col focus:outline-none",
+                        activePane === "strategy"
+                            ? "overflow-hidden pb-[5.75rem]"
+                            : "overflow-y-auto pb-36 scroll-pb-36",
+                    )}
                     id="app-content"
                     tabIndex={-1}
                 >

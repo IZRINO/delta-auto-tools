@@ -47,6 +47,10 @@ flowchart TD
 - **bounds 同步**：容器尺寸或窗口位置变化时更新子 WebView 物理坐标
 - **浮层保护**：打开全局设置 Dialog 或 Profile 菜单时关闭子 WebView，关闭浮层后重建，避免原生 WebView2 覆盖 DOM 浮层
 
+## 布局
+
+黑标不套 `BlackmarkPage` 英雄区。站点 Tab、地址栏、新增/删除/刷新留在顶条；其下 `strategy-content` 铺到 dock 上沿。子 WebView 是原生窗口，铺到窗口底会盖住 dock，不能再收。外层页面不滚动，滚动只发生在 WebView 内。战地控制台同样是当前窗口铺满，不套第二层页面滚动。
+
 ## 约束
 
 - 必须使用主窗口内嵌 `strategy-content` 子 WebView
@@ -54,6 +58,7 @@ flowchart TD
 - 不得使用 `iframe` / `srcDoc`
 - 不得隐藏 Left Index Rail
 - 新增站点必须通过 `http` / `https` URL 校验
+- 不得让应用壳与 WebView 同时出现纵向滚动条
 
 ## 修改入口
 

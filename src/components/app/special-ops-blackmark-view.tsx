@@ -144,20 +144,20 @@ export function SpecialOpsBlackmarkView({
                 <div className="bm-alert mt-4" data-tone="warning">{bootstrap.settings.pausedReason}</div>
             ) : null}
 
-            <section className="px-8 py-16">
-                <h2 className="text-2xl font-bold tracking-tight uppercase">24 小时时间轴</h2>
+            <section className="px-8 py-8">
+                <h2 className="text-xl font-bold tracking-tight uppercase">24 小时时间轴</h2>
                 <p className="bm-muted mt-2 max-w-[60ch] text-sm font-light">
                     到期按账号分桶，交易行排最后。失败行左侧交叉切口。单项判定在行内。
                 </p>
                 {bootstrap.settings.accounts.length === 0 ? (
-                    <div className="mt-8">
+                    <div className="mt-4">
                         <p className="bm-copy text-sm font-light">加一个 QQ 账号，选好 WeGame 和游戏，再框选点击点。</p>
-                        <button className="bm-btn mt-6" onClick={onAddAccount} type="button">添加账号</button>
+                        <button className="bm-btn mt-4" onClick={onAddAccount} type="button">添加账号</button>
                     </div>
                 ) : tasks.length === 0 ? (
-                    <p className="bm-copy mt-8 text-sm font-light">未来 24 小时暂无任务。点继续后，到期项会出现在这里。</p>
+                    <p className="bm-copy mt-4 text-sm font-light">未来 24 小时暂无任务。点继续后，到期项会出现在这里。</p>
                 ) : (
-                    <div className="bm-table-shell mt-8 overflow-x-auto">
+                    <div className="bm-table-shell bm-table-compact mt-4 max-h-[min(36rem,70vh)] overflow-auto">
                         <table className="bm-table">
                             <thead>
                             <tr>
@@ -219,10 +219,10 @@ export function SpecialOpsBlackmarkView({
                 )}
             </section>
 
-            <section className="px-8 pb-10">
+            <section className="px-8 py-6">
                 <div className="flex flex-wrap items-end justify-between gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold tracking-tight uppercase">账号</h2>
+                        <h2 className="text-xl font-bold tracking-tight uppercase">账号</h2>
                         <p className="bm-muted mt-2 max-w-[60ch] text-sm font-light">
                             已人工检查与一键恢复在本页第一击，失败原因写在按钮旁。
                         </p>
@@ -236,7 +236,7 @@ export function SpecialOpsBlackmarkView({
                         全部一键恢复
                     </button>
                 </div>
-                <div className="bm-table-shell mt-8 overflow-x-auto">
+                <div className="bm-table-shell bm-table-compact mt-4 overflow-x-auto">
                     <table className="bm-table">
                         <thead>
                         <tr>
@@ -259,7 +259,7 @@ export function SpecialOpsBlackmarkView({
                                         <div className="flex flex-wrap gap-2">
                                             {needsCheck ? (
                                                 <button
-                                                    className="bm-btn-ghost h-10 px-5"
+                                                    className="bm-btn-ghost h-8 px-4"
                                                     disabled={!isNativeShell}
                                                     onClick={() => onConfirmManualCheck(account.id)}
                                                     type="button"
@@ -268,7 +268,7 @@ export function SpecialOpsBlackmarkView({
                                                 </button>
                                             ) : null}
                                             <button
-                                                className="bm-btn-ghost h-10 px-5"
+                                                className="bm-btn-ghost h-8 px-4"
                                                 disabled={!accountRestorable(account, currentDay) || !isNativeShell}
                                                 onClick={() => onRestore(account.id)}
                                                 type="button"
@@ -288,9 +288,9 @@ export function SpecialOpsBlackmarkView({
                 </div>
             </section>
 
-            <section className="px-8 pb-16">
-                <h2 className="text-2xl font-bold tracking-tight uppercase">配置</h2>
-                <p className="bm-muted mt-2 mb-8 max-w-[60ch] text-sm font-light">
+            <section className="px-8 pt-4 pb-4">
+                <h2 className="text-xl font-bold tracking-tight uppercase">配置</h2>
+                <p className="bm-muted mt-2 mb-4 max-w-[60ch] text-sm font-light">
                     校准、利润、限时与交易行仍在本页，不拆子页。
                 </p>
                 {children}
@@ -361,24 +361,24 @@ function BlackmarkRowCorrection({
         void onConfirmStation(task, {kind: stationKind, state, remainingMinutes: null});
     };
     return (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
             {task.kind === "craft" ? (
                 <>
-                    <button className="bm-btn-ghost h-10 px-5" disabled={disabled} onClick={() => submitStation("immediateDue")} type="button">立即到期</button>
+                    <button className="bm-btn-ghost h-8 px-4" disabled={disabled} onClick={() => submitStation("immediateDue")} type="button">立即到期</button>
                     <button
-                        className="bm-btn-ghost h-10 px-5"
+                        className="bm-btn-ghost h-8 px-4"
                         disabled={disabled || !stationKind}
                         onClick={() => stationKind && void onConfirmStation(task, {kind: stationKind, state: "crafting", remainingMinutes: null})}
                         type="button"
                     >
                         正在制作
                     </button>
-                    <button className="bm-btn-ghost h-10 px-5" disabled={disabled} onClick={() => submitStation("idle")} type="button">空闲中</button>
+                    <button className="bm-btn-ghost h-8 px-4" disabled={disabled} onClick={() => submitStation("idle")} type="button">空闲中</button>
                 </>
             ) : (
                 <>
-                    <button className="bm-btn-ghost h-10 px-5" disabled={disabled} onClick={() => void onConfirmAmmo(task, true)} type="button">已兑换</button>
-                    <button className="bm-btn-ghost h-10 px-5" disabled={disabled} onClick={() => void onConfirmAmmo(task, false)} type="button">未兑换</button>
+                    <button className="bm-btn-ghost h-8 px-4" disabled={disabled} onClick={() => void onConfirmAmmo(task, true)} type="button">已兑换</button>
+                    <button className="bm-btn-ghost h-8 px-4" disabled={disabled} onClick={() => void onConfirmAmmo(task, false)} type="button">未兑换</button>
                 </>
             )}
         </div>

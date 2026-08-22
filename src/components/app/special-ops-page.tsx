@@ -269,7 +269,7 @@ function AmmoTargetEditor({
     const remove = (target: AmmoBusinessTarget) => {
         onChange(targets.filter((item) => item.id !== target.id).map((item, order) => ({...item, order})));
     };
-    return <div className="mt-3 border-t border-base-300 pt-3">
+    return <div className="mt-2 border-t border-base-300 pt-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2"><RiShieldCheckLine/><h3 className="text-sm font-medium">{title}</h3>{pendingCount !== undefined && <span className="text-xs text-base-content/60">{pendingCount} 个待处理</span>}</div>
             <Button size="sm" variant="outline" onClick={() => onChange(insertNormalAmmoTarget(targets, createAmmoTarget(targets.length)))}><RiAddLine data-icon="inline-start"/>添加子弹</Button>
@@ -629,11 +629,13 @@ export function SpecialOpsPage() {
         ? "border border-[var(--bm-hair)] bg-[var(--bm-surface)]"
         : "rounded-box border border-base-300 bg-base-100";
     const foldWell = bm
-        ? "border border-[var(--bm-hair)] bg-[var(--bm-elevated)] p-3"
+        ? "border border-[var(--bm-hair)] bg-[var(--bm-elevated)] p-2"
         : "rounded-box bg-base-200 p-3";
     const foldSummary = bm
-        ? "cursor-pointer px-4 py-3 text-sm font-bold tracking-[0.12em] uppercase"
+        ? "cursor-pointer px-3 py-2 text-sm font-bold tracking-[0.12em] uppercase"
         : "cursor-pointer px-4 py-3 font-semibold";
+    const foldPad = bm ? "space-y-2 p-3" : "space-y-3 p-4";
+    const foldBody = bm ? "p-3" : "p-4";
     const [bootstrap, setBootstrap] = useState(emptyBootstrap);
     const [timelineNowMs, setTimelineNowMs] = useState(Date.now());
     const [error, setError] = useState<string | null>(null);
@@ -1306,7 +1308,7 @@ export function SpecialOpsPage() {
         }
     };
 
-    return <div className="space-y-4">
+    return <div className={bm ? undefined : "space-y-4"}>
         {uiWorld === "blackmark" ? (
             <SpecialOpsBlackmarkView
                 accountActionError={accountActionError}
@@ -1401,11 +1403,11 @@ export function SpecialOpsPage() {
         </>}
         </>}
 
-        <div className={bm ? "bm-ops-fold space-y-px px-8 pb-16" : undefined}>
+        <div className={bm ? "bm-ops-fold space-y-px px-8 pb-8" : undefined}>
         <fieldset disabled={controlsLocked} className="contents">
         <details className={foldBox}>
             <summary className={foldSummary}>全局配置</summary>
-            <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2">
+            <div className={cn("grid gap-3 border-t border-base-300 md:grid-cols-2", foldBody)}>
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">WeGame 可执行文件</legend>
                         <div className="flex gap-2">
@@ -1443,7 +1445,7 @@ export function SpecialOpsPage() {
 
         <details className={foldBox}>
             <summary className={foldSummary}>试运行</summary>
-            <div className="grid gap-3 border-t border-base-300 p-4 md:grid-cols-2 md:items-end">
+            <div className={cn("grid gap-3 border-t border-base-300 md:grid-cols-2 md:items-end", foldBody)}>
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">试运行账号</legend>
                         <select
@@ -1495,7 +1497,7 @@ export function SpecialOpsPage() {
         </details>
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section className={cn(foldBox, bm ? "p-4" : "card card-border bg-base-100")}>
+        <section className={cn(foldBox, bm ? "p-3" : "card card-border bg-base-100")}>
             <div className={bm ? "flex flex-col gap-3" : "card-body gap-3"}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-1"><h2 className={bm ? "text-lg" : "card-title"}>限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 共用全局配置。"/></div>
@@ -1547,19 +1549,19 @@ export function SpecialOpsPage() {
 
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section className={cn("space-y-3 p-4", foldBox)}>
+        <section className={cn(foldPad, foldBox)}>
             <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">默认账号配置</h2><HelpHint content="独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。"/></div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
                 {bootstrap.settings.defaultBusinessConfig.stations.map((station) => {
                     const recipeTarget = activeEnvironment?.targets.find((target) => target.key === `craft.recipe.${station.kind}`);
-                    return <div key={station.kind} className={foldWell}>
-                        <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateDefaultStation(station, {enabled})}/></label>
-                        <div className="mt-2 grid grid-cols-2 gap-2">
-                            <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateDefaultStation(station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
-                            <label className="text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateDefaultStation(station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
+                    return <div key={station.kind} className={cn(foldWell, "flex flex-col gap-1.5")}>
+                        <label className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateDefaultStation(station, {enabled})}/></label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            <label className="form-control gap-0.5 text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateDefaultStation(station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
+                            <label className="form-control gap-0.5 text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateDefaultStation(station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
                         </div>
-                        <label className="form-control mt-2 gap-1"><span className="label-text text-xs">制作物品备注</span><DraftInput value={station.recipeNote} onCommit={(recipeNote) => updateDefaultStation(station, {recipeNote})}/></label>
-                        <div className="mt-2 flex items-center justify-between gap-2">
+                        <label className="form-control gap-0.5"><span className="label-text text-xs">制作物品备注</span><DraftInput value={station.recipeNote} onCommit={(recipeNote) => updateDefaultStation(station, {recipeNote})}/></label>
+                        <div className="flex items-center justify-between gap-2">
                             <span className="text-xs text-base-content/60">制作物品选择点击点：{recipeTarget?.rect ? `${recipeTarget.rect.x}, ${recipeTarget.rect.y}` : "未配置"}</span>
                             <Button disabled={!activeEnvironment} size="sm" variant="outline" onClick={() => activeEnvironment && void beginCalibration(activeEnvironment, `craft.recipe.${station.kind}`)}><RiCrosshair2Line data-icon="inline-start"/>{recipeTarget?.rect ? "重选" : "选择"}</Button>
                         </div>
@@ -1568,7 +1570,7 @@ export function SpecialOpsPage() {
             </div>
             <details className={bm ? foldBox : "collapse collapse-arrow"}>
                 <summary className={bm ? foldSummary : "collapse-title"}>默认交易行购买</summary>
-                <div className={bm ? "grid gap-3 border-t border-[var(--bm-hair)] p-4 sm:grid-cols-2" : "collapse-content grid gap-3 sm:grid-cols-2"}>
+                <div className={bm ? cn("grid gap-3 border-t border-[var(--bm-hair)] sm:grid-cols-2", foldBody) : "collapse-content grid gap-3 sm:grid-cols-2"}>
                     <p className="text-xs text-base-content/60 sm:col-span-2">时间窗口适用于所有账号</p>
                     <label className="form-control gap-1"><span className="label-text text-xs">开放开始时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowStartMinute)} onCommit={(value) => updateMarketPurchase({windowStartMinute: timeToMinutes(value)})}/></label>
                     <label className="form-control gap-1"><span className="label-text text-xs">开放结束时间</span><DraftInput type="time" value={minutesToTime(marketPurchase.windowEndMinute)} onCommit={(value) => updateMarketPurchase({windowEndMinute: timeToMinutes(value)})}/></label>
@@ -1586,7 +1588,7 @@ export function SpecialOpsPage() {
             </details>
             <details className={bm ? foldBox : "collapse collapse-arrow"}>
                 <summary className={bm ? foldSummary : "collapse-title"}>默认子弹兑换顺序</summary>
-                <div className={bm ? "border-t border-[var(--bm-hair)] p-4" : "collapse-content"}>
+                <div className={bm ? cn("border-t border-[var(--bm-hair)]", foldBody) : "collapse-content"}>
                     <AmmoTargetEditor
                         title="子弹兑换顺序"
                         targets={bootstrap.settings.defaultBusinessConfig.ammoTargets}
@@ -1619,7 +1621,7 @@ export function SpecialOpsPage() {
                 const due = bootstrap.schedule.dueAccounts.find((item) => item.accountId === account.id);
                 const business = account.independentBusinessConfig;
                 const manualCheckRequired = account.status === "needsManualLogin" || account.status === "loginFailed" || account.status === "manualCheckRequired" || account.status === "uncertain" || account.status === "isolated";
-                return <article id={`special-ops-account-${account.id}`} key={account.id} className={cn("scroll-mt-4 p-4", foldBox)}>
+                return <article id={`special-ops-account-${account.id}`} key={account.id} className={cn("scroll-mt-4", foldPad, foldBox)}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <div><h3 className="font-semibold">账号 {index + 1}</h3><p className="text-xs text-base-content/60">状态：{accountStatusLabels[account.status]}</p></div>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -1657,19 +1659,19 @@ export function SpecialOpsPage() {
                         <span className="font-medium">继承默认配置</span>
                     </div> : business ? <details className={cn("mt-3", bm ? foldBox : "collapse collapse-arrow")}>
                     <summary className={bm ? foldSummary : "collapse-title"}>独立设置</summary>
-                    <div className={bm ? "border-t border-[var(--bm-hair)] p-4" : "collapse-content"}>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className={bm ? cn("border-t border-[var(--bm-hair)]", foldBody) : "collapse-content"}>
+                    <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
                         {business.stations.map((station) => {
                             const runtime = account.stations.find((item) => item.kind === station.kind);
                             const recipePoint = business.recipePoints.find((item) => item.kind === station.kind);
-                            return <div key={station.kind} className={foldWell}>
-                                <label className="flex items-center justify-between"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateIndependentStation(account, station, {enabled})}/></label>
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                    <label className="text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateIndependentStation(account, station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
-                                    <label className="text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateIndependentStation(account, station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
+                            return <div key={station.kind} className={cn(foldWell, "flex flex-col gap-1.5")}>
+                                <label className="flex items-center justify-between gap-2"><span className="text-sm font-medium">{STATION_LABELS[station.kind]}</span><Switch checked={station.enabled} onCheckedChange={(enabled) => updateIndependentStation(account, station, {enabled})}/></label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    <label className="form-control gap-0.5 text-xs">小时<DraftInput type="number" min={0} max={168} value={String(Math.floor(station.durationMinutes / 60))} disabled={!station.enabled} onCommit={(hours) => updateIndependentStation(account, station, {durationMinutes: Number(hours) * 60 + station.durationMinutes % 60})}/></label>
+                                    <label className="form-control gap-0.5 text-xs">分钟<DraftInput type="number" min={0} max={59} value={String(station.durationMinutes % 60)} disabled={!station.enabled} onCommit={(minutes) => updateIndependentStation(account, station, {durationMinutes: Math.floor(station.durationMinutes / 60) * 60 + Number(minutes)})}/></label>
                                 </div>
-                                <label className="form-control mt-2 gap-1"><span className="label-text text-xs">制作物品备注</span><DraftInput value={station.recipeNote} onCommit={(recipeNote) => updateIndependentStation(account, station, {recipeNote})}/></label>
-                                <div className="mt-2 flex items-center justify-between gap-2">
+                                <label className="form-control gap-0.5"><span className="label-text text-xs">制作物品备注</span><DraftInput value={station.recipeNote} onCommit={(recipeNote) => updateIndependentStation(account, station, {recipeNote})}/></label>
+                                <div className="flex items-center justify-between gap-2">
                                     <span className="text-xs text-base-content/60">账号级制作物品选择点击点：{recipePoint ? `${recipePoint.rect.x}, ${recipePoint.rect.y}` : "继承全局"}</span>
                                     <Button
                                         disabled={!activeEnvironment}
@@ -1678,7 +1680,7 @@ export function SpecialOpsPage() {
                                         onClick={() => activeEnvironment && void beginCalibration(activeEnvironment, `craft.recipe.${station.kind}`, account.id)}
                                     ><RiCrosshair2Line data-icon="inline-start"/>{recipePoint ? "重选" : "选择"}</Button>
                                 </div>
-                                <div className="mt-2 text-xs text-base-content/60">{runtime?.status ?? "unknown"}{due?.stationKinds.includes(station.kind) ? " · 到期" : ""}</div>
+                                <div className="text-xs text-base-content/60">{runtime?.status ?? "unknown"}{due?.stationKinds.includes(station.kind) ? " · 到期" : ""}</div>
                             </div>;
                         })}
                     </div>
@@ -1691,7 +1693,7 @@ export function SpecialOpsPage() {
                     />
                     {business.market && <details className={cn("mt-3", bm ? foldBox : "collapse collapse-arrow border border-base-300")}>
                         <summary className={bm ? foldSummary : "collapse-title"}>独立交易行配置</summary>
-                        <div className={bm ? "grid gap-3 border-t border-[var(--bm-hair)] p-4 sm:grid-cols-2" : "collapse-content grid gap-3 sm:grid-cols-2"}>
+                        <div className={bm ? cn("grid gap-3 border-t border-[var(--bm-hair)] sm:grid-cols-2", foldBody) : "collapse-content grid gap-3 sm:grid-cols-2"}>
                             <label className="flex items-center gap-2 text-sm"><Switch checked={business.market?.enabled ?? false} onCheckedChange={(enabled) => updateIndependentBusiness(account, {market: {...business.market!, enabled}})}/>启用独立交易行购买</label>
                             <label className="form-control gap-1"><span className="label-text text-xs">购买次数</span><DraftInput type="number" min={1} value={String(business.market?.purchaseCount ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, purchaseCount: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
                             <label className="form-control gap-1"><span className="label-text text-xs">最高价</span><DraftInput type="number" min={1} value={String(business.market?.maxPrice ?? 1)} onCommit={(value) => updateIndependentBusiness(account, {market: {...business.market!, maxPrice: Math.max(1, Math.trunc(Number(value) || 1))}})}/></label>
@@ -1714,7 +1716,7 @@ export function SpecialOpsPage() {
         </section>
 
         <fieldset disabled={controlsLocked} className="contents">
-        <section id="special-ops-calibration" className={cn("space-y-3 p-4", foldBox)}>
+        <section id="special-ops-calibration" className={cn(foldPad, foldBox)}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">校准</h2><HelpHint content="坐标按当前显示环境全局保存，不按账号复制。显示环境变化后重新校准。"/></div>
             </div>
