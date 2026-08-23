@@ -103,6 +103,17 @@ fn stopped(error: MarketRunError) -> MarketRunStop {
     }
 }
 
+/// 交易行界面与大厅共用特勤处入口。让位后点一次，同账号制作台可直接进四制作台页，不必关游戏重登。
+async fn yield_for_craft<D: MarketDriver + ?Sized>(
+    driver: &D,
+    cancelled: Arc<AtomicBool>,
+) -> MarketRunStop {
+    if let Err(error) = driver.click("game.specialOps", false, cancelled).await {
+        return stopped(error);
+    }
+    MarketRunStop::YieldedForCraft
+}
+
 pub(crate) async fn run_market_atomic<D: MarketDriver + ?Sized>(
     driver: &D,
     config: &MarketRunConfig,
@@ -116,7 +127,12 @@ pub(crate) async fn run_market_atomic<D: MarketDriver + ?Sized>(
         .await?;
     let mut price = None;
     for attempt in 0..3 {
-        let text = driver.read_price(Arc::clone(&cancelled)).await?;
+        let text = match driver.read_price(Arc::clone(&cancelled)).await {
+            Ok(text) => text,
+            // 价格 OCR / 截图失败按本页未识别处理，不升级成系统级暂停。
+            Err(MarketRunError::System { step, .. }) if step == "market.price" => String::new(),
+            Err(error) => return Err(error),
+        };
         if let Some(value) = parse_market_price(&text) {
             price = Some(value);
             break;
@@ -231,6 +247,11 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
     if config.completed_count >= config.target_count {
         return MarketRunStop::Completed;
     }
+    // 进交易行之前若已有到期制作，先让位。这些任务往往是本轮前面账号执行期间新完成的，
+    // 不在当前交易行桶队列里；不让位会在整个窗口内把制作台晾在一边。
+    if driver.latest_due_craft_at_ms().is_some() {
+        return yield_for_craft(driver, cancelled).await;
+    }
     if let Err(error) = driver
         .click("market.entry", true, Arc::clone(&cancelled))
         .await
@@ -279,11 +300,11 @@ pub(crate) async fn run_market<D: MarketDriver + ?Sized>(
         if completed_count >= config.target_count {
             return MarketRunStop::Completed;
         }
-        // 只让位给开跑之后**新**到期的制作。开跑前就已逾期的制作是本轮队列自己的
-        // 业务（交易行跑在同账号 craft 之后，其他账号的到期制作还排在后面），
-        // 拿它当让位理由会让每买一件就退出换号 -> 购买次数永远停在 1。
+        // 循环内只让位给入口之后**新**到期的制作。开跑前就逾期的已在进场前让位；
+        // 这里再用全量到期集合会把仍排在交易行后面的队列任务当成让位理由，
+        // 每买一件就退出换号 -> 购买次数永远停在 1。
         if driver.latest_due_craft_at_ms() > due_craft_baseline_ms {
-            return MarketRunStop::YieldedForCraft;
+            return yield_for_craft(driver, Arc::clone(&cancelled)).await;
         }
     }
 }
@@ -590,33 +611,64 @@ mod tests {
             run_market(&driver, config(2), Arc::new(AtomicBool::new(false))).await,
             MarketRunStop::YieldedForCraft
         );
+        assert!(
+            driver
+                .clicks()
+                .iter()
+                .any(|action| action.as_str() == "click:game.specialOps"),
+            "让位必须从交易行点特勤处进入四制作台"
+        );
     }
 
     #[tokio::test]
-    async fn craft_already_due_at_start_does_not_cut_the_purchase_count() {
-        // 开跑前就逾期的制作是本轮队列自己的业务：其他账号的到期制作排在交易行之后，
-        // 拿它让位会让账号每买一件就退出换号，配置的 3 次永远停在 1 次。
+    async fn craft_due_at_start_yields_before_buying() {
+        // 进场前已到期的制作优先：可能是本轮前面账号执行期间新完成的，不在当前交易行桶里。
         let driver = FakeDriver::with_ocr(["100", "100", "100"]);
         driver.craft_at_ms.store(500, Ordering::SeqCst);
 
         let stop = run_market(&driver, config(3), Arc::new(AtomicBool::new(false))).await;
 
-        assert_eq!(stop, MarketRunStop::Completed);
-        assert_eq!(driver.completed.load(Ordering::SeqCst), 3);
+        assert_eq!(stop, MarketRunStop::YieldedForCraft);
+        assert_eq!(driver.completed.load(Ordering::SeqCst), 0);
+        assert_eq!(driver.clicks(), ["click:game.specialOps"]);
     }
 
     #[tokio::test]
     async fn craft_newly_due_during_loop_still_yields() {
-        // 陈旧到期任务不让位，但跑动过程中新完成的制作台必须仍能抢回控制权。
+        // 进场前没有到期制作，跑动过程中新完成的必须仍能抢回控制权。
         let driver = FakeDriver {
             boundary_after_purchase: Boundary::Craft,
             ..FakeDriver::with_ocr(["100", "100", "100"])
         };
-        driver.craft_at_ms.store(500, Ordering::SeqCst);
 
         let stop = run_market(&driver, config(3), Arc::new(AtomicBool::new(false))).await;
 
         assert_eq!(stop, MarketRunStop::YieldedForCraft);
         assert_eq!(driver.completed.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            driver.clicks().last().map(String::as_str),
+            Some("click:game.specialOps")
+        );
+    }
+
+    #[tokio::test]
+    async fn price_ocr_system_errors_become_recognition_failure_not_global_pause() {
+        let driver = FakeDriver {
+            ocr: Mutex::new(
+                (0..9)
+                    .map(|_| {
+                        Err(MarketRunError::System {
+                            step: "market.price".to_string(),
+                            message: "截取交易行价格区域失败".to_string(),
+                        })
+                    })
+                    .collect(),
+            ),
+            ..FakeDriver::with_ocr(["unused"])
+        };
+
+        let stop = run_market(&driver, config(1), Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(stop, MarketRunStop::PriceRecognitionFailed);
     }
 }

@@ -220,9 +220,11 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 
 任务栏渲染 `已购买 N/M · <状态>`（`marketCompletedCount` / `marketTargetCount` / `marketStatus`）。后端一直在下发这三个字段，前端不渲染的话上调购买次数后任务栏毫无变化 -> 用户以为配置没生效。
 
-当天的两个终态（`Completed` / `WindowClosed`）都只在 `completedCount >= purchaseCount` 时出栏，出栏条件对购买次数敏感：把次数从 1 调到 3，任务立刻回到任务栏继续买剩下 2 次，不需要一键恢复。planner 的 `market_purchase_due` 因此不再筛状态白名单，只看 `completedCount < purchaseCount`，与任务栏严格互补——planner 比任务栏严会出现「任务栏有任务、点继续却不执行」。`WindowClosed` 只在 `minute >= windowEndMinute` 时写入，而 `is_current` 蕴含窗口开着（`market_start_projections` 在 `minute >= end` 时只投影明天），所以能看见当天 `WindowClosed` 只有一种情形：窗口结束时间被人为延后，那正是应该继续买的场景。
+当天的两个终态（`Completed` / `WindowClosed`）都只在 `completedCount >= purchaseCount` 时出栏，出栏条件对购买次数敏感：把次数从 1 调到 3，任务立刻回到任务栏继续买剩下 2 次，不需要一键恢复。planner 的 `market_purchase_due` 因此不再筛状态白名单，只看 `completedCount < purchaseCount`，与任务栏严格互补——planner 比任务栏严会出现「任务栏有任务、点继续却不执行」。例外：当天 `PriceRecognitionFailed` 任务栏保留、planner 跳过，直到一键恢复放回 `Pending`。`WindowClosed` 只在 `minute >= windowEndMinute` 时写入，而 `is_current` 蕴含窗口开着（`market_start_projections` 在 `minute >= end` 时只投影明天），所以能看见当天 `WindowClosed` 只有一种情形：窗口结束时间被人为延后，那正是应该继续买的场景。
 
-当前账号必须跑满配置购买次数才切换下一账号。每个原子流程结束后只让位给**新**到期的制作：`MarketDriver::latest_due_craft_at_ms()` 在已到期制作里取最晚计划时间，与入口点击、固定等待之后取的基线比较，仅当出现比基线更晚的到期制作时返回 `YieldedForCraft`。取 `max` 而非 `min` 是因为让位要回答「有没有新制作到期」，新完成的制作台计划时间必然晚于开跑前就已逾期的那些，`min` 会被陈旧任务永久钉住。开跑前就已逾期的制作属于本轮队列自身业务——交易行排在同账号制作之后，其他账号的到期制作还排在交易行后面——拿它当让位理由会让账号每买一件就退出换号，购买次数永远停在 1，且每次重排队都要重新登录，窗口耗尽后 `market_window_open` 会静默丢弃剩余交易行任务。让位后仍按 `market_retry_task` 排在最后一个已到期制作之后，按已保存次数续跑。
+当前账号必须跑满配置购买次数才切换下一账号。交易行窗口内制作台优先：点 `market.entry` 之前若已有到期制作立即 `YieldedForCraft`。循环内每个原子流程结束后只让位给入口后**新**到期的制作：`MarketDriver::latest_due_craft_at_ms()` 在已到期制作里取最晚计划时间，与入口点击、固定等待之后取的基线比较。取 `max` 而非 `min` 是因为循环内要回答「有没有新制作到期」，`min` 会被陈旧任务永久钉住。循环内拿全量到期集合让位会把仍排在交易行后面的队列任务当成理由，每买一件就退出换号，购买次数永远停在 1。让位时点击 `game.specialOps`（交易行与大厅共用特勤处入口）进入四制作台；同账号保持会话，跨账号才关游戏切号。让位后仍按 `market_retry_task` 排在最后一个已到期制作之后，按已保存次数续跑。
+
+`market.price` OCR 或截图失败按本页未识别处理，连续三个商品页写入 `PriceRecognitionFailed`，账号交易行冻结、其他任务继续，禁止升级成系统暂停。一键恢复把当天该状态放回 `Pending`。
 
 试运行 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`；两者都在运行中被 `ensure_no_active_special_ops_run` 拦截，`special_ops_recheck_limited_supply` 同样如此。交易行试运行支持 `inspectOnly` 和 `realSingleAttempt`，不写正式购买次数；限时商品颜色测试只双采样，不写正式周期结果。
 

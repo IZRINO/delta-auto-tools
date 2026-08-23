@@ -459,7 +459,6 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
 
         if let Some(success) = success {
             let now_ms = driver.now_ms();
-            let force_new_session = success.limited_retry_requested || success.market_yielded;
             if success.limited_retry_requested {
                 if queued.business_retries == 0 {
                     // 补偿重试必须排队首：退出判定只看 queue.front()，排到队尾会在
@@ -516,6 +515,13 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
             if !driver.market_window_open() {
                 queue.retain(|queued| queued.task.market_purchase_day.is_none());
             }
+            // 交易行让位后同账号制作台从当前界面点特勤处即可，保持会话。
+            // 跨账号仍要关游戏切号。限时商品补偿重试必须重进研发部门，继续强制新会话。
+            let force_new_session = success.limited_retry_requested
+                || (success.market_yielded
+                    && queue
+                        .front()
+                        .is_some_and(|next| next.task.account_id != task.account_id));
             let continue_round = queue
                 .front()
                 .is_some_and(|next| should_continue_round(task, &next.task, now_ms));
@@ -1046,6 +1052,37 @@ mod tests {
                 "run:market",
                 "close-game",
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn yielded_market_keeps_session_for_same_account_craft() {
+        let yielded = AccountRunSuccess {
+            market_pending: true,
+            market_yielded: true,
+            ..AccountRunSuccess::default()
+        };
+        let refreshed_craft = plan_tasks(&[("a", 1_500)]).accounts.remove(0);
+        let driver = FakeDriver::new(
+            vec![
+                Ok(yielded),
+                Ok(AccountRunSuccess::processed(1)),
+                Ok(AccountRunSuccess::default()),
+            ],
+            false,
+        )
+        .with_now_ms(2_000)
+        .with_refresh_result(Ok(vec![refreshed_craft]));
+        let mut plan = plan_tasks(&[("a", 1_000)]);
+        plan.accounts[0].stations.clear();
+        plan.accounts[0].market_purchase_day = Some("2026-08-08".to_string());
+
+        let result = run_round(&driver, &plan, Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            ["run:a", "continue:a", "continue:a", "close-game",]
         );
     }
 

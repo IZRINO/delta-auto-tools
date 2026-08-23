@@ -3872,6 +3872,7 @@ fn freeze_market_run(
                 ("market.return", false),
                 ("market.buy", false),
                 ("market.confirm", false),
+                ("game.specialOps", false),
             ],
         )?,
         day: day.to_string(),
@@ -11652,7 +11653,11 @@ pub(crate) fn build_schedule_with_profit_runtime(
                     || account.limited_supply.outcome
                         == limited_supply::LimitedSupplyOutcome::Pending
             });
+        let market_blocked_by_price_failure = account.market.day.as_deref()
+            == Some(current_day.as_str())
+            && account.market.status == market_purchase::MarketTaskStatus::PriceRecognitionFailed;
         let market_purchase_due = business_config.market.enabled
+            && !market_blocked_by_price_failure
             && market_purchase::market_window_open(
                 u16::try_from(current_minute).unwrap_or(u16::MAX),
                 settings.market_purchase.window_start_minute,
@@ -11664,6 +11669,8 @@ pub(crate) fn build_schedule_with_profit_runtime(
                 // 会出现「任务栏有任务、点继续却不执行」。次数未达标即到期，状态不再筛：
                 // WindowClosed 能走到这里说明窗口结束时间被延后（`market_window_open` 已在
                 // 前面把真正关闭的窗口挡掉），那正是应该继续买的场景。
+                // PriceRecognitionFailed 是例外：任务栏继续显示，planner 跳过直到一键恢复，
+                // 避免 OCR 失败把整轮打成系统暂停或在窗口内空转重试。
                 || account.market.completed_count < business_config.market.purchase_count);
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
@@ -17396,6 +17403,7 @@ mod tests {
             "market.return",
             "market.buy",
             "market.confirm",
+            "game.specialOps",
         ] {
             calibration_target_mut(&mut fixture.settings, key).rect = Some(CalibrationRect {
                 x: 10,
@@ -18429,6 +18437,7 @@ mod tests {
             "market.return",
             "market.buy",
             "market.confirm",
+            "game.specialOps",
         ] {
             calibration_target_mut(&mut fixture.settings, key).rect = Some(CalibrationRect {
                 x: 10,
@@ -18684,6 +18693,38 @@ mod tests {
             assert!(task.is_none());
             assert!(!due);
         }
+    }
+
+    #[test]
+    fn price_recognition_failure_stays_on_timeline_but_is_not_due() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.default_business_config.market.enabled = true;
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+        settings.accounts[0].market = market_purchase::MarketAccountState {
+            day: Some("2026-08-08".to_string()),
+            completed_count: 0,
+            status: market_purchase::MarketTaskStatus::PriceRecognitionFailed,
+            last_error: Some("连续三个商品页未识别到有效价格".to_string()),
+        };
+
+        let snapshot = build_schedule(&settings, now_ms);
+        let task = snapshot
+            .timeline_tasks
+            .iter()
+            .find(|task| {
+                task.kind == TimelineTaskKind::MarketPurchase
+                    && task.scheduled_at_ms == shanghai_test_ms("2026-08-08 02:00")
+            })
+            .expect("价格识别失败必须留在任务栏等人工恢复");
+        assert_eq!(
+            task.market_status,
+            Some(market_purchase::MarketTaskStatus::PriceRecognitionFailed)
+        );
+        assert!(!snapshot
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.market_purchase_due));
     }
 
     #[test]
