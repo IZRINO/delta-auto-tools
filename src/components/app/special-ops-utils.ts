@@ -272,7 +272,8 @@ export function accountRestorable(account: AccountPlan, currentDay: string): boo
     return account.market?.day === currentDay
         && (account.market.status === "running"
             || account.market.status === "priceRecognitionFailed"
-            || account.market.status === "windowClosed");
+            || account.market.status === "windowClosed"
+            || account.market.priceRetryAtMs != null);
 }
 
 /// 任务栏单项人工判定的显示条件。

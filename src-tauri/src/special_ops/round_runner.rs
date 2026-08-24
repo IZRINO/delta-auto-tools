@@ -113,6 +113,7 @@ pub(crate) struct AccountRunSuccess {
     pub limited_retry_requested: bool,
     pub market_pending: bool,
     pub market_yielded: bool,
+    pub price_retry_requested: bool,
 }
 
 impl AccountRunSuccess {
@@ -174,6 +175,11 @@ pub(crate) trait RoundDriver: Send + Sync {
     ) -> Result<bool, String>;
     fn persist_limited_failure(&self, task: &AccountRoundTask, message: &str)
         -> Result<(), String>;
+    fn persist_market_price_failure(
+        &self,
+        task: &AccountRoundTask,
+        message: &str,
+    ) -> Result<(), String>;
     fn market_window_open(&self) -> bool;
     fn refresh_due_craft_tasks(&self) -> Result<Vec<AccountRoundTask>, String>;
     async fn close_game(&self) -> Result<(), String>;
@@ -209,6 +215,12 @@ fn market_retry_task(queued: &QueuedRoundTask) -> QueuedRoundTask {
     retry.task.stations.clear();
     retry.task.ammo_target_ids.clear();
     retry.task.limited_supply_cycle_id = None;
+    retry
+}
+
+fn market_price_retry_task(queued: &QueuedRoundTask) -> QueuedRoundTask {
+    let mut retry = market_retry_task(queued);
+    retry.business_retries = retry.business_retries.saturating_add(1);
     retry
 }
 
@@ -477,6 +489,29 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                     };
                 }
             }
+            if success.price_retry_requested {
+                if queued.business_retries == 0 {
+                    // 插到未到期任务之前：队尾是「剩余到期任务之后」，不是整队最后。
+                    // push_back 会落到远期 lookahead 后面，退出判定只看 front -> 重试被丢掉，1 小时冷却也写不上。
+                    let insert_at = queue
+                        .iter()
+                        .position(|candidate| candidate.task.scheduled_at_ms > now_ms)
+                        .unwrap_or(queue.len());
+                    queue.insert(insert_at, market_price_retry_task(&queued));
+                } else if let Err(message) = driver.persist_market_price_failure(
+                    &queued.task,
+                    "连续三个商品页未识别到有效价格，将于 1 小时后重试",
+                ) {
+                    return RoundRunResult {
+                        completed_accounts: completed_account_ids.len(),
+                        stop: persist_system_failure(
+                            driver,
+                            "round.persistMarketPriceFailure",
+                            message,
+                        ),
+                    };
+                }
+            }
             if success.market_yielded && success.market_pending {
                 let refreshed = match driver.refresh_due_craft_tasks() {
                     Ok(tasks) => tasks,
@@ -518,6 +553,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
             // 交易行让位后同账号制作台从当前界面点特勤处即可，保持会话。
             // 跨账号仍要关游戏切号。限时商品补偿重试必须重进研发部门，继续强制新会话。
             let force_new_session = success.limited_retry_requested
+                || success.price_retry_requested
                 || (success.market_yielded
                     && queue
                         .front()
@@ -694,6 +730,18 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(format!("persist-limited:{}", task.account_id));
+            Ok(())
+        }
+
+        fn persist_market_price_failure(
+            &self,
+            task: &AccountRoundTask,
+            _message: &str,
+        ) -> Result<(), String> {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(format!("persist-price:{}", task.account_id));
             Ok(())
         }
 
@@ -976,6 +1024,95 @@ mod tests {
                 "close-game",
                 "run:a",
                 "persist-limited:a",
+                "close-game",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn price_ocr_failure_retries_once_then_freezes_market() {
+        let retry = AccountRunSuccess {
+            price_retry_requested: true,
+            ..AccountRunSuccess::default()
+        };
+        let driver = FakeDriver::new(vec![Ok(retry.clone()), Ok(retry)], false);
+        let mut plan = plan_tasks(&[("a", 1_000)]);
+        plan.accounts[0].stations.clear();
+        plan.accounts[0].market_purchase_day = Some("2026-08-08".to_string());
+
+        let result = run_round(&driver, &plan, Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "close-game",
+                "run:a",
+                "persist-price:a",
+                "close-game",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn price_ocr_retry_survives_far_future_queue_front() {
+        let retry = AccountRunSuccess {
+            price_retry_requested: true,
+            ..AccountRunSuccess::default()
+        };
+        let driver = FakeDriver::new(vec![Ok(retry.clone()), Ok(retry)], false);
+        let mut plan = plan_tasks(&[("a", 1_000), ("b", 5_000_000)]);
+        plan.accounts[0].stations.clear();
+        plan.accounts[0].market_purchase_day = Some("2026-08-08".to_string());
+
+        let result = run_round(&driver, &plan, Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "close-game",
+                "run:a",
+                "persist-price:a",
+                "close-game",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn price_ocr_retry_waits_behind_other_due_accounts() {
+        let retry = AccountRunSuccess {
+            price_retry_requested: true,
+            ..AccountRunSuccess::default()
+        };
+        let driver = FakeDriver::new(
+            vec![
+                Ok(retry.clone()),
+                Ok(AccountRunSuccess::default()),
+                Ok(retry),
+            ],
+            false,
+        );
+        let mut plan = plan_tasks(&[("a", 1_000), ("b", 1_000)]);
+        plan.accounts[0].stations.clear();
+        plan.accounts[0].market_purchase_day = Some("2026-08-08".to_string());
+        plan.accounts[1].stations.clear();
+        plan.accounts[1].market_purchase_day = Some("2026-08-08".to_string());
+
+        let result = run_round(&driver, &plan, Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "close-game",
+                "run:b",
+                "close-game",
+                "run:a",
+                "persist-price:a",
                 "close-game",
             ]
         );

@@ -18,7 +18,7 @@
 
 账号卡片与账号区标题额外提供“一键恢复状态”。`special_ops_restore_account_state` 接收 `Option<String>`：传账号 ID 只恢复该账号，传 `null` 恢复全部异常账号。恢复内容为账号状态回 `Ready`、清 `lastFailure`、按存量计时还原 `Uncertain` 制作台、清子弹目标 `lastFailure` 与当天 retry 预算、清当天 `lastSuccessDay`、限时商品 `Failed` 回 `Pending`、当天交易行封锁状态回 `Pending`。当天成功标记一起清 -> 目标回未兑换、可再次调度；重复兑换由流程内资格与库存检查分支兜底。没有任何可恢复项时返回错误，不产生空转 revision。两个按钮常驻显示：无可恢复项时按钮 disabled 并在 title 说明原因，不再整块隐藏。
 
-交易行只放回**当天**的 `Running` / `PriceRecognitionFailed` / `WindowClosed`，`Completed` 与其他日期一律不动——购买次数已经花掉，放回会让同一天重复买满。必须放回的原因是任务栏对当天已买满次数的 `Completed | WindowClosed` 直接 `continue` 出栏，而 `build_round_plan_with_profit` 依赖这条任务栏任务，一次 `WindowClosed` 写入会让交易行当天永久消失 -> 一键恢复后点「继续」不再上线跑交易行。前端 `accountRestorable` 必须与后端 `changed` 判定完全一致（含这条交易行分支），否则按钮亮着点下去只拿到「没有需要恢复的异常状态」。
+交易行只放回**当天**的 `Running` / `PriceRecognitionFailed` / `WindowClosed` 以及未到期的 `priceRetryAtMs`，`Completed` 与其他日期一律不动——购买次数已经花掉，放回会让同一天重复买满。必须放回的原因是任务栏对当天已买满次数的 `Completed | WindowClosed` 直接 `continue` 出栏，而 `build_round_plan_with_profit` 依赖这条任务栏任务，一次 `WindowClosed` 写入会让交易行当天永久消失 -> 一键恢复后点「继续」不再上线跑交易行。前端 `accountRestorable` 必须与后端 `changed` 判定完全一致（含这条交易行分支），否则按钮亮着点下去只拿到「没有需要恢复的异常状态」。
 
 ## 子弹兑换配置
 
@@ -169,7 +169,7 @@
 
 冻结缓存键 `FrozenRoundAccountKey = (String, i64, bool)`，第三位是「是否交易行桶」。交易行独立成桶后，同账号可以同时存在非交易行桶与交易行桶，而两者的 `scheduledAtMs` 都是分钟对齐的（子弹取每日兑换时间、交易行取窗口起点）；配成同一分钟时 `(accountId, scheduledAtMs)` 二元组完全相同 -> `collect()` 只留下后插入的交易行桶 -> 非交易行桶拿到 `craft: []` / `ammo: None` 的冻结配置，制作与子弹被静默跳过。
 
-每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段：首次 `TimedOut` 落 `lastFailure` 保持 `Ready` 并把账号移到当前轮次队尾（同时记录 `log_info!` 日志「导航超时，账号任务已挪到队尾重试」，可在运行日志中区分「已挪队尾待重试」与「二次超时已持久化失败」），重试从登录流程重新开始；第二次同一问题仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。跨轮次靠 `lastFailure` 识别同一问题，单账号不会无限重试。成功进入正常流程后清掉这次 `lastFailure`。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
+每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段；军需处 `ammo.department` / `ammo.tacticalDepartment` / `ammo.researchDepartment` 与交易行 `market.entry` 模板超时同样走该路径：首次 `TimedOut` 落 `lastFailure` 保持 `Ready` 并把账号移到当前轮次队尾（同时记录 `log_info!` 日志「导航超时，账号任务已挪到队尾重试」，可在运行日志中区分「已挪队尾待重试」与「二次超时已持久化失败」），重试从登录流程重新开始；第二次同一问题仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。跨轮次靠 `lastFailure` 识别同一问题，单账号不会无限重试。成功进入正常流程后清掉这次 `lastFailure`。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
 
 轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame，预算 `ROUND_CLOSE_GAME_TIMEOUT = 45s`：UE4 客户端带内核反作弊，退出常慢于登录流程给同一个 exe 的 15 秒，旧的 10 秒比登录 `StopGame` 还紧 -> 正常慢退出被判成故障。导航超时后、账号失败后和会话结束这三处切换关闭失败只记 warn 并继续本轮，不再全局暂停：登录流程头两步 `StopGame` / `StopWeGame` 会用各自预算无条件重杀游戏与 WeGame -> 残留进程下轮自愈，为一次慢退出停摆到人工点继续代价远高于收益。`PauseRequested` 先持久化暂停（原因固定为“用户请求暂停”），再关闭游戏；该路径关闭失败仍返回 `SystemFailure { step: "round.closeGame" }`，但暂停原因已落盘，进程错误文本不会写进 `pausedReason`。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
 
@@ -220,11 +220,11 @@ scheduler 启动到期轮次失败分两类。poll 与 `freeze_round_run` 的过
 
 任务栏渲染 `已购买 N/M · <状态>`（`marketCompletedCount` / `marketTargetCount` / `marketStatus`）。后端一直在下发这三个字段，前端不渲染的话上调购买次数后任务栏毫无变化 -> 用户以为配置没生效。
 
-当天的两个终态（`Completed` / `WindowClosed`）都只在 `completedCount >= purchaseCount` 时出栏，出栏条件对购买次数敏感：把次数从 1 调到 3，任务立刻回到任务栏继续买剩下 2 次，不需要一键恢复。planner 的 `market_purchase_due` 因此不再筛状态白名单，只看 `completedCount < purchaseCount`，与任务栏严格互补——planner 比任务栏严会出现「任务栏有任务、点继续却不执行」。例外：当天 `PriceRecognitionFailed` 任务栏保留、planner 跳过，直到一键恢复放回 `Pending`。`WindowClosed` 只在 `minute >= windowEndMinute` 时写入，而 `is_current` 蕴含窗口开着（`market_start_projections` 在 `minute >= end` 时只投影明天），所以能看见当天 `WindowClosed` 只有一种情形：窗口结束时间被人为延后，那正是应该继续买的场景。
+当天的两个终态（`Completed` / `WindowClosed`）都只在 `completedCount >= purchaseCount` 时出栏，出栏条件对购买次数敏感：把次数从 1 调到 3，任务立刻回到任务栏继续买剩下 2 次，不需要一键恢复。planner 的 `market_purchase_due` 因此不再筛状态白名单，只看 `completedCount < purchaseCount`，与任务栏严格互补——planner 比任务栏严会出现「任务栏有任务、点继续却不执行」。例外：当天 `PriceRecognitionFailed` 若带未来 `priceRetryAtMs`，任务栏保留并把计划时间提到冷却点，planner 冷却期内跳过；冷却结束且窗口仍开则再到期。无冷却时间戳的旧存档视为可立刻重试。一键恢复清冷却并放回 `Pending`。`WindowClosed` 只在 `minute >= windowEndMinute` 时写入，而 `is_current` 蕴含窗口开着（`market_start_projections` 在 `minute >= end` 时只投影明天），所以能看见当天 `WindowClosed` 只有一种情形：窗口结束时间被人为延后，那正是应该继续买的场景。
 
 当前账号必须跑满配置购买次数才切换下一账号。交易行窗口内制作台优先：点 `market.entry` 之前若已有到期制作立即 `YieldedForCraft`。循环内每个原子流程结束后只让位给入口后**新**到期的制作：`MarketDriver::latest_due_craft_at_ms()` 在已到期制作里取最晚计划时间，与入口点击、固定等待之后取的基线比较。取 `max` 而非 `min` 是因为循环内要回答「有没有新制作到期」，`min` 会被陈旧任务永久钉住。循环内拿全量到期集合让位会把仍排在交易行后面的队列任务当成理由，每买一件就退出换号，购买次数永远停在 1。让位时点击 `game.specialOps`（交易行与大厅共用特勤处入口）进入四制作台；同账号保持会话，跨账号才关游戏切号。让位后仍按 `market_retry_task` 排在最后一个已到期制作之后，按已保存次数续跑。
 
-`market.price` OCR 或截图失败按本页未识别处理，连续三个商品页写入 `PriceRecognitionFailed`，账号交易行冻结、其他任务继续，禁止升级成系统暂停。一键恢复把当天该状态放回 `Pending`。
+`market.price` OCR 或截图失败按本页未识别处理。连续三个商品页后本轮把该账号交易行插到剩余到期任务队尾重试一次（插在远期 lookahead 之前）。队尾补偿仍失败则写入 `priceRetryAtMs = now + 1h`，任务栏保留、`scheduledAtMs` 提到该时刻、planner 冷却期内跳过；冷却结束且窗口仍开则再开一轮，仍走「三页失败→队尾重试」，直到窗口结束。禁止升级成系统暂停。一键恢复清冷却并放回 `Pending`。旧存档只有 `PriceRecognitionFailed`、没有冷却时间戳的，视为冷却已过，允许立刻再跑。
 
 试运行 command：`special_ops_start_limited_supply_trial`、`special_ops_start_market_trial`；两者都在运行中被 `ensure_no_active_special_ops_run` 拦截，`special_ops_recheck_limited_supply` 同样如此。交易行试运行支持 `inspectOnly` 和 `realSingleAttempt`，不写正式购买次数；限时商品颜色测试只双采样，不写正式周期结果。
 

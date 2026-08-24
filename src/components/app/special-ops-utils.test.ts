@@ -652,6 +652,7 @@ describe("accountRestorable", () => {
         // 交易行被封锁同样算可恢复：后端会放回 pending，否则点「继续」不会再跑交易行。
         ["交易行窗口已关闭", {market: {day: "2026-08-10", completedCount: 1, status: "windowClosed" as const, lastError: null}}],
         ["交易行价格识别失败", {market: {day: "2026-08-10", completedCount: 0, status: "priceRecognitionFailed" as const, lastError: "OCR 失败"}}],
+        ["交易行价格 OCR 冷却", {market: {day: "2026-08-10", completedCount: 0, status: "pending" as const, lastError: "OCR 失败", priceRetryAtMs: 1_000}}],
         ["交易行残留运行中", {market: {day: "2026-08-10", completedCount: 0, status: "running" as const, lastError: null}}],
     ])("%s 时可恢复", (_label, patch) => {
         expect(accountRestorable(account("account-1", 0, patch), currentDay)).toBe(true);

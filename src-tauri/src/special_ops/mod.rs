@@ -1906,15 +1906,17 @@ fn restore_account_state(
         // `WindowClosed` / `PriceRecognitionFailed` / 残留 `Running` 会让任务在任务栏
         // 与 planner 双重过滤下永久消失。`Completed` 不动 —— 购买次数已经花掉了。
         if account.market.day.as_deref() == Some(current_day)
-            && matches!(
-                account.market.status,
-                market_purchase::MarketTaskStatus::Running
-                    | market_purchase::MarketTaskStatus::PriceRecognitionFailed
-                    | market_purchase::MarketTaskStatus::WindowClosed
-            )
+            && (account.market.price_retry_at_ms.is_some()
+                || matches!(
+                    account.market.status,
+                    market_purchase::MarketTaskStatus::Running
+                        | market_purchase::MarketTaskStatus::PriceRecognitionFailed
+                        | market_purchase::MarketTaskStatus::WindowClosed
+                ))
         {
             account.market.status = market_purchase::MarketTaskStatus::Pending;
             account.market.last_error = None;
+            account.market.price_retry_at_ms = None;
             changed = true;
         }
         if changed {
@@ -6315,6 +6317,7 @@ struct ProductionLimitedSupplyDriver {
 impl ProductionLimitedSupplyDriver {
     fn map_input_error(
         error: ammo_runtime::AmmoDriverError,
+        fallback_step: &str,
     ) -> limited_supply_runtime::LimitedRunError {
         match error {
             ammo_runtime::AmmoDriverError::Cancelled => {
@@ -6322,7 +6325,7 @@ impl ProductionLimitedSupplyDriver {
             }
             ammo_runtime::AmmoDriverError::Target(message) => {
                 limited_supply_runtime::LimitedRunError::System {
-                    step: "limited.input".to_string(),
+                    step: fallback_step.to_string(),
                     message,
                 }
             }
@@ -6345,7 +6348,7 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
             cancelled,
         )
         .await;
-        result.map_err(Self::map_input_error)
+        result.map_err(|error| Self::map_input_error(error, key))
     }
 
     async fn delay(
@@ -6355,7 +6358,7 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
     ) -> Result<(), limited_supply_runtime::LimitedRunError> {
         <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(&self.input, duration, cancelled)
             .await
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, "limited.enterDelay"))
     }
 
     async fn wait_ready(
@@ -6492,7 +6495,7 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
                 };
                 Ok(())
             })
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, "limited.persistResult"))
     }
 }
 
@@ -6505,12 +6508,15 @@ struct ProductionMarketDriver {
 }
 
 impl ProductionMarketDriver {
-    fn map_input_error(error: ammo_runtime::AmmoDriverError) -> market_runtime::MarketRunError {
+    fn map_input_error(
+        error: ammo_runtime::AmmoDriverError,
+        fallback_step: &str,
+    ) -> market_runtime::MarketRunError {
         match error {
             ammo_runtime::AmmoDriverError::Cancelled => market_runtime::MarketRunError::Cancelled,
             ammo_runtime::AmmoDriverError::Target(message) => {
                 market_runtime::MarketRunError::System {
-                    step: "market.input".to_string(),
+                    step: fallback_step.to_string(),
                     message,
                 }
             }
@@ -6547,9 +6553,10 @@ impl ProductionMarketDriver {
                 }
                 account.market.status = status;
                 account.market.last_error = error;
+                account.market.price_retry_at_ms = None;
                 Ok(())
             })
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, "market.persistStatus"))
     }
 }
 
@@ -6567,7 +6574,7 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
                 Arc::clone(&cancelled),
             )
             .await
-            .map_err(Self::map_input_error)?;
+            .map_err(|error| Self::map_input_error(error, key))?;
         }
         let region = self
             .input
@@ -6578,7 +6585,7 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
         self.input
             .click_region(region, key, countdown, cancelled)
             .await
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, key))
     }
 
     async fn click_point(
@@ -6590,7 +6597,7 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
         self.input
             .click_region(point.clone(), "market.product", countdown, cancelled)
             .await
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, "market.product"))
     }
 
     async fn read_price(
@@ -6639,7 +6646,7 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
     ) -> Result<(), market_runtime::MarketRunError> {
         <ProductionAmmoDriver as ammo_runtime::AmmoDriver>::delay(&self.input, duration, cancelled)
             .await
-            .map_err(Self::map_input_error)
+            .map_err(|error| Self::map_input_error(error, "market.delay"))
     }
 
     fn persist_purchase_click(&self) -> Result<u32, market_runtime::MarketRunError> {
@@ -6666,10 +6673,11 @@ impl market_runtime::MarketDriver for ProductionMarketDriver {
                 account.market.completed_count = account.market.completed_count.saturating_add(1);
                 account.market.status = market_purchase::MarketTaskStatus::Running;
                 account.market.last_error = None;
+                account.market.price_retry_at_ms = None;
                 completed_count = account.market.completed_count;
                 Ok(())
             })
-            .map_err(Self::map_input_error)?;
+            .map_err(|error| Self::map_input_error(error, "market.persistPurchase"))?;
         Ok(completed_count)
     }
 
@@ -6730,6 +6738,42 @@ struct ProductionRoundDriver {
     game_executable_path: std::path::PathBuf,
 }
 
+fn retryable_entry_step(step: &str) -> bool {
+    matches!(
+        step,
+        "ammo.department"
+            | "ammo.tacticalDepartment"
+            | "ammo.researchDepartment"
+            | "market.entry"
+            | "market.input"
+            | "limited.input"
+    )
+}
+
+fn map_round_step_error(
+    step: impl Into<String>,
+    message: impl Into<String>,
+) -> round_runner::AccountRunError {
+    let step = step.into();
+    let message = message.into();
+    if retryable_entry_step(&step) {
+        round_runner::AccountRunError::navigation_timeout_with_message(step, message)
+    } else {
+        round_runner::AccountRunError::system(step, message)
+    }
+}
+
+fn map_round_market_error(error: market_runtime::MarketRunError) -> round_runner::AccountRunError {
+    match error {
+        market_runtime::MarketRunError::Cancelled => {
+            round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
+        }
+        market_runtime::MarketRunError::System { step, message } => {
+            map_round_step_error(step, message)
+        }
+    }
+}
+
 fn map_round_ammo_stop(
     stop: ammo_runtime::AmmoRunStop,
 ) -> Result<(), round_runner::AccountRunError> {
@@ -6750,11 +6794,7 @@ fn map_round_ammo_stop(
             target_id, step, message,
         )),
         ammo_runtime::AmmoRunStop::SystemFailure { step, message } => {
-            if step == "ammo.department" {
-                Err(round_runner::AccountRunError::navigation_timeout_with_message(step, message))
-            } else {
-                Err(round_runner::AccountRunError::system(step, message))
-            }
+            Err(map_round_step_error(step, message))
         }
         ammo_runtime::AmmoRunStop::EmergencyStopped => Err(round_runner::AccountRunError::system(
             "round.stopped",
@@ -6772,10 +6812,10 @@ fn map_round_ammo_driver_error(
             round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
         }
         ammo_runtime::AmmoDriverError::Target(message) => {
-            round_runner::AccountRunError::system(fallback_step, message)
+            map_round_step_error(fallback_step, message)
         }
         ammo_runtime::AmmoDriverError::System { step, message } => {
-            round_runner::AccountRunError::system(step, message)
+            map_round_step_error(step, message)
         }
     }
 }
@@ -6788,13 +6828,8 @@ fn map_round_military_supply_entry_error(
             round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
         }
         military_supply_runtime::MilitarySupplyEntryError::Target { step, message }
-            if step == "ammo.department" =>
-        {
-            round_runner::AccountRunError::navigation_timeout_with_message(step, message)
-        }
-        military_supply_runtime::MilitarySupplyEntryError::Target { step, message }
         | military_supply_runtime::MilitarySupplyEntryError::System { step, message } => {
-            round_runner::AccountRunError::system(step, message)
+            map_round_step_error(step, message)
         }
     }
 }
@@ -6826,10 +6861,10 @@ fn map_round_limited_error(
             round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
         }
         limited_supply_runtime::LimitedRunError::ReadyTimeout => {
-            round_runner::AccountRunError::system(fallback_step, "限时商品页面就绪超时")
+            map_round_step_error(fallback_step, "限时商品页面就绪超时")
         }
         limited_supply_runtime::LimitedRunError::System { step, message } => {
-            round_runner::AccountRunError::system(step, message)
+            map_round_step_error(step, message)
         }
     }
 }
@@ -7329,44 +7364,20 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
                 Arc::clone(&cancelled),
             )
             .await
-            .map_err(|error| match error {
-                market_runtime::MarketRunError::Cancelled => {
-                    round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
-                }
-                market_runtime::MarketRunError::System { step, message } => {
-                    round_runner::AccountRunError::system(step, message)
-                }
-            })?;
+            .map_err(map_round_market_error)?;
             <ProductionMarketDriver as market_runtime::MarketDriver>::delay(
                 &driver,
                 frozen.config.entry_delay,
                 Arc::clone(&cancelled),
             )
             .await
-            .map_err(|error| match error {
-                market_runtime::MarketRunError::Cancelled => {
-                    round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止")
-                }
-                market_runtime::MarketRunError::System { step, message } => {
-                    round_runner::AccountRunError::system(step, message)
-                }
-            })?;
+            .map_err(map_round_market_error)?;
         }
         match market_runtime::run_market(&driver, frozen.config.clone(), cancelled).await {
             market_runtime::MarketRunStop::Completed => {
                 driver
                     .persist_status(market_purchase::MarketTaskStatus::Completed, None)
-                    .map_err(|error| match error {
-                        market_runtime::MarketRunError::Cancelled => {
-                            round_runner::AccountRunError::system(
-                                "round.stopped",
-                                "多账号轮次已停止",
-                            )
-                        }
-                        market_runtime::MarketRunError::System { step, message } => {
-                            round_runner::AccountRunError::system(step, message)
-                        }
-                    })?;
+                    .map_err(map_round_market_error)?;
                 Ok(round_account::MarketSessionResult::Completed)
             }
             market_runtime::MarketRunStop::YieldedForCraft => {
@@ -7378,43 +7389,17 @@ impl round_account::AccountSessionDriver for ProductionRoundDriver {
             market_runtime::MarketRunStop::WindowClosed => {
                 driver
                     .persist_status(market_purchase::MarketTaskStatus::WindowClosed, None)
-                    .map_err(|error| match error {
-                        market_runtime::MarketRunError::Cancelled => {
-                            round_runner::AccountRunError::system(
-                                "round.stopped",
-                                "多账号轮次已停止",
-                            )
-                        }
-                        market_runtime::MarketRunError::System { step, message } => {
-                            round_runner::AccountRunError::system(step, message)
-                        }
-                    })?;
+                    .map_err(map_round_market_error)?;
                 Ok(round_account::MarketSessionResult::WindowClosed)
             }
             market_runtime::MarketRunStop::PriceRecognitionFailed => {
-                driver
-                    .persist_status(
-                        market_purchase::MarketTaskStatus::PriceRecognitionFailed,
-                        Some("连续三个商品页未识别到有效价格".to_string()),
-                    )
-                    .map_err(|error| match error {
-                        market_runtime::MarketRunError::Cancelled => {
-                            round_runner::AccountRunError::system(
-                                "round.stopped",
-                                "多账号轮次已停止",
-                            )
-                        }
-                        market_runtime::MarketRunError::System { step, message } => {
-                            round_runner::AccountRunError::system(step, message)
-                        }
-                    })?;
-                Ok(round_account::MarketSessionResult::Completed)
+                Ok(round_account::MarketSessionResult::PriceRecognitionFailed)
             }
             market_runtime::MarketRunStop::EmergencyStopped => Err(
                 round_runner::AccountRunError::system("round.stopped", "多账号轮次已停止"),
             ),
             market_runtime::MarketRunStop::SystemFailure { step, message } => {
-                Err(round_runner::AccountRunError::system(step, message))
+                Err(map_round_step_error(step, message))
             }
         }
     }
@@ -7595,6 +7580,47 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
                 acknowledged: false,
                 last_error: Some(message),
             };
+            save_settings(&self.app, &next)?;
+            *self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+            Ok::<_, String>(next)
+        })?;
+        emit_state(&self.app, revision, now_ms());
+        Ok(())
+    }
+
+    fn persist_market_price_failure(
+        &self,
+        task: &round_planner::AccountRoundTask,
+        message: &str,
+    ) -> Result<(), String> {
+        let account_id = task.account_id.clone();
+        let day = task
+            .market_purchase_day
+            .clone()
+            .ok_or_else(|| "交易行价格补偿任务缺少购买日".to_string())?;
+        let message = message.to_string();
+        let (_settings, revision) = self.coordinator.with_runtime_change(|| {
+            let mut next = self
+                .settings
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?
+                .clone();
+            let account = next
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == account_id)
+                .ok_or_else(|| "交易行账号不存在".to_string())?;
+            if account.market.day.as_deref() != Some(day.as_str()) {
+                account.market.day = Some(day);
+                account.market.completed_count = 0;
+            }
+            account.market.status = market_purchase::MarketTaskStatus::PriceRecognitionFailed;
+            account.market.last_error = Some(message);
+            account.market.price_retry_at_ms =
+                Some(now_ms().saturating_add(market_purchase::PRICE_OCR_RETRY_INTERVAL_MS));
             save_settings(&self.app, &next)?;
             *self
                 .settings
@@ -11419,9 +11445,17 @@ fn build_timeline_tasks(
                 settings.market_purchase.window_start_minute,
                 settings.market_purchase.window_end_minute,
             ) {
+                let mut scheduled_at_ms = scheduled_at_ms;
                 let day = local_day_and_minute(scheduled_at_ms).0;
                 let is_current = scheduled_at_ms <= now_ms;
                 let state_matches = account.market.day.as_deref() == Some(day.as_str());
+                if is_current && state_matches {
+                    if let Some(retry_at_ms) = account.market.price_retry_at_ms {
+                        if retry_at_ms > now_ms {
+                            scheduled_at_ms = scheduled_at_ms.max(retry_at_ms);
+                        }
+                    }
+                }
                 let status = if is_current && state_matches {
                     account.market.status.clone()
                 } else {
@@ -11653,11 +11687,14 @@ pub(crate) fn build_schedule_with_profit_runtime(
                     || account.limited_supply.outcome
                         == limited_supply::LimitedSupplyOutcome::Pending
             });
-        let market_blocked_by_price_failure = account.market.day.as_deref()
+        let market_blocked_by_price_cooldown = account.market.day.as_deref()
             == Some(current_day.as_str())
-            && account.market.status == market_purchase::MarketTaskStatus::PriceRecognitionFailed;
+            && account
+                .market
+                .price_retry_at_ms
+                .is_some_and(|retry_at_ms| retry_at_ms > now_ms);
         let market_purchase_due = business_config.market.enabled
-            && !market_blocked_by_price_failure
+            && !market_blocked_by_price_cooldown
             && market_purchase::market_window_open(
                 u16::try_from(current_minute).unwrap_or(u16::MAX),
                 settings.market_purchase.window_start_minute,
@@ -11669,8 +11706,8 @@ pub(crate) fn build_schedule_with_profit_runtime(
                 // 会出现「任务栏有任务、点继续却不执行」。次数未达标即到期，状态不再筛：
                 // WindowClosed 能走到这里说明窗口结束时间被延后（`market_window_open` 已在
                 // 前面把真正关闭的窗口挡掉），那正是应该继续买的场景。
-                // PriceRecognitionFailed 是例外：任务栏继续显示，planner 跳过直到一键恢复，
-                // 避免 OCR 失败把整轮打成系统暂停或在窗口内空转重试。
+                // 价格 OCR 冷却用 `price_retry_at_ms` 挡到期，不靠 PriceRecognitionFailed
+                // 永久跳过：队尾补偿失败后隔 1 小时再跑同一套，直到窗口结束。
                 || account.market.completed_count < business_config.market.purchase_count);
 
         if station_kinds.is_empty() && ammo_target_ids.is_empty() {
@@ -16600,6 +16637,7 @@ mod tests {
             completed_count: 1,
             status: market_purchase::MarketTaskStatus::WindowClosed,
             last_error: Some("交易行窗口已关闭".to_string()),
+            price_retry_at_ms: Some(1_000),
         };
         settings.accounts.push(selected);
         settings
@@ -16634,6 +16672,7 @@ mod tests {
             market_purchase::MarketTaskStatus::Pending
         );
         assert_eq!(selected.market.last_error, None);
+        assert_eq!(selected.market.price_retry_at_ms, None);
         assert_eq!(selected.market.completed_count, 1);
 
         // 无异常时报错，避免空转产生一次 settings revision。
@@ -16661,6 +16700,7 @@ mod tests {
                 completed_count: 3,
                 status: status.clone(),
                 last_error: None,
+                price_retry_at_ms: None,
             };
             settings.accounts.push(selected);
 
@@ -17710,6 +17750,119 @@ mod tests {
     }
 
     #[test]
+    fn round_unspecified_entry_timeouts_are_account_retryable() {
+        for step in [
+            "ammo.department",
+            "ammo.tacticalDepartment",
+            "ammo.researchDepartment",
+            "market.entry",
+            "market.input",
+            "limited.input",
+        ] {
+            let error = map_round_step_error(step, "模板识别超时");
+            assert_eq!(error.scope, round_runner::ErrorScope::Account, "{step}");
+            assert_eq!(
+                error.kind,
+                round_runner::AccountRunErrorKind::NavigationTimedOut,
+                "{step}"
+            );
+            assert_eq!(error.step, step);
+        }
+    }
+
+    #[test]
+    fn round_specified_non_retry_failures_stay_system() {
+        for step in [
+            "ammo.window",
+            "ammo.exchange",
+            "market.price",
+            "market.backToEntry",
+            "market.window",
+            "market.mouseParking",
+            "limited.colors",
+        ] {
+            let error = map_round_step_error(step, "模板识别超时");
+            assert_eq!(error.scope, round_runner::ErrorScope::System, "{step}");
+        }
+    }
+
+    #[test]
+    fn round_tactical_department_timeout_is_account_scoped_for_retry() {
+        let error = map_round_ammo_driver_error(
+            ammo_runtime::AmmoDriverError::Target("模板识别超时".to_string()),
+            "ammo.tacticalDepartment",
+        );
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
+        assert_eq!(error.step, "ammo.tacticalDepartment");
+    }
+
+    #[test]
+    fn round_research_department_timeout_is_account_scoped_for_retry() {
+        let error = map_round_limited_error(
+            limited_supply_runtime::LimitedRunError::System {
+                step: "ammo.researchDepartment".to_string(),
+                message: "模板识别超时".to_string(),
+            },
+            "ammo.researchDepartment",
+        );
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
+        assert_eq!(error.step, "ammo.researchDepartment");
+    }
+
+    #[test]
+    fn round_market_entry_timeout_is_account_scoped_for_retry() {
+        let error = map_round_market_error(market_runtime::MarketRunError::System {
+            step: "market.entry".to_string(),
+            message: "模板识别超时：market.entry threshold=0.7500 samples=[0.5891, 0.5891]"
+                .to_string(),
+        });
+
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
+        assert_eq!(error.step, "market.entry");
+
+        let mut settings = LoginFixture::complete().settings;
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert!(retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 2_000).unwrap();
+        assert!(!retry);
+        assert_eq!(
+            settings.accounts[0].status,
+            AccountStatus::ManualCheckRequired
+        );
+    }
+
+    #[test]
+    fn round_market_price_and_back_to_entry_stay_system() {
+        let price = map_round_market_error(market_runtime::MarketRunError::System {
+            step: "market.price".to_string(),
+            message: "截取交易行价格区域失败".to_string(),
+        });
+        assert_eq!(price.scope, round_runner::ErrorScope::System);
+
+        let back = map_round_market_error(market_runtime::MarketRunError::System {
+            step: "market.backToEntry".to_string(),
+            message: "点击失败".to_string(),
+        });
+        assert_eq!(back.scope, round_runner::ErrorScope::System);
+    }
+
+    #[test]
     fn military_supply_target_error_keeps_target_classification() {
         let error = map_military_supply_input_error(
             ammo_runtime::AmmoDriverError::Target("模板识别超时".to_string()),
@@ -18644,6 +18797,7 @@ mod tests {
             completed_count: 1,
             status: market_purchase::MarketTaskStatus::Completed,
             last_error: None,
+            price_retry_at_ms: None,
         };
 
         let current = |settings: &SpecialOpsSettings| {
@@ -18696,7 +18850,48 @@ mod tests {
     }
 
     #[test]
-    fn price_recognition_failure_stays_on_timeline_but_is_not_due() {
+    fn price_ocr_cooldown_defers_due_until_retry_time() {
+        let mut settings = LoginFixture::complete().settings;
+        settings.paused = false;
+        settings.default_business_config.market.enabled = true;
+        let now_ms = shanghai_test_ms("2026-08-08 02:30");
+        let retry_at_ms = now_ms + market_purchase::PRICE_OCR_RETRY_INTERVAL_MS;
+        settings.accounts[0].market = market_purchase::MarketAccountState {
+            day: Some("2026-08-08".to_string()),
+            completed_count: 0,
+            status: market_purchase::MarketTaskStatus::PriceRecognitionFailed,
+            last_error: Some("连续三个商品页未识别到有效价格".to_string()),
+            price_retry_at_ms: Some(retry_at_ms),
+        };
+
+        let snapshot = build_schedule(&settings, now_ms);
+        let task = snapshot
+            .timeline_tasks
+            .iter()
+            .find(|task| {
+                task.kind == TimelineTaskKind::MarketPurchase && task.account_id == "selected"
+            })
+            .expect("价格 OCR 冷却必须留在任务栏");
+        assert_eq!(task.scheduled_at_ms, retry_at_ms);
+        assert_eq!(
+            task.market_status,
+            Some(market_purchase::MarketTaskStatus::PriceRecognitionFailed)
+        );
+        assert_eq!(snapshot.next_wake_at_ms, Some(retry_at_ms));
+        assert!(!snapshot
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.market_purchase_due));
+
+        let due_snapshot = build_schedule(&settings, retry_at_ms);
+        assert!(due_snapshot
+            .due_accounts
+            .iter()
+            .any(|due| due.account_id == "selected" && due.market_purchase_due));
+    }
+
+    #[test]
+    fn legacy_price_recognition_failure_without_cooldown_is_due() {
         let mut settings = LoginFixture::complete().settings;
         settings.paused = false;
         settings.default_business_config.market.enabled = true;
@@ -18706,22 +18901,11 @@ mod tests {
             completed_count: 0,
             status: market_purchase::MarketTaskStatus::PriceRecognitionFailed,
             last_error: Some("连续三个商品页未识别到有效价格".to_string()),
+            price_retry_at_ms: None,
         };
 
         let snapshot = build_schedule(&settings, now_ms);
-        let task = snapshot
-            .timeline_tasks
-            .iter()
-            .find(|task| {
-                task.kind == TimelineTaskKind::MarketPurchase
-                    && task.scheduled_at_ms == shanghai_test_ms("2026-08-08 02:00")
-            })
-            .expect("价格识别失败必须留在任务栏等人工恢复");
-        assert_eq!(
-            task.market_status,
-            Some(market_purchase::MarketTaskStatus::PriceRecognitionFailed)
-        );
-        assert!(!snapshot
+        assert!(snapshot
             .due_accounts
             .iter()
             .any(|due| due.account_id == "selected" && due.market_purchase_due));

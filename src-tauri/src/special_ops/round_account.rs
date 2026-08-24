@@ -15,6 +15,7 @@ pub(crate) enum MarketSessionResult {
     YieldedForCraft,
     PauseRequested,
     WindowClosed,
+    PriceRecognitionFailed,
 }
 
 #[allow(async_fn_in_trait)]
@@ -93,6 +94,7 @@ pub(crate) async fn run_task_in_session<D: AccountSessionDriver + ?Sized>(
             Some(MarketSessionResult::YieldedForCraft | MarketSessionResult::PauseRequested)
         ),
         market_yielded: market_result == Some(MarketSessionResult::YieldedForCraft),
+        price_retry_requested: market_result == Some(MarketSessionResult::PriceRecognitionFailed),
     })
 }
 
@@ -110,6 +112,7 @@ mod tests {
         actions: Mutex<Vec<&'static str>>,
         login_error: Option<AccountRunError>,
         craft_error: Option<AccountRunError>,
+        market_result: MarketSessionResult,
     }
 
     impl FakeDriver {
@@ -118,6 +121,7 @@ mod tests {
                 actions: Mutex::new(Vec::new()),
                 login_error: None,
                 craft_error: None,
+                market_result: MarketSessionResult::Completed,
             }
         }
     }
@@ -165,7 +169,7 @@ mod tests {
             _cancelled: Arc<AtomicBool>,
         ) -> Result<MarketSessionResult, AccountRunError> {
             self.actions.lock().unwrap().push("market");
-            Ok(MarketSessionResult::Completed)
+            Ok(self.market_result)
         }
     }
 
@@ -209,6 +213,7 @@ mod tests {
             actions: Mutex::new(Vec::new()),
             login_error: Some(AccountRunError::account("login.scan", "未找到 QQ")),
             craft_error: None,
+            market_result: MarketSessionResult::Completed,
         };
 
         let result = run_account_session(&driver, &task(), Arc::new(AtomicBool::new(false))).await;
@@ -280,6 +285,7 @@ mod tests {
                 "craft.abort",
                 "中止状态未确认",
             )),
+            market_result: MarketSessionResult::Completed,
         };
 
         let result = run_account_session(&driver, &task, Arc::new(AtomicBool::new(false))).await;
@@ -301,5 +307,26 @@ mod tests {
 
         assert_eq!(result.processed_stations, 2);
         assert_eq!(*driver.actions.lock().unwrap(), ["craft"]);
+    }
+
+    #[tokio::test]
+    async fn price_recognition_failure_requests_retry_without_pending_market() {
+        let mut task = task();
+        task.stations.clear();
+        task.market_purchase_day = Some("2026-08-08".to_string());
+        let driver = FakeDriver {
+            actions: Mutex::new(Vec::new()),
+            login_error: None,
+            craft_error: None,
+            market_result: MarketSessionResult::PriceRecognitionFailed,
+        };
+
+        let result = run_task_in_session(&driver, &task, Arc::new(AtomicBool::new(false)))
+            .await
+            .unwrap();
+
+        assert!(result.price_retry_requested);
+        assert!(!result.market_pending);
+        assert!(!result.market_yielded);
     }
 }

@@ -24,6 +24,9 @@ fn default_max_price() -> u64 {
 
 const MARKET_BUSINESS_SCHEMA_VERSION: u8 = 1;
 
+/// 价格 OCR 队尾补偿仍失败后，等到这个间隔再开一轮（每轮仍是三页失败→队尾重试）。
+pub(crate) const PRICE_OCR_RETRY_INTERVAL_MS: i64 = 60 * 60 * 1000;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MarketPurchaseSettings {
@@ -145,6 +148,9 @@ pub struct MarketAccountState {
     pub completed_count: u32,
     pub status: MarketTaskStatus,
     pub last_error: Option<String>,
+    /// 价格 OCR 本轮队尾补偿仍失败后的下一次可执行时间。窗口关闭后自然不再到期。
+    #[serde(default)]
+    pub price_retry_at_ms: Option<i64>,
 }
 
 #[cfg(test)]
