@@ -181,12 +181,17 @@ where
         async {
             let key = driver
                 .wait_for_any(
-                    &["wegame.loginFormReady", "wegame.loginMode"],
+                    &[
+                        "wegame.loginFormReady",
+                        "wegame.loginMode",
+                        "wegame.gameEntry",
+                    ],
                     cancelled.clone(),
                 )
                 .await?;
             match key.as_str() {
                 "wegame.loginFormReady" | "wegame.loginMode" => Ok(key),
+                "wegame.gameEntry" => Err("WeGame 已进入游戏入口，未出现登录表单".to_string()),
                 _ => Err("登录入口识别结果无效".to_string()),
             }
         },
@@ -835,6 +840,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auto_login_game_entry_fails_wait_login_choice_instead_of_waiting_for_form() {
+        let driver = FakeDriver::with_waits(["wegame.gameEntry"]);
+
+        let result = run(&driver).await;
+
+        assert!(matches!(
+            result,
+            LoginFlowResult::Paused {
+                failed_step: LoginStep::WaitLoginChoice,
+                ..
+            }
+        ));
+        assert!(driver.actions().iter().any(|action| {
+            matches!(
+                action,
+                Action::Wait(keys) if keys.iter().any(|key| key == "wegame.gameEntry")
+            )
+        }));
+        assert!(!driver
+            .actions()
+            .contains(&Action::Click("wegame.login".to_string())));
+    }
+
+    #[tokio::test]
     async fn unavailable_remembered_account_list_marks_account_needs_manual_login() {
         let driver = FakeDriver::default();
         *driver.select_row_error.lock().unwrap() = Some("已记住账号列表未确认".to_string());
@@ -981,6 +1010,7 @@ mod tests {
                 Action::Wait(vec![
                     "wegame.loginFormReady".to_string(),
                     "wegame.loginMode".to_string(),
+                    "wegame.gameEntry".to_string(),
                 ]),
                 Action::Click("wegame.loginMode".to_string()),
                 Action::Wait(vec!["wegame.loginFormReady".to_string()]),

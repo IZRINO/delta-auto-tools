@@ -71,7 +71,8 @@
 | 动作 | 前置守卫 | 后置判定 |
 |---|---|---|
 | 结束旧游戏与 WeGame | 用户选择的两个 exe canonical 完整路径 | 对应路径的目标进程实例全部消失；不按 basename 误杀，不递归结束进程树 |
-| 启动 WeGame | `wegameExecutablePath` 为有效绝对 `.exe` 文件 | native 进程/窗口检查可继续，随后等待登录入口或表单 |
+| 启动 WeGame | `wegameExecutablePath` 为有效绝对 `.exe` 文件 | native 进程/窗口检查可继续，随后等待登录入口、表单或游戏入口 |
+| 等待登录入口 | WeGame 已启动 | 同时观察 `wegame.loginFormReady` / `wegame.loginMode` / `wegame.gameEntry`。先命中游戏入口（自动登录或「账号已切换」）则当前账号失败，不卡死等待表单 |
 | 切换到账号密码登录 | `wegame.loginFormReady` 未命中且登录入口自身模板命中 | `wegame.loginFormReady`；已命中时跳过该点击 |
 | 展开记住账号列表 | `wegame.loginFormReady` | `wegame.accountList` 连续两次 OCR 均为非空；连续 3 轮为空则标记当前账号 `NeedsManualLogin` |
 | 选择并复核 QQ | 账号列表连续两次 OCR 均为非空 | 稳定识别到 1–3 行时按 OCR 行中心点击；行数、位置或边界不稳定时回退区域三等分；复制顶部账号后与目标 QQ 完全一致才结束扫描 |
@@ -171,7 +172,7 @@
 
 每台生产成功后立即通过 `SettingsCoordinator::with_runtime_change` 保存实际开始时间和下一完成时间；每种子弹命中 `ammo.success` 后立即保存当天成功，后续失败不得回滚既有结果。登录与制作异常保存账号失败并阻断该账号后续调度；`craft.isolated` 保存账号 `Isolated` 且不覆盖当前制作台状态。子弹补齐、购买、确认或完成识别失败时保存当前 `ammoTargetId` 的 `AmmoTarget.lastFailure`；仓库空间不足对应的 `ammo.isolated` 同时把账号标记为 `Isolated`，其他目标和制作台随账号跳过。普通目标级兑换失败仍保持账号 `Ready`，当前账号本轮结束后切号；该目标后续被冻结，同账号制作和其他子弹仍可调度。普通兑换失败只增加当天 retry，不进入人工判定。账号选择成功后的游戏入口、启动按钮和游戏窗口等待也归入导航启动阶段；军需处 `ammo.department` / `ammo.tacticalDepartment` / `ammo.researchDepartment` 与交易行 `market.entry` 模板超时同样走该路径：首次 `TimedOut` 落 `lastFailure` 保持 `Ready` 并把账号移到当前轮次队尾（同时记录 `log_info!` 日志「导航超时，账号任务已挪到队尾重试」，可在运行日志中区分「已挪队尾待重试」与「二次超时已持久化失败」），重试从登录流程重新开始；第二次同一问题仍超时才保存 `ManualCheckRequired`，制作台与子弹状态保持不变。跨轮次靠 `lastFailure` 识别同一问题，单账号不会无限重试。成功进入正常流程后清掉这次 `lastFailure`。账号列表扫描、账号复核、登录提交失败仍是登录失败，不重复提交密码。导航结果通过 `TimedOut` 与 `Paused` 类型分流，不依据错误消息文本猜测；`Paused` 及导航窗口、截图、输入、持久化和 runtime 资源故障保持系统级，持久化全局暂停并停止本轮。运行中点击暂停只登记请求，当前账号结束后保存暂停并停止切号。紧急停止立即释放输入；当前账号或制作台已发生输入时标记 `Uncertain`。
 
-轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame，预算 `ROUND_CLOSE_GAME_TIMEOUT = 45s`：UE4 客户端带内核反作弊，退出常慢于登录流程给同一个 exe 的 15 秒，旧的 10 秒比登录 `StopGame` 还紧 -> 正常慢退出被判成故障。导航超时后、账号失败后和会话结束这三处切换关闭失败只记 warn 并继续本轮，不再全局暂停：登录流程头两步 `StopGame` / `StopWeGame` 会用各自预算无条件重杀游戏与 WeGame -> 残留进程下轮自愈，为一次慢退出停摆到人工点继续代价远高于收益。`PauseRequested` 先持久化暂停（原因固定为“用户请求暂停”），再关闭游戏；该路径关闭失败仍返回 `SystemFailure { step: "round.closeGame" }`，但暂停原因已落盘，进程错误文本不会写进 `pausedReason`。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
+轮次正常完成、切换账号或遇到超过 10 分钟的空档时，按启动时冻结的 canonical 游戏 exe 路径关闭游戏，不关闭 WeGame，预算 `ROUND_CLOSE_GAME_TIMEOUT = 45s`：UE4 客户端带内核反作弊，退出常慢于登录流程给同一个 exe 的 15 秒，旧的 10 秒比登录 `StopGame` 还紧 -> 正常慢退出被判成故障。转场关闭开始时 overlay 更新为「正在关闭游戏，准备切换下一账号」；紧急停止必须立刻打断这次等待，不能卡到 45/60 秒预算耗尽。导航超时后、账号失败后和会话结束这三处切换关闭失败只记 warn 并继续本轮，不再全局暂停：登录流程头两步 `StopGame` / `StopWeGame` 会用各自预算无条件重杀游戏与 WeGame -> 残留进程下轮自愈，为一次慢退出停摆到人工点继续代价远高于收益。`PauseRequested` 先持久化暂停（原因固定为“用户请求暂停”），再关闭游戏；该路径关闭失败仍返回 `SystemFailure { step: "round.closeGame" }`，但暂停原因已落盘，进程错误文本不会写进 `pausedReason`。scheduler 健康检查触发的系统暂停使用 `PauseRequestedPreservingGame`：停止轮换但不关闭游戏，保留现场；用户继续后重新规划并走完整登录流程，不复用旧会话。`SystemFailure` 与 `EmergencyStopped` 同样不关闭游戏。
 
 应用启动强制保持暂停，scheduler 默认未 armed。用户点击“继续”时先执行完整业务 preflight；任一必需 template 未测试或验证失效时保持暂停并返回具体目标，不创建窗口、不启动键鼠流程。校验和暂停状态持久化成功后立即 armed：逾期制作与当天子弹立即进入 round，未来任务按上述 10 分钟规则等待或留给下一轮；配置页不提供手动启动到期轮次入口。本轮结束后 scheduler 继续等待下一制作完成时间或每日兑换时间。每日兑换时间前 5 分钟内到期的制作任务延迟至兑换时间合并；已成功或当天重试耗尽的子弹不再加入。操作提示窗页面加载超时时，scheduler 保持 armed、不创建 worker、不发送键鼠，1 秒后重试同一到期动作；提示窗挂载后主动读取权威 bootstrap 的 `runSnapshot`，避免错过窗口创建早期的运行事件。scheduler 使用单 worker、`Notify` 唤醒和最长 30 秒健康检查；设置保存、人工校正和 round 完成会立即唤醒。定时器晚醒超过 60 秒视为休眠或系统时间跳变，保存暂停、请求 active round 停止、刷新逾期任务并聚焦主窗口；用户继续后不复用休眠前游戏会话。判定晚醒必须用 poll 成功返回的 `nowMs`；poll 本身失败不算时间跳变，交给下一轮循环写真实错误原因。全局总开关关闭时 disarm，应用退出时 shutdown。
 

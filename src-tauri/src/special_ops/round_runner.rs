@@ -249,11 +249,29 @@ const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(60);
 /// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用
 /// 各自预算无条件重杀两个 exe -> 残留进程下轮自愈。这里全局暂停会把一次慢退出变成
 /// 停摆到人工点继续，代价远高于收益，因此只报告不中断。
-async fn close_game_for_transition<D: RoundDriver + ?Sized>(driver: &D, reason: &str) {
-    match tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, driver.close_game()).await {
-        Ok(Ok(())) => {}
-        Ok(Err(message)) => driver.report_close_game_failure(reason, &message),
-        Err(_) => driver.report_close_game_failure(reason, "关闭游戏未在兜底预算内返回"),
+async fn wait_until_cancelled(cancelled: &AtomicBool) {
+    while !cancelled.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn close_game_for_transition<D: RoundDriver + ?Sized>(
+    driver: &D,
+    reason: &str,
+    cancelled: &AtomicBool,
+) {
+    let close = driver.close_game();
+    tokio::pin!(close);
+    tokio::select! {
+        biased;
+        _ = wait_until_cancelled(cancelled) => {}
+        result = tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, &mut close) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(message)) => driver.report_close_game_failure(reason, &message),
+                Err(_) => driver.report_close_game_failure(reason, "关闭游戏未在兜底预算内返回"),
+            }
+        }
     }
 }
 
@@ -410,6 +428,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                     } else {
                         "账号失败后关闭游戏失败"
                     },
+                    &cancelled,
                 )
                 .await;
                 session_account_id = None;
@@ -566,7 +585,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 .is_some_and(|next| can_chain_follow_up(task, &next.task, now_ms))
                 && !force_new_session;
             if !keep_session {
-                close_game_for_transition(driver, "会话结束关闭游戏失败").await;
+                close_game_for_transition(driver, "会话结束关闭游戏失败", &cancelled).await;
                 session_account_id = None;
             }
             if !continue_round {
@@ -602,6 +621,8 @@ mod tests {
         account_runs: AtomicUsize,
         market_window_closes_after_runs: AtomicUsize,
         refreshed_tasks: Mutex<Option<Result<Vec<AccountRoundTask>, String>>>,
+        block_close: AtomicBool,
+        close_started: AtomicBool,
     }
 
     impl FakeDriver {
@@ -619,6 +640,8 @@ mod tests {
                 account_runs: AtomicUsize::new(0),
                 market_window_closes_after_runs: AtomicUsize::new(usize::MAX),
                 refreshed_tasks: Mutex::new(None),
+                block_close: AtomicBool::new(false),
+                close_started: AtomicBool::new(false),
             }
         }
 
@@ -653,8 +676,17 @@ mod tests {
             self.account_runs.fetch_add(1, Ordering::SeqCst);
         }
 
+        fn with_blocking_close(self) -> Self {
+            self.block_close.store(true, Ordering::SeqCst);
+            self
+        }
+
         async fn perform_close_game(&self) -> Result<(), String> {
             self.actions.lock().unwrap().push("close-game".to_string());
+            self.close_started.store(true, Ordering::SeqCst);
+            if self.block_close.load(Ordering::SeqCst) {
+                std::future::pending::<()>().await;
+            }
             self.close_result.lock().unwrap().take().unwrap_or(Ok(()))
         }
 
@@ -1559,6 +1591,43 @@ mod tests {
 
         assert_eq!(result.stop, RoundStop::EmergencyStopped);
         assert!(driver.actions().is_empty());
+    }
+
+    #[tokio::test]
+    async fn transition_close_aborts_when_cancelled() {
+        let driver = FakeDriver::new(
+            vec![
+                Ok(AccountRunSuccess::processed(1)),
+                Ok(AccountRunSuccess::processed(1)),
+            ],
+            false,
+        )
+        .with_blocking_close();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let stop = Arc::clone(&cancelled);
+
+        let plan = plan();
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
+            let run = run_round(&driver, &plan, Arc::clone(&cancelled));
+            let cancel = async {
+                while !driver.close_started.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+                stop.store(true, Ordering::SeqCst);
+            };
+            let (result, ()) = tokio::join!(run, cancel);
+            result
+        })
+        .await
+        .expect("紧急停止后转场关闭仍未返回");
+
+        assert_eq!(result.stop, RoundStop::EmergencyStopped);
+        assert_eq!(result.completed_accounts, 1);
+        assert!(driver.actions().contains(&"close-game".to_string()));
+        assert!(!driver
+            .actions()
+            .iter()
+            .any(|action| action.starts_with("run:b")));
     }
 
     #[tokio::test]

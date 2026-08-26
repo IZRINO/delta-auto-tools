@@ -7678,6 +7678,15 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
 
     async fn close_game(&self) -> Result<(), String> {
         use desktop_runtime::DesktopRuntime;
+        if let Ok(Some(snapshot)) = self.runtime.update(
+            self.run_id,
+            LoginRunStatus::Waiting,
+            None,
+            "正在关闭游戏，准备切换下一账号",
+            None,
+        ) {
+            emit_run(&self.app, &snapshot);
+        }
         let executable = self.game_executable_path.clone();
         tokio::task::spawn_blocking(move || {
             desktop_runtime::WindowsDesktopRuntime
