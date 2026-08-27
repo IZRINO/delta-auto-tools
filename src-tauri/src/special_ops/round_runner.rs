@@ -239,18 +239,24 @@ fn persist_system_failure<D: RoundDriver + ?Sized>(
     }
 }
 
-/// 转场关闭游戏的兜底预算。`close_game` 自身已按 `ROUND_CLOSE_GAME_TIMEOUT` 限时，
-/// 这里再包一层是防「future 根本不 resolve」：blocking 线程池饥饿、底层 Win32 调用
-/// 卡在内核态时，前者的 deadline 检查压根不会被执行到。转场关闭只是清场，卡住它
-/// 就把整轮队列一起卡死（账号不重排、下一账号不登录、日志全无），代价远高于
-/// 少杀一次进程。
-const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(60);
+/// 转场关闭游戏的兜底预算。`close_game` 已按短预算发结束信号且不等退出；这里再
+/// 包一层是防 spawn_blocking 根本不 resolve。卡住它就把整轮队列一起卡死。
+const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(8);
 
 /// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用
 /// 各自预算无条件重杀两个 exe -> 残留进程下轮自愈。这里全局暂停会把一次慢退出变成
 /// 停摆到人工点继续，代价远高于收益，因此只报告不中断。
-async fn wait_until_cancelled(cancelled: &AtomicBool) {
-    while !cancelled.load(Ordering::SeqCst) {
+async fn wait_until_cancelled_or_paused<D: RoundDriver + ?Sized>(
+    driver: &D,
+    cancelled: &AtomicBool,
+) {
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        if driver.pause_requested().unwrap_or(false) {
+            return;
+        }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
@@ -264,7 +270,7 @@ async fn close_game_for_transition<D: RoundDriver + ?Sized>(
     tokio::pin!(close);
     tokio::select! {
         biased;
-        _ = wait_until_cancelled(cancelled) => {}
+        _ = wait_until_cancelled_or_paused(driver, cancelled) => {}
         result = tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, &mut close) => {
             match result {
                 Ok(Ok(())) => {}
@@ -588,6 +594,28 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 close_game_for_transition(driver, "会话结束关闭游戏失败", &cancelled).await;
                 session_account_id = None;
             }
+            if cancelled.load(Ordering::SeqCst) {
+                return RoundRunResult {
+                    completed_accounts: completed_account_ids.len(),
+                    stop: RoundStop::EmergencyStopped,
+                };
+            }
+            match driver.pause_requested() {
+                Ok(true) => {
+                    let stop = stop_for_pause(driver).await;
+                    return RoundRunResult {
+                        completed_accounts: completed_account_ids.len(),
+                        stop,
+                    };
+                }
+                Ok(false) => {}
+                Err(message) => {
+                    return RoundRunResult {
+                        completed_accounts: completed_account_ids.len(),
+                        stop: persist_system_failure(driver, "round.pauseRequested", message),
+                    };
+                }
+            }
             if !continue_round {
                 break;
             }
@@ -623,6 +651,7 @@ mod tests {
         refreshed_tasks: Mutex<Option<Result<Vec<AccountRoundTask>, String>>>,
         block_close: AtomicBool,
         close_started: AtomicBool,
+        pause_now: AtomicBool,
     }
 
     impl FakeDriver {
@@ -642,6 +671,7 @@ mod tests {
                 refreshed_tasks: Mutex::new(None),
                 block_close: AtomicBool::new(false),
                 close_started: AtomicBool::new(false),
+                pause_now: AtomicBool::new(false),
             }
         }
 
@@ -684,7 +714,7 @@ mod tests {
         async fn perform_close_game(&self) -> Result<(), String> {
             self.actions.lock().unwrap().push("close-game".to_string());
             self.close_started.store(true, Ordering::SeqCst);
-            if self.block_close.load(Ordering::SeqCst) {
+            if self.block_close.swap(false, Ordering::SeqCst) {
                 std::future::pending::<()>().await;
             }
             self.close_result.lock().unwrap().take().unwrap_or(Ok(()))
@@ -809,7 +839,7 @@ mod tests {
         }
 
         fn pause_requested(&self) -> Result<bool, String> {
-            Ok(self.pause_requested)
+            Ok(self.pause_requested || self.pause_now.load(Ordering::SeqCst))
         }
 
         fn pause_preserves_game(&self) -> bool {
@@ -1624,6 +1654,41 @@ mod tests {
         assert_eq!(result.stop, RoundStop::EmergencyStopped);
         assert_eq!(result.completed_accounts, 1);
         assert!(driver.actions().contains(&"close-game".to_string()));
+        assert!(!driver
+            .actions()
+            .iter()
+            .any(|action| action.starts_with("run:b")));
+    }
+
+    #[tokio::test]
+    async fn transition_close_aborts_when_paused() {
+        let driver = FakeDriver::new(
+            vec![
+                Ok(AccountRunSuccess::processed(1)),
+                Ok(AccountRunSuccess::processed(1)),
+            ],
+            false,
+        )
+        .with_blocking_close();
+        let cancelled = Arc::new(AtomicBool::new(false));
+
+        let plan = plan();
+        let result = tokio::time::timeout(Duration::from_secs(2), async {
+            let run = run_round(&driver, &plan, cancelled);
+            let pause = async {
+                while !driver.close_started.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+                driver.pause_now.store(true, Ordering::SeqCst);
+            };
+            let (result, ()) = tokio::join!(run, pause);
+            result
+        })
+        .await
+        .expect("暂停后转场关闭仍未返回");
+
+        assert_eq!(result.stop, RoundStop::PauseRequested);
+        assert_eq!(result.completed_accounts, 1);
         assert!(!driver
             .actions()
             .iter()

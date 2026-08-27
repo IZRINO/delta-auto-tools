@@ -182,6 +182,51 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 }
 
+/// 发结束信号后不等待进程退出。转场关游戏是清场：ACE 常让 `WaitForSingleObject`
+/// 无视超时，死等会把整轮队列卡死；下一号登录 `StopGame` 会再杀残留。
+pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
+    let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
+    terminate_matching_without_wait(
+        || {
+            scan_process_entries_by_name(&exe).map(|candidates| {
+                candidates
+                    .into_iter()
+                    .map(|(process_id, _)| process_id)
+                    .collect()
+            })
+        },
+        |process_id| terminate_verified_process_without_wait(&exe, process_id),
+    )
+}
+
+fn terminate_matching_without_wait(
+    scan: impl FnOnce() -> Result<Vec<u32>, String>,
+    mut terminate: impl FnMut(u32) -> Result<bool, String>,
+) -> Result<(), String> {
+    for process_id in scan()? {
+        let _ = terminate(process_id);
+    }
+    Ok(())
+}
+
+fn terminate_verified_process_without_wait(exe: &Path, process_id: u32) -> Result<bool, String> {
+    verify_terminate_and_wait_with_handle(
+        exe,
+        process_id,
+        || Ok(Duration::from_millis(1)),
+        |process_id| {
+            open_process(
+                process_id,
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                "打开待结束进程失败",
+            )
+        },
+        |process| query_process_path_from_handle(process, process_id),
+        |process| terminate_process(process, process_id),
+        |_, _| Ok(()),
+    )
+}
+
 fn canonicalize_executable_path(exe: &Path, action: &str) -> Result<PathBuf, String> {
     std::fs::canonicalize(exe).map_err(|error| format!("{action}: {error}"))
 }
@@ -941,6 +986,27 @@ mod tests {
         assert!(other.0.try_wait().unwrap().is_none());
         assert!(query_process_path(other.0.id())
             .is_ok_and(|actual| windows_paths_equal(&other_exe, &actual)));
+    }
+
+    #[test]
+    fn terminate_without_waiting_kills_each_match_once() {
+        let terminated = RefCell::new(Vec::new());
+        let scan_count = Cell::new(0);
+
+        terminate_matching_without_wait(
+            || {
+                scan_count.set(scan_count.get() + 1);
+                Ok(vec![10, 20])
+            },
+            |process_id| {
+                terminated.borrow_mut().push(process_id);
+                Ok(true)
+            },
+        )
+        .unwrap();
+
+        assert_eq!(scan_count.get(), 1);
+        assert_eq!(*terminated.borrow(), vec![10, 20]);
     }
 
     #[test]

@@ -65,9 +65,10 @@ const OPERATION_WINDOW_LOAD_TIMEOUT: &str = "操作提示窗口加载超时，�
 const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
 /// poll 与 execute 判定不一致时的退避间隔，避免空转刷日志。
 const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
-/// 轮次内关闭游戏的预算。UE4 客户端带内核反作弊，退出常慢于登录流程的 15 秒，
-/// 原来的 10 秒比登录 StopGame 还紧 -> 正常退出被判成故障。
-const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(45);
+/// 转场关游戏扫描/发结束信号的预算。不等 ACE 退完：`WaitForSingleObject` 在
+/// 受保护进程上会无视超时，死等会把整轮卡在「正在关闭游戏」。残留由下一号
+/// 登录 `StopGame` 重杀。
+const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// `freeze_round_run` 的空计划文案。必须与 `is_transient_round_launch_error` 的
 /// TRANSIENT 列表共用同一常量：poll 与 freeze 的过滤条件本就允许不一致（利润 gate、
 /// business config、运行态在两次读取之间会变），空计划是正常竞态而非故障。两处各写
@@ -7677,7 +7678,6 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     }
 
     async fn close_game(&self) -> Result<(), String> {
-        use desktop_runtime::DesktopRuntime;
         if let Ok(Some(snapshot)) = self.runtime.update(
             self.run_id,
             LoginRunStatus::Waiting,
@@ -7688,12 +7688,18 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
             emit_run(&self.app, &snapshot);
         }
         let executable = self.game_executable_path.clone();
-        tokio::task::spawn_blocking(move || {
-            desktop_runtime::WindowsDesktopRuntime
-                .terminate_exact(&executable, ROUND_CLOSE_GAME_TIMEOUT)
-        })
+        match tokio::time::timeout(
+            ROUND_CLOSE_GAME_TIMEOUT,
+            tokio::task::spawn_blocking(move || {
+                desktop_runtime::terminate_exact_without_waiting(&executable)
+            }),
+        )
         .await
-        .map_err(|error| format!("关闭游戏任务失败: {error}"))?
+        {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => Err(format!("关闭游戏任务失败: {error}")),
+            Err(_) => Err("关闭游戏未在预算内返回".to_string()),
+        }
     }
 
     fn report_close_game_failure(&self, reason: &str, message: &str) {
