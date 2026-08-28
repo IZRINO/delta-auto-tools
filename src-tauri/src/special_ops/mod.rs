@@ -67,7 +67,7 @@ const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
 const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
 /// 转场关游戏扫描/发结束信号的预算。不等 ACE 退完：`WaitForSingleObject` 在
 /// 受保护进程上会无视超时，死等会把整轮卡在「正在关闭游戏」。残留由下一号
-/// 登录 `StopGame` 重杀。
+/// 登录 `StopGame` 关窗口后按快照轮询。
 const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// `freeze_round_run` 的空计划文案。必须与 `is_transient_round_launch_error` 的
 /// TRANSIENT 列表共用同一常量：poll 与 freeze 的过滤条件本就允许不一致（利润 gate、

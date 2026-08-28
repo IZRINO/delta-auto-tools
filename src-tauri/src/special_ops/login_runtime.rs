@@ -975,11 +975,21 @@ impl LoginDriver for ProductionLoginDriver {
 
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String> {
         let executable = executable.to_path_buf();
-        tokio::task::spawn_blocking(move || {
+        let result = tokio::task::spawn_blocking(move || {
             WindowsDesktopRuntime.terminate_exact(&executable, Duration::from_secs(15))
         })
         .await
-        .map_err(|error| format!("进程结束任务失败: {error}"))?
+        .map_err(|error| format!("进程结束任务失败: {error}"))?;
+        if let Err(error) = &result {
+            let observation = process_observation(error);
+            crate::log_error!(
+                "special_ops::login",
+                "结束进程失败",
+                "error" => error.as_str()
+            );
+            self.set_observation(observation);
+        }
+        result
     }
 
     async fn launch(&self, executable: &Path) -> Result<u32, String> {
@@ -1326,12 +1336,23 @@ fn observation_for_error(error: &str) -> LoginObservation {
 }
 
 fn launch_observation(error: &str) -> LoginObservation {
-    let windows_error_code = error
+    LoginObservation::LaunchFailed {
+        windows_error_code: windows_error_code(error),
+    }
+}
+
+fn process_observation(error: &str) -> LoginObservation {
+    LoginObservation::ProcessFailed {
+        windows_error_code: windows_error_code(error),
+    }
+}
+
+fn windows_error_code(error: &str) -> Option<i32> {
+    error
         .rsplit_once("（Windows 错误 ")
         .map(|(_, value)| value)
         .and_then(|value| value.strip_suffix('）'))
-        .and_then(|value| value.parse().ok());
-    LoginObservation::LaunchFailed { windows_error_code }
+        .and_then(|value| value.parse().ok())
 }
 
 fn window_observation(error: &str) -> LoginObservation {
@@ -1392,6 +1413,22 @@ mod tests {
             launch_observation("规范化程序路径失败（Windows 错误 2）"),
             LoginObservation::LaunchFailed {
                 windows_error_code: Some(2),
+            }
+        );
+    }
+
+    #[test]
+    fn process_error_observation_only_keeps_windows_error_code() {
+        assert_eq!(
+            process_observation("打开待结束进程失败: PID 10（Windows 错误 5）"),
+            LoginObservation::ProcessFailed {
+                windows_error_code: Some(5),
+            }
+        );
+        assert_eq!(
+            process_observation("RAW_DRIVER_SECRET|C:\\private\\game.exe"),
+            LoginObservation::ProcessFailed {
+                windows_error_code: None,
             }
         );
     }

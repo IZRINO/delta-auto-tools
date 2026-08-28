@@ -5,26 +5,27 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use windows_sys::Win32::Foundation::{
-    CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, RECT, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
-};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, RECT};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_TERMINATE,
 };
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP, VK_MENU};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    keybd_event, KEYEVENTF_KEYUP, VK_F4, VK_MENU,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClientRect, GetForegroundWindow, GetWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow,
-    ShowWindowAsync, GW_OWNER, SW_RESTORE,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, PostMessageW,
+    SetForegroundWindow, ShowWindowAsync, GW_OWNER, SW_RESTORE, WM_CLOSE,
 };
 
 const PROCESS_PATH_BUFFER_LEN: usize = 32_768;
 const FOREGROUND_SETTLE_TIMEOUT: Duration = Duration::from_millis(1_500);
 const FOREGROUND_SETTLE_POLL: Duration = Duration::from_millis(50);
+const TERMINATE_RESCAN_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowIdentity {
@@ -99,7 +100,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
             .checked_add(timeout)
             .ok_or_else(|| "进程结束超时范围无效".to_string())?;
         terminate_until_no_exact_matches(
-            || remaining_until(deadline, None).map(drop),
+            || remaining_until(deadline).map(drop),
             || {
                 scan_process_entries_by_name(&exe).map(|candidates| {
                     candidates
@@ -108,7 +109,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
                         .collect()
                 })
             },
-            |process_id| terminate_verified_process(&exe, process_id, deadline),
+            |process_id| terminate_verified_process_without_wait(&exe, process_id),
         )
     }
 
@@ -182,8 +183,8 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 }
 
-/// 发结束信号后不等待进程退出。转场关游戏是清场：ACE 常让 `WaitForSingleObject`
-/// 无视超时，死等会把整轮队列卡死；下一号登录 `StopGame` 会再杀残留。
+/// 先查路径再 Alt+F4。打开进程不得带 `PROCESS_TERMINATE`：ACE 会直接拒绝（错误 5），
+/// 关窗口代码跑不到。强杀只作尽力，失败忽略。
 pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
     let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
     terminate_matching_without_wait(
@@ -210,21 +211,32 @@ fn terminate_matching_without_wait(
 }
 
 fn terminate_verified_process_without_wait(exe: &Path, process_id: u32) -> Result<bool, String> {
-    verify_terminate_and_wait_with_handle(
-        exe,
-        process_id,
-        || Ok(Duration::from_millis(1)),
-        |process_id| {
-            open_process(
-                process_id,
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
-                "打开待结束进程失败",
-            )
-        },
-        |process| query_process_path_from_handle(process, process_id),
-        |process| terminate_process(process, process_id),
-        |_, _| Ok(()),
-    )
+    if !should_close_name_matched_process(exe, query_process_path(process_id))? {
+        return Ok(false);
+    }
+    close_windows_of_process_tree(process_id);
+    try_terminate_process(process_id);
+    Ok(true)
+}
+
+fn should_close_name_matched_process(
+    exe: &Path,
+    queried: Result<PathBuf, String>,
+) -> Result<bool, String> {
+    match queried {
+        Ok(path) => Ok(windows_paths_equal(exe, &path)),
+        Err(error) if process_already_gone(&error) => Ok(false),
+        Err(error) if access_denied(&error) => Ok(true),
+        Err(error) => Err(error),
+    }
+}
+
+fn try_terminate_process(process_id: u32) {
+    let Ok(Some(process)) = open_live_process(process_id, PROCESS_TERMINATE, "打开待结束进程失败")
+    else {
+        return;
+    };
+    let _ = terminate_process(&process, process_id);
 }
 
 fn canonicalize_executable_path(exe: &Path, action: &str) -> Result<PathBuf, String> {
@@ -492,37 +504,13 @@ fn open_process(process_id: u32, access: u32, action: &str) -> Result<OwnedHandl
     .map_err(|error| format_win32_error(&format!("{action}: PID {process_id}"), error))
 }
 
-fn terminate_verified_process(
-    exe: &Path,
-    process_id: u32,
-    deadline: Instant,
-) -> Result<bool, String> {
-    verify_terminate_and_wait_with_handle(
-        exe,
-        process_id,
-        || remaining_until(deadline, Some(process_id)),
-        |process_id| {
-            open_process(
-                process_id,
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
-                "打开待结束进程失败",
-            )
-        },
-        |process| query_process_path_from_handle(process, process_id),
-        |process| terminate_process(process, process_id),
-        |process, remaining| wait_for_process(process, process_id, remaining),
-    )
-}
-
 fn terminate_until_no_exact_matches(
     mut check_budget: impl FnMut() -> Result<(), String>,
     mut scan: impl FnMut() -> Result<Vec<u32>, String>,
     mut terminate: impl FnMut(u32) -> Result<bool, String>,
 ) -> Result<(), String> {
     loop {
-        check_budget()?;
         let candidates = scan()?;
-        check_budget()?;
         let mut exact_match = false;
         for process_id in candidates {
             check_budget()?;
@@ -531,20 +519,24 @@ fn terminate_until_no_exact_matches(
         if !exact_match {
             return Ok(());
         }
+        std::thread::sleep(TERMINATE_RESCAN_INTERVAL);
     }
 }
 
+#[cfg(test)]
 fn verify_terminate_and_wait_with_handle<H>(
     exe: &Path,
     process_id: u32,
     mut remaining_budget: impl FnMut() -> Result<Duration, String>,
-    open_process: impl FnOnce(u32) -> Result<H, String>,
+    open_process: impl FnOnce(u32) -> Result<Option<H>, String>,
     query_path: impl FnOnce(&H) -> Result<PathBuf, String>,
     terminate: impl FnOnce(&H) -> Result<(), String>,
     wait: impl FnOnce(&H, Duration) -> Result<(), String>,
 ) -> Result<bool, String> {
     remaining_budget()?;
-    let process = open_process(process_id)?;
+    let Some(process) = open_process(process_id)? else {
+        return Ok(false);
+    };
     if !windows_paths_equal(exe, &query_path(&process)?) {
         return Ok(false);
     }
@@ -555,51 +547,122 @@ fn verify_terminate_and_wait_with_handle<H>(
 }
 
 fn terminate_process(process: &OwnedHandle, process_id: u32) -> Result<(), String> {
-    // SAFETY: process handle grants terminate and synchronize access.
-    capture_win32_result(
+    // SAFETY: process handle grants terminate access.
+    match capture_win32_result(
         || unsafe { TerminateProcess(process.raw(), 1) },
         |result| *result == 0,
         std::io::Error::last_os_error,
-    )
-    .map_err(|error| format_win32_error(&format!("结束进程失败: PID {process_id}"), error))?;
-    Ok(())
-}
-
-fn wait_for_process(
-    process: &OwnedHandle,
-    process_id: u32,
-    timeout: Duration,
-) -> Result<(), String> {
-    // SAFETY: process handle is valid and wait duration is bounded to u32 milliseconds.
-    let wait_result = capture_win32_result(
-        || unsafe { WaitForSingleObject(process.raw(), wait_millis(timeout)) },
-        |result| *result == WAIT_FAILED,
-        std::io::Error::last_os_error,
-    )
-    .map_err(|error| format_win32_error(&format!("等待进程退出失败: PID {process_id}"), error))?;
-    match wait_result {
-        WAIT_OBJECT_0 => Ok(()),
-        WAIT_TIMEOUT => Err(format!("等待进程退出超时: PID {process_id}")),
-        result => Err(format!(
-            "等待进程退出返回未知状态 {result}: PID {process_id}"
-        )),
+    ) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let formatted = format_win32_error(&format!("结束进程失败: PID {process_id}"), error);
+            if access_denied(&formatted) {
+                Ok(())
+            } else {
+                Err(formatted)
+            }
+        }
     }
 }
 
-fn remaining_until(deadline: Instant, process_id: Option<u32>) -> Result<Duration, String> {
-    // 预算耗尽与 WaitForSingleObject 真超时是两种故障：前者说明整体 timeout 给得不够，
-    // 后者说明单个进程拒绝退出。共用一条文案会让日志无法区分，只能靠猜。
+fn close_windows_of_process_tree(root_pid: u32) {
+    let pids = match scan_process_entries() {
+        Ok(entries) => process_tree_ids(&[root_pid], &process_relationships(&entries)),
+        Err(_) => vec![root_pid],
+    };
+    let Ok(windows) = enumerate_windows() else {
+        return;
+    };
+    if let Some(window) = select_primary_window(&pids, &windows) {
+        if close_window_with_alt_f4(window.handle).is_ok() {
+            return;
+        }
+    }
+    for pid in pids {
+        for handle in window_handles_for_process(pid, &windows) {
+            post_close_message(handle);
+        }
+    }
+}
+
+fn close_window_with_alt_f4(handle: u64) -> Result<(), String> {
+    let hwnd = usize::try_from(handle)
+        .map(|handle| handle as HWND)
+        .map_err(|_| "目标窗口句柄超出当前平台宽度".to_string())?;
+    restore_and_focus_verified(hwnd)?;
+    // SAFETY: GetForegroundWindow 无前置条件。
+    if unsafe { GetForegroundWindow() } != hwnd {
+        return Err("目标窗口未成为前台窗口".to_string());
+    }
+    send_alt_f4();
+    Ok(())
+}
+
+fn send_alt_f4() {
+    send_alt_f4_with(|virtual_key, flags| {
+        // SAFETY: 注入成对的 Alt+F4，不保留按键状态。
+        unsafe {
+            keybd_event(virtual_key, 0, flags, 0);
+        }
+    });
+}
+
+fn send_alt_f4_with(mut key: impl FnMut(u8, u32)) {
+    key(VK_MENU as u8, 0);
+    key(VK_F4 as u8, 0);
+    key(VK_F4 as u8, KEYEVENTF_KEYUP);
+    key(VK_MENU as u8, KEYEVENTF_KEYUP);
+}
+
+fn window_handles_for_process(process_id: u32, windows: &[WindowCandidate]) -> Vec<u64> {
+    windows
+        .iter()
+        .filter(|window| window.pid == process_id && !window.owned)
+        .map(|window| window.hwnd)
+        .collect()
+}
+
+fn post_close_message(handle: u64) {
+    let Some(hwnd) = usize::try_from(handle).ok().map(|handle| handle as HWND) else {
+        return;
+    };
+    // SAFETY: handle 来自本次 EnumWindows；窗口并发销毁时 PostMessage 只是失败。
+    unsafe {
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+fn remaining_until(deadline: Instant) -> Result<Duration, String> {
     deadline
         .checked_duration_since(Instant::now())
         .filter(|remaining| !remaining.is_zero())
-        .ok_or_else(|| match process_id {
-            Some(process_id) => format!("结束进程预算耗尽: PID {process_id}"),
-            None => "结束进程预算耗尽".to_string(),
-        })
+        .ok_or_else(|| "结束进程预算耗尽".to_string())
 }
 
-fn wait_millis(timeout: Duration) -> u32 {
-    timeout.as_millis().clamp(1, u32::MAX as u128) as u32
+fn process_already_gone(error: &str) -> bool {
+    error.contains(&format!(
+        "（Windows 错误 {}）",
+        windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER
+    ))
+}
+
+fn access_denied(error: &str) -> bool {
+    error.contains(&format!(
+        "（Windows 错误 {}）",
+        windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED
+    ))
+}
+
+fn open_live_process(
+    process_id: u32,
+    access: u32,
+    action: &str,
+) -> Result<Option<OwnedHandle>, String> {
+    match open_process(process_id, access, action) {
+        Ok(handle) => Ok(Some(handle)),
+        Err(error) if process_already_gone(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 #[derive(Default)]
@@ -1045,6 +1108,157 @@ mod tests {
     }
 
     #[test]
+    fn empty_scan_succeeds_even_when_budget_already_exhausted() {
+        terminate_until_no_exact_matches(
+            || Err("结束进程预算耗尽".to_string()),
+            || Ok(Vec::new()),
+            |_| panic!("空快照不应再结束进程"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn budget_exhausted_after_kill_still_succeeds_when_rescan_empty() {
+        let scan_count = Cell::new(0);
+        let budget_checks = Cell::new(0);
+
+        terminate_until_no_exact_matches(
+            || {
+                let check = budget_checks.get();
+                budget_checks.set(check + 1);
+                if check == 0 {
+                    Ok(())
+                } else {
+                    Err("结束进程预算耗尽".to_string())
+                }
+            },
+            || {
+                let scan = scan_count.get();
+                scan_count.set(scan + 1);
+                Ok(if scan == 0 { vec![10] } else { Vec::new() })
+            },
+            |_| Ok(true),
+        )
+        .unwrap();
+
+        assert_eq!(scan_count.get(), 2);
+    }
+
+    #[test]
+    fn vanished_pid_is_not_an_exact_match() {
+        let terminated = Cell::new(false);
+
+        let matched = verify_terminate_and_wait_with_handle(
+            Path::new(r"C:\Games\DeltaForce.exe"),
+            10,
+            || Ok(Duration::from_millis(100)),
+            |_| Ok(None::<FakeProcessHandle>),
+            |_| panic!("消失 PID 不应查询路径"),
+            |_| {
+                terminated.set(true);
+                Ok(())
+            },
+            |_, _| Ok(()),
+        )
+        .unwrap();
+
+        assert!(!matched);
+        assert!(!terminated.get());
+    }
+
+    #[test]
+    fn process_gone_error_only_matches_invalid_parameter() {
+        assert!(process_already_gone(&format!(
+            "打开待结束进程失败: PID 10（Windows 错误 {}）",
+            windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER
+        )));
+        assert!(!process_already_gone(
+            "打开待结束进程失败: PID 10（Windows 错误 5）"
+        ));
+        assert!(!process_already_gone("结束进程预算耗尽: PID 10"));
+    }
+
+    #[test]
+    fn access_denied_matches_windows_error_five() {
+        assert!(access_denied("结束进程失败: PID 10（Windows 错误 5）"));
+        assert!(access_denied(
+            "打开进程查询路径失败: PID 10（Windows 错误 5）"
+        ));
+        assert!(!access_denied(&format!(
+            "打开待结束进程失败: PID 10（Windows 错误 {}）",
+            windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER
+        )));
+    }
+
+    #[test]
+    fn access_denied_name_match_still_closes() {
+        let exe = Path::new(r"C:\Games\DeltaForce.exe");
+        assert!(should_close_name_matched_process(
+            exe,
+            Err("打开进程查询路径失败: PID 10（Windows 错误 5）".to_string()),
+        )
+        .unwrap());
+        assert!(!should_close_name_matched_process(
+            exe,
+            Ok(PathBuf::from(r"D:\Other\DeltaForce.exe")),
+        )
+        .unwrap());
+        assert!(!should_close_name_matched_process(
+            exe,
+            Err(format!(
+                "打开进程查询路径失败: PID 10（Windows 错误 {}）",
+                windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER
+            )),
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn alt_f4_presses_alt_down_f4_down_f4_up_alt_up() {
+        let events = RefCell::new(Vec::new());
+        send_alt_f4_with(|virtual_key, flags| {
+            events.borrow_mut().push((virtual_key, flags));
+        });
+        assert_eq!(
+            events.into_inner(),
+            vec![
+                (VK_MENU as u8, 0),
+                (VK_F4 as u8, 0),
+                (VK_F4 as u8, KEYEVENTF_KEYUP),
+                (VK_MENU as u8, KEYEVENTF_KEYUP),
+            ]
+        );
+    }
+
+    #[test]
+    fn window_close_targets_unowned_windows_of_the_pid() {
+        let windows = vec![
+            WindowCandidate {
+                hwnd: 1,
+                pid: 10,
+                visible: true,
+                owned: false,
+                area: 100,
+            },
+            WindowCandidate {
+                hwnd: 2,
+                pid: 10,
+                visible: true,
+                owned: true,
+                area: 50,
+            },
+            WindowCandidate {
+                hwnd: 3,
+                pid: 99,
+                visible: true,
+                owned: false,
+                area: 80,
+            },
+        ];
+        assert_eq!(window_handles_for_process(10, &windows), vec![1]);
+    }
+
+    #[test]
     fn exhausted_budget_after_query_does_not_terminate() {
         let budget_checks = Cell::new(0);
         let terminated = Cell::new(false);
@@ -1061,7 +1275,7 @@ mod tests {
                     Err("结束进程预算耗尽: PID 10".to_string())
                 }
             },
-            |_| Ok(FakeProcessHandle(41)),
+            |_| Ok(Some(FakeProcessHandle(41))),
             |_| Ok(PathBuf::from(r"C:\Apps\WeGame\WeGame.exe")),
             |_| {
                 terminated.set(true);
@@ -1093,7 +1307,7 @@ mod tests {
                     _ => Duration::from_millis(25),
                 })
             },
-            |_| Ok(FakeProcessHandle(41)),
+            |_| Ok(Some(FakeProcessHandle(41))),
             |handle| {
                 assert_eq!(handle.0, 41);
                 Ok(PathBuf::from(r"C:\Apps\WeGame\WeGame.exe"))
@@ -1142,7 +1356,7 @@ mod tests {
             || Ok(Duration::from_secs(1)),
             |_| {
                 open_count.set(open_count.get() + 1);
-                Ok(FakeProcessHandle(41))
+                Ok(Some(FakeProcessHandle(41)))
             },
             |handle| {
                 assert_eq!(handle.0, 41);
@@ -1174,7 +1388,7 @@ mod tests {
             || Ok(Duration::from_secs(1)),
             |_| {
                 open_count.set(open_count.get() + 1);
-                Ok(FakeProcessHandle(41))
+                Ok(Some(FakeProcessHandle(41)))
             },
             |handle| {
                 queried_identity.set(handle.0);

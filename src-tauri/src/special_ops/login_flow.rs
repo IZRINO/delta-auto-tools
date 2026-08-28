@@ -40,6 +40,7 @@ pub(crate) enum LoginObservation {
     WindowNotFound,
     WindowOperationFailed,
     LaunchFailed { windows_error_code: Option<i32> },
+    ProcessFailed { windows_error_code: Option<i32> },
 }
 
 #[allow(async_fn_in_trait)]
@@ -502,6 +503,12 @@ fn format_observation(kind: &str, observation: LoginObservation) -> String {
         LoginObservation::LaunchFailed {
             windows_error_code: None,
         } => "启动程序失败".to_string(),
+        LoginObservation::ProcessFailed {
+            windows_error_code: Some(code),
+        } => format!("结束进程失败（Windows 错误 {code}）"),
+        LoginObservation::ProcessFailed {
+            windows_error_code: None,
+        } => kind.to_string(),
         LoginObservation::TemplateSamples { samples } => format!(
             "{kind}；最后识别结果：双采样相似度 {:.2}% / {:.2}%",
             samples[0] * 100.0,
@@ -941,6 +948,28 @@ mod tests {
                 },
             ),
             "启动程序失败（Windows 错误 740）"
+        );
+    }
+
+    #[test]
+    fn process_failure_formats_safe_windows_error_code() {
+        assert_eq!(
+            format_observation(
+                "步骤执行失败",
+                LoginObservation::ProcessFailed {
+                    windows_error_code: Some(5),
+                },
+            ),
+            "结束进程失败（Windows 错误 5）"
+        );
+        assert_eq!(
+            format_observation(
+                "步骤执行失败",
+                LoginObservation::ProcessFailed {
+                    windows_error_code: None,
+                },
+            ),
+            "步骤执行失败"
         );
     }
 
