@@ -1,6 +1,6 @@
 [package]
 name = "delta-auto-tools"
-version = "1.0.0-beta.9"
+version = "1.0.0-beta.10"
 description = "A Tauri App"
 authors = ["IZRINO"]
 edition = "2021"
@@ -42,6 +42,7 @@ chrono = { version = "0.4", features = ["serde"] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Security",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",

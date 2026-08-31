@@ -3,29 +3,35 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Once;
 use std::time::{Duration, Instant};
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, RECT};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, LUID, RECT};
+use windows_sys::Win32::Security::{
+    AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
+    TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    PROCESS_TERMINATE,
+    GetCurrentProcess, OpenProcess, OpenProcessToken, QueryFullProcessImageNameW, TerminateProcess,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    keybd_event, KEYEVENTF_KEYUP, VK_F4, VK_MENU,
+    keybd_event, KEYEVENTF_KEYUP, VK_F4, VK_MENU, VK_RETURN,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClientRect, GetForegroundWindow, GetWindow, GetWindowRect,
     GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, PostMessageW,
-    SetForegroundWindow, ShowWindowAsync, GW_OWNER, SW_RESTORE, WM_CLOSE,
+    SetForegroundWindow, ShowWindowAsync, GW_OWNER, SC_CLOSE, SW_RESTORE, WM_CLOSE, WM_SYSCOMMAND,
 };
 
 const PROCESS_PATH_BUFFER_LEN: usize = 32_768;
 const FOREGROUND_SETTLE_TIMEOUT: Duration = Duration::from_millis(1_500);
 const FOREGROUND_SETTLE_POLL: Duration = Duration::from_millis(50);
 const TERMINATE_RESCAN_INTERVAL: Duration = Duration::from_millis(100);
+const EXIT_CONFIRM_SETTLE: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowIdentity {
@@ -183,8 +189,10 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 }
 
-/// 先查路径再 Alt+F4。打开进程不得带 `PROCESS_TERMINATE`：ACE 会直接拒绝（错误 5），
-/// 关窗口代码跑不到。强杀只作尽力，失败忽略。
+/// 先查路径再关窗口：主窗口 Alt+F4，前台仍属该进程树则 Enter 确认退出框，
+/// 再对进程树全部窗口发 `WM_CLOSE` / `SC_CLOSE`。打开进程不得带
+/// `PROCESS_TERMINATE` 去做路径查询：ACE 会直接拒绝（错误 5），关窗口代码跑不到。
+/// 强杀前启用 `SeDebugPrivilege`，失败忽略。
 pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
     let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
     terminate_matching_without_wait(
@@ -232,11 +240,74 @@ fn should_close_name_matched_process(
 }
 
 fn try_terminate_process(process_id: u32) {
+    enable_debug_privilege();
     let Ok(Some(process)) = open_live_process(process_id, PROCESS_TERMINATE, "打开待结束进程失败")
     else {
         return;
     };
     let _ = terminate_process(&process, process_id);
+}
+
+fn enable_debug_privilege() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let _ = enable_se_debug_privilege();
+    });
+}
+
+fn enable_se_debug_privilege() -> Result<(), String> {
+    let mut token = std::ptr::null_mut();
+    capture_win32_result(
+        || unsafe {
+            OpenProcessToken(
+                GetCurrentProcess(),
+                TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+                &mut token,
+            )
+        },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error("打开进程令牌失败", error))?;
+    let token = OwnedHandle::from_valid(token);
+    let mut luid = LUID::default();
+    let name = wide_null("SeDebugPrivilege");
+    capture_win32_result(
+        || unsafe { LookupPrivilegeValueW(std::ptr::null(), name.as_ptr(), &mut luid) },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error("查找 SeDebugPrivilege 失败", error))?;
+    let privileges = TOKEN_PRIVILEGES {
+        PrivilegeCount: 1,
+        Privileges: [LUID_AND_ATTRIBUTES {
+            Luid: luid,
+            Attributes: SE_PRIVILEGE_ENABLED,
+        }],
+    };
+    capture_win32_result(
+        || unsafe {
+            AdjustTokenPrivileges(
+                token.raw(),
+                0,
+                &privileges,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        },
+        |result| *result == 0,
+        std::io::Error::last_os_error,
+    )
+    .map_err(|error| format_win32_error("启用 SeDebugPrivilege 失败", error))?;
+    Ok(())
+}
+
+fn wide_null(value: &str) -> Vec<u16> {
+    OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 fn canonicalize_executable_path(exe: &Path, action: &str) -> Result<PathBuf, String> {
@@ -565,6 +636,27 @@ fn terminate_process(process: &OwnedHandle, process_id: u32) -> Result<(), Strin
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CloseWindowsPlan {
+    send_enter: bool,
+    handles: Vec<u64>,
+}
+
+fn plan_close_after_alt_f4(
+    alt_f4_succeeded: bool,
+    foreground_pid: Option<u32>,
+    tree_pids: &[u32],
+    windows: &[WindowCandidate],
+) -> CloseWindowsPlan {
+    CloseWindowsPlan {
+        send_enter: alt_f4_succeeded && foreground_pid.is_some_and(|pid| tree_pids.contains(&pid)),
+        handles: tree_pids
+            .iter()
+            .flat_map(|pid| window_handles_for_process(*pid, windows))
+            .collect(),
+    }
+}
+
 fn close_windows_of_process_tree(root_pid: u32) {
     let pids = match scan_process_entries() {
         Ok(entries) => process_tree_ids(&[root_pid], &process_relationships(&entries)),
@@ -573,16 +665,35 @@ fn close_windows_of_process_tree(root_pid: u32) {
     let Ok(windows) = enumerate_windows() else {
         return;
     };
-    if let Some(window) = select_primary_window(&pids, &windows) {
-        if close_window_with_alt_f4(window.handle).is_ok() {
-            return;
-        }
+    // WeGame 把主窗口 Alt+F4 当成最小化到托盘，确认框也是 owned 窗口。
+    // Alt+F4 成功不得提前返回：隐藏 worker / 退出确认框仍要收到关闭。
+    let alt_f4_succeeded = select_primary_window(&pids, &windows)
+        .is_some_and(|window| close_window_with_alt_f4(window.handle).is_ok());
+    if alt_f4_succeeded {
+        std::thread::sleep(EXIT_CONFIRM_SETTLE);
     }
-    for pid in pids {
-        for handle in window_handles_for_process(pid, &windows) {
-            post_close_message(handle);
-        }
+    let foreground_pid = current_foreground_pid();
+    let plan = plan_close_after_alt_f4(alt_f4_succeeded, foreground_pid, &pids, &windows);
+    if plan.send_enter {
+        send_enter();
+        std::thread::sleep(EXIT_CONFIRM_SETTLE);
     }
+    for handle in plan.handles {
+        post_close_message(handle);
+        post_syscommand_close(handle);
+    }
+}
+
+fn current_foreground_pid() -> Option<u32> {
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() {
+        return None;
+    }
+    let mut process_id = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, &mut process_id);
+    }
+    (process_id != 0).then_some(process_id)
 }
 
 fn close_window_with_alt_f4(handle: u64) -> Result<(), String> {
@@ -614,10 +725,24 @@ fn send_alt_f4_with(mut key: impl FnMut(u8, u32)) {
     key(VK_MENU as u8, KEYEVENTF_KEYUP);
 }
 
+fn send_enter() {
+    send_enter_with(|virtual_key, flags| {
+        // SAFETY: 注入成对的 Enter，用于确认退出对话框，不保留按键状态。
+        unsafe {
+            keybd_event(virtual_key, 0, flags, 0);
+        }
+    });
+}
+
+fn send_enter_with(mut key: impl FnMut(u8, u32)) {
+    key(VK_RETURN as u8, 0);
+    key(VK_RETURN as u8, KEYEVENTF_KEYUP);
+}
+
 fn window_handles_for_process(process_id: u32, windows: &[WindowCandidate]) -> Vec<u64> {
     windows
         .iter()
-        .filter(|window| window.pid == process_id && !window.owned)
+        .filter(|window| window.pid == process_id)
         .map(|window| window.hwnd)
         .collect()
 }
@@ -629,6 +754,16 @@ fn post_close_message(handle: u64) {
     // SAFETY: handle 来自本次 EnumWindows；窗口并发销毁时 PostMessage 只是失败。
     unsafe {
         PostMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+fn post_syscommand_close(handle: u64) {
+    let Some(hwnd) = usize::try_from(handle).ok().map(|handle| handle as HWND) else {
+        return;
+    };
+    // SAFETY: handle 来自本次 EnumWindows；窗口并发销毁时 PostMessage 只是失败。
+    unsafe {
+        PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE as usize, 0);
     }
 }
 
@@ -1231,7 +1366,7 @@ mod tests {
     }
 
     #[test]
-    fn window_close_targets_unowned_windows_of_the_pid() {
+    fn window_close_targets_owned_hidden_and_unowned_windows_of_the_pid() {
         let windows = vec![
             WindowCandidate {
                 hwnd: 1,
@@ -1254,8 +1389,64 @@ mod tests {
                 owned: false,
                 area: 80,
             },
+            WindowCandidate {
+                hwnd: 4,
+                pid: 10,
+                visible: false,
+                owned: false,
+                area: 0,
+            },
         ];
-        assert_eq!(window_handles_for_process(10, &windows), vec![1]);
+        assert_eq!(window_handles_for_process(10, &windows), vec![1, 2, 4]);
+    }
+
+    #[test]
+    fn successful_alt_f4_still_closes_every_window_in_the_tree() {
+        let windows = vec![
+            WindowCandidate {
+                hwnd: 1,
+                pid: 10,
+                visible: true,
+                owned: false,
+                area: 100,
+            },
+            WindowCandidate {
+                hwnd: 2,
+                pid: 11,
+                visible: true,
+                owned: true,
+                area: 20,
+            },
+        ];
+        let plan = plan_close_after_alt_f4(true, Some(11), &[10, 11], &windows);
+        assert!(plan.send_enter);
+        assert_eq!(plan.handles, vec![1, 2]);
+    }
+
+    #[test]
+    fn enter_is_not_sent_when_foreground_left_the_tree() {
+        let windows = vec![WindowCandidate {
+            hwnd: 1,
+            pid: 10,
+            visible: true,
+            owned: false,
+            area: 100,
+        }];
+        let plan = plan_close_after_alt_f4(true, Some(99), &[10], &windows);
+        assert!(!plan.send_enter);
+        assert_eq!(plan.handles, vec![1]);
+    }
+
+    #[test]
+    fn enter_presses_return_down_then_up() {
+        let events = RefCell::new(Vec::new());
+        send_enter_with(|virtual_key, flags| {
+            events.borrow_mut().push((virtual_key, flags));
+        });
+        assert_eq!(
+            events.into_inner(),
+            vec![(VK_RETURN as u8, 0), (VK_RETURN as u8, KEYEVENTF_KEYUP),]
+        );
     }
 
     #[test]
