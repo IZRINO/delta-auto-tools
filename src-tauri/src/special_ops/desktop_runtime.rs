@@ -189,10 +189,12 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 }
 
-/// 先查路径再关窗口：主窗口 Alt+F4，前台仍属该进程树则 Enter 确认退出框，
-/// 再对进程树全部窗口发 `WM_CLOSE` / `SC_CLOSE`。打开进程不得带
-/// `PROCESS_TERMINATE` 去做路径查询：ACE 会直接拒绝（错误 5），关窗口代码跑不到。
-/// 强杀前启用 `SeDebugPrivilege`，失败忽略。
+/// 路径只核一次，随后只按进程快照看 PID 是否还在。每 100ms 再
+/// `OpenProcess` 查路径会把 ACE 偶发错误 31 打成几乎每次切号都失败。
+/// 主窗口 Alt+F4，前台仍属该进程树则 Enter 确认退出框，再对进程树全部
+/// 窗口发 `WM_CLOSE` / `SC_CLOSE`。打开进程不得带 `PROCESS_TERMINATE`
+/// 去做路径查询。查询被拒仍按文件名关窗。强杀前启用 `SeDebugPrivilege`，
+/// 失败忽略。
 pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
     let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
     terminate_matching_without_wait(
@@ -234,8 +236,9 @@ fn should_close_name_matched_process(
     match queried {
         Ok(path) => Ok(windows_paths_equal(exe, &path)),
         Err(error) if process_already_gone(&error) => Ok(false),
-        Err(error) if access_denied(&error) => Ok(true),
-        Err(error) => Err(error),
+        // ACE 拒绝路径查询时返回 5 或 31（ERROR_GEN_FAILURE）。按文件名关窗，
+        // 不能把查询失败当成 StopGame 致命错误，否则 Alt+F4 跑不到。
+        Err(_) => Ok(true),
     }
 }
 
@@ -580,12 +583,20 @@ fn terminate_until_no_exact_matches(
     mut scan: impl FnMut() -> Result<Vec<u32>, String>,
     mut terminate: impl FnMut(u32) -> Result<bool, String>,
 ) -> Result<(), String> {
+    let mut signaled = Vec::new();
     loop {
         let candidates = scan()?;
         let mut exact_match = false;
         for process_id in candidates {
             check_budget()?;
-            exact_match |= terminate(process_id)?;
+            if signaled.contains(&process_id) {
+                exact_match = true;
+                continue;
+            }
+            if terminate(process_id)? {
+                signaled.push(process_id);
+                exact_match = true;
+            }
         }
         if !exact_match {
             return Ok(());
@@ -1243,6 +1254,29 @@ mod tests {
     }
 
     #[test]
+    fn already_signaled_pid_is_not_terminated_again() {
+        let terminate_count = Cell::new(0);
+        let scan_count = Cell::new(0);
+
+        terminate_until_no_exact_matches(
+            || Ok(()),
+            || {
+                let scan = scan_count.get() + 1;
+                scan_count.set(scan);
+                Ok(if scan < 3 { vec![10] } else { Vec::new() })
+            },
+            |_| {
+                terminate_count.set(terminate_count.get() + 1);
+                Ok(true)
+            },
+        )
+        .unwrap();
+
+        assert_eq!(terminate_count.get(), 1);
+        assert_eq!(scan_count.get(), 3);
+    }
+
+    #[test]
     fn empty_scan_succeeds_even_when_budget_already_exhausted() {
         terminate_until_no_exact_matches(
             || Err("结束进程预算耗尽".to_string()),
@@ -1344,6 +1378,24 @@ mod tests {
                 "打开进程查询路径失败: PID 10（Windows 错误 {}）",
                 windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER
             )),
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn ace_gen_failure_query_still_closes_by_name() {
+        let exe = Path::new(r"C:\Games\DeltaForce.exe");
+        assert!(should_close_name_matched_process(
+            exe,
+            Err(format!(
+                "打开进程查询路径失败: PID 10（Windows 错误 {}）",
+                windows_sys::Win32::Foundation::ERROR_GEN_FAILURE
+            )),
+        )
+        .unwrap());
+        assert!(should_close_name_matched_process(
+            exe,
+            Err("查询进程完整路径失败: PID 10（Windows 错误 31）".to_string()),
         )
         .unwrap());
     }
