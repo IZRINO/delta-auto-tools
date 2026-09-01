@@ -38,13 +38,19 @@
 
 工作台通过 `special_ops_begin_calibration_selection` 打开框选窗口。提交调用 `special_ops_submit_calibration_selection`，取消调用 `special_ops_cancel_calibration_selection`。窗口 label 使用 `special-ops-calibration-*`，由 `overlays.json` 授权。
 
+## 多账号制作台更改
+
+独立登录流程，入口在默认账号配置。开关默认关；关着时下一账号热键不登记，轮换和试运行不受影响。打开条件：已暂停轮换、已录下一账号热键且不与紧急停止撞键、总开关开、全局自动化开、没有进行中的试运行、至少一名启用且 QQ 为纯数字的账号。
+
+打开后按账号顺序登录到四制作台即结束本次运行，游戏留下等人改配方。按下一账号热键后按正常登录流程关游戏和 WeGame，再登下一启用账号。未启用或 QQ 非法的账号跳过。最后一号再按热键只关进程，开关保持打开。中途关开关不关游戏；再开从第一号重新登录。登录失败不自动跳号。紧急停止留游戏现场并关掉本功能。打开期间禁止继续轮换、禁止任何试运行。`special_ops_set_station_walkthrough` 是独立 command，`save_settings` 不得用草稿回滚该开关。`LoginRunKind` 增加 `stationWalkthrough`。
+
 ## 登录试运行 runtime
 
 `special_ops_start_login_trial` 校验 settings revision、账号、两条 exe 路径及 8 个登录校准目标后冻结本次输入。单实例 `LoginRuntime` 在后台执行流程，IPC 立即返回 `LoginRunSnapshot`；active run 完成资源清理前拒绝下一次启动。登录试运行与多账号轮换均先发送完整 5→4→3→2→1 倒计时；倒计时期间不得关闭游戏、关闭 WeGame、启动 WeGame、截图、识图或模拟键鼠。倒计时结束后才结束旧进程并进入登录流程。后续原本需要提示的登录动作倒计时为 0 秒即不提示不等待直接执行，账号选择、复制、滚动和登录提交等原本不提示动作不新增提示。接管段结束后，游戏条目和启动按钮沿用同一 run 级规则。每次动作仍重新查找并聚焦 WeGame 窗口，再对目标自身模板或 `guardAnyOf` 执行双采样校验；纯 OCR 采样不触发倒计时。等待多个模板时每轮采样全部候选，避免首个目标长期未命中时饿死后续目标。
 
 倒计时结束后，试运行与轮换按 canonical exe 路径结束旧游戏和 WeGame，再启动 WeGame，确保记住账号列表从顶部开始。登录表单出现后直接展开账号列表；`wegame.accountList` 必须紧密覆盖同时可见的 3 行账号。执行器以 400ms 间隔执行两次 Windows OCR；截图内部放大 3 倍后识别，并把行中心坐标映射回原区域。只要求两次都检测到非空账号内容，用于确认列表仍处于展开状态；OCR 文本不再承担目标 QQ 识别，两次文本允许因漏字、错字或分段而不同。连续 3 轮双采样均未检测到数字内容时，列表视为当前账号不可用，立即标记该账号 `NeedsManualLogin` 并继续下一账号，不重启 WeGame、不重复扫描。执行器将列表区域纵向分为 3 个槽位，按从上到下顺序点击；每次选中后清空剪贴板，双击顶部账号并发送 `Ctrl+C`，精确比较 Unicode 文本与目标 QQ。复制值不是目标时，将完整 QQ 加入已见集合并重新展开列表，继续下一槽位；处理完 3 行后把鼠标移到列表中心并向下滚动 3 格。新页面仍按相同方式逐行复制；整页 3 个完整 QQ 均已出现过时判定到底。列表未找到或未复制到有效 QQ 时立即标记账号 `NeedsManualLogin`，不重启 WeGame、不重复扫描；未来多账号 round 跳到下一账号。截图失败、OCR 引擎错误、剪贴板占用或窗口等系统能力异常仍全面暂停。复核成功后才点击登录，每次 run 最多提交一次。
 
-运行期间使用固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定 480×220 且点击穿透；前端不提供按钮。界面是满幅黑纱 HUD：无倒计时显示当前步骤，占用键鼠倒计时放大等宽秒数并走 1 秒导火索，数字下保留当前步骤，底部粉笔白紧急停止热键。无账号时第一屏是「开始值班」（添加账号、补 exe、去校准），不渲染空的二十四小时任务井。任务行「请在账号页处理」滚到对应账号卡。首次运行先以隐藏状态创建，等待 `PageLoadEvent::Finished` 后显式显示并确认可见，才允许 worker handoff；3 秒未就绪则回滚本次试运行，禁止后台无提示操作。后续运行发现同 label window 已存在时直接显示并复用，运行清理只隐藏而不销毁，避免 Tauri WebView 注册表尚未释放时重建同 label 失败。全局总开关关闭时，登录、导航、制作、子弹四类 start command 均拒绝启动；已运行时紧急热键通过显式 safety scope 绕过全局 gate。`LoginRunSnapshot.runKind` 区分 `login`、`navigation`、`craft`、`ammo`、`round`；operation window 以运行事件中的该值更新显示，URL 参数仅作为首次创建前的兜底文案。子弹停止与制作停止相同，durable 写入成功后必须完成 runtime persistence claim，`cleanup_ready` 才允许清理。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。
+运行期间使用固定 label `special-ops-operation` window，并仅在本次 run 注册 `special-ops-emergency` Strict 热键。operation window 透明、无边框、置顶、固定 480×220 且点击穿透；前端不提供按钮。界面是满幅黑纱 HUD：无倒计时显示当前步骤，占用键鼠倒计时放大等宽秒数并走 1 秒导火索，数字下保留当前步骤，底部粉笔白紧急停止热键。无账号时第一屏是「开始值班」（添加账号、补 exe、去校准），不渲染空的二十四小时任务井。任务行「请在账号页处理」滚到对应账号卡。首次运行先以隐藏状态创建，等待 `PageLoadEvent::Finished` 后显式显示并确认可见，才允许 worker handoff；3 秒未就绪则回滚本次试运行，禁止后台无提示操作。后续运行发现同 label window 已存在时直接显示并复用，运行清理只隐藏而不销毁，避免 Tauri WebView 注册表尚未释放时重建同 label 失败。全局总开关关闭时，登录、导航、制作、子弹四类 start command 均拒绝启动；已运行时紧急热键通过显式 safety scope 绕过全局 gate。`LoginRunSnapshot.runKind` 区分 `login`、`navigation`、`craft`、`ammo`、`round`、`stationWalkthrough`；operation window 以运行事件中的该值更新显示，URL 参数仅作为首次创建前的兜底文案。子弹停止与制作停止相同，durable 写入成功后必须完成 runtime persistence claim，`cleanup_ready` 才允许清理。后台结果通过 `SettingsCoordinator::with_runtime_change` 串行保存并递增 revision，旧 UI save 随后被拒绝。
 
 多账号自动轮次复用相同 operation window 与紧急停止资源。此时 `LoginRunSnapshot.runKind` 为 `round`，`roundProgress` 追加账号序号、QQ、当前制作台及制作台进度；主页面不显示普通取消按钮，只允许“当前账号结束后暂停”或紧急停止。
 

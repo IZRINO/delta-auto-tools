@@ -16,6 +16,8 @@ function settings(): SpecialOpsSettings {
         paused: true,
         dailyExchangeTime: "08:00",
         emergencyHotkey: "Ctrl+Shift+F12",
+        nextAccountHotkey: "",
+        stationWalkthroughEnabled: false,
         navigationBeaconDelayMs: 3000,
         navigationSpaceDelayMs: 3000,
         navigationTabDelayMs: 3000,

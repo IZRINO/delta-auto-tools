@@ -103,8 +103,9 @@ export function SpecialOpsBlackmarkView({
                 <div className="flex flex-wrap items-center gap-3">
                     <button
                         className="bm-btn inline-flex items-center gap-2"
-                        disabled={pauseTransition || (hasActiveRun && !isActiveRound)}
+                        disabled={pauseTransition || (hasActiveRun && !isActiveRound) || bootstrap.settings.stationWalkthroughEnabled}
                         onClick={onPause}
+                        title={bootstrap.settings.stationWalkthroughEnabled ? "请先关闭多账号制作台更改" : undefined}
                         type="button"
                     >
                         {paused

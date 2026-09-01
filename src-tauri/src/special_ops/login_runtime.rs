@@ -55,6 +55,7 @@ pub enum LoginRunKind {
     LimitedSupply,
     Market,
     Round,
+    StationWalkthrough,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -78,6 +79,7 @@ impl LoginRunKind {
             Self::LimitedSupply => "limitedSupply",
             Self::Market => "market",
             Self::Round => "round",
+            Self::StationWalkthrough => "stationWalkthrough",
         }
     }
 
@@ -90,6 +92,7 @@ impl LoginRunKind {
             Self::LimitedSupply => "正在准备限时商品试运行",
             Self::Market => "正在准备交易行试运行",
             Self::Round => "正在准备多账号制作轮次",
+            Self::StationWalkthrough => "正在准备多账号制作台更改",
         }
     }
 
@@ -102,6 +105,7 @@ impl LoginRunKind {
             Self::LimitedSupply => "正在取消限时商品试运行",
             Self::Market => "正在取消交易行试运行",
             Self::Round => "正在停止多账号制作轮次",
+            Self::StationWalkthrough => "正在取消多账号制作台更改",
         }
     }
 }
@@ -1883,6 +1887,14 @@ mod tests {
         assert_eq!(
             LoginRunKind::Market.normal_cancel_message(),
             "正在取消交易行试运行"
+        );
+        assert_eq!(
+            LoginRunKind::StationWalkthrough.query_value(),
+            "stationWalkthrough"
+        );
+        assert_eq!(
+            LoginRunKind::StationWalkthrough.normal_cancel_message(),
+            "正在取消多账号制作台更改"
         );
     }
 

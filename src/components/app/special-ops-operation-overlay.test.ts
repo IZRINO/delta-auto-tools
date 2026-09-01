@@ -47,6 +47,7 @@ describe("operationOverlayText", () => {
         expect(operationOverlayText(snapshot({runKind: "limitedSupply"})).title).toBe("限时商品检查中");
         expect(operationOverlayText(snapshot({runKind: "market"})).title).toBe("交易行购买中");
         expect(operationOverlayText(snapshot({runKind: "round" as LoginRunSnapshot["runKind"]})).title).toBe("多账号制作轮次中");
+        expect(operationOverlayText(snapshot({runKind: "stationWalkthrough"})).title).toBe("多账号制作台更改中");
     });
 
     it("多账号轮次显示账号与制作台进度", () => {

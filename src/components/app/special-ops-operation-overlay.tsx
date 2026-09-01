@@ -15,6 +15,7 @@ const RUN_TITLES: Record<LoginRunKind, string> = {
     limitedSupply: "限时商品检查中",
     market: "交易行购买中",
     round: "多账号制作轮次中",
+    stationWalkthrough: "多账号制作台更改中",
 };
 
 const RUN_PREPARING_DETAILS: Record<LoginRunKind, string> = {
@@ -25,6 +26,7 @@ const RUN_PREPARING_DETAILS: Record<LoginRunKind, string> = {
     limitedSupply: "正在准备限时商品试运行",
     market: "正在准备交易行试运行",
     round: "正在准备多账号制作轮次",
+    stationWalkthrough: "正在准备多账号制作台更改",
 };
 
 function roundDetail(snapshot: LoginRunSnapshot): string {

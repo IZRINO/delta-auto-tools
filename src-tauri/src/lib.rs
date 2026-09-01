@@ -299,6 +299,7 @@ pub fn run() {
             special_ops::special_ops_confirm_station_state,
             special_ops::special_ops_confirm_ammo_state,
             special_ops::special_ops_set_paused,
+            special_ops::special_ops_set_station_walkthrough,
             special_ops::special_ops_test_calibration_target,
             special_ops::special_ops_begin_calibration_selection,
             special_ops::special_ops_submit_calibration_selection,

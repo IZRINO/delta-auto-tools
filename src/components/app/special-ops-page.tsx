@@ -92,6 +92,8 @@ const emptyBootstrap: SpecialOpsBootstrap = {
         paused: true,
         dailyExchangeTime: "08:00",
         emergencyHotkey: "Ctrl+Shift+F12",
+        nextAccountHotkey: "",
+        stationWalkthroughEnabled: false,
         navigationBeaconDelayMs: 3000,
         navigationSpaceDelayMs: 3000,
         navigationTabDelayMs: 3000,
@@ -121,6 +123,7 @@ const emptyBootstrap: SpecialOpsBootstrap = {
     settingsRevision: 0,
     nowMs: Date.now(),
     runSnapshot: null,
+    stationWalkthrough: null,
     profitRuntime: {
         phase: "disabled",
         nextQueryAtMs: null,
@@ -646,6 +649,7 @@ export function SpecialOpsPage() {
     const [selectedCraftStation, setSelectedCraftStation] = useState<StationKind>("technicalCenter");
     const [trialKind, setTrialKind] = useState<"login" | "navigation" | "craft" | "craftBatch" | "ammo" | "limitedSupply" | "market">("login");
     const [hotkeyStatus, setHotkeyStatus] = useState<string | null>(null);
+    const [walkthroughError, setWalkthroughError] = useState<string | null>(null);
     const [correctionAccountId, setCorrectionAccountId] = useState<string | null>(null);
     const [correctionDraft, setCorrectionDraft] = useState(createCorrectionDraft);
     const [correctionAmmoDraft, setCorrectionAmmoDraft] = useState<Record<string, boolean | null>>({});
@@ -849,6 +853,20 @@ export function SpecialOpsPage() {
             }
         })();
     };
+    const setStationWalkthrough = (enabled: boolean) => {
+        void (async () => {
+            try {
+                setWalkthroughError(null);
+                const saved = await flushSettings();
+                await requestBootstrap(() => invoke<SpecialOpsBootstrap>("special_ops_set_station_walkthrough", {
+                    enabled,
+                    settingsRevision: saved.settingsRevision,
+                }));
+            } catch (cause) {
+                if (!disposedRef.current) setWalkthroughError(String(cause));
+            }
+        })();
+    };
     const updateAccount = (account: AccountPlan, patch: Partial<AccountPlan>) => save({
         ...settingsDraftRef.current,
         accounts: settingsDraftRef.current.accounts.map((item) => item.id === account.id ? {...item, ...patch} : item),
@@ -897,6 +915,22 @@ export function SpecialOpsPage() {
     }, [bootstrap.settings.accounts]);
     const runSnapshot = bootstrap.runSnapshot;
     const hasActiveRun = hasActiveSpecialOpsRun(runSnapshot);
+    const walkthroughEnabled = bootstrap.settings.stationWalkthroughEnabled;
+    const walkthroughBlockReason = !bootstrap.settings.paused
+        ? "请先暂停轮换"
+        : !(bootstrap.settings.nextAccountHotkey ?? "").trim()
+            ? "请先录制下一账号快捷键"
+            : (bootstrap.settings.nextAccountHotkey ?? "").trim() === bootstrap.settings.emergencyHotkey.trim()
+                ? "下一账号快捷键不能与紧急停止相同"
+                : !bootstrap.settings.accounts.some((account) => account.enabled && /^\d+$/.test(account.qqAccount))
+                    ? "没有启用账号"
+                    : hasActiveRun
+                        ? "特勤处试运行尚未完成清理"
+                        : !bootstrap.settings.enabled
+                            ? "请先打开特勤处总开关"
+                            : !isNativeShell
+                                ? "浏览器预览不能启动"
+                                : null;
     const controlsLocked = hasActiveRun || pauseTransition;
     const isActiveRound = runSnapshot?.runKind === "round";
     // 一键恢复要清当天 lastSuccessDay，按 Asia/Shanghai 取当天，和后端 local_day_and_minute 对齐。
@@ -997,8 +1031,26 @@ export function SpecialOpsPage() {
     const recorder = useHotkeyRecorder({
         formatKey: formatRecordedHotkey,
         onCommit: (emergencyHotkey) => {
+            if (emergencyHotkey.trim() === (settingsDraftRef.current.nextAccountHotkey ?? "").trim() && emergencyHotkey.trim() !== "") {
+                setWalkthroughError("下一账号快捷键不能与紧急停止相同");
+                return;
+            }
             save({...settingsDraftRef.current, emergencyHotkey});
             setHotkeyStatus(`新的紧急停止热键：${emergencyHotkey}`);
+        },
+        onCancel: () => undefined,
+        onStatusMessage: setHotkeyStatus,
+    });
+    const nextAccountRecorder = useHotkeyRecorder({
+        formatKey: formatRecordedHotkey,
+        onCommit: (nextAccountHotkey) => {
+            if (nextAccountHotkey.trim() === settingsDraftRef.current.emergencyHotkey.trim()) {
+                setWalkthroughError("下一账号快捷键不能与紧急停止相同");
+                return;
+            }
+            setWalkthroughError(null);
+            save({...settingsDraftRef.current, nextAccountHotkey});
+            setHotkeyStatus(`新的下一账号热键：${nextAccountHotkey}`);
         },
         onCancel: () => undefined,
         onStatusMessage: setHotkeyStatus,
@@ -1019,7 +1071,7 @@ export function SpecialOpsPage() {
         }
     };
     const startLoginTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             setError(null);
             const saved = await flushSettings();
@@ -1033,7 +1085,7 @@ export function SpecialOpsPage() {
         }
     };
     const startNavigationTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             setError(null);
             const saved = await flushSettings();
@@ -1047,7 +1099,7 @@ export function SpecialOpsPage() {
         }
     };
     const startCraftTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             setError(null);
             const saved = await flushSettings();
@@ -1062,7 +1114,7 @@ export function SpecialOpsPage() {
         }
     };
     const startCraftBatchTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             setError(null);
             const saved = await flushSettings();
@@ -1076,7 +1128,7 @@ export function SpecialOpsPage() {
         }
     };
     const startAmmoTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             setError(null);
             const saved = await flushSettings();
@@ -1146,7 +1198,7 @@ export function SpecialOpsPage() {
         }
     };
     const startLimitedSupplyTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             const saved = await flushSettings();
             const snapshot = await invoke<LoginRunSnapshot>("special_ops_start_limited_supply_trial", {accountId: selectedAccountId, settingsRevision: saved.settingsRevision});
@@ -1156,7 +1208,7 @@ export function SpecialOpsPage() {
         }
     };
     const startMarketTrial = async () => {
-        if (!isNativeShell || !selectedAccountId || controlsLocked) return;
+        if (!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled) return;
         try {
             const saved = await flushSettings();
             const snapshot = await invoke<LoginRunSnapshot>("special_ops_start_market_trial", {accountId: selectedAccountId, mode: "realSingleAttempt", settingsRevision: saved.settingsRevision});
@@ -1346,7 +1398,7 @@ export function SpecialOpsPage() {
                 <label className="flex items-center gap-2 text-sm">总开关
                 <Switch disabled={controlsLocked} checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, enabled})}/>
                 </label>
-                <Button disabled={pauseTransition || (hasActiveRun && !isActiveRound)} size="sm" onClick={() => setPaused(!bootstrap.settings.paused)}>
+                <Button disabled={pauseTransition || (hasActiveRun && !isActiveRound) || walkthroughEnabled} size="sm" title={walkthroughEnabled ? "请先关闭多账号制作台更改" : undefined} onClick={() => setPaused(!bootstrap.settings.paused)}>
                     {bootstrap.settings.paused ? <RiPlayLine data-icon="inline-start"/> : <RiPauseLine data-icon="inline-start"/>}
                     {bootstrap.settings.paused && pauseTransition ? "正在继续" : pauseTransition ? "正在暂停" : isActiveRound && !bootstrap.settings.paused ? "当前账号结束后暂停" : bootstrap.settings.paused ? "继续" : "暂停"}
                 </Button>
@@ -1476,7 +1528,7 @@ export function SpecialOpsPage() {
                             {stationKinds.map((kind) => <option key={kind} value={kind}>{STATION_LABELS[kind]}</option>)}
                         </select>
                     </fieldset>}
-                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked} onClick={() => void startSelectedTrial()}>
+                    <Button disabled={!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled} title={walkthroughEnabled ? "请先关闭多账号制作台更改" : undefined} onClick={() => void startSelectedTrial()}>
                         <RiPlayLine data-icon="inline-start"/>开始
                     </Button>
                     {!isActiveRound && <Button disabled={!hasActiveRun || runSnapshot?.status === "stopping"} variant="outline" onClick={() => void cancelLoginTrial()}>
@@ -1551,6 +1603,39 @@ export function SpecialOpsPage() {
         <fieldset disabled={controlsLocked} className="contents">
         <section className={cn(foldPad, foldBox)}>
             <div className="flex items-center gap-1"><h2 className="text-lg font-semibold">默认账号配置</h2><HelpHint content="独立设置关闭的账号统一继承。修改时长不重算当前制作完成时间，下次重做后生效。"/></div>
+            <div className={cn(foldWell, "flex flex-col gap-2")}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                        <Switch
+                            checked={walkthroughEnabled}
+                            disabled={controlsLocked || (!walkthroughEnabled && walkthroughBlockReason !== null)}
+                            title={!walkthroughEnabled && walkthroughBlockReason ? walkthroughBlockReason : undefined}
+                            onCheckedChange={(enabled) => setStationWalkthrough(enabled)}
+                        />
+                        多账号制作台更改
+                    </label>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={controlsLocked}
+                        onBlur={nextAccountRecorder.handleBlur}
+                        onClick={() => nextAccountRecorder.beginRecording(bootstrap.settings.nextAccountHotkey ?? "")}
+                        onKeyDown={nextAccountRecorder.handleKeyDown}
+                    >
+                        {nextAccountRecorder.isRecording ? "请按组合键" : `录制下一账号热键（${bootstrap.settings.nextAccountHotkey || "未录制"}）`}
+                    </Button>
+                </div>
+                {walkthroughEnabled ? (
+                    <p className="text-xs text-base-content/70">
+                        {bootstrap.stationWalkthrough?.exhausted
+                            ? "已巡检完全部启用账号"
+                            : bootstrap.stationWalkthrough
+                                ? `等待下一账号（第 ${bootstrap.stationWalkthrough.accountIndex}/${bootstrap.stationWalkthrough.accountTotal} 个${bootstrap.stationWalkthrough.qqAccount ? ` · QQ ${bootstrap.stationWalkthrough.qqAccount}` : ""}）`
+                                : "已开启，正在登录第一个启用账号"}
+                    </p>
+                ) : walkthroughBlockReason ? <p className="text-xs text-base-content/60">{walkthroughBlockReason}</p> : null}
+                {walkthroughError ? <SoftAlert>{walkthroughError}</SoftAlert> : null}
+            </div>
             <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
                 {bootstrap.settings.defaultBusinessConfig.stations.map((station) => {
                     const recipeTarget = activeEnvironment?.targets.find((target) => target.key === `craft.recipe.${station.kind}`);

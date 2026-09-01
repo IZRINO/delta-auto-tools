@@ -9,6 +9,20 @@ fn set_paused_command_runs_on_async_runtime() {
 }
 
 #[test]
+fn set_station_walkthrough_command_is_async_and_registered() {
+    let source = include_str!("../src/special_ops/mod.rs");
+    let lib = include_str!("../src/lib.rs");
+    assert!(
+        source.contains("pub async fn special_ops_set_station_walkthrough("),
+        "special_ops_set_station_walkthrough 必须保持 async"
+    );
+    assert!(
+        lib.contains("special_ops_set_station_walkthrough"),
+        "缺少 Tauri command 注册：special_ops_set_station_walkthrough"
+    );
+}
+
+#[test]
 fn hiding_other_windows_avoids_sync_visibility_query() {
     let source = include_str!("../src/special_ops/mod.rs");
     let hide_start = source

@@ -78,7 +78,7 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("const [pauseTransition, setPauseTransition] = useState(false);");
         expect(pageSource).toContain("const controlsLocked = hasActiveRun || pauseTransition;");
         expect(pageSource).toContain("if (!isNativeShell || controlsLocked) return;");
-        expect(pageSource).toContain('disabled={!isNativeShell || !selectedAccountId || controlsLocked}');
+        expect(pageSource).toContain('disabled={!isNativeShell || !selectedAccountId || controlsLocked || walkthroughEnabled}');
         expect(pageSource).toContain('pauseTransition ? "正在继续"');
     });
 
@@ -129,6 +129,14 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("`craft.recipe.${station.kind}`, account.id");
         expect(calibrationOverlaySource).toContain('params.get("account_id")');
         expect(calibrationOverlaySource).toContain("accountId");
+    });
+
+    it("默认账号配置提供多账号制作台更改开关和下一账号热键", () => {
+        expect(pageSource).toContain("多账号制作台更改");
+        expect(pageSource).toContain("special_ops_set_station_walkthrough");
+        expect(pageSource).toContain("录制下一账号热键");
+        expect(pageSource).toContain("walkthroughEnabled ? \"请先关闭多账号制作台更改\"");
+        expect(blackmarkViewSource).toContain("stationWalkthroughEnabled");
     });
 
     it("默认配置提供子弹兑换顺序编辑器", () => {

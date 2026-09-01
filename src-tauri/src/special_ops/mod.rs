@@ -19,6 +19,7 @@ mod round_account;
 mod round_planner;
 mod round_runner;
 mod round_scheduler;
+mod station_walkthrough;
 #[allow(dead_code)]
 pub(crate) mod template_observer;
 #[allow(dead_code)]
@@ -547,6 +548,10 @@ pub struct SpecialOpsSettings {
     pub paused_reason: Option<String>,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
+    #[serde(default)]
+    pub next_account_hotkey: String,
+    #[serde(default)]
+    pub station_walkthrough_enabled: bool,
     #[serde(default = "default_navigation_delay_ms")]
     pub navigation_beacon_delay_ms: u32,
     #[serde(default = "default_navigation_delay_ms")]
@@ -594,6 +599,8 @@ impl Default for SpecialOpsSettings {
             paused_reason: None,
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            next_account_hotkey: String::new(),
+            station_walkthrough_enabled: false,
             navigation_beacon_delay_ms: default_navigation_delay_ms(),
             navigation_space_delay_ms: default_navigation_delay_ms(),
             navigation_tab_delay_ms: default_navigation_delay_ms(),
@@ -1052,6 +1059,8 @@ pub struct SpecialOpsBootstrap {
     pub run_snapshot: Option<LoginRunSnapshot>,
     #[serde(default)]
     pub profit_runtime: profit::runtime::ProfitRuntimeSnapshot,
+    #[serde(default)]
+    pub station_walkthrough: Option<station_walkthrough::StationWalkthroughSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1074,6 +1083,7 @@ pub struct SpecialOpsState {
     profit_runtime: Arc<ProfitQueryControl>,
     round_control: Arc<RoundControl>,
     round_scheduler: Arc<round_scheduler::RoundScheduler>,
+    walkthrough: Arc<Mutex<station_walkthrough::StationWalkthroughSession>>,
 }
 
 impl SpecialOpsState {
@@ -1098,6 +1108,11 @@ impl SpecialOpsState {
     ) -> Result<(), String> {
         let mut next = normalize_settings(incoming)?;
         next.paused = true;
+        next.station_walkthrough_enabled = false;
+        if let Ok(mut session) = self.walkthrough.lock() {
+            session.disable();
+        }
+        let _ = clear_walkthrough_hotkeys(app);
 
         let was_armed = self.round_scheduler.is_armed();
         self.round_scheduler.disarm();
@@ -4228,6 +4243,7 @@ fn build_bootstrap(
         now_ms: current_ms,
         run_snapshot: None,
         profit_runtime: ProfitRuntimeSnapshot::default(),
+        station_walkthrough: None,
     }
 }
 
@@ -4391,12 +4407,21 @@ fn register_emergency_hotkey(app: &AppHandle, hotkey: String) -> Result<(), Stri
         .try_state::<crate::hotkeys::HotkeyManager>()
         .ok_or_else(|| "热键管理器尚未初始化".to_string())?;
     let action: crate::hotkey_types::HotkeyAction = Arc::new(|app| {
-        if let Err(error) = request_emergency_stop_core(&app) {
+        if let Err(error) = disable_walkthrough_session(&app, true) {
             crate::log_error!(
-                "special_ops::runtime",
-                "紧急停止登记失败",
+                "special_ops::walkthrough",
+                "紧急停止关闭多账号制作台更改失败",
                 "error" => error
             );
+        }
+        if let Err(error) = request_emergency_stop_core(&app) {
+            if error != "当前没有运行中的登录试运行" {
+                crate::log_error!(
+                    "special_ops::runtime",
+                    "紧急停止登记失败",
+                    "error" => error
+                );
+            }
         }
     });
     manager.replace_safety_scope(
@@ -4515,6 +4540,9 @@ fn release_login_resources_unlocked(app: &AppHandle) -> Result<(), String> {
         "success" => restore_result.is_ok()
     );
     if let Err(error) = restore_result {
+        errors.push(error);
+    }
+    if let Err(error) = restore_walkthrough_hotkeys_if_enabled(app) {
         errors.push(error);
     }
     if errors.is_empty() {
@@ -5209,6 +5237,229 @@ async fn run_navigation_worker(
         "导航 worker 结束",
         "run_id" => run_id
     );
+}
+
+async fn run_station_walkthrough_worker(
+    app: AppHandle,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    login_config: Arc<login_flow::LoginRunConfig>,
+    navigation_config: Arc<game_navigation::NavigationRunConfig>,
+    frozen_signature: String,
+) {
+    let driver = login_runtime::ProductionLoginDriver::new(
+        app.clone(),
+        Arc::clone(&runtime),
+        run_id,
+        Arc::clone(&login_config),
+    );
+    let update_app = app.clone();
+    let update_runtime = Arc::clone(&runtime);
+    let update_cancelled = Arc::clone(&cancelled);
+    let login_result = login_flow::run_login_flow(
+        &driver,
+        &login_config,
+        Arc::clone(&cancelled),
+        move |step| match update_runtime.update(
+            run_id,
+            LoginRunStatus::Waiting,
+            Some(step),
+            login_step_message(&step),
+            None,
+        ) {
+            Ok(Some(snapshot)) => emit_run(&update_app, &snapshot),
+            Ok(None) | Err(_) => update_cancelled.store(true, std::sync::atomic::Ordering::SeqCst),
+        },
+    )
+    .await;
+
+    let persist_result = persist_login_outcome(
+        &app,
+        &runtime,
+        run_id,
+        &login_config.account_id,
+        &login_result,
+        &frozen_signature,
+    );
+    let stopped = runtime.stop_reason(run_id).ok().flatten().is_some();
+    let (status, message, arrived) = if stopped {
+        (
+            LoginRunStatus::Stopped,
+            "多账号制作台更改已停止".to_string(),
+            false,
+        )
+    } else {
+        match login_result {
+            login_flow::LoginFlowResult::GameReady { .. } => {
+                let delays = navigation_config.delays;
+                let destination = navigation_config.destination;
+                let nav_driver = game_navigation::ProductionGameNavigationDriver::new(
+                    app.clone(),
+                    Arc::clone(&runtime),
+                    run_id,
+                    navigation_config,
+                );
+                let nav_app = app.clone();
+                let nav_runtime = Arc::clone(&runtime);
+                let nav_cancelled = Arc::clone(&cancelled);
+                let nav_result = game_navigation::run_game_navigation(
+                    &nav_driver,
+                    destination,
+                    delays,
+                    cancelled,
+                    move |step| {
+                        let step = login_flow::LoginStep::from(step);
+                        match nav_runtime.update(
+                            run_id,
+                            LoginRunStatus::Waiting,
+                            Some(step),
+                            login_step_message(&step),
+                            None,
+                        ) {
+                            Ok(Some(snapshot)) => emit_run(&nav_app, &snapshot),
+                            Ok(None) | Err(_) => {
+                                nav_cancelled.store(true, std::sync::atomic::Ordering::SeqCst)
+                            }
+                        }
+                    },
+                )
+                .await;
+                match nav_result {
+                    game_navigation::GameNavigationResult::Ready => (
+                        LoginRunStatus::Succeeded,
+                        "已到达制作台，等待下一账号".to_string(),
+                        true,
+                    ),
+                    game_navigation::GameNavigationResult::TimedOut { failed_step } => (
+                        LoginRunStatus::Failed,
+                        format!("游戏内导航超时（{failed_step:?}）"),
+                        true,
+                    ),
+                    game_navigation::GameNavigationResult::Paused { message, .. } => {
+                        (LoginRunStatus::Failed, message, true)
+                    }
+                    game_navigation::GameNavigationResult::EmergencyStopped => (
+                        LoginRunStatus::Stopped,
+                        "多账号制作台更改已停止".to_string(),
+                        false,
+                    ),
+                }
+            }
+            login_flow::LoginFlowResult::Paused { .. } => {
+                (LoginRunStatus::Failed, "登录失败".to_string(), true)
+            }
+            login_flow::LoginFlowResult::EmergencyStopped { .. } => (
+                LoginRunStatus::Stopped,
+                "多账号制作台更改已停止".to_string(),
+                false,
+            ),
+            login_flow::LoginFlowResult::NeedsManualLogin { .. } => (
+                LoginRunStatus::Failed,
+                "未找到或无法复核目标 QQ，需要人工登录".to_string(),
+                true,
+            ),
+        }
+    };
+    if arrived {
+        if let Some(state) = app.try_state::<SpecialOpsState>() {
+            if let Ok(mut session) = state.walkthrough.lock() {
+                session.mark_arrived();
+            }
+        }
+    }
+    if let Err(error) = cleanup_login_worker_after_persistence(&persist_result, || {
+        cleanup_login_run(&app, &runtime, run_id, status, &message)
+    }) {
+        crate::log_error!(
+            "special_ops::walkthrough",
+            "多账号制作台更改清理失败",
+            "error" => error
+        );
+    }
+}
+
+async fn run_station_walkthrough_close_worker(
+    app: AppHandle,
+    runtime: Arc<login_runtime::LoginRuntime>,
+    run_id: u64,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    game: std::path::PathBuf,
+    wegame: std::path::PathBuf,
+) {
+    let _ = runtime.update(
+        run_id,
+        LoginRunStatus::Waiting,
+        None,
+        "正在关闭游戏和 WeGame",
+        None,
+    );
+    close_walkthrough_process(&game, "游戏", &cancelled).await;
+    close_walkthrough_process(&wegame, "WeGame", &cancelled).await;
+    if let Some(state) = app.try_state::<SpecialOpsState>() {
+        if let Ok(mut session) = state.walkthrough.lock() {
+            if session.is_enabled() {
+                session.mark_exhausted();
+            }
+        }
+    }
+    let stopped = runtime.stop_reason(run_id).ok().flatten().is_some();
+    let (status, message) = if stopped {
+        (
+            LoginRunStatus::Stopped,
+            "多账号制作台更改已停止".to_string(),
+        )
+    } else {
+        (
+            LoginRunStatus::Succeeded,
+            "已巡检完全部启用账号".to_string(),
+        )
+    };
+    if let Err(error) = cleanup_login_run(&app, &runtime, run_id, status, &message) {
+        crate::log_error!(
+            "special_ops::walkthrough",
+            "关闭游戏清理失败",
+            "error" => error
+        );
+    }
+}
+
+async fn close_walkthrough_process(
+    executable: &std::path::Path,
+    label: &str,
+    cancelled: &Arc<std::sync::atomic::AtomicBool>,
+) {
+    if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let path = executable.to_path_buf();
+    match tokio::time::timeout(
+        ROUND_CLOSE_GAME_TIMEOUT,
+        tokio::task::spawn_blocking(move || {
+            desktop_runtime::terminate_exact_without_waiting(&path)
+        }),
+    )
+    .await
+    {
+        Ok(Ok(Ok(()))) => {}
+        Ok(Ok(Err(message))) => crate::log_warn!(
+            "special_ops::walkthrough",
+            "关闭进程失败，继续结束巡检",
+            "target" => label,
+            "error" => message
+        ),
+        Ok(Err(error)) => crate::log_warn!(
+            "special_ops::walkthrough",
+            "关闭进程任务失败，继续结束巡检",
+            "target" => label,
+            "error" => error.to_string()
+        ),
+        Err(_) => crate::log_warn!(
+            "special_ops::walkthrough",
+            "关闭进程未在预算内返回，继续结束巡检",
+            "target" => label
+        ),
+    }
 }
 
 fn navigation_stop_outcome(
@@ -9123,12 +9374,17 @@ pub fn initialize(app: &AppHandle) -> Result<SpecialOpsState, String> {
         settings.paused = true;
         save_settings(app, &settings)?;
     }
+    let mut walkthrough = station_walkthrough::StationWalkthroughSession::default();
+    if settings.station_walkthrough_enabled {
+        walkthrough.restore_enabled_exhausted();
+    }
     Ok(SpecialOpsState {
         settings: Arc::new(Mutex::new(settings)),
         login_runtime: Arc::new(login_runtime::LoginRuntime::default()),
         profit_runtime: Arc::new(ProfitQueryControl::default()),
         round_control: Arc::new(RoundControl::default()),
         round_scheduler: Arc::new(round_scheduler::RoundScheduler::default()),
+        walkthrough: Arc::new(Mutex::new(walkthrough)),
     })
 }
 
@@ -9139,6 +9395,7 @@ pub fn start_runtime(app: &AppHandle) -> Result<(), String> {
     let scheduler = Arc::clone(&state.round_scheduler);
     let driver = Arc::new(ProductionRoundSchedulerDriver { app: app.clone() });
     tauri::async_runtime::spawn(round_scheduler::run_scheduler(scheduler, driver));
+    restore_walkthrough_hotkeys_if_enabled(app)?;
     Ok(())
 }
 
@@ -9160,6 +9417,10 @@ pub(crate) fn stop_registered(app: &AppHandle) -> Result<(), String> {
         .profit_runtime
         .cancel_in_flight("运行资源释放，利润查询已取消");
     state.round_scheduler.disarm();
+    if let Ok(mut session) = state.walkthrough.lock() {
+        session.disable();
+    }
+    let _ = clear_walkthrough_hotkeys(app);
     let active = state.login_runtime.snapshot()?;
     if let Some(snapshot) = active {
         let Some(stopped) = emit_login_run_change(app, &state.login_runtime, || {
@@ -9236,12 +9497,11 @@ pub fn special_ops_get_bootstrap(
         .lock()
         .map_err(|_| "特勤处状态已损坏".to_string())?
         .clone();
-    let bootstrap = build_bootstrap_with_runtime(
+    let bootstrap = bootstrap_from_state(
+        &state,
         settings,
         settings_coordinator.current_revision()?,
         now_ms(),
-        &state.login_runtime,
-        &state.profit_runtime,
     )?;
     Ok(bootstrap)
 }
@@ -9251,6 +9511,246 @@ fn ensure_no_active_special_ops_run(runtime: &login_runtime::LoginRuntime) -> Re
         return Err("特勤处试运行尚未完成清理".to_string());
     }
     Ok(())
+}
+
+fn walkthrough_enable_gate<'a>(
+    settings: &'a SpecialOpsSettings,
+    global_automation_enabled: bool,
+    run_active: bool,
+) -> station_walkthrough::WalkthroughEnableGate<'a> {
+    station_walkthrough::WalkthroughEnableGate {
+        tool_enabled: settings.enabled,
+        paused: settings.paused,
+        global_automation_enabled,
+        run_active,
+        emergency_hotkey: &settings.emergency_hotkey,
+        next_account_hotkey: &settings.next_account_hotkey,
+        accounts: &settings.accounts,
+    }
+}
+
+fn ensure_walkthrough_not_blocking_other_runs(state: &SpecialOpsState) -> Result<(), String> {
+    let session = state
+        .walkthrough
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?;
+    if session.is_enabled() {
+        Err(station_walkthrough::ERR_TRIAL_WHILE_OPEN.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_can_resume_scheduler(state: &SpecialOpsState) -> Result<(), String> {
+    let session = state
+        .walkthrough
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?;
+    if session.is_enabled() {
+        Err(station_walkthrough::ERR_UNPAUSE_WHILE_OPEN.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn bootstrap_from_state(
+    state: &SpecialOpsState,
+    settings: SpecialOpsSettings,
+    revision: u64,
+    current_ms: i64,
+) -> Result<SpecialOpsBootstrap, String> {
+    let mut bootstrap = build_bootstrap_with_runtime(
+        settings,
+        revision,
+        current_ms,
+        &state.login_runtime,
+        &state.profit_runtime,
+    )?;
+    let session = state
+        .walkthrough
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?;
+    bootstrap.station_walkthrough = session.snapshot(&bootstrap.settings.accounts);
+    Ok(bootstrap)
+}
+
+fn clear_next_account_hotkey(app: &AppHandle) -> Result<(), String> {
+    if let Some(manager) = app.try_state::<crate::hotkeys::HotkeyManager>() {
+        manager.clear_scope(station_walkthrough::NEXT_ACCOUNT_HOTKEY_SCOPE)?;
+    }
+    Ok(())
+}
+
+fn clear_walkthrough_hotkeys(app: &AppHandle) -> Result<(), String> {
+    let mut errors = Vec::new();
+    if let Err(error) = clear_next_account_hotkey(app) {
+        errors.push(error);
+    }
+    if state_walkthrough_enabled(app) != Some(true) {
+        if let Err(error) = clear_login_hotkey(app) {
+            errors.push(error);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn state_walkthrough_enabled(app: &AppHandle) -> Option<bool> {
+    let state = app.try_state::<SpecialOpsState>()?;
+    state
+        .walkthrough
+        .lock()
+        .ok()
+        .map(|session| session.is_enabled())
+}
+
+fn register_next_account_hotkey(app: &AppHandle, hotkey: String) -> Result<(), String> {
+    let manager = app
+        .try_state::<crate::hotkeys::HotkeyManager>()
+        .ok_or_else(|| "热键管理器尚未初始化".to_string())?;
+    let action: crate::hotkey_types::HotkeyAction = Arc::new(|app| {
+        if let Err(error) = request_next_walkthrough_account(&app) {
+            crate::log_error!(
+                "special_ops::walkthrough",
+                "下一账号热键处理失败",
+                "error" => error
+            );
+        }
+    });
+    manager.replace_scope(
+        station_walkthrough::NEXT_ACCOUNT_HOTKEY_SCOPE,
+        vec![(hotkey, action)],
+        "特勤处下一账号".to_string(),
+        crate::hotkey_types::ConflictPolicy::Strict,
+    )
+}
+
+fn restore_walkthrough_hotkeys_if_enabled(app: &AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<SpecialOpsState>() else {
+        return Ok(());
+    };
+    let (enabled, emergency, next) = {
+        let session = state
+            .walkthrough
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        if !session.is_enabled() {
+            return Ok(());
+        }
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        (
+            true,
+            settings.emergency_hotkey.clone(),
+            settings.next_account_hotkey.clone(),
+        )
+    };
+    let _ = enabled;
+    register_emergency_hotkey(app, emergency)?;
+    register_next_account_hotkey(app, next)
+}
+
+fn persist_walkthrough_enabled(app: &AppHandle, enabled: bool) -> Result<u64, String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let (_settings, revision) = coordinator.with_runtime_change(|| {
+        let mut next = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        next.station_walkthrough_enabled = enabled;
+        save_settings(app, &next)?;
+        *state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())? = next.clone();
+        Ok::<_, String>(next)
+    })?;
+    emit_state(app, revision, now_ms());
+    Ok(revision)
+}
+
+fn disable_walkthrough_session(app: &AppHandle, persist: bool) -> Result<(), String> {
+    let Some(state) = app.try_state::<SpecialOpsState>() else {
+        return Ok(());
+    };
+    let was_enabled = {
+        let mut session = state
+            .walkthrough
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        let enabled = session.is_enabled();
+        session.disable();
+        enabled
+    };
+    if persist && was_enabled {
+        persist_walkthrough_enabled(app, false)?;
+    }
+    clear_next_account_hotkey(app)?;
+    if state.login_runtime.snapshot()?.is_none() {
+        clear_login_hotkey(app)?;
+    }
+    Ok(())
+}
+
+fn request_next_walkthrough_account(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<SpecialOpsState>()
+        .ok_or_else(|| "特勤处状态尚未初始化".to_string())?;
+    let coordinator = app
+        .try_state::<Arc<SettingsCoordinator>>()
+        .ok_or_else(|| "配置写入协调器尚未初始化".to_string())?;
+    let run_active = state.login_runtime.snapshot()?.is_some();
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "特勤处状态已损坏".to_string())?
+        .clone();
+    let action = {
+        let session = state
+            .walkthrough
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        session.next_action(run_active, &settings.accounts)
+    };
+    match action {
+        station_walkthrough::NextAccountAction::Ignore => Ok(()),
+        station_walkthrough::NextAccountAction::Login { account_id } => {
+            {
+                let mut session = state
+                    .walkthrough
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?;
+                session.begin_login(&settings.accounts, &account_id)?;
+            }
+            start_station_walkthrough_run(
+                app,
+                &state,
+                &coordinator,
+                account_id,
+                coordinator.current_revision()?,
+                false,
+            )
+            .map(|_| ())
+        }
+        station_walkthrough::NextAccountAction::CloseOnly => start_station_walkthrough_close(
+            app,
+            &state,
+            &coordinator,
+            coordinator.current_revision()?,
+        )
+        .map(|_| ()),
+    }
 }
 
 fn should_defer_round_pause(active: Option<LoginRunKind>, paused: bool) -> bool {
@@ -9274,6 +9774,285 @@ fn is_transient_round_launch_error(error: &str) -> bool {
     TRANSIENT.iter().any(|pattern| error.contains(pattern))
 }
 
+fn start_station_walkthrough_run(
+    app: &AppHandle,
+    state: &SpecialOpsState,
+    settings_coordinator: &Arc<SettingsCoordinator>,
+    account_id: String,
+    settings_revision: u64,
+    close_only: bool,
+) -> Result<LoginRunSnapshot, String> {
+    ensure_app_global_automation_enabled(app)?;
+    ensure_no_active_special_ops_run(&state.login_runtime)?;
+    let runtime = Arc::clone(&state.login_runtime);
+    settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .clone();
+        let progress = {
+            let session = state
+                .walkthrough
+                .lock()
+                .map_err(|_| "特勤处状态已损坏".to_string())?;
+            session.snapshot(&settings.accounts)
+        };
+        let registered_hotkey = settings.emergency_hotkey.clone();
+        let operation_hotkey = settings.emergency_hotkey.clone();
+        let worker_app = app.clone();
+        let worker_runtime = Arc::clone(&runtime);
+        if close_only {
+            let game = std::path::PathBuf::from(settings.game_executable_path.clone());
+            let wegame = std::path::PathBuf::from(settings.wegame_executable_path.clone());
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::StationWalkthrough,
+                || register_emergency_hotkey(app, registered_hotkey),
+                || hide_other_windows_for_special_ops(app),
+                || {
+                    create_operation_window(
+                        app,
+                        &operation_hotkey,
+                        LoginRunKind::StationWalkthrough,
+                    )
+                },
+                |snapshot| emit_run(app, snapshot),
+                || release_login_resources_unlocked(app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_station_walkthrough_close_worker(
+                            worker_app,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            game,
+                            wegame,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            if let Some(progress) = progress {
+                if let Ok(Some(updated)) = runtime.update_round_progress(
+                    snapshot.run_id,
+                    progress.account_index,
+                    progress.account_total,
+                    account_id,
+                    progress.qq_account.unwrap_or_default(),
+                    None,
+                    0,
+                    0,
+                ) {
+                    emit_run(app, &updated);
+                    return Ok(updated);
+                }
+            }
+            Ok(snapshot)
+        } else {
+            let (login_config, frozen_signature) = freeze_login_run_config(&settings, &account_id)?;
+            let navigation_config = freeze_navigation_run_config(
+                &settings,
+                &account_id,
+                game_navigation::NavigationDestination::StationGrid,
+            )?;
+            let login_config = Arc::new(login_config);
+            let navigation_config = Arc::new(navigation_config);
+            let worker_login = Arc::clone(&login_config);
+            let worker_navigation = Arc::clone(&navigation_config);
+            let worker_signature = frozen_signature;
+            let (_, snapshot) = start_login_run_with_resources(
+                &runtime,
+                account_id.clone(),
+                LoginRunKind::StationWalkthrough,
+                || register_emergency_hotkey(app, registered_hotkey),
+                || hide_other_windows_for_special_ops(app),
+                || {
+                    create_operation_window(
+                        app,
+                        &operation_hotkey,
+                        LoginRunKind::StationWalkthrough,
+                    )
+                },
+                |snapshot| emit_run(app, snapshot),
+                || release_login_resources_unlocked(app),
+                |started| {
+                    let run_id = started.run_id;
+                    let cancelled = Arc::clone(&started.cancelled);
+                    tauri::async_runtime::spawn(async move {
+                        run_station_walkthrough_worker(
+                            worker_app,
+                            worker_runtime,
+                            run_id,
+                            cancelled,
+                            worker_login,
+                            worker_navigation,
+                            worker_signature,
+                        )
+                        .await;
+                    });
+                    Ok(())
+                },
+            )?;
+            if let Some(progress) = progress {
+                if let Ok(Some(updated)) = runtime.update_round_progress(
+                    snapshot.run_id,
+                    progress.account_index,
+                    progress.account_total,
+                    account_id,
+                    progress.qq_account.unwrap_or_default(),
+                    None,
+                    0,
+                    0,
+                ) {
+                    emit_run(app, &updated);
+                    return Ok(updated);
+                }
+            }
+            Ok(snapshot)
+        }
+    })
+}
+
+fn start_station_walkthrough_close(
+    app: &AppHandle,
+    state: &SpecialOpsState,
+    settings_coordinator: &Arc<SettingsCoordinator>,
+    settings_revision: u64,
+) -> Result<LoginRunSnapshot, String> {
+    let account_id = {
+        let session = state
+            .walkthrough
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        session
+            .current_account_id()
+            .unwrap_or("walkthrough")
+            .to_string()
+    };
+    start_station_walkthrough_run(
+        app,
+        state,
+        settings_coordinator,
+        account_id,
+        settings_revision,
+        true,
+    )
+}
+
+#[tauri::command]
+pub async fn special_ops_set_station_walkthrough(
+    app: AppHandle,
+    state: State<'_, SpecialOpsState>,
+    settings_coordinator: State<'_, Arc<SettingsCoordinator>>,
+    enabled: bool,
+    settings_revision: u64,
+) -> Result<SpecialOpsBootstrap, AppError> {
+    if enabled {
+        ensure_app_global_automation_enabled(&app)?;
+        ensure_no_active_special_ops_run(&state.login_runtime)?;
+        let ((settings, current_ms), revision) = settings_coordinator
+            .with_expected_revision_change(
+                settings_revision,
+                || -> Result<(SpecialOpsSettings, i64), String> {
+                    ensure_no_active_special_ops_run(&state.login_runtime)?;
+                    let mut settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?
+                        .clone();
+                    let global_ok = app
+                        .try_state::<crate::global_state::GlobalState>()
+                        .map(|item| item.enabled())
+                        .unwrap_or(true);
+                    if let Some(error) = station_walkthrough::enable_error(walkthrough_enable_gate(
+                        &settings, global_ok, false,
+                    )) {
+                        return Err(error);
+                    }
+                    let account_id = {
+                        let mut session = state
+                            .walkthrough
+                            .lock()
+                            .map_err(|_| "特勤处状态已损坏".to_string())?;
+                        session.enable_from_first(&settings.accounts)?
+                    };
+                    settings.station_walkthrough_enabled = true;
+                    save_settings(&app, &settings)?;
+                    *state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+                    let _ = account_id;
+                    Ok((settings, now_ms()))
+                },
+            )
+            .map_err(AppError::from)?;
+        let first_account_id = state
+            .walkthrough
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?
+            .current_account_id()
+            .ok_or_else(|| station_walkthrough::ERR_NO_ACCOUNTS.to_string())?
+            .to_string();
+        restore_walkthrough_hotkeys_if_enabled(&app)?;
+        if let Err(error) = start_station_walkthrough_run(
+            &app,
+            &state,
+            &settings_coordinator,
+            first_account_id,
+            revision,
+            false,
+        ) {
+            let _ = disable_walkthrough_session(&app, true);
+            return Err(AppError::from(error));
+        }
+        bootstrap_from_state(&state, settings, revision, current_ms).map_err(AppError::from)
+    } else {
+        let ((settings, current_ms), revision) = settings_coordinator
+            .with_expected_revision_change(
+                settings_revision,
+                || -> Result<(SpecialOpsSettings, i64), String> {
+                    let mut settings = state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?
+                        .clone();
+                    settings.station_walkthrough_enabled = false;
+                    save_settings(&app, &settings)?;
+                    *state
+                        .settings
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+                    state
+                        .walkthrough
+                        .lock()
+                        .map_err(|_| "特勤处状态已损坏".to_string())?
+                        .disable();
+                    Ok((settings, now_ms()))
+                },
+            )
+            .map_err(AppError::from)?;
+        let _ = clear_next_account_hotkey(&app);
+        if let Some(active) = state.login_runtime.snapshot()? {
+            if active.run_kind == LoginRunKind::StationWalkthrough {
+                let _ = emit_login_run_change(&app, &state.login_runtime, || {
+                    state
+                        .login_runtime
+                        .request_stop(active.run_id, login_runtime::StopReason::Normal)
+                });
+            }
+        } else {
+            let _ = clear_login_hotkey(&app);
+        }
+        bootstrap_from_state(&state, settings, revision, current_ms).map_err(AppError::from)
+    }
+}
+
 #[tauri::command]
 pub async fn special_ops_start_login_trial(
     app: AppHandle,
@@ -9284,6 +10063,7 @@ pub async fn special_ops_start_login_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let snapshot =
         settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
@@ -9341,6 +10121,7 @@ pub async fn special_ops_start_navigation_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let snapshot =
         settings_coordinator.with_revision(settings_revision, || -> Result<_, String> {
@@ -9400,6 +10181,7 @@ pub async fn special_ops_start_craft_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let snapshot =
@@ -9464,6 +10246,7 @@ pub async fn special_ops_start_craft_batch_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let snapshot =
@@ -9526,6 +10309,7 @@ pub async fn special_ops_start_ammo_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let snapshot =
@@ -9588,6 +10372,7 @@ pub async fn special_ops_start_limited_supply_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let snapshot =
@@ -9651,6 +10436,7 @@ pub async fn special_ops_start_market_trial(
 ) -> Result<LoginRunSnapshot, AppError> {
     ensure_app_global_automation_enabled(&app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(&state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let snapshot =
@@ -9713,6 +10499,7 @@ fn start_due_round_with_revision(
     crate::log_info!("special_ops::startup", "到期轮次启动校验开始");
     ensure_app_global_automation_enabled(app)?;
     ensure_no_active_special_ops_run(&state.login_runtime)?;
+    ensure_walkthrough_not_blocking_other_runs(state)?;
     let runtime = Arc::clone(&state.login_runtime);
     let settings_lock = Arc::clone(&state.settings);
     let control = Arc::clone(&state.round_control);
@@ -9955,6 +10742,15 @@ pub fn special_ops_save_settings(
             .map_err(|_| "特勤处状态已损坏".to_string())?;
         settings_value.paused = current.paused;
         settings_value.paused_reason = current.paused_reason.clone();
+        settings_value.station_walkthrough_enabled = current.station_walkthrough_enabled;
+        if station_walkthrough::next_account_hotkey_conflicts(
+            &settings_value.next_account_hotkey,
+            &settings_value.emergency_hotkey,
+        ) {
+            return Err(AppError::from(
+                station_walkthrough::ERR_HOTKEY_CONFLICT.to_string(),
+            ));
+        }
         profit_identity_changed = profit_query_identity_changed(&current, &settings_value);
     }
     let should_arm_scheduler = settings_value.enabled && !settings_value.paused;
@@ -9989,13 +10785,12 @@ pub fn special_ops_save_settings(
             .profit_runtime
             .cancel_in_flight("配置已修改，利润查询已取消");
     }
-    let bootstrap = build_bootstrap_with_runtime(
-        settings,
-        revision,
-        current_ms,
-        &state.login_runtime,
-        &state.profit_runtime,
-    )?;
+    if !settings.enabled {
+        let _ = disable_walkthrough_session(&app, true);
+    } else {
+        let _ = restore_walkthrough_hotkeys_if_enabled(&app);
+    }
+    let bootstrap = bootstrap_from_state(&state, settings, revision, current_ms)?;
     emit_state(&app, bootstrap.settings_revision, bootstrap.now_ms);
     if should_arm_scheduler {
         state.round_scheduler.arm();
@@ -10490,6 +11285,9 @@ pub async fn special_ops_set_paused(
         "paused" => paused,
         "settings_revision" => settings_revision
     );
+    if !paused {
+        ensure_can_resume_scheduler(&state)?;
+    }
     let active = state.login_runtime.snapshot()?;
     if should_defer_round_pause(active.as_ref().map(|snapshot| snapshot.run_kind), paused) {
         return settings_coordinator
