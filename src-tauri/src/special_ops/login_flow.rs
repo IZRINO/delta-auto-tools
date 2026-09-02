@@ -22,6 +22,11 @@ pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(180);
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const TERMINATE_RETRY_WAIT: Duration = Duration::from_secs(60);
+const GAME_TO_WEGAME_KILL_WAIT: Duration = if cfg!(test) {
+    Duration::ZERO
+} else {
+    Duration::from_secs(30)
+};
 
 pub(crate) struct LoginRunConfig {
     pub account_id: String,
@@ -61,6 +66,7 @@ pub(crate) trait LoginDriver: RememberedAccountDriver + Send + Sync {
         &self,
         executable: &Path,
     ) -> Result<Option<WindowIdentity>, String>;
+    async fn restore_window(&self, executable: &Path) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,31 +149,28 @@ where
         return result;
     }
 
-    for (step, executable) in [
-        (LoginStep::StopGame, &config.game_executable_path),
-        (LoginStep::StopWeGame, &config.wegame_executable_path),
-    ] {
-        if let Err(result) = terminate_until_stopped(
-            driver,
-            step,
-            executable,
-            &config.account_id,
-            &cancelled,
-            &mut on_step,
-        )
-        .await
-        {
-            return result;
-        }
-    }
-
-    if let Err(result) = run_step(
+    if let Err(result) = terminate_until_stopped(
         driver,
-        LoginStep::StartWeGame,
+        LoginStep::StopGame,
+        &config.game_executable_path,
         &config.account_id,
         &cancelled,
         &mut on_step,
-        driver.launch(&config.wegame_executable_path),
+    )
+    .await
+    {
+        return result;
+    }
+    if let Err(result) =
+        wait_interruptible(&cancelled, &config.account_id, GAME_TO_WEGAME_KILL_WAIT).await
+    {
+        return result;
+    }
+    if let Err(result) = stop_wegame_then_start(
+        driver,
+        &config,
+        &cancelled,
+        &mut on_step,
     )
     .await
     {
@@ -465,16 +468,63 @@ where
             Err(_) if cancelled.load(Ordering::SeqCst) => {
                 return Err(emergency_stopped(account_id));
             }
-            Err(_) => wait_terminate_retry(cancelled, account_id).await?,
+            Err(_) => {
+                wait_interruptible(cancelled, account_id, TERMINATE_RETRY_WAIT).await?
+            }
         }
     }
 }
 
-async fn wait_terminate_retry(
+async fn stop_wegame_then_start<D, F>(
+    driver: &D,
+    config: &LoginRunConfig,
+    cancelled: &Arc<AtomicBool>,
+    on_step: &mut F,
+) -> Result<(), LoginFlowResult>
+where
+    D: LoginDriver + ?Sized,
+    F: FnMut(LoginStep),
+{
+    driver.reset_observation();
+    on_step(LoginStep::StopWeGame);
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(emergency_stopped(&config.account_id));
+    }
+    match driver
+        .terminate_exact(&config.wegame_executable_path)
+        .await
+    {
+        Ok(()) => run_step(
+            driver,
+            LoginStep::StartWeGame,
+            &config.account_id,
+            cancelled,
+            on_step,
+            driver.launch(&config.wegame_executable_path),
+        )
+        .await
+        .map(|_| ()),
+        Err(_) => {
+            let _ = driver
+                .restore_window(&config.wegame_executable_path)
+                .await;
+            Ok(())
+        }
+    }
+}
+
+async fn wait_interruptible(
     cancelled: &AtomicBool,
     account_id: &str,
+    wait: Duration,
 ) -> Result<(), LoginFlowResult> {
-    let deadline = tokio::time::Instant::now() + TERMINATE_RETRY_WAIT;
+    if wait.is_zero() {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(emergency_stopped(account_id));
+        }
+        return Ok(());
+    }
+    let deadline = tokio::time::Instant::now() + wait;
     loop {
         if cancelled.load(Ordering::SeqCst) {
             return Err(emergency_stopped(account_id));
@@ -612,6 +662,7 @@ mod tests {
     enum Action {
         InitialCountdown,
         Terminate(&'static str),
+        RestoreWindow(&'static str),
         StartWeGame,
         Wait(Vec<String>),
         Click(String),
@@ -790,6 +841,19 @@ mod tests {
             }
             result
         }
+
+        async fn restore_window(&self, executable: &Path) -> Result<(), String> {
+            let label = if executable == Path::new("game.exe") {
+                "game"
+            } else {
+                "wegame"
+            };
+            self.actions
+                .lock()
+                .unwrap()
+                .push(Action::RestoreWindow(label));
+            Ok(())
+        }
     }
 
     impl RememberedAccountDriver for FakeDriver {
@@ -937,6 +1001,43 @@ mod tests {
 
         assert!(matches!(result, LoginFlowResult::EmergencyStopped { .. }));
         assert!(!driver.actions().contains(&Action::StartWeGame));
+    }
+
+    #[tokio::test]
+    async fn wegame_still_running_skips_launch_and_continues_login() {
+        let driver = FakeDriver::with_waits(ready_waits());
+        driver.terminate_results.lock().unwrap().extend([
+            Ok(()),
+            Err("目标进程仍在运行".to_string()),
+        ]);
+
+        let result = run(&driver).await;
+
+        assert!(matches!(result, LoginFlowResult::GameReady { .. }));
+        assert!(!driver.actions().contains(&Action::StartWeGame));
+        assert!(driver
+            .actions()
+            .contains(&Action::RestoreWindow("wegame")));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_interruptible_holds_thirty_seconds() {
+        let cancelled = AtomicBool::new(false);
+        let wait = wait_interruptible(&cancelled, "account-id", Duration::from_secs(30));
+        tokio::pin!(wait);
+        tokio::select! {
+            biased;
+            _ = &mut wait => panic!("30 秒等待提前结束"),
+            _ = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(Duration::from_secs(29)).await;
+        tokio::select! {
+            biased;
+            _ = &mut wait => panic!("29 秒不应结束"),
+            _ = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(Duration::from_secs(1)).await;
+        wait.await.unwrap();
     }
 
     #[tokio::test]
