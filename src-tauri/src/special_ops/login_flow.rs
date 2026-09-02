@@ -22,11 +22,6 @@ pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(180);
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const TERMINATE_RETRY_WAIT: Duration = Duration::from_secs(60);
-const GAME_TO_WEGAME_KILL_WAIT: Duration = if cfg!(test) {
-    Duration::ZERO
-} else {
-    Duration::from_secs(30)
-};
 
 pub(crate) struct LoginRunConfig {
     pub account_id: String,
@@ -158,11 +153,6 @@ where
         &mut on_step,
     )
     .await
-    {
-        return result;
-    }
-    if let Err(result) =
-        wait_interruptible(&cancelled, &config.account_id, GAME_TO_WEGAME_KILL_WAIT).await
     {
         return result;
     }

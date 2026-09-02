@@ -243,6 +243,11 @@ fn persist_system_failure<D: RoundDriver + ?Sized>(
 /// 包一层是防 spawn_blocking 根本不 resolve。卡住它就把整轮队列一起卡死。
 const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(8);
 const CLOSE_RETRY_WAIT: Duration = Duration::from_secs(60);
+const ACCOUNT_SWITCH_WAIT: Duration = if cfg!(test) {
+    Duration::ZERO
+} else {
+    Duration::from_secs(30)
+};
 
 /// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用
 /// 各自预算无条件重杀两个 exe -> 残留进程下轮自愈。这里全局暂停会把一次慢退出变成
@@ -259,6 +264,28 @@ async fn wait_until_cancelled_or_paused<D: RoundDriver + ?Sized>(
             return;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn wait_before_next_account<D: RoundDriver + ?Sized>(
+    driver: &D,
+    cancelled: &AtomicBool,
+) {
+    wait_switch_gap(driver, cancelled, ACCOUNT_SWITCH_WAIT).await;
+}
+
+async fn wait_switch_gap<D: RoundDriver + ?Sized>(
+    driver: &D,
+    cancelled: &AtomicBool,
+    wait: Duration,
+) {
+    if wait.is_zero() {
+        return;
+    }
+    tokio::select! {
+        biased;
+        _ = wait_until_cancelled_or_paused(driver, cancelled) => {}
+        _ = tokio::time::sleep(wait) => {}
     }
 }
 
@@ -419,6 +446,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 .await
         };
         let mut success = None;
+        let mut wait_for_next_account = false;
         match run_result {
             Ok(result) => {
                 completed_account_ids.insert(task.account_id.clone());
@@ -481,6 +509,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                     let failed_account_id = task.account_id.clone();
                     queue.retain(|queued| queued.task.account_id != failed_account_id);
                 }
+                wait_for_next_account = !queue.is_empty();
             }
             Err(error) => {
                 return RoundRunResult {
@@ -641,6 +670,32 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
             }
             if !continue_round {
                 break;
+            }
+            wait_for_next_account = !keep_session;
+        }
+        if wait_for_next_account {
+            wait_before_next_account(driver, &cancelled).await;
+            if cancelled.load(Ordering::SeqCst) {
+                return RoundRunResult {
+                    completed_accounts: completed_account_ids.len(),
+                    stop: RoundStop::EmergencyStopped,
+                };
+            }
+            match driver.pause_requested() {
+                Ok(true) => {
+                    let stop = stop_for_pause(driver).await;
+                    return RoundRunResult {
+                        completed_accounts: completed_account_ids.len(),
+                        stop,
+                    };
+                }
+                Ok(false) => {}
+                Err(message) => {
+                    return RoundRunResult {
+                        completed_accounts: completed_account_ids.len(),
+                        stop: persist_system_failure(driver, "round.pauseRequested", message),
+                    };
+                }
             }
         }
     }
@@ -944,6 +999,27 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn account_switch_gap_holds_thirty_seconds() {
+        let driver = FakeDriver::new(vec![], false);
+        let cancelled = AtomicBool::new(false);
+        let wait = wait_switch_gap(&driver, &cancelled, Duration::from_secs(30));
+        tokio::pin!(wait);
+        tokio::select! {
+            biased;
+            _ = &mut wait => panic!("30 秒切号等待提前结束"),
+            _ = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(Duration::from_secs(29)).await;
+        tokio::select! {
+            biased;
+            _ = &mut wait => panic!("29 秒不应结束"),
+            _ = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(Duration::from_secs(1)).await;
+        wait.await;
     }
 
     #[tokio::test]
