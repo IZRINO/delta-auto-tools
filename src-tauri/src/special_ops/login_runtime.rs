@@ -979,11 +979,18 @@ impl LoginDriver for ProductionLoginDriver {
 
     async fn terminate_exact(&self, executable: &Path) -> Result<(), String> {
         let executable = executable.to_path_buf();
-        let result = tokio::task::spawn_blocking(move || {
-            WindowsDesktopRuntime.terminate_exact(&executable, Duration::from_secs(15))
-        })
+        let result = match tokio::time::timeout(
+            Duration::from_secs(8),
+            tokio::task::spawn_blocking(move || {
+                super::desktop_runtime::terminate_exact_without_waiting(&executable)
+            }),
+        )
         .await
-        .map_err(|error| format!("进程结束任务失败: {error}"))?;
+        {
+            Ok(Ok(inner)) => inner,
+            Ok(Err(error)) => Err(format!("进程结束任务失败: {error}")),
+            Err(_) => Err("结束进程未在预算内返回".to_string()),
+        };
         if let Err(error) = &result {
             let observation = process_observation(error);
             crate::log_error!(

@@ -21,6 +21,7 @@ use std::{
 pub(crate) const STEP_TIMEOUT: Duration = Duration::from_secs(180);
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const TERMINATE_RETRY_WAIT: Duration = Duration::from_secs(60);
 
 pub(crate) struct LoginRunConfig {
     pub account_id: String,
@@ -146,13 +147,13 @@ where
         (LoginStep::StopGame, &config.game_executable_path),
         (LoginStep::StopWeGame, &config.wegame_executable_path),
     ] {
-        if let Err(result) = run_step(
+        if let Err(result) = terminate_until_stopped(
             driver,
             step,
+            executable,
             &config.account_id,
             &cancelled,
             &mut on_step,
-            driver.terminate_exact(executable),
         )
         .await
         {
@@ -440,6 +441,52 @@ where
     }
 }
 
+/// 关进程两轮后仍在则等 1 分钟再两轮，循环到成功或紧急停止。不是账号问题。
+async fn terminate_until_stopped<D, F>(
+    driver: &D,
+    step: LoginStep,
+    executable: &Path,
+    account_id: &str,
+    cancelled: &Arc<AtomicBool>,
+    on_step: &mut F,
+) -> Result<(), LoginFlowResult>
+where
+    D: LoginDriver + ?Sized,
+    F: FnMut(LoginStep),
+{
+    driver.reset_observation();
+    on_step(step);
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(emergency_stopped(account_id));
+        }
+        match driver.terminate_exact(executable).await {
+            Ok(()) => return Ok(()),
+            Err(_) if cancelled.load(Ordering::SeqCst) => {
+                return Err(emergency_stopped(account_id));
+            }
+            Err(_) => wait_terminate_retry(cancelled, account_id).await?,
+        }
+    }
+}
+
+async fn wait_terminate_retry(
+    cancelled: &AtomicBool,
+    account_id: &str,
+) -> Result<(), LoginFlowResult> {
+    let deadline = tokio::time::Instant::now() + TERMINATE_RETRY_WAIT;
+    loop {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(emergency_stopped(account_id));
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Ok(());
+        }
+        tokio::time::sleep((deadline - now).min(CANCEL_POLL_INTERVAL)).await;
+    }
+}
+
 fn copied_account_failure_message(error: &str) -> Option<String> {
     if error == "剪贴板未出现 QQ 文本" {
         return Some("账号复核未读取到 QQ".to_string());
@@ -587,6 +634,7 @@ mod tests {
         cancel_error_wait_call: AtomicUsize,
         block_click_target: Mutex<Option<String>>,
         blocked: Notify,
+        terminate_results: Mutex<VecDeque<Result<(), String>>>,
     }
 
     impl Default for FakeDriver {
@@ -610,6 +658,7 @@ mod tests {
                 cancel_error_wait_call: AtomicUsize::new(0),
                 block_click_target: Mutex::new(None),
                 blocked: Notify::new(),
+                terminate_results: Mutex::new(VecDeque::new()),
             }
         }
     }
@@ -662,7 +711,11 @@ mod tests {
                 .unwrap()
                 .push(Action::Terminate(executable));
             self.delay().await;
-            Ok(())
+            self.terminate_results
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(Ok(()))
         }
 
         async fn launch(&self, _: &Path) -> Result<u32, String> {
@@ -826,6 +879,64 @@ mod tests {
 
     async fn run(driver: &FakeDriver) -> LoginFlowResult {
         run_login_flow(driver, &config(), Arc::new(AtomicBool::new(false)), |_| {}).await
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_game_retries_after_one_minute_then_continues() {
+        let driver = FakeDriver::with_waits(ready_waits());
+        driver.terminate_results.lock().unwrap().extend([
+            Err("目标进程仍在运行".to_string()),
+            Ok(()),
+        ]);
+
+        let run = run(&driver);
+        tokio::pin!(run);
+        tokio::select! {
+            biased;
+            _ = &mut run => panic!("关进程失败后应等待再试"),
+            _ = tokio::task::yield_now() => {}
+        }
+        tokio::time::advance(TERMINATE_RETRY_WAIT).await;
+        let result = run.await;
+
+        assert!(matches!(result, LoginFlowResult::GameReady { .. }));
+        assert_eq!(
+            driver
+                .actions()
+                .into_iter()
+                .filter(|action| matches!(action, Action::Terminate(_)))
+                .collect::<Vec<_>>(),
+            vec![
+                Action::Terminate("game"),
+                Action::Terminate("game"),
+                Action::Terminate("wegame"),
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stop_game_cancel_during_retry_wait_does_not_start_wegame() {
+        let driver = FakeDriver::with_waits(ready_waits());
+        driver
+            .terminate_results
+            .lock()
+            .unwrap()
+            .push_back(Err("目标进程仍在运行".to_string()));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let config = config();
+        let run = run_login_flow(&driver, &config, Arc::clone(&cancelled), |_| {});
+        tokio::pin!(run);
+        tokio::select! {
+            biased;
+            _ = &mut run => panic!("关进程失败后应等待再试"),
+            _ = tokio::task::yield_now() => {}
+        }
+        cancelled.store(true, Ordering::SeqCst);
+        tokio::time::advance(CANCEL_POLL_INTERVAL).await;
+        let result = run.await;
+
+        assert!(matches!(result, LoginFlowResult::EmergencyStopped { .. }));
+        assert!(!driver.actions().contains(&Action::StartWeGame));
     }
 
     #[tokio::test]

@@ -66,9 +66,8 @@ const OPERATION_WINDOW_LOAD_TIMEOUT: &str = "操作提示窗口加载超时，�
 const OPERATION_WINDOW_RETRY_DELAY: Duration = Duration::from_secs(1);
 /// poll 与 execute 判定不一致时的退避间隔，避免空转刷日志。
 const SCHEDULER_TRANSIENT_RETRY_DELAY: Duration = Duration::from_secs(30);
-/// 转场关游戏扫描/发结束信号的预算。不等 ACE 退完：`WaitForSingleObject` 在
-/// 受保护进程上会无视超时，死等会把整轮卡在「正在关闭游戏」。残留由下一号
-/// 登录 `StopGame` 关窗口后按快照轮询。
+/// 转场关游戏扫描/发 `TerminateProcess` 的预算。不等退出。残留由下一号
+/// 登录 `StopGame` 再杀一次。
 const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// `freeze_round_run` 的空计划文案。必须与 `is_transient_round_launch_error` 的
 /// TRANSIENT 列表共用同一常量：poll 与 freeze 的过滤条件本就允许不一致（利润 gate、
@@ -7167,12 +7166,17 @@ fn map_round_login_failure(
     let message = format!("{failed_step:?}：{last_observation}");
     if matches!(
         failed_step,
-        login_flow::LoginStep::InitialCountdown
-            | login_flow::LoginStep::StopGame
-            | login_flow::LoginStep::StopWeGame
-            | login_flow::LoginStep::StartWeGame
+        login_flow::LoginStep::InitialCountdown | login_flow::LoginStep::StartWeGame
     ) {
         round_runner::AccountRunError::system(format!("login.{failed_step:?}"), message)
+    } else if matches!(
+        failed_step,
+        login_flow::LoginStep::StopGame | login_flow::LoginStep::StopWeGame
+    ) {
+        round_runner::AccountRunError::navigation_timeout_with_message(
+            format!("login.{failed_step:?}"),
+            message,
+        )
     } else if matches!(
         failed_step,
         login_flow::LoginStep::WaitGameEntry
@@ -18803,10 +18807,14 @@ mod tests {
     }
 
     #[test]
-    fn round_login_stop_game_failure_is_system_failure() {
+    fn round_login_stop_game_failure_is_retryable_not_system_pause() {
         let error = map_round_login_failure(login_flow::LoginStep::StopGame, "无法结束旧游戏进程");
 
-        assert_eq!(error.scope, round_runner::ErrorScope::System);
+        assert_eq!(error.scope, round_runner::ErrorScope::Account);
+        assert_eq!(
+            error.kind,
+            round_runner::AccountRunErrorKind::NavigationTimedOut
+        );
         assert_eq!(error.step, "login.StopGame");
     }
 

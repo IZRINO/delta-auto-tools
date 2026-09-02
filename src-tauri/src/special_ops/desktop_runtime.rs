@@ -18,20 +18,19 @@ use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, OpenProcess, OpenProcessToken, QueryFullProcessImageNameW, TerminateProcess,
     PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
 };
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    keybd_event, KEYEVENTF_KEYUP, VK_F4, VK_MENU, VK_RETURN,
-};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP, VK_MENU};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClientRect, GetForegroundWindow, GetWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, PostMessageW,
-    SetForegroundWindow, ShowWindowAsync, GW_OWNER, SC_CLOSE, SW_RESTORE, WM_CLOSE, WM_SYSCOMMAND,
+    GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, SetForegroundWindow,
+    ShowWindowAsync, GW_OWNER, SW_RESTORE,
 };
 
 const PROCESS_PATH_BUFFER_LEN: usize = 32_768;
 const FOREGROUND_SETTLE_TIMEOUT: Duration = Duration::from_millis(1_500);
 const FOREGROUND_SETTLE_POLL: Duration = Duration::from_millis(50);
 const TERMINATE_RESCAN_INTERVAL: Duration = Duration::from_millis(100);
-const EXIT_CONFIRM_SETTLE: Duration = Duration::from_millis(400);
+const TERMINATE_RETRY_PAUSE: Duration = Duration::from_millis(400);
+const TERMINATE_ATTEMPTS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowIdentity {
@@ -189,15 +188,11 @@ impl DesktopRuntime for WindowsDesktopRuntime {
     }
 }
 
-/// 路径只核一次，随后只按进程快照看 PID 是否还在。每 100ms 再
-/// `OpenProcess` 查路径会把 ACE 偶发错误 31 打成几乎每次切号都失败。
-/// 主窗口 Alt+F4，前台仍属该进程树则 Enter 确认退出框，再对进程树全部
-/// 窗口发 `WM_CLOSE` / `SC_CLOSE`。打开进程不得带 `PROCESS_TERMINATE`
-/// 去做路径查询。查询被拒仍按文件名关窗。强杀前启用 `SeDebugPrivilege`，
-/// 失败忽略。
+/// 按 canonical 路径匹配进程后直接 `TerminateProcess`。最多两轮，每轮后看
+/// 还在不在；两轮后仍在则失败，调用方不得继续启动 WeGame。
 pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
     let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
-    terminate_matching_without_wait(
+    terminate_until_gone(
         || {
             scan_process_entries_by_name(&exe).map(|candidates| {
                 candidates
@@ -207,24 +202,40 @@ pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> 
             })
         },
         |process_id| terminate_verified_process_without_wait(&exe, process_id),
+        TERMINATE_ATTEMPTS,
+        TERMINATE_RETRY_PAUSE,
     )
 }
 
-fn terminate_matching_without_wait(
-    scan: impl FnOnce() -> Result<Vec<u32>, String>,
+fn terminate_until_gone(
+    mut scan: impl FnMut() -> Result<Vec<u32>, String>,
     mut terminate: impl FnMut(u32) -> Result<bool, String>,
+    attempts: usize,
+    pause: Duration,
 ) -> Result<(), String> {
-    for process_id in scan()? {
-        let _ = terminate(process_id);
+    for attempt in 0..attempts {
+        let process_ids = scan()?;
+        if process_ids.is_empty() {
+            return Ok(());
+        }
+        for process_id in process_ids {
+            let _ = terminate(process_id);
+        }
+        if attempt + 1 < attempts && !pause.is_zero() {
+            std::thread::sleep(pause);
+        }
     }
-    Ok(())
+    if scan()?.is_empty() {
+        Ok(())
+    } else {
+        Err("目标进程仍在运行".to_string())
+    }
 }
 
 fn terminate_verified_process_without_wait(exe: &Path, process_id: u32) -> Result<bool, String> {
     if !should_close_name_matched_process(exe, query_process_path(process_id))? {
         return Ok(false);
     }
-    close_windows_of_process_tree(process_id);
     try_terminate_process(process_id);
     Ok(true)
 }
@@ -236,8 +247,7 @@ fn should_close_name_matched_process(
     match queried {
         Ok(path) => Ok(windows_paths_equal(exe, &path)),
         Err(error) if process_already_gone(&error) => Ok(false),
-        // ACE 拒绝路径查询时返回 5 或 31（ERROR_GEN_FAILURE）。按文件名关窗，
-        // 不能把查询失败当成 StopGame 致命错误，否则 Alt+F4 跑不到。
+        // 路径查询被拒仍按文件名杀，不能把查询失败当成 StopGame 致命错误。
         Err(_) => Ok(true),
     }
 }
@@ -647,137 +657,6 @@ fn terminate_process(process: &OwnedHandle, process_id: u32) -> Result<(), Strin
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CloseWindowsPlan {
-    send_enter: bool,
-    handles: Vec<u64>,
-}
-
-fn plan_close_after_alt_f4(
-    alt_f4_succeeded: bool,
-    foreground_pid: Option<u32>,
-    tree_pids: &[u32],
-    windows: &[WindowCandidate],
-) -> CloseWindowsPlan {
-    CloseWindowsPlan {
-        send_enter: alt_f4_succeeded && foreground_pid.is_some_and(|pid| tree_pids.contains(&pid)),
-        handles: tree_pids
-            .iter()
-            .flat_map(|pid| window_handles_for_process(*pid, windows))
-            .collect(),
-    }
-}
-
-fn close_windows_of_process_tree(root_pid: u32) {
-    let pids = match scan_process_entries() {
-        Ok(entries) => process_tree_ids(&[root_pid], &process_relationships(&entries)),
-        Err(_) => vec![root_pid],
-    };
-    let Ok(windows) = enumerate_windows() else {
-        return;
-    };
-    // WeGame 把主窗口 Alt+F4 当成最小化到托盘，确认框也是 owned 窗口。
-    // Alt+F4 成功不得提前返回：隐藏 worker / 退出确认框仍要收到关闭。
-    let alt_f4_succeeded = select_primary_window(&pids, &windows)
-        .is_some_and(|window| close_window_with_alt_f4(window.handle).is_ok());
-    if alt_f4_succeeded {
-        std::thread::sleep(EXIT_CONFIRM_SETTLE);
-    }
-    let foreground_pid = current_foreground_pid();
-    let plan = plan_close_after_alt_f4(alt_f4_succeeded, foreground_pid, &pids, &windows);
-    if plan.send_enter {
-        send_enter();
-        std::thread::sleep(EXIT_CONFIRM_SETTLE);
-    }
-    for handle in plan.handles {
-        post_close_message(handle);
-        post_syscommand_close(handle);
-    }
-}
-
-fn current_foreground_pid() -> Option<u32> {
-    let hwnd = unsafe { GetForegroundWindow() };
-    if hwnd.is_null() {
-        return None;
-    }
-    let mut process_id = 0;
-    unsafe {
-        GetWindowThreadProcessId(hwnd, &mut process_id);
-    }
-    (process_id != 0).then_some(process_id)
-}
-
-fn close_window_with_alt_f4(handle: u64) -> Result<(), String> {
-    let hwnd = usize::try_from(handle)
-        .map(|handle| handle as HWND)
-        .map_err(|_| "目标窗口句柄超出当前平台宽度".to_string())?;
-    restore_and_focus_verified(hwnd)?;
-    // SAFETY: GetForegroundWindow 无前置条件。
-    if unsafe { GetForegroundWindow() } != hwnd {
-        return Err("目标窗口未成为前台窗口".to_string());
-    }
-    send_alt_f4();
-    Ok(())
-}
-
-fn send_alt_f4() {
-    send_alt_f4_with(|virtual_key, flags| {
-        // SAFETY: 注入成对的 Alt+F4，不保留按键状态。
-        unsafe {
-            keybd_event(virtual_key, 0, flags, 0);
-        }
-    });
-}
-
-fn send_alt_f4_with(mut key: impl FnMut(u8, u32)) {
-    key(VK_MENU as u8, 0);
-    key(VK_F4 as u8, 0);
-    key(VK_F4 as u8, KEYEVENTF_KEYUP);
-    key(VK_MENU as u8, KEYEVENTF_KEYUP);
-}
-
-fn send_enter() {
-    send_enter_with(|virtual_key, flags| {
-        // SAFETY: 注入成对的 Enter，用于确认退出对话框，不保留按键状态。
-        unsafe {
-            keybd_event(virtual_key, 0, flags, 0);
-        }
-    });
-}
-
-fn send_enter_with(mut key: impl FnMut(u8, u32)) {
-    key(VK_RETURN as u8, 0);
-    key(VK_RETURN as u8, KEYEVENTF_KEYUP);
-}
-
-fn window_handles_for_process(process_id: u32, windows: &[WindowCandidate]) -> Vec<u64> {
-    windows
-        .iter()
-        .filter(|window| window.pid == process_id)
-        .map(|window| window.hwnd)
-        .collect()
-}
-
-fn post_close_message(handle: u64) {
-    let Some(hwnd) = usize::try_from(handle).ok().map(|handle| handle as HWND) else {
-        return;
-    };
-    // SAFETY: handle 来自本次 EnumWindows；窗口并发销毁时 PostMessage 只是失败。
-    unsafe {
-        PostMessageW(hwnd, WM_CLOSE, 0, 0);
-    }
-}
-
-fn post_syscommand_close(handle: u64) {
-    let Some(hwnd) = usize::try_from(handle).ok().map(|handle| handle as HWND) else {
-        return;
-    };
-    // SAFETY: handle 来自本次 EnumWindows；窗口并发销毁时 PostMessage 只是失败。
-    unsafe {
-        PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE as usize, 0);
-    }
-}
-
 fn remaining_until(deadline: Instant) -> Result<Duration, String> {
     deadline
         .checked_duration_since(Instant::now())
@@ -1125,6 +1004,63 @@ mod tests {
     }
 
     #[test]
+    fn second_kill_clears_remaining_process() {
+        let scans = RefCell::new(vec![vec![10], vec![10], vec![]]);
+        let kills = RefCell::new(Vec::new());
+
+        terminate_until_gone(
+            || Ok(scans.borrow_mut().remove(0)),
+            |pid| {
+                kills.borrow_mut().push(pid);
+                Ok(true)
+            },
+            2,
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        assert_eq!(kills.into_inner(), vec![10, 10]);
+    }
+
+    #[test]
+    fn still_alive_after_two_kills_is_error() {
+        let scans = RefCell::new(vec![vec![10], vec![10], vec![10]]);
+        let kills = RefCell::new(Vec::new());
+
+        let error = terminate_until_gone(
+            || Ok(scans.borrow_mut().remove(0)),
+            |pid| {
+                kills.borrow_mut().push(pid);
+                Ok(true)
+            },
+            2,
+            Duration::ZERO,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "目标进程仍在运行");
+        assert_eq!(kills.into_inner(), vec![10, 10]);
+    }
+
+    #[test]
+    fn missing_process_does_not_kill() {
+        let kills = RefCell::new(Vec::new());
+
+        terminate_until_gone(
+            || Ok(Vec::new()),
+            |pid| {
+                kills.borrow_mut().push(pid);
+                Ok(true)
+            },
+            2,
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        assert!(kills.into_inner().is_empty());
+    }
+
+    #[test]
     fn real_process_path_query_matches_current_executable() {
         let expected = fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
         let actual = query_process_path(std::process::id()).unwrap();
@@ -1198,23 +1134,21 @@ mod tests {
     }
 
     #[test]
-    fn terminate_without_waiting_kills_each_match_once() {
+    fn first_kill_round_clears_all_matches() {
+        let remaining = RefCell::new(vec![vec![10, 20], vec![]]);
         let terminated = RefCell::new(Vec::new());
-        let scan_count = Cell::new(0);
 
-        terminate_matching_without_wait(
-            || {
-                scan_count.set(scan_count.get() + 1);
-                Ok(vec![10, 20])
-            },
+        terminate_until_gone(
+            || Ok(remaining.borrow_mut().remove(0)),
             |process_id| {
                 terminated.borrow_mut().push(process_id);
                 Ok(true)
             },
+            2,
+            Duration::ZERO,
         )
         .unwrap();
 
-        assert_eq!(scan_count.get(), 1);
         assert_eq!(*terminated.borrow(), vec![10, 20]);
     }
 
@@ -1398,107 +1332,6 @@ mod tests {
             Err("查询进程完整路径失败: PID 10（Windows 错误 31）".to_string()),
         )
         .unwrap());
-    }
-
-    #[test]
-    fn alt_f4_presses_alt_down_f4_down_f4_up_alt_up() {
-        let events = RefCell::new(Vec::new());
-        send_alt_f4_with(|virtual_key, flags| {
-            events.borrow_mut().push((virtual_key, flags));
-        });
-        assert_eq!(
-            events.into_inner(),
-            vec![
-                (VK_MENU as u8, 0),
-                (VK_F4 as u8, 0),
-                (VK_F4 as u8, KEYEVENTF_KEYUP),
-                (VK_MENU as u8, KEYEVENTF_KEYUP),
-            ]
-        );
-    }
-
-    #[test]
-    fn window_close_targets_owned_hidden_and_unowned_windows_of_the_pid() {
-        let windows = vec![
-            WindowCandidate {
-                hwnd: 1,
-                pid: 10,
-                visible: true,
-                owned: false,
-                area: 100,
-            },
-            WindowCandidate {
-                hwnd: 2,
-                pid: 10,
-                visible: true,
-                owned: true,
-                area: 50,
-            },
-            WindowCandidate {
-                hwnd: 3,
-                pid: 99,
-                visible: true,
-                owned: false,
-                area: 80,
-            },
-            WindowCandidate {
-                hwnd: 4,
-                pid: 10,
-                visible: false,
-                owned: false,
-                area: 0,
-            },
-        ];
-        assert_eq!(window_handles_for_process(10, &windows), vec![1, 2, 4]);
-    }
-
-    #[test]
-    fn successful_alt_f4_still_closes_every_window_in_the_tree() {
-        let windows = vec![
-            WindowCandidate {
-                hwnd: 1,
-                pid: 10,
-                visible: true,
-                owned: false,
-                area: 100,
-            },
-            WindowCandidate {
-                hwnd: 2,
-                pid: 11,
-                visible: true,
-                owned: true,
-                area: 20,
-            },
-        ];
-        let plan = plan_close_after_alt_f4(true, Some(11), &[10, 11], &windows);
-        assert!(plan.send_enter);
-        assert_eq!(plan.handles, vec![1, 2]);
-    }
-
-    #[test]
-    fn enter_is_not_sent_when_foreground_left_the_tree() {
-        let windows = vec![WindowCandidate {
-            hwnd: 1,
-            pid: 10,
-            visible: true,
-            owned: false,
-            area: 100,
-        }];
-        let plan = plan_close_after_alt_f4(true, Some(99), &[10], &windows);
-        assert!(!plan.send_enter);
-        assert_eq!(plan.handles, vec![1]);
-    }
-
-    #[test]
-    fn enter_presses_return_down_then_up() {
-        let events = RefCell::new(Vec::new());
-        send_enter_with(|virtual_key, flags| {
-            events.borrow_mut().push((virtual_key, flags));
-        });
-        assert_eq!(
-            events.into_inner(),
-            vec![(VK_RETURN as u8, 0), (VK_RETURN as u8, KEYEVENTF_KEYUP),]
-        );
     }
 
     #[test]
