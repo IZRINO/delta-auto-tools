@@ -246,7 +246,7 @@ const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(8);
 const ACCOUNT_SWITCH_WAIT: Duration = if cfg!(test) {
     Duration::ZERO
 } else {
-    Duration::from_secs(30)
+    Duration::from_secs(15)
 };
 
 /// 轮次切换关闭游戏是清场，不是正确性前提：登录流程头两步 StopGame / StopWeGame 会用

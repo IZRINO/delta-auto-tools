@@ -40,12 +40,12 @@ describe("operationOverlayText", () => {
         expect(operationOverlayText(snapshot({
             runKind: "round",
             status: "countdown",
-            message: "30 秒后切换下一账号",
-            countdownSeconds: 30,
+            message: "15 秒后切换下一账号",
+            countdownSeconds: 15,
         }))).toEqual({
             title: "即将占用键盘鼠标",
-            detail: "30 秒后切换下一账号",
-            countdownSeconds: 30,
+            detail: "15 秒后切换下一账号",
+            countdownSeconds: 15,
             hotkey: "Ctrl+Shift+F12",
         });
     });
