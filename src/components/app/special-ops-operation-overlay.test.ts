@@ -36,6 +36,20 @@ describe("operationOverlayText", () => {
         });
     });
 
+    it("切号倒计时显示秒数文案", () => {
+        expect(operationOverlayText(snapshot({
+            runKind: "round",
+            status: "countdown",
+            message: "30 秒后切换下一账号",
+            countdownSeconds: 30,
+        }))).toEqual({
+            title: "即将占用键盘鼠标",
+            detail: "30 秒后切换下一账号",
+            countdownSeconds: 30,
+            hotkey: "Ctrl+Shift+F12",
+        });
+    });
+
     it("无倒计时时提示特勤处操作中", () => {
         expect(operationOverlayText(snapshot({countdownSeconds: null})).title).toBe("特勤处操作中");
     });

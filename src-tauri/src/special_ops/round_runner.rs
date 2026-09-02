@@ -191,6 +191,7 @@ pub(crate) trait RoundDriver: Send + Sync {
     fn pause_requested(&self) -> Result<bool, String>;
     fn pause_preserves_game(&self) -> bool;
     fn persist_paused(&self, reason: &str) -> Result<(), String>;
+    fn emit_account_switch_countdown(&self, seconds: u8);
 }
 
 #[derive(Clone)]
@@ -271,21 +272,30 @@ async fn wait_before_next_account<D: RoundDriver + ?Sized>(
     driver: &D,
     cancelled: &AtomicBool,
 ) {
-    wait_switch_gap(driver, cancelled, ACCOUNT_SWITCH_WAIT).await;
+    countdown_switch_gap(driver, cancelled, ACCOUNT_SWITCH_WAIT).await;
 }
 
-async fn wait_switch_gap<D: RoundDriver + ?Sized>(
+async fn countdown_switch_gap<D: RoundDriver + ?Sized>(
     driver: &D,
     cancelled: &AtomicBool,
     wait: Duration,
 ) {
-    if wait.is_zero() {
+    let Ok(total) = u8::try_from(wait.as_secs()) else {
+        return;
+    };
+    if total == 0 {
         return;
     }
-    tokio::select! {
-        biased;
-        _ = wait_until_cancelled_or_paused(driver, cancelled) => {}
-        _ = tokio::time::sleep(wait) => {}
+    for remaining in (1..=total).rev() {
+        if cancelled.load(Ordering::SeqCst) || driver.pause_requested().unwrap_or(false) {
+            return;
+        }
+        driver.emit_account_switch_countdown(remaining);
+        tokio::select! {
+            biased;
+            _ = wait_until_cancelled_or_paused(driver, cancelled) => return,
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+        }
     }
 }
 
@@ -931,6 +941,13 @@ mod tests {
                 .push("persist-pause".to_string());
             Ok(())
         }
+
+        fn emit_account_switch_countdown(&self, seconds: u8) {
+            self.actions
+                .lock()
+                .unwrap()
+                .push(format!("countdown:{seconds}"));
+        }
     }
 
     fn plan() -> RoundPlan {
@@ -1002,24 +1019,29 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn account_switch_gap_holds_thirty_seconds() {
+    async fn account_switch_gap_counts_down_in_prompt() {
         let driver = FakeDriver::new(vec![], false);
         let cancelled = AtomicBool::new(false);
-        let wait = wait_switch_gap(&driver, &cancelled, Duration::from_secs(30));
+        let wait = countdown_switch_gap(&driver, &cancelled, Duration::from_secs(3));
         tokio::pin!(wait);
-        tokio::select! {
-            biased;
-            _ = &mut wait => panic!("30 秒切号等待提前结束"),
-            _ = tokio::task::yield_now() => {}
+        for expected in ["countdown:3", "countdown:2", "countdown:1"] {
+            tokio::select! {
+                biased;
+                _ = &mut wait => break,
+                _ = tokio::task::yield_now() => {}
+            }
+            assert!(
+                driver.actions().iter().any(|action| action == expected),
+                "缺少 {expected}，实际 {:?}",
+                driver.actions()
+            );
+            tokio::time::advance(Duration::from_secs(1)).await;
         }
-        tokio::time::advance(Duration::from_secs(29)).await;
-        tokio::select! {
-            biased;
-            _ = &mut wait => panic!("29 秒不应结束"),
-            _ = tokio::task::yield_now() => {}
-        }
-        tokio::time::advance(Duration::from_secs(1)).await;
         wait.await;
+        assert_eq!(
+            driver.actions(),
+            ["countdown:3", "countdown:2", "countdown:1"]
+        );
     }
 
     #[tokio::test]

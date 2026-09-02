@@ -7991,6 +7991,18 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     fn persist_paused(&self, reason: &str) -> Result<(), String> {
         self.persist_global_pause(reason)
     }
+
+    fn emit_account_switch_countdown(&self, seconds: u8) {
+        if let Ok(Some(snapshot)) = self.runtime.update(
+            self.run_id,
+            login_runtime::LoginRunStatus::Countdown,
+            None,
+            format!("{seconds} 秒后切换下一账号"),
+            Some(seconds),
+        ) {
+            emit_run(&self.app, &snapshot);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
