@@ -192,7 +192,7 @@ impl DesktopRuntime for WindowsDesktopRuntime {
 /// 还在不在；两轮后仍在则失败，调用方不得继续启动 WeGame。
 pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> {
     let exe = canonicalize_executable_path(exe, "规范化程序路径失败")?;
-    terminate_until_gone(
+    match terminate_until_gone(
         || {
             scan_process_entries_by_name(&exe).map(|candidates| {
                 candidates
@@ -204,7 +204,27 @@ pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> 
         |process_id| terminate_verified_process_without_wait(&exe, process_id),
         TERMINATE_ATTEMPTS,
         TERMINATE_RETRY_PAUSE,
+    ) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            if close_succeeded(false, !primary_window_absent(&exe)) {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+fn primary_window_absent(exe: &Path) -> bool {
+    !matches!(
+        WindowsDesktopRuntime.find_primary_window(exe),
+        Ok(Some(_))
     )
+}
+
+fn close_succeeded(process_gone: bool, window_present: bool) -> bool {
+    process_gone || !window_present
 }
 
 fn terminate_until_gone(
@@ -1040,6 +1060,14 @@ mod tests {
 
         assert_eq!(error, "目标进程仍在运行");
         assert_eq!(kills.into_inner(), vec![10, 10]);
+    }
+
+    #[test]
+    fn window_gone_counts_as_closed_even_if_process_lingers() {
+        assert!(close_succeeded(true, true));
+        assert!(close_succeeded(true, false));
+        assert!(close_succeeded(false, false));
+        assert!(!close_succeeded(false, true));
     }
 
     #[test]

@@ -243,7 +243,6 @@ fn persist_system_failure<D: RoundDriver + ?Sized>(
 /// 转场关闭游戏的兜底预算。`close_game` 已按短预算发结束信号且不等退出；这里再
 /// 包一层是防 spawn_blocking 根本不 resolve。卡住它就把整轮队列一起卡死。
 const TRANSITION_CLOSE_GAME_BUDGET: Duration = Duration::from_secs(8);
-const CLOSE_RETRY_WAIT: Duration = Duration::from_secs(60);
 const ACCOUNT_SWITCH_WAIT: Duration = if cfg!(test) {
     Duration::ZERO
 } else {
@@ -304,28 +303,17 @@ async fn close_game_for_transition<D: RoundDriver + ?Sized>(
     reason: &str,
     cancelled: &AtomicBool,
 ) {
-    loop {
-        if cancelled.load(Ordering::SeqCst) || driver.pause_requested().unwrap_or(false) {
-            return;
-        }
-        let close = driver.close_game();
-        tokio::pin!(close);
-        let outcome = tokio::select! {
-            biased;
-            _ = wait_until_cancelled_or_paused(driver, cancelled) => return,
-            result = tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, &mut close) => result,
-        };
-        match outcome {
-            Ok(Ok(())) => return,
-            Ok(Err(message)) => driver.report_close_game_failure(reason, &message),
-            Err(_) => {
-                driver.report_close_game_failure(reason, "关闭游戏未在兜底预算内返回")
+    let close = driver.close_game();
+    tokio::pin!(close);
+    tokio::select! {
+        biased;
+        _ = wait_until_cancelled_or_paused(driver, cancelled) => {}
+        result = tokio::time::timeout(TRANSITION_CLOSE_GAME_BUDGET, &mut close) => {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(message)) => driver.report_close_game_failure(reason, &message),
+                Err(_) => driver.report_close_game_failure(reason, "关闭游戏未在兜底预算内返回"),
             }
-        }
-        tokio::select! {
-            biased;
-            _ = wait_until_cancelled_or_paused(driver, cancelled) => return,
-            _ = tokio::time::sleep(CLOSE_RETRY_WAIT) => {}
         }
     }
 }
@@ -971,32 +959,6 @@ mod tests {
         }
     }
 
-    async fn run_round_after_close_retry(
-        driver: &FakeDriver,
-        plan: &RoundPlan,
-        cancelled: Arc<AtomicBool>,
-    ) -> RoundRunResult {
-        let run = run_round(driver, plan, cancelled);
-        tokio::pin!(run);
-        loop {
-            tokio::select! {
-                biased;
-                result = &mut run => return result,
-                _ = tokio::task::yield_now() => {
-                    if driver
-                        .actions()
-                        .iter()
-                        .any(|action| action.starts_with("report-close-failure:"))
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        tokio::time::advance(CLOSE_RETRY_WAIT).await;
-        run.await
-    }
-
     fn plan_tasks(tasks: &[(&str, i64)]) -> RoundPlan {
         RoundPlan {
             created_at_ms: 1_000,
@@ -1184,7 +1146,7 @@ mod tests {
             .any(|action| action.starts_with("wait:")));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn navigation_timeout_close_failure_still_defers_account() {
         let driver = FakeDriver::new(
             vec![
@@ -1199,7 +1161,7 @@ mod tests {
         )
         .with_close_failure("WeGame 仍在运行");
 
-        let result = run_round_after_close_retry(
+        let result = run_round(
             &driver,
             &plan_tasks(&[("a", 1_000), ("b", 2_000), ("a", 4_000)]),
             Arc::new(AtomicBool::new(false)),
@@ -1214,7 +1176,6 @@ mod tests {
                 "persist-account:a",
                 "close-game",
                 "report-close-failure:WeGame 仍在运行",
-                "close-game",
                 "defer-navigation:a:2",
                 "wait:2000",
                 "run:b",
@@ -1885,8 +1846,8 @@ mod tests {
             .any(|action| action.starts_with("run:b")));
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn session_close_failure_retries_until_closed() {
+    #[tokio::test]
+    async fn session_close_failure_reports_and_continues_round() {
         let driver = FakeDriver::new(
             vec![
                 Ok(AccountRunSuccess::processed(1)),
@@ -1896,8 +1857,7 @@ mod tests {
         )
         .with_close_failure("无法结束游戏进程");
 
-        let result =
-            run_round_after_close_retry(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
+        let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
 
         assert_eq!(result.stop, RoundStop::Completed);
         assert_eq!(result.completed_accounts, 2);
@@ -1907,7 +1867,6 @@ mod tests {
                 "run:a",
                 "close-game",
                 "report-close-failure:无法结束游戏进程",
-                "close-game",
                 "run:b",
                 "close-game",
             ]
@@ -1915,8 +1874,8 @@ mod tests {
         assert!(!driver.actions().contains(&"persist-pause".to_string()));
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn isolated_account_close_failure_retries_close_then_next_account() {
+    #[tokio::test]
+    async fn isolated_account_close_failure_continues_to_next_account() {
         let driver = FakeDriver::new(
             vec![
                 Err(AccountRunError::account("ammo.isolated", "仓库空间不足")),
@@ -1926,8 +1885,7 @@ mod tests {
         )
         .with_close_failure("无法结束游戏进程");
 
-        let result =
-            run_round_after_close_retry(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
+        let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
 
         assert_eq!(result.stop, RoundStop::Completed);
         assert_eq!(result.completed_accounts, 1);
@@ -1938,7 +1896,6 @@ mod tests {
                 "persist-account:a",
                 "close-game",
                 "report-close-failure:无法结束游戏进程",
-                "close-game",
                 "run:b",
                 "close-game",
             ]
