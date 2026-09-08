@@ -7973,7 +7973,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     ) {
         crate::log_info!(
             "special_ops::round",
-            "导航超时，账号任务已挪到队尾重试",
+            "同一问题首次失败，账号任务已挪到队尾重试",
             "account_id" => &task.account_id,
             "qq_account" => &task.qq_account,
             "deferred_tasks" => deferred_tasks
@@ -12649,12 +12649,19 @@ mod tests {
         apply_round_account_failure(&mut settings, "selected", &error, 200).unwrap();
 
         assert!(!settings.paused);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(
+            settings.accounts[0].stations[0].status,
+            StationStatus::Crafting
+        );
+        assert_eq!(settings.accounts[0].stations[0].started_at_ms, started_at);
+
+        apply_round_account_failure(&mut settings, "selected", &error, 300).unwrap();
         assert_eq!(settings.accounts[0].status, AccountStatus::Uncertain);
         assert_eq!(
             settings.accounts[0].stations[0].status,
             StationStatus::Uncertain
         );
-        assert_eq!(settings.accounts[0].stations[0].started_at_ms, started_at);
     }
 
     fn persist_test_login_result(
@@ -18862,6 +18869,44 @@ mod tests {
             assert_eq!(error.kind, round_runner::AccountRunErrorKind::Regular);
             assert_eq!(error.step, "login.failed");
         }
+    }
+
+    #[test]
+    fn round_login_failed_first_strike_defers_second_marks_login_failed() {
+        let mut settings = LoginFixture::complete().settings;
+        let error = round_runner::AccountRunError::account(
+            "login.failed",
+            "WaitLoginChoice：未看到登录选项",
+        );
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert!(retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+        assert_eq!(
+            settings.accounts[0]
+                .last_failure
+                .as_ref()
+                .map(|failure| failure.step.as_str()),
+            Some("login.failed")
+        );
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 2_000).unwrap();
+        assert!(!retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::LoginFailed);
+    }
+
+    #[test]
+    fn round_login_needs_manual_first_strike_defers_second_marks_needs_manual() {
+        let mut settings = LoginFixture::complete().settings;
+        let error = round_runner::AccountRunError::account("login.needsManual", "未找到 QQ");
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 1_000).unwrap();
+        assert!(retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::Ready);
+
+        let retry = apply_round_account_failure(&mut settings, "selected", &error, 2_000).unwrap();
+        assert!(!retry);
+        assert_eq!(settings.accounts[0].status, AccountStatus::NeedsManualLogin);
     }
 
     #[test]

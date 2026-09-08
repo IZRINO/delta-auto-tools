@@ -103,7 +103,9 @@ impl AccountRunError {
     }
 
     pub(crate) fn is_retryable(&self) -> bool {
-        self.kind == AccountRunErrorKind::NavigationTimedOut
+        self.scope == ErrorScope::Account
+            && self.ammo_target_id.is_none()
+            && !matches!(self.step.as_str(), "ammo.isolated" | "craft.isolated")
     }
 }
 
@@ -184,9 +186,8 @@ pub(crate) trait RoundDriver: Send + Sync {
     fn refresh_due_craft_tasks(&self) -> Result<Vec<AccountRoundTask>, String>;
     async fn close_game(&self) -> Result<(), String>;
     fn report_close_game_failure(&self, reason: &str, message: &str);
-    /// 导航超时把账号整体挪到队尾时上报。没有这条记录时，日志里
-    /// `账号游戏内导航结束 success:false` 之后是一段完全的空白，
-    /// 无法区分「重排队了但下一账号卡住」和「压根没走到重排队」。
+    /// 同一问题首次失败把账号整体挪到队尾时上报。没有这条记录时，日志里
+    /// 失败之后是一段完全的空白，无法区分「重排队了但下一账号卡住」和「压根没走到重排队」。
     fn report_navigation_retry_deferred(&self, task: &AccountRoundTask, deferred_tasks: usize);
     fn pause_requested(&self) -> Result<bool, String>;
     fn pause_preserves_game(&self) -> bool;
@@ -468,7 +469,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                 close_game_for_transition(
                     driver,
                     if retry {
-                        "导航超时后关闭游戏失败"
+                        "队尾重试前关闭游戏失败"
                     } else {
                         "账号失败后关闭游戏失败"
                     },
@@ -1521,10 +1522,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn account_failure_is_persisted_then_next_account_runs() {
+    async fn login_failure_retries_account_after_other_accounts() {
         let driver = FakeDriver::new(
             vec![
-                Err(AccountRunError::account("login.scan", "目标 QQ 不存在")),
+                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+                Ok(AccountRunSuccess::processed(1)),
                 Ok(AccountRunSuccess::processed(1)),
             ],
             false,
@@ -1532,7 +1534,6 @@ mod tests {
 
         let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
 
-        assert_eq!(result.completed_accounts, 1);
         assert_eq!(result.stop, RoundStop::Completed);
         assert_eq!(
             driver.actions(),
@@ -1540,9 +1541,50 @@ mod tests {
                 "run:a",
                 "persist-account:a",
                 "close-game",
+                "defer-navigation:a:1",
                 "run:b",
+                "close-game",
+                "run:a",
                 "close-game"
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn second_login_failure_same_step_drops_account() {
+        let driver = FakeDriver::new(
+            vec![
+                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+                Ok(AccountRunSuccess::processed(1)),
+                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+            ],
+            false,
+        );
+
+        let result = run_round(&driver, &plan(), Arc::new(AtomicBool::new(false))).await;
+
+        assert_eq!(result.stop, RoundStop::Completed);
+        assert_eq!(
+            driver.actions(),
+            [
+                "run:a",
+                "persist-account:a",
+                "close-game",
+                "defer-navigation:a:1",
+                "run:b",
+                "close-game",
+                "run:a",
+                "persist-account:a",
+                "close-game"
+            ]
+        );
+        assert_eq!(
+            driver
+                .actions()
+                .iter()
+                .filter(|action| action.starts_with("run:"))
+                .count(),
+            3
         );
     }
 
@@ -1656,13 +1698,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn account_confirmation_failure_persists_then_next_account_rebuilds_session() {
+    async fn account_confirmation_failure_retries_after_other_accounts() {
         let driver = FakeDriver::new(
             vec![
                 Err(AccountRunError::account(
                     "ammo.confirm",
                     "未识别到置顶确认按钮",
                 )),
+                Ok(AccountRunSuccess::processed(0)),
                 Ok(AccountRunSuccess::processed(0)),
             ],
             false,
@@ -1677,7 +1720,10 @@ mod tests {
                 "run:a",
                 "persist-account:a",
                 "close-game",
+                "defer-navigation:a:1",
                 "run:b",
+                "close-game",
+                "run:a",
                 "close-game"
             ]
         );
