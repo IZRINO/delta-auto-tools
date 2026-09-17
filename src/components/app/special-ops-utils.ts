@@ -19,6 +19,17 @@ export function formatLimitedMatchedColors(indexes: number[] | null | undefined)
     return `命中颜色 ${unique[0]}`;
 }
 
+export function formatLimitedMatchSummary(
+    indexes: number[] | null | undefined,
+    matchedImage?: boolean,
+): string {
+    const parts: string[] = [];
+    const colors = formatLimitedMatchedColors(indexes);
+    if (colors) parts.push(colors);
+    if (matchedImage) parts.push("命中高价值");
+    return parts.join("、");
+}
+
 export function limitedColorToHex(color: [number, number, number]): string {
     return `#${color
         .map((channel) => Math.max(0, Math.min(255, Math.trunc(channel))).toString(16).padStart(2, "0"))

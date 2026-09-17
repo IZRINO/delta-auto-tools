@@ -120,6 +120,9 @@ pub struct LimitedSupplyAccountState {
     /// 命中的配置颜色编号，1 / 2，可同时命中。
     #[serde(default)]
     pub matched_color_indexes: Vec<u8>,
+    /// 高价值识图是否命中。未配置识图区域时恒为 false。
+    #[serde(default)]
+    pub matched_image: bool,
     pub acknowledged: bool,
     pub last_error: Option<String>,
 }

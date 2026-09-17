@@ -58,7 +58,10 @@ pub(crate) fn match_limited_color_sample(
             }
         })
         .collect();
-    Some(LimitedColorSample { regions })
+    Some(LimitedColorSample {
+        regions,
+        image_matched: None,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +82,8 @@ pub(crate) struct LimitedRegionMatch {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LimitedColorSample {
     pub(crate) regions: Vec<LimitedRegionMatch>,
+    /// `None`：未配置识图。`Some(true/false)`：本次采样是否命中高价值识图。
+    pub(crate) image_matched: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +92,7 @@ pub(crate) struct LimitedSupplyCheckResult {
     pub(crate) matched_region: Option<u8>,
     pub(crate) matched_color: Option<[u8; 3]>,
     pub(crate) matched_color_indexes: Vec<u8>,
+    pub(crate) matched_image: bool,
     pub(crate) error: Option<String>,
 }
 
@@ -162,21 +168,11 @@ fn compare_samples(
         .filter(|region| region.matched_color.is_some())
         .map(|region| region.region)
         .collect::<std::collections::BTreeSet<_>>();
-    if first_hits.is_empty() && second_hits.is_empty() {
-        return Some(LimitedSupplyCheckResult {
-            outcome: LimitedSupplyOutcome::NoHighValue,
-            matched_region: None,
-            matched_color: None,
-            matched_color_indexes: Vec::new(),
-            error: None,
-        });
-    }
     // 命中集合必须两次完全相同。取交集非空就判定会让「第一次命中 1、3，第二次只命中 3」
     // 这种抖动算成一致 -> 误报高价值。
     if first_hits != second_hits {
         return None;
     }
-    let region = first_hits.iter().next().copied()?;
     let color_of = |sample: &LimitedColorSample, region: u8| {
         sample
             .regions
@@ -203,7 +199,23 @@ fn compare_samples(
             return None;
         }
     }
-    let first_color = color_of(first, region);
+    if first.image_matched != second.image_matched {
+        return None;
+    }
+    let matched_image = first.image_matched == Some(true);
+    let color_high_value = !first_hits.is_empty();
+    if !color_high_value && !matched_image {
+        return Some(LimitedSupplyCheckResult {
+            outcome: LimitedSupplyOutcome::NoHighValue,
+            matched_region: None,
+            matched_color: None,
+            matched_color_indexes: Vec::new(),
+            matched_image: false,
+            error: None,
+        });
+    }
+    let region = first_hits.iter().next().copied();
+    let first_color = region.and_then(|region| color_of(first, region));
     let matched_color_indexes = first_hits
         .iter()
         .flat_map(|hit_region| indexes_of(first, *hit_region))
@@ -212,9 +224,10 @@ fn compare_samples(
         .collect();
     Some(LimitedSupplyCheckResult {
         outcome: LimitedSupplyOutcome::HighValue,
-        matched_region: Some(region),
+        matched_region: region,
         matched_color: first_color,
         matched_color_indexes,
+        matched_image,
         error: None,
     })
 }
@@ -285,6 +298,7 @@ pub(crate) async fn run_limited_supply_branch<D: LimitedSupplyDriver + ?Sized>(
             matched_region: None,
             matched_color: None,
             matched_color_indexes: Vec::new(),
+            matched_image: false,
             error: Some("限时商品识色未形成连续一致结果".to_string()),
         },
     )
@@ -382,6 +396,13 @@ mod tests {
     }
 
     fn sample(hits: &[(u8, [u8; 3])]) -> Option<LimitedColorSample> {
+        sample_with_image(hits, None)
+    }
+
+    fn sample_with_image(
+        hits: &[(u8, [u8; 3])],
+        image_matched: Option<bool>,
+    ) -> Option<LimitedColorSample> {
         Some(LimitedColorSample {
             regions: (1..=9)
                 .map(|index| {
@@ -403,6 +424,7 @@ mod tests {
                         )
                 })
                 .collect(),
+            image_matched,
         })
     }
 
@@ -652,6 +674,7 @@ mod tests {
         assert!(sample.regions[0].matched_color.is_none());
         assert!(sample.regions[0].matched_indexes.is_empty());
         assert!(sample.regions[0].nearest_distance.is_finite());
+        assert_eq!(sample.image_matched, None);
     }
 
     fn sample_indexed(hits: &[(u8, [u8; 3], &[u8])]) -> Option<LimitedColorSample> {
@@ -676,6 +699,7 @@ mod tests {
                         )
                 })
                 .collect(),
+            image_matched: None,
         })
     }
 
@@ -711,5 +735,58 @@ mod tests {
         };
         assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
         assert_eq!(result.matched_color_indexes, vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn image_match_marks_high_value_without_color_hit() {
+        let driver = FakeDriver::with_samples([
+            sample_with_image(&[], Some(true)),
+            sample_with_image(&[], Some(true)),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::HighValue);
+        assert!(result.matched_image);
+        assert_eq!(result.matched_region, None);
+        assert_eq!(result.matched_color, None);
+    }
+
+    #[tokio::test]
+    async fn image_miss_is_ignored_when_colors_also_miss() {
+        let driver = FakeDriver::with_samples([
+            sample_with_image(&[], Some(false)),
+            sample_with_image(&[], Some(false)),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::NoHighValue);
+        assert!(!result.matched_image);
+    }
+
+    #[tokio::test]
+    async fn inconsistent_image_samples_are_not_high_value() {
+        let driver = FakeDriver::with_samples([
+            sample_with_image(&[], Some(true)),
+            sample_with_image(&[], Some(false)),
+        ]);
+
+        let stop =
+            run_limited_supply_branch(&driver, config(), Arc::new(AtomicBool::new(false))).await;
+
+        let LimitedRunStop::Completed(result) = stop else {
+            panic!("预期完成");
+        };
+        assert_eq!(result.outcome, LimitedSupplyOutcome::Failed);
+        assert!(!result.matched_image);
     }
 }

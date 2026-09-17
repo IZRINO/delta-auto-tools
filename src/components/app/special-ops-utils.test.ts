@@ -18,6 +18,7 @@ import {
     parseNavigationDelayMs,
     insertNormalAmmoTarget,
     formatLimitedMatchedColors,
+    formatLimitedMatchSummary,
     limitedColorToHex,
     parseLimitedColorHex,
     shanghaiDay,
@@ -58,6 +59,14 @@ describe("限时商品颜色转换", () => {
         expect(formatLimitedMatchedColors([2])).toBe("命中颜色 2");
         expect(formatLimitedMatchedColors([2, 1, 1])).toBe("命中颜色 1 和 2");
         expect(formatLimitedMatchedColors([3, 0])).toBe("");
+    });
+
+    it("识图命中与颜色同一套文案，单独或并列显示", () => {
+        expect(formatLimitedMatchSummary([], false)).toBe("");
+        expect(formatLimitedMatchSummary(undefined, true)).toBe("命中高价值");
+        expect(formatLimitedMatchSummary([1], false)).toBe("命中颜色 1");
+        expect(formatLimitedMatchSummary([2], true)).toBe("命中颜色 2、命中高价值");
+        expect(formatLimitedMatchSummary([1, 2], true)).toBe("命中颜色 1 和 2、命中高价值");
     });
 });
 

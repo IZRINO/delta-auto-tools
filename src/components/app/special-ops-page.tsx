@@ -66,7 +66,7 @@ import {
      createStationRemainingTimeDraft,
      eligibleLoginTrialAccounts,
      formatCalibrationTemplateTestResult,
-     formatLimitedMatchedColors,
+     formatLimitedMatchSummary,
      groupTimelineTasks,
      hasActiveSpecialOpsRun,
      insertNormalAmmoTarget,
@@ -520,8 +520,8 @@ function CorrectionLimitedSupply({
             {limited === undefined
                 ? "当前账号没有限时商品记录"
                 : correctionLimitedOutcomeLabels[limited.outcome]}
-            {limited?.outcome === "highValue" && formatLimitedMatchedColors(limited.matchedColorIndexes)
-                ? ` · ${formatLimitedMatchedColors(limited.matchedColorIndexes)}`
+            {limited?.outcome === "highValue" && formatLimitedMatchSummary(limited.matchedColorIndexes, limited.matchedImage)
+                ? ` · ${formatLimitedMatchSummary(limited.matchedColorIndexes, limited.matchedImage)}`
                 : ""}
             {limited?.checkedAtMs ? ` · 检查于 ${shanghaiTimeFormatter.format(limited.checkedAtMs)}` : ""}
         </p>
@@ -587,8 +587,9 @@ function SpecialOpsTimeline({
                                                     && <div className="text-xs text-base-content/60">已购买 {task.marketCompletedCount ?? 0}/{task.marketTargetCount ?? 0} · {marketStatusLabels[task.marketStatus]}</div>}
                                                 <TimelineManualCorrection task={task} station={station} nowMs={nowMs} disabled={disabled} onConfirmStation={onConfirmStation} onConfirmAmmo={onConfirmAmmo}/>
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && (() => {
-                                                    const colorHits = formatLimitedMatchedColors(bootstrap.settings.accounts.find(({id}) => id === task.accountId)?.limitedSupply?.matchedColorIndexes);
-                                                    return colorHits ? <div className="text-xs text-base-content/60">{colorHits}</div> : null;
+                                                    const limited = bootstrap.settings.accounts.find(({id}) => id === task.accountId)?.limitedSupply;
+                                                    const summary = formatLimitedMatchSummary(limited?.matchedColorIndexes, limited?.matchedImage);
+                                                    return summary ? <div className="text-xs text-base-content/60">{summary}</div> : null;
                                                 })()}
                                                 {task.kind === "limitedSupplyCheck" && task.limitedOutcome === "highValue" && task.limitedCycleId && <TimelineLimitedAcknowledge task={task} disabled={disabled} onAcknowledge={onAcknowledge}/>}
                                                 {needsManualCorrection && !inlineCorrectable && <button
@@ -1552,7 +1553,7 @@ export function SpecialOpsPage() {
         <section className={cn(foldBox, bm ? "p-3" : "card card-border bg-base-100")}>
             <div className={bm ? "flex flex-col gap-3" : "card-body gap-3"}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1"><h2 className={bm ? "text-lg" : "card-title"}>限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 共用全局配置。"/></div>
+                    <div className="flex items-center gap-1"><h2 className={bm ? "text-lg" : "card-title"}>限时商品</h2><HelpHint content="12:00、20:00 固定检查；颜色 1/2 与高价值识图共用全局配置。识图未命中则无视。"/></div>
                     <label className="flex items-center gap-2 text-sm"><Switch checked={limitedSupply.enabled} onCheckedChange={(enabled) => updateLimitedSupply({enabled})}/>启用</label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1594,6 +1595,7 @@ export function SpecialOpsPage() {
                         </div>;
                     })}
                 </div>
+                <p className="text-xs text-base-content/60">高价值识图：在下方校准表框选「限时商品高价值识图区域」并上传参考图。两次稳定命中则任务栏标记，未命中无视。</p>
                 <div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" disabled={!activeEnvironment || controlsLocked} onClick={() => void testLimitedColors()}><RiPlayLine data-icon="inline-start"/>测试限时商品识色</Button>{limitedColorFeedback && <span role="alert" className="text-xs text-base-content/70">{limitedColorFeedback}</span>}</div>
             </div>
         </section>
@@ -1821,7 +1823,7 @@ export function SpecialOpsPage() {
                                 <div className="join">
                                     {target.recognitionMethod === "template" && <Button className="join-item" size="sm" variant="outline" onClick={() => void pickReferenceImage(activeEnvironment, target)}><RiFolderOpenLine data-icon="inline-start"/>{target.referenceImagePath ? "替换" : "上传"}</Button>}
                                     {target.recognitionMethod === "template" && target.referenceImagePath && <Button aria-label="清除参考图" className="join-item" size="icon-sm" title="清除参考图" variant="outline" onClick={() => updateCalibrationTarget(activeEnvironment, target, {referenceImagePath: null})}><RiDeleteBinLine data-icon="inline-start"/></Button>}
-                                    {target.recognitionMethod && <Button className="join-item" disabled={testingTargetKey === target.key} size="sm" title={["game.", "craft.", "ammo."].some((prefix) => target.key.startsWith(prefix)) ? "游戏内模板测试将在 3 秒后切换到游戏窗口" : undefined} variant="outline" onClick={() => void testCalibrationTarget(activeEnvironment, target)}><RiPlayLine data-icon="inline-start"/>{testingTargetKey === target.key ? "测试中" : "测试"}</Button>}
+                                    {target.recognitionMethod && <Button className="join-item" disabled={testingTargetKey === target.key} size="sm" title={["game.", "craft.", "ammo.", "limited."].some((prefix) => target.key.startsWith(prefix)) ? "游戏内模板测试将在 3 秒后切换到游戏窗口" : undefined} variant="outline" onClick={() => void testCalibrationTarget(activeEnvironment, target)}><RiPlayLine data-icon="inline-start"/>{testingTargetKey === target.key ? "测试中" : "测试"}</Button>}
                                     <Button className="join-item" size="sm" variant={target.rect ? "outline" : "default"} onClick={() => void beginCalibration(activeEnvironment, target.key)}><RiCrosshair2Line data-icon="inline-start"/>{target.rect ? "重新框选" : "框选"}</Button>
                                 </div>
                                 {target.key === "game.specialOps" && <label className="mt-2 flex items-center justify-end gap-2 text-xs">

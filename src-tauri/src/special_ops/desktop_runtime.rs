@@ -217,10 +217,7 @@ pub(crate) fn terminate_exact_without_waiting(exe: &Path) -> Result<(), String> 
 }
 
 fn primary_window_absent(exe: &Path) -> bool {
-    !matches!(
-        WindowsDesktopRuntime.find_primary_window(exe),
-        Ok(Some(_))
-    )
+    !matches!(WindowsDesktopRuntime.find_primary_window(exe), Ok(Some(_)))
 }
 
 fn close_succeeded(process_gone: bool, window_present: bool) -> bool {

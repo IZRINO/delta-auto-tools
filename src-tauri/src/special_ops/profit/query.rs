@@ -1,4 +1,3 @@
-use super::kkrb::{KkrbAdapter, KkrbFailureKind, KkrbSnapshot, KkrbSourceError};
 use super::model::{
     profit_qualifies, AmmoProfitAudit, AmmoProfitRule, ProfitAuditOutcome, ProfitSource,
 };
@@ -6,11 +5,6 @@ use super::moligod::{MoligodAdapter, MoligodRequestTarget, MoligodRuleResult, Mo
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-
-#[allow(async_fn_in_trait)]
-pub(crate) trait KkrbProfitSource: Send + Sync {
-    async fn fetch(&self) -> Result<KkrbSnapshot, KkrbSourceError>;
-}
 
 #[allow(async_fn_in_trait)]
 pub(crate) trait MoligodProfitSource: Send + Sync {
@@ -30,12 +24,6 @@ pub(crate) trait MoligodProfitSource: Send + Sync {
             return Err("Moligod 查询已取消".to_string());
         }
         self.fetch(generation, rules).await
-    }
-}
-
-impl KkrbProfitSource for KkrbAdapter {
-    async fn fetch(&self) -> Result<KkrbSnapshot, KkrbSourceError> {
-        KkrbAdapter::fetch(self).await
     }
 }
 
@@ -88,100 +76,27 @@ pub(crate) struct ProfitQueryOutcome {
 }
 
 #[cfg(test)]
-pub(crate) async fn query_profit_rules<K, M>(
-    kkrb: &K,
+pub(crate) async fn query_profit_rules<M>(
     moligod: &M,
     rules: &[AmmoProfitRule],
     context: &ProfitQueryContext,
 ) -> Result<ProfitQueryOutcome, String>
 where
-    K: KkrbProfitSource + ?Sized,
     M: MoligodProfitSource + ?Sized,
 {
-    query_profit_rules_with_cancel(
-        kkrb,
-        moligod,
-        rules,
-        context,
-        Arc::new(AtomicBool::new(false)),
-    )
-    .await
+    query_profit_rules_with_cancel(moligod, rules, context, Arc::new(AtomicBool::new(false))).await
 }
 
-pub(crate) async fn query_profit_rules_with_cancel<K, M>(
-    kkrb: &K,
+pub(crate) async fn query_profit_rules_with_cancel<M>(
     moligod: &M,
     rules: &[AmmoProfitRule],
     context: &ProfitQueryContext,
     cancelled: Arc<AtomicBool>,
 ) -> Result<ProfitQueryOutcome, String>
 where
-    K: KkrbProfitSource + ?Sized,
     M: MoligodProfitSource + ?Sized,
 {
     let mut qualified_rule_ids = HashSet::new();
-    let audits = match kkrb.fetch().await {
-        Ok(snapshot) => rules
-            .iter()
-            .map(|rule| {
-                let (profit, outcome, detail) = match snapshot.exact_profit(&rule.kkrb_match_name) {
-                    Ok(Some(profit)) => {
-                        profit_result(rule, profit, &mut qualified_rule_ids, "KKRB")
-                    }
-                    Ok(None) => (
-                        None,
-                        ProfitAuditOutcome::TargetMissing,
-                        format!("KKRB 正常响应中未找到精确名称“{}”", rule.kkrb_match_name),
-                    ),
-                    Err(message) => (None, ProfitAuditOutcome::SourceFailure, message),
-                };
-                audit(
-                    rule,
-                    context,
-                    Some(ProfitSource::Kkrb),
-                    vec![ProfitSource::Kkrb],
-                    snapshot.source_data_at.clone(),
-                    snapshot.source_version.clone(),
-                    profit,
-                    outcome,
-                    detail,
-                )
-            })
-            .collect(),
-        Err(error) => match error.kind {
-            KkrbFailureKind::WholeSource => {
-                build_fallback_audits(
-                    moligod,
-                    rules,
-                    context,
-                    &error.message,
-                    &mut qualified_rule_ids,
-                    Arc::clone(&cancelled),
-                )
-                .await
-            }
-        },
-    };
-    let summary = format!(
-        "利润查询完成：{} 个规则，{} 个达标",
-        rules.len(),
-        qualified_rule_ids.len()
-    );
-    Ok(ProfitQueryOutcome {
-        audits,
-        qualified_rule_ids,
-        summary,
-    })
-}
-
-async fn build_fallback_audits<M: MoligodProfitSource + ?Sized>(
-    moligod: &M,
-    rules: &[AmmoProfitRule],
-    context: &ProfitQueryContext,
-    kkrb_error: &str,
-    qualified_rule_ids: &mut HashSet<String>,
-    cancelled: Arc<AtomicBool>,
-) -> Vec<AmmoProfitAudit> {
     let bound_rules = rules
         .iter()
         .filter(|rule| rule.moligod_match_name.is_some())
@@ -196,8 +111,7 @@ async fn build_fallback_audits<M: MoligodProfitSource + ?Sized>(
                 .await,
         )
     };
-
-    rules
+    let audits = rules
         .iter()
         .map(|rule| {
             let Some(expected_name) = rule.moligod_match_name.as_deref() else {
@@ -205,28 +119,28 @@ async fn build_fallback_audits<M: MoligodProfitSource + ?Sized>(
                     rule,
                     context,
                     None,
-                    vec![ProfitSource::Kkrb],
+                    Vec::new(),
                     None,
                     None,
                     None,
-                    ProfitAuditOutcome::SourceFailure,
-                    format!("KKRB 整体失败：{kkrb_error}；未配置 Moligod 备用名称"),
+                    ProfitAuditOutcome::Unconfigured,
+                    "未配置 Moligod 精确名称".to_string(),
                 );
             };
             match moligod_result
                 .as_ref()
-                .expect("存在绑定规则时必须查询备用源")
+                .expect("存在绑定规则时必须查询 Moligod")
             {
                 Err(message) => audit(
                     rule,
                     context,
                     None,
-                    vec![ProfitSource::Kkrb, ProfitSource::Moligod],
+                    vec![ProfitSource::Moligod],
                     None,
                     None,
                     None,
                     ProfitAuditOutcome::SourceFailure,
-                    format!("KKRB 整体失败：{kkrb_error}；Moligod 失败：{message}"),
+                    format!("Moligod 失败：{message}"),
                 ),
                 Ok(results) => {
                     let matches = results
@@ -238,7 +152,7 @@ async fn build_fallback_audits<M: MoligodProfitSource + ?Sized>(
                             rule,
                             context,
                             Some(ProfitSource::Moligod),
-                            vec![ProfitSource::Kkrb, ProfitSource::Moligod],
+                            vec![ProfitSource::Moligod],
                             None,
                             None,
                             None,
@@ -246,11 +160,27 @@ async fn build_fallback_audits<M: MoligodProfitSource + ?Sized>(
                             format!("Moligod ruleId {} 返回数量异常：{}", rule.id, matches.len()),
                         );
                     }
-                    moligod_audit(rule, expected_name, matches[0], context, qualified_rule_ids)
+                    moligod_audit(
+                        rule,
+                        expected_name,
+                        matches[0],
+                        context,
+                        &mut qualified_rule_ids,
+                    )
                 }
             }
         })
-        .collect()
+        .collect();
+    let summary = format!(
+        "利润查询完成：{} 个规则，{} 个达标",
+        rules.len(),
+        qualified_rule_ids.len()
+    );
+    Ok(ProfitQueryOutcome {
+        audits,
+        qualified_rule_ids,
+        summary,
+    })
 }
 
 fn moligod_audit(
@@ -290,7 +220,7 @@ fn moligod_audit(
         rule,
         context,
         Some(ProfitSource::Moligod),
-        vec![ProfitSource::Kkrb, ProfitSource::Moligod],
+        vec![ProfitSource::Moligod],
         None,
         None,
         profit,
@@ -358,22 +288,10 @@ fn audit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::special_ops::profit::kkrb::{parse_kkrb_response, KkrbSnapshot, KkrbSourceError};
     use crate::special_ops::profit::model::{AmmoProfitRule, ProfitAuditOutcome, ProfitSource};
     use crate::special_ops::profit::moligod::{MoligodRuleResult, MoligodRuleStatus};
-    use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
-
-    struct FakeKkrb {
-        result: Result<KkrbSnapshot, KkrbSourceError>,
-    }
-
-    impl KkrbProfitSource for FakeKkrb {
-        async fn fetch(&self) -> Result<KkrbSnapshot, KkrbSourceError> {
-            self.result.clone()
-        }
-    }
 
     struct FakeMoligod {
         result: Result<Vec<MoligodRuleResult>, String>,
@@ -437,16 +355,11 @@ mod tests {
         }
     }
 
-    fn rule(
-        id: &str,
-        kkrb_name: &str,
-        moligod_name: Option<&str>,
-        minimum_profit: u64,
-    ) -> AmmoProfitRule {
+    fn rule(id: &str, moligod_name: Option<&str>, minimum_profit: u64) -> AmmoProfitRule {
         AmmoProfitRule {
             id: id.to_string(),
             display_name: format!("规则 {id}"),
-            kkrb_match_name: kkrb_name.to_string(),
+            kkrb_match_name: String::new(),
             moligod_match_name: moligod_name.map(str::to_string),
             minimum_profit,
         }
@@ -460,18 +373,6 @@ mod tests {
         }
     }
 
-    fn kkrb_snapshot(rows: serde_json::Value, version: Option<&str>) -> KkrbSnapshot {
-        let mut root = json!({"code": 0, "data": {"cn": rows}});
-        if let Some(version) = version {
-            root["version"] = json!(version);
-        }
-        parse_kkrb_response(&serde_json::to_vec(&root).unwrap()).unwrap()
-    }
-
-    fn whole_kkrb_failure() -> KkrbSourceError {
-        parse_kkrb_response(r#"{"code":-101,"msg":"系统繁忙，请稍后再试"}"#.as_bytes()).unwrap_err()
-    }
-
     fn matched(rule_id: &str, exact_name: &str, profit: i64) -> MoligodRuleResult {
         MoligodRuleResult {
             rule_id: rule_id.to_string(),
@@ -483,140 +384,77 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn kkrb_target_missing_never_calls_moligod() {
-        let kkrb = FakeKkrb {
-            result: Ok(kkrb_snapshot(
-                json!([{"itemName": "其他目标", "profit": 1}]),
-                Some("v1"),
-            )),
-        };
-        let moligod = FakeMoligod::new(Ok(vec![matched("rule-a", "Moligod A", 100)]));
-
-        let result = query_profit_rules(
-            &kkrb,
-            &moligod,
-            &[rule("rule-a", "目标 A", Some("Moligod A"), 100)],
-            &context(),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(moligod.calls(), 0);
-        assert_eq!(result.audits[0].outcome, ProfitAuditOutcome::TargetMissing);
-        assert!(result.qualified_rule_ids.is_empty());
-    }
-
-    #[tokio::test]
-    async fn whole_kkrb_failure_uses_moligod_only_for_bound_rules() {
-        let kkrb = FakeKkrb {
-            result: Err(whole_kkrb_failure()),
-        };
+    async fn unconfigured_rules_are_skipped_without_querying_moligod() {
         let moligod = FakeMoligod::new(Ok(vec![matched("rule-a", "Moligod A", 100)]));
         let rules = [
-            rule("rule-a", "KKRB A", Some("Moligod A"), 100),
-            rule("rule-b", "KKRB B", None, 100),
+            rule("rule-a", Some("Moligod A"), 100),
+            rule("rule-b", None, 100),
         ];
 
-        let result = query_profit_rules(&kkrb, &moligod, &rules, &context())
+        let result = query_profit_rules(&moligod, &rules, &context())
             .await
             .unwrap();
 
         assert_eq!(moligod.calls(), 1);
         assert_eq!(moligod.requested_rule_ids(), ["rule-a"]);
         assert!(result.qualified_rule_ids.contains("rule-a"));
-        assert_eq!(result.audits[1].outcome, ProfitAuditOutcome::SourceFailure);
+        assert_eq!(result.audits[1].outcome, ProfitAuditOutcome::Unconfigured);
+        assert!(result.audits[1].attempted_sources.is_empty());
     }
 
     #[tokio::test]
-    async fn kkrb_rule_error_does_not_trigger_fallback_and_equal_profit_qualifies() {
-        let kkrb = FakeKkrb {
-            result: Ok(kkrb_snapshot(
-                json!([
-                    {"itemName": "重复目标", "profit": 1},
-                    {"itemName": "重复目标", "profit": 2},
-                    {"itemName": "正常目标", "profit": 100}
-                ]),
-                Some("v2"),
-            )),
-        };
-        let moligod = FakeMoligod::new(Err("不应调用".to_string()));
+    async fn equal_profit_qualifies_and_below_threshold_keeps_detail() {
+        let moligod = FakeMoligod::new(Ok(vec![
+            matched("rule-a", "Moligod A", 99),
+            matched("rule-b", "Moligod B", 100),
+        ]));
         let rules = [
-            rule("rule-a", "重复目标", Some("Moligod A"), 1),
-            rule("rule-b", "正常目标", Some("Moligod B"), 100),
+            rule("rule-a", Some("Moligod A"), 100),
+            rule("rule-b", Some("Moligod B"), 100),
         ];
+        let original = rules.clone();
 
-        let result = query_profit_rules(&kkrb, &moligod, &rules, &context())
+        let result = query_profit_rules(&moligod, &rules, &context())
             .await
             .unwrap();
 
-        assert_eq!(moligod.calls(), 0);
-        assert_eq!(result.audits[0].outcome, ProfitAuditOutcome::SourceFailure);
+        assert_eq!(rules, original);
+        assert_eq!(result.audits[0].source, Some(ProfitSource::Moligod));
+        assert_eq!(result.audits[0].attempted_sources, [ProfitSource::Moligod]);
+        assert_eq!(result.audits[0].threshold, 100);
+        assert_eq!(result.audits[0].outcome, ProfitAuditOutcome::BelowThreshold);
+        assert!(result.audits[0].detail.contains("99"));
+        assert!(result.audits[0].next_query_at_ms.is_none());
         assert_eq!(result.audits[1].outcome, ProfitAuditOutcome::Qualified);
         assert!(result.qualified_rule_ids.contains("rule-b"));
     }
 
     #[tokio::test]
-    async fn two_source_failures_still_return_normal_query_outcome() {
-        let kkrb = FakeKkrb {
-            result: Err(whole_kkrb_failure()),
-        };
+    async fn moligod_failure_still_returns_normal_query_outcome() {
         let moligod = FakeMoligod::new(Err("Moligod 页面超时".to_string()));
 
         let result = query_profit_rules(
-            &kkrb,
             &moligod,
-            &[rule("rule-a", "KKRB A", Some("Moligod A"), 100)],
+            &[rule("rule-a", Some("Moligod A"), 100)],
             &context(),
         )
         .await
         .unwrap();
 
         assert_eq!(result.audits[0].outcome, ProfitAuditOutcome::SourceFailure);
-        assert_eq!(
-            result.audits[0].attempted_sources,
-            [ProfitSource::Kkrb, ProfitSource::Moligod]
-        );
+        assert_eq!(result.audits[0].attempted_sources, [ProfitSource::Moligod]);
         assert!(result.qualified_rule_ids.is_empty());
     }
 
     #[tokio::test]
-    async fn audit_keeps_source_version_threshold_and_below_detail() {
-        let kkrb = FakeKkrb {
-            result: Ok(kkrb_snapshot(
-                json!([{"itemName": "目标 A", "profit": 99}]),
-                Some("v42"),
-            )),
-        };
-        let moligod = FakeMoligod::new(Err("不应调用".to_string()));
-        let rules = [rule("rule-a", "目标 A", None, 100)];
-        let original = rules.clone();
-
-        let result = query_profit_rules(&kkrb, &moligod, &rules, &context())
-            .await
-            .unwrap();
-
-        assert_eq!(rules, original);
-        assert_eq!(result.audits[0].source, Some(ProfitSource::Kkrb));
-        assert_eq!(result.audits[0].source_version.as_deref(), Some("v42"));
-        assert_eq!(result.audits[0].threshold, 100);
-        assert_eq!(result.audits[0].outcome, ProfitAuditOutcome::BelowThreshold);
-        assert!(result.audits[0].detail.contains("99"));
-        assert!(result.audits[0].next_query_at_ms.is_none());
-    }
-
-    #[tokio::test]
-    async fn cancellation_token_reaches_moligod_fallback() {
-        let kkrb = FakeKkrb {
-            result: Err(whole_kkrb_failure()),
-        };
+    async fn cancellation_token_reaches_moligod() {
         let moligod = CancelAwareMoligod {
             saw_cancelled: AtomicBool::new(false),
         };
         let cancelled = Arc::new(AtomicBool::new(true));
         let result = query_profit_rules_with_cancel(
-            &kkrb,
             &moligod,
-            &[rule("rule-a", "KKRB A", Some("Moligod A"), 100)],
+            &[rule("rule-a", Some("Moligod A"), 100)],
             &context(),
             cancelled,
         )

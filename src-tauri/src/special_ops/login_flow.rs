@@ -156,14 +156,7 @@ where
     {
         return result;
     }
-    if let Err(result) = stop_wegame_then_start(
-        driver,
-        &config,
-        &cancelled,
-        &mut on_step,
-    )
-    .await
-    {
+    if let Err(result) = stop_wegame_then_start(driver, &config, &cancelled, &mut on_step).await {
         return result;
     }
 
@@ -458,9 +451,7 @@ where
             Err(_) if cancelled.load(Ordering::SeqCst) => {
                 return Err(emergency_stopped(account_id));
             }
-            Err(_) => {
-                wait_interruptible(cancelled, account_id, TERMINATE_RETRY_WAIT).await?
-            }
+            Err(_) => wait_interruptible(cancelled, account_id, TERMINATE_RETRY_WAIT).await?,
         }
     }
 }
@@ -480,10 +471,7 @@ where
     if cancelled.load(Ordering::SeqCst) {
         return Err(emergency_stopped(&config.account_id));
     }
-    match driver
-        .terminate_exact(&config.wegame_executable_path)
-        .await
-    {
+    match driver.terminate_exact(&config.wegame_executable_path).await {
         Ok(()) => run_step(
             driver,
             LoginStep::StartWeGame,
@@ -495,9 +483,7 @@ where
         .await
         .map(|_| ()),
         Err(_) => {
-            let _ = driver
-                .restore_window(&config.wegame_executable_path)
-                .await;
+            let _ = driver.restore_window(&config.wegame_executable_path).await;
             Ok(())
         }
     }
@@ -938,10 +924,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn stop_game_retries_after_one_minute_then_continues() {
         let driver = FakeDriver::with_waits(ready_waits());
-        driver.terminate_results.lock().unwrap().extend([
-            Err("目标进程仍在运行".to_string()),
-            Ok(()),
-        ]);
+        driver
+            .terminate_results
+            .lock()
+            .unwrap()
+            .extend([Err("目标进程仍在运行".to_string()), Ok(())]);
 
         let run = run(&driver);
         tokio::pin!(run);
@@ -996,18 +983,17 @@ mod tests {
     #[tokio::test]
     async fn wegame_still_running_skips_launch_and_continues_login() {
         let driver = FakeDriver::with_waits(ready_waits());
-        driver.terminate_results.lock().unwrap().extend([
-            Ok(()),
-            Err("目标进程仍在运行".to_string()),
-        ]);
+        driver
+            .terminate_results
+            .lock()
+            .unwrap()
+            .extend([Ok(()), Err("目标进程仍在运行".to_string())]);
 
         let result = run(&driver).await;
 
         assert!(matches!(result, LoginFlowResult::GameReady { .. }));
         assert!(!driver.actions().contains(&Action::StartWeGame));
-        assert!(driver
-            .actions()
-            .contains(&Action::RestoreWindow("wegame")));
+        assert!(driver.actions().contains(&Action::RestoreWindow("wegame")));
     }
 
     #[tokio::test(start_paused = true)]

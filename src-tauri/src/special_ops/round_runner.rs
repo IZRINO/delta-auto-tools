@@ -268,10 +268,7 @@ async fn wait_until_cancelled_or_paused<D: RoundDriver + ?Sized>(
     }
 }
 
-async fn wait_before_next_account<D: RoundDriver + ?Sized>(
-    driver: &D,
-    cancelled: &AtomicBool,
-) {
+async fn wait_before_next_account<D: RoundDriver + ?Sized>(driver: &D, cancelled: &AtomicBool) {
     countdown_switch_gap(driver, cancelled, ACCOUNT_SWITCH_WAIT).await;
 }
 
@@ -496,9 +493,7 @@ pub(crate) async fn run_round<D: RoundDriver + ?Sized>(
                     // lookahead 后面 -> last due 账号去 wait_until 未来制作。
                     let split_at = retained
                         .iter()
-                        .position(|candidate| {
-                            !should_continue_round(task, &candidate.task, now_ms)
-                        })
+                        .position(|candidate| !should_continue_round(task, &candidate.task, now_ms))
                         .unwrap_or(retained.len());
                     let later: VecDeque<_> = retained.drain(split_at..).collect();
                     retained.extend(deferred);
@@ -1525,7 +1520,10 @@ mod tests {
     async fn login_failure_retries_account_after_other_accounts() {
         let driver = FakeDriver::new(
             vec![
-                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+                Err(AccountRunError::account(
+                    "login.failed",
+                    "WaitLoginChoice：未看到登录选项",
+                )),
                 Ok(AccountRunSuccess::processed(1)),
                 Ok(AccountRunSuccess::processed(1)),
             ],
@@ -1554,9 +1552,15 @@ mod tests {
     async fn second_login_failure_same_step_drops_account() {
         let driver = FakeDriver::new(
             vec![
-                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+                Err(AccountRunError::account(
+                    "login.failed",
+                    "WaitLoginChoice：未看到登录选项",
+                )),
                 Ok(AccountRunSuccess::processed(1)),
-                Err(AccountRunError::account("login.failed", "WaitLoginChoice：未看到登录选项")),
+                Err(AccountRunError::account(
+                    "login.failed",
+                    "WaitLoginChoice：未看到登录选项",
+                )),
             ],
             false,
         );

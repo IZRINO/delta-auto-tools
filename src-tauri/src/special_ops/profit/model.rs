@@ -63,6 +63,7 @@ pub enum ProfitCutoffSkipReason {
 pub struct AmmoProfitRule {
     pub id: String,
     pub display_name: String,
+    #[serde(default)]
     pub kkrb_match_name: String,
     #[serde(default)]
     pub moligod_match_name: Option<String>,
@@ -141,20 +142,18 @@ pub(crate) fn validate_profit_rules(rules: &[AmmoProfitRule]) -> Result<(), Stri
             return Err(format!("利润规则 {id} 的显示名称不能为空"));
         }
         let kkrb_name = rule.kkrb_match_name.trim();
-        if kkrb_name.is_empty() {
-            return Err(format!("利润规则 {id} 的 KKRB 精确名称不能为空"));
-        }
-        if !kkrb_names.insert(kkrb_name) {
+        if !kkrb_name.is_empty() && !kkrb_names.insert(kkrb_name) {
             return Err(format!("KKRB 精确名称重复：{kkrb_name}"));
         }
-        if let Some(moligod_name) = rule.moligod_match_name.as_deref() {
-            let moligod_name = moligod_name.trim();
-            if moligod_name.is_empty() {
-                return Err(format!("利润规则 {id} 的 Moligod 精确名称不能为空"));
-            }
-            if !moligod_names.insert(moligod_name) {
-                return Err(format!("Moligod 精确名称重复：{moligod_name}"));
-            }
+        let Some(moligod_name) = rule.moligod_match_name.as_deref() else {
+            return Err(format!("利润规则 {id} 的 Moligod 精确名称不能为空"));
+        };
+        let moligod_name = moligod_name.trim();
+        if moligod_name.is_empty() {
+            return Err(format!("利润规则 {id} 的 Moligod 精确名称不能为空"));
+        }
+        if !moligod_names.insert(moligod_name) {
+            return Err(format!("Moligod 精确名称重复：{moligod_name}"));
         }
     }
     Ok(())
@@ -543,7 +542,7 @@ mod tests {
             cutoff_time: "17:00".to_string(),
             rules: vec![
                 rule("rule-a", "KKRB A", Some("Moligod A"), 100),
-                rule("rule-b", "KKRB B", None, 200),
+                rule("rule-b", "KKRB B", Some("Moligod B"), 200),
             ],
             audits: vec![audit("rule-a", 1), audit("rule-b", 2)],
             cutoff_state: None,
@@ -622,18 +621,23 @@ mod tests {
 
     #[test]
     fn rule_ids_and_required_names_must_be_non_empty_and_unique() {
-        assert!(validate_profit_rules(&[rule("", "目标 A", None, 1)])
-            .unwrap_err()
-            .contains("规则 ID"));
+        assert!(
+            validate_profit_rules(&[rule("", "目标 A", Some("Moligod A"), 1)])
+                .unwrap_err()
+                .contains("规则 ID")
+        );
         assert!(validate_profit_rules(&[
-            rule("same", "目标 A", None, 1),
-            rule("same", "目标 B", None, 1),
+            rule("same", "目标 A", Some("Moligod A"), 1),
+            rule("same", "目标 B", Some("Moligod B"), 1),
         ])
         .unwrap_err()
         .contains("规则 ID"));
-        assert!(validate_profit_rules(&[rule("a", " ", None, 1)])
+        assert!(validate_profit_rules(&[rule("a", "目标 A", None, 1)])
             .unwrap_err()
-            .contains("KKRB 精确名称"));
+            .contains("Moligod 精确名称"));
+        assert!(validate_profit_rules(&[rule("a", "目标 A", Some(" "), 1)])
+            .unwrap_err()
+            .contains("Moligod 精确名称"));
     }
 
     #[test]
@@ -680,7 +684,7 @@ mod tests {
         let filter = ProfitFilterSettings {
             enabled: true,
             cutoff_time: "17:00".to_string(),
-            rules: vec![rule("existing", "目标 A", None, 1)],
+            rules: vec![rule("existing", "目标 A", Some("Moligod A"), 1)],
             audits: Vec::new(),
             cutoff_state: None,
         };
@@ -733,7 +737,7 @@ mod tests {
             cutoff_time: "18:00".to_string(),
             rules: vec![
                 rule("rule-a", "KKRB A", Some("Moligod A"), 150),
-                rule("rule-b", "KKRB B", None, 200),
+                rule("rule-b", "KKRB B", Some("Moligod B"), 200),
             ],
             bindings: vec![
                 ProfitTargetBinding {
@@ -788,7 +792,7 @@ mod tests {
         let update = ProfitConfigurationUpdate {
             enabled: true,
             cutoff_time: "17:00".to_string(),
-            rules: vec![rule("rule-b", "KKRB B", None, 200)],
+            rules: vec![rule("rule-b", "KKRB B", Some("Moligod B"), 200)],
             bindings: Vec::new(),
         };
 
@@ -876,7 +880,7 @@ mod tests {
             cutoff_time: "17:00".to_string(),
             rules: vec![
                 rule("rule-a", "KKRB A", Some("Moligod 新名称"), 100),
-                rule("rule-b", "KKRB B", None, 200),
+                rule("rule-b", "KKRB B", Some("Moligod B"), 200),
             ],
             bindings: Vec::new(),
         };

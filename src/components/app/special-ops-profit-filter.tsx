@@ -2,7 +2,6 @@ import {useEffect, useMemo, useRef, useState} from "react";
 import {
     RiAddLine,
     RiDeleteBinLine,
-    RiRefreshLine,
     RiSaveLine,
     RiSearchLine,
 } from "@remixicon/react";
@@ -24,7 +23,6 @@ import type {
     AmmoProfitAudit,
     AmmoProfitRule,
     MoligodBindingValidation,
-    ProfitCatalogSnapshot,
     ProfitConfigurationUpdate,
     SpecialOpsBootstrap,
 } from "@/components/app/special-ops-types";
@@ -68,13 +66,6 @@ function formatProfit(value: number | null): string {
     return value === null ? "-" : value.toLocaleString("zh-CN");
 }
 
-export function formatProfitCatalogError(cause: unknown): string {
-    const message = String(cause);
-    return message.includes("code -101") || message.includes("系统繁忙")
-        ? "KKRB 暂时繁忙，名称列表未更新。可直接手工填写并保存“KKRB 精确名称”。"
-        : message;
-}
-
 function newRule(): AmmoProfitRule {
     return {
         id: crypto.randomUUID(),
@@ -99,8 +90,6 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
     const [conflict, setConflict] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [catalog, setCatalog] = useState<ProfitCatalogSnapshot | null>(null);
-    const [catalogLoading, setCatalogLoading] = useState(false);
     const [validatingRuleId, setValidatingRuleId] = useState<string | null>(null);
     const [validation, setValidation] = useState<MoligodBindingValidation | null>(null);
     const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
@@ -142,18 +131,6 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                 ? {...binding, profitRuleId}
                 : binding),
         });
-    };
-    const refreshCatalog = async () => {
-        if (!isNativeShell) return;
-        setCatalogLoading(true);
-        setError(null);
-        try {
-            setCatalog(await invoke<ProfitCatalogSnapshot>("special_ops_fetch_profit_catalog"));
-        } catch (cause) {
-            setError(formatProfitCatalogError(cause));
-        } finally {
-            setCatalogLoading(false);
-        }
     };
     const validateMoligod = async (rule: AmmoProfitRule) => {
         if (!isNativeShell || activeRound || !rule.moligodMatchName?.trim()) return;
@@ -210,15 +187,14 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
         <div className="card-body gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 className="card-title text-lg inline-flex items-center gap-1">联网利润筛选<HelpHint content="KKRB 主源；仅 KKRB 整体失败时使用 Moligod 备用。"/></h2>
+                    <h2 className="card-title text-lg inline-flex items-center gap-1">联网利润筛选<HelpHint content="通过 Moligod 查询总利润，达标后当天可提前兑换。"/></h2>
                 </div>
                 <label className="flex items-center gap-2 text-sm"><Switch checked={draft.enabled} onCheckedChange={(enabled) => updateDraft({...draft, enabled})}/>启用</label>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[12rem_minmax(0,1fr)_auto_auto] md:items-end">
+            <div className="grid gap-3 md:grid-cols-[12rem_minmax(0,1fr)_auto] md:items-end">
                 <label className="form-control gap-1"><span className="label-text text-xs">利润截止时间</span><Input type="time" value={draft.cutoffTime} onChange={(event) => updateDraft({...draft, cutoffTime: event.target.value})}/></label>
                 <div className="text-sm text-base-content/70">{runtimePhaseLabels[bootstrap.profitRuntime.phase]}{bootstrap.profitRuntime.nextQueryAtMs ? ` · 下次 ${new Date(bootstrap.profitRuntime.nextQueryAtMs).toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit", hour12: false})}` : ""}</div>
-                <Button disabled={!isNativeShell || catalogLoading} size="sm" variant="outline" onClick={() => void refreshCatalog()}><RiRefreshLine data-icon="inline-start"/>{catalogLoading ? "读取中" : "刷新 KKRB 名称"}</Button>
                 <Button disabled={!isNativeShell || saving || conflict || !dirty} size="sm" onClick={() => void save()}><RiSaveLine data-icon="inline-start"/>{saving ? "保存中" : "保存利润配置"}</Button>
             </div>
 
@@ -235,14 +211,13 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                 <div className="space-y-3 border-t border-base-300 p-4">
                     <div className="overflow-x-auto">
                         <table className="table table-sm">
-                            <thead><tr><th>规则</th><th>KKRB 精确名称</th><th>Moligod 精确名称</th><th>最低总利润</th><th>最近结果</th><th>操作</th></tr></thead>
+                            <thead><tr><th>规则</th><th>Moligod 精确名称</th><th>最低总利润</th><th>最近结果</th><th>操作</th></tr></thead>
                             <tbody>
                                 {draft.rules.map((rule) => {
                                     const audit = latestAudit(bootstrap.settings.profitFilter.audits, rule.id);
                                     return <tr key={rule.id}>
                                         <td><Input className="min-w-28" value={rule.displayName} placeholder="显示名称" aria-label="规则显示名称" onChange={(event) => updateRule(rule.id, {displayName: event.target.value})}/><div className="mt-1 text-xs text-base-content/60">引用 {referenceCounts.get(rule.id) ?? 0}</div></td>
-                                        <td><Input className="min-w-40" list="special-ops-kkrb-catalog" value={rule.kkrbMatchName} placeholder="精确名称" aria-label="KKRB 精确名称" onChange={(event) => updateRule(rule.id, {kkrbMatchName: event.target.value})}/></td>
-                                        <td><div className="flex min-w-52 gap-1"><Input value={rule.moligodMatchName ?? ""} placeholder="可选备用名称" aria-label="Moligod 精确名称" onChange={(event) => updateRule(rule.id, {moligodMatchName: event.target.value || null})}/><Button disabled={!rule.moligodMatchName?.trim() || activeRound || validatingRuleId === rule.id || !isNativeShell} size="icon-sm" title="验证 Moligod 精确名称" aria-label="验证 Moligod 精确名称" variant="outline" onClick={() => void validateMoligod(rule)}><RiSearchLine/></Button></div></td>
+                                        <td><div className="flex min-w-52 gap-1"><Input value={rule.moligodMatchName ?? ""} placeholder="精确名称" aria-label="Moligod 精确名称" onChange={(event) => updateRule(rule.id, {moligodMatchName: event.target.value || null})}/><Button disabled={!rule.moligodMatchName?.trim() || activeRound || validatingRuleId === rule.id || !isNativeShell} size="icon-sm" title="验证 Moligod 精确名称" aria-label="验证 Moligod 精确名称" variant="outline" onClick={() => void validateMoligod(rule)}><RiSearchLine/></Button></div></td>
                                         <td><Input className="min-w-28" inputMode="numeric" value={String(rule.minimumProfit)} aria-label="最低总利润" onChange={(event) => {
                                             const minimumProfit = parseMinimumProfit(event.target.value);
                                             if (minimumProfit !== null) updateRule(rule.id, {minimumProfit});
@@ -251,12 +226,10 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                                         <td><Button size="icon-sm" title="删除规则" aria-label="删除规则" variant="ghost" onClick={() => requestDelete(rule.id)}><RiDeleteBinLine/></Button></td>
                                     </tr>;
                                 })}
-                                {draft.rules.length === 0 && <tr><td colSpan={6} className="text-center text-sm text-base-content/60">尚未添加利润规则</td></tr>}
+                                {draft.rules.length === 0 && <tr><td colSpan={5} className="text-center text-sm text-base-content/60">尚未添加利润规则</td></tr>}
                             </tbody>
                         </table>
                     </div>
-                    <datalist id="special-ops-kkrb-catalog">{catalog?.names.map((name) => <option key={name} value={name}/>)}</datalist>
-                    {catalog && <p className="text-xs text-base-content/60">KKRB 名称 {catalog.names.length} 个{catalog.sourceVersion ? ` · 版本 ${catalog.sourceVersion}` : ""}</p>}
                     <div><Button size="sm" variant="outline" onClick={() => updateDraft({...draft, rules: [...draft.rules, newRule()]})}><RiAddLine data-icon="inline-start"/>添加利润规则</Button></div>
                 </div>
             </details>
@@ -272,7 +245,7 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
                                 return <tr key={`${binding.accountId ?? "default"}:${binding.targetId}`}>
                                     <td>{source?.ownerLabel ?? "已删除配置"} · {source?.targetNote || binding.targetId}</td>
                                     <td><span className={`badge badge-sm ${source?.targetEnabled ? "badge-success badge-soft" : "badge-ghost"}`}>{source?.targetEnabled ? "启用" : "停用"}</span></td>
-                                    <td><select className="select select-sm min-w-48" value={binding.profitRuleId ?? ""} onChange={(event) => updateBinding(binding.accountId, binding.targetId, event.target.value || null)}><option value="">不绑定利润规则</option>{draft.rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.displayName || rule.kkrbMatchName || rule.id}</option>)}</select></td>
+                                    <td><select className="select select-sm min-w-48" value={binding.profitRuleId ?? ""} onChange={(event) => updateBinding(binding.accountId, binding.targetId, event.target.value || null)}><option value="">不绑定利润规则</option>{draft.rules.map((rule) => <option key={rule.id} value={rule.id}>{rule.displayName || rule.moligodMatchName || rule.id}</option>)}</select></td>
                                 </tr>;
                             })}</tbody>
                         </table>
@@ -283,7 +256,7 @@ export function SpecialOpsProfitFilter({bootstrap, isNativeShell, onSave}: Props
         <dialog ref={deleteDialogRef} className="modal">
             <div className="modal-box">
                 <h3 className="text-lg font-semibold">删除利润规则</h3>
-                <p className="py-3 text-sm">“{deleteRule?.displayName || deleteRule?.kkrbMatchName}”被 {deleteRule ? referenceCounts.get(deleteRule.id) ?? 0 : 0} 个业务目标引用。确认后会清空这些目标的利润规则绑定，不改点击点、顺序或当天兑换状态。</p>
+                <p className="py-3 text-sm">“{deleteRule?.displayName || deleteRule?.moligodMatchName}”被 {deleteRule ? referenceCounts.get(deleteRule.id) ?? 0 : 0} 个业务目标引用。确认后会清空这些目标的利润规则绑定，不改点击点、顺序或当天兑换状态。</p>
                 <div className="modal-action"><Button variant="outline" onClick={() => { setDeleteRuleId(null); deleteDialogRef.current?.close(); }}>取消</Button><Button variant="destructive" onClick={confirmDelete}>删除</Button></div>
             </div>
             <form method="dialog" className="modal-backdrop"><button onClick={() => setDeleteRuleId(null)}>关闭</button></form>

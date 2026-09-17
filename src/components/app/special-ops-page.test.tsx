@@ -160,6 +160,18 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).not.toContain("限时商品识色区域校准");
     });
 
+    it("限时商品高价值识图走校准框选，未命中则无视", () => {
+        expect(pageSource).toContain("高价值识图");
+        expect(pageSource).toContain("限时商品高价值识图区域");
+        expect(pageSource).toContain("未命中无视");
+        expect(pageSource).toContain('"limited."');
+    });
+
+    it("任务栏高价值标记与颜色命中同一套文案", () => {
+        expect(pageSource).toContain("formatLimitedMatchSummary");
+        expect(pageSource).toContain("limited?.matchedImage");
+    });
+
     it("交易行业务配置位于默认与独立账号配置", () => {
         expect(pageSource).toContain("默认交易行购买");
         expect(pageSource).toContain("独立交易行配置");

@@ -742,7 +742,7 @@ fn restore_other_windows_after_special_ops(app: &AppHandle) -> Result<(), String
 }
 
 fn default_guard_any_of(key: &str) -> &'static [&'static str] {
-    if key.starts_with("limited.color.") {
+    if key.starts_with("limited.color.") || key == "limited.image.1" {
         return &["limited.ready"];
     }
     match key {
@@ -889,6 +889,11 @@ fn default_calibration_targets() -> Vec<CalibrationTarget> {
         ("limited.color.7", "限时商品识色区域 7", InputRegion),
         ("limited.color.8", "限时商品识色区域 8", InputRegion),
         ("limited.color.9", "限时商品识色区域 9", InputRegion),
+        (
+            "limited.image.1",
+            "限时商品高价值识图区域",
+            RecognitionRegion,
+        ),
         (
             "market.entry",
             "交易行入口识别与点击区域",
@@ -3801,6 +3806,50 @@ struct FrozenLimitedSupplyRun {
     color_tolerances: [u8; 2],
 }
 
+fn optional_limited_image_target(
+    settings: &SpecialOpsSettings,
+) -> Result<Option<template_observer::RuntimeTarget>, String> {
+    let Some(environment) = settings.calibration_environments.first() else {
+        return Ok(None);
+    };
+    let Some(target) = environment
+        .targets
+        .iter()
+        .find(|target| target.key == "limited.image.1")
+    else {
+        return Ok(None);
+    };
+    let Some(rect) = target.rect.as_ref() else {
+        return Ok(None);
+    };
+    if !verification_is_current(target) {
+        return Ok(None);
+    }
+    let Ok((reference, threshold)) = resolved_template_config(environment, target) else {
+        return Ok(None);
+    };
+    let Ok(reference_image_path) = std::fs::canonicalize(reference) else {
+        return Ok(None);
+    };
+    let region = crate::morse::types::RegionRect {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    };
+    Ok(Some(template_observer::RuntimeTarget {
+        key: "limited.image.1".to_string(),
+        region: region.clone(),
+        template: Some(template_observer::RuntimeTemplate {
+            key: "limited.image.1".to_string(),
+            region,
+            reference_image_path,
+            threshold,
+        }),
+        guard_any_of: target.guard_any_of.clone(),
+    }))
+}
+
 fn freeze_limited_supply_run(
     settings: &SpecialOpsSettings,
     account_id: &str,
@@ -3827,11 +3876,15 @@ fn freeze_limited_supply_run(
     ] {
         keys.push((key, false));
     }
+    let mut targets = freeze_runtime_targets(settings, "限时商品", &keys)?;
+    if let Some(image) = optional_limited_image_target(settings)? {
+        targets.insert(image.key.clone(), image);
+    }
     Ok(FrozenLimitedSupplyRun {
         game_executable_path: std::fs::canonicalize(&settings.game_executable_path)
             .map_err(|_| "游戏 exe 路径无效".to_string())?,
         mouse_parking_region: mouse_parking_region(settings)?,
-        targets: freeze_runtime_targets(settings, "限时商品", &keys)?,
+        targets,
         cycle_id: cycle_id.to_string(),
         config: limited_supply_runtime::LimitedRunConfig {
             ready_timeout: std::time::Duration::from_millis(u64::from(
@@ -4079,7 +4132,7 @@ enum CalibrationTestInput {
 }
 
 fn calibration_test_requires_game_context(target_key: &str) -> bool {
-    ["game.", "craft.", "ammo.", "market."]
+    ["game.", "craft.", "ammo.", "market.", "limited."]
         .iter()
         .any(|prefix| target_key.starts_with(prefix))
 }
@@ -6703,12 +6756,30 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
             .collect::<Result<Vec<_>, _>>()?;
         let colors = self.colors;
         let tolerances = self.color_tolerances;
+        let image_template = self
+            .input
+            .targets
+            .get("limited.image.1")
+            .and_then(|target| target.template.clone());
         tokio::task::spawn_blocking(move || {
             let screenshots = regions
                 .iter()
                 .map(crate::recognition::watcher::capture_region)
                 .collect::<Option<Vec<_>>>()?;
-            limited_supply_runtime::match_limited_color_sample(&screenshots, colors, tolerances)
+            let mut sample = limited_supply_runtime::match_limited_color_sample(
+                &screenshots,
+                colors,
+                tolerances,
+            )?;
+            if let Some(template) = image_template {
+                let screenshot = crate::recognition::watcher::capture_region(&template.region)?;
+                let reference_path = template.reference_image_path.to_str()?;
+                let reference = crate::recognition::watcher::load_reference_image(reference_path)?;
+                let (_, matched) =
+                    crate::recognition::watcher::best_reference_match(&screenshot, [&reference])?;
+                sample.image_matched = Some(matched.similarity >= template.threshold);
+            }
+            Some(sample)
         })
         .await
         .map_err(|error| limited_supply_runtime::LimitedRunError::System {
@@ -6741,6 +6812,7 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
                     matched_region: result.matched_region,
                     matched_color: result.matched_color,
                     matched_color_indexes: result.matched_color_indexes,
+                    matched_image: result.matched_image,
                     acknowledged: false,
                     last_error: result.error,
                 };
@@ -7833,6 +7905,7 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
                 matched_region: None,
                 matched_color: None,
                 matched_color_indexes: Vec::new(),
+                matched_image: false,
                 acknowledged: false,
                 last_error: Some(message),
             };
@@ -8238,7 +8311,7 @@ async fn run_limited_supply_worker(
         cycle_id: frozen.cycle_id,
         colors: frozen.colors,
         color_tolerances: frozen.color_tolerances,
-        persist_result: false,
+        persist_result: true,
     };
     let result = match military_supply_runtime::enter_military_supply(
         &entry_driver,
@@ -8963,10 +9036,8 @@ async fn execute_cutoff_profit_query_action(app: &AppHandle) -> Result<(), Strin
         Err(error) if error.contains("已有利润查询正在进行") => return Ok(()),
         Err(error) => return Err(error),
     };
-    let kkrb = KkrbAdapter::new()?;
     let moligod = MoligodAdapter::new(app.clone());
     let mut outcome = query_profit_rules_with_cancel(
-        &kkrb,
         &moligod,
         &lease.rules,
         &lease.query_context(),
@@ -9103,10 +9174,8 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
             Err(error) if error.contains("已有利润查询正在进行") => return Ok(()),
             Err(error) => return Err(error),
         };
-    let kkrb = KkrbAdapter::new()?;
     let moligod = MoligodAdapter::new(app.clone());
     let query_result = query_profit_rules_with_cancel(
-        &kkrb,
         &moligod,
         &lease.rules,
         &lease.query_context(),
@@ -15369,6 +15438,7 @@ mod tests {
             "craft.abort",
             "ammo.success",
             "market.entry",
+            "limited.image.1",
         ] {
             assert!(calibration_test_requires_game_context(key));
         }
@@ -19408,6 +19478,7 @@ mod tests {
             "limited.ready",
             "limited.color.1",
             "limited.color.9",
+            "limited.image.1",
             "market.backToEntry",
             "market.entry",
             "market.product",
@@ -19418,6 +19489,16 @@ mod tests {
         ] {
             assert!(keys.contains(key), "缺少校准目标 {key}");
         }
+        assert_eq!(
+            targets
+                .iter()
+                .find(|target| target.key == "limited.image.1")
+                .map(|target| (target.kind.clone(), target.recognition_method.clone())),
+            Some((
+                CalibrationTargetKind::RecognitionRegion,
+                Some(CalibrationRecognitionMethod::Template)
+            ))
+        );
         assert_eq!(
             targets
                 .iter()
@@ -19829,6 +19910,7 @@ mod tests {
             matched_region: Some(3),
             matched_color: Some([1, 2, 3]),
             matched_color_indexes: vec![1],
+            matched_image: false,
             acknowledged: false,
             last_error: None,
         };

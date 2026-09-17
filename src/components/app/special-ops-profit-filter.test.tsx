@@ -1,6 +1,5 @@
 import {describe, expect, it} from "vitest";
 
-import {formatProfitCatalogError} from "./special-ops-profit-filter";
 import profitFilterSource from "./special-ops-profit-filter.tsx?raw";
 
 describe("SpecialOpsProfitFilter", () => {
@@ -13,9 +12,10 @@ describe("SpecialOpsProfitFilter", () => {
         expect(profitFilterSource).toContain('<summary className="cursor-pointer px-4 py-3 font-medium">业务目标</summary>');
     });
 
-    it("KKRB -101 提示可手工填写精确名称", () => {
-        expect(formatProfitCatalogError("KKRB 返回失败（code -101）：系统繁忙，请稍后再试")).toBe(
-            "KKRB 暂时繁忙，名称列表未更新。可直接手工填写并保存“KKRB 精确名称”。",
-        );
+    it("联网利润查询只保留 Moligod", () => {
+        expect(profitFilterSource).toContain("Moligod 精确名称");
+        expect(profitFilterSource).not.toContain("KKRB 精确名称");
+        expect(profitFilterSource).not.toContain("刷新 KKRB 名称");
+        expect(profitFilterSource).not.toContain("special_ops_fetch_profit_catalog");
     });
 });
