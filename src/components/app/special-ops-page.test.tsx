@@ -355,10 +355,12 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain('tone="warning"');
     });
 
-    it("全局配置提供定时暂停时间段", () => {
-        expect(pageSource).toContain("定时暂停");
-        expect(pageSource).toContain("updateScheduledPause");
-        expect(pageSource).toContain("scheduledPauseActive");
+    it("定时暂停与总开关同一行", () => {
+        expect(pageSource).toContain("function ScheduledPauseToolbar(");
+        expect(pageSource).toContain("<label className=\"flex items-center gap-2 text-sm\">总开关");
+        expect(pageSource).toContain("<ScheduledPauseToolbar disabled={controlsLocked} scheduledPause={scheduledPause} onChange={updateScheduledPause}/>");
+        expect(pageSource).toContain("toolbarExtra={<ScheduledPauseToolbar");
+        expect(pageSource).not.toContain('legend className="fieldset-legend inline-flex items-center gap-1">定时暂停');
         expect(pageSource).toContain("该时间段外自动恢复");
     });
 

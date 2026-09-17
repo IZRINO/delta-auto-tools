@@ -256,6 +256,25 @@ function DraftInput({value, onCommit, ...props}: Omit<ComponentProps<typeof Inpu
     return <Input {...props} value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => draft !== value && onCommit(draft)}/>;
 }
 
+function ScheduledPauseToolbar({
+    scheduledPause,
+    disabled,
+    onChange,
+}: {
+    scheduledPause: ScheduledPauseSettings;
+    disabled: boolean;
+    onChange: (patch: Partial<ScheduledPauseSettings>) => void;
+}) {
+    return <div className="flex flex-wrap items-center gap-2 text-sm">
+        <label className="flex items-center gap-2">定时暂停
+            <Switch disabled={disabled} checked={scheduledPause.enabled} onCheckedChange={(enabled) => onChange({enabled})}/>
+        </label>
+        <DraftInput type="time" disabled={disabled} className="input-sm w-[8.5rem]" value={scheduledPause.start} onCommit={(start) => onChange({start})}/>
+        <span className="opacity-50">–</span>
+        <DraftInput type="time" disabled={disabled} className="input-sm w-[8.5rem]" value={scheduledPause.end} onCommit={(end) => onChange({end})}/>
+    </div>;
+}
+
 function AmmoTargetEditor({
     title,
     targets,
@@ -1390,6 +1409,7 @@ export function SpecialOpsPage() {
                 onReload={reload}
                 onRestore={(accountId) => void restoreAccountState(accountId)}
                 pauseTransition={pauseTransition}
+                toolbarExtra={<ScheduledPauseToolbar disabled={controlsLocked} scheduledPause={scheduledPause} onChange={updateScheduledPause}/>}
             >
                 {bootstrap.settings.accounts.length === 0 ? null : (
                     <div className="bm-ops-fold">
@@ -1404,10 +1424,11 @@ export function SpecialOpsPage() {
         ) : <>
         <header className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-xl font-semibold">特勤处</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
                 <label className="flex items-center gap-2 text-sm">总开关
                 <Switch disabled={controlsLocked} checked={bootstrap.settings.enabled} onCheckedChange={(enabled) => save({...settingsDraftRef.current, enabled})}/>
                 </label>
+                <ScheduledPauseToolbar disabled={controlsLocked} scheduledPause={scheduledPause} onChange={updateScheduledPause}/>
                 <Button disabled={pauseTransition || (hasActiveRun && !isActiveRound) || walkthroughEnabled} size="sm" title={walkthroughEnabled ? "请先关闭多账号制作台更改" : undefined} onClick={() => setPaused(!bootstrap.settings.paused)}>
                     {bootstrap.settings.paused ? <RiPlayLine data-icon="inline-start"/> : <RiPauseLine data-icon="inline-start"/>}
                     {bootstrap.settings.paused && pauseTransition ? "正在继续" : pauseTransition ? "正在暂停" : isActiveRound && !bootstrap.settings.paused ? "当前账号结束后暂停" : bootstrap.settings.paused ? "继续" : "暂停"}
@@ -1490,15 +1511,6 @@ export function SpecialOpsPage() {
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">每日兑换</legend>
                         <DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...settingsDraftRef.current, dailyExchangeTime})}/>
-                    </fieldset>
-                    <fieldset className="fieldset md:col-span-2">
-                        <legend className="fieldset-legend inline-flex items-center gap-1">定时暂停<HelpHint content="时间段内按暂停执行：当前账号结束后停止；结束后若未手动暂停则自动继续。开始晚于结束视为跨天，例如 22:00-06:00。"/></legend>
-                        <div className="flex flex-wrap items-end gap-3">
-                            <label className="flex items-center gap-2 text-sm"><Switch checked={scheduledPause.enabled} onCheckedChange={(enabled) => updateScheduledPause({enabled})}/>启用</label>
-                            <label className="form-control gap-1"><span className="label-text text-xs">开始</span><DraftInput type="time" value={scheduledPause.start} onCommit={(start) => updateScheduledPause({start})}/></label>
-                            <label className="form-control gap-1"><span className="label-text text-xs">结束</span><DraftInput type="time" value={scheduledPause.end} onCommit={(end) => updateScheduledPause({end})}/></label>
-                            {inScheduledPause ? <p className="text-xs text-warning">当前处于该时间段，按暂停执行</p> : null}
-                        </div>
                     </fieldset>
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">紧急停止热键</legend>

@@ -11,6 +11,7 @@ import type {
 import {STATION_LABELS} from "@/components/app/special-ops-types";
 import {
     accountRestorable,
+    scheduledPauseActive,
     timelineDelayMinutes,
     timelineTaskAllowsInlineCorrection,
     timelineTaskLabel,
@@ -53,6 +54,7 @@ type SpecialOpsBlackmarkViewProps = {
     onReload: () => void;
     onRestore: (accountId: string | null) => void;
     pauseTransition: boolean;
+    toolbarExtra?: ReactNode;
 };
 
 export function SpecialOpsBlackmarkView({
@@ -74,6 +76,7 @@ export function SpecialOpsBlackmarkView({
     onReload,
     onRestore,
     pauseTransition,
+    toolbarExtra,
 }: SpecialOpsBlackmarkViewProps) {
     const paused = bootstrap.settings.paused;
     const tasks = bootstrap.schedule.timelineTasks;
@@ -101,6 +104,7 @@ export function SpecialOpsBlackmarkView({
         <BlackmarkPage
             actions={
                 <div className="flex flex-wrap items-center gap-3">
+                    {toolbarExtra}
                     <button
                         className="bm-btn inline-flex items-center gap-2"
                         disabled={pauseTransition || (hasActiveRun && !isActiveRound) || bootstrap.settings.stationWalkthroughEnabled}
@@ -143,6 +147,11 @@ export function SpecialOpsBlackmarkView({
             {error ? <div className="bm-alert mt-0" data-tone="error">{error}</div> : null}
             {paused && bootstrap.settings.pausedReason ? (
                 <div className="bm-alert mt-4" data-tone="warning">{bootstrap.settings.pausedReason}</div>
+            ) : null}
+            {scheduledPauseActive(bootstrap.settings.scheduledPause, nowMs) ? (
+                <div className="bm-alert mt-4" data-tone="warning">
+                    定时暂停中（{bootstrap.settings.scheduledPause?.start}–{bootstrap.settings.scheduledPause?.end}），该时间段外自动恢复
+                </div>
             ) : null}
 
             <section className="px-8 py-8">
