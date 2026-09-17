@@ -42,6 +42,7 @@ import {
      type LimitedSupplySettings,
      type MarketBusinessConfig,
      type MarketPurchaseSettings,
+     type ScheduledPauseSettings,
     type ProfitConfigurationUpdate,
     type SpecialOpsBootstrap,
     type SpecialOpsSettings,
@@ -77,6 +78,7 @@ import {
     parseLimitedColorHex,
     persistSpecialOpsSaveRequest,
     shanghaiDay,
+    scheduledPauseActive,
      specialOpsErrorAfterUpdate,
      timelineDelayMinutes,
     type SpecialOpsBootstrapUpdate,
@@ -90,6 +92,7 @@ const emptyBootstrap: SpecialOpsBootstrap = {
     settings: {
         enabled: true,
         paused: true,
+        scheduledPause: {enabled: false, start: "10:00", end: "12:30"},
         dailyExchangeTime: "08:00",
         emergencyHotkey: "Ctrl+Shift+F12",
         nextAccountHotkey: "",
@@ -1239,6 +1242,8 @@ export function SpecialOpsPage() {
     const activeEnvironment = bootstrap.settings.calibrationEnvironments[0];
     const limitedSupply: LimitedSupplySettings = bootstrap.settings.limitedSupply ?? emptyBootstrap.settings.limitedSupply!;
     const marketPurchase: MarketPurchaseSettings = bootstrap.settings.marketPurchase ?? emptyBootstrap.settings.marketPurchase!;
+    const scheduledPause: ScheduledPauseSettings = bootstrap.settings.scheduledPause ?? emptyBootstrap.settings.scheduledPause!;
+    const inScheduledPause = scheduledPauseActive(scheduledPause, timelineNowMs);
     const defaultMarket: MarketBusinessConfig = settingsDraftRef.current.defaultBusinessConfig.market ?? emptyBootstrap.settings.defaultBusinessConfig.market!;
     const updateLimitedSupply = (patch: Partial<LimitedSupplySettings>) => save({
         ...settingsDraftRef.current,
@@ -1247,6 +1252,10 @@ export function SpecialOpsPage() {
     const updateMarketPurchase = (patch: Partial<MarketPurchaseSettings>) => save({
         ...settingsDraftRef.current,
         marketPurchase: {...marketPurchase, ...patch},
+    });
+    const updateScheduledPause = (patch: Partial<ScheduledPauseSettings>) => save({
+        ...settingsDraftRef.current,
+        scheduledPause: {...scheduledPause, ...patch},
     });
     const updateLimitedColor = (colorIndex: number, color: [number, number, number]) => {
         const colors = [...limitedSupply.colors] as [[number, number, number], [number, number, number]];
@@ -1412,6 +1421,9 @@ export function SpecialOpsPage() {
         {bootstrap.settings.paused && bootstrap.settings.pausedReason && (
             <SoftAlert tone="warning">{bootstrap.settings.pausedReason}</SoftAlert>
         )}
+        {inScheduledPause && (
+            <SoftAlert tone="warning">定时暂停中（{scheduledPause.start}–{scheduledPause.end}），该时间段外自动恢复</SoftAlert>
+        )}
 
         {bootstrap.settings.accounts.length === 0 ? <section className="card card-border bg-base-200">
             <div className="card-body gap-3">
@@ -1478,6 +1490,15 @@ export function SpecialOpsPage() {
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">每日兑换</legend>
                         <DraftInput value={bootstrap.settings.dailyExchangeTime} placeholder="08:00" onCommit={(dailyExchangeTime) => save({...settingsDraftRef.current, dailyExchangeTime})}/>
+                    </fieldset>
+                    <fieldset className="fieldset md:col-span-2">
+                        <legend className="fieldset-legend inline-flex items-center gap-1">定时暂停<HelpHint content="时间段内按暂停执行：当前账号结束后停止；结束后若未手动暂停则自动继续。开始晚于结束视为跨天，例如 22:00-06:00。"/></legend>
+                        <div className="flex flex-wrap items-end gap-3">
+                            <label className="flex items-center gap-2 text-sm"><Switch checked={scheduledPause.enabled} onCheckedChange={(enabled) => updateScheduledPause({enabled})}/>启用</label>
+                            <label className="form-control gap-1"><span className="label-text text-xs">开始</span><DraftInput type="time" value={scheduledPause.start} onCommit={(start) => updateScheduledPause({start})}/></label>
+                            <label className="form-control gap-1"><span className="label-text text-xs">结束</span><DraftInput type="time" value={scheduledPause.end} onCommit={(end) => updateScheduledPause({end})}/></label>
+                            {inScheduledPause ? <p className="text-xs text-warning">当前处于该时间段，按暂停执行</p> : null}
+                        </div>
                     </fieldset>
                     <fieldset className="fieldset">
                         <legend className="fieldset-legend">紧急停止热键</legend>

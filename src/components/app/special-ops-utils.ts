@@ -269,6 +269,32 @@ export function shanghaiDay(atMs: number): string {
     return `${year}-${month}-${day}`;
 }
 
+function shanghaiMinuteOfDay(atMs: number): number {
+    const shifted = new Date(atMs + 8 * 60 * 60 * 1000);
+    return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+}
+
+function parseHhMm(value: string): number | null {
+    if (!/^\d{2}:\d{2}$/.test(value)) return null;
+    const hours = Number(value.slice(0, 2));
+    const minutes = Number(value.slice(3, 5));
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+}
+
+/// 对齐后端 `scheduled_pause_active`：含开始、不含结束；开始晚于结束则跨天。
+export function scheduledPauseActive(
+    settings: {enabled: boolean; start: string; end: string} | null | undefined,
+    nowMs: number,
+): boolean {
+    if (!settings?.enabled) return false;
+    const start = parseHhMm(settings.start);
+    const end = parseHhMm(settings.end);
+    if (start == null || end == null || start === end) return false;
+    const minute = shanghaiMinuteOfDay(nowMs);
+    return start < end ? minute >= start && minute < end : minute >= start || minute < end;
+}
+
 /// 账号是否存在可被一键恢复的异常残留。
 /// 与后端 `restore_account_state` 的 `changed` 判定保持一致，避免按钮点下去只拿到「没有需要恢复的异常状态」。
 /// 当天已兑换成功的子弹目标也算可恢复项：后端会清当天 `lastSuccessDay` 让目标回到未兑换。

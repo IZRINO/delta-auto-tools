@@ -22,6 +22,7 @@ import {
     limitedColorToHex,
     parseLimitedColorHex,
     shanghaiDay,
+    scheduledPauseActive,
     specialOpsErrorAfterUpdate,
     persistSpecialOpsSaveRequest,
     timelineDelayMinutes,
@@ -693,6 +694,32 @@ describe("shanghaiDay", () => {
         ["2026-08-09T16:30:00Z", "2026-08-10"],
     ])("%s -> %s", (iso, expected) => {
         expect(shanghaiDay(new Date(iso).getTime())).toBe(expected);
+    });
+});
+
+describe("scheduledPauseActive", () => {
+    const window = {enabled: true, start: "10:00", end: "12:30"};
+    const at = (iso: string) => new Date(iso).getTime();
+
+    it("含开始不含结束", () => {
+        expect(scheduledPauseActive(window, at("2026-07-23T09:59:00+08:00"))).toBe(false);
+        expect(scheduledPauseActive(window, at("2026-07-23T10:00:00+08:00"))).toBe(true);
+        expect(scheduledPauseActive(window, at("2026-07-23T12:29:00+08:00"))).toBe(true);
+        expect(scheduledPauseActive(window, at("2026-07-23T12:30:00+08:00"))).toBe(false);
+    });
+
+    it("开始晚于结束则跨天", () => {
+        const overnight = {enabled: true, start: "22:00", end: "06:00"};
+        expect(scheduledPauseActive(overnight, at("2026-07-23T22:00:00+08:00"))).toBe(true);
+        expect(scheduledPauseActive(overnight, at("2026-07-24T05:59:00+08:00"))).toBe(true);
+        expect(scheduledPauseActive(overnight, at("2026-07-24T06:00:00+08:00"))).toBe(false);
+        expect(scheduledPauseActive(overnight, at("2026-07-23T21:59:00+08:00"))).toBe(false);
+    });
+
+    it("关闭或起止相同则不生效", () => {
+        expect(scheduledPauseActive({enabled: false, start: "10:00", end: "12:30"}, at("2026-07-23T11:00:00+08:00"))).toBe(false);
+        expect(scheduledPauseActive({enabled: true, start: "10:00", end: "10:00"}, at("2026-07-23T10:00:00+08:00"))).toBe(false);
+        expect(scheduledPauseActive(undefined, at("2026-07-23T11:00:00+08:00"))).toBe(false);
     });
 });
 

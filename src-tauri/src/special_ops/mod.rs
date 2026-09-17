@@ -74,6 +74,7 @@ const ROUND_CLOSE_GAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// business config、运行态在两次读取之间会变），空计划是正常竞态而非故障。两处各写
 /// 一份字面量时曾漂移成两句不同的话 -> 分流失配 -> 利润达标当天被全局暂停吞掉。
 const EMPTY_ROUND_PLAN_ERROR: &str = "当前没有到期特勤处任务";
+const SCHEDULED_PAUSE_ERROR: &str = "特勤处处于定时暂停时间段";
 pub const STATE_CHANGED: &str = "special-ops://state-changed";
 const LOGIN_HOTKEY_SCOPE: &str = "special-ops-emergency";
 static LOGIN_RESOURCE_CLEANUP_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -536,6 +537,36 @@ pub struct CalibrationEnvironment {
     pub targets: Vec<CalibrationTarget>,
 }
 
+fn default_scheduled_pause_start() -> String {
+    "10:00".to_string()
+}
+
+fn default_scheduled_pause_end() -> String {
+    "12:30".to_string()
+}
+
+/// 按东八区时钟的每日暂停窗口。不写入手动 `paused`：段内等效暂停，段外若未手动暂停则继续。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledPauseSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_scheduled_pause_start")]
+    pub start: String,
+    #[serde(default = "default_scheduled_pause_end")]
+    pub end: String,
+}
+
+impl Default for ScheduledPauseSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            start: default_scheduled_pause_start(),
+            end: default_scheduled_pause_end(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecialOpsSettings {
@@ -545,6 +576,9 @@ pub struct SpecialOpsSettings {
     /// 用户手动点暂停不写；用户点继续时清空 -> UI 只在「不是我点的」时给出解释。
     #[serde(default)]
     pub paused_reason: Option<String>,
+    /// 定时暂停窗口。缺省关闭，旧配置反序列化走 Default。
+    #[serde(default)]
+    pub scheduled_pause: ScheduledPauseSettings,
     pub daily_exchange_time: String,
     pub emergency_hotkey: String,
     #[serde(default)]
@@ -596,6 +630,7 @@ impl Default for SpecialOpsSettings {
             enabled: true,
             paused: true,
             paused_reason: None,
+            scheduled_pause: ScheduledPauseSettings::default(),
             daily_exchange_time: "08:00".to_string(),
             emergency_hotkey: "Ctrl+Shift+F12".to_string(),
             next_account_hotkey: String::new(),
@@ -1440,7 +1475,7 @@ fn build_profit_query_window(
     let cutoff_retry_at_ms = cutoff_retry_at_ms(settings, &day);
     Ok(ProfitQueryWindow {
         enabled: settings.profit_filter.enabled,
-        paused: settings.paused,
+        paused: automation_paused(settings, now_ms),
         active_round,
         day,
         settings_revision,
@@ -2696,6 +2731,11 @@ pub(crate) fn normalize_settings(
 ) -> Result<SpecialOpsSettings, String> {
     if daily_exchange_minutes(&settings.daily_exchange_time).is_none() {
         return Err("每日兑换时间必须是 HH:mm，范围 00:00-23:59".to_string());
+    }
+    if daily_exchange_minutes(&settings.scheduled_pause.start).is_none()
+        || daily_exchange_minutes(&settings.scheduled_pause.end).is_none()
+    {
+        return Err("定时暂停时间必须是 HH:mm，范围 00:00-23:59".to_string());
     }
     if settings.emergency_hotkey.trim().is_empty() {
         return Err("紧急停止快捷键不能为空".to_string());
@@ -8054,7 +8094,14 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     }
 
     fn pause_requested(&self) -> Result<bool, String> {
-        Ok(self.control.pause_requested())
+        if self.control.pause_requested() {
+            return Ok(true);
+        }
+        let settings = self
+            .settings
+            .lock()
+            .map_err(|_| "特勤处状态已损坏".to_string())?;
+        Ok(scheduled_pause_active(&settings, now_ms()))
     }
 
     fn pause_preserves_game(&self) -> bool {
@@ -8062,6 +8109,14 @@ impl round_runner::RoundDriver for ProductionRoundDriver {
     }
 
     fn persist_paused(&self, reason: &str) -> Result<(), String> {
+        // 定时暂停覆盖层不能写入手动 paused：段结束后要自动继续。
+        if !self.control.pause_requested() {
+            crate::log_info!(
+                "special_ops::round",
+                "定时暂停：当前账号结束后停止本轮，不写入手动暂停"
+            );
+            return Ok(());
+        }
         self.persist_global_pause(reason)
     }
 
@@ -8945,7 +9000,7 @@ async fn execute_cutoff_profit_query_action(app: &AppHandle) -> Result<(), Strin
     let initial_revision = coordinator.current_revision()?;
     let started_at_ms = now_ms();
     if !initial_settings.enabled
-        || initial_settings.paused
+        || automation_paused(&initial_settings, started_at_ms)
         || !global_automation_enabled(app)
         || !scheduler.is_armed()
         || login_runtime.snapshot()?.is_some()
@@ -9141,7 +9196,7 @@ async fn execute_profit_query_action(app: &AppHandle) -> Result<(), String> {
     let settings_revision = coordinator.current_revision()?;
     let started_at_ms = now_ms();
     if !settings.enabled
-        || settings.paused
+        || automation_paused(&settings, started_at_ms)
         || !global_automation_enabled(app)
         || !scheduler.is_armed()
         || login_runtime.snapshot()?.is_some()
@@ -9306,7 +9361,7 @@ impl round_scheduler::SchedulerDriver for ProductionRoundSchedulerDriver {
                 let cutoff_pending = cutoff_pending_rule_ids(&settings, &window.day);
                 if settings.enabled
                     && globally_enabled
-                    && !settings.paused
+                    && !automation_paused(&settings, now)
                     && !active_run
                     && (!cutoff_state_exists || !cutoff_pending.is_empty())
                 {
@@ -9317,7 +9372,7 @@ impl round_scheduler::SchedulerDriver for ProductionRoundSchedulerDriver {
                 let pending_rules = collect_pending_profit_rules(&settings, &window.day);
                 if settings.enabled
                     && globally_enabled
-                    && !settings.paused
+                    && !automation_paused(&settings, now)
                     && !active_run
                     && !pending_rules.is_empty()
                 {
@@ -9848,10 +9903,11 @@ fn should_defer_round_pause(active: Option<LoginRunKind>, paused: bool) -> bool 
 /// 运行态在两次读取之间可能变化），因此 poll 认为到期、execute 却拿到空计划是正常竞态。
 /// 这类错误一律全局暂停会让自动化在用户毫不知情时停摆 —— 这正是「为什么全局暂停了」的来源。
 fn is_transient_round_launch_error(error: &str) -> bool {
-    const TRANSIENT: [&str; 6] = [
+    const TRANSIENT: [&str; 7] = [
         EMPTY_ROUND_PLAN_ERROR,
         "当前没有到期制作或子弹任务",
         "特勤处当前处于暂停状态，请先点击继续",
+        SCHEDULED_PAUSE_ERROR,
         "特勤处总开关已关闭",
         "特勤处试运行尚未完成清理",
         "配置保存已陈旧",
@@ -10602,6 +10658,9 @@ fn start_due_round_with_revision(
             }
             if settings.paused {
                 return Err("特勤处当前处于暂停状态，请先点击继续".to_string());
+            }
+            if scheduled_pause_active(&settings, now_ms()) {
+                return Err(SCHEDULED_PAUSE_ERROR.to_string());
             }
             crate::log_info!("special_ops::startup", "开始冻结到期轮次计划");
             let frozen_now_ms = now_ms();
@@ -11948,6 +12007,48 @@ fn daily_exchange_minutes(value: &str) -> Option<u32> {
     (hours < 24 && minutes < 60).then_some(hours * 60 + minutes)
 }
 
+fn scheduled_pause_window_minutes(settings: &ScheduledPauseSettings) -> Option<(u32, u32)> {
+    if !settings.enabled {
+        return None;
+    }
+    let start = daily_exchange_minutes(&settings.start)?;
+    let end = daily_exchange_minutes(&settings.end)?;
+    (start != end).then_some((start, end))
+}
+
+fn minute_in_scheduled_pause(minute: u32, start: u32, end: u32) -> bool {
+    if start < end {
+        minute >= start && minute < end
+    } else {
+        minute >= start || minute < end
+    }
+}
+
+fn scheduled_pause_active(settings: &SpecialOpsSettings, now_ms: i64) -> bool {
+    let Some((start, end)) = scheduled_pause_window_minutes(&settings.scheduled_pause) else {
+        return false;
+    };
+    minute_in_scheduled_pause(local_day_and_minute(now_ms).1, start, end)
+}
+
+fn automation_paused(settings: &SpecialOpsSettings, now_ms: i64) -> bool {
+    settings.paused || scheduled_pause_active(settings, now_ms)
+}
+
+fn scheduled_pause_resume_at_ms(settings: &SpecialOpsSettings, now_ms: i64) -> Option<i64> {
+    let (start, end) = scheduled_pause_window_minutes(&settings.scheduled_pause)?;
+    let minute = local_day_and_minute(now_ms).1;
+    if !minute_in_scheduled_pause(minute, start, end) {
+        return None;
+    }
+    let end_today_ms = daily_exchange_at_ms(now_ms, end)?;
+    if start < end || minute < start {
+        Some(end_today_ms)
+    } else {
+        Some(end_today_ms.saturating_add(24 * 60 * 60_000))
+    }
+}
+
 fn daily_exchange_at_ms(now_ms: i64, exchange_minute: u32) -> Option<i64> {
     let offset = FixedOffset::east_opt(8 * 60 * 60)?;
     let local = chrono::DateTime::<Utc>::from_timestamp_millis(now_ms)?.with_timezone(&offset);
@@ -12455,6 +12556,15 @@ pub(crate) fn build_schedule_with_profit_runtime(
         return ScheduleSnapshot {
             due_accounts: Vec::new(),
             next_wake_at_ms: None,
+            timeline_start_ms: now_ms,
+            timeline_end_ms,
+            timeline_tasks,
+        };
+    }
+    if scheduled_pause_active(settings, now_ms) {
+        return ScheduleSnapshot {
+            due_accounts: Vec::new(),
+            next_wake_at_ms: scheduled_pause_resume_at_ms(settings, now_ms),
             timeline_start_ms: now_ms,
             timeline_end_ms,
             timeline_tasks,
@@ -14828,6 +14938,7 @@ mod tests {
         for error in [
             "当前没有到期制作或子弹任务",
             "特勤处当前处于暂停状态，请先点击继续",
+            SCHEDULED_PAUSE_ERROR,
             "特勤处总开关已关闭",
             "特勤处试运行尚未完成清理",
             "配置保存已陈旧，请刷新后重试",
@@ -15137,6 +15248,165 @@ mod tests {
 
         assert!(snapshot.due_accounts.is_empty());
         assert_eq!(snapshot.next_wake_at_ms, Some(now + 60 * 60 * 1000));
+    }
+
+    fn scheduled_pause(start: &str, end: &str) -> ScheduledPauseSettings {
+        ScheduledPauseSettings {
+            enabled: true,
+            start: start.to_string(),
+            end: end.to_string(),
+        }
+    }
+
+    #[test]
+    fn scheduled_pause_matches_inclusive_start_exclusive_end() {
+        let settings = SpecialOpsSettings {
+            scheduled_pause: scheduled_pause("10:00", "12:30"),
+            ..SpecialOpsSettings::default()
+        };
+        let at = |iso: &str| {
+            chrono::DateTime::parse_from_rfc3339(iso)
+                .unwrap()
+                .timestamp_millis()
+        };
+
+        assert!(!scheduled_pause_active(
+            &settings,
+            at("2026-07-23T09:59:00+08:00")
+        ));
+        assert!(scheduled_pause_active(
+            &settings,
+            at("2026-07-23T10:00:00+08:00")
+        ));
+        assert!(scheduled_pause_active(
+            &settings,
+            at("2026-07-23T12:29:00+08:00")
+        ));
+        assert!(!scheduled_pause_active(
+            &settings,
+            at("2026-07-23T12:30:00+08:00")
+        ));
+    }
+
+    #[test]
+    fn scheduled_pause_wraps_overnight() {
+        let settings = SpecialOpsSettings {
+            scheduled_pause: scheduled_pause("22:00", "06:00"),
+            ..SpecialOpsSettings::default()
+        };
+        let at = |iso: &str| {
+            chrono::DateTime::parse_from_rfc3339(iso)
+                .unwrap()
+                .timestamp_millis()
+        };
+
+        assert!(scheduled_pause_active(
+            &settings,
+            at("2026-07-23T22:00:00+08:00")
+        ));
+        assert!(scheduled_pause_active(
+            &settings,
+            at("2026-07-24T05:59:00+08:00")
+        ));
+        assert!(!scheduled_pause_active(
+            &settings,
+            at("2026-07-24T06:00:00+08:00")
+        ));
+        assert!(!scheduled_pause_active(
+            &settings,
+            at("2026-07-23T21:59:00+08:00")
+        ));
+        assert_eq!(
+            scheduled_pause_resume_at_ms(&settings, at("2026-07-23T23:00:00+08:00")),
+            Some(at("2026-07-24T06:00:00+08:00"))
+        );
+        assert_eq!(
+            scheduled_pause_resume_at_ms(&settings, at("2026-07-24T03:00:00+08:00")),
+            Some(at("2026-07-24T06:00:00+08:00"))
+        );
+    }
+
+    #[test]
+    fn scheduled_pause_equal_bounds_or_disabled_are_inactive() {
+        let disabled = SpecialOpsSettings::default();
+        let equal = SpecialOpsSettings {
+            scheduled_pause: scheduled_pause("10:00", "10:00"),
+            ..SpecialOpsSettings::default()
+        };
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T10:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+
+        assert!(!scheduled_pause_active(&disabled, now));
+        assert!(!scheduled_pause_active(&equal, now));
+        assert!(disabled.paused);
+        assert!(automation_paused(&disabled, now));
+        let running = SpecialOpsSettings {
+            paused: false,
+            scheduled_pause: scheduled_pause("10:00", "12:30"),
+            ..SpecialOpsSettings::default()
+        };
+        assert!(automation_paused(&running, now));
+        assert!(!running.paused);
+    }
+
+    #[test]
+    fn schedule_defers_due_accounts_during_scheduled_pause_and_wakes_at_end() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-23T11:00:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let resume = chrono::DateTime::parse_from_rfc3339("2026-07-23T12:30:00+08:00")
+            .unwrap()
+            .timestamp_millis();
+        let mut settings = SpecialOpsSettings {
+            enabled: true,
+            paused: false,
+            daily_exchange_time: "08:00".to_string(),
+            scheduled_pause: scheduled_pause("10:00", "12:30"),
+            emergency_hotkey: "Ctrl+Shift+F12".to_string(),
+            accounts: vec![AccountPlan {
+                ammo_targets: vec![AmmoTarget {
+                    id: "alpha".to_string(),
+                    name: "目标 A".to_string(),
+                    enabled: true,
+                    seasonal: false,
+                    scroll_steps: 0,
+                    order: 0,
+                    last_success_day: None,
+                    retry_day: None,
+                    retry_count: 0,
+                    last_failure: None,
+                }],
+                ..account("active", AccountStatus::Ready, Vec::new())
+            }],
+            ..SpecialOpsSettings::default()
+        };
+        settings.default_business_config.ammo_targets =
+            business_config_from_account(&settings.accounts[0]).ammo_targets;
+
+        let paused = build_schedule(&settings, now);
+        assert!(paused.due_accounts.is_empty());
+        assert_eq!(paused.next_wake_at_ms, Some(resume));
+        assert!(!paused.timeline_tasks.is_empty());
+
+        let after = build_schedule(&settings, resume);
+        assert_eq!(after.due_accounts.len(), 1);
+        assert_eq!(after.due_accounts[0].ammo_target_ids, ["alpha"]);
+    }
+
+    #[test]
+    fn scheduled_pause_launch_error_is_transient() {
+        assert!(is_transient_round_launch_error(SCHEDULED_PAUSE_ERROR));
+    }
+
+    #[test]
+    fn normalize_rejects_invalid_scheduled_pause_clock() {
+        let mut settings = SpecialOpsSettings::default();
+        settings.scheduled_pause.start = "25:00".to_string();
+        assert_eq!(
+            normalize_settings(settings).unwrap_err(),
+            "定时暂停时间必须是 HH:mm，范围 00:00-23:59"
+        );
     }
 
     #[test]

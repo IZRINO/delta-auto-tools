@@ -355,6 +355,13 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain('tone="warning"');
     });
 
+    it("全局配置提供定时暂停时间段", () => {
+        expect(pageSource).toContain("定时暂停");
+        expect(pageSource).toContain("updateScheduledPause");
+        expect(pageSource).toContain("scheduledPauseActive");
+        expect(pageSource).toContain("该时间段外自动恢复");
+    });
+
     it("人工判定选正在制作时预填异常前剩余时间", () => {
         expect(pageSource).toContain("createStationRemainingTimeDraft");
         expect(pageSource).toContain("createCorrectionDraft(account.stations, bootstrap.nowMs)");
