@@ -502,9 +502,10 @@ pub(crate) fn normalize_card(card: &RapidfireCard) -> Result<RapidfireCard, Stri
     if trigger_key.is_empty() {
         return Err(format!("{} 的触发键不能为空", name));
     }
-    let trigger_primary = keys::trigger_primary_label(&trigger_key)?;
-    if parse_target_key(&trigger_primary).is_none() {
-        return Err(format!("{} 的触发键不支持: {}", name, trigger_primary));
+    for trigger_primary in keys::trigger_primary_labels(&trigger_key)? {
+        if parse_target_key(&trigger_primary).is_none() {
+            return Err(format!("{} 的触发键不支持: {}", name, trigger_primary));
+        }
     }
 
     let target_key =
@@ -562,7 +563,7 @@ fn normalize_trigger_key(raw: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Ok(String::new());
     }
-    hotkey_types::hotkey_to_string(trimmed).map_err(|_| format!("不支持: {trimmed}"))
+    hotkey_types::hotkey_to_string_allowing_chord(trimmed).map_err(|error| format!("不支持: {error}"))
 }
 
 fn default_rapidfire_group(settings_value: &RapidfireSettings) -> RapidfireGroup {
@@ -878,6 +879,19 @@ mod tests {
     fn normalize_card_allows_modified_trigger_key() {
         let n = normalize_card(&sample_card("a", "shift+-")).unwrap();
         assert_eq!(n.trigger_key, "Shift+-");
+    }
+
+    #[test]
+    fn normalize_card_allows_two_primary_trigger_chord() {
+        let n = normalize_card(&sample_card("a", "b+a")).unwrap();
+        assert_eq!(n.trigger_key, "A+B");
+    }
+
+    #[test]
+    fn normalize_card_rejects_three_primary_trigger_chord() {
+        assert!(normalize_card(&sample_card("a", "A+B+C"))
+            .unwrap_err()
+            .contains("最多两个主键"));
     }
 
     #[test]

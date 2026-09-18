@@ -205,9 +205,13 @@ impl HotkeyManager {
             .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if let Some(ref suppressor) = *guard {
-            let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
+            let vks = crate::key_suppressor::hotkey_primaries_to_vks(key)
                 .ok_or_else(|| format!("无法解析按键: {key}"))?;
-            Ok(suppressor.suppress(vk))
+            let mut changed = false;
+            for vk in vks {
+                changed |= suppressor.suppress(vk);
+            }
+            Ok(changed)
         } else {
             Err("按键抑制钩子未安装".to_string())
         }
@@ -221,9 +225,13 @@ impl HotkeyManager {
             .lock()
             .map_err(|_| "热键监听状态已损坏".to_string())?;
         if let Some(ref suppressor) = *guard {
-            let vk = crate::key_suppressor::hotkey_primary_to_vk(key)
+            let vks = crate::key_suppressor::hotkey_primaries_to_vks(key)
                 .ok_or_else(|| format!("无法解析按键: {key}"))?;
-            Ok(suppressor.unsuppress(vk))
+            let mut changed = false;
+            for vk in vks {
+                changed |= suppressor.unsuppress(vk);
+            }
+            Ok(changed)
         } else {
             Err("按键抑制钩子未安装".to_string())
         }
@@ -494,7 +502,7 @@ impl HotkeyManager {
         for (hotkey, action) in hold_bindings {
             next_hold_registrations.push(HoldRegistration {
                 scope: scope.to_string(),
-                binding: HotkeyBinding::parse(&hotkey)?,
+                binding: HotkeyBinding::parse_allowing_chord(&hotkey)?,
                 enabled: true,
                 display_name: display_name.clone(),
                 conflict_policy,
@@ -557,7 +565,7 @@ impl HotkeyManager {
         for (key, action) in bindings {
             regs.push(HoldRegistration {
                 scope: scope.to_string(),
-                binding: HotkeyBinding::parse(&key)?,
+                binding: HotkeyBinding::parse_allowing_chord(&key)?,
                 enabled: true,
                 display_name: display_name.clone(),
                 conflict_policy,
@@ -656,8 +664,7 @@ fn run_listener(
     suppressed_vk_set: Arc<Mutex<Option<Arc<crate::key_suppressor::VkBitset>>>>,
 ) {
     let mut matcher = HotkeyMatcher::new();
-    let mut active_hold_keys: HashMap<PrimaryKey, Vec<HotkeyBinding>> = HashMap::new();
-    let mut active_hold_modifiers = HashSet::new();
+    let mut hold_state = HoldPressState::default();
 
     while !stopped.load(Ordering::SeqCst) {
         // 1. 处理 willhook 正常事件
@@ -679,8 +686,7 @@ fn run_listener(
                     let hold_actions = hold_actions_for_event(
                         &hold_registrations,
                         event,
-                        &mut active_hold_keys,
-                        &mut active_hold_modifiers,
+                        &mut hold_state,
                     );
                     let key_state = matcher.handle_event(event);
                     if global_enabled {
@@ -720,8 +726,7 @@ fn run_listener(
                 let hold_actions = hold_actions_for_event(
                     &hold_registrations,
                     event,
-                    &mut active_hold_keys,
-                    &mut active_hold_modifiers,
+                    &mut hold_state,
                 );
                 let key_state = matcher.handle_event(event);
                 if global_enabled {
@@ -789,11 +794,18 @@ fn actions_for_key_state_with_global_gate(
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Default)]
+struct HoldPressState {
+    primaries: HashSet<PrimaryKey>,
+    modifiers: HashSet<ModifierKey>,
+    active: Vec<HotkeyBinding>,
+}
+
+#[cfg(target_os = "windows")]
 fn hold_actions_for_event(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
     event: KeyboardEvent,
-    active_hold_keys: &mut HashMap<PrimaryKey, Vec<HotkeyBinding>>,
-    active_hold_modifiers: &mut HashSet<ModifierKey>,
+    state: &mut HoldPressState,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
     if matches!(event.is_injected, Some(IsEventInjected::Injected)) {
         return Vec::new();
@@ -807,202 +819,124 @@ fn hold_actions_for_event(
 
     match event.pressed {
         KeyPress::Down(_) => {
-            let Some(primary) = primary else {
-                let Some(modifier) = modifier else {
-                    return Vec::new();
-                };
-                if active_hold_modifiers.insert(modifier) {
-                    return transition_pressed_hold_keys(
-                        hold_registrations,
-                        active_hold_keys,
-                        active_hold_modifiers,
-                        None,
-                    );
-                }
-                return Vec::new();
-            };
-
-            if active_hold_keys.contains_key(&primary) {
-                if let Some(modifier) = modifier {
-                    if active_hold_modifiers.insert(modifier) {
-                        return transition_pressed_hold_keys(
-                            hold_registrations,
-                            active_hold_keys,
-                            active_hold_modifiers,
-                            Some(primary),
-                        );
+            let mut changed = false;
+            if let Some(primary) = primary {
+                if !state.primaries.insert(primary) {
+                    if let Some(modifier) = modifier {
+                        changed = state.modifiers.insert(modifier);
                     }
+                    if !changed {
+                        return Vec::new();
+                    }
+                    return recompute_hold_actions(hold_registrations, state);
                 }
+                changed = true;
+            }
+            if let Some(modifier) = modifier {
+                changed |= state.modifiers.insert(modifier);
+            }
+            if !changed {
                 return Vec::new();
             }
-
-            let key_state = key_state_for_primary(primary, active_hold_modifiers);
-            let (active_bindings, mut actions) =
-                hold_matches_for_key_state(hold_registrations, &key_state, HoldAction::Down);
-            active_hold_keys.insert(primary, active_bindings);
-
-            if let Some(modifier) = modifier {
-                if active_hold_modifiers.insert(modifier) {
-                    actions.extend(transition_pressed_hold_keys(
-                        hold_registrations,
-                        active_hold_keys,
-                        active_hold_modifiers,
-                        Some(primary),
-                    ));
-                }
-            }
-
-            actions
+            recompute_hold_actions(hold_registrations, state)
         }
         KeyPress::Up(_) => {
-            let modifier_changed = modifier
-                .map(|modifier| active_hold_modifiers.remove(&modifier))
-                .unwrap_or(false);
-
-            let mut actions = Vec::new();
+            let mut changed = false;
             if let Some(primary) = primary {
-                if let Some(active_bindings) = active_hold_keys.remove(&primary) {
-                    actions.extend(hold_actions_for_bindings(
-                        hold_registrations,
-                        active_bindings.as_slice(),
-                        HoldAction::Up,
-                    ));
-                }
+                changed |= state.primaries.remove(&primary);
             }
-
-            if modifier_changed {
-                actions.extend(transition_pressed_hold_keys(
-                    hold_registrations,
-                    active_hold_keys,
-                    active_hold_modifiers,
-                    primary,
-                ));
+            if let Some(modifier) = modifier {
+                changed |= state.modifiers.remove(&modifier);
             }
-
-            actions
+            if !changed {
+                return Vec::new();
+            }
+            recompute_hold_actions(hold_registrations, state)
         }
         KeyPress::Other(_) => Vec::new(),
     }
 }
 
 #[cfg(target_os = "windows")]
-fn transition_pressed_hold_keys(
+fn recompute_hold_actions(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
-    active_hold_keys: &mut HashMap<PrimaryKey, Vec<HotkeyBinding>>,
-    active_hold_modifiers: &HashSet<ModifierKey>,
-    ignored_primary: Option<PrimaryKey>,
+    state: &mut HoldPressState,
 ) -> Vec<(HoldActionCallback, HoldAction)> {
-    let primaries = active_hold_keys
-        .keys()
-        .copied()
-        .filter(|primary| Some(*primary) != ignored_primary)
+    let desired = desired_hold_bindings(hold_registrations, &state.primaries, &state.modifiers);
+    let removed = state
+        .active
+        .iter()
+        .filter(|binding| !desired.contains(binding))
+        .cloned()
         .collect::<Vec<_>>();
-    let mut actions = Vec::new();
-
-    for primary in primaries {
-        let next_state = key_state_for_primary(primary, active_hold_modifiers);
-        let next_bindings = hold_bindings_for_key_state(hold_registrations, &next_state);
-        let current_bindings = active_hold_keys.remove(&primary).unwrap_or_default();
-
-        if same_hold_bindings(current_bindings.as_slice(), next_bindings.as_slice()) {
-            active_hold_keys.insert(primary, current_bindings);
-            continue;
-        }
-
-        let removed_bindings = current_bindings
-            .iter()
-            .filter(|binding| !next_bindings.contains(binding))
-            .cloned()
-            .collect::<Vec<_>>();
-        actions.extend(hold_actions_for_bindings(
-            hold_registrations,
-            removed_bindings.as_slice(),
-            HoldAction::Up,
-        ));
-
-        let added_bindings = next_bindings
-            .iter()
-            .filter(|binding| !current_bindings.contains(binding))
-            .cloned()
-            .collect::<Vec<_>>();
-        actions.extend(hold_actions_for_bindings(
-            hold_registrations,
-            added_bindings.as_slice(),
-            HoldAction::Down,
-        ));
-
-        active_hold_keys.insert(primary, next_bindings);
-    }
-
+    let added = desired
+        .iter()
+        .filter(|binding| !state.active.contains(binding))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut actions = hold_actions_for_bindings(hold_registrations, &removed, HoldAction::Up);
+    actions.extend(hold_actions_for_bindings(
+        hold_registrations,
+        &added,
+        HoldAction::Down,
+    ));
+    state.active = desired;
     actions
 }
 
 #[cfg(target_os = "windows")]
-fn key_state_for_primary(
-    primary: PrimaryKey,
-    active_hold_modifiers: &HashSet<ModifierKey>,
-) -> KeyState {
-    KeyState {
-        modifiers: effective_hold_modifiers(primary, active_hold_modifiers),
-        primary,
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn effective_hold_modifiers(
-    primary: PrimaryKey,
-    active_hold_modifiers: &HashSet<ModifierKey>,
-) -> HashSet<ModifierKey> {
-    let mut modifiers = active_hold_modifiers.clone();
-    if matches!(primary, PrimaryKey::Named(types::NamedKey::Alt)) {
-        modifiers.remove(&ModifierKey::Alt);
-    }
-    modifiers
-}
-
-#[cfg(target_os = "windows")]
-fn same_hold_bindings(left: &[HotkeyBinding], right: &[HotkeyBinding]) -> bool {
-    left.len() == right.len() && left.iter().all(|binding| right.contains(binding))
-}
-
-#[cfg(target_os = "windows")]
-fn matches_hold_binding(binding: &HotkeyBinding, key_state: &KeyState) -> bool {
-    binding.primary == key_state.primary && binding.modifiers.is_subset(&key_state.modifiers)
-}
-
-#[cfg(target_os = "windows")]
-fn hold_matches_for_key_state(
+fn desired_hold_bindings(
     hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
-    key_state: &KeyState,
-    hold_action: HoldAction,
-) -> (Vec<HotkeyBinding>, Vec<(HoldActionCallback, HoldAction)>) {
+    primaries: &HashSet<PrimaryKey>,
+    modifiers: &HashSet<ModifierKey>,
+) -> Vec<HotkeyBinding> {
     hold_registrations
         .lock()
         .ok()
         .map(|regs| {
             let mut bindings = Vec::new();
-            let mut actions = Vec::new();
             for scope_regs in regs.values() {
                 for reg in scope_regs {
-                    if reg.enabled && matches_hold_binding(&reg.binding, key_state) {
-                        if !bindings.contains(&reg.binding) {
-                            bindings.push(reg.binding.clone());
-                        }
-                        actions.push((Arc::clone(&reg.action), hold_action.clone()));
+                    if reg.enabled
+                        && matches_hold_pressed(&reg.binding, primaries, modifiers)
+                        && !bindings.contains(&reg.binding)
+                    {
+                        bindings.push(reg.binding.clone());
                     }
                 }
             }
-            (bindings, actions)
+            bindings
         })
         .unwrap_or_default()
 }
 
 #[cfg(target_os = "windows")]
-fn hold_bindings_for_key_state(
-    hold_registrations: &Arc<Mutex<HashMap<String, Vec<HoldRegistration>>>>,
-    key_state: &KeyState,
-) -> Vec<HotkeyBinding> {
-    hold_matches_for_key_state(hold_registrations, key_state, HoldAction::Down).0
+fn matches_hold_pressed(
+    binding: &HotkeyBinding,
+    primaries: &HashSet<PrimaryKey>,
+    modifiers: &HashSet<ModifierKey>,
+) -> bool {
+    if !binding.primaries().all(|primary| primaries.contains(&primary)) {
+        return false;
+    }
+    binding
+        .modifiers
+        .is_subset(&effective_hold_modifiers_for_binding(binding, modifiers))
+}
+
+#[cfg(target_os = "windows")]
+fn effective_hold_modifiers_for_binding(
+    binding: &HotkeyBinding,
+    pressed_modifiers: &HashSet<ModifierKey>,
+) -> HashSet<ModifierKey> {
+    let mut modifiers = pressed_modifiers.clone();
+    if binding
+        .primaries()
+        .any(|primary| matches!(primary, PrimaryKey::Named(types::NamedKey::Alt)))
+    {
+        modifiers.remove(&ModifierKey::Alt);
+    }
+    modifiers
 }
 
 #[cfg(target_os = "windows")]
@@ -1203,21 +1137,18 @@ mod tests {
                 action: callback,
             }],
         )])));
-        let mut active_hold_keys = HashMap::new();
-        let mut active_hold_modifiers = HashSet::new();
+        let mut hold_state = HoldPressState::default();
 
         // 模拟全局关闭期间：状态机处理事件，但调用方不分发返回的 callback。
         let disabled_down = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(KeyboardKey::F3, KeyPress::Down(IsSystemKeyPress::Normal)),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         let disabled_up = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(KeyboardKey::F3, KeyPress::Up(IsSystemKeyPress::Normal)),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
 
         assert_eq!(disabled_down[0].1, HoldAction::Down);
@@ -1226,8 +1157,7 @@ mod tests {
         let enabled_down = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(KeyboardKey::F3, KeyPress::Down(IsSystemKeyPress::Normal)),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(enabled_down.len(), 1);
         assert_eq!(enabled_down[0].1, HoldAction::Down);
@@ -1454,15 +1384,13 @@ mod tests {
                 action: Arc::clone(&rapidfire_action),
             }],
         )])));
-        let mut active_hold_keys = HashMap::new();
-        let mut active_hold_modifiers = HashSet::new();
+        let mut hold_state = HoldPressState::default();
         let event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
 
         let hold_actions = hold_actions_for_event(
             &hold_registrations,
             event,
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         let mut matcher = HotkeyMatcher::new();
         let key_state = matcher.handle_event(event).expect("计时器普通快捷键应触发");
@@ -1598,8 +1526,7 @@ mod tests {
                 action: callback,
             }],
         )])));
-        let mut active_hold_keys = HashMap::new();
-        let mut active_hold_modifiers = HashSet::new();
+        let mut hold_state = HoldPressState::default();
 
         assert!(hold_actions_for_event(
             &hold_registrations,
@@ -1607,8 +1534,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Down(IsSystemKeyPress::Normal)
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         )
         .is_empty());
 
@@ -1618,8 +1544,7 @@ mod tests {
                 KeyboardKey::Other(0xBD),
                 KeyPress::Down(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(down_actions.len(), 1);
         assert_eq!(down_actions[0].1, HoldAction::Down);
@@ -1630,8 +1555,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Up(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(modifier_up_actions.len(), 1);
         assert_eq!(modifier_up_actions[0].1, HoldAction::Up);
@@ -1642,8 +1566,7 @@ mod tests {
                 KeyboardKey::Other(0xBD),
                 KeyPress::Up(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert!(primary_up_actions.is_empty());
     }
@@ -1676,8 +1599,7 @@ mod tests {
                 },
             ],
         )])));
-        let mut active_hold_keys = HashMap::new();
-        let mut active_hold_modifiers = HashSet::new();
+        let mut hold_state = HoldPressState::default();
 
         assert!(hold_actions_for_event(
             &hold_registrations,
@@ -1685,8 +1607,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Down(IsSystemKeyPress::Normal)
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         )
         .is_empty());
 
@@ -1696,8 +1617,7 @@ mod tests {
                 KeyboardKey::Number1,
                 KeyPress::Down(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(down_actions.len(), 2);
         assert!(Arc::ptr_eq(&down_actions[0].0, &modified_callback));
@@ -1711,8 +1631,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Up(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(modifier_up_actions.len(), 1);
         assert!(Arc::ptr_eq(&modifier_up_actions[0].0, &modified_callback));
@@ -1721,8 +1640,7 @@ mod tests {
         let up_actions = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(KeyboardKey::Number1, KeyPress::Up(IsSystemKeyPress::Normal)),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(up_actions.len(), 1);
         assert!(Arc::ptr_eq(&up_actions[0].0, &bare_callback));
@@ -1757,8 +1675,7 @@ mod tests {
                 },
             ],
         )])));
-        let mut active_hold_keys = HashMap::new();
-        let mut active_hold_modifiers = HashSet::new();
+        let mut hold_state = HoldPressState::default();
 
         let down_actions = hold_actions_for_event(
             &hold_registrations,
@@ -1766,8 +1683,7 @@ mod tests {
                 KeyboardKey::Number1,
                 KeyPress::Down(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(down_actions.len(), 1);
         assert!(Arc::ptr_eq(&down_actions[0].0, &bare_callback));
@@ -1779,8 +1695,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Down(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(modifier_down_actions.len(), 1);
         assert!(Arc::ptr_eq(&modifier_down_actions[0].0, &modified_callback));
@@ -1792,8 +1707,7 @@ mod tests {
                 KeyboardKey::LeftShift,
                 KeyPress::Up(IsSystemKeyPress::Normal),
             ),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(modifier_up_actions.len(), 1);
         assert!(Arc::ptr_eq(&modifier_up_actions[0].0, &modified_callback));
@@ -1802,12 +1716,159 @@ mod tests {
         let up_actions = hold_actions_for_event(
             &hold_registrations,
             keyboard_event(KeyboardKey::Number1, KeyPress::Up(IsSystemKeyPress::Normal)),
-            &mut active_hold_keys,
-            &mut active_hold_modifiers,
+            &mut hold_state,
         );
         assert_eq!(up_actions.len(), 1);
         assert!(Arc::ptr_eq(&up_actions[0].0, &bare_callback));
         assert_eq!(up_actions[0].1, HoldAction::Up);
+    }
+
+    #[test]
+    fn replace_hold_scope_accepts_two_primary_chord() {
+        let manager = test_manager();
+        manager
+            .replace_hold_scope(
+                "rapidfire",
+                vec![("A+B".to_string(), Arc::new(|_, _| {}))],
+                "连发器".to_string(),
+                ConflictPolicy::AllowHold,
+            )
+            .expect("连发器应接受双主键触发键");
+        let regs = manager.hold_registrations.lock().unwrap();
+        assert_eq!(
+            regs["rapidfire"][0].binding,
+            HotkeyBinding::parse_allowing_chord("A+B").unwrap()
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn hold_chord_waits_for_second_primary() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let callback: HoldActionCallback = Arc::new(|_, _| {});
+        let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
+            "rapidfire".to_string(),
+            vec![HoldRegistration {
+                scope: "rapidfire".to_string(),
+                binding: HotkeyBinding::parse_allowing_chord("A+B").unwrap(),
+                enabled: true,
+                display_name: "连发器".to_string(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                action: callback,
+            }],
+        )])));
+        let mut hold_state = HoldPressState::default();
+
+        assert!(hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::A, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        )
+        .is_empty());
+
+        let down_actions = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::B, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert_eq!(down_actions.len(), 1);
+        assert_eq!(down_actions[0].1, HoldAction::Down);
+
+        let up_actions = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::A, KeyPress::Up(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert_eq!(up_actions.len(), 1);
+        assert_eq!(up_actions[0].1, HoldAction::Up);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn hold_shift_a_and_a_b_both_fire_when_all_held() {
+        use willhook::event::{IsSystemKeyPress, KeyPress, KeyboardKey};
+
+        let shift_a: HoldActionCallback = Arc::new(|_, _| {});
+        let a_b: HoldActionCallback = Arc::new(|_, _| {});
+        let hold_registrations = Arc::new(Mutex::new(HashMap::from([(
+            "rapidfire".to_string(),
+            vec![
+                HoldRegistration {
+                    scope: "rapidfire".to_string(),
+                    binding: HotkeyBinding::parse("Shift+A").unwrap(),
+                    enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
+                    action: Arc::clone(&shift_a),
+                },
+                HoldRegistration {
+                    scope: "rapidfire".to_string(),
+                    binding: HotkeyBinding::parse_allowing_chord("A+B").unwrap(),
+                    enabled: true,
+                    display_name: "连发器".to_string(),
+                    conflict_policy: ConflictPolicy::AllowHold,
+                    action: Arc::clone(&a_b),
+                },
+            ],
+        )])));
+        let mut hold_state = HoldPressState::default();
+
+        assert!(hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::LeftShift,
+                KeyPress::Down(IsSystemKeyPress::Normal)
+            ),
+            &mut hold_state,
+        )
+        .is_empty());
+
+        let a_down = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::A, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert_eq!(a_down.len(), 1);
+        assert!(Arc::ptr_eq(&a_down[0].0, &shift_a));
+        assert_eq!(a_down[0].1, HoldAction::Down);
+
+        let b_down = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::B, KeyPress::Down(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert_eq!(b_down.len(), 1);
+        assert!(Arc::ptr_eq(&b_down[0].0, &a_b));
+        assert_eq!(b_down[0].1, HoldAction::Down);
+
+        let shift_up = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(
+                KeyboardKey::LeftShift,
+                KeyPress::Up(IsSystemKeyPress::Normal)
+            ),
+            &mut hold_state,
+        );
+        assert_eq!(shift_up.len(), 1);
+        assert!(Arc::ptr_eq(&shift_up[0].0, &shift_a));
+        assert_eq!(shift_up[0].1, HoldAction::Up);
+
+        let b_up = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::B, KeyPress::Up(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert_eq!(b_up.len(), 1);
+        assert!(Arc::ptr_eq(&b_up[0].0, &a_b));
+        assert_eq!(b_up[0].1, HoldAction::Up);
+
+        let a_up = hold_actions_for_event(
+            &hold_registrations,
+            keyboard_event(KeyboardKey::A, KeyPress::Up(IsSystemKeyPress::Normal)),
+            &mut hold_state,
+        );
+        assert!(a_up.is_empty());
     }
 
     #[test]

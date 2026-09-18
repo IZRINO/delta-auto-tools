@@ -147,10 +147,10 @@ worker 每次开火只更新内存 count。`RapidfireLogic.last_runs_emit_at` �
 
 ### 触发键与目标键
 
-- **触发键**（`triggerKey`）：支持单键或组合键（如 `F1`、`Shift+-`、`Alt`），通过 `normalize_trigger_key` 归一化
+- **触发键**（`triggerKey`）：单键、修饰键组合或双主键（如 `F1`、`Shift+-`、`Alt`、`A+B`）。`B+A` 归一为 `A+B`。按住语义是子集匹配：绑定所需键都在按下集合里就开火。卡片 1=`Shift+A`、卡片 2=`A+B` 时同时按住 Shift+A+B 两张都触发；松开导致缺任一所需键只停对应卡片。`normalize_trigger_key` 走 `parse_allowing_chord`
 - **目标键**（`targetKey`）：必须是单键，通过 `normalize_single_key` 归一化，支持字母、数字、功能键、符号键、方向键等
 - 当触发键与目标键主键相同时，`target_fire_plan` 会先 Release 物理按住的触发键再 Press 目标键（enigo 合成）
-- `ignore_trigger_key` 开启时，通过 `HotkeyManager::suppress_key` 在 WH_KEYBOARD_LL 钩子层吞噬物理触发键事件，使其不到达前台应用，但热键回调仍正常触发
+- `ignore_trigger_key` 开启时，通过 `HotkeyManager::suppress_key` 在 WH_KEYBOARD_LL 钩子层吞噬物理触发键事件（双主键会抑制两个 VK），使其不到达前台应用，但热键回调仍正常触发
 
 ### 分组与透明窗口
 

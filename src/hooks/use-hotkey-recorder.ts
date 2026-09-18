@@ -20,6 +20,8 @@ export interface UseHotkeyRecorderOptions {
     recordingCancelledMessage?: string;
     /** 成功录入消息，可以是静态字符串或根据 key 动态生成（默认：(key) => `新的热键已录制：${key}`） */
     keyRecordedMessage?: string | ((key: string) => string);
+    /** 可选：keyup 时格式化；返回字符串则提交，返回 null 保持录制且不报拒绝 */
+    formatKeyUp?: (event: React.KeyboardEvent<HTMLButtonElement>) => string | null;
 }
 
 /** 热键录制 hook 返回值 */
@@ -32,6 +34,8 @@ export interface UseHotkeyRecorderReturn {
     handleKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
     /** 失焦事件处理器（绑定到按钮 onBlur） */
     handleBlur: () => void;
+    /** 键盘抬起处理器（绑定到按钮 onKeyUp；无 formatKeyUp 时为空操作） */
+    handleKeyUp: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 /**
@@ -52,6 +56,7 @@ export function useHotkeyRecorder(options: UseHotkeyRecorderOptions): UseHotkeyR
         keyRejectedMessage = "请按下一个可识别的主键，支持字母、数字、功能键与常用导航键。",
         recordingCancelledMessage = "已取消热键录制。",
         keyRecordedMessage = (key: string) => `新的热键已录制：${key}`,
+        formatKeyUp,
     } = options;
 
     const [isRecording, setIsRecording] = useState(false);
@@ -64,6 +69,7 @@ export function useHotkeyRecorder(options: UseHotkeyRecorderOptions): UseHotkeyR
     const onCancelRef = useRef(onCancel);
     const onStatusMessageRef = useRef(onStatusMessage);
     const keyRecordedMessageRef = useRef(keyRecordedMessage);
+    const formatKeyUpRef = useRef(formatKeyUp);
 
     // 同步 ref — 这些回调可能来自页面级 useCallback，依赖变化时需要更新
     formatKeyRef.current = formatKey;
@@ -72,6 +78,7 @@ export function useHotkeyRecorder(options: UseHotkeyRecorderOptions): UseHotkeyR
     onCancelRef.current = onCancel;
     onStatusMessageRef.current = onStatusMessage;
     keyRecordedMessageRef.current = keyRecordedMessage;
+    formatKeyUpRef.current = formatKeyUp;
 
     const beginRecording = useCallback((currentValue: string) => {
         draftRef.current = currentValue;
@@ -111,6 +118,36 @@ export function useHotkeyRecorder(options: UseHotkeyRecorderOptions): UseHotkeyR
         onStatusMessageRef.current(msg);
     }, [isRecording, keyRejectedMessage]);
 
+    const handleKeyUp = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+        if (!isRecording || !formatKeyUpRef.current) {
+            return;
+        }
+
+        if (event.key === "Tab") {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const nextKey = formatKeyUpRef.current(event);
+        if (!nextKey) {
+            return;
+        }
+
+        if (validateRef.current && !validateRef.current(nextKey, event)) {
+            return;
+        }
+
+        onCommitRef.current(nextKey);
+        setIsRecording(false);
+
+        const msg = typeof keyRecordedMessageRef.current === "function"
+            ? keyRecordedMessageRef.current(nextKey)
+            : keyRecordedMessageRef.current;
+        onStatusMessageRef.current(msg);
+    }, [isRecording]);
+
     const handleBlur = useCallback(() => {
         if (!isRecording) {
             return;
@@ -121,5 +158,5 @@ export function useHotkeyRecorder(options: UseHotkeyRecorderOptions): UseHotkeyR
         onStatusMessageRef.current(recordingCancelledMessage);
     }, [isRecording, recordingCancelledMessage]);
 
-    return {isRecording, beginRecording, handleKeyDown, handleBlur};
+    return {isRecording, beginRecording, handleKeyDown, handleKeyUp, handleBlur};
 }

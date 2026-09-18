@@ -13,7 +13,7 @@
 | 类型 | 文件 | 说明 |
 |------|------|------|
 | `HotkeyManager` | `src-tauri/src/hotkeys.rs` | 共享管理器，持有 willhook 钩子、worker 线程和所有注册项 |
-| `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | 解析后的按键绑定：`primary: PrimaryKey` + `modifiers: HashSet<ModifierKey>` |
+| `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | 解析后的按键绑定：`primary` + 可选 `extra_primary` + `modifiers`。`parse` 仍拒双主键；`parse_allowing_chord` 允第二个主键（连发器 hold） |
 | `HotkeyRegistration` | `src-tauri/src/hotkey_types.rs` | 普通 scope 热键注册项：scope、binding、enabled、action 回调、冲突策略 |
 | `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | hold scope 热键注册项：按下触发 Down，松开触发 Up |
 | `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict`（禁止跨 scope 复用）或 `AllowHold`（允许与 hold scope 共存） |
@@ -76,11 +76,11 @@ graph TD
 
 ### 组合修饰键
 
-hold 匹配器处理组合触发键（如 `Shift+-`）。按下 `Shift+1` 会同时触发 `Shift+1` 绑定和裸 `1` 绑定。松开 Shift 只停止 `Shift+1` 会话，裸 `1` 会话继续。先按 `1` 再按 Shift 只新增 `Shift+1` 会话，不重启裸 `1`。
+hold 匹配器按当前按下的主键集合 + 修饰键集合重算活跃绑定（子集）：绑定内每个主键都在按下集合中，且 `modifiers` 是当前修饰键的子集。按下 `Shift+1` 会同时触发 `Shift+1` 和裸 `1`。`Shift+A` 与 `A+B` 两张卡在同时按住 Shift+A+B 时都 Down；松 Shift 只停前者，松 B 只停后者。松开 Shift 只停止 `Shift+1` 会话，裸 `1` 会话继续。先按 `1` 再按 Shift 只新增 `Shift+1` 会话，不重启裸 `1`。
 
 ### HotkeyBinding 解析
 
-`HotkeyBinding::parse` 解析字符串如 `"Ctrl+Shift+F2"`、`"Alt+Space"`、裸 `"Alt"`。修饰键顺序规范化为 Ctrl > Alt > Shift > Super。
+`HotkeyBinding::parse` 解析字符串如 `"Ctrl+Shift+F2"`、`"Alt+Space"`、裸 `"Alt"`，仍拒绝两个主键。`parse_allowing_chord` 接受 `"A+B"`（规范化排序，`+` 作为主键排最后写成 `A++`）。修饰键顺序规范化为 Ctrl > Alt > Shift > Super。hold 注册走 `parse_allowing_chord`。
 
 ## 集成点
 

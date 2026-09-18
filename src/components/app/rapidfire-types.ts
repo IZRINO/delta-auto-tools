@@ -373,29 +373,47 @@ function normalizeRapidfireModifier(raw: string): SupportedModifierKeyLabel | nu
     return null;
 }
 
+function rapidfireHotkeySegments(raw: string): string[] {
+    const parts = raw.trim().split("+").map((segment) => segment.trim());
+    const segments: string[] = [];
+    for (let index = 0; index < parts.length; index += 1) {
+        const segment = parts[index] === "" && index === parts.length - 1 ? "+" : parts[index];
+        if (segment === "") continue;
+        segments.push(segment);
+    }
+    return segments;
+}
+
+function sortRapidfirePrimaries(primaries: string[]): string[] {
+    return [...primaries].sort((left, right) => {
+        if (left === "+") return 1;
+        if (right === "+") return -1;
+        return left.localeCompare(right);
+    });
+}
+
 function normalizeRapidfireHotkey(raw: string): string {
     const trimmed = raw.trim();
-    const segments = trimmed.split("+").map((segment) => segment.trim());
+    const segments = rapidfireHotkeySegments(trimmed);
     if (segments.length === 0) return "";
 
     const modifiers = new Set<SupportedModifierKeyLabel>();
-    let primary = "";
-    for (let index = 0; index < segments.length; index += 1) {
-        const segment = segments[index] === "" && index === segments.length - 1 ? "+" : segments[index];
-        if (segment === "") continue;
-
+    const primaries: string[] = [];
+    for (const segment of segments) {
         const modifier = normalizeRapidfireModifier(segment);
         if (modifier) {
             modifiers.add(modifier);
             continue;
         }
-        if (primary) return trimmed;
-        primary = normalizeRapidfirePrimary(segment);
+        primaries.push(normalizeRapidfirePrimary(segment));
     }
 
-    if (!primary) return trimmed;
+    if (primaries.length === 0 || primaries.length > 2) return trimmed;
 
-    return [...SUPPORTED_MODIFIER_KEY_LABELS.filter((modifier) => modifiers.has(modifier)), primary].join("+");
+    return [
+        ...SUPPORTED_MODIFIER_KEY_LABELS.filter((modifier) => modifiers.has(modifier)),
+        ...sortRapidfirePrimaries(primaries),
+    ].join("+");
 }
 
 function rapidfirePrimaryKeyLabel(key: string): string {
@@ -407,27 +425,26 @@ function rapidfirePrimaryKeyLabel(key: string): string {
     return key;
 }
 
-function validateRapidfireHotkeyPrimary(key: string, label: string, allowModifiers: boolean): string {
-    if (!allowModifiers || !key.includes("+")) return key;
+function collectRapidfireHotkeyPrimaries(key: string, label: string, allowChord: boolean): string[] {
+    if (!key.includes("+")) return [key];
 
-    const segments = key.split("+").map((segment) => segment.trim());
-    let primaryKey = "";
-
-    for (let index = 0; index < segments.length; index += 1) {
-        const segment = segments[index] === "" && index === segments.length - 1 ? "+" : segments[index];
-        if (segment === "") continue;
+    const primaries: string[] = [];
+    for (const segment of rapidfireHotkeySegments(key)) {
         if (normalizeRapidfireModifier(segment)) continue;
-        if (primaryKey) {
-            throw new Error(`${label}格式无效，组合键只能包含一个主键。`);
-        }
-        primaryKey = segment;
+        primaries.push(segment);
     }
 
-    if (!primaryKey) {
+    if (primaries.length === 0) {
         throw new Error(`${label}格式无效，缺少主键。`);
     }
+    if (primaries.length > 2) {
+        throw new Error(`${label}格式无效，组合键最多两个主键。`);
+    }
+    if (primaries.length > 1 && !allowChord) {
+        throw new Error(`${label}格式无效，组合键只能包含一个主键。`);
+    }
 
-    return primaryKey;
+    return primaries;
 }
 
 function validateRapidfireKey(key: string, label: string, options: { allowModifiers: boolean }): void {
@@ -439,9 +456,11 @@ function validateRapidfireKey(key: string, label: string, options: { allowModifi
         throw new Error(`${label}必须是单键，不能包含组合键。`);
     }
 
-    const primaryKey = validateRapidfireHotkeyPrimary(key, label, options.allowModifiers);
-    if (!SUPPORTED_KEY_LABELS.has(primaryKey)) {
-        throw new Error(`${label}不支持：${primaryKey}。`);
+    const primaries = collectRapidfireHotkeyPrimaries(key, label, options.allowModifiers);
+    for (const primaryKey of primaries) {
+        if (!SUPPORTED_KEY_LABELS.has(primaryKey)) {
+            throw new Error(`${label}不支持：${primaryKey}。`);
+        }
     }
 }
 
@@ -863,4 +882,86 @@ export function formatTriggerHotkey(
     if (event.metaKey) modifiers.push("Super");
 
     return [...modifiers, primary].join("+");
+}
+
+export type RapidfireTriggerChordDraft = {
+    downPrimaries: string[];
+};
+
+export type RapidfireTriggerChordEvent = {
+    kind: "down" | "up";
+    key: string;
+    code: string;
+    ctrlKey: boolean;
+    altKey: boolean;
+    shiftKey: boolean;
+    metaKey: boolean;
+    repeat?: boolean;
+};
+
+export type RapidfireTriggerChordResult =
+    | {type: "ignore"; draft: RapidfireTriggerChordDraft}
+    | {type: "pending"; draft: RapidfireTriggerChordDraft; preview: string}
+    | {type: "commit"; key: string; draft: RapidfireTriggerChordDraft};
+
+export function emptyRapidfireTriggerChordDraft(): RapidfireTriggerChordDraft {
+    return {downPrimaries: []};
+}
+
+function triggerChordPrimary(event: RapidfireTriggerChordEvent): string {
+    if (normalizeRapidfireModifier(event.key)) return "";
+    return normalizeRapidfireCode(event.code) || normalizeRapidfireKey(event.key);
+}
+
+function triggerChordModifiers(event: RapidfireTriggerChordEvent): SupportedModifierKeyLabel[] {
+    const modifiers: SupportedModifierKeyLabel[] = [];
+    if (event.ctrlKey) modifiers.push("Ctrl");
+    if (event.altKey) modifiers.push("Alt");
+    if (event.shiftKey) modifiers.push("Shift");
+    if (event.metaKey) modifiers.push("Super");
+    return modifiers;
+}
+
+export function reduceRapidfireTriggerChord(
+    draft: RapidfireTriggerChordDraft,
+    event: RapidfireTriggerChordEvent,
+): RapidfireTriggerChordResult {
+    if (event.repeat) {
+        return {type: "ignore", draft};
+    }
+
+    const primary = triggerChordPrimary(event);
+    if (!primary) {
+        return {type: "ignore", draft};
+    }
+
+    if (event.kind === "down") {
+        if (draft.downPrimaries.includes(primary)) {
+            return {type: "ignore", draft};
+        }
+        if (draft.downPrimaries.length === 0 && triggerChordModifiers(event).length > 0) {
+            return {
+                type: "commit",
+                key: formatTriggerHotkey(event),
+                draft: emptyRapidfireTriggerChordDraft(),
+            };
+        }
+        if (draft.downPrimaries.length === 0) {
+            const next = {downPrimaries: [primary]};
+            return {type: "pending", draft: next, preview: primary};
+        }
+        if (draft.downPrimaries.length === 1) {
+            const key = normalizeRapidfireKey(
+                [...triggerChordModifiers(event), ...draft.downPrimaries, primary].join("+"),
+            );
+            return {type: "commit", key, draft: emptyRapidfireTriggerChordDraft()};
+        }
+        return {type: "ignore", draft};
+    }
+
+    if (draft.downPrimaries.length === 1 && draft.downPrimaries[0] === primary) {
+        return {type: "commit", key: primary, draft: emptyRapidfireTriggerChordDraft()};
+    }
+
+    return {type: "ignore", draft};
 }

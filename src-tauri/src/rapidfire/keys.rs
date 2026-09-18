@@ -142,12 +142,14 @@ pub fn target_fire_plan(
 ) -> Result<TargetFirePlan, String> {
     let target_key =
         parse_target_key(target_key).ok_or_else(|| format!("不支持的目标键: {target_key}"))?;
-    let held_trigger_key = held_trigger_key
-        .map(trigger_primary_label)
-        .transpose()?
-        .map(|key| parse_target_key(&key).ok_or_else(|| format!("不支持的触发键: {key}")))
-        .transpose()?;
-    let trigger_key_to_release = held_trigger_key.filter(|trigger_key| trigger_key == &target_key);
+    let trigger_key_to_release = match held_trigger_key {
+        Some(raw) => trigger_primary_labels(raw)?
+            .into_iter()
+            .find_map(|label| {
+                parse_target_key(&label).filter(|trigger_key| trigger_key == &target_key)
+            }),
+        None => None,
+    };
 
     Ok(TargetFirePlan {
         target_key,
@@ -249,8 +251,8 @@ pub fn parse_target_key(key: &str) -> Option<Key> {
     }
 }
 
-pub fn trigger_primary_label(trigger_key: &str) -> Result<String, String> {
-    hotkey_types::hotkey_primary_label(trigger_key)
+pub fn trigger_primary_labels(trigger_key: &str) -> Result<Vec<String>, String> {
+    hotkey_types::hotkey_primary_labels(trigger_key)
         .map_err(|_| format!("不支持的触发键: {trigger_key}"))
 }
 
@@ -303,6 +305,14 @@ mod tests {
     fn target_fire_plan_keeps_different_trigger_key_held() {
         let plan = target_fire_plan("Space", Some("W")).unwrap();
         assert_eq!(plan.target_key, parse_target_key("Space").unwrap());
+        assert_eq!(plan.trigger_key_to_release, None);
+    }
+
+    #[test]
+    fn target_fire_plan_releases_matching_chord_primary() {
+        let plan = target_fire_plan("A", Some("A+B")).unwrap();
+        assert_eq!(plan.trigger_key_to_release, parse_target_key("A"));
+        let plan = target_fire_plan("C", Some("A+B")).unwrap();
         assert_eq!(plan.trigger_key_to_release, None);
     }
 

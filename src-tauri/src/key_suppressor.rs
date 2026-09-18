@@ -366,10 +366,14 @@ impl Drop for KeySuppressor {
 /// 将热键字符串（如 "E"、"F1"、"Shift+-"）中的主键解析为 Windows VK code。
 ///
 /// 注意：只解析主键，忽略修饰键。因为抑制是针对物理主键的。
-pub fn hotkey_primary_to_vk(raw: &str) -> Option<u32> {
+pub fn hotkey_primaries_to_vks(raw: &str) -> Option<Vec<u32>> {
     use crate::hotkey_types::HotkeyBinding;
-    let binding = HotkeyBinding::parse(raw).ok()?;
-    primary_key_to_vk(binding.primary)
+    let binding = HotkeyBinding::parse_allowing_chord(raw).ok()?;
+    let mut vks = Vec::new();
+    for primary in binding.primaries() {
+        vks.push(primary_key_to_vk(primary)?);
+    }
+    Some(vks)
 }
 
 /// 将 PrimaryKey 映射为 Windows VK code
@@ -743,6 +747,13 @@ mod tests {
     use super::*;
     use crossbeam_channel::TrySendError;
     use willhook::event::KeyboardKey;
+
+    #[test]
+    fn chord_hotkey_maps_to_both_primary_vks() {
+        let vks = hotkey_primaries_to_vks("A+B").expect("A+B 应解析出两个 VK");
+        assert_eq!(vks, vec![b'A' as u32, b'B' as u32]);
+        assert_eq!(hotkey_primaries_to_vks("F1"), Some(vec![0x70]));
+    }
 
     fn suppressed_event(vk_code: u32) -> SuppressedKeyboardEvent {
         SuppressedKeyboardEvent {

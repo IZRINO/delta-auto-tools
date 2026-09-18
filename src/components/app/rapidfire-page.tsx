@@ -50,9 +50,10 @@ import {
   createRapidfireCard,
   createRapidfireGroup,
   DEFAULT_RAPIDFIRE_GROUP_ID,
-  formatTriggerHotkey,
+  emptyRapidfireTriggerChordDraft,
   formatTriggerKey,
   moveRapidfireCard,
+  reduceRapidfireTriggerChord,
   parseRapidfireSettingsForm,
   RAPIDFIRE_AUTOSAVE_DELAY_MS,
   RAPIDFIRE_DEFAULT_COMPENSATION_DELAY_MAX_MS,
@@ -91,6 +92,7 @@ const RAPIDFIRE_BOOTSTRAP_SPEC = {
 
 type RapidfireDisplayMode = "display" | "position";
 type RecordingTarget = { cardId: string; field: "triggerKey" | "targetKey" } | null;
+const TRIGGER_CHORD_PENDING = "__pending__";
 
 function rapidfireCardId(): string {
     const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -265,20 +267,55 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
 
     const recordingTargetRef = useRef<RecordingTarget>(null);
     recordingTargetRef.current = recordingTarget;
+    const triggerChordRef = useRef(emptyRapidfireTriggerChordDraft());
 
     const recorder = useHotkeyRecorder({
         formatKey: (event) => {
             const target = recordingTargetRef.current;
             if (!target) return null;
             if (target.field === "triggerKey") {
-                const result = formatTriggerHotkey(event);
-                return result || null;
+                const result = reduceRapidfireTriggerChord(triggerChordRef.current, {
+                    kind: "down",
+                    key: event.key,
+                    code: event.code,
+                    ctrlKey: event.ctrlKey,
+                    altKey: event.altKey,
+                    shiftKey: event.shiftKey,
+                    metaKey: event.metaKey,
+                    repeat: event.repeat,
+                });
+                triggerChordRef.current = result.draft;
+                if (result.type === "commit") return result.key;
+                if (result.type === "pending") {
+                    setStatusMessage(`已按 ${result.preview}，可再按第二键组成组合，或松手保存单键。`);
+                    return TRIGGER_CHORD_PENDING;
+                }
+                return TRIGGER_CHORD_PENDING;
             }
             return formatTriggerKey(event.key) || null;
+        },
+        formatKeyUp: (event) => {
+            const target = recordingTargetRef.current;
+            if (!target || target.field !== "triggerKey") return null;
+            const result = reduceRapidfireTriggerChord(triggerChordRef.current, {
+                kind: "up",
+                key: event.key,
+                code: event.code,
+                ctrlKey: event.ctrlKey,
+                altKey: event.altKey,
+                shiftKey: event.shiftKey,
+                metaKey: event.metaKey,
+                repeat: event.repeat,
+            });
+            triggerChordRef.current = result.draft;
+            return result.type === "commit" ? result.key : null;
         },
         validate: (key, event) => {
             const target = recordingTargetRef.current;
             if (!target || !key) return false;
+            if (key === TRIGGER_CHORD_PENDING) {
+                return false;
+            }
             const modifierOnly = ["Control", "Alt", "Shift", "Meta"].includes(event.key);
             if (modifierOnly) {
                 setStatusMessage(target.field === "triggerKey" ? "请按下组合键的主键。" : "目标键必须是单键。");
@@ -293,12 +330,14 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
         onCommit: (key) => {
             const target = recordingTargetRef.current;
             if (!target) return;
+            triggerChordRef.current = emptyRapidfireTriggerChordDraft();
             setRecordingTarget(null);
             updateCard(target.cardId, {[target.field]: key});
         },
         onCancel: (draft) => {
             const target = recordingTargetRef.current;
             if (!target) return;
+            triggerChordRef.current = emptyRapidfireTriggerChordDraft();
             setRecordingTarget(null);
             updateCard(target.cardId, {[target.field]: draft});
         },
@@ -341,7 +380,8 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
     const beginRecording = useCallback((card: RapidfireCardForm, field: "triggerKey" | "targetKey") => {
         setRecordingTarget({cardId: card.id, field});
         recorder.beginRecording(field === "triggerKey" ? card.triggerKey : card.targetKey);
-        setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}，按下主键会保存；失焦会取消。触发键可按住 Ctrl/Alt/Shift/Win 录制组合键。`);
+        triggerChordRef.current = emptyRapidfireTriggerChordDraft();
+        setStatusMessage(`正在录制 ${card.name || "连发器"} 的${field === "triggerKey" ? "触发键" : "目标键"}。触发键可按住 Ctrl/Alt/Shift/Win 或先按住一个主键再按第二键；松手保存单键。失焦取消。`);
     }, [recorder]);
 
     const addCard = useCallback(() => {
@@ -700,6 +740,7 @@ function RapidfireWorkbench({highlightCardId, isNativeShell}: {
                             onUpdate={updateCard}
                             onRecord={beginRecording}
                             onRecorderKeyDown={recorder.handleKeyDown}
+                            onRecorderKeyUp={recorder.handleKeyUp}
                             onRecorderBlur={recorder.handleBlur}
                             onMove={moveCard}
                             onDragStart={() => beginCardDrag(card.id)}
@@ -735,6 +776,7 @@ interface RapidfireCardEditorProps {
     onUpdate: (id: string, value: Partial<RapidfireCardForm>) => void;
     onRecord: (card: RapidfireCardForm, field: "triggerKey" | "targetKey") => void;
     onRecorderKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+    onRecorderKeyUp: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
     onRecorderBlur: () => void;
     onMove: (activeId: string, overId: string) => void;
     onDragStart: () => void;
@@ -761,6 +803,7 @@ function RapidfireCardEditor({
                                  onUpdate,
                                  onRecord,
                                  onRecorderKeyDown,
+                                 onRecorderKeyUp,
                                  onRecorderBlur,
                                  onMove,
                                  onDragStart,
@@ -863,6 +906,7 @@ function RapidfireCardEditor({
                         disabled={disabled}
                         onClick={() => onRecord(card, "triggerKey")}
                         onKeyDown={onRecorderKeyDown}
+                        onKeyUp={onRecorderKeyUp}
                         onBlur={onRecorderBlur}
                     />
                 )}
@@ -876,6 +920,7 @@ function RapidfireCardEditor({
                         disabled={disabled}
                         onClick={() => onRecord(card, "targetKey")}
                         onKeyDown={onRecorderKeyDown}
+                        onKeyUp={onRecorderKeyUp}
                         onBlur={onRecorderBlur}
                     />
                 )}
@@ -1011,6 +1056,7 @@ function KeyRecorderButton({
                                disabled,
                                onClick,
                                onKeyDown,
+                               onKeyUp,
                                onBlur,
                            }: {
     value: string;
@@ -1018,6 +1064,7 @@ function KeyRecorderButton({
     disabled: boolean;
     onClick: () => void;
     onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
+    onKeyUp: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
     onBlur: () => void;
 }) {
     return (
@@ -1033,6 +1080,7 @@ function KeyRecorderButton({
             onClick={onClick}
             onBlur={onBlur}
             onKeyDown={onKeyDown}
+            onKeyUp={onKeyUp}
         >
             <RiKeyboardLine data-icon="inline-start"/>
             <span className="truncate">{active ? "按任意键录入..." : value || "点击录入"}</span>

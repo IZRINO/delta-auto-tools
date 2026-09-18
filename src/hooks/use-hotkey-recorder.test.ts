@@ -31,7 +31,11 @@ function createMockEvent(overrides: Partial<MockKeyboardEvent> & { key: string }
  * 模拟录制状态机：
  * beginRecording → handleKeyDown → handleBlur
  */
-function createRecorderState(formatKey: (event: MockKeyboardEvent) => string | null, validate?: (key: string, event: MockKeyboardEvent) => boolean) {
+function createRecorderState(
+    formatKey: (event: MockKeyboardEvent) => string | null,
+    validate?: (key: string, event: MockKeyboardEvent) => boolean,
+    formatKeyUp?: (event: MockKeyboardEvent) => string | null,
+) {
     let isRecording = false;
     let draft = "";
     const commits: Array<{ key: string }> = [];
@@ -67,6 +71,26 @@ function createRecorderState(formatKey: (event: MockKeyboardEvent) => string | n
         messages.push(`key-recorded:${nextKey}`);
     }
 
+    function handleKeyUp(event: MockKeyboardEvent) {
+        if (!isRecording || !formatKeyUp) return;
+        if (event.key === "Tab") return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const nextKey = formatKeyUp(event);
+        if (!nextKey) return;
+
+        if (validate && !validate(nextKey, event)) {
+            messages.push("validate-failed");
+            return;
+        }
+
+        commits.push({key: nextKey});
+        isRecording = false;
+        messages.push(`key-recorded:${nextKey}`);
+    }
+
     function handleBlur() {
         if (!isRecording) return;
         cancels.push({draft});
@@ -74,7 +98,7 @@ function createRecorderState(formatKey: (event: MockKeyboardEvent) => string | n
         messages.push("recording-cancelled");
     }
 
-    return {isRecording: () => isRecording, beginRecording, handleKeyDown, handleBlur, commits, cancels, messages};
+    return {isRecording: () => isRecording, beginRecording, handleKeyDown, handleKeyUp, handleBlur, commits, cancels, messages};
 }
 
 describe("useHotkeyRecorder core logic", () => {
@@ -117,6 +141,21 @@ describe("useHotkeyRecorder core logic", () => {
         expect(recorder.isRecording()).toBe(true);
         expect(recorder.commits).toHaveLength(0);
         expect(recorder.messages).toContain("validate-failed");
+    });
+
+    it("keyup with formatKeyUp commits without treating null as reject", () => {
+        const recorder = createRecorderState(
+            () => null,
+            undefined,
+            (event) => event.key === "a" ? "A" : null,
+        );
+        recorder.beginRecording("old");
+        recorder.handleKeyUp(createMockEvent({key: "Shift"}));
+        expect(recorder.isRecording()).toBe(true);
+        expect(recorder.commits).toHaveLength(0);
+        recorder.handleKeyUp(createMockEvent({key: "a"}));
+        expect(recorder.isRecording()).toBe(false);
+        expect(recorder.commits).toEqual([{key: "A"}]);
     });
 
     it("blur cancels recording and calls onCancel with draft", () => {

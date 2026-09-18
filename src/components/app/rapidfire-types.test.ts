@@ -3,6 +3,7 @@ import {describe, expect, it} from "vitest";
 import type {RapidfireSettings} from "@/components/app/rapidfire-types";
 import {
     DEFAULT_RAPIDFIRE_GROUP_ID,
+    emptyRapidfireTriggerChordDraft,
     formatTriggerHotkey,
     formatTriggerKey,
     isRapidfireDirty,
@@ -12,6 +13,7 @@ import {
     rapidfireCardStatus,
     rapidfireEffectiveCardsByGroup,
     rapidfireSettingsToForm,
+    reduceRapidfireTriggerChord,
 } from "@/components/app/rapidfire-types";
 
 function sampleSettings(): RapidfireSettings {
@@ -180,6 +182,87 @@ describe("rapidfire-types", () => {
 
         const parsed = parseRapidfireSettingsForm(form);
         expect(parsed.cards[0].triggerKey).toBe("Shift++");
+    });
+
+    it("normalizes two-primary trigger chords", () => {
+        const form = rapidfireSettingsToForm(sampleSettings());
+        form.cards[0].triggerKey = "b+a";
+
+        const parsed = parseRapidfireSettingsForm(form);
+        expect(parsed.cards[0].triggerKey).toBe("A+B");
+    });
+
+    it("rejects three-primary trigger chords", () => {
+        const form = rapidfireSettingsToForm(sampleSettings());
+        form.cards[0].triggerKey = "A+B+C";
+
+        expect(() => parseRapidfireSettingsForm(form)).toThrow("最多两个主键");
+    });
+
+    it("records a single trigger key on keyup", () => {
+        const down = reduceRapidfireTriggerChord(emptyRapidfireTriggerChordDraft(), {
+            kind: "down",
+            key: "a",
+            code: "KeyA",
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+        expect(down).toMatchObject({type: "pending", preview: "A"});
+        if (down.type !== "pending") throw new Error("expected pending");
+
+        const up = reduceRapidfireTriggerChord(down.draft, {
+            kind: "up",
+            key: "a",
+            code: "KeyA",
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+        expect(up).toEqual({type: "commit", key: "A", draft: emptyRapidfireTriggerChordDraft()});
+    });
+
+    it("records A+B when the second primary goes down", () => {
+        const first = reduceRapidfireTriggerChord(emptyRapidfireTriggerChordDraft(), {
+            kind: "down",
+            key: "a",
+            code: "KeyA",
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+        if (first.type !== "pending") throw new Error("expected pending");
+
+        const second = reduceRapidfireTriggerChord(first.draft, {
+            kind: "down",
+            key: "b",
+            code: "KeyB",
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: false,
+            metaKey: false,
+        });
+        expect(second).toEqual({type: "commit", key: "A+B", draft: emptyRapidfireTriggerChordDraft()});
+    });
+
+    it("still commits Shift+A on the primary keydown", () => {
+        const result = reduceRapidfireTriggerChord(emptyRapidfireTriggerChordDraft(), {
+            kind: "down",
+            key: "A",
+            code: "KeyA",
+            ctrlKey: false,
+            altKey: false,
+            shiftKey: true,
+            metaKey: false,
+        });
+        expect(result).toEqual({
+            type: "commit",
+            key: "Shift+A",
+            draft: emptyRapidfireTriggerChordDraft(),
+        });
     });
 
     it("rejects modifier combinations for target keys", () => {

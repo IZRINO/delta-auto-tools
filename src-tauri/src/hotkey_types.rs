@@ -55,10 +55,19 @@ pub enum NamedKey {
 pub struct HotkeyBinding {
     pub modifiers: HashSet<ModifierKey>,
     pub primary: PrimaryKey,
+    pub extra_primary: Option<PrimaryKey>,
 }
 
 impl HotkeyBinding {
     pub fn parse(raw: &str) -> Result<Self, String> {
+        Self::parse_with(raw, false)
+    }
+
+    pub fn parse_allowing_chord(raw: &str) -> Result<Self, String> {
+        Self::parse_with(raw, true)
+    }
+
+    fn parse_with(raw: &str, allow_chord: bool) -> Result<Self, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return Err("热键不能为空".to_string());
@@ -73,10 +82,10 @@ impl HotkeyBinding {
 
         let mut modifiers = HashSet::new();
         let mut primary = None;
+        let mut extra_primary = None;
 
         while let Some(segment) = segments.next() {
             let primary_segment = if segment.is_empty()
-                && primary.is_none()
                 && segments.peek().is_none()
                 && trimmed.ends_with('+')
             {
@@ -94,18 +103,59 @@ impl HotkeyBinding {
                 }
             }
 
-            if primary.is_some() {
+            let parsed = parse_primary(primary_segment)?;
+            if primary.is_none() {
+                primary = Some(parsed);
+                continue;
+            }
+            if !allow_chord {
                 return Err(format!("热键格式无效，存在多个主键: {trimmed}"));
             }
-
-            primary = Some(parse_primary(primary_segment)?);
+            if extra_primary.is_some() {
+                return Err(format!("组合键最多两个主键: {trimmed}"));
+            }
+            extra_primary = Some(parsed);
         }
 
         let Some(primary) = primary else {
             return Err(format!("热键格式无效，缺少主键: {trimmed}"));
         };
 
-        Ok(Self { modifiers, primary })
+        let (primary, extra_primary) = canonicalize_primaries(primary, extra_primary);
+        Ok(Self {
+            modifiers,
+            primary,
+            extra_primary,
+        })
+    }
+
+    pub fn primaries(&self) -> impl Iterator<Item = PrimaryKey> {
+        std::iter::once(self.primary).chain(self.extra_primary)
+    }
+}
+
+fn canonicalize_primaries(
+    primary: PrimaryKey,
+    extra_primary: Option<PrimaryKey>,
+) -> (PrimaryKey, Option<PrimaryKey>) {
+    let Some(extra) = extra_primary else {
+        return (primary, None);
+    };
+    if extra == primary {
+        return (primary, None);
+    }
+    if primary_sort_key(extra) < primary_sort_key(primary) {
+        (extra, Some(primary))
+    } else {
+        (primary, Some(extra))
+    }
+}
+
+fn primary_sort_key(primary: PrimaryKey) -> (u8, String) {
+    if matches!(primary, PrimaryKey::Named(NamedKey::Plus)) {
+        (1, "+".to_string())
+    } else {
+        (0, primary_to_string(primary))
     }
 }
 
@@ -283,8 +333,9 @@ pub fn primary_to_string(primary: PrimaryKey) -> String {
 }
 
 pub fn binding_to_string(binding: &HotkeyBinding) -> String {
-    let primary = primary_to_string(binding.primary);
-    let mut segments = Vec::with_capacity(binding.modifiers.len() + 1);
+    let mut segments = Vec::with_capacity(
+        binding.modifiers.len() + 1 + usize::from(binding.extra_primary.is_some()),
+    );
     for modifier in [
         ModifierKey::Ctrl,
         ModifierKey::Alt,
@@ -295,7 +346,10 @@ pub fn binding_to_string(binding: &HotkeyBinding) -> String {
             segments.push(modifier_to_string(modifier).to_string());
         }
     }
-    segments.push(primary);
+    segments.push(primary_to_string(binding.primary));
+    if let Some(extra) = binding.extra_primary {
+        segments.push(primary_to_string(extra));
+    }
     segments.join("+")
 }
 
@@ -303,8 +357,21 @@ pub fn hotkey_to_string(raw: &str) -> Result<String, String> {
     HotkeyBinding::parse(raw).map(|binding| binding_to_string(&binding))
 }
 
+pub fn hotkey_to_string_allowing_chord(raw: &str) -> Result<String, String> {
+    HotkeyBinding::parse_allowing_chord(raw).map(|binding| binding_to_string(&binding))
+}
+
 pub fn hotkey_primary_label(raw: &str) -> Result<String, String> {
     HotkeyBinding::parse(raw).map(|binding| primary_to_string(binding.primary))
+}
+
+pub fn hotkey_primary_labels(raw: &str) -> Result<Vec<String>, String> {
+    let binding = HotkeyBinding::parse_allowing_chord(raw)?;
+    let mut labels = vec![primary_to_string(binding.primary)];
+    if let Some(extra) = binding.extra_primary {
+        labels.push(primary_to_string(extra));
+    }
+    Ok(labels)
 }
 
 #[cfg(target_os = "windows")]
@@ -595,5 +662,50 @@ mod tests {
         assert!(binding.modifiers.is_empty());
         assert_eq!(binding.primary, PrimaryKey::Named(NamedKey::Alt));
         assert_eq!(hotkey_to_string("alt").unwrap(), "Alt");
+    }
+
+    #[test]
+    fn parse_still_rejects_two_primaries() {
+        let error = HotkeyBinding::parse("A+B").expect_err("should reject");
+        assert!(error.contains("多个主键"));
+    }
+
+    #[test]
+    fn parse_allowing_chord_normalizes_two_primaries() {
+        let binding = HotkeyBinding::parse_allowing_chord("B+A").unwrap();
+        assert_eq!(binding.primary, PrimaryKey::Letter('A'));
+        assert_eq!(binding.extra_primary, Some(PrimaryKey::Letter('B')));
+        assert!(binding.modifiers.is_empty());
+        assert_eq!(hotkey_to_string_allowing_chord("b+a").unwrap(), "A+B");
+        assert_eq!(
+            hotkey_primary_labels("B+A").unwrap(),
+            vec!["A".to_string(), "B".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_allowing_chord_keeps_shift_combo() {
+        let binding = HotkeyBinding::parse_allowing_chord("Shift+A").unwrap();
+        assert_eq!(binding.primary, PrimaryKey::Letter('A'));
+        assert_eq!(binding.extra_primary, None);
+        assert!(binding.modifiers.contains(&ModifierKey::Shift));
+        assert_eq!(hotkey_to_string_allowing_chord("Shift+A").unwrap(), "Shift+A");
+    }
+
+    #[test]
+    fn parse_allowing_chord_rejects_three_primaries() {
+        let error = HotkeyBinding::parse_allowing_chord("A+B+C").expect_err("should reject");
+        assert!(error.contains("最多两个主键"));
+    }
+
+    #[test]
+    fn parse_allowing_chord_encodes_plus_as_second_primary() {
+        assert_eq!(hotkey_to_string_allowing_chord("A++").unwrap(), "A++");
+        let binding = HotkeyBinding::parse_allowing_chord("A++").unwrap();
+        assert_eq!(binding.primary, PrimaryKey::Letter('A'));
+        assert_eq!(
+            binding.extra_primary,
+            Some(PrimaryKey::Named(NamedKey::Plus))
+        );
     }
 }
