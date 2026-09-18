@@ -1039,7 +1039,7 @@ function RapidfireCardEditor({
                                 id={`${card.id}-cancel-jitter`}
                                 checked={card.cancelJitterOnRelease}
                                 disabled={disabled}
-                                aria-label="抖动期间松手立即触发"
+                                aria-label="启动抖动与触发抖动期间松手立即结束"
                                 onCheckedChange={(checked) => onUpdate(card.id, {cancelJitterOnRelease: checked})}
                             />
                         )}

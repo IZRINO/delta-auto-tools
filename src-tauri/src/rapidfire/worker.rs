@@ -198,6 +198,28 @@ pub fn worker_step(
     press_jitter_max_ms: u64,
     count: u64,
 ) -> WorkerStepResult {
+    worker_step_with_abort(
+        decision,
+        emitter,
+        target_key,
+        trigger_key,
+        press_jitter_min_ms,
+        press_jitter_max_ms,
+        count,
+        None,
+    )
+}
+
+fn worker_step_with_abort(
+    decision: WorkerDecision,
+    emitter: &mut dyn KeyEmitter,
+    target_key: &str,
+    trigger_key: &str,
+    press_jitter_min_ms: u64,
+    press_jitter_max_ms: u64,
+    count: u64,
+    abort: Option<&std::sync::atomic::AtomicBool>,
+) -> WorkerStepResult {
     match decision {
         WorkerDecision::Fire { stop_after_fire } => {
             match emitter.press_release_target_key(
@@ -205,6 +227,7 @@ pub fn worker_step(
                 Some(trigger_key),
                 press_jitter_min_ms,
                 press_jitter_max_ms,
+                abort,
             ) {
                 Ok(()) => {
                     let new_count = count + 1;
@@ -286,6 +309,9 @@ pub fn run_session_worker_with_emitter(
                 Some(&worker.trigger_key),
                 worker.press_jitter_min_ms,
                 worker.press_jitter_max_ms,
+                worker
+                    .cancel_jitter_on_release
+                    .then_some(worker.compensate_now.as_ref()),
             ) {
                 Ok(()) => {
                     count = 1;
@@ -303,7 +329,7 @@ pub fn run_session_worker_with_emitter(
             match wait_for_next_fire(&worker.control_rx, next_fire_at, count) {
                 WorkerDecision::Fire { stop_after_fire } => {
                     ensure_press_spacing(&worker.last_press_at, worker.min_press_spacing_ms);
-                    let step = worker_step(
+                    let step = worker_step_with_abort(
                         WorkerDecision::Fire { stop_after_fire },
                         emitter.as_mut(),
                         &worker.target_key,
@@ -311,6 +337,9 @@ pub fn run_session_worker_with_emitter(
                         worker.press_jitter_min_ms,
                         worker.press_jitter_max_ms,
                         count,
+                        worker
+                            .cancel_jitter_on_release
+                            .then_some(worker.compensate_now.as_ref()),
                     );
                     match step {
                         WorkerStepResult::Fired { count: new_count } => {
@@ -374,6 +403,9 @@ pub fn run_session_worker_with_emitter(
             None,
             worker.press_jitter_min_ms,
             worker.press_jitter_max_ms,
+            worker
+                .cancel_jitter_on_release
+                .then_some(worker.compensate_now.as_ref()),
         ) {
             Ok(()) => {
                 count += 1;
@@ -527,6 +559,7 @@ pub fn stop_all_sessions(
         run.active_session_ids.clear();
         for session in run.sessions.values_mut() {
             session.status = RapidfireSessionStatus::Stopping;
+            session.compensate_now.store(true, Ordering::Relaxed);
             if let Some(control_tx) = session.control_tx.take() {
                 let _ = control_tx.send(control);
             }
@@ -549,6 +582,7 @@ pub fn stop_removed_or_disabled_sessions(
             run.active_session_ids.clear();
             for session in run.sessions.values_mut() {
                 session.status = RapidfireSessionStatus::Stopping;
+                session.compensate_now.store(true, Ordering::Relaxed);
                 if let Some(control_tx) = session.control_tx.take() {
                     let _ = control_tx.send(SessionControl::Cancel);
                 }

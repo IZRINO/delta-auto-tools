@@ -448,7 +448,22 @@ async fn handle_key_up(app: &AppHandle, card_ids: Vec<String>) -> Result<(), Str
             .collect();
 
         for card_id in &card_ids {
+            let abort_press = inner
+                .settings
+                .cards
+                .iter()
+                .find(|card| card.id == *card_id)
+                .is_some_and(|card| card.cancel_jitter_on_release);
             if let Some(run) = inner.logic.runs.get_mut(card_id) {
+                if abort_press {
+                    if let Some(session_id) = run.active_session_ids.last() {
+                        if let Some(session) = run.sessions.get_mut(session_id) {
+                            session
+                                .compensate_now
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+                }
                 stop_latest_active_session(run, SessionControl::StopWithCompensation);
             }
         }

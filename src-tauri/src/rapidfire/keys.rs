@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use enigo::{Direction, Key, Keyboard};
 
@@ -27,14 +28,38 @@ static RAPIDFIRE_JITTER_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// 抽象按键输出接口，让 worker 线程可测。
 /// 生产实现使用 enigo 真实合成键盘事件；测试实现记录调用。
 pub trait KeyEmitter: Send {
-    /// 按下并释放目标键。
+    /// 按下并释放目标键。`abort` 为 true 时立刻结束按下保持并抬起。
     fn press_release_target_key(
         &mut self,
         target_key: &str,
         held_trigger_key: Option<&str>,
         press_jitter_min_ms: u64,
         press_jitter_max_ms: u64,
+        abort: Option<&AtomicBool>,
     ) -> Result<(), String>;
+}
+
+pub fn wait_press_hold_ms(duration_ms: u64, abort: Option<&AtomicBool>) {
+    if duration_ms == 0 || abort.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return;
+    }
+    if abort.is_none() {
+        thread::sleep(Duration::from_millis(duration_ms));
+        return;
+    }
+    let deadline = Instant::now() + Duration::from_millis(duration_ms);
+    while Instant::now() < deadline {
+        if abort.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+            return;
+        }
+        let slice = deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(10));
+        if slice.is_zero() {
+            return;
+        }
+        thread::sleep(slice);
+    }
 }
 
 // ---- EnigoKeyEmitter ----
@@ -59,6 +84,7 @@ impl KeyEmitter for EnigoKeyEmitter {
         held_trigger_key: Option<&str>,
         press_jitter_min_ms: u64,
         press_jitter_max_ms: u64,
+        abort: Option<&AtomicBool>,
     ) -> Result<(), String> {
         let plan = target_fire_plan(target_key, held_trigger_key)?;
         let key_str = target_key.to_string();
@@ -73,10 +99,10 @@ impl KeyEmitter for EnigoKeyEmitter {
         self.enigo
             .key(plan.target_key, Direction::Press)
             .map_err(|error| format!("按下连发目标键 {key_str} 失败: {error}"))?;
-        std::thread::sleep(Duration::from_millis(press_jitter_duration_ms(
-            press_jitter_min_ms,
-            press_jitter_max_ms,
-        )));
+        wait_press_hold_ms(
+            press_jitter_duration_ms(press_jitter_min_ms, press_jitter_max_ms),
+            abort,
+        );
         self.enigo
             .key(plan.target_key, Direction::Release)
             .map_err(|error| format!("抬起连发目标键 {key_str} 失败: {error}"))?;
@@ -108,6 +134,7 @@ impl KeyEmitter for MockKeyEmitter {
         held_trigger_key: Option<&str>,
         press_jitter_min_ms: u64,
         press_jitter_max_ms: u64,
+        _abort: Option<&AtomicBool>,
     ) -> Result<(), String> {
         self.calls.push(MockKeyEmitCall {
             target_key: target_key.to_string(),
@@ -335,12 +362,26 @@ mod tests {
     }
 
     #[test]
+    fn wait_press_hold_returns_immediately_when_aborted() {
+        let abort = AtomicBool::new(true);
+        let started = Instant::now();
+        wait_press_hold_ms(500, Some(&abort));
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "松手后按下保持应立刻结束，实际 {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
     fn mock_key_emitter_records_calls() {
         let mut emitter = MockKeyEmitter::new();
         emitter
-            .press_release_target_key("A", Some("W"), 8, 12)
+            .press_release_target_key("A", Some("W"), 8, 12, None)
             .unwrap();
-        emitter.press_release_target_key("B", None, 10, 15).unwrap();
+        emitter
+            .press_release_target_key("B", None, 10, 15, None)
+            .unwrap();
 
         assert_eq!(emitter.calls.len(), 2);
         assert_eq!(emitter.calls[0].target_key, "A");

@@ -139,7 +139,7 @@ worker 每次开火只更新内存 count。`RapidfireLogic.last_runs_emit_at` �
 | 按下抖动上限 | `pressJitterMaxMs` | 12 | 1-2000 | 目标键按下保持时间抖动上限 |
 | 最小间距 | `minPressSpacingMs` | 80 | 0-10000 | 同卡片目标键最小触发间距（跨 session 节流） |
 | 触发抖动上限 | `triggerJitterMaxMs` | 0 | 0-99999 | 按下触发键后启动延迟上限，0=关闭 |
-| 抖动松手触发 | `cancelJitterOnRelease` | true | bool | 抖动期间松手是否立即触发一次 |
+| 抖动松手触发 | `cancelJitterOnRelease` | true | bool | 启动抖动等待期间松手立即打一枪；按下保持（触发抖动）也立刻抬起，不睡满设定时长 |
 | 跳过补齐 | `skipCompensation` | false | bool | 松开时不补齐奇数次数 |
 | 忽略触发键 | `ignoreTriggerKey` | false | bool | 阻止触发键同步输入到前台应用 |
 | 补齐延迟下限 | `compensationDelayMinMs` | 100 | 0-10000 | 补发前的随机等待下限 |
