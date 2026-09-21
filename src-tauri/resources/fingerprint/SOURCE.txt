@@ -1,0 +1,3 @@
+档案指纹图来自 https://github.com/Binbin-miao/DeltaForcePwdTool （GPL-3.0）。
+纹路截自《三角洲行动》局内指纹锁，版权归游戏发行方。
+本目录只含 人名/1.png…N.png，不含名条。启动时灌进用户图库空槽，不覆盖已采集的指纹。

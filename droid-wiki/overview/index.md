@@ -1,6 +1,6 @@
 # Delta Auto Tools 项目概览
 
-Delta Auto Tools 是一款面向《三角洲行动》玩家的桌面工具，基于 Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 构建。它提供摩斯密码识别、计时器、计数器、连发器、识别触发等原生自动化能力，以及攻略网站工作台、主题引擎和多配置系统。
+Delta Auto Tools 是一款面向《三角洲行动》玩家的桌面工具，基于 Tauri 2 + React 19 + TypeScript + Vite + Bun + Rust 构建。它提供摩斯密码识别、指纹密码、计时器、计数器、连发器、识别触发等原生自动化能力，以及攻略网站工作台、主题引擎和多配置系统。
 
 ## 项目定位
 
@@ -36,6 +36,6 @@ Delta Auto Tools 是一款面向《三角洲行动》玩家的桌面工具，基
 ## 仓库信息
 
 - GitHub: [IZRINO/delta-auto-tools](https://github.com/IZRINO/delta-auto-tools)
-- 当前版本: 0.17.5
+- 当前版本: 1.0.0-beta.21
 - 许可证: 见仓库根目录 LICENSE 文件
 - 平台: Windows (x64)

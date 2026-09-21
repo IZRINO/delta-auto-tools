@@ -683,11 +683,8 @@ fn run_listener(
                 let is_suppressed = is_event_suppressed(&event, &suppressed_vk_set);
 
                 if !is_suppressed {
-                    let hold_actions = hold_actions_for_event(
-                        &hold_registrations,
-                        event,
-                        &mut hold_state,
-                    );
+                    let hold_actions =
+                        hold_actions_for_event(&hold_registrations, event, &mut hold_state);
                     let key_state = matcher.handle_event(event);
                     if global_enabled {
                         for (action, hold_action) in hold_actions {
@@ -723,11 +720,8 @@ fn run_listener(
                 let event =
                     crate::key_suppressor::suppressed_event_to_willhook_event(&suppressed_event);
 
-                let hold_actions = hold_actions_for_event(
-                    &hold_registrations,
-                    event,
-                    &mut hold_state,
-                );
+                let hold_actions =
+                    hold_actions_for_event(&hold_registrations, event, &mut hold_state);
                 let key_state = matcher.handle_event(event);
                 if global_enabled {
                     for (action, hold_action) in hold_actions {
@@ -916,7 +910,10 @@ fn matches_hold_pressed(
     primaries: &HashSet<PrimaryKey>,
     modifiers: &HashSet<ModifierKey>,
 ) -> bool {
-    if !binding.primaries().all(|primary| primaries.contains(&primary)) {
+    if !binding
+        .primaries()
+        .all(|primary| primaries.contains(&primary))
+    {
         return false;
     }
     binding
@@ -1387,11 +1384,7 @@ mod tests {
         let mut hold_state = HoldPressState::default();
         let event = keyboard_event(KeyboardKey::F2, KeyPress::Down(IsSystemKeyPress::Normal));
 
-        let hold_actions = hold_actions_for_event(
-            &hold_registrations,
-            event,
-            &mut hold_state,
-        );
+        let hold_actions = hold_actions_for_event(&hold_registrations, event, &mut hold_state);
         let mut matcher = HotkeyMatcher::new();
         let key_state = matcher.handle_event(event).expect("计时器普通快捷键应触发");
         let normal_actions = actions_for_key_state(&registrations, &key_state);
@@ -1846,7 +1839,7 @@ mod tests {
             &hold_registrations,
             keyboard_event(
                 KeyboardKey::LeftShift,
-                KeyPress::Up(IsSystemKeyPress::Normal)
+                KeyPress::Up(IsSystemKeyPress::Normal),
             ),
             &mut hold_state,
         );

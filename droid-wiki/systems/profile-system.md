@@ -7,7 +7,7 @@
 ## 用途
 
 - 将既有工具与特勤处的当前内存 settings 快照为单个 `Profile`，存储在 `profile_settings.json`；字段 `specialOps` 缺失时兼容旧 Profile
-- 应用 profile 时写入各工具 settings 文件到磁盘，然后重载各工具运行时状态而无需重启应用；特勤处运行中拒绝切换，应用成功后保持暂停，settings 使用 `.{name}.{pid}.{seq}.tmp` 唯一临时文件并串行替换目标 JSON，避免并发冲突或进程中断留下半截配置
+- 应用 profile 时先关闭多账号制作台更改并清掉 `special-ops-next-account` 热键，再写入各工具 settings 文件到磁盘并重载运行时状态而无需重启应用；否则走查「下一账号」与目标 Profile 识别热键撞键会在半截写盘后失败，重启再被 `start_runtime` 的 `?` 打死。特勤处运行中拒绝切换，应用成功后保持暂停，settings 使用 `.{name}.{pid}.{seq}.tmp` 唯一临时文件并串行替换目标 JSON，避免并发冲突或进程中断留下半截配置
 - 切换时重置计数器运行值为目标 profile 的 `start_value` 并持久化 `counter_state.json`
 - 主题独立于 profile，不打包进快照
 
@@ -40,7 +40,7 @@ src/components/app/
 | `ProfileState` | `src-tauri/src/profile/mod.rs` | 运行时持有者：`Mutex<ProfileSettings>` + `apply_lock` 串行化 Profile 应用 |
 | `SettingsCoordinator` | `src-tauri/src/settings.rs` | 同一 guard 串行化既有工具与特勤处保存及 Profile 切换，并校验 `settingsRevision` |
 | `LatestSaveQueue` | `src/hooks/autosave-queue.ts` | 每个工具最多一个 in-flight save，等待区只保留最新 snapshot/version |
-| `apply_snapshot_to_tools` | `src-tauri/src/profile/apply.rs` | 配置应用入口：停止会话 -> 校验并写既有工具与特勤处配置 -> 重载各工具 -> 重置计数器 -> 特勤处强制暂停并取消利润查询 -> 调度窗口刷新 |
+| `apply_snapshot_to_tools` | `src-tauri/src/profile/apply.rs` | 配置应用入口：先关掉走查热键 -> 停止会话 -> 校验并写既有工具与特勤处配置 -> 重载各工具 -> 重置计数器 -> 特勤处强制暂停并取消利润查询 -> 调度窗口刷新 |
 | `emit_profile_changed` | `src-tauri/src/profile/mod.rs` | 写命令成功后 emit `profile://changed` 到 main 窗口 |
 | `snapshot_current_settings` | `src-tauri/src/profile/mod.rs` | 从各工具内存 State 读取当前 settings |
 | `ProfileProvider` | `src/hooks/use-profile.tsx` | React context：bootstrap、事件监听、`reloadNonce` |
@@ -57,7 +57,8 @@ flowchart TD
     A["profile_apply(id)"] --> L["锁定 SettingsCoordinator"]
     L --> B["锁定 ProfileState，查找 snapshot，克隆，解锁"]
     B --> C["apply_snapshot_to_tools(snapshot)"]
-    C --> D["1. 停止所有会话：rapidfire/timer/counter stop_all"]
+    C --> W["0. 关闭多账号制作台更改并清 special-ops-next-account 热键"]
+    W --> D["1. 停止所有会话：rapidfire/timer/counter stop_all"]
     D --> E["2. 写既有工具与特勤处 settings 文件到磁盘"]
     E --> F["3. 逐工具重载内存状态"]
     F --> F1["morse: normalize → restart_hotkey → swap"]

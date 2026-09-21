@@ -12,6 +12,12 @@ export const MORSE_EVENTS = {
     hotkeyError: "morse://hotkey-error",
 } as const;
 
+export const FINGERPRINT_EVENTS = {
+    runFinished: "fingerprint://run-finished",
+    selectionProgress: "fingerprint://selection-progress",
+    hotkeyError: "fingerprint://hotkey-error",
+} as const;
+
 // ——— timer ——— timer/events.rs
 export const TIMER_EVENTS = {
     stateChanged: "timer://state-changed",

@@ -11,6 +11,7 @@ export const ACTIVE_TOOL_IDS = [
     "privacyScreen",
     "specialOps",
     "morse",
+    "fingerprint",
     "favorites",
 ] as const satisfies readonly ToolId[];
 

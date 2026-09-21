@@ -19,6 +19,7 @@ const tools = [
     {id: "privacy", label: "息屏"},
     {id: "specialOps", label: "特勤处"},
     {id: "morse", label: "摩斯"},
+    {id: "fingerprint", label: "指纹"},
 ] as const;
 
 type ToolId = (typeof tools)[number]["id"];
@@ -262,6 +263,15 @@ function ToolGlyph({id}: {id: PaneId}) {
                     <rect fill="currentColor" height="3.2" width="3.2" x="8.2" y="10.4"/>
                     <rect fill="currentColor" height="3.2" width="3.2" x="13.2" y="10.4"/>
                     <rect fill="currentColor" height="3.2" width="4.4" x="18.2" y="10.4"/>
+                </>,
+            );
+        case "fingerprint":
+            return glyph(
+                <>
+                    <path d="M12 20.5c-3.4-2.2-5.5-5.4-5.5-9.2A5.5 5.5 0 0 1 12 5.8" {...stroke}/>
+                    <path d="M12 20.5c2.2-1.4 3.8-3.6 4.6-6.2" {...stroke}/>
+                    <path d="M9.2 8.2A3.4 3.4 0 0 1 15.4 11c0 2.4-1 4.6-2.6 6.8" {...stroke}/>
+                    <path d="M12 11.2v5.2" {...stroke}/>
                 </>,
             );
         case "settings":

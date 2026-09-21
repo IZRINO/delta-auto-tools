@@ -1140,6 +1140,13 @@ impl SpecialOpsState {
         Ok(())
     }
 
+    pub(crate) fn release_walkthrough_for_profile_apply(&self, app: &AppHandle) {
+        if let Ok(mut session) = self.walkthrough.lock() {
+            session.disable();
+        }
+        let _ = clear_walkthrough_hotkeys(app);
+    }
+
     pub(crate) fn apply_profile_settings(
         &self,
         app: &AppHandle,
@@ -9535,7 +9542,20 @@ pub fn start_runtime(app: &AppHandle) -> Result<(), String> {
     let scheduler = Arc::clone(&state.round_scheduler);
     let driver = Arc::new(ProductionRoundSchedulerDriver { app: app.clone() });
     tauri::async_runtime::spawn(round_scheduler::run_scheduler(scheduler, driver));
-    restore_walkthrough_hotkeys_if_enabled(app)?;
+    if let Err(error) = restore_walkthrough_hotkeys_if_enabled(app) {
+        crate::log_error!(
+            "special_ops",
+            "恢复多账号制作台热键失败，已关闭该模式以免阻断启动",
+            "error" => error
+        );
+        if let Err(disable_error) = disable_walkthrough_session(app, true) {
+            crate::log_error!(
+                "special_ops",
+                "关闭多账号制作台模式失败",
+                "error" => disable_error
+            );
+        }
+    }
     Ok(())
 }
 
@@ -9768,11 +9788,24 @@ fn register_next_account_hotkey(app: &AppHandle, hotkey: String) -> Result<(), S
     )
 }
 
+fn register_walkthrough_hotkeys(
+    app: &AppHandle,
+    emergency: String,
+    next: String,
+) -> Result<(), String> {
+    register_emergency_hotkey(app, emergency)?;
+    if let Err(error) = register_next_account_hotkey(app, next) {
+        let _ = clear_walkthrough_hotkeys(app);
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn restore_walkthrough_hotkeys_if_enabled(app: &AppHandle) -> Result<(), String> {
     let Some(state) = app.try_state::<SpecialOpsState>() else {
         return Ok(());
     };
-    let (enabled, emergency, next) = {
+    let (emergency, next) = {
         let session = state
             .walkthrough
             .lock()
@@ -9785,14 +9818,11 @@ fn restore_walkthrough_hotkeys_if_enabled(app: &AppHandle) -> Result<(), String>
             .lock()
             .map_err(|_| "特勤处状态已损坏".to_string())?;
         (
-            true,
             settings.emergency_hotkey.clone(),
             settings.next_account_hotkey.clone(),
         )
     };
-    let _ = enabled;
-    register_emergency_hotkey(app, emergency)?;
-    register_next_account_hotkey(app, next)
+    register_walkthrough_hotkeys(app, emergency, next)
 }
 
 fn persist_walkthrough_enabled(app: &AppHandle, enabled: bool) -> Result<u64, String> {
@@ -10096,43 +10126,65 @@ pub async fn special_ops_set_station_walkthrough(
     if enabled {
         ensure_app_global_automation_enabled(&app)?;
         ensure_no_active_special_ops_run(&state.login_runtime)?;
-        let ((settings, current_ms), revision) = settings_coordinator
-            .with_expected_revision_change(
-                settings_revision,
-                || -> Result<(SpecialOpsSettings, i64), String> {
-                    ensure_no_active_special_ops_run(&state.login_runtime)?;
-                    let mut settings = state
-                        .settings
+        let settings_for_hotkeys = state.settings_snapshot()?;
+        let global_ok = app
+            .try_state::<crate::global_state::GlobalState>()
+            .map(|item| item.enabled())
+            .unwrap_or(true);
+        if let Some(error) = station_walkthrough::enable_error(walkthrough_enable_gate(
+            &settings_for_hotkeys,
+            global_ok,
+            false,
+        )) {
+            return Err(AppError::from(error));
+        }
+        register_walkthrough_hotkeys(
+            &app,
+            settings_for_hotkeys.emergency_hotkey.clone(),
+            settings_for_hotkeys.next_account_hotkey.clone(),
+        )?;
+        let persist_result = settings_coordinator.with_expected_revision_change(
+            settings_revision,
+            || -> Result<(SpecialOpsSettings, i64), String> {
+                ensure_no_active_special_ops_run(&state.login_runtime)?;
+                let mut settings = state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())?
+                    .clone();
+                let global_ok = app
+                    .try_state::<crate::global_state::GlobalState>()
+                    .map(|item| item.enabled())
+                    .unwrap_or(true);
+                if let Some(error) = station_walkthrough::enable_error(walkthrough_enable_gate(
+                    &settings, global_ok, false,
+                )) {
+                    return Err(error);
+                }
+                let account_id = {
+                    let mut session = state
+                        .walkthrough
                         .lock()
-                        .map_err(|_| "特勤处状态已损坏".to_string())?
-                        .clone();
-                    let global_ok = app
-                        .try_state::<crate::global_state::GlobalState>()
-                        .map(|item| item.enabled())
-                        .unwrap_or(true);
-                    if let Some(error) = station_walkthrough::enable_error(walkthrough_enable_gate(
-                        &settings, global_ok, false,
-                    )) {
-                        return Err(error);
-                    }
-                    let account_id = {
-                        let mut session = state
-                            .walkthrough
-                            .lock()
-                            .map_err(|_| "特勤处状态已损坏".to_string())?;
-                        session.enable_from_first(&settings.accounts)?
-                    };
-                    settings.station_walkthrough_enabled = true;
-                    save_settings(&app, &settings)?;
-                    *state
-                        .settings
-                        .lock()
-                        .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
-                    let _ = account_id;
-                    Ok((settings, now_ms()))
-                },
-            )
-            .map_err(AppError::from)?;
+                        .map_err(|_| "特勤处状态已损坏".to_string())?;
+                    session.enable_from_first(&settings.accounts)?
+                };
+                settings.station_walkthrough_enabled = true;
+                save_settings(&app, &settings)?;
+                *state
+                    .settings
+                    .lock()
+                    .map_err(|_| "特勤处状态已损坏".to_string())? = settings.clone();
+                let _ = account_id;
+                Ok((settings, now_ms()))
+            },
+        );
+        let ((settings, current_ms), revision) = match persist_result {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = clear_walkthrough_hotkeys(&app);
+                return Err(AppError::from(error));
+            }
+        };
         let first_account_id = state
             .walkthrough
             .lock()
@@ -10140,7 +10192,6 @@ pub async fn special_ops_set_station_walkthrough(
             .current_account_id()
             .ok_or_else(|| station_walkthrough::ERR_NO_ACCOUNTS.to_string())?
             .to_string();
-        restore_walkthrough_hotkeys_if_enabled(&app)?;
         if let Err(error) = start_station_walkthrough_run(
             &app,
             &state,

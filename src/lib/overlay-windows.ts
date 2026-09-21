@@ -1,5 +1,6 @@
 export const overlayWindowModes = new Set([
     "overlay",
+    "fingerprint-overlay",
     "timer-display",
     "counter-display",
     "timer-position",

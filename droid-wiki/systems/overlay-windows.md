@@ -13,6 +13,7 @@
 | `rapidfire-display` | 连发器 | 显示触发键到目标键映射与开火状态 |
 | `rapidfire-position` | 连发器 | 位置校准窗口 |
 | `morse-overlay` | Morse | 全屏透明区域选择叠加窗 |
+| `fingerprint-overlay` | 指纹 | 名条 / 候选九宫格 / 档案槽框选 |
 | `recognition-overlay` | 识别触发 | 监听区域、识色探针、自定义点击区域选择叠加窗 |
 | 息屏（无 WebView） | 息屏 | 独立线程原生 Win32 视觉遮罩，不进 `?mode=`；只挡画面。息屏打开时识别改走 WGC + `WDA_EXCLUDEFROMCAPTURE` 透视遮罩；关闭时仍走 GDI。禁止在 WebView2 GUI 线程建窗 |
 
@@ -57,7 +58,7 @@ CPU 数据是同机 debug 构建的 serde 序列化 microbenchmark，不等同�
 
 ## 区域选择叠加窗
 
-Morse 和识别触发使用全屏透明叠加窗（`morse-overlay` / `recognition-overlay`）拖拽选择屏幕区域。通过 `?mode=overlay`（Morse）或 `?mode=recognition-overlay`（识别触发）进入。
+Morse、指纹和识别触发使用全屏透明叠加窗拖拽选择屏幕区域。通过 `?mode=overlay`（Morse）、`?mode=fingerprint-overlay`（指纹）或 `?mode=recognition-overlay`（识别触发）进入。
 
 ## 共享组件
 
@@ -68,12 +69,14 @@ Morse 和识别触发使用全屏透明叠加窗（`morse-overlay` / `recognitio
 | `SyncOverlayWindow` | `src/components/app/sync-overlay-window.tsx` | 计时器/计数器/连发器共享的显示/位置窗口包装 |
 | `PositionMoveQueue` | `src/components/ui/position-move-queue.ts` | rAF latest-point 合并、单 in-flight 与最终坐标 flush barrier |
 | `MorseOverlay` / `RegionSelectionOverlay` | `src/components/app/morse-overlay.tsx` | Morse 区域选择全屏叠加窗 |
+| `FingerprintRegionOverlay` | `src/components/app/fingerprint-overlay.tsx` | 指纹名条/候选/档案框选 |
 | `RecognitionRegionOverlay` | `src/components/app/recognition-page.tsx` | 识别触发区域/探针/点击区域选择叠加窗 |
 
 ## 集成点
 
 - [计时器](../features/timer.md)、[计数器](../features/counter.md)、[连发器](../features/rapidfire.md) 各自拥有显示窗口和位置窗口
 - [Morse](../features/morse.md) 拥有区域选择叠加窗
+- [指纹密码](../features/fingerprint.md) 拥有名条/候选/档案框选叠加窗
 - [识别触发](../features/recognition.md) 共享 overlay 流程用于监听区域、探针和点击区域选择
 - `src-tauri/src/overlay_utils.rs` 提供共享的叠加窗创建与尺寸计算工具函数
 - settings/结构变化通过 `state-changed`，运行态通过轻量 `runs-changed` 同时发到 `main` 和显示窗口

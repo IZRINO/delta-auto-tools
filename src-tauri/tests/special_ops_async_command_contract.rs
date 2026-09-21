@@ -23,6 +23,64 @@ fn set_station_walkthrough_command_is_async_and_registered() {
 }
 
 #[test]
+fn set_station_walkthrough_registers_hotkeys_before_persisting() {
+    let source = include_str!("../src/special_ops/mod.rs");
+    let start = source
+        .find("pub async fn special_ops_set_station_walkthrough")
+        .expect("缺少 special_ops_set_station_walkthrough");
+    let end = source[start..]
+        .find("\npub async fn special_ops_start_login_trial")
+        .map(|offset| start + offset)
+        .expect("set_station_walkthrough 后应紧跟 start_login_trial");
+    let body = &source[start..end];
+    let enable_start = body.find("if enabled {").expect("缺少开启分支");
+    let enable_end = body[enable_start..]
+        .find("} else {")
+        .map(|offset| enable_start + offset)
+        .expect("缺少关闭分支");
+    let enable = &body[enable_start..enable_end];
+    let register = enable
+        .find("register_walkthrough_hotkeys(")
+        .expect("开启走查必须先登记热键");
+    let persist = enable
+        .find("with_expected_revision_change")
+        .expect("开启走查仍需落盘");
+    assert!(
+        register < persist,
+        "走查热键必须在 revision 落盘之前注册，否则 P 与识别冲突会留下陈旧 revision"
+    );
+    assert!(
+        !enable.contains("restore_walkthrough_hotkeys_if_enabled(&app)?;"),
+        "开启走查不得在落盘后再用 ? 注册热键"
+    );
+}
+
+#[test]
+fn start_runtime_does_not_abort_setup_when_walkthrough_hotkey_conflicts() {
+    let source = include_str!("../src/special_ops/mod.rs");
+    let start = source
+        .find("pub fn start_runtime")
+        .expect("缺少 special_ops::start_runtime");
+    let end = source[start..]
+        .find("\npub fn shutdown")
+        .map(|offset| start + offset)
+        .expect("start_runtime 后应紧跟 shutdown");
+    let body = &source[start..end];
+    assert!(
+        !body.contains("restore_walkthrough_hotkeys_if_enabled(app)?;"),
+        "启动期恢复走查热键失败不得用 ? 打断 Tauri setup，否则识别热键冲突会让应用闪退"
+    );
+    assert!(
+        body.contains("if let Err(error) = restore_walkthrough_hotkeys_if_enabled(app)"),
+        "走查热键恢复失败必须吞掉并继续启动"
+    );
+    assert!(
+        body.contains("disable_walkthrough_session(app, true)"),
+        "恢复失败必须关掉走查并落盘，避免下次启动再次闪退"
+    );
+}
+
+#[test]
 fn hiding_other_windows_avoids_sync_visibility_query() {
     let source = include_str!("../src/special_ops/mod.rs");
     let hide_start = source

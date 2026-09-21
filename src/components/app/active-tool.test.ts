@@ -6,7 +6,7 @@ import {
 } from "@/components/app/active-tool";
 
 describe("parseActiveTool", () => {
-    it("九个合法 id 原样返回", () => {
+    it("十个合法 id 原样返回", () => {
         expect(ACTIVE_TOOL_IDS).toEqual([
             "timer",
             "counter",
@@ -16,6 +16,7 @@ describe("parseActiveTool", () => {
             "privacyScreen",
             "specialOps",
             "morse",
+            "fingerprint",
             "favorites",
         ]);
         for (const id of ACTIVE_TOOL_IDS) {

@@ -162,7 +162,7 @@ round 启动时通过 `build_schedule()` 冻结所有启用且账号状态为 `R
 | 目录 | 内容 |
 |------|------|
 | `overview/` | 项目概览、系统架构、快速开始、术语表 |
-| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / recognition / strategy / about） |
+| `features/` | 各功能模块详解（morse / fingerprint / timer / counter / rapidfire / recognition / strategy / about） |
 | `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
 | `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
 | `reference/` | 配置项与依赖参考 |
@@ -267,6 +267,7 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 **工具模块**（详见 codegraph）：
 - `morse/` — 截屏→二值化→轮廓检测→摩斯解码→自动输入
+- `fingerprint/` — 名条 NCC 定人→九宫格计数定档→指纹模板匹配→按 1→N 点击
 - `timer/` — 多计时器，250ms tick，透明窗口
 - `counter/` — 多计数器，运行态通过单 writer 线程 50ms latest-wins 合并持久化（counter_state.json）
 - `rapidfire/` — 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget

@@ -170,11 +170,9 @@ pub fn target_fire_plan(
     let target_key =
         parse_target_key(target_key).ok_or_else(|| format!("不支持的目标键: {target_key}"))?;
     let trigger_key_to_release = match held_trigger_key {
-        Some(raw) => trigger_primary_labels(raw)?
-            .into_iter()
-            .find_map(|label| {
-                parse_target_key(&label).filter(|trigger_key| trigger_key == &target_key)
-            }),
+        Some(raw) => trigger_primary_labels(raw)?.into_iter().find_map(|label| {
+            parse_target_key(&label).filter(|trigger_key| trigger_key == &target_key)
+        }),
         None => None,
     };
 

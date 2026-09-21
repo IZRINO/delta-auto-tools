@@ -886,7 +886,10 @@ export function SpecialOpsPage() {
                     settingsRevision: saved.settingsRevision,
                 }));
             } catch (cause) {
-                if (!disposedRef.current) setWalkthroughError(String(cause));
+                if (!disposedRef.current) {
+                    setWalkthroughError(String(cause));
+                    reload();
+                }
             }
         })();
     };

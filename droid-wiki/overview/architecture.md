@@ -72,6 +72,7 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。主窗�
 | sync_tool | `src-tauri/src/sync_tool.rs` | 同步工具基座：分组/条目规范化、热键重启、位置状态机、生命周期注册表 |
 | global_state | `src-tauri/src/global_state.rs` | 全局总开关与 enabled-changed 事件 |
 | morse | `src-tauri/src/morse/` | 截屏 -> 二值化 -> 轮廓检测 -> 摩斯解码 -> 自动输入 |
+| fingerprint | `src-tauri/src/fingerprint/` | 名条 NCC 定人 -> 九宫格计数定档 -> 指纹模板匹配 -> 按序点击 |
 | timer | `src-tauri/src/timer/` | 多计时器，250ms tick 循环，透明窗口 |
 | counter | `src-tauri/src/counter/` | 多计数器，运行态独立持久化 |
 | rapidfire | `src-tauri/src/rapidfire/` | 按住触发键连发，每 session 独立 OS worker 线程 |
@@ -89,6 +90,7 @@ App.tsx 不使用路由库，通过 `useState<ToolId>` 切换工具页。主窗�
 graph TD
     ToolLogic[ToolLogic trait] --> ToolState[ToolState T]
     ToolState --> MorseState[MorseState]
+    ToolState --> FingerprintState[FingerprintState]
     ToolState --> TimerState[TimerState]
     ToolState --> CounterState[CounterState]
     ToolState --> RapidfireState[RapidfireState]
@@ -114,6 +116,7 @@ graph TD
 | 文件 | 内容 |
 |------|------|
 | `morse_settings.json` | 摩斯识别配置 |
+| `fingerprint_settings.json` | 指纹密码配置 |
 | `timer_settings.json` | 计时器配置 |
 | `counter_settings.json` | 计数器配置 |
 | `counter_state.json` | 计数器运行态（独立持久化） |

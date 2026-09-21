@@ -32,6 +32,7 @@ pub(crate) fn apply_snapshot_to_tools(
     let special_ops_state = app.try_state::<special_ops::SpecialOpsState>();
     if let Some(state) = special_ops_state.as_ref() {
         state.ensure_profile_apply_allowed()?;
+        state.release_walkthrough_for_profile_apply(app);
     }
 
     apply_snapshot_to_tool_state(app, snapshot)?;
@@ -278,6 +279,29 @@ fn apply_recognition_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_apply_releases_walkthrough_hotkeys_before_tool_reload() {
+        let source = include_str!("apply.rs");
+        let start = source
+            .find("pub(crate) fn apply_snapshot_to_tools")
+            .expect("缺少 apply_snapshot_to_tools");
+        let end = source[start..]
+            .find("\nfn apply_snapshot_to_tool_state")
+            .map(|offset| start + offset)
+            .expect("apply_snapshot_to_tools 后应进入 apply_snapshot_to_tool_state");
+        let body = &source[start..end];
+        let release = body
+            .find("release_walkthrough_for_profile_apply")
+            .expect("切 Profile 必须先释放走查热键");
+        let tools = body
+            .find("apply_snapshot_to_tool_state")
+            .expect("切 Profile 必须随后重载工具状态");
+        assert!(
+            release < tools,
+            "走查下一账号热键必须在 recognition 等工具热键重载之前清掉，否则 P 冲突会半截写盘后启动闪退"
+        );
+    }
 
     #[test]
     fn profile_apply_splits_state_phase_from_window_reconcile() {

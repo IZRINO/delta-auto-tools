@@ -156,7 +156,7 @@ where
     {
         return result;
     }
-    if let Err(result) = stop_wegame_then_start(driver, &config, &cancelled, &mut on_step).await {
+    if let Err(result) = stop_wegame_then_start(driver, config, &cancelled, &mut on_step).await {
         return result;
     }
 

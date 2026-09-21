@@ -7,6 +7,7 @@ describe("overlay window modes", () => {
         expect([...overlayWindowModes].sort()).toEqual([
             "counter-display",
             "counter-position",
+            "fingerprint-overlay",
             "overlay",
             "rapidfire-display",
             "rapidfire-position",

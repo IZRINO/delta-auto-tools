@@ -62,6 +62,7 @@ pub(crate) struct KkrbSnapshot {
 }
 
 impl KkrbSnapshot {
+    #[cfg(test)]
     pub(crate) fn exact_profit(&self, exact_name: &str) -> Result<Option<i64>, String> {
         match self.by_name.get(exact_name) {
             Some(KkrbProfit::Value(profit)) => Ok(Some(*profit)),

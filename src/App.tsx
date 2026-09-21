@@ -22,6 +22,9 @@ import "./App.css";
 const MorsePage = lazy(() =>
     import("@/components/app/morse-page").then((module) => ({default: module.MorsePage})),
 );
+const FingerprintPage = lazy(() =>
+    import("@/components/app/fingerprint-page").then((module) => ({default: module.FingerprintPage})),
+);
 const TimerPage = lazy(() =>
     import("@/components/app/timer-page").then((module) => ({default: module.TimerPage})),
 );
@@ -107,6 +110,8 @@ function renderToolPage(
             return <RecognitionPage/>;
         case "morse":
             return <MorsePage/>;
+        case "fingerprint":
+            return <FingerprintPage/>;
         case "specialOps":
             return <SpecialOpsPage/>;
         case "privacyScreen":
@@ -214,6 +219,14 @@ function AppShell() {
         return (
             <ToolPageSuspense fallback={null}>
                 <MorsePage overlayMode/>
+            </ToolPageSuspense>
+        );
+    }
+
+    if (overlayMode === "fingerprint-overlay") {
+        return (
+            <ToolPageSuspense fallback={null}>
+                <FingerprintPage overlayMode/>
             </ToolPageSuspense>
         );
     }

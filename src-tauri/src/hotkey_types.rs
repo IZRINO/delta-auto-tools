@@ -85,16 +85,14 @@ impl HotkeyBinding {
         let mut extra_primary = None;
 
         while let Some(segment) = segments.next() {
-            let primary_segment = if segment.is_empty()
-                && segments.peek().is_none()
-                && trimmed.ends_with('+')
-            {
-                "+"
-            } else if segment.is_empty() {
-                continue;
-            } else {
-                segment
-            };
+            let primary_segment =
+                if segment.is_empty() && segments.peek().is_none() && trimmed.ends_with('+') {
+                    "+"
+                } else if segment.is_empty() {
+                    continue;
+                } else {
+                    segment
+                };
 
             if has_separator {
                 if let Some(modifier) = parse_modifier(primary_segment) {
@@ -689,7 +687,10 @@ mod tests {
         assert_eq!(binding.primary, PrimaryKey::Letter('A'));
         assert_eq!(binding.extra_primary, None);
         assert!(binding.modifiers.contains(&ModifierKey::Shift));
-        assert_eq!(hotkey_to_string_allowing_chord("Shift+A").unwrap(), "Shift+A");
+        assert_eq!(
+            hotkey_to_string_allowing_chord("Shift+A").unwrap(),
+            "Shift+A"
+        );
     }
 
     #[test]

@@ -137,6 +137,12 @@ describe("SpecialOpsPage 登录试运行配置", () => {
         expect(pageSource).toContain("录制下一账号热键");
         expect(pageSource).toContain("walkthroughEnabled ? \"请先关闭多账号制作台更改\"");
         expect(blackmarkViewSource).toContain("stationWalkthroughEnabled");
+        const walkthroughFn = pageSource.slice(
+            pageSource.indexOf("const setStationWalkthrough"),
+            pageSource.indexOf("const updateAccount"),
+        );
+        expect(walkthroughFn).toContain("setWalkthroughError(String(cause))");
+        expect(walkthroughFn).toContain("reload()");
     });
 
     it("默认配置提供子弹兑换顺序编辑器", () => {

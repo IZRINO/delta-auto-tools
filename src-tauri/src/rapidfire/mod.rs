@@ -578,7 +578,8 @@ fn normalize_trigger_key(raw: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Ok(String::new());
     }
-    hotkey_types::hotkey_to_string_allowing_chord(trimmed).map_err(|error| format!("不支持: {error}"))
+    hotkey_types::hotkey_to_string_allowing_chord(trimmed)
+        .map_err(|error| format!("不支持: {error}"))
 }
 
 fn default_rapidfire_group(settings_value: &RapidfireSettings) -> RapidfireGroup {

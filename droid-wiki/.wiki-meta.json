@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-06-26T00:00:00Z",
+  "generatedAt": "2026-09-22T00:00:00Z",
   "commitHash": "dc65efde96d739ce6a760028443e7baa4678c76f",
   "branch": "master",
-  "pageCount": 36,
+  "pageCount": 37,
   "topLevelSections": [
     "overview",
     "by-the-numbers",
@@ -31,6 +31,7 @@
     "how-to-contribute/tooling.md",
     "features/index.md",
     "features/morse.md",
+    "features/fingerprint.md",
     "features/timer.md",
     "features/counter.md",
     "features/rapidfire.md",

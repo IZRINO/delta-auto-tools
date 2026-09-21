@@ -189,6 +189,7 @@ pub fn should_compensate_count(count: u64, skip_compensation: bool) -> bool {
 /// - `WorkerStepResult::EmitterError` — 按键发射失败，循环应结束
 /// - `WorkerStepResult::Stop` — 收到 Stop 信号，循环应结束
 /// - `WorkerStepResult::Cancel` — 收到 Cancel 信号，调用方应做清理
+#[cfg(test)]
 pub fn worker_step(
     decision: WorkerDecision,
     emitter: &mut dyn KeyEmitter,
@@ -210,6 +211,7 @@ pub fn worker_step(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn worker_step_with_abort(
     decision: WorkerDecision,
     emitter: &mut dyn KeyEmitter,

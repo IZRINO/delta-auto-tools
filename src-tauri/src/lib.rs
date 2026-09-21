@@ -1,6 +1,7 @@
 mod about;
 mod app_error;
 mod counter;
+mod fingerprint;
 mod global_state;
 mod hotkey_types;
 mod hotkeys;
@@ -113,6 +114,12 @@ pub fn run() {
                 &["morse_settings.json"],
                 || morse::initialize(app.handle(), &hotkey_manager),
             )?;
+            let fingerprint_state = initialize_with_settings_recovery(
+                app.handle(),
+                "fingerprint",
+                &["fingerprint_settings.json"],
+                || fingerprint::initialize(app.handle(), &hotkey_manager),
+            )?;
             let timer_state = initialize_with_settings_recovery(
                 app.handle(),
                 "timer",
@@ -170,6 +177,13 @@ pub fn run() {
                 }),
             );
             lifecycle_registry.register(
+                "fingerprint",
+                Box::new(|app: &tauri::AppHandle| {
+                    crate::fingerprint::cancel_active_overlay(app);
+                    Ok(())
+                }),
+            );
+            lifecycle_registry.register(
                 "recognition",
                 Box::new(|app: &tauri::AppHandle| crate::recognition::stop_registered(app)),
             );
@@ -186,6 +200,7 @@ pub fn run() {
             );
             app.manage(hotkey_manager);
             app.manage(state);
+            app.manage(fingerprint_state);
             app.manage(timer_state);
             app.manage(counter_state);
             app.manage(rapidfire_state);
@@ -250,6 +265,18 @@ pub fn run() {
             morse::morse_overlay_cancel_selection,
             morse::morse_overlay_finish_early,
             morse::morse_run_recognition,
+            // ── fingerprint ──
+            fingerprint::fingerprint_get_bootstrap,
+            fingerprint::fingerprint_save_settings,
+            fingerprint::fingerprint_set_hotkey_recording,
+            fingerprint::fingerprint_begin_region_selection,
+            fingerprint::fingerprint_overlay_submit_selection,
+            fingerprint::fingerprint_overlay_cancel_selection,
+            fingerprint::fingerprint_run,
+            fingerprint::fingerprint_capture_name,
+            fingerprint::fingerprint_capture_archive,
+            fingerprint::fingerprint_delete_person,
+            fingerprint::fingerprint_read_image,
             // ── timer ──
             timer::timer_get_bootstrap,
             timer::timer_save_settings,

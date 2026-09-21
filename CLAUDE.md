@@ -42,7 +42,7 @@ cargo test --manifest-path src-tauri/Cargo.toml    # Rust 单元测试
 | 目录/文件 | 内容 |
 |----------|------|
 | `overview/` | 项目概览、系统架构、快速开始、术语表 |
-| `features/` | 各功能模块详解（morse / timer / counter / rapidfire / recognition / strategy / about） |
+| `features/` | 各功能模块详解（morse / fingerprint / timer / counter / rapidfire / recognition / strategy / about） |
 | `systems/` | 底层系统（tool-base / sync-tool / hotkeys / key-suppressor / overlay-windows / global-state / logging / theme-engine / profile-system） |
 | `how-to-contribute/` | 开发流程、测试、调试、模式与约定、工具链 |
 | `reference/` | 配置项与依赖参考 |
@@ -171,6 +171,7 @@ App.tsx 无路由库，通过 `useState<ToolId>` 切换工具页。Overlay/displ
 | tool_base    | `src-tauri/src/tool_base.rs`    | 工具模块共享泛型基座：ToolLogic trait、ToolState<T>、ToolStateInner<T>、get_bootstrap<T>                      |
 | global_state | `src-tauri/src/global_state.rs` | 全局总开关（GlobalState）与 enabled-changed 事件                                                          |
 | morse        | `src-tauri/src/morse/`          | 屏幕截取→二值化→轮廓检测→摩斯解码→自动输入；overlay 多步骤框选会话；MorseState = ToolState<MorseLogic>                      |
+| fingerprint  | `src-tauri/src/fingerprint/`    | 名条 NCC 定人、九宫格计数定档、档案指纹匹配后按序点击；FingerprintState = ToolState<FingerprintLogic>                      |
 | timer        | `src-tauri/src/timer/`          | 多计时器，250ms tick 循环，透明窗口；TimerState 包装 ToolState<TimerLogic>                                     |
 | counter      | `src-tauri/src/counter/`        | 多计数器，透明窗口，运行态通过单 writer 线程 50ms latest-wins 合并持久化；CounterState 包装 ToolState<CounterLogic>          |
 | rapidfire    | `src-tauri/src/rapidfire/`      | 按住触发键连发，每 session 独立 OS worker 线程，count 事件共享 60Hz budget；RapidfireState = ToolState<RapidfireLogic>  |

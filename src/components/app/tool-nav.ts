@@ -14,6 +14,7 @@ export const BLACKMARK_DOCK_GROUPS = [
     [
         {id: "specialOps", label: "特勤处"},
         {id: "morse", label: "摩斯"},
+        {id: "fingerprint", label: "指纹"},
     ],
 ] as const;
 
