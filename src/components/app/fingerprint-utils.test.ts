@@ -2,6 +2,8 @@ import {describe, expect, it} from "vitest";
 
 import type {FingerprintSettings} from "@/components/app/fingerprint-types";
 import {
+    archiveSlotsReady,
+    layoutReadyForRun,
     layoutSlotCount,
     parseOverlaySlots,
     parseOverlayTarget,
@@ -51,5 +53,15 @@ describe("fingerprint utils", () => {
     it("counts captured fingerprints", () => {
         expect(personFingerprintCount([null, "a.png", null, "b.png"])).toBe(2);
         expect(personFingerprintCount(undefined)).toBe(0);
+    });
+
+    it("run layout ignores archive slots", () => {
+        const boxes = Array.from({length: 9}, () => ({x: 1, y: 1, width: 20, height: 20}));
+        expect(layoutReadyForRun({candidateBoxes: boxes})).toBe(true);
+        expect(layoutReadyForRun({candidateBoxes: boxes.slice(0, 8)})).toBe(false);
+        expect(archiveSlotsReady({archiveSlots: Array.from({length: 8}, () => null)})).toBe(false);
+        expect(archiveSlotsReady({
+            archiveSlots: Array.from({length: 8}, () => ({x: 0, y: 0, width: 12, height: 12})),
+        })).toBe(true);
     });
 });

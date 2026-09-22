@@ -107,10 +107,29 @@ pub(crate) fn to_screen_bounds(
 }
 
 #[cfg(target_os = "windows")]
+fn ocr_engine() -> Result<windows::Media::Ocr::OcrEngine, String> {
+    use std::cell::RefCell;
+    use windows::Media::Ocr::OcrEngine;
+    thread_local! {
+        static ENGINE: RefCell<Option<OcrEngine>> = const { RefCell::new(None) };
+    }
+    ENGINE.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            let engine = OcrEngine::TryCreateFromUserProfileLanguages()
+                .map_err(|error| format!("Windows OCR 不可用: {error}"))?;
+            *slot = Some(engine);
+        }
+        slot.as_ref()
+            .cloned()
+            .ok_or_else(|| "Windows OCR 不可用".to_string())
+    })
+}
+
+#[cfg(target_os = "windows")]
 pub(crate) fn recognize_words(image: image::DynamicImage) -> Result<Vec<OcrWord>, String> {
     use windows::{
         Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap},
-        Media::Ocr::OcrEngine,
         Storage::Streams::DataWriter,
     };
 
@@ -147,9 +166,7 @@ pub(crate) fn recognize_words(image: image::DynamicImage) -> Result<Vec<OcrWord>
         BitmapAlphaMode::Ignore,
     )
     .map_err(|error| format!("创建 OCR 位图失败: {error}"))?;
-    let engine = OcrEngine::TryCreateFromUserProfileLanguages()
-        .map_err(|error| format!("Windows OCR 不可用: {error}"))?;
-    let result = engine
+    let result = ocr_engine()?
         .RecognizeAsync(&bitmap)
         .map_err(|error| format!("启动 Windows OCR 失败: {error}"))?
         .get()

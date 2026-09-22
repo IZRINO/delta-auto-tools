@@ -10,10 +10,12 @@ pub(crate) mod manager;
 pub(crate) mod matching;
 
 // Re-export 公开接口，保持与旧 watcher.rs 兼容的导入路径
-pub(crate) use capture::{capture_region, load_reference_image, read_reference_image_as_data_url};
+pub(crate) use capture::{
+    capture_region, capture_regions, load_reference_image, read_reference_image_as_data_url,
+};
 pub(crate) use manager::{restart_watchers, start_activation_session, stop_all_watchers};
 pub(crate) use matching::{
-    aggregate_probe_hits_pub, best_reference_match, compare_images, probe_hit, probe_hit_targets,
+    aggregate_probe_hits_pub, best_reference_match, probe_hit, probe_hit_targets,
 };
 
 #[cfg(test)]

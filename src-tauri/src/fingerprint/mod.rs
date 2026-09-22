@@ -304,6 +304,7 @@ fn persist_settings(
     app: &AppHandle,
     state: &FingerprintState,
 ) -> Result<FingerprintBootstrap, String> {
+    pipeline::invalidate_template_cache();
     let inner = state.lock_inner()?;
     settings::save_settings(app, &inner.settings)?;
     Ok(crate::tool_base::ToolLogic::build_bootstrap(&inner))

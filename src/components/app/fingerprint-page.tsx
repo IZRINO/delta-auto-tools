@@ -20,6 +20,7 @@ import {
     ConfigRow,
     FieldUnit,
     HelpHint,
+    SoftAlert,
     ToolPageFrame,
 } from "@/components/app/app-ui";
 import {FingerprintRegionOverlay} from "@/components/app/fingerprint-overlay";
@@ -37,10 +38,12 @@ import {
     type RegionSelectionProgress,
 } from "@/components/app/fingerprint-types";
 import {
+    archiveSlotsReady,
     formatRecordedHotkey,
     formatRegion,
     formatTimestamp,
     getErrorMessage,
+    layoutReadyForRun,
     parseOverlaySlots,
     parseSettingsForm,
     personFingerprintCount,
@@ -68,7 +71,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
         isNativeShell,
         skipInitialLoad: overlayMode,
         loadStatusMessage: "正在加载指纹工具...",
-        readyStatusMessage: "就绪。先框布局，遇到新角色采名条。",
+        readyStatusMessage: "就绪。框完九宫格；名条只需框一次位置。",
         previewStatusMessage: "浏览器预览模式：当前仅验证布局，原生命令请在桌面端运行。",
         saveSuccessMessage: "设置已保存。",
         saveInProgressMessage: "正在保存设置...",
@@ -86,6 +89,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
         syncBootstrap,
         loading,
         saving,
+        pageError,
         setPageError,
         setStatusMessage,
         autosaveVersionRef: autosaveRef,
@@ -143,6 +147,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
             const result = event.payload;
             startTransition(() => {
                 setBootstrap((current) => (current ? {...current, latestRun: result} : current));
+                setPageError(result.error);
                 setStatusMessage(result.error ? `识别失败：${result.error}` : formatRun(result));
             });
             try {
@@ -179,9 +184,8 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
         if (!selectedPersonId && people[0]) setSelectedPersonId(people[0].id);
     }, [people, selectedPersonId]);
 
-    const layoutReady = Boolean(form?.nameRegion)
-        && (form?.candidateBoxes ?? []).filter(Boolean).length === 9
-        && (form?.archiveSlots ?? []).filter(Boolean).length === 8;
+    const layoutReady = form ? layoutReadyForRun(form) : false;
+    const archiveReady = form ? archiveSlotsReady(form) : false;
     const canRun = layoutReady && people.some((person) => personFingerprintCount(person.fingerprintPaths) >= 4);
     const isBusy = loading || saving || running || selecting;
 
@@ -211,33 +215,29 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
         }
     }, [isNativeShell, setPageError, setStatusMessage, syncBootstrap]);
 
-    const captureName = useCallback(async () => {
-        const name = newPersonName.trim() || selectedPerson?.name || "";
+    const addPerson = useCallback(() => {
+        const name = newPersonName.trim();
         if (!name) {
             setStatusMessage("先填人名。");
             return;
         }
-        try {
-            const next = await invoke<FingerprintBootstrap>("fingerprint_capture_name", {
-                name,
-                settingsRevision: getSettingsRevision(profileBootstrap),
-            });
-            setBootstrap(next);
-            setForm(settingsToForm(next.settings));
-            const captured = next.settings.people.find((person) => person.name === name);
-            if (captured) setSelectedPersonId(captured.id);
-            setNewPersonName("");
-            setStatusMessage(`已采集 ${name} 名条。`);
-        } catch (error) {
-            const message = getErrorMessage(error);
-            setPageError(message);
-            setStatusMessage(message);
+        if (people.some((person) => person.name === name)) {
+            setStatusMessage("已有这个角色。");
+            return;
         }
-    }, [newPersonName, profileBootstrap, selectedPerson, setBootstrap, setForm, setPageError, setStatusMessage]);
+        const id = crypto.randomUUID();
+        updateForm("people", [
+            ...people,
+            {id, name, nameImagePath: "", fingerprintPaths: Array.from({length: 8}, () => null)},
+        ]);
+        setSelectedPersonId(id);
+        setNewPersonName("");
+        setStatusMessage(`已添加 ${name}。`);
+    }, [newPersonName, people, setStatusMessage, updateForm]);
 
     const captureArchive = useCallback(async (slots: number[]) => {
         if (!selectedPerson) {
-            setStatusMessage("先采集人名。");
+            setStatusMessage("先选角色。");
             return;
         }
         try {
@@ -310,10 +310,11 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
     return (
         <ToolPageFrame
             actions={
-                <Badge variant={isBusy ? "outline" : canRun ? "default" : "ghost"}>
-                    {isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
+                <Badge variant={isBusy ? "outline" : bootstrap?.hotkeyError ? "outline" : canRun ? "default" : "ghost"}>
+                    {isBusy ? "识别中" : bootstrap?.hotkeyError ? "快捷键异常" : canRun ? "就绪" : "未标定"}
                 </Badge>
             }
+            error={pageError || bootstrap?.hotkeyError ? <SoftAlert>{pageError ?? bootstrap?.hotkeyError}</SoftAlert> : undefined}
             title="指纹"
         >
             <div className="col-span-12">
@@ -331,7 +332,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                 {activeTab === "layout" && (
                     <div className="grid gap-4">
                         <FieldUnit
-                            header="名条"
+                            header="名条位置（框一次）"
                             footer={
                                 <Button className="w-full" disabled={isBusy} onClick={() => void performSelection("name", [0])} type="button">
                                     <RiRefreshLine data-icon="inline-start"/>
@@ -339,6 +340,10 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                 </Button>
                             }
                         >
+                            <ConfigRow
+                                label="用途"
+                                value={<span className="text-xs text-base-content/60">只要框位置。识别时读这里的字认人，不要每个角色采集。</span>}
+                            />
                             <ConfigRow
                                 label="名条"
                                 state={form?.nameRegion ? "valid" : "idle"}
@@ -354,6 +359,10 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                 </Button>
                             }
                         >
+                            <ConfigRow
+                                label="用途"
+                                value={<span className="text-xs text-base-content/60">热键只在这里认格、点数。框右边指纹块，含空位，不要框中间数字。</span>}
+                            />
                             {CANDIDATE_LABELS.map((label, index) => {
                                 const region = form?.candidateBoxes[index] ?? null;
                                 return (
@@ -373,39 +382,12 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                 );
                             })}
                         </FieldUnit>
-                        <FieldUnit
-                            header="档案槽 1–8"
-                            footer={
-                                <Button className="w-full" disabled={isBusy} onClick={() => void performSelection("archive", [0, 1, 2, 3, 4, 5, 6, 7])} type="button">
-                                    <RiRefreshLine data-icon="inline-start"/>
-                                    一次框选 8 槽
-                                </Button>
-                            }
-                        >
-                            {ARCHIVE_LABELS.map((label, index) => {
-                                const region = form?.archiveSlots[index] ?? null;
-                                return (
-                                    <ConfigRow
-                                        key={label}
-                                        label={label}
-                                        state={region ? "valid" : "idle"}
-                                        value={
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-mono text-xs text-base-content/60">{formatRegion(region)}</span>
-                                                <Button disabled={isBusy} onClick={() => void performSelection("archive", [index])} size="sm" type="button" variant="outline">
-                                                    {region ? "重选" : "框选"}
-                                                </Button>
-                                            </div>
-                                        }
-                                    />
-                                );
-                            })}
-                        </FieldUnit>
                     </div>
                 )}
 
                 {activeTab === "library" && (
-                    <FieldUnit header="角色图库">
+                    <div className="grid gap-4">
+                        <FieldUnit header="角色图库">
                         <ConfigRow
                             label="当前角色"
                             value={
@@ -417,24 +399,24 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                     {people.length === 0 ? <option value="">还没有角色</option> : null}
                                     {people.map((person) => (
                                         <option key={person.id} value={person.id}>
-                                            {person.name} · {personFingerprintCount(person.fingerprintPaths)}/8{person.nameImagePath ? "" : " · 缺名条"}
+                                            {person.name} · {personFingerprintCount(person.fingerprintPaths)}/8
                                         </option>
                                     ))}
                                 </select>
                             }
                         />
                         <ConfigRow
-                            label="采集名条"
+                            label="添加角色"
                             value={
                                 <div className="flex w-full items-center gap-2">
                                     <Input
                                         className="max-w-xs"
                                         onChange={(event) => setNewPersonName(event.currentTarget.value)}
-                                        placeholder={selectedPerson?.name ?? "克莱尔"}
+                                        placeholder="新角色名"
                                         value={newPersonName}
                                     />
-                                    <Button disabled={isBusy} onClick={() => void captureName()} type="button">
-                                        采集
+                                    <Button disabled={isBusy} onClick={addPerson} type="button">
+                                        添加
                                     </Button>
                                 </div>
                             }
@@ -443,18 +425,18 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                             label="档案指纹"
                             value={
                                 <div className="flex flex-wrap gap-2">
-                                    <Button disabled={isBusy || !selectedPerson} onClick={() => void captureArchive([0, 1, 2, 3])} type="button" variant="outline">
+                                    <Button disabled={isBusy || !selectedPerson || !archiveReady} onClick={() => void captureArchive([0, 1, 2, 3])} type="button" variant="outline">
                                         采 1–4
                                     </Button>
-                                    <Button disabled={isBusy || !selectedPerson} onClick={() => void captureArchive([0, 1, 2, 3, 4, 5])} type="button" variant="outline">
+                                    <Button disabled={isBusy || !selectedPerson || !archiveReady} onClick={() => void captureArchive([0, 1, 2, 3, 4, 5])} type="button" variant="outline">
                                         采 1–6
                                     </Button>
-                                    <Button disabled={isBusy || !selectedPerson} onClick={() => void captureArchive([0, 1, 2, 3, 4, 5, 6, 7])} type="button" variant="outline">
+                                    <Button disabled={isBusy || !selectedPerson || !archiveReady} onClick={() => void captureArchive([0, 1, 2, 3, 4, 5, 6, 7])} type="button" variant="outline">
                                         采 1–8
                                     </Button>
                                     {ARCHIVE_LABELS.map((label, index) => (
                                         <Button
-                                            disabled={isBusy || !selectedPerson}
+                                            disabled={isBusy || !selectedPerson || !archiveReady}
                                             key={label}
                                             onClick={() => void captureArchive([index])}
                                             size="sm"
@@ -476,7 +458,40 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                 </Button>
                             }
                         />
-                    </FieldUnit>
+                        </FieldUnit>
+                        <FieldUnit
+                            header="档案槽 1–8"
+                            footer={
+                                <Button className="w-full" disabled={isBusy} onClick={() => void performSelection("archive", [0, 1, 2, 3, 4, 5, 6, 7])} type="button">
+                                    <RiRefreshLine data-icon="inline-start"/>
+                                    一次框选 8 槽
+                                </Button>
+                            }
+                        >
+                            <ConfigRow
+                                label="用途"
+                                value={<span className="text-xs text-base-content/60">只给上面采 1–X 用。热键识别不读这些槽。在角色档案页框，不要框解锁界面。</span>}
+                            />
+                            {ARCHIVE_LABELS.map((label, index) => {
+                                const region = form?.archiveSlots[index] ?? null;
+                                return (
+                                    <ConfigRow
+                                        key={label}
+                                        label={label}
+                                        state={region ? "valid" : "idle"}
+                                        value={
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono text-xs text-base-content/60">{formatRegion(region)}</span>
+                                                <Button disabled={isBusy} onClick={() => void performSelection("archive", [index])} size="sm" type="button" variant="outline">
+                                                    {region ? "重选" : "框选"}
+                                                </Button>
+                                            </div>
+                                        }
+                                    />
+                                );
+                            })}
+                        </FieldUnit>
+                    </div>
                 )}
 
                 {activeTab === "run" && (
@@ -524,12 +539,15 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                         <ConfigRow
                             label="占用阈值"
                             value={
-                                <Input
-                                    className="font-mono text-xs"
-                                    inputMode="decimal"
-                                    onChange={(event) => updateForm("occupancyThreshold", event.currentTarget.value)}
-                                    value={form?.occupancyThreshold ?? ""}
-                                />
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        className="font-mono text-xs"
+                                        inputMode="decimal"
+                                        onChange={(event) => updateForm("occupancyThreshold", event.currentTarget.value)}
+                                        value={form?.occupancyThreshold ?? ""}
+                                    />
+                                    <HelpHint content="占用看格子中心纹路，空槽边框不计入。此值暂不参与。"/>
+                                </div>
                             }
                         />
                         <ConfigRow
@@ -562,7 +580,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                         <p>{formatTimestamp(latestRun.occurredAtMs)} · {formatRun(latestRun)}</p>
                                         {latestRun.matches.length > 0 ? (
                                             <p className="mt-1 font-mono text-base-content/60">
-                                                {latestRun.matches.map((item) => `${item.templateIndex}→格${item.candidateIndex}`).join(" · ")}
+                                                {latestRun.matches.map((item) => `${item.templateIndex}→格${item.candidateIndex}(${item.score.toFixed(2)})`).join(" · ")}
                                             </p>
                                         ) : null}
                                     </div>

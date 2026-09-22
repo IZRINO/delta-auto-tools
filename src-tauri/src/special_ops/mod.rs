@@ -25,7 +25,7 @@ pub(crate) mod template_observer;
 #[allow(dead_code)]
 mod windows_clipboard;
 #[allow(dead_code)]
-mod windows_ocr;
+pub(crate) mod windows_ocr;
 
 use chrono::{FixedOffset, TimeZone, Timelike, Utc};
 use serde::{Deserialize, Serialize};

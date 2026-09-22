@@ -101,3 +101,11 @@ export function parseOverlaySlots(search = window.location.search): number[] {
 export function personFingerprintCount(paths: Array<string | null> | undefined): number {
     return (paths ?? []).filter(Boolean).length;
 }
+
+export function layoutReadyForRun(form: Pick<FingerprintSettingsForm, "candidateBoxes">): boolean {
+    return form.candidateBoxes.filter(Boolean).length === 9;
+}
+
+export function archiveSlotsReady(form: Pick<FingerprintSettingsForm, "archiveSlots">): boolean {
+    return form.archiveSlots.filter(Boolean).length === 8;
+}

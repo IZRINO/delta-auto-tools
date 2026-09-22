@@ -2,112 +2,142 @@
 
 use image::{imageops, imageops::FilterType, DynamicImage, GrayImage};
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use super::{
     matching::{
-        assign_templates, best_index_above, click_order, difficulty_from_occupied_count,
-        is_occupied,
+        assign_from_scores, best_ncc_similarity, click_order, crop_gray_margin,
+        difficulty_from_occupied_count, match_person_by_ocr_text, occupancy_energy,
+        select_occupied_indices,
     },
     types::{FingerprintMatch, FingerprintPerson, FingerprintRunResult, FingerprintSettings},
 };
-use crate::morse::types::RegionRect;
-use crate::recognition::watcher::{capture_region, compare_images, load_reference_image};
+use crate::recognition::watcher::{capture_region, capture_regions, load_reference_image};
 
 const TEMPLATE_MARGIN: f32 = 0.15;
+
+fn template_cache() -> &'static Mutex<HashMap<String, GrayImage>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, GrayImage>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(crate) fn invalidate_template_cache() {
+    if let Ok(mut cache) = template_cache().lock() {
+        cache.clear();
+    }
+}
+
+fn load_gray_cached(path: &str) -> Option<GrayImage> {
+    if let Ok(cache) = template_cache().lock() {
+        if let Some(image) = cache.get(path) {
+            return Some(image.clone());
+        }
+    }
+    let image = to_gray(&load_reference_image(path)?);
+    if let Ok(mut cache) = template_cache().lock() {
+        cache.insert(path.to_string(), image.clone());
+    }
+    Some(image)
+}
 
 pub struct PipelineOutput {
     pub result: FingerprintRunResult,
     pub points: Vec<(i32, i32, u64)>,
 }
 
-fn capture_required(region: &Option<RegionRect>, label: &str) -> Result<DynamicImage, String> {
-    let region = region.as_ref().ok_or_else(|| format!("未校准{label}"))?;
-    capture_region(region).ok_or_else(|| format!("{label}截图失败"))
-}
-
 fn to_gray(image: &DynamicImage) -> GrayImage {
     image.to_luma8()
 }
 
-fn resize_to(image: &DynamicImage, width: u32, height: u32) -> DynamicImage {
+fn resize_gray(image: &GrayImage, width: u32, height: u32) -> GrayImage {
     if width == 0 || height == 0 {
         return image.clone();
     }
-    DynamicImage::ImageRgba8(imageops::resize(
-        &image.to_rgba8(),
-        width,
-        height,
-        FilterType::Triangle,
-    ))
+    imageops::resize(image, width, height, FilterType::Triangle)
 }
 
-fn crop_core(image: &DynamicImage) -> DynamicImage {
-    let width = image.width();
-    let height = image.height();
-    let margin_x = ((width as f32) * TEMPLATE_MARGIN).round() as u32;
-    let margin_y = ((height as f32) * TEMPLATE_MARGIN).round() as u32;
-    let crop_w = width.saturating_sub(margin_x.saturating_mul(2)).max(1);
-    let crop_h = height.saturating_sub(margin_y.saturating_mul(2)).max(1);
-    image.crop_imm(
-        margin_x.min(width.saturating_sub(1)),
-        margin_y.min(height.saturating_sub(1)),
-        crop_w,
-        crop_h,
-    )
+fn score_matrix(
+    candidate_grays: &[GrayImage],
+    occupied_indices: &[usize],
+    templates: &[GrayImage],
+) -> Vec<Vec<f32>> {
+    occupied_indices
+        .iter()
+        .map(|&index| {
+            templates
+                .iter()
+                .map(|template| score_candidate(&candidate_grays[index], template))
+                .collect()
+        })
+        .collect()
 }
 
-fn ncc(screenshot: &DynamicImage, reference: &DynamicImage) -> f32 {
-    compare_images(screenshot, reference).similarity
-}
-
-fn match_name<'a>(
-    name_crop: &DynamicImage,
-    people: &'a [FingerprintPerson],
-    threshold: f32,
-) -> Result<&'a FingerprintPerson, String> {
-    if people.is_empty() {
-        return Err("还没有采集任何人名".to_string());
-    }
-    let mut best_index = None;
-    let mut best_score = f32::NEG_INFINITY;
-    for (index, person) in people.iter().enumerate() {
-        let Some(reference) = load_reference_image(&person.name_image_path) else {
+fn assignment_score(
+    assignment: &[Option<usize>],
+    occupied_indices: &[usize],
+    vote_scores: &[Vec<f32>],
+) -> (usize, f32) {
+    let mut count = 0usize;
+    let mut sum = 0.0_f32;
+    for (template, candidate) in assignment.iter().enumerate() {
+        let Some(candidate_index) = *candidate else {
             continue;
         };
-        let resized = resize_to(&reference, name_crop.width(), name_crop.height());
-        let score = ncc(name_crop, &resized);
-        if score > best_score {
-            best_score = score;
-            best_index = Some(index);
-        }
+        let Some(row) = occupied_indices
+            .iter()
+            .position(|&index| index == candidate_index)
+        else {
+            continue;
+        };
+        count += 1;
+        sum += vote_scores[row][template];
     }
-    let index = best_index.ok_or_else(|| "人名参考图都读不出来".to_string())?;
-    if best_score < threshold {
-        return Err(format!(
-            "无法认出人名（最高 {best_score:.2}，阈值 {threshold:.2}）"
-        ));
-    }
-    Ok(&people[index])
+    (count, sum)
 }
 
-fn load_templates(person: &FingerprintPerson, count: usize) -> Result<Vec<DynamicImage>, String> {
+fn load_templates(person: &FingerprintPerson, count: usize) -> Result<Vec<GrayImage>, String> {
     let mut templates = Vec::with_capacity(count);
     for index in 0..count {
         let path = person.fingerprint_paths[index]
             .as_ref()
             .ok_or_else(|| format!("{} 缺少第 {} 枚指纹", person.name, index + 1))?;
-        let image = load_reference_image(path)
+        let image = load_gray_cached(path)
             .ok_or_else(|| format!("{} 第 {} 枚指纹读失败", person.name, index + 1))?;
         templates.push(image);
     }
     Ok(templates)
 }
 
-fn score_candidate(candidate: &DynamicImage, template: &DynamicImage) -> f32 {
-    let resized = resize_to(template, candidate.width(), candidate.height());
-    let core = crop_core(&resized);
-    let gray_candidate = DynamicImage::ImageLuma8(to_gray(candidate));
-    let gray_core = DynamicImage::ImageLuma8(to_gray(&core));
-    ncc(&gray_candidate, &gray_core)
+fn identify_person_by_name(settings: &FingerprintSettings) -> Option<usize> {
+    let region = settings.name_region.as_ref()?;
+    let image = capture_region(region)?;
+    let words = crate::special_ops::windows_ocr::recognize_words(image).ok()?;
+    let text: String = words.into_iter().map(|word| word.text).collect();
+    let names: Vec<&str> = settings
+        .people
+        .iter()
+        .map(|person| person.name.as_str())
+        .collect();
+    match_person_by_ocr_text(&text, &names)
+}
+
+fn score_candidate(candidate: &GrayImage, template: &GrayImage) -> f32 {
+    let resized = resize_gray(template, candidate.width(), candidate.height());
+    let candidate_core = crop_gray_margin(candidate, TEMPLATE_MARGIN);
+    let template_core = crop_gray_margin(&resized, TEMPLATE_MARGIN);
+    let aligned = if template_core.width() == candidate_core.width()
+        && template_core.height() == candidate_core.height()
+    {
+        template_core
+    } else {
+        resize_gray(
+            &template_core,
+            candidate_core.width(),
+            candidate_core.height(),
+        )
+    };
+    best_ncc_similarity(&candidate_core, &aligned)
 }
 
 pub fn run_pipeline_with_points(
@@ -128,56 +158,116 @@ pub fn run_pipeline_with_points(
         error: None,
     };
 
-    let name_crop = capture_required(&settings.name_region, "名条")?;
-    let person = match_name(&name_crop, &settings.people, settings.match_threshold)?;
-    result.person_id = Some(person.id.clone());
-    result.person_name = Some(person.name.clone());
-
     if settings.candidate_boxes.iter().any(Option::is_none) {
         return Err("请先框完 9 个候选格".to_string());
     }
-
-    let mut occupied_flags = Vec::with_capacity(9);
-    let mut candidate_images = Vec::with_capacity(9);
-    for (index, region) in settings.candidate_boxes.iter().enumerate() {
-        let image = capture_required(region, &format!("候选{}", index + 1))?;
-        occupied_flags.push(is_occupied(&to_gray(&image), settings.occupancy_threshold));
-        candidate_images.push(image);
+    let capture_rects: Vec<_> = settings
+        .candidate_boxes
+        .iter()
+        .cloned()
+        .map(|region| region.ok_or_else(|| "请先框完 9 个候选格".to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let captured = capture_regions(&capture_rects).ok_or_else(|| "截图失败".to_string())?;
+    if captured.len() != 9 {
+        return Err("截图失败".to_string());
     }
-    let occupied_count = occupied_flags.iter().filter(|flag| **flag).count();
+
+    let mut variances = Vec::with_capacity(9);
+    let mut candidate_grays = Vec::with_capacity(9);
+    for image in captured {
+        let gray = to_gray(&image);
+        variances.push(occupancy_energy(&gray));
+        candidate_grays.push(gray);
+    }
+    let occupied_indices = select_occupied_indices(&variances)?;
+    let occupied_count = occupied_indices.len();
     result.occupied_count = Some(occupied_count);
     let difficulty = difficulty_from_occupied_count(occupied_count)?;
     result.mode = Some(difficulty.label.to_string());
 
-    let used_boxes = &candidate_images[..difficulty.box_count];
-    let templates = load_templates(person, difficulty.template_count)?;
+    let mut best: Option<(usize, Vec<Option<usize>>, Vec<Vec<f32>>, usize, f32)> = None;
+    let mut consider = |person_index: usize| {
+        let person = &settings.people[person_index];
+        let Ok(templates) = load_templates(person, difficulty.template_count) else {
+            return false;
+        };
+        let vote_scores = score_matrix(&candidate_grays, &occupied_indices, &templates);
+        let assignment = assign_from_scores(
+            &vote_scores,
+            &occupied_indices,
+            difficulty.template_count,
+            settings.match_threshold,
+        );
+        let (assigned, sum) = assignment_score(&assignment, &occupied_indices, &vote_scores);
+        let complete = assigned == difficulty.template_count;
+        let better = match &best {
+            None => true,
+            Some((_, _, _, best_n, best_sum)) => {
+                assigned > *best_n || (assigned == *best_n && sum > *best_sum)
+            }
+        };
+        if better {
+            best = Some((person_index, assignment, vote_scores, assigned, sum));
+        }
+        complete
+    };
 
-    let mut votes = Vec::with_capacity(difficulty.box_count);
-    let mut vote_scores = Vec::with_capacity(difficulty.box_count);
-    for candidate in used_boxes {
-        let scores: Vec<f32> = templates
-            .iter()
-            .map(|template| score_candidate(candidate, template))
-            .collect();
-        let best = best_index_above(&scores, settings.match_threshold);
-        let score = best.map(|index| scores[index]).unwrap_or(0.0);
-        votes.push((best, score));
-        vote_scores.push(scores);
+    let ocr_hit = identify_person_by_name(settings);
+    if let Some(person_index) = ocr_hit {
+        if consider(person_index) {
+            // 名条读中且配齐，不再扫其他人。
+        } else {
+            for person_index in 0..settings.people.len() {
+                if Some(person_index) != ocr_hit {
+                    consider(person_index);
+                }
+            }
+        }
+    } else {
+        for person_index in 0..settings.people.len() {
+            consider(person_index);
+        }
     }
-
-    let assignment = assign_templates(&votes, difficulty.template_count, settings.match_threshold);
-    let order = click_order(&assignment)?;
+    let Some((person_index, assignment, vote_scores, _, _)) = best else {
+        return Err("图库里没有足够的档案指纹".to_string());
+    };
+    let person = &settings.people[person_index];
+    result.person_id = Some(person.id.clone());
+    result.person_name = Some(person.name.clone());
     result.matches = assignment
         .iter()
         .enumerate()
         .filter_map(|(template, candidate)| {
-            candidate.map(|candidate_index| FingerprintMatch {
+            let candidate_index = (*candidate)?;
+            let row = occupied_indices
+                .iter()
+                .position(|&index| index == candidate_index)?;
+            Some(FingerprintMatch {
                 template_index: template + 1,
                 candidate_index: candidate_index + 1,
-                score: vote_scores[candidate_index][template],
+                score: vote_scores[row][template],
             })
         })
         .collect();
+
+    let order = match click_order(&assignment) {
+        Ok(order) => order,
+        Err(missing) => {
+            let occupied_label = occupied_indices
+                .iter()
+                .map(|index| (index + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            result.error = Some(format!(
+                "{} · {}档 · {occupied_count}格有纹({occupied_label}) · {missing}",
+                person.name, difficulty.label
+            ));
+            return Ok(PipelineOutput {
+                result,
+                points: Vec::new(),
+            });
+        }
+    };
 
     let points: Vec<(i32, i32, u64)> = if auto_click && settings.auto_click_enabled {
         order
@@ -196,4 +286,42 @@ pub fn run_pipeline_with_points(
     };
 
     Ok(PipelineOutput { result, points })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{GrayImage, Luma};
+    use std::time::Instant;
+
+    fn checker(width: u32, height: u32) -> GrayImage {
+        let mut image = GrayImage::new(width, height);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = Luma([if (x + y) % 2 == 0 { 0 } else { 255 }]);
+        }
+        image
+    }
+
+    #[test]
+    fn score_candidate_same_pattern_is_fast_and_high() {
+        let image = checker(160, 160);
+        let started = Instant::now();
+        let score = score_candidate(&image, &image);
+        assert!(
+            started.elapsed().as_millis() < 50,
+            "elapsed {:?}",
+            started.elapsed()
+        );
+        assert!(score > 0.9, "score {score}");
+    }
+
+    #[test]
+    fn assignment_score_counts_matched_templates() {
+        let assignment = vec![Some(3), None, Some(0)];
+        let occupied = vec![0, 3];
+        let scores = vec![vec![0.1, 0.2, 0.9], vec![0.8, 0.1, 0.1]];
+        let (count, sum) = assignment_score(&assignment, &occupied, &scores);
+        assert_eq!(count, 2);
+        assert!((sum - 1.7).abs() < 1e-5);
+    }
 }
