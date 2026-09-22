@@ -4,7 +4,7 @@
 
 连发器模块用于在用户按住触发键时，以可配置的间隔高速连发目标键。松开触发键后，若连发次数为奇数，会自动补发一次使总次数为偶数（除非开启 `skip_compensation`）。每张卡片可独立配置触发键、目标键、间隔、抖动、间距等参数，并通过分组系统管理各自的透明显示窗口。
 
-该模块基于 [同步工具基座](../systems/sync-tool.md) 实现（`RapidfireLogic` 实现 `SyncToolLogic` trait），使用 `ConflictPolicy::AllowHold` 热键冲突策略，可与计时器/计数器的普通 scope 共享热键，详见 [热键系统](../systems/hotkeys.md)。透明显示窗口与位置校准遵循 [透明叠加窗](../systems/overlay-windows.md) 约束。
+该模块基于 [同步工具基座](../systems/sync-tool.md) 实现（`RapidfireLogic` 实现 `SyncToolLogic` trait），使用 `ConflictPolicy::AllowHold` 热键冲突策略，可与计时器/计数器/摩斯/指纹的普通 scope 共享热键，详见 [热键系统](../systems/hotkeys.md)。透明显示窗口与位置校准遵循 [透明叠加窗](../systems/overlay-windows.md) 约束。
 
 ## 目录结构
 
@@ -179,7 +179,7 @@ worker 每次开火只更新内存 count。`RapidfireLogic.last_runs_emit_at` �
 ### 热键系统
 
 - 使用 `HotkeyManager` 的 hold scope（`replace_hold_scope`），冲突策略为 `ConflictPolicy::AllowHold`
-- 可与计时器/计数器的普通 scope 共享热键（双方均用 `AllowHold`），运行时先分发连发器 hold Down/Up，再分发计时器/计数器普通快捷键
+- 可与计时器/计数器/摩斯/指纹的普通 scope 共享热键（双方均用 `AllowHold`），运行时先分发连发器 hold Down/Up，再分发普通快捷键
 - 保存设置时通过 `restart_hotkey_listeners` 智能跳过：若新旧绑定映射一致则不重建 scope，避免打断正在进行的 hold 回调
 - 详见 [热键系统](../systems/hotkeys.md)
 

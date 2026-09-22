@@ -1,3 +1,4 @@
+import {CLICK_REGION_LABELS} from "@/components/app/morse-types";
 import {
     ARCHIVE_LABELS,
     CANDIDATE_LABELS,
@@ -7,7 +8,7 @@ import {
 } from "@/components/app/fingerprint-types";
 
 export {getErrorMessage} from "@/lib/error-utils";
-export {formatRecordedHotkey, formatRegion, formatTimestamp} from "@/components/app/morse-utils";
+export {clickRegionRows, formatRecordedHotkey, formatRegion, formatTimestamp} from "@/components/app/morse-utils";
 
 export function settingsToForm(settings: FingerprintSettings): FingerprintSettingsForm {
     return {
@@ -16,6 +17,17 @@ export function settingsToForm(settings: FingerprintSettings): FingerprintSettin
         matchThreshold: String(settings.matchThreshold),
         autoClickEnabled: settings.autoClickEnabled,
         clickDelayMs: String(settings.clickDelayMs),
+        afterClickHotkey: settings.afterClickHotkey ?? "",
+        clickRegions: (() => {
+            const regions: FingerprintSettingsForm["clickRegions"] = (settings.clickRegions ?? []).map((region) => ({
+                rect: region.rect,
+                delayMs: String(region.delayMs ?? 500),
+            }));
+            while (regions.length < 7) {
+                regions.push({rect: null, delayMs: "500"});
+            }
+            return regions;
+        })(),
         nameRegion: settings.nameRegion,
         candidateBoxes: settings.candidateBoxes,
         archiveSlots: settings.archiveSlots,
@@ -40,12 +52,20 @@ export function parseSettingsForm(form: FingerprintSettingsForm): FingerprintSet
     if (!Number.isInteger(clickDelayMs) || clickDelayMs < 0) {
         throw new Error("点击延迟必须是大于等于 0 的整数毫秒值。");
     }
+    const afterClickHotkey = form.afterClickHotkey.trim();
     return {
         hotkey,
         occupancyThreshold,
         matchThreshold,
         autoClickEnabled: form.autoClickEnabled,
         clickDelayMs,
+        afterClickHotkey: afterClickHotkey ? afterClickHotkey : null,
+        clickRegions: (form.clickRegions ?? [])
+            .filter((region) => region.rect !== null)
+            .map((region) => ({
+                rect: region.rect!,
+                delayMs: Number.parseInt(region.delayMs, 10) || 500,
+            })),
         nameRegion: form.nameRegion,
         candidateBoxes: form.candidateBoxes,
         archiveSlots: form.archiveSlots,
@@ -56,18 +76,20 @@ export function parseSettingsForm(form: FingerprintSettingsForm): FingerprintSet
 export function layoutSlotCount(target: LayoutTarget): number {
     if (target === "name") return 1;
     if (target === "candidates") return 9;
+    if (target === "click") return 7;
     return 8;
 }
 
 export function layoutLabels(target: LayoutTarget): readonly string[] {
     if (target === "name") return ["名条"];
     if (target === "candidates") return CANDIDATE_LABELS;
+    if (target === "click") return CLICK_REGION_LABELS;
     return ARCHIVE_LABELS;
 }
 
 export function parseOverlayTarget(search = window.location.search): LayoutTarget {
     const target = new URLSearchParams(search).get("target");
-    if (target === "candidates" || target === "archive" || target === "name") {
+    if (target === "candidates" || target === "archive" || target === "name" || target === "click") {
         return target;
     }
     return "name";

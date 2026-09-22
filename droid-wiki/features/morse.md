@@ -4,7 +4,7 @@
 
 摩斯密码识别模块用于自动破解《三角洲行动》游戏内的摩斯密码谜题。用户通过热键触发识别流程，模块会截取屏幕上预设的 3 个区域，对每个区域进行二值化与连通域分析，识别其中的摩斯码（点 `.` 与划 `-`），再匹配到数字 0-9，最后将识别结果自动输入到游戏，并可选地执行一组自动点击与按键动作。
 
-该模块基于 [工具基座](../systems/tool-base.md) 泛型基座实现（`MorseLogic` 实现 `ToolLogic` trait），使用 `ConflictPolicy::Strict` 热键冲突策略，与任何其他工具的 scope 都不允许共享热键，详见 [热键系统](../systems/hotkeys.md)。区域选择通过同窗口透明 overlay 完成，详见 [透明叠加窗](../systems/overlay-windows.md)。
+该模块基于 [工具基座](../systems/tool-base.md) 泛型基座实现（`MorseLogic` 实现 `ToolLogic` trait），使用 `ConflictPolicy::AllowHold` 热键冲突策略，可与指纹、计时器、计数器普通 scope 及连发器/识别触发 hold scope 共享热键，按下后全部触发，详见 [热键系统](../systems/hotkeys.md)。区域选择通过同窗口透明 overlay 完成，详见 [透明叠加窗](../systems/overlay-windows.md)。
 
 ## 目录结构
 
@@ -163,7 +163,7 @@ sequenceDiagram
 
 ### 热键系统
 
-- 使用 `HotkeyManager::replace_scope` 注册 `morse` scope，冲突策略为 `ConflictPolicy::Strict`
+- 使用 `HotkeyManager::replace_scope` 注册 `morse` scope，冲突策略为 `ConflictPolicy::AllowHold`
 - 热键回调触发 `run_recognition_flow(app, "hotkey", true)`
 - 录制热键时通过 `set_scope_enabled("morse", false)` 暂停 scope，详见 [热键系统](../systems/hotkeys.md)
 - 热键冲突或注册失败时写入 `hotkey_error` 并通过 `morse://hotkey-error` 事件推送

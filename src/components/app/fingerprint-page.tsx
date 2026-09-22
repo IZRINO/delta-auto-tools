@@ -1,6 +1,6 @@
 import {startTransition, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {invokeLogged as invoke} from "@/lib/logging";
-import {RiDeleteBinLine, RiPlayLine, RiRefreshLine} from "@remixicon/react";
+import {RiDeleteBinLine, RiLayoutGridLine, RiPlayLine, RiRefreshLine} from "@remixicon/react";
 
 import {FINGERPRINT_EVENTS} from "@/lib/tauri-events";
 import {subscribeTauriEvent} from "@/lib/tauri-listener";
@@ -13,6 +13,7 @@ import {useProfile} from "@/hooks/use-profile";
 
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from "@/components/ui/collapsible";
 import {Input} from "@/components/ui/input";
 import {Switch} from "@/components/ui/switch";
 import {
@@ -21,6 +22,7 @@ import {
     FieldUnit,
     HelpHint,
     SoftAlert,
+    StampFold,
     ToolPageFrame,
 } from "@/components/app/app-ui";
 import {FingerprintRegionOverlay} from "@/components/app/fingerprint-overlay";
@@ -39,6 +41,7 @@ import {
 } from "@/components/app/fingerprint-types";
 import {
     archiveSlotsReady,
+    clickRegionRows,
     formatRecordedHotkey,
     formatRegion,
     formatTimestamp,
@@ -527,15 +530,104 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                                 </Button>
                             }
                         />
-                        <ConfigRow
-                            label="自动点击"
-                            value={
+                        <div className="flex items-center gap-2 border-b border-base-300 px-3 py-2">
+                            <label className="flex items-center gap-2">
                                 <Switch
                                     checked={form?.autoClickEnabled ?? true}
+                                    disabled={isBusy}
                                     onCheckedChange={(checked) => updateForm("autoClickEnabled", checked)}
                                 />
-                            }
-                        />
+                                <span className="font-mono text-xs font-semibold">自动点击链路</span>
+                            </label>
+                            <HelpHint content="识别成功后先点九宫格，再按顺序点配置区域，全部成功后按完成后按键。"/>
+                        </div>
+                        {form?.autoClickEnabled && (
+                            <div className="space-y-3 px-3 pb-3">
+                                <ConfigRow
+                                    label="点击完成后按键"
+                                    value={
+                                        <Input
+                                            className="border border-base-300 font-mono text-xs"
+                                            placeholder="留空不执行，例如 F4"
+                                            onChange={(event) => updateForm("afterClickHotkey", event.currentTarget.value)}
+                                            value={form?.afterClickHotkey ?? ""}
+                                        />
+                                    }
+                                    state={form?.afterClickHotkey ? "valid" : "idle"}
+                                />
+                                <Collapsible>
+                                    <CollapsibleTrigger asChild>
+                                        <StampFold
+                                            label="点击区域配置"
+                                            trailing={(
+                                                <Badge variant="outline">{(form?.clickRegions ?? []).filter((region) => region.rect).length}/7</Badge>
+                                            )}
+                                        />
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="border-t-2 border-base-content px-3 py-3">
+                                        <div className="flex flex-col gap-2">
+                                            {clickRegionRows(form?.clickRegions ?? []).map((region) => (
+                                                <div key={region.slotIndex} className="flex items-center gap-3 border border-base-300 bg-base-200 p-2">
+                                                    <Badge variant={region.rect ? "default" : "outline"} className="shrink-0">
+                                                        {region.slotIndex + 1}
+                                                    </Badge>
+                                                    <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-base-content/60">
+                                                        {formatRegion(region.rect)}
+                                                    </span>
+                                                    <Input
+                                                        className="w-20 border border-base-300 bg-base-100 font-mono text-xs"
+                                                        inputMode="numeric"
+                                                        min="0"
+                                                        value={region.delayMs}
+                                                        onChange={(event) => {
+                                                            const next = [...(form?.clickRegions ?? [])];
+                                                            next[region.slotIndex] = {
+                                                                ...next[region.slotIndex],
+                                                                delayMs: event.currentTarget.value,
+                                                            };
+                                                            updateForm("clickRegions", next);
+                                                        }}
+                                                    />
+                                                    <span className="text-xs text-base-content/40">ms</span>
+                                                    <Button
+                                                        className="h-7 w-7 shrink-0 px-0"
+                                                        disabled={isBusy}
+                                                        onClick={() => {
+                                                            const next = [...(form?.clickRegions ?? [])];
+                                                            next[region.slotIndex] = {
+                                                                ...next[region.slotIndex],
+                                                                rect: null,
+                                                            };
+                                                            updateForm("clickRegions", next);
+                                                        }}
+                                                        type="button"
+                                                        variant="ghost"
+                                                    >
+                                                        ×
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            {(form?.clickRegions ?? []).filter((region) => region.rect).length < 7 && (
+                                                <Button
+                                                    className="rounded-none"
+                                                    disabled={isBusy}
+                                                    onClick={() => {
+                                                        const empty = (form?.clickRegions ?? []).findIndex((region) => !region.rect);
+                                                        if (empty === -1) return;
+                                                        void performSelection("click", [empty]);
+                                                    }}
+                                                    type="button"
+                                                    variant="outline"
+                                                >
+                                                    <RiLayoutGridLine data-icon="inline-start"/>
+                                                    添加点击区域
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            </div>
+                        )}
                         <ConfigRow
                             label="占用阈值"
                             value={
@@ -609,6 +701,16 @@ function applyProgress(form: FingerprintSettingsForm, progress: RegionSelectionP
     }
     if (progress.target === "archive") {
         return {...form, archiveSlots: padRects(progress.rects, 8)};
+    }
+    if (progress.target === "click") {
+        const padded = padRects(progress.rects, 7);
+        return {
+            ...form,
+            clickRegions: padded.map((rect, index) => ({
+                rect,
+                delayMs: form.clickRegions[index]?.delayMs ?? "500",
+            })),
+        };
     }
     return form;
 }

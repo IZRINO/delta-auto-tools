@@ -44,7 +44,7 @@ AGENTS.md 和 CLAUDE.md 大量记录了一个已不存在的 `delta/` 模块。�
 
 ### 热键冲突边界情况
 
-`AllowHold` 策略仅在计时器/计数器普通 scope 和连发器 hold scope 之间有效。Morse 使用 `Strict` 会拒绝任何其他 scope 使用的按键。新增工具 scope 时需仔细决定冲突策略并在 `hotkeys.rs` 中添加测试。
+`AllowHold` 允许与其他 AllowHold 绑定复用同一按键（普通与 hold 均可），按下后全部触发。摩斯/指纹与计时器/计数器同属 AllowHold 普通 scope，可与连发器 hold 同键共存。`Strict`（特勤处紧急停止/下一账号）仍拒绝任何其他 scope 使用的按键。新增工具 scope 时需仔细决定冲突策略并在 `hotkeys.rs` 中添加测试。
 
 ### 透明窗口渲染
 

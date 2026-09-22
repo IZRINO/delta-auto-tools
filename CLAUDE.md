@@ -224,11 +224,11 @@ Carbon `#0C0C0B`、Slate `#171715`、Iron `#232320`、Chalk `#D8D4CC`、Zinc `#9
 
 ### 热键冲突规则
 
-- `ConflictPolicy` 枚举声明冲突策略：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
+- `ConflictPolicy` 枚举声明冲突策略：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许与其他 AllowHold 绑定复用同一按键，普通与 hold 均可；按下后全部触发）。
 - `HotkeyRegistration` 和 `HoldRegistration` 均包含 `conflict_policy` 字段；`replace_scope` / `replace_hold_scope` / `replace_mixed_scope` 接收该参数。
-- Timer / Counter 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时先分发 hold Down/Up，再分发普通快捷键。Recognition 同一按键可同时绑定单次与持续卡片。
-- Morse 与 Timer / Counter / Recognition 普通快捷键或 Rapidfire / Recognition hold 触发键冲突仍必须拒绝（Morse 使用 `ConflictPolicy::Strict`）。
-- 其他跨 scope 冲突必须拒绝。录制热键时暂停对应 scope。
+- Timer / Counter / Morse / Fingerprint 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均使用 `ConflictPolicy::AllowHold`）；运行时先分发 hold Down/Up，再分发普通快捷键。Recognition 同一按键可同时绑定单次与持续卡片。
+- Morse 与 Fingerprint 普通快捷键也可同键共存，按下后同时触发。
+- 特勤处紧急停止/下一账号仍用 `Strict`，与任何其他 scope 冲突必须拒绝。录制热键时暂停对应 scope。
 
 ### Overlay 透明窗口约束
 

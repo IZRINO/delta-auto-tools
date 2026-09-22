@@ -21,6 +21,8 @@ const sample: FingerprintSettings = {
     matchThreshold: 0.55,
     autoClickEnabled: true,
     clickDelayMs: 50,
+    afterClickHotkey: null,
+    clickRegions: [],
     people: [],
 };
 
@@ -34,6 +36,25 @@ describe("fingerprint utils", () => {
         expect(parsed.hotkey).toBe("F6");
         expect(parsed.people).toEqual(current.people);
         expect(parsed.autoClickEnabled).toBe(true);
+        expect(parsed.afterClickHotkey).toBeNull();
+        expect(parsed.clickRegions).toEqual([]);
+    });
+
+    it("keeps after-click hotkey and click regions", () => {
+        const current = {
+            ...sample,
+            afterClickHotkey: " F4 ",
+            clickRegions: [{rect: {x: 1, y: 2, width: 10, height: 12}, delayMs: 400}],
+        };
+        const form = settingsToForm(current);
+        expect(form.clickRegions).toHaveLength(7);
+        expect(form.afterClickHotkey).toBe(" F4 ");
+        const parsed = parseSettingsForm({
+            ...form,
+            afterClickHotkey: "  F4  ",
+        });
+        expect(parsed.afterClickHotkey).toBe("F4");
+        expect(parsed.clickRegions).toEqual([{rect: {x: 1, y: 2, width: 10, height: 12}, delayMs: 400}]);
     });
 
     it("rejects bad match threshold", () => {
@@ -48,6 +69,9 @@ describe("fingerprint utils", () => {
         expect(parseOverlaySlots("?target=candidates&slots=0,8")).toEqual([0, 8]);
         expect(parseOverlaySlots("?target=archive&slots=0,1,1,9")).toEqual([0, 1]);
         expect(layoutSlotCount("archive")).toBe(8);
+        expect(parseOverlayTarget("?mode=fingerprint-overlay&target=click&slots=0")).toBe("click");
+        expect(parseOverlaySlots("?target=click&slots=0,6")).toEqual([0, 6]);
+        expect(layoutSlotCount("click")).toBe(7);
     });
 
     it("counts captured fingerprints", () => {

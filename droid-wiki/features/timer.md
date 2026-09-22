@@ -104,7 +104,7 @@ flowchart TD
 - **Press 模式**：注册为普通 scope 快捷键（`bindings.normal`），按下即触发。
 - **Release 模式**：注册为 hold scope（`bindings.hold`），按下时触发 Down（Press 列表），释放时触发 Up（Release 列表）。
 
-冲突策略为 `ConflictPolicy::AllowHold`（`SyncToolLogic` 默认值），允许计时器普通 scope 与计数器普通 scope、连发器 hold scope 共享同一热键。详见 [热键系统](../systems/hotkeys.md)。
+冲突策略为 `ConflictPolicy::AllowHold`（`SyncToolLogic` 默认值），允许计时器普通 scope 与计数器/摩斯/指纹普通 scope、连发器 hold scope 共享同一热键。详见 [热键系统](../systems/hotkeys.md)。
 
 ### 透明显示窗口
 

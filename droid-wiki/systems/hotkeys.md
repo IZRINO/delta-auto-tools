@@ -16,7 +16,7 @@
 | `HotkeyBinding` | `src-tauri/src/hotkey_types.rs` | 解析后的按键绑定：`primary` + 可选 `extra_primary` + `modifiers`。`parse` 仍拒双主键；`parse_allowing_chord` 允第二个主键（连发器 hold） |
 | `HotkeyRegistration` | `src-tauri/src/hotkey_types.rs` | 普通 scope 热键注册项：scope、binding、enabled、action 回调、冲突策略 |
 | `HoldRegistration` | `src-tauri/src/hotkey_types.rs` | hold scope 热键注册项：按下触发 Down，松开触发 Up |
-| `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict`（禁止跨 scope 复用）或 `AllowHold`（允许与 hold scope 共存） |
+| `ConflictPolicy` | `src-tauri/src/hotkey_types.rs` | `Strict`（禁止跨 scope 复用）或 `AllowHold`（允许与其他 AllowHold 绑定复用同一按键，普通与 hold 均可） |
 | `HotkeyAction` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle) + Send + Sync>`，普通热键回调 |
 | `HoldActionCallback` | `src-tauri/src/hotkey_types.rs` | `Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync>`，hold 热键回调 |
 | `PrimaryKey` | `src-tauri/src/hotkey_types.rs` | 字母、数字、功能键、命名键（Space/Enter 等）、符号键 |
@@ -65,14 +65,14 @@ graph TD
 
 | Scope A | Scope B | 允许？ |
 |---------|---------|--------|
-| Morse（Strict） | 任何其他 scope，同键 | 否 |
-| Timer/Counter（AllowHold） | Rapidfire hold（AllowHold），同键 | 是 |
-| Timer/Counter（AllowHold） | Recognition hold（AllowHold），同键 | 是 |
-| Timer/Counter（AllowHold） | 其他普通 scope，同键 | 否 |
-| Rapidfire hold（AllowHold） | Timer/Counter 普通（AllowHold），同键 | 是 |
+| Morse/Fingerprint/Timer/Counter/Recognition 普通（AllowHold） | Rapidfire/Recognition hold（AllowHold），同键 | 是 |
+| Morse/Fingerprint/Timer/Counter/Recognition 普通（AllowHold） | 其他 AllowHold 普通，同键 | 是 |
+| Rapidfire hold（AllowHold） | Morse/Fingerprint/Timer/Counter 普通（AllowHold），同键 | 是 |
 | Recognition 普通与 hold（同 scope） | 同键 | 是 |
+| AllowHold 任意 | Strict（特勤处紧急停止/下一账号），同键 | 否 |
+| Strict | 任何其他 scope，同键 | 否 |
 
-运行时，同一按键同时触发 hold 和普通绑定时，先分发 hold Down/Up，再分发普通热键。这样单个按键可以同时启动连发器会话和触发计时器。
+运行时，同一按键同时触发 hold 和普通绑定时，先分发 hold Down/Up，再分发普通热键。这样单个按键可以同时启动连发器会话并触发摩斯/指纹/计时器。
 
 ### 组合修饰键
 
@@ -85,7 +85,8 @@ hold 匹配器按当前按下的主键集合 + 修饰键集合重算活跃绑定
 ## 集成点
 
 - 每个工具模块在 `save_settings` 时调用 `replace_scope` 或 `replace_hold_scope`
-- [Morse](../features/morse.md) 使用 scope `"morse"`，策略 `Strict`
+- [Morse](../features/morse.md) 使用 scope `"morse"`，策略 `AllowHold`
+- [指纹密码](../features/fingerprint.md) 使用 scope `"fingerprint"`，策略 `AllowHold`
 - [计时器](../features/timer.md) 和 [计数器](../features/counter.md) 使用 scope `"timer"`/`"counter"`，策略 `AllowHold`
 - [连发器](../features/rapidfire.md) 使用 hold scope `"rapidfire"`，策略 `AllowHold`
 - [识别触发](../features/recognition.md) 使用混合 scope `"recognition"`，策略 `AllowHold`

@@ -1,13 +1,13 @@
-import type {RegionRect} from "@/components/app/morse-types";
+import type {ClickRegion, RegionRect} from "@/components/app/morse-types";
 
-export type {RegionRect};
+export type {ClickRegion, RegionRect};
 
 export const AUTOSAVE_DELAY_MS = 400;
 
 export const CANDIDATE_LABELS = ["候选1", "候选2", "候选3", "候选4", "候选5", "候选6", "候选7", "候选8", "候选9"] as const;
 export const ARCHIVE_LABELS = ["档案1", "档案2", "档案3", "档案4", "档案5", "档案6", "档案7", "档案8"] as const;
 
-export type LayoutTarget = "name" | "candidates" | "archive";
+export type LayoutTarget = "name" | "candidates" | "archive" | "click";
 
 export type FingerprintPerson = {
     id: string;
@@ -25,6 +25,8 @@ export type FingerprintSettings = {
     matchThreshold: number;
     autoClickEnabled: boolean;
     clickDelayMs: number;
+    afterClickHotkey?: string | null;
+    clickRegions: ClickRegion[];
     people: FingerprintPerson[];
 };
 
@@ -34,6 +36,8 @@ export type FingerprintSettingsForm = {
     matchThreshold: string;
     autoClickEnabled: boolean;
     clickDelayMs: string;
+    afterClickHotkey: string;
+    clickRegions: {rect: RegionRect | null; delayMs: string}[];
     nameRegion: RegionRect | null;
     candidateBoxes: Array<RegionRect | null>;
     archiveSlots: Array<RegionRect | null>;

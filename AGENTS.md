@@ -225,11 +225,12 @@ PM2 开发编排（`ecosystem.config.cjs`）：将 Vite 和 Tauri 拆为两个�
 
 ### 热键冲突规则
 
-`ConflictPolicy` 枚举：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许 hold scope 与普通 scope 共存）。
+`ConflictPolicy` 枚举：`Strict`（禁止跨 scope 复用）和 `AllowHold`（允许与其他 AllowHold 绑定复用同一按键，普通与 hold 均可；按下后全部触发）。
 
-- Timer / Counter 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均用 `AllowHold`）
+- Timer / Counter / Morse / Fingerprint 普通 scope 与 Rapidfire / Recognition hold scope 允许同键共存（双方均用 `AllowHold`）
+- Morse 与 Fingerprint 普通快捷键也可同键共存，按下后同时触发
 - Recognition 使用混合 scope，普通与 hold 注册必须通过 `replace_mixed_scope` 原子替换；热键录制同时暂停两类注册
-- Morse 与任何其他 scope 冲突必须拒绝（Morse 用 `Strict`）
+- 特勤处紧急停止/下一账号仍用 `Strict`，与任何其他 scope 冲突必须拒绝
 - 录制热键时暂停对应 scope
 
 ### Overlay 透明窗口约束

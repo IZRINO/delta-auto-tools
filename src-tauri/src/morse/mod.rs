@@ -96,7 +96,7 @@ pub(crate) fn restart_hotkey_listener(
         "morse",
         vec![(hotkey.to_string(), action)],
         "摩斯密码解析".to_string(),
-        hotkey_types::ConflictPolicy::Strict,
+        hotkey_types::ConflictPolicy::AllowHold,
     ) {
         Ok(()) => {
             if let Ok(mut inner) = state.lock_inner() {

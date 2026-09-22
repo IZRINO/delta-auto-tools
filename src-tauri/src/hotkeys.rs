@@ -285,6 +285,7 @@ impl HotkeyManager {
                 registration.enabled
                     && registration.scope != scope
                     && registration.binding == *new_binding
+                    && !shares_allow_hold(conflict_policy, registration.conflict_policy)
             }) {
                 crate::log_warn!(
                     "hotkeys",
@@ -313,8 +314,7 @@ impl HotkeyManager {
                     registration.enabled
                         && registration.scope != scope
                         && registration.binding == *new_binding
-                        && !(conflict_policy == ConflictPolicy::AllowHold
-                            && registration.conflict_policy == ConflictPolicy::AllowHold)
+                        && !shares_allow_hold(conflict_policy, registration.conflict_policy)
                 }) {
                     crate::log_warn!(
                         "hotkeys",
@@ -350,8 +350,7 @@ impl HotkeyManager {
                 registration.enabled
                     && registration.scope != scope
                     && registration.binding == *new_binding
-                    && !(registration.conflict_policy == ConflictPolicy::AllowHold
-                        && conflict_policy == ConflictPolicy::AllowHold)
+                    && !shares_allow_hold(registration.conflict_policy, conflict_policy)
             }) {
                 crate::log_warn!(
                     "hotkeys",
@@ -746,6 +745,10 @@ fn run_listener(
 
         thread::sleep(Duration::from_millis(1));
     }
+}
+
+fn shares_allow_hold(left: ConflictPolicy, right: ConflictPolicy) -> bool {
+    left == ConflictPolicy::AllowHold && right == ConflictPolicy::AllowHold
 }
 
 #[cfg(all(target_os = "windows", test))]
@@ -1196,7 +1199,40 @@ mod tests {
     }
 
     #[test]
-    fn replace_scope_rejects_morse_binding_when_existing_hold_binding_matches() {
+    #[cfg(target_os = "windows")]
+    fn dispatches_morse_and_fingerprint_same_ordinary_binding() {
+        let registrations = Arc::new(Mutex::new(vec![
+            HotkeyRegistration {
+                scope: "morse".into(),
+                binding: HotkeyBinding::parse("F1").unwrap(),
+                enabled: true,
+                display_name: "摩斯密码解析".into(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
+                action: Arc::new(|_| {}),
+            },
+            HotkeyRegistration {
+                scope: "fingerprint".into(),
+                binding: HotkeyBinding::parse("F1").unwrap(),
+                enabled: true,
+                display_name: "指纹密码".into(),
+                conflict_policy: ConflictPolicy::AllowHold,
+                allow_when_global_disabled: false,
+                action: Arc::new(|_| {}),
+            },
+        ]));
+        let key_state = KeyState {
+            primary: PrimaryKey::Function(1),
+            modifiers: HashSet::new(),
+        };
+
+        let actions = actions_for_key_state(&registrations, &key_state);
+
+        assert_eq!(actions.len(), 2);
+    }
+
+    #[test]
+    fn replace_scope_allows_morse_binding_when_existing_hold_binding_matches() {
         let manager = test_manager();
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         manager
@@ -1209,30 +1245,28 @@ mod tests {
             .expect("应注册连发器组合触发键");
 
         let action: HotkeyAction = Arc::new(|_| {});
-        let error = manager
+        manager
             .replace_scope(
                 "morse",
                 vec![("Shift+-".to_string(), action)],
                 "摩斯密码解析".to_string(),
-                ConflictPolicy::Strict,
+                ConflictPolicy::AllowHold,
             )
-            .expect_err("摩斯快捷键不能复用连发器触发键");
-
-        assert!(error.contains("与连发器的触发键冲突"));
+            .expect("摩斯快捷键允许复用连发器触发键");
     }
 
     #[test]
-    fn replace_hold_scope_rejects_existing_normal_binding_from_other_scope() {
+    fn replace_hold_scope_rejects_existing_strict_normal_binding() {
         let manager = test_manager();
         let action: HotkeyAction = Arc::new(|_| {});
         manager
             .replace_scope(
-                "morse",
+                "special-ops-emergency",
                 vec![("Ctrl+F2".to_string(), action)],
-                "摩斯密码解析".to_string(),
+                "特勤处紧急停止".to_string(),
                 ConflictPolicy::Strict,
             )
-            .expect("应注册摩斯快捷键");
+            .expect("应注册紧急停止快捷键");
 
         let callback: HoldActionCallback = Arc::new(|_, _| {});
         let error = manager
@@ -1242,7 +1276,55 @@ mod tests {
                 "连发器".to_string(),
                 ConflictPolicy::AllowHold,
             )
-            .expect_err("连发器触发键不能复用其他工具快捷键");
+            .expect_err("连发器触发键不能复用 Strict 快捷键");
+
+        assert!(error.contains("与特勤处紧急停止的快捷键冲突"));
+    }
+
+    #[test]
+    fn morse_and_fingerprint_allow_same_ordinary_binding() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope(
+                "morse",
+                vec![("F1".to_string(), Arc::clone(&action))],
+                "摩斯密码解析".to_string(),
+                ConflictPolicy::AllowHold,
+            )
+            .expect("应注册摩斯快捷键");
+
+        manager
+            .replace_scope(
+                "fingerprint",
+                vec![("F1".to_string(), action)],
+                "指纹密码".to_string(),
+                ConflictPolicy::AllowHold,
+            )
+            .expect("指纹快捷键允许复用摩斯快捷键");
+    }
+
+    #[test]
+    fn allow_hold_ordinary_still_conflicts_with_strict() {
+        let manager = test_manager();
+        let action: HotkeyAction = Arc::new(|_| {});
+        manager
+            .replace_scope(
+                "morse",
+                vec![("F8".to_string(), Arc::clone(&action))],
+                "摩斯密码解析".to_string(),
+                ConflictPolicy::AllowHold,
+            )
+            .expect("应注册摩斯快捷键");
+
+        let error = manager
+            .replace_scope(
+                "special-ops-emergency",
+                vec![("F8".to_string(), action)],
+                "特勤处紧急停止".to_string(),
+                ConflictPolicy::Strict,
+            )
+            .expect_err("Strict 快捷键不能复用 AllowHold 快捷键");
 
         assert!(error.contains("与摩斯密码解析的快捷键冲突"));
     }
@@ -1923,7 +2005,7 @@ mod tests {
                 binding: HotkeyBinding::parse("F3").expect("should parse"),
                 enabled: true,
                 display_name: "摩斯密码解析".to_string(),
-                conflict_policy: ConflictPolicy::Strict,
+                conflict_policy: ConflictPolicy::AllowHold,
                 allow_when_global_disabled: false,
                 action: Arc::new(|_| {}),
             },

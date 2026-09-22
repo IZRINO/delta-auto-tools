@@ -84,7 +84,7 @@ pub(crate) fn restart_hotkey_listener(
         "fingerprint",
         vec![(hotkey.to_string(), action)],
         "指纹密码".to_string(),
-        hotkey_types::ConflictPolicy::Strict,
+        hotkey_types::ConflictPolicy::AllowHold,
     ) {
         Ok(()) => {
             if let Ok(mut inner) = state.lock_inner() {
@@ -112,6 +112,16 @@ pub(crate) fn normalize_settings(
     settings_value.hotkey = settings_value.hotkey.trim().to_string();
     if settings_value.hotkey.is_empty() {
         return Err("热键不能为空".to_string());
+    }
+    settings_value.after_click_hotkey = settings_value
+        .after_click_hotkey
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(hotkey_types::hotkey_to_string)
+        .transpose()?;
+    if settings_value.click_regions.len() > 7 {
+        settings_value.click_regions.truncate(7);
     }
     if !(0.0..=65025.0).contains(&settings_value.occupancy_threshold) {
         return Err("占用阈值必须在 0 到 65025 之间".to_string());
@@ -151,6 +161,9 @@ async fn run_recognition_flow(
 ) -> Result<FingerprintRunResult, String> {
     let settings_snapshot = begin_run(app)?;
     let triggered = triggered_by.to_string();
+    let extra_click = auto_click && settings_snapshot.auto_click_enabled;
+    let extra_regions = settings_snapshot.click_regions.clone();
+    let after_click_hotkey = settings_snapshot.after_click_hotkey.clone();
     let run_result = async {
         let output = tokio::task::spawn_blocking(move || {
             pipeline::run_pipeline_with_points(&settings_snapshot, &triggered, auto_click)
@@ -181,6 +194,28 @@ async fn run_recognition_flow(
                 output.result.error = Some(error);
             } else {
                 output.result.clicked = true;
+            }
+        }
+
+        if extra_click && output.result.error.is_none() && !extra_regions.is_empty() {
+            let points: Vec<(i32, i32, u64)> = extra_regions
+                .iter()
+                .map(|region| {
+                    (
+                        region.rect.x + region.rect.width / 2,
+                        region.rect.y + region.rect.height / 2,
+                        region.delay_ms,
+                    )
+                })
+                .collect();
+            if let Err(error) = crate::input_simulation::click_points(&points).await {
+                output.result.error = Some(error);
+            } else if let Some(hotkey) = after_click_hotkey.as_deref() {
+                if let Err(error) =
+                    crate::input_simulation::press_hotkey_once(hotkey, "点击完成后按键").await
+                {
+                    output.result.error = Some(error);
+                }
             }
         }
         Ok::<FingerprintRunResult, String>(output.result)
@@ -568,5 +603,40 @@ mod tests {
     fn normalize_accepts_defaults() {
         let settings = normalize_settings(FingerprintSettings::default()).unwrap();
         assert_eq!(settings.hotkey, "F6");
+        assert_eq!(settings.after_click_hotkey, None);
+        assert!(settings.click_regions.is_empty());
+    }
+
+    #[test]
+    fn normalize_settings_truncates_click_regions_to_seven() {
+        let settings = FingerprintSettings {
+            click_regions: (0..8)
+                .map(|index| crate::morse::types::ClickRegion {
+                    rect: RegionRect {
+                        x: index,
+                        y: 0,
+                        width: 10,
+                        height: 10,
+                    },
+                    delay_ms: 500,
+                })
+                .collect(),
+            ..FingerprintSettings::default()
+        };
+        let normalized = normalize_settings(settings).unwrap();
+        assert_eq!(normalized.click_regions.len(), 7);
+    }
+
+    #[test]
+    fn normalize_settings_normalizes_after_click_hotkey() {
+        let settings = FingerprintSettings {
+            after_click_hotkey: Some(" shift+ctrl+- ".to_string()),
+            ..FingerprintSettings::default()
+        };
+        let normalized = normalize_settings(settings).unwrap();
+        assert_eq!(
+            normalized.after_click_hotkey.as_deref(),
+            Some("Ctrl+Shift+-")
+        );
     }
 }

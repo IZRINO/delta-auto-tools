@@ -12,7 +12,7 @@ Delta Auto Tools 中可能对新读者不直观的术语。
 | 显示窗口（Display window） | 实际显示计时器/计数器/连发器数据的透明叠加窗。通过 `?mode=*-display` 进入。 |
 | Scope | 命名的热键注册组（如 `"morse"`、`"timer"`、`"counter"`、`"rapidfire"`）。`HotkeyManager` 检测跨 scope 冲突。 |
 | Hold action | 在按下和松开时都触发的热键（连发器使用），与仅在按下时触发一次的普通热键相对。 |
-| ConflictPolicy | `Strict`（禁止跨 scope 复用按键）或 `AllowHold`（允许 hold scope 与普通 scope 在同键共存）。计时器/计数器和连发器使用 AllowHold；Morse 使用 Strict。 |
+| ConflictPolicy | `Strict`（禁止跨 scope 复用按键）或 `AllowHold`（允许与其他 AllowHold 绑定复用同一按键，普通与 hold 均可；按下后全部触发）。计时器/计数器/摩斯/指纹和连发器使用 AllowHold；特勤处紧急停止/下一账号使用 Strict。 |
 | KeySuppressor | 第二个 `WH_KEYBOARD_LL` 钩子，吞噬物理按键事件使其不到达前台应用，同时仍触发热键回调。懒加载启动。 |
 | ToolBase | `src-tauri/src/tool_base.rs` 中的泛型层，通过 `ToolState<T: ToolLogic>` 为每个工具模块提供共享 settings/bootstrap/error 状态。 |
 | ToolLogic | 每个工具实现的 trait，接入 ToolBase：`build_bootstrap`、`emit_state`。 |

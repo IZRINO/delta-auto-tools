@@ -104,7 +104,7 @@ flowchart TD
 
 `SyncToolLogic::build_hotkey_bindings` 将所有启用计数器按热键分组，注册为普通 scope 快捷键（`bindings.normal`）。计数器**不使用 hold scope**（无 Release 触发模式），因此 `bindings.hold` 始终为空。
 
-冲突策略为 `ConflictPolicy::AllowHold`（`SyncToolLogic` 默认值），允许计数器普通 scope 与计时器普通 scope、连发器 hold scope 共享同一热键。详见 [热键系统](../systems/hotkeys.md)。
+冲突策略为 `ConflictPolicy::AllowHold`（`SyncToolLogic` 默认值），允许计数器普通 scope 与计时器/摩斯/指纹普通 scope、连发器 hold scope 共享同一热键。详见 [热键系统](../systems/hotkeys.md)。
 
 ### 透明显示窗口
 

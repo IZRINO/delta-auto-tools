@@ -51,7 +51,7 @@ web
 
 **账号处理**：不保存、不输入 QQ 密码。账号识别依赖 WeGame「已记住账号」列表的 OCR + 剪贴板读取 QQ 号（`special_ops/remembered_account.rs`），双采样确认列表可见性。
 
-**热键冲突策略**：`ConflictPolicy::Strict`（摩斯）与 `AllowHold`（计时器/计数器普通 scope 可与连发器/识别触发 hold scope 同键共存）。跨 scope 冲突默认拒绝。
+**热键冲突策略**：`ConflictPolicy::AllowHold`（摩斯/指纹/计时器/计数器普通 scope 可与连发器/识别触发 hold scope 同键共存，按下后全部触发）与 `Strict`（特勤处紧急停止/下一账号）。跨 scope 冲突默认拒绝。
 
 **并发约束**：识别截图与 NCC 走 `spawn_blocking`，全局 `Semaphore(2)`；旧 watcher generation 不得继续触发效果。连发器 count 事件 ≤60Hz，计数器运行态经单 writer 线程 50ms latest-wins 合并落盘。
 

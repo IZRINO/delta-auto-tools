@@ -7,7 +7,7 @@ use super::{
     },
     FingerprintState,
 };
-use crate::morse::types::RegionRect;
+use crate::morse::types::{ClickRegion, RegionRect};
 
 const OVERLAY_LABEL: &str = "fingerprint-overlay";
 
@@ -42,8 +42,17 @@ pub(crate) fn target_slot_count(target: &str) -> Result<usize, String> {
         "name" => Ok(1),
         "candidates" => Ok(9),
         "archive" => Ok(8),
+        "click" => Ok(7),
         _ => Err(format!("未知框选目标: {target}")),
     }
+}
+
+fn click_regions_to_staged(click_regions: &[ClickRegion]) -> Vec<Option<RegionRect>> {
+    let mut staged = vec![None; 7];
+    for (index, region) in click_regions.iter().enumerate().take(7) {
+        staged[index] = Some(region.rect.clone());
+    }
+    staged
 }
 
 fn staged_from_settings(settings: &FingerprintSettings, target: &str) -> Vec<Option<RegionRect>> {
@@ -51,6 +60,7 @@ fn staged_from_settings(settings: &FingerprintSettings, target: &str) -> Vec<Opt
         "name" => vec![settings.name_region.clone()],
         "candidates" => settings.candidate_boxes.to_vec(),
         "archive" => settings.archive_slots.to_vec(),
+        "click" => click_regions_to_staged(&settings.click_regions),
         _ => Vec::new(),
     }
 }
@@ -69,6 +79,23 @@ fn apply_staged(settings: &mut FingerprintSettings, target: &str, staged: &[Opti
             for (index, rect) in staged.iter().take(8).enumerate() {
                 settings.archive_slots[index] = rect.clone();
             }
+        }
+        "click" => {
+            let delays: Vec<u64> = settings
+                .click_regions
+                .iter()
+                .map(|region| region.delay_ms)
+                .collect();
+            settings.click_regions = staged
+                .iter()
+                .enumerate()
+                .filter_map(|(index, rect)| {
+                    Some(ClickRegion {
+                        rect: rect.clone()?,
+                        delay_ms: delays.get(index).copied().unwrap_or(500),
+                    })
+                })
+                .collect();
         }
         _ => {}
     }
@@ -406,7 +433,45 @@ mod tests {
         assert_eq!(target_slot_count("name").unwrap(), 1);
         assert_eq!(target_slot_count("candidates").unwrap(), 9);
         assert_eq!(target_slot_count("archive").unwrap(), 8);
+        assert_eq!(target_slot_count("click").unwrap(), 7);
         assert!(target_slot_count("nope").is_err());
+    }
+
+    #[test]
+    fn apply_click_regions_preserves_delay_and_compacts() {
+        let mut settings = FingerprintSettings {
+            click_regions: vec![ClickRegion {
+                rect: RegionRect {
+                    x: 1,
+                    y: 2,
+                    width: 12,
+                    height: 12,
+                },
+                delay_ms: 800,
+            }],
+            ..FingerprintSettings::default()
+        };
+        let staged = vec![
+            Some(RegionRect {
+                x: 3,
+                y: 4,
+                width: 20,
+                height: 20,
+            }),
+            None,
+            Some(RegionRect {
+                x: 5,
+                y: 6,
+                width: 22,
+                height: 22,
+            }),
+        ];
+        apply_staged(&mut settings, "click", &staged);
+        assert_eq!(settings.click_regions.len(), 2);
+        assert_eq!(settings.click_regions[0].delay_ms, 800);
+        assert_eq!(settings.click_regions[0].rect.x, 3);
+        assert_eq!(settings.click_regions[1].delay_ms, 500);
+        assert_eq!(settings.click_regions[1].rect.x, 5);
     }
 
     #[test]

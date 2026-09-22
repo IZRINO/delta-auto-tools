@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::morse::types::RegionRect;
+use crate::morse::types::{ClickRegion, RegionRect};
 
 fn default_hotkey() -> String {
     "F6".to_string()
@@ -51,6 +51,12 @@ pub struct FingerprintSettings {
     pub auto_click_enabled: bool,
     #[serde(default = "default_click_delay_ms")]
     pub click_delay_ms: u64,
+    /// 自动点击整组成功完成后按一次；None 表示不执行
+    #[serde(default)]
+    pub after_click_hotkey: Option<String>,
+    /// 九宫格点击后再点的指定区域（1~7 个），每个有独立延迟
+    #[serde(default)]
+    pub click_regions: Vec<ClickRegion>,
     #[serde(default)]
     pub people: Vec<FingerprintPerson>,
 }
@@ -66,6 +72,8 @@ impl Default for FingerprintSettings {
             match_threshold: default_match_threshold(),
             auto_click_enabled: default_auto_click_enabled(),
             click_delay_ms: default_click_delay_ms(),
+            after_click_hotkey: None,
+            click_regions: Vec::new(),
             people: Vec::new(),
         }
     }
@@ -149,6 +157,8 @@ mod tests {
         assert_eq!(settings.hotkey, "F6");
         assert!(settings.auto_click_enabled);
         assert_eq!(settings.click_delay_ms, 50);
+        assert_eq!(settings.after_click_hotkey, None);
+        assert!(settings.click_regions.is_empty());
         assert_eq!(settings.candidate_boxes.len(), 9);
         assert_eq!(settings.archive_slots.len(), 8);
         assert!(settings.people.is_empty());

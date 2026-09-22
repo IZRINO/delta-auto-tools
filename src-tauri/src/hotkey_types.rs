@@ -503,7 +503,9 @@ pub type HoldActionCallback = Arc<dyn Fn(AppHandle, HoldAction) + Send + Sync + 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictPolicy {
+    /// 禁止与任何其他 scope 复用同一按键。
     Strict,
+    /// 允许与其他 AllowHold 绑定复用同一按键（普通与 hold 均可）；按下后全部触发。
     AllowHold,
 }
 

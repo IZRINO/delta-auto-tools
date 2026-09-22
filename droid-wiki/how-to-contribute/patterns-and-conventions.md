@@ -43,11 +43,12 @@ Mutex 中毒时，工具返回中文「已损坏」错误。`ToolState::lock_inn
 
 ## 热键冲突策略
 
-- Morse 使用 `ConflictPolicy::Strict`：禁止跨任何 scope 复用按键
-- 计时器和计数器使用 `ConflictPolicy::AllowHold`：可与连发器的 hold scope 共享按键
+- Morse 与指纹使用 `ConflictPolicy::AllowHold`：可与连发器 hold scope 及其他 AllowHold 普通快捷键共享按键，按下后全部触发
+- 计时器和计数器使用 `ConflictPolicy::AllowHold`：可与连发器的 hold scope 及其他 AllowHold 普通快捷键共享按键
 - 连发器使用 `ConflictPolicy::AllowHold`（hold scope）
+- 特勤处紧急停止/下一账号使用 `ConflictPolicy::Strict`：禁止跨任何 scope 复用按键
 
-运行时，hold Down/Up 事件先分发，然后普通热键事件，因此同一按键可同时触发连发器会话和计时器/计数器。
+运行时，hold Down/Up 事件先分发，然后普通热键事件，因此同一按键可同时触发连发器会话和摩斯/指纹/计时器/计数器。
 
 ## 样式规则
 

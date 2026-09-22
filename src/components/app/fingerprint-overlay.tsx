@@ -26,7 +26,9 @@ export function FingerprintRegionOverlay({slots}: {slots: number[]}) {
     const [rects, setRects] = useState<Array<RegionRect | null>>(() => Array.from({length: labels.length}, () => null));
     const [completedSlots, setCompletedSlots] = useState<number[]>([]);
     const [currentSlot, setCurrentSlot] = useState<number | null>(slots[0] ?? null);
-    const [statusMessage, setStatusMessage] = useState("拖拽框选区域，Esc 取消");
+    const [statusMessage, setStatusMessage] = useState(
+        target === "click" ? "拖拽框选点击区域，Esc 取消" : "拖拽框选区域，Esc 取消",
+    );
     const [submitting, setSubmitting] = useState(false);
 
     const currentRect = useMemo(() => {
