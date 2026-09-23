@@ -71,3 +71,11 @@ bun run check        # 前端测试 + Rust fmt / clippy / test
 ## 许可
 
 [GNU GPL v2 或更高版本](LICENSE)。
+
+## 赞助作者
+
+如果这个工具帮到你，欢迎请作者喝杯咖啡。
+
+| 微信赞赏 | 支付宝 |
+| --- | --- |
+| <img src="docs/images/wechat-sponsor.png" alt="微信赞赏码" width="280"> | <img src="docs/images/alipay-sponsor.jpg" alt="支付宝收款码" width="280"> |
