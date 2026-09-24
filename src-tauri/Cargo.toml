@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "delta-auto-tools"
 version = "1.0.0-beta.24"
 description = "A Tauri App"
