@@ -130,6 +130,7 @@ pub(crate) trait LimitedSupplyDriver: Send + Sync {
         timeout: Duration,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(), LimitedRunError>;
+    async fn reset_position(&self, cancelled: Arc<AtomicBool>) -> Result<(), LimitedRunError>;
     async fn sample_colors(
         &self,
         cancelled: Arc<AtomicBool>,
@@ -263,6 +264,10 @@ pub(crate) async fn run_limited_supply_branch<D: LimitedSupplyDriver + ?Sized>(
         return stopped(error, "limited.ready");
     }
 
+    if let Err(error) = driver.reset_position(Arc::clone(&cancelled)).await {
+        return stopped(error, "limited.resetPosition");
+    }
+
     let deadline = tokio::time::Instant::now() + config.ready_timeout;
     let mut previous: Option<LimitedColorSample> = None;
     while tokio::time::Instant::now() < deadline {
@@ -376,6 +381,11 @@ mod tests {
         ) -> Result<(), LimitedRunError> {
             self.actions.lock().unwrap().push("ready".to_string());
             self.ready_error.clone().map_or(Ok(()), Err)
+        }
+
+        async fn reset_position(&self, _cancelled: Arc<AtomicBool>) -> Result<(), LimitedRunError> {
+            self.actions.lock().unwrap().push("reset".to_string());
+            Ok(())
         }
 
         async fn sample_colors(
@@ -631,6 +641,10 @@ mod tests {
             .position(|action| action == "ready")
             .expect("应识别限时商品页面");
         assert!(delay_index < ready_index, "实际顺序：{actions:?}");
+        assert_eq!(
+            actions,
+            ["delay:7", "ready", "reset", "sample", "delay:0", "sample"]
+        );
     }
 
     #[tokio::test]
@@ -642,6 +656,12 @@ mod tests {
 
         assert_eq!(stop, LimitedRunStop::RetryableReadyTimeout);
         assert!(driver.persisted.lock().unwrap().is_empty());
+        assert!(!driver
+            .actions
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|action| action == "reset"));
     }
 
     #[test]

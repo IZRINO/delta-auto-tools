@@ -24,6 +24,7 @@ mod tests {
     fn sample_settings() -> MorseSettings {
         MorseSettings {
             hotkey: "Ctrl+F1".to_string(),
+            enabled: true,
             regions: [None, None, None],
             binary_threshold: 100,
             auto_input_delay: 25,
@@ -44,6 +45,14 @@ mod tests {
             loaded.binary_threshold,
             MorseSettings::default().binary_threshold
         );
+    }
+
+    #[test]
+    fn old_settings_default_to_enabled() {
+        let mut value = serde_json::to_value(MorseSettings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("enabled");
+        let settings: MorseSettings = serde_json::from_value(value).unwrap();
+        assert!(settings.enabled);
     }
 
     #[test]

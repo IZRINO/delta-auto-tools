@@ -118,10 +118,18 @@ fn set_hotkey_listener_paused(hotkey_manager: &HotkeyManager, paused: bool) -> R
     hotkey_manager.set_scope_enabled("morse", !paused)
 }
 
+fn ensure_enabled(settings: &MorseSettings) -> Result<(), String> {
+    if !settings.enabled {
+        return Err("摩斯密码已关闭".to_string());
+    }
+    Ok(())
+}
+
 fn begin_run(app: &AppHandle) -> Result<MorseSettings, String> {
     let state = app.state::<MorseState>();
     let mut inner = state.lock_inner()?;
 
+    ensure_enabled(&inner.settings)?;
     if inner.logic.pending_selection.is_some() {
         return Err("当前正在执行区域选择，请完成后再试".to_string());
     }
@@ -192,6 +200,10 @@ async fn run_recognition_flow(
             recognition::run_recognition(&settings_snapshot, triggered_by).await?
         };
 
+        if !app.state::<MorseState>().lock_inner()?.settings.enabled {
+            return Err("摩斯密码已关闭".to_string());
+        }
+
         if auto_type {
             if let Some(value) = &result.value {
                 let input_result =
@@ -244,7 +256,11 @@ pub fn initialize(app: &AppHandle, hotkey_manager: &HotkeyManager) -> Result<Mor
         settings.clone(),
     );
 
-    if let Err(error) = restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey) {
+    if let Err(error) = if settings.enabled {
+        restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey)
+    } else {
+        hotkey_manager.clear_scope("morse")
+    } {
         crate::log_warn!(
             "morse",
             "初始化热键监听失败",
@@ -283,16 +299,20 @@ pub async fn morse_save_settings(
             inner.settings.clone()
         };
 
-        let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
+        let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim()
+            || previous_settings.enabled != settings_value.enabled;
 
         if let Err(error) = settings::save_settings(&app, &settings_value) {
             return Err(AppError::from(error));
         }
 
         if hotkey_changed {
-            if let Err(error) =
+            let result = if settings_value.enabled {
                 restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
-            {
+            } else {
+                hotkey_manager.clear_scope("morse")
+            };
+            if let Err(error) = result {
                 let _ = settings::save_settings(&app, &previous_settings);
                 return Err(AppError::from(error));
             }
@@ -318,8 +338,10 @@ pub async fn morse_save_settings(
 pub fn morse_set_hotkey_recording(
     recording: bool,
     hotkey_manager: State<'_, HotkeyManager>,
+    state: State<'_, MorseState>,
 ) -> Result<(), AppError> {
-    set_hotkey_listener_paused(&hotkey_manager, recording).map_err(AppError::from)
+    let enabled = state.lock_inner()?.settings.enabled;
+    set_hotkey_listener_paused(&hotkey_manager, recording || !enabled).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -451,6 +473,16 @@ mod tests {
             occurred_at_ms: id,
             error: None,
         }
+    }
+
+    #[test]
+    fn disabled_settings_reject_recognition() {
+        let settings = MorseSettings {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(ensure_enabled(&settings), Err("摩斯密码已关闭".to_string()));
+        assert!(ensure_enabled(&MorseSettings::default()).is_ok());
     }
 
     #[test]

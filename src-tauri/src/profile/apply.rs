@@ -124,7 +124,11 @@ fn apply_morse_settings(
     };
 
     let normalized = morse::normalize_settings(new_settings.clone())?;
-    morse::restart_hotkey_listener(&state, app, hm, &normalized.hotkey)?;
+    if normalized.enabled {
+        morse::restart_hotkey_listener(&state, app, hm, &normalized.hotkey)?;
+    } else {
+        hm.clear_scope("morse")?;
+    }
     let mut inner = state
         .inner
         .lock()

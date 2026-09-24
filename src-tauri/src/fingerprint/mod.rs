@@ -132,9 +132,17 @@ pub(crate) fn normalize_settings(
     Ok(settings_value)
 }
 
+fn ensure_enabled(settings: &FingerprintSettings) -> Result<(), String> {
+    if !settings.enabled {
+        return Err("指纹密码已关闭".to_string());
+    }
+    Ok(())
+}
+
 fn begin_run(app: &AppHandle) -> Result<FingerprintSettings, String> {
     let state = app.state::<FingerprintState>();
     let mut inner = state.lock_inner()?;
+    ensure_enabled(&inner.settings)?;
     if inner.logic.pending_selection.is_some() {
         return Err("当前正在执行区域选择，请完成后再试".to_string());
     }
@@ -188,6 +196,15 @@ async fn run_recognition_flow(
                 points: Vec::new(),
             },
         };
+
+        if !app
+            .state::<FingerprintState>()
+            .lock_inner()?
+            .settings
+            .enabled
+        {
+            return Err("指纹密码已关闭".to_string());
+        }
 
         if output.result.error.is_none() && !output.points.is_empty() {
             if let Err(error) = crate::input_simulation::click_points(&output.points).await {
@@ -289,7 +306,11 @@ pub fn initialize(
         settings.clone(),
     );
 
-    if let Err(error) = restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey) {
+    if let Err(error) = if settings.enabled {
+        restart_hotkey_listener(&state, app, hotkey_manager, &settings.hotkey)
+    } else {
+        hotkey_manager.clear_scope("fingerprint")
+    } {
         crate::log_warn!(
             "fingerprint",
             "初始化热键监听失败",
@@ -384,14 +405,18 @@ pub async fn fingerprint_save_settings(
                 .map_err(|_| "指纹状态已损坏".to_string())?;
             inner.settings.clone()
         };
-        let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim();
+        let hotkey_changed = previous_settings.hotkey.trim() != settings_value.hotkey.trim()
+            || previous_settings.enabled != settings_value.enabled;
         if let Err(error) = settings::save_settings(&app, &settings_value) {
             return Err(AppError::from(error));
         }
         if hotkey_changed {
-            if let Err(error) =
+            let result = if settings_value.enabled {
                 restart_hotkey_listener(&state, &app, &hotkey_manager, &settings_value.hotkey)
-            {
+            } else {
+                hotkey_manager.clear_scope("fingerprint")
+            };
+            if let Err(error) = result {
                 let _ = settings::save_settings(&app, &previous_settings);
                 return Err(AppError::from(error));
             }
@@ -409,8 +434,10 @@ pub async fn fingerprint_save_settings(
 pub fn fingerprint_set_hotkey_recording(
     recording: bool,
     hotkey_manager: State<'_, HotkeyManager>,
+    state: State<'_, FingerprintState>,
 ) -> Result<(), AppError> {
-    set_hotkey_listener_paused(&hotkey_manager, recording).map_err(AppError::from)
+    let enabled = state.lock_inner()?.settings.enabled;
+    set_hotkey_listener_paused(&hotkey_manager, recording || !enabled).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -589,6 +616,16 @@ pub fn fingerprint_read_image(path: String) -> Result<Option<String>, AppError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disabled_settings_reject_recognition() {
+        let settings = FingerprintSettings {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(ensure_enabled(&settings), Err("指纹密码已关闭".to_string()));
+        assert!(ensure_enabled(&FingerprintSettings::default()).is_ok());
+    }
 
     #[test]
     fn normalize_rejects_empty_hotkey() {

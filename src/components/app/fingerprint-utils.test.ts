@@ -14,6 +14,7 @@ import {
 
 const sample: FingerprintSettings = {
     hotkey: "F6",
+    enabled: false,
     nameRegion: null,
     candidateBoxes: Array.from({length: 9}, () => null),
     archiveSlots: Array.from({length: 8}, () => null),
@@ -34,6 +35,7 @@ describe("fingerprint utils", () => {
         };
         const parsed = parseSettingsForm(settingsToForm(current));
         expect(parsed.hotkey).toBe("F6");
+        expect(parsed.enabled).toBe(false);
         expect(parsed.people).toEqual(current.people);
         expect(parsed.autoClickEnabled).toBe(true);
         expect(parsed.afterClickHotkey).toBeNull();

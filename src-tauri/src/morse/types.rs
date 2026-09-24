@@ -23,10 +23,16 @@ fn default_click_delay() -> u64 {
     500
 }
 
+fn default_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MorseSettings {
     pub hotkey: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     pub regions: [Option<RegionRect>; 3],
     pub binary_threshold: u8,
     pub auto_input_delay: u64,
@@ -45,6 +51,7 @@ impl Default for MorseSettings {
     fn default() -> Self {
         Self {
             hotkey: "F1".to_string(),
+            enabled: true,
             regions: [None, None, None],
             binary_threshold: 127,
             auto_input_delay: 50,

@@ -260,6 +260,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
     }, [isNativeShell, syncBootstrap]);
 
     const handleVerificationRun = useCallback(async () => {
+        if (!form?.enabled) return;
         if (!isNativeShell) {
             setVerificationStatus("error");
             setVerificationMessage("浏览器预览模式下不可执行测试验证，请在桌面端运行。");
@@ -305,7 +306,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                 setPageError(getErrorMessage(error));
             }
         }
-    }, [isNativeShell, syncBootstrap]);
+    }, [form?.enabled, isNativeShell, syncBootstrap]);
 
     if (overlayMode) {
         return <RegionSelectionOverlay slots={overlaySlots}/>;
@@ -315,7 +316,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
         <ToolPageFrame
             actions={
                 <Badge variant={isBusy ? "outline" : canRun ? "default" : "ghost"}>
-                    {isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
+                    {!form?.enabled ? "已关闭" : isBusy ? "识别中" : canRun ? "就绪" : "未标定"}
                 </Badge>
             }
             title="摩斯"
@@ -332,6 +333,10 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                     ]}
                     onTabChange={setActiveTab}
                 />
+            </div>
+
+            <div className="col-span-12">
+                <ConfigRow label="总开关" value={<Switch checked={form?.enabled ?? true} disabled={isBusy} aria-label="摩斯密码总开关" onCheckedChange={(checked) => updateForm("enabled", checked)}/>} state={form?.enabled ? "valid" : "idle"}/>
             </div>
 
             {/* Tab Content */}
@@ -545,6 +550,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     <Input
                                         className="border border-base-300 font-mono text-sm"
                                         onChange={(e) => setVerificationValue(e.currentTarget.value)}
+                                        disabled={!form?.enabled}
                                         onFocus={() => void handleVerificationRun()}
                                         placeholder="点这里测试"
                                         value={verificationValue}
@@ -552,7 +558,7 @@ export function MorsePage({overlayMode = false}: MorsePageProps) {
                                     <p className="mt-2 font-mono text-xs text-base-content/60">{verificationMessage}</p>
                                     <Button
                                         className="mt-2 w-full"
-                                        disabled={verificationStatus === "running"}
+                                        disabled={!form?.enabled || verificationStatus === "running"}
                                         onClick={() => void handleVerificationRun()}
                                         type="button"
                                         variant="outline"

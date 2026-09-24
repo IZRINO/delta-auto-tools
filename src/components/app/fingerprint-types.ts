@@ -18,6 +18,7 @@ export type FingerprintPerson = {
 
 export type FingerprintSettings = {
     hotkey: string;
+    enabled: boolean;
     nameRegion: RegionRect | null;
     candidateBoxes: Array<RegionRect | null>;
     archiveSlots: Array<RegionRect | null>;
@@ -32,6 +33,7 @@ export type FingerprintSettings = {
 
 export type FingerprintSettingsForm = {
     hotkey: string;
+    enabled: boolean;
     occupancyThreshold: string;
     matchThreshold: string;
     autoClickEnabled: boolean;

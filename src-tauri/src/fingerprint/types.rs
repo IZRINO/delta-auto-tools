@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::morse::types::{ClickRegion, RegionRect};
 
+fn default_enabled() -> bool {
+    true
+}
+
 fn default_hotkey() -> String {
     "F6".to_string()
 }
@@ -37,6 +41,8 @@ pub struct FingerprintPerson {
 pub struct FingerprintSettings {
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     #[serde(default)]
     pub name_region: Option<RegionRect>,
     #[serde(default)]
@@ -65,6 +71,7 @@ impl Default for FingerprintSettings {
     fn default() -> Self {
         Self {
             hotkey: default_hotkey(),
+            enabled: true,
             name_region: None,
             candidate_boxes: Default::default(),
             archive_slots: Default::default(),
@@ -150,6 +157,14 @@ pub enum RegionSelectionKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_enabled_keeps_existing_settings_active() {
+        let mut value = serde_json::to_value(FingerprintSettings::default()).unwrap();
+        value.as_object_mut().unwrap().remove("enabled");
+        let settings: FingerprintSettings = serde_json::from_value(value).unwrap();
+        assert!(settings.enabled);
+    }
 
     #[test]
     fn default_settings_are_stable() {

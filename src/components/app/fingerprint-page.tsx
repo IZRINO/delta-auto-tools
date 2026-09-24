@@ -278,6 +278,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
     }, [profileBootstrap, selectedPerson, setBootstrap, setForm, setPageError, setStatusMessage]);
 
     const runOnce = useCallback(async (autoClick: boolean) => {
+        if (!form?.enabled) return;
         if (!isNativeShell) {
             setStatusMessage("浏览器预览模式下不可识别。");
             return;
@@ -302,7 +303,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                 setPageError(getErrorMessage(error));
             }
         }
-    }, [isNativeShell, setBootstrap, setPageError, setStatusMessage, syncBootstrap]);
+    }, [form?.enabled, isNativeShell, setBootstrap, setPageError, setStatusMessage, syncBootstrap]);
 
     if (overlayMode) {
         return <FingerprintRegionOverlay slots={overlaySlots}/>;
@@ -314,7 +315,7 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
         <ToolPageFrame
             actions={
                 <Badge variant={isBusy ? "outline" : bootstrap?.hotkeyError ? "outline" : canRun ? "default" : "ghost"}>
-                    {isBusy ? "识别中" : bootstrap?.hotkeyError ? "快捷键异常" : canRun ? "就绪" : "未标定"}
+                    {!form?.enabled ? "已关闭" : isBusy ? "识别中" : bootstrap?.hotkeyError ? "快捷键异常" : canRun ? "就绪" : "未标定"}
                 </Badge>
             }
             error={pageError || bootstrap?.hotkeyError ? <SoftAlert>{pageError ?? bootstrap?.hotkeyError}</SoftAlert> : undefined}
@@ -329,6 +330,10 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                     ]}
                     onTabChange={setActiveTab}
                 />
+            </div>
+
+            <div className="col-span-12">
+                <ConfigRow label="总开关" value={<Switch checked={form?.enabled ?? true} disabled={isBusy} aria-label="指纹密码总开关" onCheckedChange={(checked) => updateForm("enabled", checked)}/>} state={form?.enabled ? "valid" : "idle"}/>
             </div>
 
             <div className="col-span-12">
@@ -502,10 +507,10 @@ export function FingerprintPage({overlayMode = false}: FingerprintPageProps) {
                         header="识别"
                         footer={
                             <div className="flex gap-2">
-                                <Button className="flex-1" disabled={isBusy || !canRun} onClick={() => void runOnce(false)} type="button" variant="outline">
+                                <Button className="flex-1" disabled={isBusy || !canRun || !form?.enabled} onClick={() => void runOnce(false)} type="button" variant="outline">
                                     只识别
                                 </Button>
-                                <Button className="flex-1" disabled={isBusy || !canRun} onClick={() => void runOnce(true)} type="button">
+                                <Button className="flex-1" disabled={isBusy || !canRun || !form?.enabled} onClick={() => void runOnce(true)} type="button">
                                     <RiPlayLine data-icon="inline-start"/>
                                     识别并点击
                                 </Button>

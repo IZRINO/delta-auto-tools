@@ -19,6 +19,7 @@ export type ClickRegion = {
 
 export type MorseSettings = {
     hotkey: string;
+    enabled: boolean;
     regions: RegionTuple;
     binaryThreshold: number;
     autoInputDelay: number;
@@ -32,6 +33,7 @@ export type MorseSettings = {
 
 export type MorseSettingsForm = {
     hotkey: string;
+    enabled: boolean;
     regions: RegionTuple;
     binaryThreshold: string;
     autoInputDelay: string;

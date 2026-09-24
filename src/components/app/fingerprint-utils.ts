@@ -13,6 +13,7 @@ export {clickRegionRows, formatRecordedHotkey, formatRegion, formatTimestamp} fr
 export function settingsToForm(settings: FingerprintSettings): FingerprintSettingsForm {
     return {
         hotkey: settings.hotkey,
+        enabled: settings.enabled ?? true,
         occupancyThreshold: String(settings.occupancyThreshold),
         matchThreshold: String(settings.matchThreshold),
         autoClickEnabled: settings.autoClickEnabled,
@@ -55,6 +56,7 @@ export function parseSettingsForm(form: FingerprintSettingsForm): FingerprintSet
     const afterClickHotkey = form.afterClickHotkey.trim();
     return {
         hotkey,
+        enabled: form.enabled,
         occupancyThreshold,
         matchThreshold,
         autoClickEnabled: form.autoClickEnabled,

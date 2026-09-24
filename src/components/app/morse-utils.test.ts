@@ -20,6 +20,7 @@ describe("morse-utils", () => {
     it("converts settings to form strings", () => {
         const form = settingsToForm({
             hotkey: "Ctrl+F1",
+            enabled: false,
             regions: [null, null, null],
             binaryThreshold: 120,
             autoInputDelay: 80,
@@ -30,6 +31,7 @@ describe("morse-utils", () => {
 
         expect(form).toEqual({
             hotkey: "Ctrl+F1",
+            enabled: false,
             regions: [null, null, null],
             binaryThreshold: "120",
             autoInputDelay: "80",
@@ -42,6 +44,7 @@ describe("morse-utils", () => {
     it("parses a valid settings form", () => {
         const form: MorseSettingsForm = {
             hotkey: " Ctrl+F2 ",
+            enabled: false,
             regions: [null, null, null],
             binaryThreshold: "127",
             autoInputDelay: "50",
@@ -52,6 +55,7 @@ describe("morse-utils", () => {
 
         expect(parseSettingsForm(form)).toEqual({
             hotkey: "Ctrl+F2",
+            enabled: false,
             regions: [null, null, null],
             binaryThreshold: 127,
             autoInputDelay: 50,
@@ -65,6 +69,7 @@ describe("morse-utils", () => {
         expect(() =>
             parseSettingsForm({
                 hotkey: "   ",
+                enabled: true,
                 regions: [null, null, null],
                 binaryThreshold: "127",
                 autoInputDelay: "50",
@@ -79,6 +84,7 @@ describe("morse-utils", () => {
         expect(() =>
             parseSettingsForm({
                 hotkey: "F1",
+                enabled: true,
                 regions: [null, null, null],
                 binaryThreshold: "300",
                 autoInputDelay: "50",
@@ -93,6 +99,7 @@ describe("morse-utils", () => {
         expect(() =>
             parseSettingsForm({
                 hotkey: "F1",
+                enabled: true,
                 regions: [null, null, null],
                 binaryThreshold: "127",
                 autoInputDelay: "-1",

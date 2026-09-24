@@ -6760,6 +6760,39 @@ impl limited_supply_runtime::LimitedSupplyDriver for ProductionLimitedSupplyDriv
         }
     }
 
+    async fn reset_position(
+        &self,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<(), limited_supply_runtime::LimitedRunError> {
+        self.input.focus().await.map_err(|message| {
+            limited_supply_runtime::LimitedRunError::System {
+                step: "limited.window".to_string(),
+                message,
+            }
+        })?;
+        let map_error = |message| {
+            Self::map_input_error(
+                ProductionAmmoDriver::cancelled_or_system(
+                    &cancelled,
+                    "limited.resetPosition",
+                    message,
+                ),
+                "limited.resetPosition",
+            )
+        };
+        crate::input_simulation::press_primary_key_sequence_cancellable(
+            ammo_reset_keys().to_vec(),
+            AMMO_RESET_KEY_DELAY_MS,
+            Arc::clone(&cancelled),
+        )
+        .await
+        .map_err(&map_error)?;
+        self.input
+            .park_mouse(Arc::clone(&cancelled))
+            .await
+            .map_err(map_error)
+    }
+
     async fn sample_colors(
         &self,
         cancelled: Arc<std::sync::atomic::AtomicBool>,

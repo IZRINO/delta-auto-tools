@@ -15,6 +15,7 @@ export {getErrorMessage} from "@/lib/error-utils";
 export function settingsToForm(settings: MorseSettings): MorseSettingsForm {
     return {
         hotkey: settings.hotkey,
+        enabled: settings.enabled ?? true,
         regions: settings.regions,
         binaryThreshold: String(settings.binaryThreshold),
         autoInputDelay: String(settings.autoInputDelay),
@@ -54,6 +55,7 @@ export function parseSettingsForm(form: MorseSettingsForm): MorseSettings {
 
     return {
         hotkey,
+        enabled: form.enabled,
         regions: form.regions,
         binaryThreshold,
         autoInputDelay,
