@@ -1,8 +1,7 @@
-{
+﻿{
   "name": "delta-auto-tools",
   "private": true,
-  "version": "1.0.0-beta.24",
-  "type": "module",
+  "version": "1.0.0-beta.24",  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -50,3 +49,4 @@
     "vitest": "4.1.11"
   }
 }
+

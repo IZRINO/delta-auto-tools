@@ -1,7 +1,6 @@
-[package]
+﻿[package]
 name = "delta-auto-tools"
-version = "1.0.0-beta.24"
-description = "A Tauri App"
+version = "1.0.0-beta.24"description = "A Tauri App"
 authors = ["IZRINO"]
 edition = "2021"
 
@@ -72,3 +71,4 @@ windows = { version = "0.61.3", features = [
 [dev-dependencies]
 tauri = { version = "2.11.5", features = ["test"] }
 tokio = { version = "1.53.1", features = ["test-util"] }
+
