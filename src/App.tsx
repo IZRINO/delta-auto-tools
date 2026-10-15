@@ -9,6 +9,7 @@ import {PagePreviewBanner, SoftAlert} from "@/components/app/app-ui";
 import {BlackmarkSettingsPage} from "@/components/app/blackmark-settings-page";
 import {BlackmarkShell, isToolId} from "@/components/app/blackmark-shell";
 import {ConsoleShell} from "@/components/app/console-shell";
+import {PracticalToolsAutoIndicator, PracticalToolsRegionOverlay} from "@/components/app/practical-tools-page";
 import {readUiWorld} from "@/components/app/theme-utils";
 import {readStoredActiveTool, writeStoredActiveTool} from "@/components/app/active-tool";
 import type {FavoriteCardKind} from "@/components/app/favorites-utils";
@@ -45,6 +46,12 @@ const RecognitionPage = lazy(() =>
 );
 const SpecialOpsPage = lazy(() =>
     import("@/components/app/special-ops-page").then((module) => ({default: module.SpecialOpsPage})),
+);
+const PracticalToolsPage = lazy(() =>
+    import("@/components/app/practical-tools-page").then((module) => ({default: module.PracticalToolsPage})),
+);
+const PracticalToolsOverlay = lazy(() =>
+    import("@/components/app/practical-tools-page").then((module) => ({default: module.PracticalToolsOverlay})),
 );
 const PrivacyScreenPage = lazy(() =>
     import("@/components/app/privacy-screen-page").then((module) => ({default: module.PrivacyScreenPage})),
@@ -116,6 +123,8 @@ function renderToolPage(
             return <SpecialOpsPage/>;
         case "privacyScreen":
             return <PrivacyScreenPage/>;
+        case "practicalTools":
+            return <PracticalToolsPage/>;
     }
 }
 
@@ -293,6 +302,16 @@ function AppShell() {
 
     if (overlayMode === "special-ops-operation") {
         return <ToolPageSuspense fallback={null}><SpecialOpsOperationOverlay/></ToolPageSuspense>;
+    }
+
+    if (overlayMode === "practical-tools-display") {
+        return <ToolPageSuspense fallback={null}><PracticalToolsOverlay/></ToolPageSuspense>;
+    }
+    if (overlayMode === "practical-tools-auto-indicator") {
+        return <ToolPageSuspense fallback={null}><PracticalToolsAutoIndicator/></ToolPageSuspense>;
+    }
+    if (overlayMode === "practical-tools-region") {
+        return <PracticalToolsRegionOverlay/>;
     }
 
     const toolPage = (

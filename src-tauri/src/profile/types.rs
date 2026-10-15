@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::counter::CounterSettings;
 use crate::morse::MorseSettings;
+use crate::practical_tools::PracticalToolsSettings;
 use crate::rapidfire::RapidfireSettings;
 use crate::recognition::RecognitionSettings;
 use crate::timer::TimerSettings;
@@ -31,6 +32,8 @@ pub struct ToolSettingsSnapshot {
     pub recognition: Option<RecognitionSettings>,
     #[serde(default)]
     pub special_ops: Option<crate::special_ops::SpecialOpsSettings>,
+    #[serde(default)]
+    pub practical_tools: Option<PracticalToolsSettings>,
 }
 
 impl ToolSettingsSnapshot {
@@ -44,6 +47,7 @@ impl ToolSettingsSnapshot {
             rapidfire: None,
             recognition: None,
             special_ops: None,
+            practical_tools: None,
         }
     }
 }

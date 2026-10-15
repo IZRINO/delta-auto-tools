@@ -88,6 +88,7 @@ fn stop_active_sessions(app: &AppHandle, _state: &GlobalState) {
 /// 各工具恢复独立执行，一个工具失败不影响其他工具恢复。
 pub(crate) fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
     use crate::counter;
+    use crate::practical_tools;
     use crate::rapidfire;
     use crate::recognition;
     use crate::timer;
@@ -201,6 +202,15 @@ pub(crate) fn restore_active_windows(app: &AppHandle) -> Result<(), String> {
             errors.push(format!("识别触发: {error}"));
         }
         recognition::RecognitionLogic::emit_state(app, &bootstrap);
+    }
+
+    if let Some(state) = app.try_state::<practical_tools::PracticalToolsState>() {
+        if let Ok(settings) = state.settings_snapshot() {
+            if let Err(error) = practical_tools::restart_hotkeys(app, &settings) {
+                crate::log_warn!("global_state", "恢复实用小工具热键失败", "error" => error.clone());
+                errors.push(format!("实用小工具: {error}"));
+            }
+        }
     }
 
     if errors.is_empty() {

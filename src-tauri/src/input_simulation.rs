@@ -492,6 +492,18 @@ where
     result
 }
 
+async fn run_serialized_input_exact<F, T>(operation: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    let lock = INPUT_SIMULATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|err| format!("输入模拟任务失败: {err}"))?
+}
+
 #[cfg(test)]
 async fn run_serialized_input_for_test<F, Fut>(operation: F) -> Result<(), String>
 where
@@ -631,6 +643,54 @@ pub async fn press_named_key_cancellable(
     run_serialized_input(move || {
         let emitter = EnigoInputEmitter::new()?;
         press_key_with_emitter(&emitter, key, &cancelled, generation)
+    })
+    .await
+}
+
+pub async fn tap_primary_key_for_cancellable(
+    primary: PrimaryKey,
+    hold_ms: u64,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let generation = input_release_generation();
+    run_serialized_input_exact(move || {
+        let emitter = EnigoInputEmitter::new()?;
+        let key = primary_to_key(primary)?;
+        let mut pressed = TrackedModifierGuard::new(&emitter, &cancelled, generation);
+        pressed.press(key)?;
+        wait_cancellable_input_delay(&cancelled, generation, hold_ms)?;
+        pressed.release(&key)
+    })
+    .await
+}
+
+pub async fn tap_mouse_button_for_cancellable(
+    button_name: String,
+    hold_ms: u64,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    run_serialized_input_exact(move || {
+        let button = match button_name.as_str() {
+            "MouseLeft" => enigo::Button::Left,
+            "MouseRight" => enigo::Button::Right,
+            "MouseMiddle" => enigo::Button::Middle,
+            "MouseBack" => enigo::Button::Back,
+            "MouseForward" => enigo::Button::Forward,
+            _ => return Err(format!("不支持鼠标按键: {button_name}")),
+        };
+        let mut enigo = Enigo::new(&Settings::default())
+            .map_err(|error| format!("初始化自动输入失败: {error}"))?;
+        enigo
+            .button(button, Direction::Press)
+            .map_err(|error| format!("鼠标按下失败: {error}"))?;
+        let deadline = std::time::Instant::now() + Duration::from_millis(hold_ms);
+        while std::time::Instant::now() < deadline && !cancelled.load(Ordering::SeqCst) {
+            thread::sleep(INPUT_CANCELLATION_POLL_INTERVAL);
+        }
+        let release = enigo
+            .button(button, Direction::Release)
+            .map_err(|error| format!("鼠标释放失败: {error}"));
+        release
     })
     .await
 }

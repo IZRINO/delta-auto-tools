@@ -10,6 +10,9 @@ export const overlayWindowModes = new Set([
     "recognition-overlay",
     "special-ops-calibration",
     "special-ops-operation",
+    "practical-tools-display",
+    "practical-tools-auto-indicator",
+    "practical-tools-region",
 ]);
 
 export function isOverlayWindowMode(mode: string | null | undefined): boolean {

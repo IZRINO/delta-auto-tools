@@ -13,6 +13,7 @@ import {
     RiEyeOffLine,
     RiShieldLine,
     RiFingerprintLine,
+    RiFlashlightLine,
 } from "@remixicon/react";
 
 import {useFavorites} from "@/hooks/use-favorites";
@@ -40,6 +41,7 @@ const deltaTools = [
     {id: "specialOps" as const, icon: RiShieldLine, label: "特勤处", short: "Special Ops"},
     {id: "morse" as const, icon: RiRadarLine, label: "摩斯密码解析", short: "Morse"},
     {id: "fingerprint" as const, icon: RiFingerprintLine, label: "指纹密码", short: "Fingerprint"},
+    {id: "practicalTools" as const, icon: RiFlashlightLine, label: "实用小工具", short: "实用工具"},
 ];
 
 type ConsoleShellProps = {

@@ -7,7 +7,7 @@
 use tauri::{AppHandle, Manager};
 
 use crate::settings as common_settings;
-use crate::{counter, morse, rapidfire, recognition, special_ops, timer};
+use crate::{counter, morse, practical_tools, rapidfire, recognition, special_ops, timer};
 
 use super::types;
 
@@ -37,6 +37,12 @@ pub(crate) fn apply_snapshot_to_tools(
 
     apply_snapshot_to_tool_state(app, snapshot)?;
     if let (Some(state), Some(settings)) = (special_ops_state, special_ops_snapshot) {
+        state.apply_profile_settings(app, settings)?;
+    }
+    if let (Some(state), Some(settings)) = (
+        app.try_state::<practical_tools::PracticalToolsState>(),
+        snapshot.practical_tools.clone(),
+    ) {
         state.apply_profile_settings(app, settings)?;
     }
     schedule_profile_window_reconcile(app, snapshot);

@@ -50,6 +50,8 @@ describe("Tauri security config", () => {
         const permissions = permissionIdentifiers(capability);
 
         expect(capability.windows?.some((window) => window.includes("overlay"))).toBe(true);
+        expect(capability.windows).toContain("practical-tools-bomb-progress");
+        expect(capability.windows).toContain("practical-tools-region-selection");
         expect(permissions.some((permission) => /^(dialog|opener|process|updater):/.test(permission))).toBe(false);
     });
 

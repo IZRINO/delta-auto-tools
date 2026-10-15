@@ -30,6 +30,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::counter;
 use crate::morse;
+use crate::practical_tools::{PracticalToolsSettings, PracticalToolsState};
 use crate::rapidfire;
 use crate::recognition;
 use crate::settings::SettingsCoordinator;
@@ -132,6 +133,7 @@ fn build_default_snapshot() -> types::ToolSettingsSnapshot {
         rapidfire: Some(rapidfire::RapidfireSettings::default()),
         recognition: Some(recognition::RecognitionSettings::default()),
         special_ops: Some(special_ops::SpecialOpsSettings::default()),
+        practical_tools: Some(PracticalToolsSettings::default()),
     }
 }
 
@@ -482,6 +484,7 @@ pub(crate) enum ActiveProfileSnapshotPatch {
     Rapidfire(rapidfire::RapidfireSettings),
     Recognition(recognition::RecognitionSettings),
     SpecialOps(Box<crate::special_ops::SpecialOpsSettings>),
+    PracticalTools(PracticalToolsSettings),
 }
 
 pub(crate) fn is_applying(app: &AppHandle) -> bool {
@@ -523,6 +526,9 @@ pub(crate) fn update_active_profile_snapshot(
         }
         ActiveProfileSnapshotPatch::SpecialOps(value) => {
             profile.snapshot.special_ops = Some(*value)
+        }
+        ActiveProfileSnapshotPatch::PracticalTools(value) => {
+            profile.snapshot.practical_tools = Some(value)
         }
     }
     profile.updated_at = chrono::Utc::now().timestamp_millis() as u64;
@@ -583,6 +589,11 @@ fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnaps
         .map(|state| state.settings_snapshot())
         .transpose()?;
 
+    let practical_tools_settings = app
+        .try_state::<PracticalToolsState>()
+        .map(|state| state.settings_snapshot())
+        .transpose()?;
+
     Ok(types::ToolSettingsSnapshot {
         morse: morse_settings,
         timer: timer_settings,
@@ -590,6 +601,7 @@ fn snapshot_current_settings(app: &AppHandle) -> Result<types::ToolSettingsSnaps
         rapidfire: rapidfire_settings,
         recognition: recognition_settings,
         special_ops: special_ops_settings,
+        practical_tools: practical_tools_settings,
     })
 }
 

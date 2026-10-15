@@ -16,7 +16,7 @@ function Tabs({
             data-slot="tabs"
             data-orientation={orientation}
             className={cn(
-                "group/tabs flex gap-2 data-horizontal:flex-col",
+                "group/tabs flex gap-2 data-[orientation=horizontal]:flex-col data-[orientation=vertical]:flex-row",
                 className
             )}
             {...props}
@@ -25,7 +25,7 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-    "tabs group/tabs-list w-fit group-data-vertical/tabs:flex-col",
+    "tabs group/tabs-list w-fit group-data-[orientation=vertical]/tabs:flex-col",
     {
         variants: {
             variant: {

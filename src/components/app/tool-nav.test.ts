@@ -8,7 +8,7 @@ describe("blackmark dock groups", () => {
             ["favorites"],
             ["timer", "counter", "rapidfire"],
             ["strategy", "recognition", "privacyScreen"],
-            ["specialOps", "morse", "fingerprint"],
+            ["specialOps", "morse", "fingerprint", "practicalTools"],
         ]);
         expect(BLACKMARK_DOCK_TOOLS.map((item) => item.id)).toEqual([
             "favorites",
@@ -21,6 +21,7 @@ describe("blackmark dock groups", () => {
             "specialOps",
             "morse",
             "fingerprint",
+            "practicalTools",
         ]);
     });
 });

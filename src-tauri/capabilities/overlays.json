@@ -19,7 +19,10 @@
     "recognition-overlay",
     "recognition-overlay-*",
     "special-ops-calibration-*",
-    "special-ops-operation"
+    "special-ops-operation",
+    "practical-tools-bomb-progress",
+    "practical-tools-auto-indicator",
+    "practical-tools-region-selection"
   ],
   "permissions": [
     "core:event:allow-listen",

@@ -10,6 +10,7 @@ mod key_suppressor;
 mod logging;
 mod morse;
 mod overlay_utils;
+mod practical_tools;
 mod privacy_screen;
 mod profile;
 mod rapidfire;
@@ -150,6 +151,12 @@ pub fn run() {
                 &["special_ops_settings.json"],
                 || special_ops::initialize(app.handle()),
             )?;
+            let practical_tools_state = initialize_with_settings_recovery(
+                app.handle(),
+                "practical_tools",
+                &["practical_tools_settings.json"],
+                || practical_tools::PracticalToolsState::initialize(app.handle()),
+            )?;
             let privacy_screen_state = initialize_with_settings_recovery(
                 app.handle(),
                 "privacy_screen",
@@ -188,6 +195,10 @@ pub fn run() {
                 Box::new(|app: &tauri::AppHandle| crate::recognition::stop_registered(app)),
             );
             lifecycle_registry.register(
+                "practical_tools",
+                Box::new(|app: &tauri::AppHandle| crate::practical_tools::stop_registered(app)),
+            );
+            lifecycle_registry.register(
                 "special_ops",
                 Box::new(|app: &tauri::AppHandle| crate::special_ops::stop_registered(app)),
             );
@@ -207,8 +218,10 @@ pub fn run() {
             app.manage(recognition_state);
             app.manage(special_ops_state);
             app.manage(privacy_screen_state);
+            app.manage(practical_tools_state);
             app.manage(lifecycle_registry);
             recognition::start_runtime(app.handle())?;
+            practical_tools::start_runtime(app.handle());
             special_ops::start_runtime(app.handle())?;
             Ok(())
         })
@@ -345,6 +358,14 @@ pub fn run() {
             special_ops::special_ops_cancel_login_trial,
             special_ops::special_ops_emergency_stop,
             // ── 息屏 ──
+            practical_tools::practical_tools_get_bootstrap,
+            practical_tools::practical_tools_save_settings,
+            practical_tools::practical_tools_start_bomb_progress,
+            practical_tools::practical_tools_preview_bomb_progress,
+            practical_tools::practical_tools_get_progress,
+            practical_tools::practical_tools_begin_region_selection,
+            practical_tools::practical_tools_submit_region_selection,
+            practical_tools::practical_tools_cancel_region_selection,
             privacy_screen::privacy_screen_get_bootstrap,
             privacy_screen::privacy_screen_save_settings,
             privacy_screen::privacy_screen_show,

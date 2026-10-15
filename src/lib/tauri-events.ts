@@ -77,3 +77,7 @@ export const SPECIAL_OPS_EVENTS = {
     stateChanged: "special-ops://state-changed",
     runChanged: "special-ops://run-changed",
 } as const;
+
+export const PRACTICAL_TOOLS_EVENTS = {
+    regionSelected: "practical-tools://region-selected",
+} as const;
