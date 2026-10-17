@@ -35,7 +35,7 @@ const defaults: PracticalToolsSettings = {
     enabled: false, autoFullAutoEnabled: false, autoFullAutoToggleKey: "F6", fireKey: "MouseLeft", weaponKeys: ["1", "2", "3", "4", "5"],
     startDelayMs: 80, weaponDetectionDelayMs: 100, pressMs: 30, intervalMs: 30, autoRegion: null, matchThreshold: 0.75, autoIndicatorOpacity: 0.9, autoIndicatorRight: 28, autoIndicatorBottom: 28,
     bombProgressEnabled: false, installRegion: null, bombIconRegion: null, bombTargetColor: "#F5C400", bombColorTolerance: 55, bombDurationSeconds: 30,
-    warningSeconds: 5, overlayX: 0, overlayY: 0, overlayWidth: 420, overlayHeight: 28, overlayOpacity: 0.85,
+    warningSeconds: 5, showRemainingTime: true, overlayX: 0, overlayY: 0, overlayWidth: 420, overlayHeight: 28, overlayOpacity: 0.85,
 };
 
 function RegionReadout({label, region}: {label: string; region: RegionRect | null}) {
@@ -179,7 +179,7 @@ export function PracticalToolsPage() {
                         </div>
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 @container">
                             <div className="grid gap-2 @md:grid-cols-2">
-                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-field bg-base-200 p-3"><span>安装成功提示区域</span><Button size="sm" variant="outline" onClick={() => void selectRegion("install")} data-icon="inline-start"><RiMapPinLine className="size-4"/>{settings.installRegion ? "重新框选" : "框选"}</Button></div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-field bg-base-200 p-3"><div><div>安装成功提示区域</div><p className="mt-1 text-xs text-base-content/60">框选黑潮炸弹弹窗中的“已安装”三个字。</p></div><Button size="sm" variant="outline" onClick={() => void selectRegion("install")} data-icon="inline-start"><RiMapPinLine className="size-4"/>{settings.installRegion ? "重新框选" : "框选"}</Button></div>
                                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-field bg-base-200 p-3"><span>炸弹计时区域（识色）</span><Button size="sm" variant="outline" onClick={() => void selectRegion("bomb")} data-icon="inline-start"><RiMapPinLine className="size-4"/>{settings.bombIconRegion ? "重新框选" : "框选"}</Button></div>
                             </div>
                             <RegionReadout label="安装成功提示区域" region={settings.installRegion}/>
@@ -191,6 +191,7 @@ export function PracticalToolsPage() {
                             <div className="grid gap-3 @md:grid-cols-2 @xl:grid-cols-3">
                                 <label className="form-control"><span className="label-text">时长（秒）</span><Input type="number" value={settings.bombDurationSeconds} onChange={(event) => update("bombDurationSeconds", Number(event.target.value))} /></label>
                                 <label className="form-control"><span className="label-text">提示提前量（秒）</span><Input type="number" value={settings.warningSeconds} onChange={(event) => update("warningSeconds", Number(event.target.value))} /></label>
+                                <label className="flex items-center gap-2 text-sm"><Switch checked={settings.showRemainingTime} onCheckedChange={(value) => update("showRemainingTime", value)} />显示剩余时间</label>
                                 <label className="form-control"><span className="label-text">宽度</span><Input type="number" value={settings.overlayWidth} onChange={(event) => update("overlayWidth", Number(event.target.value))} /></label>
                                 <label className="form-control"><span className="label-text">高度</span><Input type="number" value={settings.overlayHeight} onChange={(event) => update("overlayHeight", Number(event.target.value))} /></label>
                                 <label className="form-control"><span className="label-text">透明度</span><Input type="number" min="0.05" max="1" step="0.05" value={settings.overlayOpacity} onChange={(event) => update("overlayOpacity", Number(event.target.value))} /></label>
@@ -207,7 +208,7 @@ export function PracticalToolsPage() {
     </ToolPageFrame>;
 }
 
-type ProgressState = {remainingMs: number; durationMs: number; warningMs: number; opacity: number} | null;
+type ProgressState = {remainingMs: number; durationMs: number; warningMs: number; opacity: number; showRemainingTime: boolean} | null;
 type PracticalToolsDisplayState = {progress: ProgressState; autoFullAutoForced: boolean; autoFullAutoActive: boolean; autoFullAutoSimulating: boolean; autoIndicatorOpacity: number};
 
 export function PracticalToolsOverlay() {
@@ -231,6 +232,7 @@ export function PracticalToolsOverlay() {
             <div className={`absolute inset-y-0 right-0 transition-[width,background-color] duration-150 ${warning ? "bg-error" : "bg-success"}`} style={{width: `${percent}%`}} />
             <div className="absolute inset-y-0 z-10 w-[3px] -translate-x-1/2 bg-white shadow-[0_0_8px_1px_rgb(255_255_255_/_75%)]" style={{left: `${warningPosition}%`}} />
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/45" />
+            {progress.showRemainingTime && <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center font-mono text-sm font-bold tabular-nums text-white drop-shadow-[0_1px_2px_rgb(0_0_0_/_90%)]">{Math.ceil(progress.remainingMs / 1000)}秒</div>}
         </div>
     </div>;
 }

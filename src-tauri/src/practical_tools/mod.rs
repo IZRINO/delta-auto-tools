@@ -36,6 +36,7 @@ struct ProgressRuntime {
     duration: Duration,
     warning: Duration,
     opacity: f32,
+    show_remaining_time: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -482,6 +483,7 @@ pub struct BombProgress {
     duration_ms: u64,
     warning_ms: u64,
     opacity: f32,
+    show_remaining_time: bool,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -710,6 +712,7 @@ fn start_progress(
         duration: Duration::from_secs(settings.bomb_duration_seconds as u64),
         warning: Duration::from_secs(settings.warning_seconds as u64),
         opacity: settings.overlay_opacity,
+        show_remaining_time: settings.show_remaining_time,
     };
     *started = Some(runtime);
     drop(started);
@@ -728,6 +731,7 @@ fn start_progress(
                     duration_ms: runtime.duration.as_millis() as u64,
                     warning_ms: runtime.warning.as_millis() as u64,
                     opacity: runtime.opacity,
+                    show_remaining_time: runtime.show_remaining_time,
                 },
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -775,6 +779,7 @@ pub fn practical_tools_get_progress(
             duration_ms: runtime.duration.as_millis() as u64,
             warning_ms: runtime.warning.as_millis() as u64,
             opacity: runtime.opacity,
+            show_remaining_time: runtime.show_remaining_time,
         })
     });
     Ok(PracticalToolsDisplayState {

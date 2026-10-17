@@ -22,6 +22,7 @@ export type PracticalToolsSettings = {
     bombColorTolerance: number;
     bombDurationSeconds: number;
     warningSeconds: number;
+    showRemainingTime: boolean;
     overlayX: number;
     overlayY: number;
     overlayWidth: number;

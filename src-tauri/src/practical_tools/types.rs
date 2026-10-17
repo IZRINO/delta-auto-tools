@@ -47,6 +47,9 @@ fn default_duration() -> u32 {
 fn default_warning() -> u32 {
     5
 }
+fn default_show_remaining_time() -> bool {
+    true
+}
 fn default_width() -> u32 {
     420
 }
@@ -105,6 +108,8 @@ pub struct PracticalToolsSettings {
     pub bomb_duration_seconds: u32,
     #[serde(default = "default_warning")]
     pub warning_seconds: u32,
+    #[serde(default = "default_show_remaining_time")]
+    pub show_remaining_time: bool,
     #[serde(default)]
     pub overlay_x: i32,
     #[serde(default)]
@@ -141,6 +146,7 @@ impl Default for PracticalToolsSettings {
             bomb_color_tolerance: default_bomb_color_tolerance(),
             bomb_duration_seconds: default_duration(),
             warning_seconds: default_warning(),
+            show_remaining_time: default_show_remaining_time(),
             overlay_x: 0,
             overlay_y: 0,
             overlay_width: default_width(),
@@ -227,6 +233,7 @@ mod tests {
         assert_eq!(settings.auto_indicator_bottom, 28);
         assert_eq!(settings.bomb_target_color, "#F5C400");
         assert_eq!(settings.bomb_color_tolerance, 55);
+        assert!(settings.show_remaining_time);
     }
 
     #[test]
@@ -239,6 +246,7 @@ mod tests {
         assert_eq!(settings.auto_indicator_opacity, 0.9);
         assert_eq!(settings.bomb_target_color, "#F5C400");
         assert_eq!(settings.bomb_color_tolerance, 55);
+        assert!(settings.show_remaining_time);
     }
 
     #[test]

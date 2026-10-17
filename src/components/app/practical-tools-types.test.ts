@@ -6,7 +6,7 @@ const saved: PracticalToolsSettings = {
     startDelayMs: 80, weaponDetectionDelayMs: 100, pressMs: 30, intervalMs: 30,
     autoRegion: {x: 10, y: 20, width: 100, height: 40}, matchThreshold: 0.75, autoIndicatorOpacity: 0.9, autoIndicatorRight: 28, autoIndicatorBottom: 28,
     bombProgressEnabled: false, installRegion: null, bombIconRegion: null, bombTargetColor: "#F5C400", bombColorTolerance: 55,
-    bombDurationSeconds: 30, warningSeconds: 5, overlayX: 0, overlayY: 0,
+    bombDurationSeconds: 30, warningSeconds: 5, showRemainingTime: true, overlayX: 0, overlayY: 0,
     overlayWidth: 420, overlayHeight: 28, overlayOpacity: 0.85,
 };
 
